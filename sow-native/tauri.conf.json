@@ -1,0 +1,23 @@
+{
+  "build": {
+    "beforeDevCommand": "npm --prefix ../sow-ui run dev",
+    "beforeBuildCommand": "npm --prefix ../sow-ui run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../sow-ui/dist"
+  },
+  "identifier": "com.sow.native",
+  "app": {
+    "windows": [
+      {
+        "title": "Shadows of War",
+        "width": 1280,
+        "height": 720,
+        "transparent": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "sow-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shadows of War — Pure deterministic simulation core"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+serde = { workspace = true }
+bitfield = { workspace = true }
+wyrand = { workspace = true }
+log = { workspace = true }
+bytemuck = { workspace = true }
