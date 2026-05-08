@@ -13,7 +13,6 @@ async function start() {
   // Spawn 4 bots
   sim.spawn_random_bots(4);
   
-  // @ts-ignore: WASM not recompiled yet
   const width = sim.map_width();
   const height = sim.map_height();
   const statePtr = sim.map_state_ptr();
