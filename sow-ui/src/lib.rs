@@ -1,6 +1,5 @@
 pub mod app;
-pub mod hud;
-pub mod lobby;
+pub mod ui;
 
 pub use app::ClientApp;
 
@@ -16,4 +15,5 @@ pub enum UiAction {
         target_owner: u16,
         troops: Option<f64>,
     },
+    CenterCamera,
 }

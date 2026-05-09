@@ -13,12 +13,15 @@ pub struct HudState {
 pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     let mut action = None;
 
-    // Top Panel: Economy
     egui::Panel::top("economy_panel").show(ctx, |ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new(format!("Troops: {:.0} / {:.0}", state.troops, state.max_troops)).color(Color32::WHITE).size(16.0));
+            if ui.button(RichText::new("⌖").size(18.0)).on_hover_text("Center Camera").clicked() {
+                action = Some(UiAction::CenterCamera);
+            }
             ui.add_space(20.0);
-            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD).size(16.0));
+            ui.label(format!("Troops: {:.0} / {:.0}", state.troops, state.max_troops));
+            ui.add_space(20.0);
+            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
         });
     });
 

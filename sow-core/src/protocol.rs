@@ -78,8 +78,27 @@ pub struct ClientGameplayMessage {
     pub intent: GameplayIntent,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct ClientLeaveMessage {}
+
+/// Sent immediately after the server accepts a player into a queue lobby (Waiting / CountingDown).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct ClientLeaveMessage;
+pub struct ServerJoinAckMessage {
+    pub lobby_id: u64,
+    pub player_id: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ServerJoinFailedMessage {
+    pub reason: String,
+}
+
+/// Sent when a match lobby is torn down (GC, game over); client should return to browser.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ServerLobbyClosedMessage {
+    pub lobby_id: u64,
+    pub reason: String,
+}
 
 // ─── Server Messages (Server → Client) ─────────────────────────────────────
 

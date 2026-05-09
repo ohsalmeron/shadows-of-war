@@ -1,5 +1,5 @@
 use egui::Context;
-use crate::{UiAction, hud, lobby};
+use crate::{UiAction, ui::{main_menu, hud}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientPhase {
@@ -10,7 +10,7 @@ pub enum ClientPhase {
 
 pub struct ClientApp {
     pub phase: ClientPhase,
-    pub lobby_state: lobby::LobbyState,
+    pub main_menu_state: main_menu::MainMenuState,
     pub hud_state: hud::HudState,
 }
 
@@ -18,7 +18,7 @@ impl ClientApp {
     pub fn new() -> Self {
         Self {
             phase: ClientPhase::MainMenu,
-            lobby_state: lobby::LobbyState::default(),
+            main_menu_state: main_menu::MainMenuState::default(),
             hud_state: hud::HudState {
                 gold: 0.0,
                 troops: 0.0,
@@ -32,7 +32,7 @@ impl ClientApp {
     pub fn draw(&mut self, ctx: &Context) -> Option<UiAction> {
         match self.phase {
             ClientPhase::MainMenu | ClientPhase::GameOver => {
-                lobby::draw(ctx, &mut self.lobby_state)
+                main_menu::draw(ctx, &mut self.main_menu_state)
             }
             ClientPhase::Playing => {
                 hud::draw(ctx, &mut self.hud_state)

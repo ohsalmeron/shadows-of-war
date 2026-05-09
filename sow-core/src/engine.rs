@@ -135,7 +135,7 @@ impl SowEngine {
         }
     }
 
-    pub fn spawn_human(&mut self, player_id: u16) {
+    pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3]) {
         use wyrand::WyRand;
         use crate::rng::NextIntExt;
         use crate::player::Player;
@@ -168,7 +168,7 @@ impl SowEngine {
         }
 
         if tries < 1000 {
-            let player = Player::new_human(player_id, "Player".to_string(), [0.1, 0.5, 0.9], &config);
+            let player = Player::new_human(player_id, name, color, &config);
             self.state.spawn_player(player, sx, sy);
             log::info!("Spawned Human {} at {},{}", player_id, sx, sy);
         } else {

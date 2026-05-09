@@ -15,16 +15,6 @@ use sow_ui::{ClientApp, app::ClientPhase, UiAction};
 use std::time::{Instant, Duration};
 use sow_net::client::SowClient;
 
-fn format_troops(troops: f64) -> String {
-    if troops < 1000.0 {
-        format!("{:.0}", troops)
-    } else if troops < 1_000_000.0 {
-        format!("{:.1}K", troops / 1000.0)
-    } else {
-        format!("{:.1}M", troops / 1_000_000.0)
-    }
-}
-
 fn main() {
     env_logger::init();
 
@@ -45,7 +35,7 @@ fn main() {
     let water = WaterComponents::compute(&state.map);
     let mut engine = SowEngine::new(state, water);
 
-    engine.spawn_human(1);
+    engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
     engine.spawn_random_bots(4);
 
     // ── Renderer ────────────────────────────────────────────────────────────
@@ -57,6 +47,7 @@ fn main() {
     // ── UI State ────────────────────────────────────────────────────────────
     let mut app = ClientApp::new();
     let egui_ctx = Context::default();
+    sow_ui::ui::theme::apply_theme(&egui_ctx);
     let mut raw_input = RawInput::default();
 
     // ── Network State ───────────────────────────────────────────────────────
@@ -65,6 +56,19 @@ fn main() {
     let mut turn_queue = std::collections::VecDeque::new();
     let mut my_player_id: Option<u16> = None;
     let mut my_lobby_id: Option<u64> = None;
+
+    // Auto-connect on startup
+    let addr = "ws://127.0.0.1:25565";
+    app.main_menu_state.is_connecting = true;
+    if let Ok(client) = tokio_rt.block_on(async { SowClient::connect(addr).await }) {
+        log::info!("Auto-connected to server!");
+        net_client = Some(client);
+        app.main_menu_state.is_connected = true;
+        app.main_menu_state.is_connecting = false;
+    } else {
+        log::warn!("Failed to auto-connect to {}", addr);
+        app.main_menu_state.is_connecting = false;
+    }
 
     // ── Camera state ────────────────────────────────────────────────────────
     let mut camera_x: f32 = 0.0;
@@ -137,6 +141,23 @@ fn main() {
                                 Vec2::new(screen_w, screen_h)
                             ));
                             window.request_redraw();
+                        }
+                    }
+                    WindowEvent::KeyboardInput { event, .. } => {
+                        if event.state == ElementState::Pressed {
+                            if let winit::keyboard::Key::Character(text) = &event.logical_key {
+                                raw_input.events.push(egui::Event::Text(text.to_string()));
+                            } else if let winit::keyboard::Key::Named(named) = &event.logical_key {
+                                if *named == winit::keyboard::NamedKey::Backspace {
+                                    raw_input.events.push(egui::Event::Key {
+                                        key: egui::Key::Backspace,
+                                        physical_key: None,
+                                        pressed: true,
+                                        repeat: false,
+                                        modifiers: Default::default(),
+                                    });
+                                }
+                            }
                         }
                     }
                     WindowEvent::MouseInput { state: btn_state, button, .. } => {
@@ -249,57 +270,99 @@ fn main() {
                             // ── UI UPDATE ───────────────────────────────────────
                             raw_input.predicted_dt = 1.0 / 60.0;
                             let egui_output = egui_ctx.run_ui(raw_input.clone(), |ctx| {
+                                if app.phase == ClientPhase::Playing {
+                                    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("world_overlays")));
+                                    
+                                    for player in &engine.state.players {
+                                        if player.tile_count > 0 && player.alive {
+                                            let cx = player.sum_x as f32 / player.tile_count as f32;
+                                            let cy = player.sum_y as f32 / player.tile_count as f32;
+                                            
+                                            // Project map coordinates to screen coordinates
+                                            let screen_x = cx * camera_zoom + camera_x;
+                                            let screen_y = cy * camera_zoom + camera_y;
+                                            
+                                            // Filter out of bounds coordinates
+                                            if screen_x > -100.0 && screen_x < screen_w + 100.0 && screen_y > -100.0 && screen_y < screen_h + 100.0 {
+                                                // Format troops (e.g., 1.2K, 3.5M)
+                                                let troops = player.troops as f64;
+                                                let troops_str = if troops >= 1_000_000.0 {
+                                                    format!("{:.1}M", troops / 1_000_000.0)
+                                                } else if troops >= 1_000.0 {
+                                                    format!("{:.1}K", troops / 1_000.0)
+                                                } else {
+                                                    format!("{:.0}", troops)
+                                                };
+                                                
+                                                let text = format!("{}  ⚔ {}", player.name, troops_str);
+                                                
+                                                let pos = egui::pos2(screen_x, screen_y);
+                                                let galley = painter.layout_no_wrap(
+                                                    text,
+                                                    egui::FontId::proportional(14.0),
+                                                    egui::Color32::WHITE
+                                                );
+                                                
+                                                let rect = galley.rect.translate(egui::vec2(pos.x - galley.rect.width() / 2.0, pos.y - galley.rect.height() / 2.0));
+                                                let bg_rect = rect.expand(6.0);
+                                                
+                                                painter.rect_filled(
+                                                    bg_rect,
+                                                    4.0,
+                                                    egui::Color32::from_black_alpha(200)
+                                                );
+                                                painter.galley(rect.min, galley, egui::Color32::WHITE);
+                                            }
+                                        }
+                                    }
+                                }
+
                                 if let Some(action) = app.draw(ctx) {
                                     match action {
                                         UiAction::StartSinglePlayer => {
                                             app.phase = ClientPhase::Playing;
                                         }
                                         UiAction::ConnectToServer(addr) => {
-                                            app.lobby_state.is_waiting = true;
-                                            app.lobby_state.is_connected = true;
                                             match tokio_rt.block_on(async { SowClient::connect(&addr).await }) {
                                                 Ok(client) => {
                                                     log::info!("Connected to server!");
                                                     net_client = Some(client);
-                                                    
-                                                    // Send join message
-                                                    let join_msg = sow_core::protocol::ClientJoinMessage {
-                                                        name: "NativePlayer".into(),
-                                                        is_observer: false,
-                                                        target_lobby_id: None,
-                                                    };
-                                                    my_lobby_id = Some(1); // Server assigns None to 1
-                                                    if let Ok(json) = serde_json::to_string(&join_msg) {
-                                                        if let Some(c) = net_client.as_ref() {
-                                                            c.send(json);
-                                                        }
-                                                    }
+                                                    app.main_menu_state.is_connected = true;
+                                                    app.main_menu_state.is_connecting = false;
                                                 }
                                                 Err(e) => {
                                                     log::error!("Failed to connect: {}", e);
-                                                    app.lobby_state.is_connected = false;
-                                                    app.lobby_state.is_waiting = false;
+                                                    app.main_menu_state.is_connected = false;
+                                                    app.main_menu_state.is_connecting = false;
                                                 }
                                             }
                                         }
                                         UiAction::JoinLobby(id) => {
                                             let join_msg = sow_core::protocol::ClientJoinMessage {
-                                                name: "NativePlayer".into(),
+                                                name: app.main_menu_state.player_name.clone(),
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
                                             };
-                                            my_lobby_id = Some(id);
+                                            app.main_menu_state.pending_join_lobby_id = Some(id);
                                             if let Ok(json) = serde_json::to_string(&join_msg) {
                                                 if let Some(c) = net_client.as_ref() {
                                                     c.send(json);
                                                 }
                                             }
-                                            app.lobby_state.is_waiting = true;
+                                            app.main_menu_state.is_waiting = true;
                                         }
                                         UiAction::LeaveLobby => {
-                                            net_client = None;
-                                            app.lobby_state.is_connected = false;
-                                            app.lobby_state.is_waiting = false;
+                                            if let Some(c) = net_client.as_ref() {
+                                                let leave = sow_core::protocol::ClientLeaveMessage::default();
+                                                if let Ok(json) = serde_json::to_string(&leave) {
+                                                    c.send(json);
+                                                }
+                                            }
+                                            app.main_menu_state.is_waiting = false;
+                                            app.main_menu_state.pending_join_lobby_id = None;
+                                            app.main_menu_state.joined_lobby_id = None;
+                                            my_lobby_id = None;
+                                            my_player_id = None;
                                             app.phase = ClientPhase::MainMenu;
                                         }
                                         UiAction::SetAttackRatio(r) => {
@@ -309,50 +372,7 @@ fn main() {
                                     }
                                 }
 
-                                if app.phase == ClientPhase::Playing {
-                                    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("nameplates")));
-                                    
-                                    for p in &engine.state.players {
-                                        if !p.alive || p.tile_count == 0 { continue; }
-                                        
-                                        let world_x = p.sum_x as f32 / p.tile_count as f32;
-                                        let world_y = p.sum_y as f32 / p.tile_count as f32;
-                                        
-                                        let screen_x = world_x * camera_zoom + camera_x;
-                                        let screen_y = world_y * camera_zoom + camera_y;
-                                        
-                                        // Viewport culling
-                                        if screen_x < -100.0 || screen_x > screen_w + 100.0 || 
-                                           screen_y < -100.0 || screen_y > screen_h + 100.0 {
-                                            continue;
-                                        }
-
-                                        let label = format!("{}\n{}", p.name, format_troops(p.troops));
-                                        
-                                        let font_id = egui::FontId::proportional((14.0 * camera_zoom).clamp(8.0, 48.0));
-                                        let text_color = egui::Color32::from_rgb(
-                                            (p.color[0] * 255.0) as u8,
-                                            (p.color[1] * 255.0) as u8,
-                                            (p.color[2] * 255.0) as u8,
-                                        );
-
-                                        painter.text(
-                                            egui::pos2(screen_x + 1.0, screen_y + 1.0),
-                                            egui::Align2::CENTER_CENTER,
-                                            &label,
-                                            font_id.clone(),
-                                            egui::Color32::BLACK,
-                                        );
-
-                                        painter.text(
-                                            egui::pos2(screen_x, screen_y),
-                                            egui::Align2::CENTER_CENTER,
-                                            &label,
-                                            font_id,
-                                            text_color,
-                                        );
-                                    }
-                                }
+                                // The new nameplates are rendered before app.draw()
                             });
                             raw_input.events.clear();
 
@@ -401,50 +421,105 @@ fn main() {
                 // Process network messages
                 if let Some(c) = net_client.as_ref() {
                     while let Ok(msg) = c.rx.try_recv() {
-                        // Check if it's a ServerLobbiesBroadcastMessage
-                        if let Ok(broadcast) = serde_json::from_str::<sow_core::protocol::ServerLobbiesBroadcastMessage>(&msg) {
-                            app.lobby_state.lobbies = broadcast.lobbies.clone();
-                            
-                            // If we're waiting for a lobby to start, find our lobby to update wait_timer_secs
-                            if app.lobby_state.is_waiting {
-                                if let Some(l_id) = my_lobby_id {
-                                    if let Some(lobby) = broadcast.lobbies.iter().find(|l| l.id == l_id) {
+                        if let Ok(start_msg) =
+                            serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
+                        {
+                            log::info!("Received ServerStartMessage; entering match");
+                            app.phase = ClientPhase::Playing;
+                            app.main_menu_state.is_waiting = false;
+                            app.main_menu_state.pending_join_lobby_id = None;
+                            app.main_menu_state.joined_lobby_id = None;
+                            my_player_id = start_msg.my_player_id;
+
+                            let state =
+                                sow_core::game::GameState::new(start_msg.seed, 800, 600, start_msg.config);
+                            let water = sow_core::water_components::WaterComponents::compute(&state.map);
+                            engine = SowEngine::new(state, water);
+
+                            for p in start_msg.players {
+                                engine.spawn_human(p.id, p.name.clone(), p.color);
+                            }
+                            engine.spawn_random_bots(4);
+
+                            turn_queue.clear();
+                            needs_first_upload = true;
+                            continue;
+                        }
+
+                        if let Ok(turn_msg) =
+                            serde_json::from_str::<sow_core::protocol::ServerTurnMessage>(&msg)
+                        {
+                            turn_queue.push_back(turn_msg.turn);
+                            continue;
+                        }
+
+                        if let Ok(broadcast) =
+                            serde_json::from_str::<sow_core::protocol::ServerLobbiesBroadcastMessage>(
+                                &msg,
+                            )
+                        {
+                            app.main_menu_state.lobbies = broadcast.lobbies.clone();
+
+                            if app.main_menu_state.is_waiting {
+                                let key = my_lobby_id
+                                    .or(app.main_menu_state.joined_lobby_id)
+                                    .or(app.main_menu_state.pending_join_lobby_id);
+                                if let Some(l_id) = key {
+                                    if let Some(lobby) =
+                                        broadcast.lobbies.iter().find(|l| l.id == l_id)
+                                    {
                                         if lobby.is_counting_down {
-                                            app.lobby_state.wait_timer_secs = lobby.timer_secs;
+                                            app.main_menu_state.wait_timer_secs = lobby.timer_secs;
                                         }
                                     }
                                 }
                             }
+                            continue;
                         }
-                        // Check if it's a ServerTurnMessage
-                        if let Ok(turn_msg) = serde_json::from_str::<sow_core::protocol::ServerTurnMessage>(&msg) {
-                            turn_queue.push_back(turn_msg.turn);
-                        }
-                        
-                        // Check if it's a ServerStartMessage
-                        if let Ok(start_msg) = serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg) {
-                            log::info!("Received ServerStartMessage! Transitioning to Playing!");
-                            app.phase = ClientPhase::Playing;
-                            app.lobby_state.is_waiting = false;
-                            my_player_id = start_msg.my_player_id;
-                            
-                            // Load multiplayer state!
-                            let state = sow_core::game::GameState::new(start_msg.seed, 800, 600, start_msg.config);
-                            let water = sow_core::water_components::WaterComponents::compute(&state.map);
+
+                        if let Ok(closed) =
+                            serde_json::from_str::<sow_core::protocol::ServerLobbyClosedMessage>(&msg)
+                        {
+                            log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
+                            app.phase = ClientPhase::MainMenu;
+                            app.main_menu_state.is_waiting = false;
+                            app.main_menu_state.pending_join_lobby_id = None;
+                            app.main_menu_state.joined_lobby_id = None;
+                            my_lobby_id = None;
+                            my_player_id = None;
+                            let config = GameConfig::default();
+                            let state = GameState::new(12345, map_w, map_h, config);
+                            let water = WaterComponents::compute(&state.map);
                             engine = SowEngine::new(state, water);
-                            
-                            // Let the engine spawn players in the exact deterministic order as the server
-                            // (Since server currently just calls spawn_human for each player, then spawn_random_bots)
-                            for p in start_msg.players {
-                                engine.spawn_human(p.id);
-                            }
-                            engine.spawn_random_bots(4); // the server spawns 4 bots right now
-                            
+                            engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
+                            engine.spawn_random_bots(4);
                             turn_queue.clear();
                             needs_first_upload = true;
+                            continue;
+                        }
+
+                        if let Ok(fail) =
+                            serde_json::from_str::<sow_core::protocol::ServerJoinFailedMessage>(&msg)
+                        {
+                            log::warn!("Join failed: {}", fail.reason);
+                            app.main_menu_state.is_waiting = false;
+                            app.main_menu_state.pending_join_lobby_id = None;
+                            app.main_menu_state.joined_lobby_id = None;
+                            continue;
+                        }
+
+                        if let Ok(ack) =
+                            serde_json::from_str::<sow_core::protocol::ServerJoinAckMessage>(&msg)
+                        {
+                            my_lobby_id = Some(ack.lobby_id);
+                            my_player_id = Some(ack.player_id);
+                            app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
+                            continue;
                         }
                     }
                 }
+
+                app.hud_state.is_mobile = screen_w < 900.0;
                 
                 if app.phase == ClientPhase::Playing {
                     if net_client.is_some() {

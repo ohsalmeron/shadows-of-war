@@ -53,10 +53,23 @@ impl SowEngine {
             continue;
         }
 
+        let mut touching_border = 0;
+        if let Some(player) = self.state.player(execution.owner_id) {
+            for (bx, by) in player.border_coords(self.state.map.width) {
+                let mut touches_target = false;
+                self.state.map.for_each_neighbor(bx, by, |nx, ny| {
+                    if self.state.map.owner_id(nx, ny) == execution.target_owner {
+                        touches_target = true;
+                    }
+                });
+                if touches_target { touching_border += 1; }
+            }
+        }
+        let adjacent = touching_border.max(1) as f64;
+
         let max_tiles_f64 = if execution.target_owner == 0 {
-            // Neutral expansion speed: OpenFront parity (proportional to border size)
-            let adjacent = execution.to_conquer.len() as f64;
-            (adjacent * 0.4).max(1.0).min(50.0) // Bounded organic growth
+            // Neutral expansion speed: OpenFront parity (proportional to true border size)
+            (adjacent * 2.0).max(5.0).min(100.0) // Bounded organic growth
         } else {
             // PvP expansion speed: ratio based
             // Defensive clamp: troops CAN go negative when multiple attacks drain
@@ -70,11 +83,10 @@ impl SowEngine {
                 .unwrap_or(1.0)
                 .max(1.0);
             let ratio = execution.troops / defender_troops;
-            let adjacent = execution.to_conquer.len() as f64;
 
             // OpenFront parity speed curve
-            let power = (ratio * 0.5).clamp(0.05, 0.4); 
-            (power * adjacent).max(0.1).min(100.0) // At least 0.1 (10% chance per tick), max 100 tiles/tick
+            let power = (ratio * 2.0).clamp(0.1, 0.5); 
+            (power * adjacent * 3.0).max(1.0).min(100.0) // Max 100 tiles/tick
         };
 
         // Determine actual integer number of tiles to process this tick (Fractional determinism)
