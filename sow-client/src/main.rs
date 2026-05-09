@@ -57,6 +57,8 @@ fn main() {
     let mut my_player_id: Option<u16> = None;
     let mut my_lobby_id: Option<u64> = None;
     let (map_tx, map_rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+    type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
+    let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
 
     // Auto-connect on startup
     let addr = "ws://127.0.0.1:25565";
@@ -85,8 +87,13 @@ fn main() {
 
     let mut prev_sync_point: Option<gpu::SyncPoint> = None;
     let mut last_tick = Instant::now();
+    let start_time = Instant::now();
     let tick_interval = Duration::from_millis(100);
     let mut needs_first_upload = true;
+    let mut needs_map_upload = true;
+    let mut frame_count = 0;
+    let mut last_fps_time = Instant::now();
+    let mut current_fps = 0;
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -94,7 +101,15 @@ fn main() {
                 if surface.is_none() {
                     let s = render_ctx.create_surface(&window, 1280, 720);
                     let format = s.info().format;
-                    map_renderer = Some(MapRenderer::new(&render_ctx, map_w, map_h, format));
+                    
+                    if let Some(sp) = prev_sync_point.take() {
+                        let _ = render_ctx.context.wait_for(&sp, !0);
+                    }
+                    render_ctx.command_encoder.start();
+                    map_renderer = Some(MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, format));
+                    let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
+                    prev_sync_point = Some(sync_point);
+                    
                     gui_painter = Some(GuiPainter::new(s.info(), &render_ctx.context));
                     surface = Some(s);
                 }
@@ -184,7 +199,7 @@ fn main() {
                                     
                                     if let Some(c) = net_client.as_ref() {
                                         // Multiplayer: send intent to server
-                                        let msg = sow_core::protocol::ClientGameplayMessage {
+                                        let msg = sow_core::protocol::ClientMessage::Gameplay {
                                             intent: intent.clone(),
                                         };
                                         if let Ok(json) = serde_json::to_string(&msg) {
@@ -256,12 +271,15 @@ fn main() {
                                     render_ctx.command_encoder.init_texture(mr.texture);
                                     needs_first_upload = false;
                                 }
-                                mr.update(&mut render_ctx.command_encoder, &engine.state.map);
+                                if needs_map_upload {
+                                    mr.update(&mut render_ctx.command_encoder, &engine.state.map);
+                                    needs_map_upload = false;
+                                }
 
                                 let globals = MapGlobals {
                                     camera_pos: [camera_x, camera_y],
                                     zoom: camera_zoom,
-                                    _pad0: 0.0,
+                                    time: start_time.elapsed().as_secs_f32(),
                                     screen_size: [screen_w, screen_h],
                                     map_size: [map_w as f32, map_h as f32],
                                 };
@@ -317,6 +335,24 @@ fn main() {
                                         }
                                     }
                                 }
+                                frame_count += 1;
+                                if last_fps_time.elapsed().as_secs_f64() >= 1.0 {
+                                    current_fps = frame_count;
+                                    frame_count = 0;
+                                    last_fps_time = Instant::now();
+                                }
+                                
+                                if app.phase == ClientPhase::Playing {
+                                    egui::Area::new(egui::Id::new("fps_counter"))
+                                        .fixed_pos(egui::pos2(10.0, 10.0))
+                                        .show(ctx, |ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!("FPS: {}", current_fps))
+                                                    .color(egui::Color32::YELLOW)
+                                                    .strong()
+                                            );
+                                        });
+                                }
 
                                 if let Some(action) = app.draw(ctx) {
                                     match action {
@@ -339,7 +375,7 @@ fn main() {
                                             }
                                         }
                                         UiAction::JoinLobby(id) => {
-                                            let join_msg = sow_core::protocol::ClientJoinMessage {
+                                            let join_msg = sow_core::protocol::ClientMessage::Join {
                                                 name: app.main_menu_state.player_name.clone(),
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
@@ -355,7 +391,7 @@ fn main() {
                                         }
                                         UiAction::LeaveLobby => {
                                             if let Some(c) = net_client.as_ref() {
-                                                let leave = sow_core::protocol::ClientLeaveMessage::default();
+                                                let leave = sow_core::protocol::ClientMessage::Leave {};
                                                 if let Ok(json) = serde_json::to_string(&leave) {
                                                     c.send(json);
                                                 }
@@ -365,10 +401,29 @@ fn main() {
                                             app.main_menu_state.joined_lobby_id = None;
                                             my_lobby_id = None;
                                             my_player_id = None;
+                                            camera_x = 0.0;
+                                            camera_y = 0.0;
+                                            camera_zoom = 2.0;
                                             app.phase = ClientPhase::MainMenu;
                                         }
                                         UiAction::SetAttackRatio(r) => {
                                             app.hud_state.attack_ratio = r;
+                                        }
+                                        UiAction::CenterCamera => {
+                                            let pid = my_player_id.unwrap_or(1);
+                                            if let Some(player) =
+                                                engine.state.players.iter().find(|p| p.id == pid)
+                                            {
+                                                if player.tile_count > 0 && player.alive {
+                                                    let cx = player.sum_x as f32
+                                                        / player.tile_count as f32;
+                                                    let cy = player.sum_y as f32
+                                                        / player.tile_count as f32;
+                                                    // screen = map * zoom + camera (see mouse projection)
+                                                    camera_x = screen_w * 0.5 - cx * camera_zoom;
+                                                    camera_y = screen_h * 0.5 - cy * camera_zoom;
+                                                }
+                                            }
                                         }
                                         _ => {}
                                     }
@@ -427,45 +482,54 @@ fn main() {
                             serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
                         {
                             log::info!("Received ServerStartMessage; entering match");
-                            app.phase = ClientPhase::Playing;
+                            log::info!("Received ServerStartMessage; computing heavy init in background");
+                            app.phase = sow_ui::app::ClientPhase::Loading;
                             app.main_menu_state.is_waiting = false;
                             app.main_menu_state.pending_join_lobby_id = None;
                             app.main_menu_state.joined_lobby_id = None;
                             my_player_id = start_msg.my_player_id;
+                            
+                            app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
+                            app.loading_state.progress = 0.1;
 
-                            let w = start_msg.config.map_width;
-                            let h = start_msg.config.map_height;
-                            let mut state =
-                                sow_core::game::GameState::new(start_msg.seed, w, h, start_msg.config);
-                            if let Some(bytes) = app.main_menu_state.cached_map.take() {
-                                for (i, &b) in bytes.iter().enumerate() {
-                                    if i < state.map.terrain.len() {
-                                        state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                            let cached_map = app.main_menu_state.cached_map.take();
+                            let start_msg_clone = start_msg.clone();
+                            let tx = engine_init_tx.clone();
+
+                            std::thread::spawn(move || {
+                                let w = start_msg_clone.config.map_width;
+                                let h = start_msg_clone.config.map_height;
+                                let mut state = sow_core::game::GameState::new(
+                                    start_msg_clone.seed,
+                                    w,
+                                    h,
+                                    start_msg_clone.config.clone(),
+                                );
+                                
+                                if let Some(bytes) = cached_map {
+                                    if bytes.len() == state.map.terrain.len() {
+                                        // Optimize: copy via transparent casting instead of byte-by-byte enumeration
+                                        // MapTile is a bitfield(u8) which is repr(transparent) equivalent over u8.
+                                        // We can safely transmute or cast the slice.
+                                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                                        unsafe {
+                                            std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len());
+                                        }
+                                    } else {
+                                        // Fallback if size mismatch
+                                        for (i, &b) in bytes.iter().enumerate() {
+                                            if i < state.map.terrain.len() {
+                                                state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                                            }
+                                        }
                                     }
+                                } else {
+                                    log::error!("Cached map data not found! Terrain will be empty.");
                                 }
-                            } else {
-                                log::error!("Cached map data not found! Terrain will be empty.");
-                            }
 
-                            let water = sow_core::water_components::WaterComponents::compute(&state.map);
-                            engine = SowEngine::new(state, water);
-
-                            // Note: Humans and bots are spawned deterministically 
-                            // The server spawned bots, so the client should spawn them using the same seed!
-                            for p in start_msg.players {
-                                engine.spawn_human(p.id, p.name.clone(), p.color);
-                            }
-                            // Spawn bots to match server's count
-                            engine.spawn_random_bots(engine.state.config.bot_count);
-
-                            map_w = w;
-                            map_h = h;
-                            if let Some(ref mut mr) = map_renderer {
-                                mr.destroy(&render_ctx);
-                            }
-                            if let Some(ref s) = surface {
-                                map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx, map_w, map_h, s.info().format));
-                            }
+                                let water = sow_core::water_components::WaterComponents::compute(&state.map);
+                                let _ = tx.send((state, water, start_msg_clone));
+                            });
 
                             turn_queue.clear();
                             needs_first_upload = true;
@@ -578,24 +642,85 @@ fn main() {
                     app.main_menu_state.cached_map = Some(bytes);
                     app.main_menu_state.is_downloading_map = false;
                 }
+                // Poll engine init channel
+                if app.phase == sow_ui::app::ClientPhase::Loading {
+                    app.loading_state.progress = (app.loading_state.progress + 0.05).min(0.95);
+                    if let Ok((state, water, start_msg)) = engine_init_rx.try_recv() {
+                        log::info!("Engine initialization complete in background thread.");
+                        app.loading_state.status_text = "Uploading assets to GPU...".to_string();
+                        app.loading_state.progress = 1.0;
+                        
+                        engine = SowEngine::new(state, water);
+
+                        for p in start_msg.players {
+                            engine.spawn_human(p.id, p.name.clone(), p.color);
+                        }
+                        engine.spawn_random_bots(engine.state.config.bot_count);
+
+                        map_w = start_msg.config.map_width;
+                        map_h = start_msg.config.map_height;
+                        if let Some(sp) = prev_sync_point.take() {
+                            let _ = render_ctx.context.wait_for(&sp, !0);
+                        }
+                        if let Some(mut mr) = map_renderer.take() {
+                            mr.destroy(&render_ctx);
+                        }
+                        if let Some(ref s) = surface {
+                            render_ctx.command_encoder.start();
+                            map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, s.info().format));
+                            let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
+                            prev_sync_point = Some(sync_point);
+                            
+                            needs_first_upload = true;
+                            needs_map_upload = true;
+                        }
+                        
+                        app.phase = sow_ui::app::ClientPhase::Playing;
+                        if let Some(pid) = my_player_id {
+                            if let Some(player) = engine.state.players.iter().find(|p| p.id == pid) {
+                                if player.tile_count > 0 && player.alive {
+                                    let cx = player.sum_x as f32 / player.tile_count as f32;
+                                    let cy = player.sum_y as f32 / player.tile_count as f32;
+                                    camera_x = screen_w * 0.5 - cx * camera_zoom;
+                                    camera_y = screen_h * 0.5 - cy * camera_zoom;
+                                }
+                            }
+                        }
+
+                        if let Some(c) = net_client.as_ref() {
+                            if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
+                                let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
+                                let json = serde_json::to_string(&ready_msg).unwrap();
+                                c.send(json);
+                            }
+                        }
+                    }
+                }
 
                 app.hud_state.is_mobile = screen_w < 900.0;
                 
-                if app.phase == ClientPhase::Playing {
+                if app.phase == sow_ui::app::ClientPhase::Playing {
                     if net_client.is_some() {
                         // Multiplayer: lockstep execution dictated by server
+                        let mut ticks_processed = 0;
                         while let Some(turn) = turn_queue.pop_front() {
                             for stamped in &turn.intents {
                                 engine.apply_stamped_intent(stamped, 0);
                             }
                             engine.tick();
+                            needs_map_upload = true;
                             
                             // Update UI HUD State from my player id
                             if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
                                 app.hud_state.gold = player.gold;
                                 app.hud_state.troops = player.troops;
-                                let owned_tiles = engine.state.map.tiles_owned_by(player.id) as f64;
+                                let owned_tiles = player.tile_count as f64;
                                 app.hud_state.max_troops = owned_tiles * 50.0;
+                            }
+
+                            ticks_processed += 1;
+                            if ticks_processed >= 10 {
+                                break;
                             }
                         }
                         last_tick = now;
@@ -603,12 +728,13 @@ fn main() {
                         // Singleplayer: run freely based on local timer
                         if now.duration_since(last_tick) >= tick_interval {
                             engine.tick();
+                            needs_map_upload = true;
                             last_tick = now;
                             
                             if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
                                 app.hud_state.gold = player.gold;
                                 app.hud_state.troops = player.troops;
-                                let owned_tiles = engine.state.map.tiles_owned_by(player.id) as f64;
+                                let owned_tiles = player.tile_count as f64;
                                 app.hud_state.max_troops = owned_tiles * 50.0;
                             }
                         }

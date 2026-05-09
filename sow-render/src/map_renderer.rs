@@ -8,7 +8,7 @@ use sow_core::map::GameMap;
 pub struct MapGlobals {
     pub camera_pos: [f32; 2],
     pub zoom: f32,
-    pub _pad0: f32,
+    pub time: f32,
     pub screen_size: [f32; 2],
     pub map_size: [f32; 2],
 }
@@ -18,21 +18,27 @@ pub struct MapShaderData {
     globals: MapGlobals,
     territory_texture: gpu::TextureView,
     territory_sampler: gpu::Sampler,
+    water_texture: gpu::TextureView,
+    water_sampler: gpu::Sampler,
 }
 
 pub struct MapRenderer {
     pub texture: gpu::Texture,
     pub texture_view: gpu::TextureView,
     pub sampler: gpu::Sampler,
+    pub water_texture: gpu::Texture,
+    pub water_texture_view: gpu::TextureView,
+    pub water_sampler: gpu::Sampler,
     pub pipeline: gpu::RenderPipeline,
     pub upload_buffer: gpu::Buffer,
     pub width: u32,
     pub height: u32,
+    pub water_upload_buf: Option<gpu::Buffer>,
 }
 
 impl MapRenderer {
-    pub fn new(render_ctx: &RenderContext, width: u32, height: u32, surface_format: gpu::TextureFormat) -> Self {
-        let texture = render_ctx.context.create_texture(gpu::TextureDesc {
+    pub fn new(context: &gpu::Context, encoder: &mut gpu::CommandEncoder, width: u32, height: u32, surface_format: gpu::TextureFormat) -> Self {
+        let texture = context.create_texture(gpu::TextureDesc {
             name: "territory_map",
             format: gpu::TextureFormat::R32Uint,
             size: gpu::Extent {
@@ -48,7 +54,7 @@ impl MapRenderer {
             external: None,
         });
 
-        let texture_view = render_ctx.context.create_texture_view(
+        let texture_view = context.create_texture_view(
             texture,
             gpu::TextureViewDesc {
                 name: "territory_map_view",
@@ -58,29 +64,91 @@ impl MapRenderer {
             },
         );
 
-        let sampler = render_ctx.context.create_sampler(gpu::SamplerDesc {
+        let sampler = context.create_sampler(gpu::SamplerDesc {
             name: "map_sampler",
+            address_modes: [gpu::AddressMode::ClampToEdge; 3],
             mag_filter: gpu::FilterMode::Nearest,
             min_filter: gpu::FilterMode::Nearest,
+            mipmap_filter: gpu::FilterMode::Nearest,
             ..Default::default()
         });
 
-        // Upload buffer: 4 bytes per tile (u32), CPU-visible shared memory
-        let buf_size = (width * height * 4) as u64;
-        let upload_buffer = render_ctx.context.create_buffer(gpu::BufferDesc {
+        // Load and create the water texture
+        let water_bytes = include_bytes!("../../sow-client/assets/water.bin");
+        // Decode the simple R8 raw bytes (256x256 * 1 = 65536 bytes)
+        let water_size = gpu::Extent { width: 256, height: 256, depth: 1 };
+        
+        let water_texture = context.create_texture(gpu::TextureDesc {
+            name: "water_texture",
+            format: gpu::TextureFormat::R8Unorm,
+            size: water_size,
+            dimension: gpu::TextureDimension::D2,
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: gpu::TextureUsage::COPY | gpu::TextureUsage::RESOURCE,
+            external: None,
+        });
+
+        let water_texture_view = context.create_texture_view(
+            water_texture,
+            gpu::TextureViewDesc {
+                name: "water_texture_view",
+                format: gpu::TextureFormat::R8Unorm,
+                dimension: gpu::ViewDimension::D2,
+                subresources: &gpu::TextureSubresources::default(),
+            },
+        );
+
+        let water_sampler = context.create_sampler(gpu::SamplerDesc {
+            name: "water_sampler",
+            address_modes: [gpu::AddressMode::Repeat; 3], // Tiling!
+            mag_filter: gpu::FilterMode::Linear,
+            min_filter: gpu::FilterMode::Linear,
+            mipmap_filter: gpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // Upload water pattern data
+        let water_upload_buf = context.create_buffer(gpu::BufferDesc {
+            name: "water_upload",
+            size: water_bytes.len() as u64,
+            memory: gpu::Memory::Shared,
+        });
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                water_bytes.as_ptr(),
+                water_upload_buf.data(),
+                water_bytes.len(),
+            );
+        }
+        
+        encoder.init_texture(water_texture);
+        let mut transfer = encoder.transfer("water_upload_pass");
+        transfer.copy_buffer_to_texture(
+            water_upload_buf.into(),
+            256, // 256 width * 1 bytes per pixel for R8Unorm
+            water_texture.into(),
+            gpu::Extent { width: 256, height: 256, depth: 1 },
+        );
+        drop(transfer);
+        // We must keep water_upload_buf alive until the command encoder is submitted and executed.
+        // So we will store it in the MapRenderer struct and clean it up later.
+
+        let upload_buffer = context.create_buffer(gpu::BufferDesc {
             name: "map_upload",
-            size: buf_size,
+            size: (width * height * 4) as u64,
             memory: gpu::Memory::Shared,
         });
 
-        let shader_source = include_str!("shaders/map.wgsl");
-        let shader = render_ctx.context.create_shader(gpu::ShaderDesc {
-            source: shader_source,
+        let source = include_str!("shaders/map.wgsl");
+        let shader = context.create_shader(gpu::ShaderDesc {
+            source,
             naga_module: None,
         });
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
-        let pipeline = render_ctx.context.create_render_pipeline(gpu::RenderPipelineDesc {
+        let pipeline = context.create_render_pipeline(gpu::RenderPipelineDesc {
             name: "map_pipeline",
             data_layouts: &[&layout],
             vertex: shader.at("vs_main"),
@@ -103,10 +171,14 @@ impl MapRenderer {
             texture,
             texture_view,
             sampler,
+            water_texture,
+            water_texture_view,
+            water_sampler,
             pipeline,
             upload_buffer,
             width,
             height,
+            water_upload_buf: Some(water_upload_buf),
         }
     }
 
@@ -164,12 +236,20 @@ impl MapRenderer {
                 globals,
                 territory_texture: self.texture_view,
                 territory_sampler: self.sampler,
+                water_texture: self.water_texture_view,
+                water_sampler: self.water_sampler,
             },
         );
         rc.draw(0, 3, 0, 1);
     }
 
     pub fn destroy(&mut self, render_ctx: &RenderContext) {
+        if let Some(buf) = self.water_upload_buf.take() {
+            render_ctx.context.destroy_buffer(buf);
+        }
+        render_ctx.context.destroy_texture_view(self.water_texture_view);
+        render_ctx.context.destroy_texture(self.water_texture);
+        render_ctx.context.destroy_sampler(self.water_sampler);
         render_ctx.context.destroy_texture_view(self.texture_view);
         render_ctx.context.destroy_texture(self.texture);
         render_ctx.context.destroy_sampler(self.sampler);

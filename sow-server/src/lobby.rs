@@ -21,6 +21,7 @@ pub const BOT_COUNT: u32 = 4;
 pub enum LobbyPhase {
     Waiting,
     CountingDown,
+    Loading,
     Active,
 }
 
@@ -38,6 +39,7 @@ pub struct ServerLobby {
     /// Counts down while Active and there are zero humans in `players`.
     pub active_empty_secs: f32,
     pub players: Vec<PlayerConnection>,
+    pub ready_players: std::collections::HashSet<u16>,
     pub engine: Option<SowEngine>,
     pub pending_intents: Vec<StampedIntent>,
     pub seed: u64,
@@ -59,6 +61,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         countdown_secs: 0.0,
         active_empty_secs: 0.0,
         players: Vec::new(),
+        ready_players: std::collections::HashSet::new(),
         engine: None,
         pending_intents: Vec::new(),
         seed: 0,
@@ -184,7 +187,8 @@ pub fn leave_player(games: &mut Vec<ServerLobby>, lobby_id: u64, player_id: u16)
 }
 
 fn start_match(lobby: &mut ServerLobby) {
-    lobby.phase = LobbyPhase::Active;
+    lobby.phase = LobbyPhase::Loading;
+    lobby.ready_players.clear();
     lobby.seed = rand::random();
 
     let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "OpenFrontIO/resources/maps".to_string());
@@ -210,9 +214,14 @@ fn start_match(lobby: &mut ServerLobby) {
     let mut state = GameState::new(lobby.seed, lobby.config.map_width, lobby.config.map_height, lobby.config.clone());
     
     if let Some(ref bytes) = map_bytes {
-        for (i, &b) in bytes.iter().enumerate() {
-            if i < state.map.terrain.len() {
-                state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+        if bytes.len() == state.map.terrain.len() {
+            let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len()); }
+        } else {
+            for (i, &b) in bytes.iter().enumerate() {
+                if i < state.map.terrain.len() {
+                    state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                }
             }
         }
     }
@@ -241,6 +250,8 @@ fn start_match(lobby: &mut ServerLobby) {
     }
     engine.spawn_random_bots(BOT_COUNT);
     lobby.engine = Some(engine);
+    lobby.countdown_secs = 10.0; // Max 10 seconds wait for clients to load
+    lobby.phase = LobbyPhase::Loading;
 
     lobby.active_empty_secs = if lobby.players.is_empty() {
         ACTIVE_EMPTY_SECS
@@ -336,6 +347,18 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                     let cap = lobby.config.max_players as usize;
                     if lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap {
                         start_match(lobby);
+                    }
+                    false
+                }
+                LobbyPhase::Loading => {
+                    lobby.countdown_secs -= TICK_SECS;
+                    if lobby.countdown_secs <= 0.0 || (lobby.ready_players.len() >= lobby.players.len() && !lobby.players.is_empty()) {
+                        if lobby.countdown_secs <= 0.0 && lobby.ready_players.len() < lobby.players.len() {
+                            log::warn!("Lobby {} loading phase timed out! Starting match anyway to let slow clients catch up.", lobby.id);
+                        } else {
+                            log::info!("Lobby {} all clients ready, starting active match!", lobby.id);
+                        }
+                        lobby.phase = LobbyPhase::Active;
                     }
                     false
                 }

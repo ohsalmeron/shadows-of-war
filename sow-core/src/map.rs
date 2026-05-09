@@ -3,6 +3,7 @@ use bitfield::bitfield;
 
 bitfield! {
     #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[repr(transparent)]
     pub struct MapTile(u8);
     impl Debug;
     pub is_land, _: 7;

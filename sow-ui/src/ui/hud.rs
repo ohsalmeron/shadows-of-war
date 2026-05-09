@@ -15,6 +15,9 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
 
     egui::Panel::top("economy_panel").show(ctx, |ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.button(RichText::new("Exit").size(14.0).color(Color32::RED)).on_hover_text("Exit Game").clicked() {
+                action = Some(UiAction::LeaveLobby);
+            }
             if ui.button(RichText::new("⌖").size(18.0)).on_hover_text("Center Camera").clicked() {
                 action = Some(UiAction::CenterCamera);
             }

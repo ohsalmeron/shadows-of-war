@@ -53,19 +53,8 @@ impl SowEngine {
             continue;
         }
 
-        let mut touching_border = 0;
-        if let Some(player) = self.state.player(execution.owner_id) {
-            for (bx, by) in player.border_coords(self.state.map.width) {
-                let mut touches_target = false;
-                self.state.map.for_each_neighbor(bx, by, |nx, ny| {
-                    if self.state.map.owner_id(nx, ny) == execution.target_owner {
-                        touches_target = true;
-                    }
-                });
-                if touches_target { touching_border += 1; }
-            }
-        }
-        let adjacent = touching_border.max(1) as f64;
+        // Fast approximation of active frontier size without scanning the entire empire border
+        let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 
         let max_tiles_f64 = if execution.target_owner == 0 {
             // Neutral expansion speed: OpenFront parity (proportional to true border size)

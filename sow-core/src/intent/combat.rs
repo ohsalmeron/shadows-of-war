@@ -34,6 +34,9 @@ pub fn build_attack_frontier(
             if game.map.owner_id(nx, ny) != target_owner {
                 return;
             }
+            if !game.map.terrain[game.map.ref_id(nx, ny)].is_land() {
+                return;
+            }
             let mut num_owned_by_me = 0u32;
             game.map.for_each_neighbor(nx, ny, |nnx, nny| {
                 if game.map.owner_id(nnx, nny) == player_id {

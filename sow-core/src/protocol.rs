@@ -46,15 +46,23 @@ pub struct Turn {
     pub turn_number: u64,
     pub intents: Vec<StampedIntent>,
 }
-
-// ─── Client Messages (Client → Server) ─────────────────────────────────────
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct ClientJoinMessage {
-    pub name: String,
-    pub is_observer: bool,
-    pub target_lobby_id: Option<u64>,
-    pub preferred_map: Option<String>,
+#[serde(tag = "type")]
+pub enum ClientMessage {
+    Join {
+        name: String,
+        is_observer: bool,
+        target_lobby_id: Option<u64>,
+        preferred_map: Option<String>,
+    },
+    Gameplay {
+        intent: GameplayIntent,
+    },
+    Leave {},
+    Ready {
+        lobby_id: u64,
+        player_id: u16,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -72,15 +80,6 @@ pub struct LobbyInfo {
 pub struct ServerLobbiesBroadcastMessage {
     pub lobbies: Vec<LobbyInfo>,
 }
-
-/// Single FIFO gameplay channel: attacks and cancels share ordering.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct ClientGameplayMessage {
-    pub intent: GameplayIntent,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
-pub struct ClientLeaveMessage {}
 
 /// Sent immediately after the server accepts a player into a queue lobby (Waiting / CountingDown).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

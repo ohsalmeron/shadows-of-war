@@ -38,3 +38,12 @@ bitfield = "0.17"
 
 # Math
 bytemuck = { version = "1", features = ["derive"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.sow-core]
+opt-level = 3

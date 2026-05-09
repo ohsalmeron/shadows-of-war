@@ -94,7 +94,8 @@ impl SowEngine {
         self.execute_combat();
         // TODO: buildings, fleets, pending turns...
     }
-    pub fn spawn_random_bots(&mut self, bot_count: u32) {
+    pub fn spawn_random_bots(&mut self, count: u32) {
+        let mut spawned_count = 0;
         use wyrand::WyRand;
         use crate::rng::NextIntExt;
         use crate::player::Player;
@@ -102,7 +103,7 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
         
-        for i in 0..bot_count {
+        for i in 0..count {
             let bot_id = 100 + i as u16;
             let mut tries = 0;
             let (mut sx, mut sy) = (0, 0);
@@ -136,9 +137,10 @@ impl SowEngine {
             if tries < 1000 {
                 let player = Player::new_bot(bot_id, format!("Tribe {}", i+1), [0.35, 0.35, 0.4], &config);
                 self.state.spawn_player(player, sx, sy);
-                log::info!("Spawned Bot {} at {},{}", bot_id, sx, sy);
+                spawned_count += 1;
             }
         }
+        log::info!("Spawned {} bots successfully.", spawned_count);
     }
 
     pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3]) {
@@ -182,7 +184,6 @@ impl SowEngine {
         if tries < 1000 {
             let player = Player::new_human(player_id, name, color, &config);
             self.state.spawn_player(player, sx, sy);
-            log::info!("Spawned Human {} at {},{}", player_id, sx, sy);
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);
         }

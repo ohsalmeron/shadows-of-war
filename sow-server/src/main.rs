@@ -3,8 +3,9 @@ mod lobby;
 use futures_util::{SinkExt, StreamExt};
 use lobby::{master_tick, ServerLobby, build_lobby_broadcast, join_player, leave_player};
 use sow_core::protocol::{
-    ClientGameplayMessage, ClientJoinMessage, ClientLeaveMessage, ServerJoinAckMessage,
-    ServerJoinFailedMessage, ServerLobbiesBroadcastMessage, ServerStartMessage,
+    ClientMessage, ServerJoinAckMessage,
+    ServerJoinFailedMessage, ServerLobbiesBroadcastMessage, ServerLobbyClosedMessage,
+    ServerStartMessage, ServerTurnMessage, Turn,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +27,10 @@ enum ServerEvent {
         intent: sow_core::protocol::GameplayIntent,
     },
     Leave {
+        lobby_id: u64,
+        player_id: u16,
+    },
+    Ready {
         lobby_id: u64,
         player_id: u16,
     },
@@ -94,6 +99,11 @@ async fn main() {
                         ServerEvent::Leave { lobby_id, player_id } => {
                             leave_player(&mut games, lobby_id, player_id);
                         }
+                        ServerEvent::Ready { lobby_id, player_id } => {
+                            if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
+                                lobby.ready_players.insert(player_id);
+                            }
+                        }
                     }
                 }
             }
@@ -141,35 +151,45 @@ async fn main() {
                                 if msg.is_text() {
                                     let text = msg.to_text().unwrap();
 
-                                    if let Ok(join) = serde_json::from_str::<ClientJoinMessage>(text) {
-                                        let _ = ev_tx.send(ServerEvent::Join {
-                                            client_tx: direct_tx.clone(),
-                                            name: join.name,
-                                            target_lobby_id: join.target_lobby_id,
-                                            preferred_map: join.preferred_map,
-                                        }).await;
-                                        continue;
-                                    }
-
-                                    if let Ok(gameplay) = serde_json::from_str::<ClientGameplayMessage>(text) {
-                                        if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                            let _ = ev_tx.send(ServerEvent::Gameplay {
-                                                lobby_id: l_id,
-                                                player_id: p_id,
-                                                intent: gameplay.intent,
-                                            }).await;
-                                        }
-                                        continue;
-                                    }
-
-                                    if serde_json::from_str::<ClientLeaveMessage>(text).is_ok() {
-                                        if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                            let _ = ev_tx.send(ServerEvent::Leave {
-                                                lobby_id: l_id,
-                                                player_id: p_id,
-                                            }).await;
-                                            my_lobby_id = None;
-                                            my_player_id = None;
+                                    if let Ok(msg) = serde_json::from_str::<sow_core::protocol::ClientMessage>(text) {
+                                        match msg {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer, target_lobby_id, preferred_map } => {
+                                                let _ = ev_tx.send(ServerEvent::Join {
+                                                    name,
+                                                    client_tx: direct_tx.clone(),
+                                                    target_lobby_id,
+                                                    preferred_map,
+                                                }).await;
+                                            }
+                                            sow_core::protocol::ClientMessage::Gameplay { intent } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    let _ = ev_tx.send(ServerEvent::Gameplay {
+                                                        lobby_id: l_id,
+                                                        player_id: p_id,
+                                                        intent,
+                                                    }).await;
+                                                }
+                                            }
+                                            sow_core::protocol::ClientMessage::Leave {} => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    let _ = ev_tx.send(ServerEvent::Leave {
+                                                        lobby_id: l_id,
+                                                        player_id: p_id,
+                                                    }).await;
+                                                }
+                                                my_lobby_id = None;
+                                                my_player_id = None;
+                                            }
+                                            sow_core::protocol::ClientMessage::Ready { lobby_id, player_id } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    if lobby_id == l_id && player_id == p_id {
+                                                        let _ = ev_tx.send(ServerEvent::Ready {
+                                                            lobby_id: l_id,
+                                                            player_id: p_id,
+                                                        }).await;
+                                                    }
+                                                }
+                                            }
                                         }
                                         continue;
                                     }

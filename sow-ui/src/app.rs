@@ -1,9 +1,10 @@
 use egui::Context;
-use crate::{UiAction, ui::{main_menu, hud}};
+use crate::{UiAction, ui::{main_menu, hud, loading_screen}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientPhase {
     MainMenu,
+    Loading,
     Playing,
     GameOver,
 }
@@ -12,6 +13,7 @@ pub struct ClientApp {
     pub phase: ClientPhase,
     pub main_menu_state: main_menu::MainMenuState,
     pub hud_state: hud::HudState,
+    pub loading_state: loading_screen::LoadingState,
 }
 
 impl ClientApp {
@@ -26,6 +28,7 @@ impl ClientApp {
                 attack_ratio: 1.0,
                 is_mobile: false,
             },
+            loading_state: loading_screen::LoadingState::default(),
         }
     }
 
@@ -33,6 +36,10 @@ impl ClientApp {
         match self.phase {
             ClientPhase::MainMenu | ClientPhase::GameOver => {
                 main_menu::draw(ctx, &mut self.main_menu_state)
+            }
+            ClientPhase::Loading => {
+                loading_screen::draw(ctx, &self.loading_state);
+                None
             }
             ClientPhase::Playing => {
                 hud::draw(ctx, &mut self.hud_state)
