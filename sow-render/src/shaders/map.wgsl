@@ -72,28 +72,34 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if is_land {
             base_color = vec4<f32>(0.176, 0.298, 0.118, 1.0); // Unowned Land
         } else {
-            // High-performance tiled water shader (webgpu-water style)
+            // High-performance tiled water shader (webgpu-water style via 4-octaves)
             let t = globals.time;
             
-            // Fast scrolling UVs
-            let uv_scale = 0.05;
-            let uv1 = vec2<f32>(world_x, world_y) * uv_scale + vec2<f32>(t * 0.02, t * 0.015);
-            let uv2 = vec2<f32>(world_x, world_y) * (uv_scale * 1.5) - vec2<f32>(t * 0.01, t * 0.025);
+            // Four octaves with varying speeds, directions, and scales
+            let uv0 = vec2<f32>(world_x, world_y) * 0.02 + vec2<f32>(0.015, 0.010) * t;
+            let uv1 = vec2<f32>(world_x, world_y) * 0.04 + vec2<f32>(-0.020, 0.015) * t;
+            let uv2 = vec2<f32>(world_x, world_y) * 0.08 + vec2<f32>(0.025, -0.010) * t;
+            let uv3 = vec2<f32>(world_x, world_y) * 0.16 + vec2<f32>(-0.010, -0.025) * t;
             
             // Sample seamless noise texture
+            let n0 = textureSampleLevel(water_texture, water_sampler, uv0, 0.0).r;
             let n1 = textureSampleLevel(water_texture, water_sampler, uv1, 0.0).r;
             let n2 = textureSampleLevel(water_texture, water_sampler, uv2, 0.0).r;
-            let wave = (n1 + n2) * 0.5;
+            let n3 = textureSampleLevel(water_texture, water_sampler, uv3, 0.0).r;
             
-            // Vibrant cyan/teal colors inspired by webgpu-water's ABOVEwaterColor
-            // webgpu-water uses vec3(0.25, 1.0, 1.25) which we map to an SDR-friendly range
-            let deep = vec4<f32>(0.15, 0.6, 0.75, 1.0);
-            let shallow = vec4<f32>(0.25, 0.9, 1.0, 1.0);
+            // Combine with decreasing amplitudes (like Fractal Brownian Motion)
+            let wave = n0 * 0.5 + n1 * 0.25 + n2 * 0.125 + n3 * 0.0625;
             
-            // Add a caustic-like highlight on the wave peaks
-            let highlight = pow(wave, 3.0) * 0.5;
+            // Vibrant cyan/teal colors exactly matching webgpu-water's aesthetic
+            let pool_dark = vec3<f32>(0.01, 0.35, 0.55);
+            let pool_light = vec3<f32>(0.15, 0.75, 0.85);
             
-            return mix(deep, shallow, wave) + vec4<f32>(highlight, highlight, highlight, 0.0);
+            let color = mix(pool_dark, pool_light, wave);
+            
+            // Add a specular highlight on the wave peaks to simulate sunlight/caustics
+            let specular = pow(wave, 12.0) * 1.5;
+            
+            return vec4<f32>(color + vec3<f32>(specular), 1.0);
         }
     }
 

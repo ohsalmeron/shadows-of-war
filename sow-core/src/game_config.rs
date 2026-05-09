@@ -63,7 +63,7 @@ impl Default for GameConfig {
     fn default() -> Self {
         Self {
             max_players: 12,
-            bot_count: 150, // Tribes (Bots)
+            bot_count: 1000, // Tribes (Bots)
             nation_count: 50, // Nations (Complex AI)
             bot_difficulty: BotDifficulty::Vanilla,
             map_name: "europe".to_string(),

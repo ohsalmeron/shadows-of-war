@@ -15,7 +15,6 @@ use tokio::sync::mpsc;
 pub const LOBBY_COUNTDOWN_SECS: f32 = 15.0;
 pub const ACTIVE_EMPTY_SECS: f32 = 30.0;
 pub const TICK_SECS: f32 = 0.1;
-pub const BOT_COUNT: u32 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LobbyPhase {
@@ -248,7 +247,7 @@ fn start_match(lobby: &mut ServerLobby) {
             spawn_y: sy,
         });
     }
-    engine.spawn_random_bots(BOT_COUNT);
+    engine.spawn_random_bots(lobby.config.bot_count);
     lobby.engine = Some(engine);
     lobby.countdown_secs = 10.0; // Max 10 seconds wait for clients to load
     lobby.phase = LobbyPhase::Loading;
