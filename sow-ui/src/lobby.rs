@@ -1,4 +1,4 @@
-use egui::{Context, Align, Layout, Color32, RichText, CentralPanel};
+use egui::{Context, Color32, RichText, CentralPanel};
 use sow_core::protocol::LobbyInfo;
 use crate::UiAction;
 

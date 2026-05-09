@@ -62,9 +62,17 @@ def main():
     os.chdir(PROJECT_ROOT)
 
     print("🚀 Starting Shadows of War Cluster...")
+    
+    print("🧹 Cleaning up any existing zombie processes...")
+    try:
+        subprocess.run(["pkill", "-f", "sow-server"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-f", "sow-client"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
     env = os.environ.copy()
     env.setdefault("RUST_BACKTRACE", "1")
+    env.setdefault("RUST_LOG", "info")
     cargo_bin = str(Path.home() / ".cargo" / "bin")
     if cargo_bin not in env.get("PATH", ""):
         env["PATH"] = cargo_bin + os.pathsep + env.get("PATH", "")
@@ -114,14 +122,22 @@ def main():
 
         time.sleep(2)
 
-        print("🎮 Launching Native Client...")
-        client_p = spawn_process("NATIVE", [str(client_bin)])
-        processes.append(("NATIVE", client_p))
-        threading.Thread(target=stream_output, args=(client_p, "NATIVE", "NATIVE"), daemon=True).start()
+        print("🎮 Launching Native Client 1...")
+        client_p1 = spawn_process("NATIVE 1", [str(client_bin)])
+        processes.append(("NATIVE 1", client_p1))
+        threading.Thread(target=stream_output, args=(client_p1, "NATIVE 1", "NATIVE"), daemon=True).start()
+
+        time.sleep(1)
+
+        print("🎮 Launching Native Client 2...")
+        client_p2 = spawn_process("NATIVE 2", [str(client_bin)])
+        processes.append(("NATIVE 2", client_p2))
+        threading.Thread(target=stream_output, args=(client_p2, "NATIVE 2", "NATIVE"), daemon=True).start()
 
         print("\n✅ Cluster fully booted! Press Ctrl+C to shutdown all instances.\n")
         server_p.wait()
-        client_p.wait()
+        client_p1.wait()
+        client_p2.wait()
 
     except KeyboardInterrupt:
         if handled_signal["num"] is not None:

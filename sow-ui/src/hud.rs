@@ -1,4 +1,4 @@
-use egui::{Context, Align, Layout, Color32, RichText, TopBottomPanel, Slider};
+use egui::{Context, Align, Layout, Color32, RichText, Slider};
 use crate::UiAction;
 
 pub struct HudState {
@@ -14,7 +14,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     let mut action = None;
 
     // Top Panel: Economy
-    TopBottomPanel::top("economy_panel").show(ctx, |ui| {
+    egui::Panel::top("economy_panel").show(ctx, |ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(RichText::new(format!("Troops: {:.0} / {:.0}", state.troops, state.max_troops)).color(Color32::WHITE).size(16.0));
             ui.add_space(20.0);
@@ -23,7 +23,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     });
 
     // Bottom Panel: Attack Controls
-    TopBottomPanel::bottom("attack_panel").show(ctx, |ui| {
+    egui::Panel::bottom("attack_panel").show(ctx, |ui| {
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
             ui.label("Attack Ratio:");
             let mut ratio = state.attack_ratio;

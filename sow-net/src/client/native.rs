@@ -18,24 +18,46 @@ impl SowClient {
         let (std_tx, std_rx) = std::sync::mpsc::channel::<String>();
         
         let task = tokio::spawn(async move {
+            log::info!("[SOW-CLIENT] Background network task started!");
             loop {
                 tokio::select! {
                     msg = rx.recv() => {
                         if let Some(text) = msg {
-                            if write.send(Message::Text(text.into())).await.is_err() {
+                            // log::debug!("[SOW-CLIENT] Sending msg to websocket: {}", text);
+                            if let Err(e) = write.send(Message::Text(text.into())).await {
+                                log::error!("[SOW-CLIENT] Write error: {}", e);
                                 break;
                             }
+                        } else {
+                            log::warn!("[SOW-CLIENT] rx.recv() returned None!");
+                            break;
                         }
                     }
-                    Some(Ok(msg)) = read.next() => {
-                        if let Message::Text(text) = msg {
-                            if std_tx.send(text.to_string()).is_err() {
+                    msg = read.next() => {
+                        match msg {
+                            Some(Ok(Message::Text(text))) => {
+                                // log::debug!("[SOW-CLIENT] Received WS msg: {}", text);
+                                if std_tx.send(text.to_string()).is_err() {
+                                    log::error!("[SOW-CLIENT] std_tx.send failed!");
+                                    break;
+                                }
+                            }
+                            Some(Ok(_other)) => {
+                                // log::debug!("[SOW-CLIENT] Received non-text WS msg");
+                            }
+                            Some(Err(e)) => {
+                                log::error!("[SOW-CLIENT] read.next() error: {}", e);
+                                break;
+                            }
+                            None => {
+                                log::warn!("[SOW-CLIENT] read.next() returned None!");
                                 break;
                             }
                         }
                     }
                 }
             }
+            log::info!("[SOW-CLIENT] Background network task exited!");
         });
 
         Ok(Self { tx, rx: std_rx, _task: task })

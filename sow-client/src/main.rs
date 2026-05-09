@@ -15,6 +15,16 @@ use sow_ui::{ClientApp, app::ClientPhase, UiAction};
 use std::time::{Instant, Duration};
 use sow_net::client::SowClient;
 
+fn format_troops(troops: f64) -> String {
+    if troops < 1000.0 {
+        format!("{:.0}", troops)
+    } else if troops < 1_000_000.0 {
+        format!("{:.1}K", troops / 1000.0)
+    } else {
+        format!("{:.1}M", troops / 1_000_000.0)
+    }
+}
+
 fn main() {
     env_logger::init();
 
@@ -50,8 +60,11 @@ fn main() {
     let mut raw_input = RawInput::default();
 
     // ── Network State ───────────────────────────────────────────────────────
-    let mut tokio_rt = tokio::runtime::Runtime::new().unwrap();
+    let tokio_rt = tokio::runtime::Runtime::new().unwrap();
     let mut net_client: Option<SowClient> = None;
+    let mut turn_queue = std::collections::VecDeque::new();
+    let mut my_player_id: Option<u16> = None;
+    let mut my_lobby_id: Option<u64> = None;
 
     // ── Camera state ────────────────────────────────────────────────────────
     let mut camera_x: f32 = 0.0;
@@ -132,18 +145,15 @@ fn main() {
                             dragging = pressed;
 
                             // If it's a click (pressed) and not intercepted by egui UI
-                            if pressed && !egui_ctx.wants_pointer_input() && app.phase == ClientPhase::Playing {
+                            if pressed && !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
                                 // Project mouse to map tile!
-                                let half_w = screen_w / 2.0;
-                                let half_h = screen_h / 2.0;
-                                let map_x = ((last_mouse_x as f32 - half_w) / camera_zoom) + camera_x;
-                                let map_y = ((last_mouse_y as f32 - half_h) / camera_zoom) + camera_y;
+                                let map_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
+                                let map_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
 
                                 if map_x >= 0.0 && map_y >= 0.0 && map_x < map_w as f32 && map_y < map_h as f32 {
                                     let owner = engine.state.map.owner_id(map_x as u32, map_y as u32);
                                     
                                     // Apply intent locally instantly for single player responsiveness!
-                                    // The human player is player 1!
                                     let attack = sow_core::protocol::AttackIntent {
                                         target_owner: owner,
                                         troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
@@ -161,7 +171,7 @@ fn main() {
                                     } else {
                                         // Singleplayer: apply directly
                                         let stamped = sow_core::protocol::StampedIntent {
-                                            player_id: 1,
+                                            player_id: my_player_id.unwrap_or(1),
                                             intent,
                                         };
                                         engine.apply_stamped_intent(&stamped, 0);
@@ -238,7 +248,7 @@ fn main() {
 
                             // ── UI UPDATE ───────────────────────────────────────
                             raw_input.predicted_dt = 1.0 / 60.0;
-                            let egui_output = egui_ctx.run(raw_input.clone(), |ctx| {
+                            let egui_output = egui_ctx.run_ui(raw_input.clone(), |ctx| {
                                 if let Some(action) = app.draw(ctx) {
                                     match action {
                                         UiAction::StartSinglePlayer => {
@@ -258,6 +268,7 @@ fn main() {
                                                         is_observer: false,
                                                         target_lobby_id: None,
                                                     };
+                                                    my_lobby_id = Some(1); // Server assigns None to 1
                                                     if let Ok(json) = serde_json::to_string(&join_msg) {
                                                         if let Some(c) = net_client.as_ref() {
                                                             c.send(json);
@@ -277,6 +288,7 @@ fn main() {
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
                                             };
+                                            my_lobby_id = Some(id);
                                             if let Ok(json) = serde_json::to_string(&join_msg) {
                                                 if let Some(c) = net_client.as_ref() {
                                                     c.send(json);
@@ -294,6 +306,51 @@ fn main() {
                                             app.hud_state.attack_ratio = r;
                                         }
                                         _ => {}
+                                    }
+                                }
+
+                                if app.phase == ClientPhase::Playing {
+                                    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("nameplates")));
+                                    
+                                    for p in &engine.state.players {
+                                        if !p.alive || p.tile_count == 0 { continue; }
+                                        
+                                        let world_x = p.sum_x as f32 / p.tile_count as f32;
+                                        let world_y = p.sum_y as f32 / p.tile_count as f32;
+                                        
+                                        let screen_x = world_x * camera_zoom + camera_x;
+                                        let screen_y = world_y * camera_zoom + camera_y;
+                                        
+                                        // Viewport culling
+                                        if screen_x < -100.0 || screen_x > screen_w + 100.0 || 
+                                           screen_y < -100.0 || screen_y > screen_h + 100.0 {
+                                            continue;
+                                        }
+
+                                        let label = format!("{}\n{}", p.name, format_troops(p.troops));
+                                        
+                                        let font_id = egui::FontId::proportional((14.0 * camera_zoom).clamp(8.0, 48.0));
+                                        let text_color = egui::Color32::from_rgb(
+                                            (p.color[0] * 255.0) as u8,
+                                            (p.color[1] * 255.0) as u8,
+                                            (p.color[2] * 255.0) as u8,
+                                        );
+
+                                        painter.text(
+                                            egui::pos2(screen_x + 1.0, screen_y + 1.0),
+                                            egui::Align2::CENTER_CENTER,
+                                            &label,
+                                            font_id.clone(),
+                                            egui::Color32::BLACK,
+                                        );
+
+                                        painter.text(
+                                            egui::pos2(screen_x, screen_y),
+                                            egui::Align2::CENTER_CENTER,
+                                            &label,
+                                            font_id,
+                                            text_color,
+                                        );
                                     }
                                 }
                             });
@@ -350,24 +407,40 @@ fn main() {
                             
                             // If we're waiting for a lobby to start, find our lobby to update wait_timer_secs
                             if app.lobby_state.is_waiting {
-                                for lobby in broadcast.lobbies {
-                                    if lobby.is_counting_down {
-                                        app.lobby_state.wait_timer_secs = lobby.timer_secs;
+                                if let Some(l_id) = my_lobby_id {
+                                    if let Some(lobby) = broadcast.lobbies.iter().find(|l| l.id == l_id) {
+                                        if lobby.is_counting_down {
+                                            app.lobby_state.wait_timer_secs = lobby.timer_secs;
+                                        }
                                     }
                                 }
                             }
                         }
+                        // Check if it's a ServerTurnMessage
+                        if let Ok(turn_msg) = serde_json::from_str::<sow_core::protocol::ServerTurnMessage>(&msg) {
+                            turn_queue.push_back(turn_msg.turn);
+                        }
+                        
                         // Check if it's a ServerStartMessage
                         if let Ok(start_msg) = serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg) {
                             log::info!("Received ServerStartMessage! Transitioning to Playing!");
                             app.phase = ClientPhase::Playing;
                             app.lobby_state.is_waiting = false;
+                            my_player_id = start_msg.my_player_id;
                             
                             // Load multiplayer state!
                             let state = sow_core::game::GameState::new(start_msg.seed, 800, 600, start_msg.config);
                             let water = sow_core::water_components::WaterComponents::compute(&state.map);
                             engine = SowEngine::new(state, water);
-                            engine.spawn_human(1); // Test spawn
+                            
+                            // Let the engine spawn players in the exact deterministic order as the server
+                            // (Since server currently just calls spawn_human for each player, then spawn_random_bots)
+                            for p in start_msg.players {
+                                engine.spawn_human(p.id);
+                            }
+                            engine.spawn_random_bots(4); // the server spawns 4 bots right now
+                            
+                            turn_queue.clear();
                             needs_first_upload = true;
                         }
                     }
@@ -375,19 +448,38 @@ fn main() {
                 
                 if now.duration_since(last_tick) >= tick_interval {
                     if app.phase == ClientPhase::Playing {
-                        engine.tick();
-                        
-                        // Update UI HUD State from Player 1
-                        if let Some(player) = engine.state.players.iter().find(|p| p.id == 1) {
-                            app.hud_state.gold = player.gold;
-                            app.hud_state.troops = player.troops;
+                        if net_client.is_some() {
+                            // Multiplayer: lockstep execution
+                            if let Some(turn) = turn_queue.pop_front() {
+                                for stamped in &turn.intents {
+                                    engine.apply_stamped_intent(stamped, 0);
+                                }
+                                engine.tick();
+                                last_tick = now;
+                                
+                                // Update UI HUD State from my player id
+                                if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
+                                    app.hud_state.gold = player.gold;
+                                    app.hud_state.troops = player.troops;
+                                    let owned_tiles = engine.state.map.tiles_owned_by(player.id) as f64;
+                                    app.hud_state.max_troops = owned_tiles * 50.0;
+                                }
+                            }
+                        } else {
+                            // Singleplayer: run freely
+                            engine.tick();
+                            last_tick = now;
                             
-                            // Max troops = sum of all owned tiles
-                            let owned_tiles = engine.state.map.tiles_owned_by(1) as f64;
-                            app.hud_state.max_troops = owned_tiles * 50.0; // Rough heuristic for now
+                            if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
+                                app.hud_state.gold = player.gold;
+                                app.hud_state.troops = player.troops;
+                                let owned_tiles = engine.state.map.tiles_owned_by(player.id) as f64;
+                                app.hud_state.max_troops = owned_tiles * 50.0;
+                            }
                         }
+                    } else {
+                        last_tick = now;
                     }
-                    last_tick = now;
                 }
                 window.request_redraw();
             }
