@@ -65,7 +65,7 @@ graph TD
 ## Workspace Structure
 
 ```
-/home/bizkit/Github/openfrontio/shadows-of-war/
+/home/bizkit/Documents/GitHub/shadows-of-war/
 ├── Cargo.toml                    # Workspace root
 ├── sow-core/                     # Pure deterministic simulation
 │   └── src/
@@ -93,7 +93,7 @@ graph TD
 │       ├── map_renderer.rs       # Territory tilemap (texture upload)
 │       ├── fleet_renderer.rs     # Fleet boat sprites
 │       ├── building_renderer.rs  # Structure sprites
-│       ├── camera.rs             # Pan/zoom (replaces Bevy Camera2d)
+│       ├── map_renderer.rs       # Includes camera uniforms + pan/zoom globals
 │       └── shaders/              # WGSL shaders (water, borders, etc.)
 │
 ├── sow-net/                      # Pure WebSocket networking
@@ -307,7 +307,7 @@ Replaces `lightyear` entirely. The turn-relay model is dead simple:
 ## Phased Execution Plan
 
 ### Phase 0: Scaffold (Day 1)
-- [ ] Create `/home/bizkit/Github/openfrontio/shadows-of-war/`
+- [x] Create `/home/bizkit/Documents/GitHub/shadows-of-war/`
 - [ ] Initialize workspace `Cargo.toml` with all crates
 - [ ] Scaffold all Rust crates with placeholder `lib.rs`
 - [ ] Initialize `sow-ui` Vite project

@@ -3,9 +3,9 @@ members = [
     "sow-core",
     "sow-render",
     "sow-net",
-    "sow-wasm",
-    "sow-native",
+    "sow-client",
     "sow-server",
+    "sow-ui",
     "sow-tools",
 ]
 exclude = ["blade"]
@@ -18,6 +18,7 @@ sow-net = { path = "sow-net" }
 
 # Graphics
 blade-graphics = { path = "blade/blade-graphics" }
+blade-egui = { path = "blade/blade-egui" }
 blade-macros = { path = "blade/blade-macros" }
 raw-window-handle = "0.6"
 

@@ -1,0 +1,13 @@
+[package]
+name = "sow-ui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sow-core = { workspace = true }
+sow-render = { workspace = true }
+sow-net = { workspace = true }
+blade-egui = { workspace = true }
+blade-graphics = { workspace = true }
+egui = "0.34"
+log = { workspace = true }

@@ -5,6 +5,7 @@ use tokio::task::JoinHandle;
 
 pub struct SowClient {
     tx: mpsc::Sender<String>,
+    pub rx: std::sync::mpsc::Receiver<String>,
     _task: JoinHandle<()>,
 }
 
@@ -14,6 +15,7 @@ impl SowClient {
         let (mut write, mut read) = ws_stream.split();
         
         let (tx, mut rx) = mpsc::channel::<String>(32);
+        let (std_tx, std_rx) = std::sync::mpsc::channel::<String>();
         
         let task = tokio::spawn(async move {
             loop {
@@ -27,14 +29,16 @@ impl SowClient {
                     }
                     Some(Ok(msg)) = read.next() => {
                         if let Message::Text(text) = msg {
-                            log::info!("Native received: {}", text);
+                            if std_tx.send(text.to_string()).is_err() {
+                                break;
+                            }
                         }
                     }
                 }
             }
         });
 
-        Ok(Self { tx, _task: task })
+        Ok(Self { tx, rx: std_rx, _task: task })
     }
 
     pub fn send(&self, msg: String) {

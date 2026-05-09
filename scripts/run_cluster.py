@@ -5,7 +5,7 @@ Shadows of War Cluster Runner: Server + Web Client + Native Client.
 Builds and runs:
 1. wasm-pack build for the Web Worker
 2. npm install and vite dev server for the UI
-3. cargo build and execution for Server and Native Tauri apps
+3. cargo build and execution for Server and Native Egui apps
 """
 import os
 import argparse
@@ -73,7 +73,7 @@ def main():
     profile = "release" if use_release else "debug"
 
     server_bin = PROJECT_ROOT / "target" / profile / "sow-server"
-    native_bin = PROJECT_ROOT / "target" / profile / "sow-native"
+    client_bin = PROJECT_ROOT / "target" / profile / "sow-client"
 
     def spawn_process(name, cmd, cwd=None):
         return subprocess.Popen(
@@ -97,21 +97,10 @@ def main():
     signal.signal(signal.SIGTERM, _signal_handler)
 
     try:
-        ensure_wasm_pack_installed(env)
-        print(f"🛠️  Building WebAssembly package...")
-        wasm_cmd = ["wasm-pack", "build", "--target", "web", "--out-dir", "../sow-ui/pkg"]
-        if use_release:
-            wasm_cmd.append("--release")
-        else:
-            wasm_cmd.append("--dev")
-            
-        subprocess.run(wasm_cmd, env=env, check=True, cwd=PROJECT_ROOT / "sow-wasm")
 
-        print("🛠️  Installing NPM dependencies (if needed)...")
-        subprocess.run(["npm", "install"], env=env, check=True, cwd=PROJECT_ROOT / "sow-ui")
 
         print(f"🛠️  Building native binaries ({profile})...")
-        build_cmd = ["cargo", "build", "-p", "sow-server", "-p", "sow-native"]
+        build_cmd = ["cargo", "build", "-p", "sow-server", "-p", "sow-client"]
         if use_release:
             build_cmd.append("--release")
         subprocess.run(build_cmd, env=env, check=True)
@@ -121,25 +110,18 @@ def main():
         processes.append(("SERVER", server_p))
         threading.Thread(target=stream_output, args=(server_p, "SERVER", "SERVER"), daemon=True).start()
 
-        time.sleep(2)
 
-        print("🎮 Launching Web Client (Vite Dev Server)...")
-        # Ensure we run `npm run dev`
-        web_p = spawn_process("WEB-UI", ["npm", "run", "dev"], cwd=PROJECT_ROOT / "sow-ui")
-        processes.append(("WEB-UI", web_p))
-        threading.Thread(target=stream_output, args=(web_p, "WEB-UI", "WEB-UI"), daemon=True).start()
 
         time.sleep(2)
 
         print("🎮 Launching Native Client...")
-        native_p = spawn_process("NATIVE", [str(native_bin)])
-        processes.append(("NATIVE", native_p))
-        threading.Thread(target=stream_output, args=(native_p, "NATIVE", "NATIVE"), daemon=True).start()
+        client_p = spawn_process("NATIVE", [str(client_bin)])
+        processes.append(("NATIVE", client_p))
+        threading.Thread(target=stream_output, args=(client_p, "NATIVE", "NATIVE"), daemon=True).start()
 
         print("\n✅ Cluster fully booted! Press Ctrl+C to shutdown all instances.\n")
         server_p.wait()
-        web_p.wait()
-        native_p.wait()
+        client_p.wait()
 
     except KeyboardInterrupt:
         if handled_signal["num"] is not None:
