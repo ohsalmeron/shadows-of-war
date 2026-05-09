@@ -446,27 +446,27 @@ fn main() {
                     }
                 }
                 
-                if now.duration_since(last_tick) >= tick_interval {
-                    if app.phase == ClientPhase::Playing {
-                        if net_client.is_some() {
-                            // Multiplayer: lockstep execution
-                            if let Some(turn) = turn_queue.pop_front() {
-                                for stamped in &turn.intents {
-                                    engine.apply_stamped_intent(stamped, 0);
-                                }
-                                engine.tick();
-                                last_tick = now;
-                                
-                                // Update UI HUD State from my player id
-                                if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
-                                    app.hud_state.gold = player.gold;
-                                    app.hud_state.troops = player.troops;
-                                    let owned_tiles = engine.state.map.tiles_owned_by(player.id) as f64;
-                                    app.hud_state.max_troops = owned_tiles * 50.0;
-                                }
+                if app.phase == ClientPhase::Playing {
+                    if net_client.is_some() {
+                        // Multiplayer: lockstep execution dictated by server
+                        while let Some(turn) = turn_queue.pop_front() {
+                            for stamped in &turn.intents {
+                                engine.apply_stamped_intent(stamped, 0);
                             }
-                        } else {
-                            // Singleplayer: run freely
+                            engine.tick();
+                            
+                            // Update UI HUD State from my player id
+                            if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
+                                app.hud_state.gold = player.gold;
+                                app.hud_state.troops = player.troops;
+                                let owned_tiles = engine.state.map.tiles_owned_by(player.id) as f64;
+                                app.hud_state.max_troops = owned_tiles * 50.0;
+                            }
+                        }
+                        last_tick = now;
+                    } else {
+                        // Singleplayer: run freely based on local timer
+                        if now.duration_since(last_tick) >= tick_interval {
                             engine.tick();
                             last_tick = now;
                             
@@ -477,9 +477,9 @@ fn main() {
                                 app.hud_state.max_troops = owned_tiles * 50.0;
                             }
                         }
-                    } else {
-                        last_tick = now;
                     }
+                } else {
+                    last_tick = now;
                 }
                 window.request_redraw();
             }
