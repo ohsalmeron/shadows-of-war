@@ -405,6 +405,19 @@ fn main() {
                                             camera_y = 0.0;
                                             camera_zoom = 2.0;
                                             app.phase = ClientPhase::MainMenu;
+                                            
+                                            // ── Proper Memory Cleanup ──
+                                            // Reset the engine to a clean preview state so the background menu is clean
+                                            // and the next singleplayer/multiplayer game doesn't inherit old state.
+                                            let config = GameConfig::default();
+                                            let state = GameState::new(12345, map_w, map_h, config);
+                                            let water = WaterComponents::compute(&state.map);
+                                            engine = SowEngine::new(state, water);
+                                            engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
+                                            engine.spawn_random_bots(4);
+                                            turn_queue.clear();
+                                            needs_first_upload = true;
+                                            needs_map_upload = true;
                                         }
                                         UiAction::SetAttackRatio(r) => {
                                             app.hud_state.attack_ratio = r;

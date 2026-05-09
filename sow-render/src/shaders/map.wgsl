@@ -45,65 +45,87 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
-    // Check neighbors for borders (simple edge detection via sampling)
-    let up = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, -1), 0).x & 0xFFFFu;
-    let down = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, 1), 0).x & 0xFFFFu;
-    let left = textureLoad(territory_texture, pixel_coords + vec2<i32>(-1, 0), 0).x & 0xFFFFu;
-    let right = textureLoad(territory_texture, pixel_coords + vec2<i32>(1, 0), 0).x & 0xFFFFu;
+    // Fetch full values for neighbors to extract both owner and terrain
+    let val_up = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, -1), 0).x;
+    let val_down = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, 1), 0).x;
+    let val_left = textureLoad(territory_texture, pixel_coords + vec2<i32>(-1, 0), 0).x;
+    let val_right = textureLoad(territory_texture, pixel_coords + vec2<i32>(1, 0), 0).x;
+
+    let up = val_up & 0xFFFFu;
+    let down = val_down & 0xFFFFu;
+    let left = val_left & 0xFFFFu;
+    let right = val_right & 0xFFFFu;
     
     let is_border = (owner_id != up || owner_id != down || owner_id != left || owner_id != right);
 
     var base_color = vec4<f32>(0.0);
 
-    // Player colors
-    if owner_id == 1u {
-        base_color = vec4<f32>(0.133, 0.400, 1.0, 1.0); // #2266FF
-    } else if owner_id == 100u {
-        base_color = vec4<f32>(1.0, 0.267, 0.267, 1.0); // #FF4444
-    } else if owner_id == 101u {
-        base_color = vec4<f32>(0.267, 1.0, 0.267, 1.0); // #44FF44
-    } else if owner_id == 102u {
-        base_color = vec4<f32>(1.0, 1.0, 0.267, 1.0); // #FFFF44
-    } else if owner_id == 103u {
-        base_color = vec4<f32>(0.667, 0.267, 0.667, 1.0); // #AA44AA
-    } else if owner_id > 0u {
-        base_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-    } else {
-        if is_land {
-            base_color = vec4<f32>(0.176, 0.298, 0.118, 1.0); // Unowned Land
+    let mag_center = f32(terrain_byte & 0x1Fu);
+    let mag_up = f32((val_up >> 16u) & 0x1Fu);
+    let mag_left = f32((val_left >> 16u) & 0x1Fu);
+
+    // Topographical shading (bump mapping approximation, sun from top-left)
+    let dx = mag_center - mag_left;
+    let dy = mag_center - mag_up;
+    let shade = (dx + dy) * 0.15; // Shading intensity
+
+    var terrain_color = vec4<f32>(0.0);
+    
+    if is_land {
+        // Dynamic Biome Colors
+        if mag_center < 10.0 {
+            terrain_color = vec4<f32>(0.176, 0.298, 0.118, 1.0); // Lush Plains
+        } else if mag_center < 20.0 {
+            terrain_color = vec4<f32>(0.45, 0.38, 0.25, 1.0); // Earthy Highlands
         } else {
-            // High-performance tiled water shader (webgpu-water style via 4-octaves)
-            let t = globals.time;
-            
-            // Four octaves with varying speeds, directions, and scales
-            let uv0 = vec2<f32>(world_x, world_y) * 0.02 + vec2<f32>(0.015, 0.010) * t;
-            let uv1 = vec2<f32>(world_x, world_y) * 0.04 + vec2<f32>(-0.020, 0.015) * t;
-            let uv2 = vec2<f32>(world_x, world_y) * 0.08 + vec2<f32>(0.025, -0.010) * t;
-            let uv3 = vec2<f32>(world_x, world_y) * 0.16 + vec2<f32>(-0.010, -0.025) * t;
-            
-            // Sample seamless noise texture
-            let n0 = textureSampleLevel(water_texture, water_sampler, uv0, 0.0).r;
-            let n1 = textureSampleLevel(water_texture, water_sampler, uv1, 0.0).r;
-            let n2 = textureSampleLevel(water_texture, water_sampler, uv2, 0.0).r;
-            let n3 = textureSampleLevel(water_texture, water_sampler, uv3, 0.0).r;
-            
-            // Combine with decreasing amplitudes (like Fractal Brownian Motion)
-            let wave = n0 * 0.5 + n1 * 0.25 + n2 * 0.125 + n3 * 0.0625;
-            
-            // Vibrant cyan/teal colors exactly matching webgpu-water's aesthetic
-            let pool_dark = vec3<f32>(0.01, 0.35, 0.55);
-            let pool_light = vec3<f32>(0.15, 0.75, 0.85);
-            
-            let color = mix(pool_dark, pool_light, wave);
-            
-            // Add a specular highlight on the wave peaks to simulate sunlight/caustics
-            let specular = pow(wave, 12.0) * 1.5;
-            
-            return vec4<f32>(color + vec3<f32>(specular), 1.0);
+            let snow = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
+            terrain_color = mix(vec4<f32>(0.35, 0.35, 0.35, 1.0), vec4<f32>(0.9, 0.9, 0.95, 1.0), snow); // Snowy Mountains
         }
+        // Apply topographical shading to land
+        terrain_color = vec4<f32>(terrain_color.rgb + vec3<f32>(shade), 1.0);
+    } else {
+        // High-performance tiled water shader (webgpu-water style via 4-octaves)
+        let t = globals.time;
+        
+        let uv0 = vec2<f32>(world_x, world_y) * 0.02 + vec2<f32>(0.015, 0.010) * t;
+        let uv1 = vec2<f32>(world_x, world_y) * 0.04 + vec2<f32>(-0.020, 0.015) * t;
+        let uv2 = vec2<f32>(world_x, world_y) * 0.08 + vec2<f32>(0.025, -0.010) * t;
+        let uv3 = vec2<f32>(world_x, world_y) * 0.16 + vec2<f32>(-0.010, -0.025) * t;
+        
+        let n0 = textureSampleLevel(water_texture, water_sampler, uv0, 0.0).r;
+        let n1 = textureSampleLevel(water_texture, water_sampler, uv1, 0.0).r;
+        let n2 = textureSampleLevel(water_texture, water_sampler, uv2, 0.0).r;
+        let n3 = textureSampleLevel(water_texture, water_sampler, uv3, 0.0).r;
+        
+        let wave = n0 * 0.5 + n1 * 0.25 + n2 * 0.125 + n3 * 0.0625;
+        
+        let pool_dark = vec3<f32>(0.01, 0.35, 0.55);
+        let pool_light = vec3<f32>(0.15, 0.75, 0.85);
+        let color = mix(pool_dark, pool_light, wave);
+        let specular = pow(wave, 12.0) * 1.5;
+        
+        return vec4<f32>(color + vec3<f32>(specular), 1.0);
     }
 
+    base_color = terrain_color;
+
     if owner_id > 0u {
+        var player_color = vec4<f32>(1.0);
+        if owner_id == 1u {
+            player_color = vec4<f32>(0.133, 0.400, 1.0, 1.0); // #2266FF
+        } else if owner_id == 100u {
+            player_color = vec4<f32>(1.0, 0.267, 0.267, 1.0); // #FF4444
+        } else if owner_id == 101u {
+            player_color = vec4<f32>(0.267, 1.0, 0.267, 1.0); // #44FF44
+        } else if owner_id == 102u {
+            player_color = vec4<f32>(1.0, 1.0, 0.267, 1.0); // #FFFF44
+        } else if owner_id == 103u {
+            player_color = vec4<f32>(0.667, 0.267, 0.667, 1.0); // #AA44AA
+        }
+
+        // Mix terrain and player color to make terrain visible!
+        base_color = mix(terrain_color, player_color, 0.55);
+
         if is_border {
             // Strong bright border for owned territory
             return min(base_color * 1.5 + vec4<f32>(0.2, 0.2, 0.2, 0.0), vec4<f32>(1.0));

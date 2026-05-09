@@ -56,7 +56,7 @@ impl SowEngine {
         // Fast approximation of active frontier size without scanning the entire empire border
         let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 
-        let max_tiles_f64 = if execution.target_owner == 0 {
+        let mut max_tiles_f64 = if execution.target_owner == 0 {
             // Neutral expansion speed: OpenFront parity (proportional to true border size)
             (adjacent * 2.0).max(5.0).min(100.0) // Bounded organic growth
         } else {
@@ -77,6 +77,12 @@ impl SowEngine {
             let power = (ratio * 2.0).clamp(0.1, 0.5); 
             (power * adjacent * 3.0).max(1.0).min(100.0) // Max 100 tiles/tick
         };
+
+        // Dynamic Expansion Momentum (OpenFront parity):
+        // Speed scales dynamically with remaining troops in the attack.
+        // Massive troop counts drastically increase the processing boundary per tick.
+        let momentum = (execution.troops / 1000.0).clamp(1.0, 10.0);
+        max_tiles_f64 *= momentum;
 
         // Determine actual integer number of tiles to process this tick (Fractional determinism)
         let mut tiles_to_conquer = max_tiles_f64.floor() as u32;
@@ -118,9 +124,16 @@ impl SowEngine {
                     continue; // Skip, edge was severed
                 }
 
+                let terrain_multiplier = match terrain_type {
+                    TerrainType::Land => 1.0,
+                    TerrainType::Highland => self.state.config.terrain_multiplier_highland,
+                    TerrainType::Mountain => self.state.config.terrain_multiplier_mountain,
+                    _ => 1.0,
+                };
+
                 if execution.target_owner == 0 {
-                    // Neutral: attacker pays constant base cost
-                    execution.troops -= self.state.config.attack_cost_neutral;
+                    // Neutral: attacker pays constant base cost scaled by terrain multiplier
+                    execution.troops -= self.state.config.attack_cost_neutral * terrain_multiplier;
                 } else {
                     // PvP: Combat resolution (OpenFront Parity)
                     let mut def_loss = 0.0;
@@ -133,14 +146,6 @@ impl SowEngine {
                             def_loss = target_player.troops.max(0.0) / target_player.tile_count as f64;
                         }
                     }
-
-                    // Attacker pays base attack cost, scaled by terrain
-                    let terrain_multiplier = match terrain_type {
-                        TerrainType::Land => 1.0,
-                        TerrainType::Highland => 1.25,
-                        TerrainType::Mountain => 1.5,
-                        _ => 1.0,
-                    };
 
                     // Defense posts increase attacker losses slightly
                     let dp_bonus = self.defense_grid.priority_bonus(

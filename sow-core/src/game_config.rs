@@ -43,6 +43,8 @@ pub struct GameConfig {
     pub tick_rate_ms: f32,
     pub attack_cost_enemy: f64,
     pub attack_cost_neutral: f64,
+    pub terrain_multiplier_highland: f64,
+    pub terrain_multiplier_mountain: f64,
     pub bot_attack_interval_ticks: u64,
     
     // Economy Modifiers
@@ -63,7 +65,7 @@ impl Default for GameConfig {
     fn default() -> Self {
         Self {
             max_players: 12,
-            bot_count: 1000, // Tribes (Bots)
+            bot_count: 100, // Tribes (Bots)
             nation_count: 50, // Nations (Complex AI)
             bot_difficulty: BotDifficulty::Vanilla,
             map_name: "europe".to_string(),
@@ -71,20 +73,22 @@ impl Default for GameConfig {
             map_height: 1672,
             random_spawn: false,
             tick_rate_ms: 75.0,
-            attack_cost_enemy: 15.0,
-            attack_cost_neutral: 15.0,
+            attack_cost_enemy: 2.0,
+            attack_cost_neutral: 1.0,
+            terrain_multiplier_highland: 1.5,
+            terrain_multiplier_mountain: 2.0,
             bot_attack_interval_ticks: 32,
-            starting_troops: 1000.0,
-            starting_gold: 50.0,
-            gold_base_income: 1.5,
-            troop_base_income: 10.0,
-            troop_per_tile: 0.05,
-            max_troops_base: 100.0,
-            max_troops_scale: 50.0,
+            starting_troops: 50000.0,
+            starting_gold: 500.0,
+            gold_base_income: 8.0,
+            troop_base_income: 250.0,
+            troop_per_tile: 4.0,
+            max_troops_base: 1000.0,
+            max_troops_scale: 500.0,
             city_max_troops_per_level: 2000.0,
-            factory_income_bonus_per_level: 0.10,
-            factory_income_bonus_cap: 1.50,
-            gold_income_per_city_level: 0.5,
+            factory_income_bonus_per_level: 0.15,
+            factory_income_bonus_cap: 2.00,
+            gold_income_per_city_level: 1.0,
         }
     }
 }

@@ -8,19 +8,17 @@ A high-performance, **deterministic lockstep** Real-Time Strategy (RTS) engine w
 
 The project is structured as a multi-crate Rust workspace to strictly enforce separation of concerns between the deterministic simulation, networking, and platform-specific rendering:
 
-### Core Engine
-* **`sow-core`**: The heart of the engine. A `no_std`-compatible (conceptually), zero-allocation deterministic simulation loop. It handles the game state, lockstep execution, territory expansion, and bot AI mechanics. *Must remain 100% deterministic across all architectures (x86_64, ARM, WASM).*
+### Core Simulation
+* **`sow-core`**: The heart of the engine. A deterministic, zero-allocation simulation loop. It handles the game state, lockstep execution, territory expansion, and bot AI mechanics. *Must remain 100% deterministic.*
 
 ### Rendering & Graphics
 * **`sow-render`**: A custom, high-performance GPU pipeline built on top of [blade-graphics](https://github.com/kvark/blade). Uses shared memory upload buffers and custom WGSL shaders to pack and render the simulation state efficiently.
-* **`sow-native`**: The desktop client (Linux/Windows). Uses `winit` for windowing and input handling, wiring `sow-core` state directly to the `sow-render` GPU pipeline.
+* **`sow-ui`**: The immediate mode GUI built using `egui` and `blade-egui`. Handles lobbies, menus, and in-game HUDs seamlessly over the native rendering context.
+* **`sow-client`**: The primary game executable. Wires `winit` for windowing/input, runs the background loading threads, and binds `sow-core` state directly to the `sow-render` pipeline and `sow-ui`.
 
-### Web & UI
-* **`sow-wasm`**: WebAssembly bindings using `wasm-bindgen`. Exposes the `sow-core` simulation to JavaScript/TypeScript.
-* **`sow-ui`**: The web frontend client built with Vite and TypeScript. Renders the game state in the browser and provides the HTML/CSS user interface.
-
-### Networking (WIP)
-* **`sow-net`**: The multiplayer lockstep orchestration layer. Handles WebSocket connections, input buffering, and tick synchronization between the server and all connected clients.
+### Networking
+* **`sow-server`**: An authoritative matchmaking and lobby server. Handles WebSocket connections, orchestrates the `ClientReadyMessage` handshake, and broadcasts uniform game configurations and lockstep turn data to clients.
+* **`sow-net`**: The shared networking protocol defining the serialized JSON messages used for the lockstep synchronization.
 
 ---
 
@@ -28,12 +26,11 @@ The project is structured as a multi-crate Rust workspace to strictly enforce se
 
 ### Prerequisites
 * **Rust**: Latest stable toolchain (`rustup`).
-* **Node.js / npm**: Required for building the web UI.
-* **wasm-pack**: Required for building the WebAssembly targets (`cargo install wasm-pack`).
+* **Python 3**: Required for the cluster script.
 * **Vulkan / GPU Drivers**: Required for the native `blade-graphics` renderer.
 
 ### Launching the Cluster
-The easiest way to run the project during development is to use the provided Python cluster script, which automatically builds the WASM package, installs NPM dependencies, compiles the native binaries, and launches both the Web client and the Native client simultaneously.
+The easiest way to run the project during development is to use the provided Python cluster script, which automatically builds the server and spawns multiple native clients.
 
 ```bash
 # From the repository root
@@ -41,50 +38,38 @@ The easiest way to run the project during development is to use the provided Pyt
 ```
 
 This script will:
-1. Compile `sow-core` and `sow-wasm` into a WebAssembly package.
-2. Compile `sow-render` and `sow-native` for your local OS.
-3. Start the Vite dev server for `sow-ui` (usually at `http://localhost:5173`).
-4. Launch the native desktop window.
-
-### Manual Execution
-
-**Run Native Client Only:**
-```bash
-cargo run -p sow-native
-```
-
-**Build WASM & Run Web Client:**
-```bash
-wasm-pack build sow-wasm --target web --out-dir ../sow-ui/pkg
-cd sow-ui
-npm install
-npm run dev
-```
+1. Compile the workspace in debug mode.
+2. Launch the `sow-server` matchmaking daemon.
+3. Launch 2 instances of `sow-client` connected to the local server.
 
 ---
 
-## 🧠 Technical Highlights
+## 🧠 Technical Highlights & Recent Design Choices
 
-### Deterministic Lockstep
-To support fair and synchronous multiplayer without sending massive map state updates, `sow-core` uses a strict lockstep model. All clients start with the identical random seed and map configuration. Only player *inputs* (commands) are sent over the network. As long as the inputs are processed at the exact same "tick", the simulation remains perfectly synced across WASM and Native binaries.
+### Deterministic Lockstep (1000+ Bots)
+To support massive scale RTS combat, `sow-core` uses a strict lockstep model. All clients and the server share the exact identical `GameConfig` (such as `bot_count = 1000`). Only player *inputs* are sent over the network. 
+* **Design Choice**: The server was explicitly stripped of hardcoded constants (e.g., `BOT_COUNT = 4`) and forced to adopt the dynamically broadcasted config. A discrepancy of even 1 bot spawn alters the RNG state, causing catastrophic simulation drift on frame 1. The engine now effortlessly synchronizes 1000 active bots without a single dropped frame or desync.
+
+### Premium 2D Visuals with "Toaster" Memory Footprint
+Instead of relying on heavy 3D rendering or massive 4K textures, `Shadows of War` leverages extremely lightweight math:
+* **Tiled Water Texture**: The water noise asset is a tiny `256x256` raw binary file (exactly 64 KB). The sampler uses `AddressMode::Repeat` to endlessly tile it across the infinite ocean. This keeps the VRAM usage near zero while retaining infinite map scalability.
+* **4-Octave Noise Shader**: To replicate the gorgeous, rippling aesthetics of expensive 3D ray-traced water, `map.wgsl` samples the tiny 64 KB texture four times at varying speeds, scales, and opposing trajectories. By interpolating vibrant `pool_dark` and `pool_light` colors and applying sharp, non-linear specular highlights, we achieve a dynamic, premium "WebGPU-Water" appearance entirely in a 2D fragment shader.
+
+### Non-Blocking Background Instantiation
+* **Design Choice**: Generating pathfinding chunks, water geometry, and unrolling the map state is highly CPU intensive. Doing this on the main thread would freeze the application and panic the OS watchdog.
+* **Solution**: Upon receiving the `ServerStartMessage`, `sow-client` spins up an OS-level `std::thread` to crunch the map generation. Meanwhile, the main loop drops into an asynchronous `Loading` phase, effortlessly rendering the 60 FPS `sow-ui` Loading Screen until the background thread pipes the constructed `GameState` over a crossbeam channel.
 
 ### Custom GPU Pipeline (`blade-graphics`)
-Instead of relying on heavy engines like Bevy or Unity, `Shadows of War` uses a lightweight, bare-metal-style rendering approach via `blade-graphics`. 
 * The map state is efficiently bit-packed into `u32` arrays by the CPU (16 bits for Owner ID, 8 bits for Terrain).
-* Uploaded to the GPU via Shared Memory buffers.
+* Uploaded to the GPU via Shared Memory buffers perfectly synchronized with `wait_for` lifecycle barriers to prevent use-after-free `invalid size` driver panics.
 * Rendered using a custom `map.wgsl` shader that performs coordinate projection, bit-unpacking, and color mapping entirely on the GPU.
-* The result is virtually zero CPU-overhead for rendering, leaving all cycles available for the deterministic lockstep simulation.
-
-### Cross-Platform Parity
-A primary goal of the project is ensuring the Native Client and the Web Client look, feel, and play identically. The WGSL shaders and TypeScript canvas renderer map to the exact same color palettes, coordinate systems, and input resolutions.
 
 ---
 
 ## 📝 Development Notes & Rules
 
-* **Zero-Allocation Hot Path**: The `sow-core` simulation loop (`engine.tick()`) must avoid dynamic memory allocation (`Vec::push`, `Box::new`, etc.) to prevent GC stutters in WASM and ensure consistent frame times.
-* **Float Determinism**: Avoid floating-point math in `sow-core` gameplay logic where possible to prevent architectural drift between WASM and x86_64 IEEE-754 implementations.
-* **GPU Resource Lifecycle**: Native `blade-graphics` resources must be explicitly destroyed (`map_renderer.destroy(&render_ctx)`) during the `CloseRequested` window event to prevent Vulkan memory leaks.
+* **Zero-Allocation Hot Path**: The `sow-core` simulation loop (`engine.tick()`) must avoid dynamic memory allocation (`Vec::push`, `Box::new`, etc.) to prevent stutters and ensure consistent frame times.
+* **GPU Resource Lifecycle**: Native `blade-graphics` resources must be explicitly destroyed (`map_renderer.destroy(&render_ctx)`) during phase transitions or `CloseRequested` window events. Ensure you call `context.wait_for(...)` on the inflight command buffer **before** triggering the destructors to avoid driver memory corruption.
 
 ---
 
