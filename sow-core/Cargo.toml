@@ -14,3 +14,4 @@ bitfield = { workspace = true }
 wyrand = { workspace = true }
 log = { workspace = true }
 bytemuck = { workspace = true }
+serde_json = { workspace = true }

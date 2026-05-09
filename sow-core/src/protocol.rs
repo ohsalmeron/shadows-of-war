@@ -54,6 +54,7 @@ pub struct ClientJoinMessage {
     pub name: String,
     pub is_observer: bool,
     pub target_lobby_id: Option<u64>,
+    pub preferred_map: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -86,6 +87,7 @@ pub struct ClientLeaveMessage {}
 pub struct ServerJoinAckMessage {
     pub lobby_id: u64,
     pub player_id: u16,
+    pub map_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

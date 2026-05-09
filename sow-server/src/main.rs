@@ -18,6 +18,7 @@ enum ServerEvent {
         client_tx: mpsc::Sender<String>,
         name: String,
         target_lobby_id: Option<u64>,
+        preferred_map: Option<String>,
     },
     Gameplay {
         lobby_id: u64,
@@ -65,10 +66,10 @@ async fn main() {
                 Some(event) = event_rx.recv() => {
                     let mut games = games_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, target_lobby_id } => {
-                            match join_player(&mut games, name, client_tx.clone(), target_lobby_id) {
-                                Ok((lobby_id, player_id)) => {
-                                    let ack = ServerJoinAckMessage { lobby_id, player_id };
+                        ServerEvent::Join { client_tx, name, target_lobby_id, preferred_map } => {
+                            match join_player(&mut games, name, client_tx.clone(), target_lobby_id, preferred_map) {
+                                Ok((lobby_id, player_id, map_name)) => {
+                                    let ack = ServerJoinAckMessage { lobby_id, player_id, map_name };
                                     let json = serde_json::to_string(&ack).unwrap();
                                     let _ = client_tx.try_send(json);
                                 }
@@ -103,6 +104,16 @@ async fn main() {
     let listener = TcpListener::bind(addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
+    // HTTP Static File Server for maps
+    tokio::spawn(async move {
+        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "OpenFrontIO/resources/maps".to_string());
+        let app = axum::Router::new().nest_service("/maps", tower_http::services::ServeDir::new(root));
+        let http_addr = "0.0.0.0:25566";
+        log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
+        let listener = tokio::net::TcpListener::bind(http_addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
+
     while let Ok((stream, _)) = listener.accept().await {
         let mut global_rx = global_tx.subscribe();
         let ev_tx = event_tx.clone();
@@ -135,6 +146,7 @@ async fn main() {
                                             client_tx: direct_tx.clone(),
                                             name: join.name,
                                             target_lobby_id: join.target_lobby_id,
+                                            preferred_map: join.preferred_map,
                                         }).await;
                                         continue;
                                     }

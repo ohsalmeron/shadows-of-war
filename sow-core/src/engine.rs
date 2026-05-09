@@ -110,13 +110,19 @@ impl SowEngine {
             while tries < 1000 {
                 sx = rng.next_int(0, self.state.map.width as i32) as u32;
                 sy = rng.next_int(0, self.state.map.height as i32) as u32;
+                
+                if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
+                    tries += 1;
+                    continue;
+                }
+
                 let mut valid = true;
 
                 for dy in -15..=15 {
                     for dx in -15..=15 {
                         let nx = sx as i32 + dx;
                         let ny = sy as i32 + dy;
-                        if !self.state.map.is_valid_coord(nx, ny) || self.state.map.owner_id(nx as u32, ny as u32) != 0 {
+                        if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
                             valid = false;
                             break;
                         }
@@ -150,13 +156,19 @@ impl SowEngine {
         while tries < 1000 {
             sx = rng.next_int(0, self.state.map.width as i32) as u32;
             sy = rng.next_int(0, self.state.map.height as i32) as u32;
+            
+            if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
+                tries += 1;
+                continue;
+            }
+
             let mut valid = true;
 
             for dy in -15..=15 {
                 for dx in -15..=15 {
                     let nx = sx as i32 + dx;
                     let ny = sy as i32 + dy;
-                    if !self.state.map.is_valid_coord(nx, ny) || self.state.map.owner_id(nx as u32, ny as u32) != 0 {
+                    if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
                         valid = false;
                         break;
                     }

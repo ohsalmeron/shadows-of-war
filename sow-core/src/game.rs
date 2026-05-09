@@ -58,7 +58,9 @@ impl GameState {
             let nx = cx as i32 + dx; let ny = cy as i32 + dy;
             if self.map.is_valid_coord(nx, ny) {
                 let (ux, uy) = (nx as u32, ny as u32);
-                if self.map.owner_id(ux, uy) == 0 { self.set_tile_owner(ux, uy, pid); }
+                if self.map.owner_id(ux, uy) == 0 && self.map.terrain[self.map.ref_id(ux, uy)].is_land() {
+                    self.set_tile_owner(ux, uy, pid);
+                }
             }
         }}
         if let Some(p) = self.player_mut(pid) { p.has_spawned = true; }

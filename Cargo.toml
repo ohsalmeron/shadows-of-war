@@ -28,7 +28,6 @@ wyrand = "0.2"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-bincode = "1"
 
 # Logging (replaces bevy::log)
 log = "0.4"

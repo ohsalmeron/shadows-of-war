@@ -15,3 +15,6 @@ tokio = { version = "1.0", features = ["full"] }
 tokio-tungstenite = "0.20"
 futures-util = "0.3"
 rand = "0.10.1"
+brotli = "8.0.2"
+axum = "0.8.9"
+tower-http = { version = "0.6.10", features = ["fs"] }

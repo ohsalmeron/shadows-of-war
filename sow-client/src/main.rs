@@ -28,8 +28,8 @@ fn main() {
         .unwrap();
 
     // ── Simulation ──────────────────────────────────────────────────────────
-    let map_w: u32 = 800;
-    let map_h: u32 = 600;
+    let mut map_w: u32 = 800;
+    let mut map_h: u32 = 600;
     let config = GameConfig::default();
     let state = GameState::new(12345, map_w, map_h, config);
     let water = WaterComponents::compute(&state.map);
@@ -56,6 +56,7 @@ fn main() {
     let mut turn_queue = std::collections::VecDeque::new();
     let mut my_player_id: Option<u16> = None;
     let mut my_lobby_id: Option<u64> = None;
+    let (map_tx, map_rx) = crossbeam_channel::unbounded::<Vec<u8>>();
 
     // Auto-connect on startup
     let addr = "ws://127.0.0.1:25565";
@@ -342,6 +343,7 @@ fn main() {
                                                 name: app.main_menu_state.player_name.clone(),
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
+                                                preferred_map: Some(app.main_menu_state.selected_map.clone()),
                                             };
                                             app.main_menu_state.pending_join_lobby_id = Some(id);
                                             if let Ok(json) = serde_json::to_string(&join_msg) {
@@ -431,15 +433,39 @@ fn main() {
                             app.main_menu_state.joined_lobby_id = None;
                             my_player_id = start_msg.my_player_id;
 
-                            let state =
-                                sow_core::game::GameState::new(start_msg.seed, 800, 600, start_msg.config);
+                            let w = start_msg.config.map_width;
+                            let h = start_msg.config.map_height;
+                            let mut state =
+                                sow_core::game::GameState::new(start_msg.seed, w, h, start_msg.config);
+                            if let Some(bytes) = app.main_menu_state.cached_map.take() {
+                                for (i, &b) in bytes.iter().enumerate() {
+                                    if i < state.map.terrain.len() {
+                                        state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                                    }
+                                }
+                            } else {
+                                log::error!("Cached map data not found! Terrain will be empty.");
+                            }
+
                             let water = sow_core::water_components::WaterComponents::compute(&state.map);
                             engine = SowEngine::new(state, water);
 
+                            // Note: Humans and bots are spawned deterministically 
+                            // The server spawned bots, so the client should spawn them using the same seed!
                             for p in start_msg.players {
                                 engine.spawn_human(p.id, p.name.clone(), p.color);
                             }
-                            engine.spawn_random_bots(4);
+                            // Spawn bots to match server's count
+                            engine.spawn_random_bots(engine.state.config.bot_count);
+
+                            map_w = w;
+                            map_h = h;
+                            if let Some(ref mut mr) = map_renderer {
+                                mr.destroy(&render_ctx);
+                            }
+                            if let Some(ref s) = surface {
+                                map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx, map_w, map_h, s.info().format));
+                            }
 
                             turn_queue.clear();
                             needs_first_upload = true;
@@ -514,9 +540,43 @@ fn main() {
                             my_lobby_id = Some(ack.lobby_id);
                             my_player_id = Some(ack.player_id);
                             app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
+                            
+                            // Start downloading the map via HTTP
+                            let map_name = ack.map_name.clone();
+                            let tx = map_tx.clone();
+                            app.main_menu_state.is_downloading_map = true;
+                            app.main_menu_state.cached_map = None;
+                            std::thread::spawn(move || {
+                                // Extract IP from websocket address
+                                let ip = "127.0.0.1"; // TODO: parse from server_address
+                                let url = format!("http://{}:25566/maps/{}/map.bin", ip, map_name);
+                                log::info!("Downloading map from: {}", url);
+                                if let Ok(resp) = ureq::get(&url).call() {
+                                    let len = resp.header("Content-Length")
+                                        .and_then(|s| s.parse::<usize>().ok())
+                                        .unwrap_or(0);
+                                    let mut bytes: Vec<u8> = Vec::with_capacity(len);
+                                    if resp.into_reader().read_to_end(&mut bytes).is_ok() && !bytes.is_empty() {
+                                        log::info!("Downloaded {} bytes", bytes.len());
+                                        let _ = tx.send(bytes);
+                                    } else {
+                                        log::error!("Failed to read map body");
+                                    }
+                                } else {
+                                    log::error!("Failed to fetch map from HTTP server");
+                                }
+                            });
+                            
                             continue;
                         }
                     }
+                }
+                
+                // Poll map download channel
+                if let Ok(bytes) = map_rx.try_recv() {
+                    log::info!("Map download completed successfully.");
+                    app.main_menu_state.cached_map = Some(bytes);
+                    app.main_menu_state.is_downloading_map = false;
                 }
 
                 app.hud_state.is_mobile = screen_w < 900.0;

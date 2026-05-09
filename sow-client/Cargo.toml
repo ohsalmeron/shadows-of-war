@@ -18,3 +18,6 @@ blade-egui = { workspace = true }
 tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread"] }
 serde_json.workspace = true
 sow-net = { workspace = true }
+brotli = "8.0.2"
+ureq = "2"
+crossbeam-channel = "0.5.15"

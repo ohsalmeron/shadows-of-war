@@ -24,10 +24,33 @@ pub struct MainMenuState {
     pub pending_join_lobby_id: Option<u64>,
     /// Populated from `ServerJoinAckMessage` while waiting in the queue.
     pub joined_lobby_id: Option<u64>,
+    pub available_maps: Vec<String>,
+    pub selected_map: String,
+    pub is_downloading_map: bool,
+    pub cached_map: Option<Vec<u8>>,
 }
 
 impl Default for MainMenuState {
     fn default() -> Self {
+        // Load available maps
+        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "OpenFrontIO/resources/maps".to_string());
+        let mut available_maps = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&root) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        available_maps.push(name);
+                    }
+                }
+            }
+        }
+        available_maps.sort();
+        let selected_map = if available_maps.contains(&"europe".to_string()) {
+            "europe".to_string()
+        } else {
+            available_maps.first().cloned().unwrap_or_else(|| "europe".to_string())
+        };
+
         Self {
             is_connected: false,
             is_connecting: false,
@@ -38,6 +61,10 @@ impl Default for MainMenuState {
             player_name: "Commander".to_string(),
             pending_join_lobby_id: None,
             joined_lobby_id: None,
+            available_maps,
+            selected_map,
+            is_downloading_map: false,
+            cached_map: None,
         }
     }
 }
@@ -243,6 +270,11 @@ fn draw_queue_overlay(
                 
                 if let Some(lobby_id) = state.joined_lobby_id.or(state.pending_join_lobby_id) {
                     if let Some(lobby) = state.lobbies.iter().find(|l| l.id == lobby_id) {
+                        if state.is_downloading_map {
+                            ui.label(RichText::new("⏬ Downloading Map...").strong().color(Color32::YELLOW));
+                        } else if state.cached_map.is_some() {
+                            ui.label(RichText::new("✅ Map Cached").strong().color(Color32::GREEN));
+                        }
                         ui.label(RichText::new(format!("Connected Players ({}/{})", lobby.num_players, lobby.max_players)).strong().color(text_secondary()));
                         ui.add_space(8.0);
                         for name in &lobby.player_names {
@@ -395,13 +427,25 @@ fn lobby_card(
 
 fn draw_right_column(
     ui: &mut egui::Ui,
-    _state: &MainMenuState,
+    state: &mut MainMenuState,
     section_gap: f32,
     action_min_h: f32,
     compact: bool,
     action: &mut Option<UiAction>,
 ) {
     let solo_primary = if compact { 24.0 } else { 28.0 };
+
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Selected Map:").color(Color32::WHITE).strong());
+        egui::ComboBox::from_id_salt("map_picker")
+            .selected_text(state.selected_map.clone())
+            .show_ui(ui, |ui| {
+                for map in &state.available_maps {
+                    ui.selectable_value(&mut state.selected_map, map.clone(), map.clone());
+                }
+            });
+    });
+    ui.add_space(8.0);
 
     let solo_btn = egui::Button::new(
         RichText::new("SINGLE PLAYER").size(solo_primary).strong().color(Color32::BLACK),

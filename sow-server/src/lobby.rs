@@ -128,7 +128,8 @@ pub fn join_player(
     name: String,
     client_tx: mpsc::Sender<String>,
     target_lobby_id: Option<u64>,
-) -> Result<(u64, u16), String> {
+    preferred_map: Option<String>,
+) -> Result<(u64, u16, String), String> {
     let lobby_id = resolve_join_target(target_lobby_id, games).ok_or_else(|| {
         "No joinable lobby available (try again)".to_string()
     })?;
@@ -143,6 +144,12 @@ pub fn join_player(
     let max = lobby.config.max_players as usize;
     if lobby.players.len() >= max {
         return Err("Lobby is full".to_string());
+    }
+
+    if lobby.players.is_empty() {
+        if let Some(map_name) = preferred_map {
+            lobby.config.map_name = map_name;
+        }
     }
 
     let player_id = lobby
@@ -160,7 +167,7 @@ pub fn join_player(
     });
 
     log::info!("Player {} joined lobby {}", player_id, lobby_id);
-    Ok((lobby_id, player_id))
+    Ok((lobby_id, player_id, lobby.config.map_name.clone()))
 }
 
 pub fn leave_player(games: &mut Vec<ServerLobby>, lobby_id: u64, player_id: u16) {
@@ -179,23 +186,57 @@ pub fn leave_player(games: &mut Vec<ServerLobby>, lobby_id: u64, player_id: u16)
 fn start_match(lobby: &mut ServerLobby) {
     lobby.phase = LobbyPhase::Active;
     lobby.seed = rand::random();
-    let config = GameConfig::default();
-    lobby.config = config.clone();
 
-    let state = GameState::new(lobby.seed, 800, 600, config);
+    let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "OpenFrontIO/resources/maps".to_string());
+    let map_dir = std::path::Path::new(&root).join(&lobby.config.map_name);
+    let manifest_path = map_dir.join("manifest.json");
+    let bin_path = map_dir.join("map.bin");
+
+    let mut map_bytes = None;
+    if let (Ok(m_data), Ok(b_data)) = (std::fs::read_to_string(&manifest_path), std::fs::read(&bin_path)) {
+        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data) {
+            lobby.config.map_width = manifest.map.width;
+            lobby.config.map_height = manifest.map.height;
+            map_bytes = Some(b_data);
+        } else {
+            log::error!("Failed to parse map manifest at {:?}", manifest_path);
+        }
+    } else {
+        log::warn!("Could not load map {:?}, falling back to defaults", map_dir);
+        lobby.config.map_width = 800;
+        lobby.config.map_height = 600;
+    }
+
+    let mut state = GameState::new(lobby.seed, lobby.config.map_width, lobby.config.map_height, lobby.config.clone());
+    
+    if let Some(ref bytes) = map_bytes {
+        for (i, &b) in bytes.iter().enumerate() {
+            if i < state.map.terrain.len() {
+                state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+            }
+        }
+    }
+
     let water = WaterComponents::compute(&state.map);
     let mut engine = SowEngine::new(state, water);
 
     let mut player_infos: Vec<PlayerInfo> = Vec::new();
     for p in &lobby.players {
         engine.spawn_human(p.player_id, p.name.clone(), [1.0, 0.0, 0.0]);
+        let (mut sx, mut sy) = (0, 0);
+        if let Some(player) = engine.state.player(p.player_id) {
+            if player.tile_count > 0 {
+                sx = (player.sum_x / player.tile_count as u64) as u32;
+                sy = (player.sum_y / player.tile_count as u64) as u32;
+            }
+        }
         player_infos.push(PlayerInfo {
             id: p.player_id,
             name: p.name.clone(),
             player_type: PlayerType::Human,
             color: [1.0, 0.0, 0.0],
-            spawn_x: 0,
-            spawn_y: 0,
+            spawn_x: sx,
+            spawn_y: sy,
         });
     }
     engine.spawn_random_bots(BOT_COUNT);
@@ -221,7 +262,7 @@ fn start_match(lobby: &mut ServerLobby) {
             seed: lobby.seed,
             players: player_infos.clone(),
             missed_turns: vec![],
-            map_data: None,
+            map_data: None, // clients load locally via config.map_name
         };
         let json = serde_json::to_string(&start_msg).expect("serialize ServerStartMessage");
         let _ = p.tx.try_send(json);
