@@ -1,6 +1,6 @@
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use sow_core::engine::SowEngine;

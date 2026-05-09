@@ -1,4 +1,4 @@
-use crate::game::{GamePhase, GameState};
+use crate::game::GamePhase;
 use crate::rng::NextIntExt;
 use crate::protocol::{AttackIntent, StampedIntent};
 use crate::engine::SowEngine;
@@ -10,7 +10,7 @@ impl SowEngine {
             return;
         }
 
-        let tick_now = self.state.tick;
+        let _tick_now = self.state.tick;
         let map_width = self.state.map.width;
         let mut intents_to_apply = Vec::new();
 

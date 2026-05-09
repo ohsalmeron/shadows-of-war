@@ -8,6 +8,7 @@ members = [
     "sow-server",
     "sow-tools",
 ]
+exclude = ["blade"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -16,8 +17,8 @@ sow-render = { path = "sow-render" }
 sow-net = { path = "sow-net" }
 
 # Graphics
-blade-graphics = { path = "../blade/blade-graphics" }
-blade-macros = { path = "../blade/blade-macros" }
+blade-graphics = { path = "blade/blade-graphics" }
+blade-macros = { path = "blade/blade-macros" }
 raw-window-handle = "0.6"
 
 # Deterministic RNG (replaces bevy_prng)

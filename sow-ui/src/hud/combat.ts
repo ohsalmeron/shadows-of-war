@@ -1,3 +1,5 @@
+import { setupLeaderboard } from './leaderboard';
+
 export function setupCombatHud(container: HTMLElement) {
   const hudHtml = `
     <div class="hud-top-bar glass-panel interactive">
@@ -97,10 +99,7 @@ export function setupCombatHud(container: HTMLElement) {
   `;
   container.appendChild(style);
 
-  // Setup Leaderboard as well
-  import('./leaderboard').then(({ setupLeaderboard }) => {
-    setupLeaderboard(container);
-  });
+  setupLeaderboard(container);
 
   const goldEl = document.getElementById('hud-gold');
   const troopsEl = document.getElementById('hud-troops');

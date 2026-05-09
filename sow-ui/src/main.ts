@@ -17,6 +17,8 @@ const ctx = canvas.getContext('2d')!;
 
 let mapTerrain: Uint8Array | null = null;
 let mapState: Uint16Array | null = null;
+let mapWidth = 0;
+let mapHeight = 0;
 
 // Camera
 let cameraX = 0;
@@ -153,31 +155,55 @@ function render() {
   const endX = Math.min(mapWidth, Math.ceil((canvas.width - cameraX) / cameraZoom));
   const endY = Math.min(mapHeight, Math.ceil((canvas.height - cameraY) / cameraZoom));
   
-  for (let y = startY; y < endY; y++) {
-    for (let x = startX; x < endX; x++) {
-      const idx = y * mapWidth + x;
-      const tileInfo = mapTerrain[idx];
-      const isLand = (tileInfo & 0b10000000) !== 0;
-      
-      const owner = mapState[idx] & 0x0FFF;
-      
-      if (owner > 0) {
-        ctx.fillStyle = colors[owner] || '#ffffff';
-      } else if (isLand) {
-        ctx.fillStyle = '#2d4c1e'; // Land
-      } else {
-        ctx.fillStyle = '#1e3c5a'; // Water
+  const viewWidth = endX - startX;
+  const viewHeight = endY - startY;
+  if (viewWidth > 0 && viewHeight > 0) {
+    const imageData = new ImageData(viewWidth, viewHeight);
+    const data = imageData.data;
+    
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        const idx = y * mapWidth + x;
+        const tileInfo = mapTerrain[idx];
+        const isLand = (tileInfo & 0b10000000) !== 0;
+        
+        const owner = mapState[idx] & 0x0FFF;
+        
+        let r, g, b;
+        if (owner > 0) {
+          if (owner === 1) { r=34; g=102; b=255; }
+          else if (owner === 100) { r=255; g=68; b=68; }
+          else if (owner === 101) { r=68; g=255; b=68; }
+          else if (owner === 102) { r=255; g=255; b=68; }
+          else if (owner === 103) { r=170; g=68; b=170; }
+          else { r=255; g=255; b=255; }
+        } else if (isLand) {
+          r=45; g=76; b=30; // #2d4c1e
+        } else {
+          r=30; g=60; b=90; // #1e3c5a
+        }
+        
+        const offset = ((y - startY) * viewWidth + (x - startX)) * 4;
+        data[offset] = r;
+        data[offset+1] = g;
+        data[offset+2] = b;
+        data[offset+3] = 255;
       }
-      
-      // Fill rectangle with 1px padding for grid effect if zoomed in
-      const gap = cameraZoom > 6 ? 1 : 0;
-      ctx.fillRect(
-        Math.floor(cameraX + x * cameraZoom),
-        Math.floor(cameraY + y * cameraZoom),
-        Math.ceil(cameraZoom) - gap,
-        Math.ceil(cameraZoom) - gap
-      );
     }
+    
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = viewWidth;
+    offCanvas.height = viewHeight;
+    offCanvas.getContext('2d')!.putImageData(imageData, 0, 0);
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      offCanvas,
+      Math.floor(cameraX + startX * cameraZoom),
+      Math.floor(cameraY + startY * cameraZoom),
+      Math.ceil(viewWidth * cameraZoom),
+      Math.ceil(viewHeight * cameraZoom)
+    );
   }
   
   // Draw FPS

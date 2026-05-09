@@ -1,14 +1,16 @@
 use blade_graphics as gpu;
 use crate::context::RenderContext;
 use bytemuck::{Pod, Zeroable};
+use sow_core::map::GameMap;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct MapGlobals {
     pub camera_pos: [f32; 2],
     pub zoom: f32,
+    pub _pad0: f32,
     pub screen_size: [f32; 2],
-    pub pad: [f32; 3],
+    pub map_size: [f32; 2],
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -23,6 +25,7 @@ pub struct MapRenderer {
     pub texture_view: gpu::TextureView,
     pub sampler: gpu::Sampler,
     pub pipeline: gpu::RenderPipeline,
+    pub upload_buffer: gpu::Buffer,
     pub width: u32,
     pub height: u32,
 }
@@ -62,6 +65,14 @@ impl MapRenderer {
             ..Default::default()
         });
 
+        // Upload buffer: 4 bytes per tile (u32), CPU-visible shared memory
+        let buf_size = (width * height * 4) as u64;
+        let upload_buffer = render_ctx.context.create_buffer(gpu::BufferDesc {
+            name: "map_upload",
+            size: buf_size,
+            memory: gpu::Memory::Shared,
+        });
+
         let shader_source = include_str!("shaders/map.wgsl");
         let shader = render_ctx.context.create_shader(gpu::ShaderDesc {
             source: shader_source,
@@ -93,8 +104,44 @@ impl MapRenderer {
             texture_view,
             sampler,
             pipeline,
+            upload_buffer,
             width,
             height,
+        }
+    }
+
+    /// Pack the game map into the upload buffer and copy to the GPU texture.
+    /// Each texel is a u32: low 16 bits = owner_id, bits 16..24 = terrain byte.
+    pub fn update(&self, encoder: &mut gpu::CommandEncoder, map: &GameMap) {
+        let total = (self.width * self.height) as usize;
+        let dst_ptr = self.upload_buffer.data();
+        assert!(!dst_ptr.is_null(), "Upload buffer not mapped");
+
+        // Write packed u32 per tile directly into the shared buffer
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total)
+        };
+        for i in 0..total {
+            let terrain_byte = map.terrain[i].as_byte() as u32;
+            let owner_id = map.state[i] as u32;
+            // Pack: bits 0..15 = owner_id, bits 16..23 = terrain byte
+            slice[i] = owner_id | (terrain_byte << 16);
+        }
+
+        // GPU transfer: copy upload buffer -> texture
+        let bytes_per_row = self.width * 4; // 4 bytes per R32Uint texel
+        {
+            let mut transfer = encoder.transfer("map_upload");
+            transfer.copy_buffer_to_texture(
+                self.upload_buffer.into(),
+                bytes_per_row,
+                self.texture.into(),
+                gpu::Extent {
+                    width: self.width,
+                    height: self.height,
+                    depth: 1,
+                },
+            );
         }
     }
 
@@ -126,6 +173,7 @@ impl MapRenderer {
         render_ctx.context.destroy_texture_view(self.texture_view);
         render_ctx.context.destroy_texture(self.texture);
         render_ctx.context.destroy_sampler(self.sampler);
+        render_ctx.context.destroy_buffer(self.upload_buffer);
         render_ctx.context.destroy_render_pipeline(&mut self.pipeline);
     }
 }

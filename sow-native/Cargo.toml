@@ -2,16 +2,13 @@
 name = "sow-native"
 version = "0.1.0"
 edition = "2021"
-description = "Shadows of War — Tauri v2 desktop/mobile application"
+description = "Shadows of War — Native Desktop Client"
 
 [dependencies]
 sow-core = { workspace = true }
 sow-render = { workspace = true }
-sow-net = { workspace = true }
-log = { workspace = true }
-env_logger = { workspace = true }
-tauri = { version = "2.0.0", features = [] }
 blade-graphics = { workspace = true }
 
-[build-dependencies]
-tauri-build = { version = "2.0.0", features = [] }
+log = { workspace = true }
+env_logger = { workspace = true }
+winit = "0.29.15"
