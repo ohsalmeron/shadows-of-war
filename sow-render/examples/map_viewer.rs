@@ -63,7 +63,11 @@ fn main() {
         visual_terrain_sharpness: 0.05,
         visual_interior_alpha: 0.35,
         visual_border_alpha: 1.0,
-        padding: 0.0,
+        lod_zoom_medium: 4.0,
+        lod_zoom_full: 12.0,
+        local_player_id: 1,
+        padding1: 0.0,
+        padding2: 0.0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

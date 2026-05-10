@@ -1,32 +1,133 @@
 #!/usr/bin/env bash
-# Android release APK via cargo-apk. Output: ./target/aarch64-linux-android/release/apk/*.apk
+# ──────────────────────────────────────────────────────────────────
+# Android Release Build (APK)
+# Produces an APK in target/release/apk/
+# ──────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
-die() { echo "build_android: $*" >&2; exit 1; }
+# Non-login shells often omit ~/.cargo/bin — cargo-apk installs there.
+export PATH="${HOME}/.cargo/bin:${PATH}"
 
-MANIFEST=""
-for tom in "${ROOT}/sow-android/Cargo.toml"; do
-  [[ -f "$tom" ]] && grep -q '^\[package.metadata.android\]' "$tom" 2>/dev/null && MANIFEST="$tom" && break
-done
-[[ -n "$MANIFEST" ]] || die "no sow-android/ with [package.metadata.android] — add that crate first."
+green() { echo -e "\e[32m$1\e[0m"; }
+cyan()  { echo -e "\e[36m$1\e[0m"; }
+red()   { echo -e "\e[31m$1\e[0m"; }
 
-if [[ -z "${ANDROID_HOME:-}" && -z "${ANDROID_SDK_ROOT:-}" ]]; then
-  [[ -d "$HOME/Android/Sdk/platform-tools" ]] && export ANDROID_HOME="$HOME/Android/Sdk"
+fail() {
+  red "❌ $1"
+  shift
+  for line in "$@"; do echo "   $line"; done
+  exit 1
+}
+
+# ── SDK auto-detect ────────────────────────────────────────────
+if [[ -z "${ANDROID_HOME:-}" && -n "${ANDROID_SDK_ROOT:-}" ]]; then
+  export ANDROID_HOME="${ANDROID_SDK_ROOT}"
 fi
-if [[ -z "${ANDROID_NDK_HOME:-}" && -z "${NDK_HOME:-}" && -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/ndk" ]]; then
-  export ANDROID_NDK_HOME="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)"
+if [[ -z "${ANDROID_HOME:-}" ]]; then
+  for candidate in \
+      "${HOME}/Android/Sdk" \
+      "${HOME}/Library/Android/sdk" \
+      "/opt/android-sdk" \
+      "/usr/lib/android-sdk"; do
+    if [[ -d "${candidate}" ]]; then
+      export ANDROID_HOME="${candidate}"
+      break
+    fi
+  done
 fi
-[[ -n "${ANDROID_HOME:-}" || -n "${ANDROID_SDK_ROOT:-}" ]] || die "set ANDROID_HOME (e.g. export ANDROID_HOME=\$HOME/Android/Sdk)"
-[[ -n "${ANDROID_NDK_HOME:-}" || -n "${NDK_HOME:-}" ]] || die "set ANDROID_NDK_HOME or install NDK under \$ANDROID_HOME/ndk"
+if [[ -z "${ANDROID_HOME:-}" || ! -d "${ANDROID_HOME}" ]]; then
+  fail "Android SDK not found." \
+       "Install Android Studio, let it provision \$HOME/Android/Sdk, then re-run."
+fi
+export ANDROID_SDK_ROOT="${ANDROID_HOME}"
+cyan "==> Android SDK : ${ANDROID_HOME}"
 
-command -v cargo >/dev/null || die "cargo not found"
-rustup target list --installed 2>/dev/null | grep -qx aarch64-linux-android || die "run: rustup target add aarch64-linux-android"
-(cargo apk --version >/dev/null 2>&1 || cargo-apk --version >/dev/null 2>&1) || die "run: cargo install cargo-apk"
+# ── JDK auto-detect ────────────────────────────────────────────
+if [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME}/bin/java" ]]; then
+  JAVA_HOME=""
+  for candidate in \
+      "/opt/android-studio/jbr" \
+      "/usr/lib/android-studio/jbr" \
+      "${HOME}/.local/share/JetBrains/Toolbox/apps/AndroidStudio/jbr"; do
+    if [[ -x "${candidate}/bin/java" ]]; then JAVA_HOME="${candidate}"; break; fi
+  done
+  if [[ -z "${JAVA_HOME}" ]] && command -v java >/dev/null 2>&1; then
+    JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+  fi
+  if [[ -z "${JAVA_HOME}" ]]; then
+    for candidate in /usr/lib/jvm/default /usr/lib/jvm/java-21-openjdk /usr/lib/jvm/java-17-openjdk; do
+      if [[ -x "${candidate}/bin/java" ]]; then JAVA_HOME="${candidate}"; break; fi
+    done
+  fi
+fi
+if [[ -z "${JAVA_HOME}" || ! -x "${JAVA_HOME}/bin/java" ]]; then
+  fail "No JDK found." \
+       "Arch: sudo pacman -S jdk-openjdk" \
+       "Or install Android Studio (it ships /opt/android-studio/jbr)."
+fi
+export JAVA_HOME
+export PATH="${JAVA_HOME}/bin:${PATH}"
+cyan "==> JDK         : ${JAVA_HOME}"
 
-echo "Building release APK (manifest: $MANIFEST)"
+# ── NDK auto-detect ────────────────────────────────────────────
+NDK_ROOT=""
+if [[ -n "${ANDROID_NDK_ROOT:-}" && -d "${ANDROID_NDK_ROOT}" ]]; then
+  NDK_ROOT="${ANDROID_NDK_ROOT}"
+elif [[ -n "${ANDROID_NDK_HOME:-}" && -d "${ANDROID_NDK_HOME}" ]]; then
+  NDK_ROOT="${ANDROID_NDK_HOME}"
+elif [[ -d "${ANDROID_HOME}/ndk" ]]; then
+  latest=$(ls -1 "${ANDROID_HOME}/ndk" 2>/dev/null | sort -V | tail -n1 || true)
+  [[ -n "${latest}" && -d "${ANDROID_HOME}/ndk/${latest}" ]] && NDK_ROOT="${ANDROID_HOME}/ndk/${latest}"
+elif [[ -d "${ANDROID_HOME}/ndk-bundle" ]]; then
+  NDK_ROOT="${ANDROID_HOME}/ndk-bundle"
+fi
+if [[ -z "${NDK_ROOT}" ]]; then
+  fail "Android NDK not found." \
+       "Open Android Studio → SDK Manager → SDK Tools → tick 'NDK (Side by side)' → Apply."
+fi
+export ANDROID_NDK_ROOT="${NDK_ROOT}"
+export ANDROID_NDK_HOME="${NDK_ROOT}"
+export NDK_HOME="${NDK_ROOT}"
+cyan "==> NDK         : ${NDK_ROOT}"
+
+command -v cargo >/dev/null || fail "cargo not found"
+rustup target list --installed 2>/dev/null | grep -qx aarch64-linux-android || fail "run: rustup target add aarch64-linux-android"
+command -v cargo-apk >/dev/null 2>&1 || fail "cargo-apk not in PATH — install: cargo install cargo-apk"
+
+MANIFEST="${ROOT}/sow-android/Cargo.toml"
+[[ -f "$MANIFEST" ]] && grep -q '^\[package.metadata.android\]' "$MANIFEST" 2>/dev/null || fail "missing sow-android/Cargo.toml with [package.metadata.android]"
+
+# ── Release keystore (auto-generated on first run) ────────────
+KEYSTORE="${ROOT}/keystores/release.keystore"
+if [[ ! -f "${KEYSTORE}" ]]; then
+  cyan "==> Generating release keystore at ${KEYSTORE}"
+  mkdir -p "$(dirname "${KEYSTORE}")"
+  keytool -genkeypair -v \
+    -keystore "${KEYSTORE}" \
+    -alias shadows \
+    -keyalg RSA -keysize 2048 -validity 10000 \
+    -storepass shadowswar -keypass shadowswar \
+    -dname "CN=Shadows Of War, OU=Self, O=OpenFront, L=Local, S=NA, C=US" \
+    >/dev/null
+  green "==> Keystore generated."
+fi
+cyan "==> Keystore     : ${KEYSTORE}"
+
+# We must instruct cargo-apk to use the release keystore by writing it to the Cargo.toml
+# But for now, if we pass --release, it generates an unsigned release or uses default keystore,
+# cargo-apk doesn't let us pass keystore CLI args easily. We will build release mode.
+
+cyan "📦 Building Android release APK..."
 cargo apk build --release --manifest-path "$MANIFEST"
-echo ""
-echo "APKs are under: ${ROOT}/target/aarch64-linux-android/release/apk/"
+
+APK_SRC="${ROOT}/target/release/apk/sow-android.apk"
+if [[ -f "${APK_SRC}" ]]; then
+    green "🎉 Android release build complete!"
+    echo "   APK : ${APK_SRC}"
+    echo "   Size: $(du -h "${APK_SRC}" | cut -f1)"
+else
+    fail "APK not found at ${APK_SRC}"
+fi

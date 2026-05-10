@@ -163,15 +163,15 @@ impl Default for GameConfig {
             random_spawn: false,
 
             // Core Simulation Pacing
-            tick_rate_ms: 250.0, // Server clock ticks 4 times per second
+            tick_rate_ms: 100.0, // Server clock ticks 4 times per second
             global_speed_multiplier: 0.5, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
             
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 2.0,   // Extremely low: 100 troops = 50 enemy tiles bursts
-            attack_cost_neutral: 0.5, // Extremely low: 100 troops = 200 neutral tiles bursts
+            attack_cost_enemy: 4.0,   // Extremely low: 100 troops = 50 enemy tiles bursts
+            attack_cost_neutral: 1.5, // Extremely low: 100 troops = 200 neutral tiles bursts
             terrain_multiplier_highland: 1.75, // Highlands cost 75% more to conquer
             terrain_multiplier_mountain: 3.5,  // Mountains cost 3.5x more to conquer
-            bot_attack_interval_ticks: 256,    // Nerfed aggression: bots wait ~64 seconds between waves
+            bot_attack_interval_ticks: 64,    // Nerfed aggression: bots wait ~64 seconds between waves
             max_tiles_per_tick: 40.0,          // Hard cap per attack (was 100). Visible, paced spread.
             momentum_divisor: 2000.0,          // Troops needed for 1x momentum (was 1000). Halved speed.
 
@@ -189,9 +189,9 @@ impl Default for GameConfig {
             gold_income_per_city_level: 1.0,      // +1 flat gold per city level
             
             // Rendering & Shaders (Visual Adjustments)
-            shader_terrain_sharpness: 0.005, // Soft topographical bump map
-            shader_interior_alpha: 0.75,     // High opacity, terrain shows through slightly
-            shader_border_alpha: 0.75,       // High opacity solid border lines
+            shader_terrain_sharpness: 0.0001, // Soft topographical bump map
+            shader_interior_alpha: 0.9,     // High opacity, terrain shows through slightly
+            shader_border_alpha: 0.85,       // High opacity solid border lines
             
             // User Interface & HUD
             ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font
@@ -200,9 +200,9 @@ impl Default for GameConfig {
             ui_label_ref_tiles: 400.0,                  // Reach 4x size when owning 400 tiles
             
             // Level-Of-Detail (LOD) Camera Thresholds
-            ui_lod_zoom_full: 2.0,     // Zoom >= 3.0: High clutter (all labels)
-            ui_lod_zoom_nations: 1.0,  // Zoom >= 1.5: Medium clutter (Nation/Human labels, Tribe dots)
-            ui_lod_dot_radius: 4.0,    // Zoom < 1.5: Minimalist (4px Dots only)
+            ui_lod_zoom_full: 8.0,     // Zoom >= 3.0: High clutter (all labels)
+            ui_lod_zoom_nations: 4.0,  // Zoom >= 1.5: Medium clutter (Nation/Human labels, Tribe dots)
+            ui_lod_dot_radius: 12.0,    // Zoom < 1.5: Minimalist (4px Dots only)
         }
     }
 }

@@ -2,7 +2,7 @@
 name = "sow-client"
 version = "0.1.0"
 edition = "2021"
-description = "Shadows of War — Native Desktop Client"
+description = "Shadows of War"
 
 [dependencies]
 sow-core = { workspace = true }

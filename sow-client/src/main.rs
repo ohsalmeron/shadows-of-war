@@ -296,7 +296,11 @@ fn main() {
                                     visual_terrain_sharpness: engine.state.config.shader_terrain_sharpness,
                                     visual_interior_alpha: engine.state.config.shader_interior_alpha,
                                     visual_border_alpha: engine.state.config.shader_border_alpha,
-                                    padding: 0.0,
+                                    lod_zoom_medium: engine.state.config.ui_lod_zoom_nations,
+                                    lod_zoom_full: engine.state.config.ui_lod_zoom_full,
+                                    local_player_id: my_player_id.unwrap_or(1) as u32,
+                                    padding1: 0.0,
+                                    padding2: 0.0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }

@@ -22,8 +22,10 @@ impl SowEngine {
                 continue;
             }
 
-            // 5% chance per tick to act
-            if player.bot_rng.next_int(0, 100) >= 5 {
+            // Enforce bot_attack_interval_ticks using a modulo offset by player ID
+            // This guarantees bots wait exactly the required ticks between attacks,
+            // while staggering their checks so they don't all process on the exact same frame.
+            if _tick_now % self.state.config.bot_attack_interval_ticks != (player.id as u64 % self.state.config.bot_attack_interval_ticks) {
                 continue;
             }
 
