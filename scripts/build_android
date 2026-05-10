@@ -125,9 +125,14 @@ RUSTFLAGS='--cfg gles' cargo apk build --release --lib -p sow-client
 
 APK_SRC="${ROOT}/target/release/apk/sow-client.apk"
 if [[ -f "${APK_SRC}" ]]; then
+    APK_OUT="${ROOT}/build/sow-client.apk"
+    mkdir -p "${ROOT}/build"
+    cp "${APK_SRC}" "${APK_OUT}"
+    
     green "🎉 Android release build complete!"
-    echo "   APK : ${APK_SRC}"
-    echo "   Size: $(du -h "${APK_SRC}" | cut -f1)"
+    echo "   Original APK : ${APK_SRC}"
+    echo "   Copied APK   : ${APK_OUT}   <-- It is here!"
+    echo "   Size         : $(du -h "${APK_SRC}" | cut -f1)"
     echo ""
     if adb get-state 1>/dev/null 2>&1; then
         cyan "📱 Deploying to connected device..."

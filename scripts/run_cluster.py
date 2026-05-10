@@ -4,7 +4,7 @@ Shadows of War cluster runner.
 
 Default: build sow-server + sow-clients, run local server and two native clients.
 
---cloud: run scripts/deploy_sow_cloud.sh (remote release server + maps), then run two
+--cloud: Deploy release server + maps to VPS (impersonating dark-rift), then run two
 clients with SOW_WS_URL / SOW_MAPS_URL pointing at the VPS (override via env).
 """
 import os
@@ -78,6 +78,9 @@ def main():
     if cargo_bin not in env.get("PATH", ""):
         env["PATH"] = cargo_bin + os.pathsep + env.get("PATH", "")
 
+    # Auto connect clients locally and from cloud deployments
+    env["SOW_AUTO_CONNECT"] = "1"
+
     use_release = args.release
     profile = "release" if use_release else "debug"
 
@@ -112,23 +115,58 @@ def main():
         maps_port = env.get("SOW_CLOUD_MAPS_PORT", _DEFAULT_MAPS_PORT)
 
         if args.cloud:
-            print(f"🛠️  Building sow-client only ({profile}) — server built by deploy script...")
+            print(f"🛠️  Building sow-client ({profile})...")
             build_cmd = ["cargo", "build", "-p", "sow-client"]
             if use_release:
                 build_cmd.append("--release")
             subprocess.run(build_cmd, env=env, check=True)
 
-            deploy_sh = SCRIPT_DIR / "deploy_sow_cloud.sh"
-            print("☁️  Deploying server to cloud...")
-            subprocess.run([str(deploy_sh)], env=env, check=True, cwd=PROJECT_ROOT)
+            print("☁️  Building sow-server for deployment (release)...")
+            musl_cmd = ["cargo", "build", "--release", "-p", "sow-server", "--target", "x86_64-unknown-linux-musl"]
+            gnu_cmd = ["cargo", "build", "--release", "-p", "sow-server", "--target", "x86_64-unknown-linux-gnu"]
+            
+            musl_ok = subprocess.run(musl_cmd, env=env, check=False).returncode == 0
+            
+            if musl_ok:
+                bin_path = PROJECT_ROOT / "target" / "x86_64-unknown-linux-musl" / "release" / "sow-server"
+                print(f"✅ Built musl binary: {bin_path}")
+            else:
+                print("⚠️ Musl build failed, trying gnu target...")
+                subprocess.run(gnu_cmd, env=env, check=True)
+                bin_path = PROJECT_ROOT / "target" / "x86_64-unknown-linux-gnu" / "release" / "sow-server"
+                print(f"✅ Built gnu binary: {bin_path}")
+
+            vps_user = "bizkit"
+            vps_ip = cloud_host
+            backend_dest = "/home/bizkit/darkrift"
+            maps_dest = "/home/bizkit/dark-rift-prod/assets/maps"
+            web_maps_dest = "/var/www/darkrift.ai/html/assets/maps"
+            systemd_unit = "darkrift-server"
+            maps_src = PROJECT_ROOT / "OpenFrontIO" / "resources" / "maps"
+
+            print(f"☁️  Deploying to {vps_user}@{vps_ip} (impersonating darkrift-server)...")
+            subprocess.run(["ssh", f"{vps_user}@{vps_ip}", f"mkdir -p {backend_dest} {maps_dest} {web_maps_dest}"], check=True)
+            
+            print("☁️  Syncing server binary...")
+            subprocess.run(["rsync", "-avz", str(bin_path), f"{vps_user}@{vps_ip}:{backend_dest}/dark-rift-server"], check=True)
+            
+            print("☁️  Syncing map assets to backend...")
+            subprocess.run(["rsync", "-avz", f"{maps_src}/", f"{vps_user}@{vps_ip}:{maps_dest}/"], check=True)
+            
+            print("☁️  Syncing map assets to web server...")
+            subprocess.run(["rsync", "-avz", f"{maps_src}/", f"{vps_user}@{vps_ip}:{web_maps_dest}/"], check=True)
+            
+            print(f"☁️  Restarting systemd unit: {systemd_unit}...")
+            subprocess.run(["ssh", f"{vps_user}@{vps_ip}", f"sudo systemctl restart {systemd_unit}"], check=True)
 
             env["SOW_WS_URL"] = env.get(
                 "SOW_WS_URL", f"ws://{cloud_host}:{ws_port}"
             )
+            # Impeorsonate Dark Rift's nginx maps endpoint over port 80
             env["SOW_MAPS_URL"] = env.get(
-                "SOW_MAPS_URL", f"http://{cloud_host}:{maps_port}/maps"
+                "SOW_MAPS_URL", "https://darkrift.ai/assets/maps"
             )
-            print(f"   Clients use {env['SOW_WS_URL']} and {env['SOW_MAPS_URL']}")
+            print(f"✅ Deploy complete. Clients use {env['SOW_WS_URL']} and {env['SOW_MAPS_URL']}")
             time.sleep(1)
         else:
             print(f"🛠️  Building native binaries ({profile})...")

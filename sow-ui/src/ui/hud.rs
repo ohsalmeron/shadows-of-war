@@ -14,7 +14,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     let mut action = None;
 
     egui::Panel::top("economy_panel").show(ctx, |ui| {
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button(RichText::new("Exit").size(14.0).color(Color32::RED)).on_hover_text("Exit Game").clicked() {
                 action = Some(UiAction::LeaveLobby);
             }
@@ -30,7 +30,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
 
     // Bottom Panel: Attack Controls
     egui::Panel::bottom("attack_panel").show(ctx, |ui| {
-        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Attack Ratio:");
             let mut ratio = state.attack_ratio;
             if ui

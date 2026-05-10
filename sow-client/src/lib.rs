@@ -20,10 +20,21 @@ fn player_label_scale(tiles_owned: u32, ref_tiles: f32, max_scale: f32) -> f32 {
 
 
 pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
-
-    
-        
-    
+    #[cfg(target_os = "android")]
+    {
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_max_level(log::LevelFilter::Debug)
+                .with_tag("sow-client")
+        );
+        std::panic::set_hook(Box::new(|info| {
+            log::error!("PANIC: {}", info);
+        }));
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = env_logger::builder().filter_level(log::LevelFilter::Info).try_init();
+    }
     // ── Simulation ──────────────────────────────────────────────────────────
     let mut map_w: u32 = 800;
     let mut map_h: u32 = 600;
@@ -54,17 +65,26 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut turn_queue = std::collections::VecDeque::new();
     let mut my_player_id: Option<u16> = None;
     let mut my_lobby_id: Option<u64> = None;
-    let (map_tx, map_rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+    let (map_tx, map_rx) = crossbeam_channel::unbounded::<Result<Vec<u8>, String>>();
     type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
     let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
+    let mut pending_start_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
-    // Do NOT auto-connect on startup with block_on! 
-    // On Android, connect_async to 127.0.0.1 can hang indefinitely and block the UI thread, causing a white screen.
-    // The user can connect via the Main Menu UI.
-    let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string());
+    let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
+
+    let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "ws://74.208.246.177:25565".to_string());
     app.main_menu_state.server_address = ws_url.clone();
-    app.main_menu_state.is_connecting = false;
-    app.main_menu_state.is_connected = false;
+    
+    log::info!("Auto-connecting to {}...", ws_url);
+    app.main_menu_state.is_connecting = true;
+    let url_clone = ws_url.clone();
+    let tx = connect_tx.clone();
+    tokio_rt.spawn(async move {
+        match SowClient::connect(&url_clone).await {
+            Ok(c) => { let _ = tx.send(Ok(c)); }
+            Err(e) => { let _ = tx.send(Err(e.to_string())); }
+        }
+    });
 
     // ── Camera state ────────────────────────────────────────────────────────
     let mut camera_x: f32 = 0.0;
@@ -108,11 +128,17 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
             }
             Event::Resumed => {
                 let win = window.get_or_insert_with(|| {
-                    winit::window::WindowBuilder::new()
+                    #[cfg(any(target_os = "android", target_family = "wasm"))]
+                    let builder = winit::window::WindowBuilder::new()
+                        .with_title("Shadows of War")
+                        .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+
+                    #[cfg(not(any(target_os = "android", target_family = "wasm")))]
+                    let builder = winit::window::WindowBuilder::new()
                         .with_title("Shadows of War — Native")
-                        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
-                        .build(elwt)
-                        .unwrap()
+                        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+
+                    builder.build(elwt).unwrap()
                 });
                 
                 if surface.is_none() {
@@ -120,6 +146,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     let s = render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1));
                     screen_w = sz.width as f32;
                     screen_h = sz.height as f32;
+                    raw_input.screen_rect = Some(Rect::from_min_size(
+                        Pos2::ZERO,
+                        Vec2::new(screen_w, screen_h)
+                    ));
                     let format = s.info().format;
                     
                     if let Some(sp) = prev_sync_point.take() {
@@ -383,6 +413,27 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
 
                             // ── UI UPDATE ───────────────────────────────────────
+                            let mut sf = window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+                            if cfg!(any(target_os = "android", target_family = "wasm")) && sf < 1.5 && screen_h > 800.0 {
+                                sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
+                            }
+                            
+                            egui_ctx.set_pixels_per_point(sf);
+                            raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::Vec2::new(screen_w / sf, screen_h / sf)
+                            ));
+                            
+                            for ev in &mut raw_input.events {
+                                match ev {
+                                    egui::Event::PointerMoved(pos) | egui::Event::PointerButton { pos, .. } => {
+                                        pos.x /= sf;
+                                        pos.y /= sf;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            
                             raw_input.predicted_dt = 1.0 / 60.0;
                             let egui_output = egui_ctx.run_ui(raw_input.clone(), |ctx| {
                                 if app.phase == ClientPhase::Playing {
@@ -513,19 +564,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             app.phase = ClientPhase::Playing;
                                         }
                                         UiAction::ConnectToServer(addr) => {
-                                            match tokio_rt.block_on(async { SowClient::connect(&addr).await }) {
-                                                Ok(client) => {
-                                                    log::info!("Connected to server!");
-                                                    net_client = Some(client);
-                                                    app.main_menu_state.is_connected = true;
-                                                    app.main_menu_state.is_connecting = false;
+                                            app.main_menu_state.is_connecting = true;
+                                            let url_clone = addr.clone();
+                                            let tx = connect_tx.clone();
+                                            tokio_rt.spawn(async move {
+                                                match SowClient::connect(&url_clone).await {
+                                                    Ok(c) => { let _ = tx.send(Ok(c)); }
+                                                    Err(e) => { let _ = tx.send(Err(e.to_string())); }
                                                 }
-                                                Err(e) => {
-                                                    log::error!("Failed to connect: {}", e);
-                                                    app.main_menu_state.is_connected = false;
-                                                    app.main_menu_state.is_connecting = false;
-                                                }
-                                            }
+                                            });
                                         }
                                         UiAction::JoinLobby(id) => {
                                             let join_msg = sow_core::protocol::ClientMessage::Join {
@@ -604,9 +651,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             if let Some(ref mut gp) = gui_painter {
                                 let screen_desc = blade_egui::ScreenDescriptor {
                                     physical_size: (screen_w as u32, screen_h as u32),
-                                    scale_factor: 1.0,
+                                    scale_factor: sf,
                                 };
-                                let paint_jobs = egui_ctx.tessellate(egui_output.shapes, 1.0);
+                                let paint_jobs = egui_ctx.tessellate(egui_output.shapes, sf);
                                 gp.update_textures(
                                     &mut render_ctx.command_encoder,
                                     &egui_output.textures_delta,
@@ -642,67 +689,33 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
             Event::AboutToWait => {
                 let now = Instant::now();
                 
+                if let Ok(res) = connect_rx.try_recv() {
+                    match res {
+                        Ok(client) => {
+                            log::info!("Connected to server!");
+                            net_client = Some(client);
+                            app.main_menu_state.is_connected = true;
+                            app.main_menu_state.is_connecting = false;
+                        }
+                        Err(e) => {
+                            log::error!("Failed to connect: {}", e);
+                            app.main_menu_state.is_connected = false;
+                            app.main_menu_state.is_connecting = false;
+                        }
+                    }
+                }
+                
                 // Process network messages
                 if let Some(c) = net_client.as_ref() {
                     while let Ok(msg) = c.rx.try_recv() {
                         if let Ok(start_msg) =
                             serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
                         {
-                            log::info!("Received ServerStartMessage; entering match");
-                            log::info!("Received ServerStartMessage; computing heavy init in background");
-                            app.phase = sow_ui::app::ClientPhase::Loading;
-                            app.main_menu_state.is_waiting = false;
-                            app.main_menu_state.pending_join_lobby_id = None;
-                            app.main_menu_state.joined_lobby_id = None;
-                            my_player_id = start_msg.my_player_id;
-                            
-                            app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
-                            app.loading_state.progress = 0.1;
-
-                            let cached_map = app.main_menu_state.cached_map.take();
-                            let start_msg_clone = start_msg.clone();
-                            let tx = engine_init_tx.clone();
-
-                            std::thread::spawn(move || {
-                                let w = start_msg_clone.config.map_width;
-                                let h = start_msg_clone.config.map_height;
-                                let mut state = sow_core::game::GameState::new(
-                                    start_msg_clone.seed,
-                                    w,
-                                    h,
-                                    start_msg_clone.config.clone(),
-                                );
-                                
-                                if let Some(bytes) = cached_map {
-                                    if bytes.len() == state.map.terrain.len() {
-                                        // Optimize: copy via transparent casting instead of byte-by-byte enumeration
-                                        // MapTile is a bitfield(u8) which is repr(transparent) equivalent over u8.
-                                        // We can safely transmute or cast the slice.
-                                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
-                                        unsafe {
-                                            std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len());
-                                        }
-                                    } else {
-                                        // Fallback if size mismatch
-                                        for (i, &b) in bytes.iter().enumerate() {
-                                            if i < state.map.terrain.len() {
-                                                state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    log::error!("Cached map data not found! Terrain will be empty.");
-                                }
-
-                                let water = sow_core::water_components::WaterComponents::compute(&state.map);
-                                let _ = tx.send((state, water, start_msg_clone));
-                            });
-
-                            turn_queue.clear();
-                            needs_first_upload = true;
+                            log::info!("Received ServerStartMessage; queuing for engine init until map finishes downloading");
+                            pending_start_msg = Some(start_msg);
                             continue;
                         }
-
+                        
                         if let Ok(turn_msg) =
                             serde_json::from_str::<sow_core::protocol::ServerTurnMessage>(&msg)
                         {
@@ -779,22 +792,27 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             app.main_menu_state.is_downloading_map = true;
                             app.main_menu_state.cached_map = None;
                             std::thread::spawn(move || {
-                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "http://127.0.0.1:25566/maps".to_string());
+                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
                                 let url = format!("{}/{}/map.bin", maps_base.trim_end_matches('/'), map_name);
                                 log::info!("Downloading map from: {}", url);
-                                if let Ok(resp) = ureq::get(&url).call() {
-                                    let len = resp.header("Content-Length")
-                                        .and_then(|s| s.parse::<usize>().ok())
-                                        .unwrap_or(0);
-                                    let mut bytes: Vec<u8> = Vec::with_capacity(len);
-                                    if resp.into_reader().read_to_end(&mut bytes).is_ok() && !bytes.is_empty() {
-                                        log::info!("Downloaded {} bytes", bytes.len());
-                                        let _ = tx.send(bytes);
-                                    } else {
-                                        log::error!("Failed to read map body");
+                                match ureq::get(&url).call() {
+                                    Ok(resp) => {
+                                        let len = resp.header("Content-Length")
+                                            .and_then(|s| s.parse::<usize>().ok())
+                                            .unwrap_or(0);
+                                        let mut bytes: Vec<u8> = Vec::with_capacity(len);
+                                        if resp.into_reader().read_to_end(&mut bytes).is_ok() && !bytes.is_empty() {
+                                            log::info!("Downloaded {} bytes", bytes.len());
+                                            let _ = tx.send(Ok(bytes));
+                                        } else {
+                                            log::error!("Failed to read map body");
+                                            let _ = tx.send(Err("Failed to read map body".to_string()));
+                                        }
                                     }
-                                } else {
-                                    log::error!("Failed to fetch map from HTTP server");
+                                    Err(e) => {
+                                        log::error!("Failed to fetch map from HTTP server: {:?}", e);
+                                        let _ = tx.send(Err(format!("HTTP Error: {}", e)));
+                                    }
                                 }
                             });
                             
@@ -804,10 +822,78 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 }
                 
                 // Poll map download channel
-                if let Ok(bytes) = map_rx.try_recv() {
-                    log::info!("Map download completed successfully.");
-                    app.main_menu_state.cached_map = Some(bytes);
-                    app.main_menu_state.is_downloading_map = false;
+                if let Ok(res) = map_rx.try_recv() {
+                    match res {
+                        Ok(bytes) => {
+                            log::info!("Map download completed successfully.");
+                            app.main_menu_state.cached_map = Some(bytes);
+                            app.main_menu_state.is_downloading_map = false;
+                        }
+                        Err(e) => {
+                            log::error!("Map download aborted: {}", e);
+                            app.main_menu_state.is_downloading_map = false;
+                            // Optionally return to main menu or show error
+                            app.phase = ClientPhase::MainMenu;
+                            app.main_menu_state.is_waiting = false;
+                            app.main_menu_state.pending_join_lobby_id = None;
+                            app.main_menu_state.joined_lobby_id = None;
+                        }
+                    }
+                }
+
+                if let Some(start_msg) = pending_start_msg.take() {
+                    if app.main_menu_state.is_downloading_map {
+                        pending_start_msg = Some(start_msg);
+                    } else {
+                        log::info!("Received ServerStartMessage; entering match");
+                        log::info!("Received ServerStartMessage; computing heavy init in background");
+                        app.phase = sow_ui::app::ClientPhase::Loading;
+                        app.main_menu_state.is_waiting = false;
+                        app.main_menu_state.pending_join_lobby_id = None;
+                        app.main_menu_state.joined_lobby_id = None;
+                        my_player_id = start_msg.my_player_id;
+                        
+                        app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
+                        app.loading_state.progress = 0.1;
+
+                        let cached_map = app.main_menu_state.cached_map.take();
+                        let start_msg_clone = start_msg.clone();
+                        let tx = engine_init_tx.clone();
+
+                        std::thread::spawn(move || {
+                            let w = start_msg_clone.config.map_width;
+                            let h = start_msg_clone.config.map_height;
+                            let mut state = sow_core::game::GameState::new(
+                                start_msg_clone.seed,
+                                w,
+                                h,
+                                start_msg_clone.config.clone(),
+                            );
+                            
+                            if let Some(bytes) = cached_map {
+                                if bytes.len() == state.map.terrain.len() {
+                                    let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                                    unsafe {
+                                        std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len());
+                                    }
+                                } else {
+                                    for (i, &b) in bytes.iter().enumerate() {
+                                        if i < state.map.terrain.len() {
+                                            state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                                        }
+                                    }
+                                }
+                            } else {
+                                log::error!("Cached map data not found! Terrain will be empty.");
+                            }
+
+                            let water = sow_core::water_components::WaterComponents::compute(&state.map);
+                            let _ = tx.send((state, water, start_msg_clone));
+                        });
+
+                        turn_queue.clear();
+                        needs_first_upload = true;
+                    }
                 }
                 // Poll engine init channel
                 if app.phase == sow_ui::app::ClientPhase::Loading {

@@ -25,3 +25,4 @@ wasm-pack*.*
 .cursor/
 blade/
 .idea/
+scripts/__pycache__/
