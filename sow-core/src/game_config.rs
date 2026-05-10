@@ -190,8 +190,8 @@ impl Default for GameConfig {
             
             // Rendering & Shaders (Visual Adjustments)
             shader_terrain_sharpness: 0.0001, // Soft topographical bump map
-            shader_interior_alpha: 0.9,     // High opacity, terrain shows through slightly
-            shader_border_alpha: 0.85,       // High opacity solid border lines
+            shader_interior_alpha: 0.95,     // High opacity, terrain shows through slightly
+            shader_border_alpha: 0.95,       // High opacity solid border lines
             
             // User Interface & HUD
             ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font

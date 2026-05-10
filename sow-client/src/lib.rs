@@ -1,8 +1,4 @@
-use winit::{
-    event::{Event, WindowEvent, MouseButton, ElementState, MouseScrollDelta},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-};
+use winit::event::{Event, WindowEvent, MouseButton, ElementState, MouseScrollDelta};
 use sow_render::{RenderContext, MapRenderer, MapGlobals};
 use sow_core::engine::SowEngine;
 use sow_core::game::GameState;
@@ -23,24 +19,11 @@ fn player_label_scale(tiles_owned: u32, ref_tiles: f32, max_scale: f32) -> f32 {
 }
 
 
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
-    use winit::platform::android::EventLoopBuilderExtAndroid;
-    use winit::event_loop::EventLoopBuilder;
-    use winit::event::TouchPhase;
+pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
-    env_logger::init();
-
-    let event_loop = EventLoopBuilder::default().with_android_app(app).build().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
-
-    let window = WindowBuilder::new()
-        .with_title("Shadows of War — Native")
-        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
-        .build(&event_loop)
-        .unwrap();
-
+    
+        
+    
     // ── Simulation ──────────────────────────────────────────────────────────
     let mut map_w: u32 = 800;
     let mut map_h: u32 = 600;
@@ -57,6 +40,7 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     let mut surface: Option<gpu::Surface> = None;
     let mut map_renderer: Option<MapRenderer> = None;
     let mut gui_painter: Option<GuiPainter> = None;
+    let mut window: Option<winit::window::Window> = None;
 
     // ── UI State ────────────────────────────────────────────────────────────
     let mut app = ClientApp::new();
@@ -74,20 +58,13 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
     let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
 
-    // Auto-connect on startup
+    // Do NOT auto-connect on startup with block_on! 
+    // On Android, connect_async to 127.0.0.1 can hang indefinitely and block the UI thread, causing a white screen.
+    // The user can connect via the Main Menu UI.
     let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string());
     app.main_menu_state.server_address = ws_url.clone();
-    let addr = ws_url.as_str();
-    app.main_menu_state.is_connecting = true;
-    if let Ok(client) = tokio_rt.block_on(async { SowClient::connect(addr).await }) {
-        log::info!("Auto-connected to server!");
-        net_client = Some(client);
-        app.main_menu_state.is_connected = true;
-        app.main_menu_state.is_connecting = false;
-    } else {
-        log::warn!("Failed to auto-connect to {}", addr);
-        app.main_menu_state.is_connecting = false;
-    }
+    app.main_menu_state.is_connecting = false;
+    app.main_menu_state.is_connected = false;
 
     // ── Camera state ────────────────────────────────────────────────────────
     let mut camera_x: f32 = 0.0;
@@ -130,9 +107,17 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                 }
             }
             Event::Resumed => {
+                let win = window.get_or_insert_with(|| {
+                    winit::window::WindowBuilder::new()
+                        .with_title("Shadows of War — Native")
+                        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+                        .build(elwt)
+                        .unwrap()
+                });
+                
                 if surface.is_none() {
-                    let sz = window.inner_size();
-                    let s = render_ctx.create_surface(&window, sz.width.max(1), sz.height.max(1));
+                    let sz = win.inner_size();
+                    let s = render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1));
                     screen_w = sz.width as f32;
                     screen_h = sz.height as f32;
                     let format = s.info().format;
@@ -149,7 +134,10 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                     surface = Some(s);
                 }
             }
-            Event::WindowEvent { event, window_id } if window_id == window.id() => {
+            Event::WindowEvent { event, window_id } => {
+                if window.is_none() || window.as_ref().unwrap().id() != window_id {
+                    return;
+                }
                 match event {
                     WindowEvent::CloseRequested => {
                         // ── Clean shutdown: wait for GPU, destroy resources ──
@@ -191,7 +179,9 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                                 Pos2::ZERO,
                                 Vec2::new(screen_w, screen_h)
                             ));
-                            window.request_redraw();
+                            if let Some(win) = window.as_ref() {
+                                win.request_redraw();
+                            }
                         }
                     }
                     WindowEvent::KeyboardInput { event, .. } => {
@@ -277,6 +267,7 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                     }
                     
                     WindowEvent::Touch(touch) => {
+                        use winit::event::TouchPhase;
                         let pressed = touch.phase == TouchPhase::Started;
                         let released = touch.phase == TouchPhase::Ended || touch.phase == TouchPhase::Cancelled;
                         
@@ -350,7 +341,9 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                     }
                     WindowEvent::RedrawRequested => {
                         if let Some(ref mut s) = surface {
-                            window.pre_present_notify();
+                            if let Some(win) = window.as_ref() {
+                                win.pre_present_notify();
+                            }
                             let frame = s.acquire_frame();
 
                             if let Some(sp) = prev_sync_point.take() {
@@ -917,9 +910,43 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                 } else {
                     last_tick = now;
                 }
-                window.request_redraw();
+                if let Some(win) = window.as_ref() {
+                    win.request_redraw();
+                }
             }
             _ => {}
         }
     }).unwrap();
+}
+
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    use winit::platform::android::EventLoopBuilderExtAndroid;
+    use winit::event_loop::EventLoopBuilder;
+
+    // Redirect all crashes and logs to a physical file so we can see what's failing without ADB!
+    if let Some(ext_path) = app.external_data_path() {
+        let _ = std::fs::create_dir_all(&ext_path);
+        let log_file = ext_path.join("sow_crash.txt");
+        if let Ok(file) = std::fs::File::create(&log_file) {
+            use std::os::unix::io::AsRawFd;
+            let fd = file.as_raw_fd();
+            unsafe {
+                libc::dup2(fd, libc::STDERR_FILENO);
+                libc::dup2(fd, libc::STDOUT_FILENO);
+            }
+        }
+    }
+
+    // Now env_logger will write to the redirected stderr instead of logcat!
+    env_logger::builder().filter_level(log::LevelFilter::Info).init();
+
+    log::info!("SOW ENGINE STARTING...");
+
+    let event_loop = EventLoopBuilder::default().with_android_app(app).build().unwrap();
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+
+    run_game(event_loop);
 }

@@ -4,7 +4,6 @@ members = [
     "sow-render",
     "sow-net",
     "sow-client",
-    "sow-android",
     "sow-server",
     "sow-ui",
     "sow-tools",

@@ -3055,7 +3055,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sow-android"
+name = "sow-client"
 version = "0.1.0"
 dependencies = [
  "android_logger",
@@ -3064,27 +3064,8 @@ dependencies = [
  "brotli",
  "crossbeam-channel",
  "egui",
- "log",
- "serde_json",
- "sow-core",
- "sow-net",
- "sow-render",
- "sow-ui",
- "tokio",
- "ureq",
- "winit",
-]
-
-[[package]]
-name = "sow-client"
-version = "0.1.0"
-dependencies = [
- "blade-egui",
- "blade-graphics",
- "brotli",
- "crossbeam-channel",
- "egui",
  "env_logger",
+ "libc",
  "log",
  "serde_json",
  "sow-core",

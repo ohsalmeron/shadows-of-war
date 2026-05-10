@@ -33,12 +33,27 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
             ui.label("Attack Ratio:");
             let mut ratio = state.attack_ratio;
-            if ui.add(Slider::new(&mut ratio, 0.01..=1.0).text("")).changed() {
+            if ui
+                .add(Slider::new(&mut ratio, 0.01..=1.0).show_value(false).text(""))
+                .changed()
+            {
                 action = Some(UiAction::SetAttackRatio(ratio));
             }
-            if ui.button("10%").clicked() { action = Some(UiAction::SetAttackRatio(0.1)); }
-            if ui.button("50%").clicked() { action = Some(UiAction::SetAttackRatio(0.5)); }
-            if ui.button("100%").clicked() { action = Some(UiAction::SetAttackRatio(1.0)); }
+            if ui.button("1%").clicked() {
+                action = Some(UiAction::SetAttackRatio(0.01));
+            }
+            if ui.button("10%").clicked() {
+                action = Some(UiAction::SetAttackRatio(0.1));
+            }
+            if ui.button("25%").clicked() {
+                action = Some(UiAction::SetAttackRatio(0.25));
+            }
+            if ui.button("50%").clicked() {
+                action = Some(UiAction::SetAttackRatio(0.5));
+            }
+            if ui.button("100%").clicked() {
+                action = Some(UiAction::SetAttackRatio(1.0));
+            }
         });
     });
 

@@ -24,3 +24,4 @@ eslint_out.txt
 wasm-pack*.*
 .cursor/
 blade/
+.idea/

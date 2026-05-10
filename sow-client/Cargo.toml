@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Shadows of War"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 sow-render = { workspace = true }
@@ -11,7 +15,7 @@ blade-graphics = { workspace = true }
 
 log = { workspace = true }
 env_logger = { workspace = true }
-winit = "0.29.15"
+winit = { version = "0.29.15", features = ["android-native-activity", "rwh_06"] }
 sow-ui = { path = "../sow-ui" }
 egui = "0.34"
 blade-egui = { workspace = true }
@@ -21,3 +25,34 @@ sow-net = { workspace = true }
 brotli = "8.0.2"
 ureq = "2"
 crossbeam-channel = "0.5.15"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.14"
+libc = "0.2"
+
+[package.metadata.android]
+build_targets = ["aarch64-linux-android"]
+permissions = ["android.permission.INTERNET"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 24
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "Shadows of War"
+
+[package.metadata.android.application.activity]
+label = "Shadows of War"
+exported = true
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+config_changes = "density|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|uiMode"
+
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.MAIN"]
+categories = ["android.intent.category.LAUNCHER"]
+
+[package.metadata.android.signing.release]
+path = "../keystores/release.keystore"
+keystore_password = "shadowswar"
+key_password = "shadowswar"
+key_alias = "shadows"
