@@ -190,7 +190,7 @@ fn start_match(lobby: &mut ServerLobby) {
     lobby.ready_players.clear();
     lobby.seed = rand::random();
 
-    let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "OpenFrontIO/resources/maps".to_string());
+    let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "../OpenFrontIO/resources/maps".to_string());
     let map_dir = std::path::Path::new(&root).join(&lobby.config.map_name);
     let manifest_path = map_dir.join("manifest.json");
     let bin_path = map_dir.join("map.bin");

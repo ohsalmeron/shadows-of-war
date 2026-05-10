@@ -78,15 +78,15 @@ impl Default for GameConfig {
             map_height: 1672,
             random_spawn: false,
             tick_rate_ms: 100.0,
-            attack_cost_enemy: 3.0,
-            attack_cost_neutral: 1.0,
-            terrain_multiplier_highland: 1.5,
-            terrain_multiplier_mountain: 2.0,
-            bot_attack_interval_ticks: 32,
-            starting_troops: 5000.0,
-            starting_gold: 500.0,
+            attack_cost_enemy: 4.0,
+            attack_cost_neutral: 1.5,
+            terrain_multiplier_highland: 1.75,
+            terrain_multiplier_mountain: 3.5,
+            bot_attack_interval_ticks: 64,
+            starting_troops: 100.0,
+            starting_gold: 100.0,
             gold_base_income: 8.0,
-            troop_base_income: 250.0,
+            troop_base_income: 100.0,
             troop_per_tile: 4.0,
             max_troops_base: 1000.0,
             max_troops_scale: 500.0,
@@ -96,9 +96,9 @@ impl Default for GameConfig {
             gold_income_per_city_level: 1.0,
             
             // Visual Defaults (mimicking OpenFront style for readability)
-            shader_terrain_sharpness: 0.01, // Much softer topographical bump map
-            shader_interior_alpha: 0.35, // Brighter interior (terrain shows through more)
-            shader_border_alpha: 1.0, // Solid border
+            shader_terrain_sharpness: 0.005, // Much softer topographical bump map
+            shader_interior_alpha: 0.75, // Brighter interior (terrain shows through more)
+            shader_border_alpha: 0.75, // Solid border
         }
     }
 }
