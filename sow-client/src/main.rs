@@ -36,7 +36,7 @@ fn main() {
     let mut engine = SowEngine::new(state, water);
 
     engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-    engine.spawn_random_bots(4);
+    engine.spawn_ai(0, 4);
 
     // ── Renderer ────────────────────────────────────────────────────────────
     let mut render_ctx = RenderContext::new();
@@ -282,6 +282,10 @@ fn main() {
                                     time: start_time.elapsed().as_secs_f32(),
                                     screen_size: [screen_w, screen_h],
                                     map_size: [map_w as f32, map_h as f32],
+                                    visual_terrain_sharpness: engine.state.config.shader_terrain_sharpness,
+                                    visual_interior_alpha: engine.state.config.shader_interior_alpha,
+                                    visual_border_alpha: engine.state.config.shader_border_alpha,
+                                    padding: 0.0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -313,24 +317,34 @@ fn main() {
                                                     format!("{:.0}", troops)
                                                 };
                                                 
-                                                let text = format!("{}  ⚔ {}", player.name, troops_str);
-                                                
-                                                let pos = egui::pos2(screen_x, screen_y);
-                                                let galley = painter.layout_no_wrap(
-                                                    text,
+                                                let name_galley = painter.layout_no_wrap(
+                                                    player.name.clone(),
                                                     egui::FontId::proportional(14.0),
                                                     egui::Color32::WHITE
                                                 );
+                                                let troops_galley = painter.layout_no_wrap(
+                                                    format!("⚔ {}", troops_str),
+                                                    egui::FontId::proportional(14.0),
+                                                    egui::Color32::WHITE
+                                                );
+
+                                                let w = name_galley.rect.width().max(troops_galley.rect.width());
+                                                let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
                                                 
-                                                let rect = galley.rect.translate(egui::vec2(pos.x - galley.rect.width() / 2.0, pos.y - galley.rect.height() / 2.0));
-                                                let bg_rect = rect.expand(6.0);
+                                                let pos = egui::pos2(screen_x, screen_y);
+                                                let bg_rect = egui::Rect::from_center_size(pos, egui::vec2(w, h)).expand(6.0);
                                                 
                                                 painter.rect_filled(
                                                     bg_rect,
                                                     4.0,
                                                     egui::Color32::from_black_alpha(200)
                                                 );
-                                                painter.galley(rect.min, galley, egui::Color32::WHITE);
+                                                
+                                                let name_pos = egui::pos2(pos.x - name_galley.rect.width() / 2.0, pos.y - h / 2.0);
+                                                let troops_pos = egui::pos2(pos.x - troops_galley.rect.width() / 2.0, pos.y - h / 2.0 + name_galley.rect.height() + 2.0);
+                                                
+                                                painter.galley(name_pos, name_galley, egui::Color32::WHITE);
+                                                painter.galley(troops_pos, troops_galley, egui::Color32::WHITE);
                                             }
                                         }
                                     }
@@ -414,7 +428,7 @@ fn main() {
                                             let water = WaterComponents::compute(&state.map);
                                             engine = SowEngine::new(state, water);
                                             engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-                                            engine.spawn_random_bots(4);
+                                            engine.spawn_ai(0, 4);
                                             turn_queue.clear();
                                             needs_first_upload = true;
                                             needs_map_upload = true;
@@ -595,7 +609,7 @@ fn main() {
                             let water = WaterComponents::compute(&state.map);
                             engine = SowEngine::new(state, water);
                             engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-                            engine.spawn_random_bots(4);
+                            engine.spawn_ai(0, 4);
                             turn_queue.clear();
                             needs_first_upload = true;
                             continue;
@@ -668,7 +682,7 @@ fn main() {
                         for p in start_msg.players {
                             engine.spawn_human(p.id, p.name.clone(), p.color);
                         }
-                        engine.spawn_random_bots(engine.state.config.bot_count);
+                        engine.spawn_ai(engine.state.config.nation_count, engine.state.config.bot_count);
 
                         map_w = start_msg.config.map_width;
                         map_h = start_msg.config.map_height;

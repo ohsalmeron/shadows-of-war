@@ -11,6 +11,10 @@ pub struct MapGlobals {
     pub time: f32,
     pub screen_size: [f32; 2],
     pub map_size: [f32; 2],
+    pub visual_terrain_sharpness: f32,
+    pub visual_interior_alpha: f32,
+    pub visual_border_alpha: f32,
+    pub padding: f32,
 }
 
 #[derive(blade_macros::ShaderData)]

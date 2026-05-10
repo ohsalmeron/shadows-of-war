@@ -3,9 +3,9 @@ mod lobby;
 use futures_util::{SinkExt, StreamExt};
 use lobby::{master_tick, ServerLobby, build_lobby_broadcast, join_player, leave_player};
 use sow_core::protocol::{
-    ClientMessage, ServerJoinAckMessage,
-    ServerJoinFailedMessage, ServerLobbiesBroadcastMessage, ServerLobbyClosedMessage,
-    ServerStartMessage, ServerTurnMessage, Turn,
+    ServerJoinAckMessage,
+    ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
+    ServerStartMessage,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -153,7 +153,7 @@ async fn main() {
 
                                     if let Ok(msg) = serde_json::from_str::<sow_core::protocol::ClientMessage>(text) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer, target_lobby_id, preferred_map } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, preferred_map } => {
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
                                                     client_tx: direct_tx.clone(),

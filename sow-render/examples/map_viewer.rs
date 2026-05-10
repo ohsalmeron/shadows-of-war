@@ -63,8 +63,13 @@ fn main() {
     let mut globals = MapGlobals {
         camera_pos: [0.0, 0.0],
         zoom: 1.0,
-        screen_size: [800.0, 600.0],
-        pad: [0.0; 3],
+        time: 0.0,
+        screen_size: [1280.0, 720.0],
+        map_size: [map.width as f32, map.height as f32],
+        visual_terrain_sharpness: 0.05,
+        visual_interior_alpha: 0.35,
+        visual_border_alpha: 1.0,
+        padding: 0.0,
     };
 
     let mut prev_sync_point: Option<gpu::SyncPoint> = None;

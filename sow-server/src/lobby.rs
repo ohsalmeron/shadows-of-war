@@ -247,7 +247,7 @@ fn start_match(lobby: &mut ServerLobby) {
             spawn_y: sy,
         });
     }
-    engine.spawn_random_bots(lobby.config.bot_count);
+    engine.spawn_ai(lobby.config.nation_count, lobby.config.bot_count);
     lobby.engine = Some(engine);
     lobby.countdown_secs = 10.0; // Max 10 seconds wait for clients to load
     lobby.phase = LobbyPhase::Loading;

@@ -4,6 +4,10 @@ struct Globals {
     time: f32,
     screen_size: vec2<f32>,
     map_size: vec2<f32>,
+    visual_terrain_sharpness: f32,
+    visual_interior_alpha: f32,
+    visual_border_alpha: f32,
+    padding: f32,
 }
 
 var<uniform> globals: Globals;
@@ -67,7 +71,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Topographical shading (bump mapping approximation, sun from top-left)
     let dx = mag_center - mag_left;
     let dy = mag_center - mag_up;
-    let shade = (dx + dy) * 0.15; // Shading intensity
+    let shade = (dx + dy) * globals.visual_terrain_sharpness; // Configurable shading intensity
 
     var terrain_color = vec4<f32>(0.0);
     
@@ -121,16 +125,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             player_color = vec4<f32>(1.0, 1.0, 0.267, 1.0); // #FFFF44
         } else if owner_id == 103u {
             player_color = vec4<f32>(0.667, 0.267, 0.667, 1.0); // #AA44AA
+        } else if owner_id > 103u {
+            // For bots/tribes, their color is encoded (just a fallback here, the actual colors are handled below if you pass them, 
+            // but map.wgsl only knows pre-coded colors unless we use a buffer. Currently, we just use a generic color for unknown bots, but wait... 
+            // The user wanted "soft colors" for tribes. In the wgsl, the color index is just `owner_id`. If we don't have a color buffer, all bots over 103 are white!
+            // Let's implement a pseudo-random soft color based on owner_id for tribes.
+            let id = f32(owner_id);
+            // Generate a soft earthy/pastel color based on the ID
+            let r = 0.4 + 0.3 * fract(sin(id * 12.9898) * 43758.5453);
+            let g = 0.4 + 0.3 * fract(sin(id * 78.233) * 43758.5453);
+            let b = 0.4 + 0.3 * fract(sin(id * 39.346) * 43758.5453);
+            player_color = vec4<f32>(r, g, b, 1.0);
         }
 
-        // Mix terrain and player color to make terrain visible!
-        base_color = mix(terrain_color, player_color, 0.55);
-
         if is_border {
-            // Strong bright border for owned territory
-            return min(base_color * 1.5 + vec4<f32>(0.2, 0.2, 0.2, 0.0), vec4<f32>(1.0));
+            // Strong solid border for owned territory
+            base_color = mix(terrain_color, player_color, globals.visual_border_alpha);
+            // Slight highlight to outline
+            return min(base_color * 1.2, vec4<f32>(1.0));
         } else {
-            return base_color * 0.85;
+            // Brighter interiors (terrain shows through more)
+            base_color = mix(terrain_color, player_color, globals.visual_interior_alpha);
+            return base_color;
         }
     }
 

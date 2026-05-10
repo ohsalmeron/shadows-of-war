@@ -59,26 +59,31 @@ pub struct GameConfig {
     pub factory_income_bonus_per_level: f64,
     pub factory_income_bonus_cap: f64,
     pub gold_income_per_city_level: f64,
+    
+    // Visual Shader Settings
+    pub shader_terrain_sharpness: f32,
+    pub shader_interior_alpha: f32,
+    pub shader_border_alpha: f32,
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
             max_players: 12,
-            bot_count: 100, // Tribes (Bots)
+            bot_count: 400, // Tribes (Bots)
             nation_count: 50, // Nations (Complex AI)
             bot_difficulty: BotDifficulty::Vanilla,
             map_name: "europe".to_string(),
             map_width: 2904,
             map_height: 1672,
             random_spawn: false,
-            tick_rate_ms: 75.0,
-            attack_cost_enemy: 2.0,
+            tick_rate_ms: 100.0,
+            attack_cost_enemy: 3.0,
             attack_cost_neutral: 1.0,
             terrain_multiplier_highland: 1.5,
             terrain_multiplier_mountain: 2.0,
             bot_attack_interval_ticks: 32,
-            starting_troops: 50000.0,
+            starting_troops: 5000.0,
             starting_gold: 500.0,
             gold_base_income: 8.0,
             troop_base_income: 250.0,
@@ -89,6 +94,11 @@ impl Default for GameConfig {
             factory_income_bonus_per_level: 0.15,
             factory_income_bonus_cap: 2.00,
             gold_income_per_city_level: 1.0,
+            
+            // Visual Defaults (mimicking OpenFront style for readability)
+            shader_terrain_sharpness: 0.01, // Much softer topographical bump map
+            shader_interior_alpha: 0.35, // Brighter interior (terrain shows through more)
+            shader_border_alpha: 1.0, // Solid border
         }
     }
 }
