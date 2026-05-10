@@ -110,17 +110,17 @@ async fn main() {
         }
     });
 
-    let addr = "0.0.0.0:25565";
-    let listener = TcpListener::bind(addr).await.expect("Failed to bind");
+    let addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
+    let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
     // HTTP Static File Server for maps
     tokio::spawn(async move {
-        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "../OpenFrontIO/resources/maps".to_string());
+        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
         let app = axum::Router::new().nest_service("/maps", tower_http::services::ServeDir::new(root));
-        let http_addr = "0.0.0.0:25566";
+        let http_addr = std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
         log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
-        let listener = tokio::net::TcpListener::bind(http_addr).await.unwrap();
+        let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
     });
 

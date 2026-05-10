@@ -112,23 +112,23 @@ pub fn apply_theme(ctx: &Context) {
     let panel_border = Color32::from_rgba_unmultiplied(82, 87, 102, 242);
 
     visuals.widgets.noninteractive.bg_fill = nickname_field_bg();
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, nickname_field_border());
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, nickname_field_border());
     visuals.widgets.noninteractive.corner_radius = CornerRadius::same(6);
 
     visuals.widgets.inactive.bg_fill = menu_secondary_button();
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, panel_border);
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, panel_border);
     visuals.widgets.inactive.fg_stroke =
-        Stroke::new(1.0, Color32::from_rgba_unmultiplied(235, 240, 250, 255));
+        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(235, 240, 250, 255));
     visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
 
     visuals.widgets.hovered.bg_fill = menu_secondary_button_hover();
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, neon_cyan_hover);
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, neon_cyan_hover);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
 
     visuals.widgets.active.bg_fill = neon_cyan;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0, neon_cyan);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::BLACK);
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, neon_cyan);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::BLACK);
     visuals.widgets.active.corner_radius = CornerRadius::same(6);
 
     ctx.set_visuals(visuals);

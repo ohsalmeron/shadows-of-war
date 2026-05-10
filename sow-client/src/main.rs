@@ -68,7 +68,9 @@ fn main() {
     let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
 
     // Auto-connect on startup
-    let addr = "ws://127.0.0.1:25565";
+    let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string());
+    app.main_menu_state.server_address = ws_url.clone();
+    let addr = ws_url.as_str();
     app.main_menu_state.is_connecting = true;
     if let Ok(client) = tokio_rt.block_on(async { SowClient::connect(addr).await }) {
         log::info!("Auto-connected to server!");
@@ -373,7 +375,13 @@ fn main() {
                                                 format!("{:.0}", troops)
                                             };
                                             
-                                            let name_galley = painter.layout_no_wrap(player.name.clone(), font_id.clone(), egui::Color32::WHITE);
+                                            let display_name = if player.player_type == sow_core::player::PlayerType::Human {
+                                                format!("★ {}", player.name)
+                                            } else {
+                                                player.name.clone()
+                                            };
+                                            
+                                            let name_galley = painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE);
                                             let troops_galley = painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE);
                                             
                                             let w = name_galley.rect.width().max(troops_galley.rect.width());
@@ -382,9 +390,11 @@ fn main() {
                                             let bg_rect = egui::Rect::from_center_size(center, egui::vec2(w, h)).expand(6.0);
                                             painter.rect_filled(bg_rect, 4.0, egui::Color32::from_black_alpha(200));
                                             
-                                            // Thin colored accent line at top
-                                            let accent = egui::Rect::from_min_size(bg_rect.left_top(), egui::vec2(bg_rect.width(), 2.0));
-                                            painter.rect_filled(accent, 2.0, pc);
+                                            if is_nation_or_human {
+                                                // Thin colored accent line at top
+                                                let accent = egui::Rect::from_min_size(bg_rect.left_top(), egui::vec2(bg_rect.width(), 2.0));
+                                                painter.rect_filled(accent, 2.0, pc);
+                                            }
                                             
                                             let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
                                             let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
@@ -688,9 +698,8 @@ fn main() {
                             app.main_menu_state.is_downloading_map = true;
                             app.main_menu_state.cached_map = None;
                             std::thread::spawn(move || {
-                                // Extract IP from websocket address
-                                let ip = "127.0.0.1"; // TODO: parse from server_address
-                                let url = format!("http://{}:25566/maps/{}/map.bin", ip, map_name);
+                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "http://127.0.0.1:25566/maps".to_string());
+                                let url = format!("{}/{}/map.bin", maps_base.trim_end_matches('/'), map_name);
                                 log::info!("Downloading map from: {}", url);
                                 if let Ok(resp) = ureq::get(&url).call() {
                                     let len = resp.header("Content-Length")
@@ -758,6 +767,7 @@ fn main() {
                                 if player.tile_count > 0 && player.alive {
                                     let cx = player.sum_x as f32 / player.tile_count as f32;
                                     let cy = player.sum_y as f32 / player.tile_count as f32;
+                                    camera_zoom = 1.5;
                                     camera_x = screen_w * 0.5 - cx * camera_zoom;
                                     camera_y = screen_h * 0.5 - cy * camera_zoom;
                                 }

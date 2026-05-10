@@ -68,15 +68,19 @@ pub struct AttackExecution {
 
 impl AttackExecution {
     pub fn calc_priority(&mut self, num_owned_by_me: u32, terrain: TerrainType, tick: u64) -> i64 {
+        // Double the weight of terrain to make geography significantly impact expansion patterns
         let mag_x2 = match terrain {
             TerrainType::Land => 2,
-            TerrainType::Highland => 3,
-            TerrainType::Mountain => 4,
-            TerrainType::Water | TerrainType::Lake => 3, // Won't happen normally, but just in case
+            TerrainType::Highland => 6,  // Much slower to cross highlands
+            TerrainType::Mountain => 10, // Mountains heavily resist expansion
+            TerrainType::Water | TerrainType::Lake => 3,
         };
-        let r = self.rng.next_int(0, 7) as i64;
-        // Formula scaled by 4 to maintain OpenFront quartiles in integer space
-        (r + 10) * (4 - (num_owned_by_me as i64 * 2) + mag_x2) + (tick as i64 * 4)
+        
+        // Increase RNG variance for a less perfectly circular, more "tendril-like" organic spread
+        let r = self.rng.next_int(0, 15) as i64; 
+        
+        // Emphasize surrounding tiles to maintain a front line, but allow the RNG to occasionally punch through
+        (r + 5) * (6 - (num_owned_by_me as i64 * 3) + mag_x2) + (tick as i64 * 4)
     }
 }
 

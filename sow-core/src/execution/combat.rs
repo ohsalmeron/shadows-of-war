@@ -56,33 +56,28 @@ impl SowEngine {
         // Fast approximation of active frontier size without scanning the entire empire border
         let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 
+        let max_cap = self.state.config.max_tiles_per_tick;
+
         let mut max_tiles_f64 = if execution.target_owner == 0 {
-            // Neutral expansion speed: OpenFront parity (proportional to true border size)
-            (adjacent * 2.0).max(5.0).min(100.0) // Bounded organic growth
+            // Neutral expansion speed: proportional to true border size
+            (adjacent * 2.0).max(5.0).min(max_cap)
         } else {
-            // PvP expansion speed: ratio based
-            // Defensive clamp: troops CAN go negative when multiple attacks drain
-            // simultaneously before income restores them. Negative defender_troops
-            // would produce a negative ratio and (via clamp) identical power across
-            // platforms, BUT the intermediate float bits can diverge on
-            // ARM-WASM vs x86-WASM for negative/zero edge values.  Clamp first.
             let defender_troops = self.state
                 .player(execution.target_owner)
                 .map(|p| p.troops.max(0.0))
                 .unwrap_or(1.0)
                 .max(1.0);
             let ratio = execution.troops / defender_troops;
-
-            // OpenFront parity speed curve
-            let power = (ratio * 2.0).clamp(0.1, 0.5); 
-            (power * adjacent * 3.0).max(1.0).min(100.0) // Max 100 tiles/tick
+            let power = (ratio * 2.0).clamp(0.02, 0.5); 
+            (power * adjacent * 3.0).max(1.0).min(max_cap)
         };
 
-        // Dynamic Expansion Momentum (OpenFront parity):
-        // Speed scales dynamically with remaining troops in the attack.
-        // Massive troop counts drastically increase the processing boundary per tick.
-        let momentum = (execution.troops / 1000.0).clamp(1.0, 10.0);
+        // Speed scales with remaining troops. Higher momentum_divisor = slower ramp.
+        let momentum = (execution.troops / self.state.config.momentum_divisor).clamp(1.0, 5.0);
         max_tiles_f64 *= momentum;
+
+        // Apply global speed pacing multiplier
+        max_tiles_f64 *= self.state.config.global_speed_multiplier;
 
         // Determine actual integer number of tiles to process this tick (Fractional determinism)
         let mut tiles_to_conquer = max_tiles_f64.floor() as u32;

@@ -33,7 +33,7 @@ pub struct MainMenuState {
 impl Default for MainMenuState {
     fn default() -> Self {
         // Load available maps
-        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "OpenFrontIO/resources/maps".to_string());
+        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
         let mut available_maps = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&root) {
             for entry in entries.filter_map(|e| e.ok()) {
@@ -56,7 +56,8 @@ impl Default for MainMenuState {
             is_connecting: false,
             is_waiting: false,
             wait_timer_secs: 0.0,
-            server_address: "ws://127.0.0.1:25565".to_string(),
+            server_address: std::env::var("SOW_WS_URL")
+                .unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string()),
             lobbies: Vec::new(),
             player_name: "Commander".to_string(),
             pending_join_lobby_id: None,
@@ -121,7 +122,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState) -> Option<UiAction> 
 
             let panel_frame = Frame::new()
                 .fill(panel_bg())
-                .stroke(Stroke::new(1.5, menu_panel_border_glow()))
+                .stroke(Stroke::new(1.5_f32, menu_panel_border_glow()))
                 .corner_radius(CornerRadius::same(8))
                 .inner_margin(if compact { 18.0 } else { 24.0 });
 
@@ -280,7 +281,7 @@ fn draw_queue_overlay(
                         for name in &lobby.player_names {
                             Frame::new()
                                 .fill(menu_secondary_button())
-                                .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(82, 87, 102, 200)))
+                                .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 200)))
                                 .corner_radius(CornerRadius::same(6))
                                 .inner_margin(Margin::same(10))
                                 .show(ui, |ui| {
@@ -298,7 +299,7 @@ fn draw_queue_overlay(
 
                 let cancel = egui::Button::new(RichText::new("CANCEL").color(Color32::WHITE))
                     .fill(accent_danger())
-                    .stroke(Stroke::new(1.0, accent_danger_border()))
+                    .stroke(Stroke::new(1.0_f32, accent_danger_border()))
                     .min_size(egui::vec2(200.0, action_min_h));
                 if ui.add(cancel).clicked() {
                     *action = Some(UiAction::LeaveLobby);
@@ -332,7 +333,7 @@ fn draw_left_column(
 
     Frame::new()
         .fill(nickname_field_bg())
-        .stroke(Stroke::new(1.0, nickname_field_border()))
+        .stroke(Stroke::new(1.0_f32, nickname_field_border()))
         .corner_radius(CornerRadius::same(14))
         .inner_margin(Margin::symmetric(16, 12))
         .show(ui, |ui| {
@@ -379,9 +380,9 @@ fn lobby_card(
     action: &mut Option<UiAction>,
 ) {
     let stroke = if lobby.is_counting_down {
-        Stroke::new(1.5, accent_solo_cyan())
+        Stroke::new(1.5_f32, accent_solo_cyan())
     } else {
-        Stroke::new(1.0, Color32::from_rgba_unmultiplied(82, 87, 102, 200))
+        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 200))
     };
 
     Frame::new()
@@ -415,7 +416,7 @@ fn lobby_card(
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let btn = egui::Button::new(RichText::new("JOIN LOBBY").strong())
                         .fill(accent_solo_cyan())
-                        .stroke(Stroke::new(2.0, accent_solo_cyan_hover()))
+                        .stroke(Stroke::new(2.0_f32, accent_solo_cyan_hover()))
                         .min_size(egui::vec2(120.0, action_min_h - 8.0));
                     if ui.add(btn).clicked() {
                         *action = Some(UiAction::JoinLobby(lobby.id));
@@ -451,7 +452,7 @@ fn draw_right_column(
         RichText::new("SINGLE PLAYER").size(solo_primary).strong().color(Color32::BLACK),
     )
     .fill(accent_solo_cyan())
-    .stroke(Stroke::new(2.0, accent_solo_cyan_hover()))
+    .stroke(Stroke::new(2.0_f32, accent_solo_cyan_hover()))
     .min_size(egui::vec2(ui.available_width(), action_min_h));
 
     if ui.add(solo_btn).clicked() {
@@ -467,7 +468,7 @@ fn draw_right_column(
             .color(Color32::WHITE),
     )
     .fill(accent_ranked_gold())
-    .stroke(Stroke::new(1.0, accent_ranked_gold_hover()))
+    .stroke(Stroke::new(1.0_f32, accent_ranked_gold_hover()))
     .min_size(egui::vec2(ui.available_width(), (action_min_h - 10.0).max(60.0)));
 
     if ui.add(ranked).clicked() {
@@ -485,7 +486,7 @@ fn stub_secondary(ui: &mut egui::Ui, label: &str, compact: bool) {
     let h = if compact { 60.0 } else { 68.0 };
     let btn = egui::Button::new(RichText::new(label).size(if compact { 17.0 } else { 19.0 }))
         .fill(menu_secondary_button())
-        .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(82, 87, 102, 242)))
+        .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 242)))
         .min_size(egui::vec2(ui.available_width(), h));
 
     let r = ui.add(btn);

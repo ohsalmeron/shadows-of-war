@@ -1,0 +1,35 @@
+[package]
+name = "sow-android"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Shadows of War — Android shell (native activity); game wiring later"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = { version = "0.6", features = ["native-activity"] }
+android_logger = "0.14"
+log = "0.4"
+
+[package.metadata.android]
+build_targets = ["aarch64-linux-android"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 24
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "Shadows of War"
+
+[package.metadata.android.application.activity]
+label = "Shadows of War"
+exported = true
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+config_changes = "density|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|uiMode"
+
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.MAIN"]
+categories = ["android.intent.category.LAUNCHER"]

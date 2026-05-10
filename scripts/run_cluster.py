@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Shadows of War Cluster Runner: Server + Web Client + Native Client.
+Shadows of War cluster runner.
 
-Builds and runs:
-1. wasm-pack build for the Web Worker
-2. npm install and vite dev server for the UI
-3. cargo build and execution for Server and Native Egui apps
+Default: build sow-server + sow-clients, run local server and two native clients.
+
+--cloud: run scripts/deploy_sow_cloud.sh (remote release server + maps), then run two
+clients with SOW_WS_URL / SOW_MAPS_URL pointing at the VPS (override via env).
 """
 import os
 import argparse
 import signal
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -26,6 +25,12 @@ COLORS = {
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
+
+# Match scripts/deploy_sow_cloud.sh defaults; override with SOW_CLOUD_HOST / ports.
+_DEFAULT_CLOUD_HOST = "74.208.246.177"
+_DEFAULT_WS_PORT = "25565"
+_DEFAULT_MAPS_PORT = "25566"
+
 
 def _describe_exit(code: int) -> str:
     if code == 0:
@@ -47,16 +52,12 @@ def stream_output(process, prefix, color_key):
     if code != 0:
         print(f"{color}[{prefix}] {msg}{COLORS['RESET']}", flush=True)
 
-def ensure_wasm_pack_installed(env):
-    try:
-        subprocess.run(["wasm-pack", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, env=env)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print("📥 wasm-pack not found. Installing wasm-pack via cargo...")
-        subprocess.run(["cargo", "install", "wasm-pack"], check=True, env=env)
-
 def main():
-    parser = argparse.ArgumentParser(description="Run Shadows of War local cluster (server + web client + native client).")
+    parser = argparse.ArgumentParser(
+        description="Run Shadows of War: local server + two native clients, or --cloud to deploy and use VPS."
+    )
     parser.add_argument("--release", action="store_true", help="Force release build/run.")
+    parser.add_argument("--cloud", action="store_true", help="Deploy to cloud and run clients against it.")
     args = parser.parse_args()
 
     os.chdir(PROJECT_ROOT)
@@ -104,23 +105,45 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
+    server_p = None
     try:
+        cloud_host = env.get("SOW_CLOUD_HOST", _DEFAULT_CLOUD_HOST)
+        ws_port = env.get("SOW_CLOUD_WS_PORT", _DEFAULT_WS_PORT)
+        maps_port = env.get("SOW_CLOUD_MAPS_PORT", _DEFAULT_MAPS_PORT)
 
+        if args.cloud:
+            print(f"🛠️  Building sow-client only ({profile}) — server built by deploy script...")
+            build_cmd = ["cargo", "build", "-p", "sow-client"]
+            if use_release:
+                build_cmd.append("--release")
+            subprocess.run(build_cmd, env=env, check=True)
 
-        print(f"🛠️  Building native binaries ({profile})...")
-        build_cmd = ["cargo", "build", "-p", "sow-server", "-p", "sow-client"]
-        if use_release:
-            build_cmd.append("--release")
-        subprocess.run(build_cmd, env=env, check=True)
+            deploy_sh = SCRIPT_DIR / "deploy_sow_cloud.sh"
+            print("☁️  Deploying server to cloud...")
+            subprocess.run([str(deploy_sh)], env=env, check=True, cwd=PROJECT_ROOT)
 
-        print("🛠️  Launching Server...")
-        server_p = spawn_process("SERVER", [str(server_bin)])
-        processes.append(("SERVER", server_p))
-        threading.Thread(target=stream_output, args=(server_p, "SERVER", "SERVER"), daemon=True).start()
+            env["SOW_WS_URL"] = env.get(
+                "SOW_WS_URL", f"ws://{cloud_host}:{ws_port}"
+            )
+            env["SOW_MAPS_URL"] = env.get(
+                "SOW_MAPS_URL", f"http://{cloud_host}:{maps_port}/maps"
+            )
+            print(f"   Clients use {env['SOW_WS_URL']} and {env['SOW_MAPS_URL']}")
+            time.sleep(1)
+        else:
+            print(f"🛠️  Building native binaries ({profile})...")
+            build_cmd = ["cargo", "build", "-p", "sow-server", "-p", "sow-client"]
+            if use_release:
+                build_cmd.append("--release")
+            subprocess.run(build_cmd, env=env, check=True)
 
-
-
-        time.sleep(2)
+            print("🛠️  Launching Server...")
+            server_p = spawn_process("SERVER", [str(server_bin)])
+            processes.append(("SERVER", server_p))
+            threading.Thread(
+                target=stream_output, args=(server_p, "SERVER", "SERVER"), daemon=True
+            ).start()
+            time.sleep(2)
 
         print("🎮 Launching Native Client 1...")
         client_p1 = spawn_process("NATIVE 1", [str(client_bin)])
@@ -135,7 +158,8 @@ def main():
         threading.Thread(target=stream_output, args=(client_p2, "NATIVE 2", "NATIVE"), daemon=True).start()
 
         print("\n✅ Cluster fully booted! Press Ctrl+C to shutdown all instances.\n")
-        server_p.wait()
+        if server_p is not None:
+            server_p.wait()
         client_p1.wait()
         client_p2.wait()
 

@@ -67,6 +67,7 @@ impl SowEngine {
             income *= 0.5;
         }
 
+        income *= config.global_speed_multiplier;
         player.troops = (safe_troops + income).min(player.max_troops);
 
         let safe_gold = player.gold.max(0.0);
@@ -76,8 +77,9 @@ impl SowEngine {
             gold_base *= 0.5; // Tribes generate 50% less gold than Nations/Humans
         }
 
-        let gold_income = gold_base
+        let mut gold_income = gold_base
             + agg.city_levels as f64 * config.gold_income_per_city_level;
+        gold_income *= config.global_speed_multiplier;
         player.gold = safe_gold + gold_income;
         }
     }
@@ -178,7 +180,7 @@ mod tests {
         engine.execute_income();
         let p = engine.state.player(1).unwrap();
         let delta = p.gold - 100.0;
-        let g = engine.state.config.gold_base_income;
+        let g = engine.state.config.gold_base_income * engine.state.config.global_speed_multiplier;
         assert!(
             (delta - g).abs() < 0.001,
             "gold delta {} expected {}",
@@ -203,7 +205,7 @@ mod tests {
         let p = engine.state.player(1).unwrap();
         let cfg = &engine.state.config;
         let expected =
-            cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level;
+            (cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level) * cfg.global_speed_multiplier;
         assert!((p.gold - expected).abs() < 0.001, "gold={}", p.gold);
     }
 }
