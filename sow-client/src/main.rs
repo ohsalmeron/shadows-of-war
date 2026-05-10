@@ -14,6 +14,13 @@ use egui::{Context, RawInput, Pos2, Rect, Vec2};
 use sow_ui::{ClientApp, app::ClientPhase, UiAction};
 use std::time::{Instant, Duration};
 use sow_net::client::SowClient;
+use std::collections::HashMap;
+
+fn player_label_scale(tiles_owned: u32, ref_tiles: f32, max_scale: f32) -> f32 {
+    let t = tiles_owned.max(1) as f32;
+    let r = ref_tiles.max(1.0);
+    (t / r).sqrt().max(1.0).min(max_scale.max(1.0))
+}
 
 fn main() {
     env_logger::init();
@@ -84,6 +91,8 @@ fn main() {
     let mut dragging = false;
     let mut last_mouse_x: f64 = 0.0;
     let mut last_mouse_y: f64 = 0.0;
+
+    let mut label_positions: HashMap<u16, (f32, f32)> = HashMap::new();
 
     let mut prev_sync_point: Option<gpu::SyncPoint> = None;
     let mut last_tick = Instant::now();
@@ -296,56 +305,95 @@ fn main() {
                                 if app.phase == ClientPhase::Playing {
                                     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("world_overlays")));
                                     
+                                    let cfg = &engine.state.config;
+                                    let dot_r = cfg.ui_lod_dot_radius;
+                                    
+                                    // Determine LOD tier from zoom
+                                    // LOD 2: close zoom (>= ui_lod_zoom_full) → full labels for all
+                                    // LOD 1: mid zoom (>= ui_lod_zoom_nations) → full labels for nations/humans, dots for tribes
+                                    // LOD 0: far zoom (< ui_lod_zoom_nations) → dots only
+                                    let lod = if camera_zoom >= cfg.ui_lod_zoom_full {
+                                        2u8
+                                    } else if camera_zoom >= cfg.ui_lod_zoom_nations {
+                                        1u8
+                                    } else {
+                                        0u8
+                                    };
+                                    
                                     for player in &engine.state.players {
-                                        if player.tile_count > 0 && player.alive {
-                                            let cx = player.sum_x as f32 / player.tile_count as f32;
-                                            let cy = player.sum_y as f32 / player.tile_count as f32;
+                                        if player.tile_count == 0 || !player.alive { continue; }
+                                        
+                                        let target_cx = player.sum_x as f32 / player.tile_count as f32;
+                                        let target_cy = player.sum_y as f32 / player.tile_count as f32;
+                                        
+                                        // Smooth position interpolation
+                                        let pos = label_positions.entry(player.id).or_insert((target_cx, target_cy));
+                                        let dx = target_cx - pos.0;
+                                        let dy = target_cy - pos.1;
+                                        let dist = (dx * dx + dy * dy).sqrt();
+                                        if dist > 50.0 {
+                                            pos.0 = target_cx;
+                                            pos.1 = target_cy;
+                                        } else if dist > 0.1 {
+                                            pos.0 += dx * 0.2;
+                                            pos.1 += dy * 0.2;
+                                        } else {
+                                            pos.0 = target_cx;
+                                            pos.1 = target_cy;
+                                        }
+                                        
+                                        let screen_x = pos.0 * camera_zoom + camera_x;
+                                        let screen_y = pos.1 * camera_zoom + camera_y;
+                                        
+                                        // Frustum cull
+                                        if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
+                                        
+                                        let is_nation_or_human = player.player_type != sow_core::player::PlayerType::Bot;
+                                        let show_full = lod == 2 || (lod == 1 && is_nation_or_human);
+                                        
+                                        let center = egui::pos2(screen_x, screen_y);
+                                        let pc = egui::Color32::from_rgb(
+                                            (player.color[0] * 255.0) as u8,
+                                            (player.color[1] * 255.0) as u8,
+                                            (player.color[2] * 255.0) as u8,
+                                        );
+                                        
+                                        if show_full {
+                                            // Full nameplate
+                                            let scale = player_label_scale(player.tile_count, cfg.ui_label_ref_tiles, cfg.ui_label_max_scale);
+                                            let font_size = cfg.ui_label_base_size * scale;
+                                            let font_id = egui::FontId::proportional(font_size);
                                             
-                                            // Project map coordinates to screen coordinates
-                                            let screen_x = cx * camera_zoom + camera_x;
-                                            let screen_y = cy * camera_zoom + camera_y;
+                                            let troops = player.troops as f64;
+                                            let troops_str = if troops >= 1_000_000.0 {
+                                                format!("{:.1}M", troops / 1_000_000.0)
+                                            } else if troops >= 1_000.0 {
+                                                format!("{:.1}K", troops / 1_000.0)
+                                            } else {
+                                                format!("{:.0}", troops)
+                                            };
                                             
-                                            // Filter out of bounds coordinates
-                                            if screen_x > -100.0 && screen_x < screen_w + 100.0 && screen_y > -100.0 && screen_y < screen_h + 100.0 {
-                                                // Format troops (e.g., 1.2K, 3.5M)
-                                                let troops = player.troops as f64;
-                                                let troops_str = if troops >= 1_000_000.0 {
-                                                    format!("{:.1}M", troops / 1_000_000.0)
-                                                } else if troops >= 1_000.0 {
-                                                    format!("{:.1}K", troops / 1_000.0)
-                                                } else {
-                                                    format!("{:.0}", troops)
-                                                };
-                                                
-                                                let name_galley = painter.layout_no_wrap(
-                                                    player.name.clone(),
-                                                    egui::FontId::proportional(14.0),
-                                                    egui::Color32::WHITE
-                                                );
-                                                let troops_galley = painter.layout_no_wrap(
-                                                    format!("⚔ {}", troops_str),
-                                                    egui::FontId::proportional(14.0),
-                                                    egui::Color32::WHITE
-                                                );
-
-                                                let w = name_galley.rect.width().max(troops_galley.rect.width());
-                                                let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
-                                                
-                                                let pos = egui::pos2(screen_x, screen_y);
-                                                let bg_rect = egui::Rect::from_center_size(pos, egui::vec2(w, h)).expand(6.0);
-                                                
-                                                painter.rect_filled(
-                                                    bg_rect,
-                                                    4.0,
-                                                    egui::Color32::from_black_alpha(200)
-                                                );
-                                                
-                                                let name_pos = egui::pos2(pos.x - name_galley.rect.width() / 2.0, pos.y - h / 2.0);
-                                                let troops_pos = egui::pos2(pos.x - troops_galley.rect.width() / 2.0, pos.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                                
-                                                painter.galley(name_pos, name_galley, egui::Color32::WHITE);
-                                                painter.galley(troops_pos, troops_galley, egui::Color32::WHITE);
-                                            }
+                                            let name_galley = painter.layout_no_wrap(player.name.clone(), font_id.clone(), egui::Color32::WHITE);
+                                            let troops_galley = painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE);
+                                            
+                                            let w = name_galley.rect.width().max(troops_galley.rect.width());
+                                            let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
+                                            
+                                            let bg_rect = egui::Rect::from_center_size(center, egui::vec2(w, h)).expand(6.0);
+                                            painter.rect_filled(bg_rect, 4.0, egui::Color32::from_black_alpha(200));
+                                            
+                                            // Thin colored accent line at top
+                                            let accent = egui::Rect::from_min_size(bg_rect.left_top(), egui::vec2(bg_rect.width(), 2.0));
+                                            painter.rect_filled(accent, 2.0, pc);
+                                            
+                                            let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
+                                            let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
+                                            painter.galley(name_pos, name_galley, egui::Color32::WHITE);
+                                            painter.galley(troops_pos, troops_galley, egui::Color32::WHITE);
+                                        } else {
+                                            // Dot only — zero text layout, bare metal fast
+                                            painter.circle_filled(center, dot_r, pc);
+                                            painter.circle_stroke(center, dot_r, egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)));
                                         }
                                     }
                                 }
@@ -430,6 +478,7 @@ fn main() {
                                             engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
                                             engine.spawn_ai(0, 4);
                                             turn_queue.clear();
+                                            label_positions.clear();
                                             needs_first_upload = true;
                                             needs_map_upload = true;
                                         }
@@ -611,6 +660,7 @@ fn main() {
                             engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
                             engine.spawn_ai(0, 4);
                             turn_queue.clear();
+                            label_positions.clear();
                             needs_first_upload = true;
                             continue;
                         }

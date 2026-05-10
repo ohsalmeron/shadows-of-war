@@ -75,6 +75,14 @@ pub fn text_secondary() -> Color32 {
 }
 
 pub fn apply_theme(ctx: &Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "Rajdhani".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../dark-rift/assets/fonts/Rajdhani-Medium.ttf"))),
+    );
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Rajdhani".to_owned());
+    ctx.set_fonts(fonts);
+
     let mut style = Style::default();
 
     style.text_styles = [

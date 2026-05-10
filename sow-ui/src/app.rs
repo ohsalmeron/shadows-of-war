@@ -25,7 +25,7 @@ impl ClientApp {
                 gold: 0.0,
                 troops: 0.0,
                 max_troops: 0.0,
-                attack_ratio: 1.0,
+                attack_ratio: 0.2,
                 is_mobile: false,
             },
             loading_state: loading_screen::LoadingState::default(),

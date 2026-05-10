@@ -64,20 +64,32 @@ pub struct GameConfig {
     pub shader_terrain_sharpness: f32,
     pub shader_interior_alpha: f32,
     pub shader_border_alpha: f32,
+    
+    // UI Visuals
+    pub ui_font: String,
+    pub ui_label_base_size: f32,
+    pub ui_label_max_scale: f32,
+    pub ui_label_ref_tiles: f32,
+    
+    // LOD Thresholds (camera_zoom values)
+    pub ui_lod_zoom_full: f32,      // Below this zoom: full labels for all
+    pub ui_lod_zoom_nations: f32,   // Below this zoom: full labels for nations/humans, dots for tribes
+    // Above ui_lod_zoom_nations: dots only for everyone
+    pub ui_lod_dot_radius: f32,     // Radius of the dot icon in pixels
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
             max_players: 12,
-            bot_count: 400, // Tribes (Bots)
-            nation_count: 50, // Nations (Complex AI)
+            bot_count: 200, // Tribes (Bots)
+            nation_count: 100, // Nations (Complex AI)
             bot_difficulty: BotDifficulty::Vanilla,
             map_name: "europe".to_string(),
             map_width: 2904,
             map_height: 1672,
             random_spawn: false,
-            tick_rate_ms: 100.0,
+            tick_rate_ms: 250.0,
             attack_cost_enemy: 4.0,
             attack_cost_neutral: 1.5,
             terrain_multiplier_highland: 1.75,
@@ -99,6 +111,17 @@ impl Default for GameConfig {
             shader_terrain_sharpness: 0.005, // Much softer topographical bump map
             shader_interior_alpha: 0.75, // Brighter interior (terrain shows through more)
             shader_border_alpha: 0.75, // Solid border
+            
+            ui_font: "Rajdhani-Medium.ttf".to_string(),
+            ui_label_base_size: 8.0,
+            ui_label_max_scale: 4.0,
+            ui_label_ref_tiles: 400.0,
+            
+            // LOD zoom thresholds (zoom range: 0.25 .. 20.0)
+            ui_lod_zoom_full: 4.0,     // >= 2.0 zoom: full labels for everyone
+            ui_lod_zoom_nations: 2.0,  // >= 0.8 zoom: full labels nations/humans, dots for tribes
+            // < 0.8: dots only
+            ui_lod_dot_radius: 4.0,
         }
     }
 }
