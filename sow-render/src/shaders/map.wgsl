@@ -7,8 +7,8 @@ struct Globals {
     visual_terrain_sharpness: f32,
     visual_interior_alpha: f32,
     visual_border_alpha: f32,
-    lod_zoom_medium: f32,
-    lod_zoom_full: f32,
+    lod_2_zoom: f32,
+    lod_3_zoom: f32,
     local_player_id: u32,
     padding1: f32,
     padding2: f32,
@@ -153,8 +153,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         wave += n0 * 0.5;
 
         // Add medium waves only if we are somewhat zoomed in
-        let min_lod = min(globals.lod_zoom_medium, globals.lod_zoom_full);
-        let max_lod = max(globals.lod_zoom_medium, globals.lod_zoom_full);
+        let min_lod = min(globals.lod_2_zoom, globals.lod_3_zoom);
+        let max_lod = max(globals.lod_2_zoom, globals.lod_3_zoom);
         
         if globals.zoom >= min_lod * 0.5 {
             let uv1 = vec2<f32>(world_x, world_y) * 0.04 + vec2<f32>(-0.020, 0.015) * t;

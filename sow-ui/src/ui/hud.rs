@@ -1,4 +1,4 @@
-use egui::{Context, Color32, RichText, Slider};
+use egui::{Align2, Color32, Context, RichText, Slider};
 use crate::UiAction;
 
 pub struct HudState {
@@ -15,13 +15,6 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
 
     egui::Panel::top("economy_panel").show(ctx, |ui| {
         ui.horizontal_wrapped(|ui| {
-            if ui.button(RichText::new("Exit").size(14.0).color(Color32::RED)).on_hover_text("Exit Game").clicked() {
-                action = Some(UiAction::LeaveLobby);
-            }
-            if ui.button(RichText::new("⌖").size(18.0)).on_hover_text("Center Camera").clicked() {
-                action = Some(UiAction::CenterCamera);
-            }
-            ui.add_space(20.0);
             ui.label(format!("Troops: {:.0} / {:.0}", state.troops, state.max_troops));
             ui.add_space(20.0);
             ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
@@ -56,6 +49,33 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
             }
         });
     });
+
+    // Keep these controls pinned to screen corners so mobile wrapping never pushes them left.
+    egui::Area::new(egui::Id::new("hud_exit_button"))
+        .anchor(Align2::RIGHT_TOP, egui::vec2(-8.0, 8.0))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            if ui
+                .button(RichText::new("Exit").size(14.0).color(Color32::RED))
+                .on_hover_text("Exit Game")
+                .clicked()
+            {
+                action = Some(UiAction::LeaveLobby);
+            }
+        });
+
+    egui::Area::new(egui::Id::new("hud_center_camera_button"))
+        .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-8.0, -8.0))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            if ui
+                .button(RichText::new("⌖").size(18.0))
+                .on_hover_text("Center Camera")
+                .clicked()
+            {
+                action = Some(UiAction::CenterCamera);
+            }
+        });
 
     action
 }

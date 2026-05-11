@@ -5,7 +5,6 @@ Shadows of War cluster runner.
 Deploys release server + maps to VPS and builds/deploys the WASM web client.
 """
 import os
-import argparse
 import subprocess
 import time
 import shutil

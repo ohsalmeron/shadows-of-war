@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+fn default_troop_income_pace() -> f64 {
+    1.0
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum BotDifficulty {
     BrainDead,
@@ -112,6 +116,11 @@ pub struct GameConfig {
     pub factory_income_bonus_cap: f64,
     /// Flat gold income generated per level of an owned city.
     pub gold_income_per_city_level: f64,
+    /// Designer dial for troop refill only: multiplied onto final per-tick troop income after
+    /// `troop_base_income`, factories, bot penalties, and `global_speed_multiplier`.
+    /// `1.0` matches prior behavior; values above 1 speed refill, below 1 slow it. Does not affect gold.
+    #[serde(default = "default_troop_income_pace")]
+    pub troop_income_pace: f64,
     
     // ==========================================
     // Rendering & Shaders (Visual Adjustments)
@@ -137,12 +146,14 @@ pub struct GameConfig {
     
     // ==========================================
     // Level-Of-Detail (LOD) Camera Thresholds
+    // Camera zoom is clamped in sow-client to [0.25, 20.0].
     // ==========================================
-    /// Zoom levels >= this value will render FULL nameplates for EVERY entity on the map.
-    pub ui_lod_zoom_full: f32,
-    /// Zoom levels >= this value will render FULL nameplates for Nations/Humans, but DOTS for tribes.
-    /// Zoom levels below this value will render ONLY DOTS for everyone to declutter the map.
-    pub ui_lod_zoom_nations: f32,
+    /// LOD 1 threshold (farthest / simplified): below LOD 2 threshold, use minimal labels.
+    pub ui_lod_1_zoom: f32,
+    /// LOD 2 threshold (normal view): zoom levels >= this value render normal full plates.
+    pub ui_lod_2_zoom: f32,
+    /// LOD 3 threshold (max zoom view): zoom levels >= this value are in LOD 3.
+    pub ui_lod_3_zoom: f32,
     /// Radius of the minimalist dot icon used when zooming out.
     pub ui_lod_dot_radius: f32,
 }
@@ -164,34 +175,36 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)
-            global_speed_multiplier: 0.1, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
+            // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
+            global_speed_multiplier: 0.25, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
             
             // Combat & Expansion Mechanics
             attack_cost_enemy: 3.0,   // Extremely low: 100 troops = 50 enemy tiles bursts
-            attack_cost_neutral: 1.5, // Extremely low: 100 troops = 200 neutral tiles bursts
-            terrain_multiplier_highland: 1.75, // Highlands cost 75% more to conquer
-            terrain_multiplier_mountain: 3.5,  // Mountains cost 3.5x more to conquer
+            attack_cost_neutral: 1.0, // Extremely low: 100 troops = 200 neutral tiles bursts
+            terrain_multiplier_highland: 1.5, // Highlands cost 75% more to conquer
+            terrain_multiplier_mountain: 3.0,  // Mountains cost 3.5x more to conquer
             bot_attack_interval_ticks: 64,    // Nerfed aggression: bots wait ~64 seconds between waves
             max_tiles_per_tick: 40.0,          // Hard cap per attack (was 100). Visible, paced spread.
-            momentum_divisor: 2000.0,          // Troops needed for 1x momentum (was 1000). Halved speed.
+            momentum_divisor: 5000.0,          // Troops needed for 1x momentum (was 1000). Halved speed.
 
             // Economy & Income Rates (Halved to pace the game down 2x)
-            starting_troops: 100.0,
-            starting_gold: 100.0,
+            starting_troops: 1000.0,
+            starting_gold: 1000.0,
             gold_base_income: 4.0,   // Reduced from 8.0: Forces slower macro progression
             troop_base_income: 50.0, // Reduced from 100.0: Takes twice as long to prep an attack
             troop_per_tile: 2.0,     // Reduced from 4.0: Expansion snowballs slower
-            max_troops_base: 1000.0,
-            max_troops_scale: 500.0,
+            max_troops_base: 100.0,
+            max_troops_scale: 50.0,
             city_max_troops_per_level: 2000.0,
             factory_income_bonus_per_level: 0.15, // 15% income boost per factory level
             factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
             gold_income_per_city_level: 1.0,      // +1 flat gold per city level
+            troop_income_pace: 1.0, // Designer-only troop refill multiplier (see field doc)
             
             // Rendering & Shaders (Visual Adjustments)
-            shader_terrain_sharpness: 0.0001, // Soft topographical bump map
-            shader_interior_alpha: 0.95,     // High opacity, terrain shows through slightly
-            shader_border_alpha: 0.95,       // High opacity solid border lines
+            shader_terrain_sharpness: 0.001, // Soft topographical bump map
+            shader_interior_alpha: 2.95,     // High opacity, terrain shows through slightly
+            shader_border_alpha: 1.95,       // High opacity solid border lines
             
             // User Interface & HUD
             ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font
@@ -199,10 +212,12 @@ impl Default for GameConfig {
             ui_label_max_scale: 2.0,                    // Nameplates grow up to 4x size
             ui_label_ref_tiles: 400.0,                  // Reach 4x size when owning 400 tiles
             
-            // Level-Of-Detail (LOD) Camera Thresholds
-            ui_lod_zoom_full: 8.0,     // Zoom >= 3.0: High clutter (all labels)
-            ui_lod_zoom_nations: 4.0,  // Zoom >= 1.5: Medium clutter (Nation/Human labels, Tribe dots)
-            ui_lod_dot_radius: 12.0,    // Zoom < 1.5: Minimalist (4px Dots only)
+            // Level-Of-Detail (LOD) Camera Thresholds (camera zoom clamp: 0.25..20.0)
+            // Desired order: far/simplified -> normal/full -> max zoom.
+            ui_lod_1_zoom: 0.25, // Farthest zoom band
+            ui_lod_2_zoom: 10.0,  // Normal gameplay zoom starts full plates
+            ui_lod_3_zoom: 20.0, // Max zoom band
+            ui_lod_dot_radius: 2.0,
         }
     }
 }

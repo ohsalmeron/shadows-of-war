@@ -12,10 +12,35 @@ use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
 
+const CAMERA_MIN_ZOOM: f32 = 0.25;
+const CAMERA_MAX_ZOOM: f32 = 20.0;
+
 fn player_label_scale(tiles_owned: u32, ref_tiles: f32, max_scale: f32) -> f32 {
     let t = tiles_owned.max(1) as f32;
     let r = ref_tiles.max(1.0);
     (t / r).sqrt().max(1.0).min(max_scale.max(1.0))
+}
+
+fn spawn_sow_client_connect(
+    url: String,
+    connect_tx: &crossbeam_channel::Sender<Result<SowClient, String>>,
+    #[cfg(not(target_arch = "wasm32"))] tokio_rt: &tokio::runtime::Runtime,
+) {
+    let tx = connect_tx.clone();
+    let fut = async move {
+        match SowClient::connect(&url).await {
+            Ok(c) => {
+                let _ = tx.send(Ok(c));
+            }
+            Err(e) => {
+                let _ = tx.send(Err(e.to_string()));
+            }
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    wasm_bindgen_futures::spawn_local(fut);
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio_rt.spawn(fut);
 }
 
 
@@ -73,25 +98,22 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
     let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
+    // Reconnect scheduling (idle drop / resume / failed handshake).
+    let mut ws_connect_fail_backoff_ms: u64 = 400;
+    let mut ws_connect_not_before: Instant = Instant::now();
+    let mut ws_reconnect_after_resume: bool = false;
+    #[cfg(target_arch = "wasm32")]
+    let mut wasm_doc_was_visible: bool = true;
+
     let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://darkrift.ai/ws/".to_string());
     app.main_menu_state.server_address = ws_url.clone();
     
     log::info!("Auto-connecting to {}...", ws_url);
     app.main_menu_state.is_connecting = true;
-    let url_clone = ws_url.clone();
-    let tx = connect_tx.clone();
-    let connect_future = async move {
-        match SowClient::connect(&url_clone).await {
-            Ok(c) => { let _ = tx.send(Ok(c)); }
-            Err(e) => { let _ = tx.send(Err(e.to_string())); }
-        }
-    };
-    
     #[cfg(target_arch = "wasm32")]
-    wasm_bindgen_futures::spawn_local(connect_future);
-    
+    spawn_sow_client_connect(ws_url.clone(), &connect_tx);
     #[cfg(not(target_arch = "wasm32"))]
-    tokio_rt.spawn(connect_future);
+    spawn_sow_client_connect(ws_url.clone(), &connect_tx, &tokio_rt);
 
     // ── Camera state ────────────────────────────────────────────────────────
     let mut camera_x: f32 = 0.0;
@@ -138,6 +160,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 }
             }
             Event::Resumed => {
+                // App or tab foregrounded — retry WS soon if the socket died in the background.
+                ws_reconnect_after_resume = true;
                 let win = window.get_or_insert_with(|| {
                     #[cfg(target_os = "android")]
                     let mut builder = winit::window::WindowBuilder::new()
@@ -278,11 +302,32 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             // If it's a click (pressed) and not intercepted by egui UI
                             if pressed && !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
                                 // Project mouse to map tile!
-                                let map_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
-                                let map_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
+                                let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
+                                let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
+                                
+                                let q_f = world_x - world_y * 0.577350269;
+                                let r_f = world_y * 1.154700538;
+                                let s_f = -q_f - r_f;
 
-                                if map_x >= 0.0 && map_y >= 0.0 && map_x < map_w as f32 && map_y < map_h as f32 {
-                                    let owner = engine.state.map.owner_id(map_x as u32, map_y as u32);
+                                let mut rq = q_f.round();
+                                let mut rr = r_f.round();
+                                let rs = s_f.round();
+
+                                let q_diff = (rq - q_f).abs();
+                                let r_diff = (rr - r_f).abs();
+                                let s_diff = (rs - s_f).abs();
+
+                                if q_diff > r_diff && q_diff > s_diff {
+                                    rq = -rr - rs;
+                                } else if r_diff > s_diff {
+                                    rr = -rq - rs;
+                                }
+
+                                let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
+                                let row = rr as i32;
+
+                                if col >= 0 && row >= 0 && col < map_w as i32 && row < map_h as i32 {
+                                    let owner = engine.state.map.owner_id(col as u32, row as u32);
                                     
                                     // Apply intent locally instantly for single player responsiveness!
                                     let attack = sow_core::protocol::AttackIntent {
@@ -360,7 +405,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 let delta = distance - last_dist;
                                 let old_zoom = camera_zoom;
                                 camera_zoom *= 1.0 + (delta as f32 * 0.005);
-                                camera_zoom = camera_zoom.clamp(0.25, 20.0);
+                                camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
 
                                 let pinch_cx = (p1.0 + p2.0) / 2.0;
                                 let pinch_cy = (p1.1 + p2.1) / 2.0;
@@ -408,11 +453,32 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 });
 
                                 if !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
-                                    let map_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
-                                    let map_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
+                                    let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
+                                    let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
+                                    
+                                    let q_f = world_x - world_y * 0.577350269;
+                                    let r_f = world_y * 1.154700538;
+                                    let s_f = -q_f - r_f;
 
-                                    if map_x >= 0.0 && map_y >= 0.0 && map_x < map_w as f32 && map_y < map_h as f32 {
-                                        let owner = engine.state.map.owner_id(map_x as u32, map_y as u32);
+                                    let mut rq = q_f.round();
+                                    let mut rr = r_f.round();
+                                    let rs = s_f.round();
+
+                                    let q_diff = (rq - q_f).abs();
+                                    let r_diff = (rr - r_f).abs();
+                                    let s_diff = (rs - s_f).abs();
+
+                                    if q_diff > r_diff && q_diff > s_diff {
+                                        rq = -rr - rs;
+                                    } else if r_diff > s_diff {
+                                        rr = -rq - rs;
+                                    }
+
+                                    let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
+                                    let row = rr as i32;
+
+                                    if col >= 0 && row >= 0 && col < map_w as i32 && row < map_h as i32 {
+                                        let owner = engine.state.map.owner_id(col as u32, row as u32);
                                         let attack = sow_core::protocol::AttackIntent {
                                             target_owner: owner,
                                             troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
@@ -439,7 +505,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         };
                         let old_zoom = camera_zoom;
                         camera_zoom *= 1.0 + scroll * 0.15;
-                        camera_zoom = camera_zoom.clamp(0.25, 20.0);
+                        camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
 
                         // Zoom towards cursor
                         let factor = camera_zoom / old_zoom;
@@ -496,8 +562,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     visual_terrain_sharpness: engine.state.config.shader_terrain_sharpness,
                                     visual_interior_alpha: engine.state.config.shader_interior_alpha,
                                     visual_border_alpha: engine.state.config.shader_border_alpha,
-                                    lod_zoom_medium: engine.state.config.ui_lod_zoom_nations,
-                                    lod_zoom_full: engine.state.config.ui_lod_zoom_full,
+                                    lod_2_zoom: engine.state.config.ui_lod_2_zoom,
+                                    lod_3_zoom: engine.state.config.ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
                                     padding1: 0.0,
                                     padding2: 0.0,
@@ -535,23 +601,26 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let cfg = &engine.state.config;
                                     let dot_r = cfg.ui_lod_dot_radius;
                                     
-                                    // Determine LOD tier from zoom
-                                    // LOD 2: close zoom (>= ui_lod_zoom_full) → full labels for all
-                                    // LOD 1: mid zoom (>= ui_lod_zoom_nations) → full labels for nations/humans, dots for tribes
-                                    // LOD 0: far zoom (< ui_lod_zoom_nations) → dots only
-                                    let lod = if camera_zoom >= cfg.ui_lod_zoom_full {
+                                    // Determine LOD tier from zoom.
+                                    // LOD 1: far/simplified
+                                    // LOD 2: normal/full plates
+                                    // LOD 3: max zoom
+                                    let lod = if camera_zoom >= cfg.ui_lod_3_zoom {
+                                        3u8
+                                    } else if camera_zoom >= cfg.ui_lod_2_zoom {
                                         2u8
-                                    } else if camera_zoom >= cfg.ui_lod_zoom_nations {
-                                        1u8
                                     } else {
-                                        0u8
+                                        1u8
                                     };
                                     
                                     for player in &engine.state.players {
                                         if player.tile_count == 0 || !player.alive { continue; }
                                         
-                                        let target_cx = (player.sum_x as f32 / player.tile_count as f32) + 0.5;
-                                        let target_cy = (player.sum_y as f32 / player.tile_count as f32) + 0.5;
+                                        let avg_col = player.sum_x as f32 / player.tile_count as f32;
+                                        let avg_row = player.sum_y as f32 / player.tile_count as f32;
+                                        
+                                        let target_cx = avg_col + 0.5 + (avg_row as i32 % 2) as f32 * 0.5;
+                                        let target_cy = (avg_row + 0.5) * 0.86602540378;
                                         
                                         // Smooth position interpolation
                                         let pos = label_positions.entry(player.id).or_insert((target_cx, target_cy));
@@ -576,7 +645,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
                                         
                                         let is_nation_or_human = player.player_type != sow_core::player::PlayerType::Bot;
-                                        let show_full = lod == 2 || (lod == 1 && is_nation_or_human);
+                                        let show_full = lod >= 2;
                                         
                                         let center = egui::pos2(screen_x, screen_y);
                                         let pc = egui::Color32::from_rgb(
@@ -658,18 +727,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         }
                                         UiAction::ConnectToServer(addr) => {
                                             app.main_menu_state.is_connecting = true;
-                                            let url_clone = addr.clone();
-                                            let tx = connect_tx.clone();
-                                            let connect_future = async move {
-                                                match SowClient::connect(&url_clone).await {
-                                                    Ok(c) => { let _ = tx.send(Ok(c)); }
-                                                    Err(e) => { let _ = tx.send(Err(e.to_string())); }
-                                                }
-                                            };
+                                            let url = addr.clone();
                                             #[cfg(target_arch = "wasm32")]
-                                            wasm_bindgen_futures::spawn_local(connect_future);
+                                            spawn_sow_client_connect(url, &connect_tx);
                                             #[cfg(not(target_arch = "wasm32"))]
-                                            tokio_rt.spawn(connect_future);
+                                            spawn_sow_client_connect(url, &connect_tx, &tokio_rt);
                                         }
                                         UiAction::JoinLobby(id) => {
                                             let join_msg = sow_core::protocol::ClientMessage::Join {
@@ -730,9 +792,12 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                         / player.tile_count as f32;
                                                     let cy = player.sum_y as f32
                                                         / player.tile_count as f32;
-                                                    // screen = map * zoom + camera (see mouse projection)
-                                                    camera_x = screen_w * 0.5 - cx * camera_zoom;
-                                                    camera_y = screen_h * 0.5 - cy * camera_zoom;
+                                                    
+                                                    let world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
+                                                    let world_cy = (cy + 0.5) * 0.86602540378;
+
+                                                    camera_x = screen_w * 0.5 - world_cx * camera_zoom;
+                                                    camera_y = screen_h * 0.5 - world_cy * camera_zoom;
                                                 }
                                             }
                                         }
@@ -787,26 +852,66 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
             }
             Event::AboutToWait => {
                 let now = Instant::now();
-                
-                if let Ok(res) = connect_rx.try_recv() {
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let doc_visible = web_sys::window()
+                        .and_then(|w| w.document())
+                        .map(|d| d.visibility_state() == web_sys::VisibilityState::Visible)
+                        .unwrap_or(true);
+                    if doc_visible && !wasm_doc_was_visible {
+                        ws_reconnect_after_resume = true;
+                    }
+                    wasm_doc_was_visible = doc_visible;
+                }
+
+                if ws_reconnect_after_resume {
+                    ws_reconnect_after_resume = false;
+                    ws_connect_not_before = ws_connect_not_before.min(now);
+                }
+
+                while let Ok(res) = connect_rx.try_recv() {
                     match res {
                         Ok(client) => {
                             log::info!("Connected to server!");
                             net_client = Some(client);
                             app.main_menu_state.is_connected = true;
                             app.main_menu_state.is_connecting = false;
+                            ws_connect_fail_backoff_ms = 400;
                         }
                         Err(e) => {
                             log::error!("Failed to connect: {}", e);
                             app.main_menu_state.is_connected = false;
                             app.main_menu_state.is_connecting = false;
+                            ws_connect_fail_backoff_ms =
+                                (ws_connect_fail_backoff_ms.saturating_mul(2)).min(30_000);
+                            ws_connect_not_before =
+                                now + Duration::from_millis(ws_connect_fail_backoff_ms);
                         }
                     }
                 }
-                
+
+                let mut ws_disconnected = false;
+                #[cfg(target_arch = "wasm32")]
+                if let Some(c) = net_client.as_ref() {
+                    if c.is_socket_closed() {
+                        ws_disconnected = true;
+                    }
+                }
+
                 // Process network messages
                 if let Some(c) = net_client.as_ref() {
-                    while let Ok(msg) = c.rx.try_recv() {
+                    if !ws_disconnected {
+                        loop {
+                            let msg = match c.rx.try_recv() {
+                                Ok(msg) => msg,
+                                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                    ws_disconnected = true;
+                                    break;
+                                }
+                            };
+
                         if let Ok(start_msg) =
                             serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
                         {
@@ -916,9 +1021,36 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             
                             continue;
                         }
+                        }
                     }
                 }
-                
+                if ws_disconnected {
+                    log::warn!("WebSocket disconnected; will reconnect.");
+                    net_client = None;
+                    app.main_menu_state.is_connected = false;
+                    app.main_menu_state.is_connecting = false;
+                    ws_connect_not_before =
+                        ws_connect_not_before.min(now + Duration::from_millis(200));
+                }
+
+                #[cfg(target_arch = "wasm32")]
+                let allow_ws_spawn = wasm_doc_was_visible;
+                #[cfg(not(target_arch = "wasm32"))]
+                let allow_ws_spawn = true;
+
+                if allow_ws_spawn
+                    && net_client.is_none()
+                    && !app.main_menu_state.is_connecting
+                    && now >= ws_connect_not_before
+                {
+                    app.main_menu_state.is_connecting = true;
+                    let url = app.main_menu_state.server_address.clone();
+                    #[cfg(target_arch = "wasm32")]
+                    spawn_sow_client_connect(url, &connect_tx);
+                    #[cfg(not(target_arch = "wasm32"))]
+                    spawn_sow_client_connect(url, &connect_tx, &tokio_rt);
+                }
+
                 // Poll map download channel
                 if let Ok(res) = map_rx.try_recv() {
                     match res {
@@ -958,7 +1090,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         let start_msg_clone = start_msg.clone();
                         let tx = engine_init_tx.clone();
 
-                        std::thread::spawn(move || {
+                        let init_logic = move || {
                             let w = start_msg_clone.config.map_width;
                             let h = start_msg_clone.config.map_height;
                             let mut state = sow_core::game::GameState::new(
@@ -987,7 +1119,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                             let water = sow_core::water_components::WaterComponents::compute(&state.map);
                             let _ = tx.send((state, water, start_msg_clone));
-                        });
+                        };
+
+                        #[cfg(target_arch = "wasm32")]
+                        init_logic();
+
+                        #[cfg(not(target_arch = "wasm32"))]
+                        std::thread::spawn(init_logic);
 
                         turn_queue.clear();
                         needs_first_upload = true;

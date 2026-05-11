@@ -10,6 +10,12 @@ pub struct SowClient {
 }
 
 impl SowClient {
+    /// Native disconnect is detected when the receive channel disconnects (reader task exited).
+    #[inline]
+    pub fn is_socket_closed(&self) -> bool {
+        false
+    }
+
     pub async fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let (ws_stream, _) = connect_async(url).await?;
         let (mut write, mut read) = ws_stream.split();
