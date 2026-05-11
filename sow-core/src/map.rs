@@ -51,17 +51,23 @@ impl GameMap {
         self.state[r] = (self.state[r] & !Self::PLAYER_ID_MASK) | (player_id & Self::PLAYER_ID_MASK);
     }
     pub fn for_each_neighbor(&self, x: u32, y: u32, mut f: impl FnMut(u32, u32)) {
-        if x > 0 { f(x - 1, y); }
-        if x + 1 < self.width { f(x + 1, y); }
-        if y > 0 { f(x, y - 1); }
-        if y + 1 < self.height { f(x, y + 1); }
+        let is_odd = y % 2 != 0;
+        let neighbors_offsets = if is_odd {
+            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+        } else {
+            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+        };
+        for (dx, dy) in neighbors_offsets.iter() {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
+                f(nx as u32, ny as u32);
+            }
+        }
     }
     pub fn neighbors(&self, x: u32, y: u32) -> Vec<(u32, u32)> {
-        let mut r = Vec::with_capacity(4);
-        if x > 0 { r.push((x - 1, y)); }
-        if x + 1 < self.width { r.push((x + 1, y)); }
-        if y > 0 { r.push((x, y - 1)); }
-        if y + 1 < self.height { r.push((x, y + 1)); }
+        let mut r = Vec::with_capacity(6);
+        self.for_each_neighbor(x, y, |nx, ny| r.push((nx, ny)));
         r
     }
     pub fn is_border_tile(&self, x: u32, y: u32, player_id: u16) -> bool {

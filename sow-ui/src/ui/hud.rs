@@ -1,4 +1,4 @@
-use egui::{Context, Align, Layout, Color32, RichText, Slider};
+use egui::{Context, Color32, RichText, Slider};
 use crate::UiAction;
 
 pub struct HudState {

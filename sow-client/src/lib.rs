@@ -8,7 +8,7 @@ use blade_graphics as gpu;
 use blade_egui::GuiPainter;
 use egui::{Context, RawInput, Pos2, Rect, Vec2};
 use sow_ui::{ClientApp, app::ClientPhase, UiAction};
-use std::time::{Instant, Duration};
+use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
 
@@ -60,6 +60,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut raw_input = RawInput::default();
 
     // ── Network State ───────────────────────────────────────────────────────
+    #[cfg(not(target_arch = "wasm32"))]
     let tokio_rt = tokio::runtime::Runtime::new().unwrap();
     let mut net_client: Option<SowClient> = None;
     let mut turn_queue = std::collections::VecDeque::new();
@@ -72,19 +73,25 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
     let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
-    let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "ws://74.208.246.177:25565".to_string());
+    let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://darkrift.ai/ws/".to_string());
     app.main_menu_state.server_address = ws_url.clone();
     
     log::info!("Auto-connecting to {}...", ws_url);
     app.main_menu_state.is_connecting = true;
     let url_clone = ws_url.clone();
     let tx = connect_tx.clone();
-    tokio_rt.spawn(async move {
+    let connect_future = async move {
         match SowClient::connect(&url_clone).await {
             Ok(c) => { let _ = tx.send(Ok(c)); }
             Err(e) => { let _ = tx.send(Err(e.to_string())); }
         }
-    });
+    };
+    
+    #[cfg(target_arch = "wasm32")]
+    wasm_bindgen_futures::spawn_local(connect_future);
+    
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio_rt.spawn(connect_future);
 
     // ── Camera state ────────────────────────────────────────────────────────
     let mut camera_x: f32 = 0.0;
@@ -132,17 +139,41 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
             }
             Event::Resumed => {
                 let win = window.get_or_insert_with(|| {
-                    #[cfg(any(target_os = "android", target_family = "wasm"))]
-                    let builder = winit::window::WindowBuilder::new()
+                    #[cfg(target_os = "android")]
+                    let mut builder = winit::window::WindowBuilder::new()
                         .with_title("Shadows of War")
                         .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+
+                    #[cfg(target_arch = "wasm32")]
+                    let mut builder = {
+                        let win = web_sys::window().unwrap();
+                        let w = win.inner_width().unwrap().as_f64().unwrap();
+                        let h = win.inner_height().unwrap().as_f64().unwrap();
+                        winit::window::WindowBuilder::new()
+                            .with_title("Shadows of War")
+                            .with_inner_size(winit::dpi::LogicalSize::new(w, h))
+                    };
+
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        use winit::platform::web::WindowBuilderExtWebSys;
+                        use wasm_bindgen::JsCast;
+                        let window = web_sys::window().unwrap();
+                        let document = window.document().unwrap();
+                        let canvas = document.get_element_by_id("blade")
+                            .unwrap()
+                            .dyn_into::<web_sys::HtmlCanvasElement>()
+                            .unwrap();
+                        builder = builder.with_canvas(Some(canvas));
+                    }
 
                     #[cfg(not(any(target_os = "android", target_family = "wasm")))]
                     let builder = winit::window::WindowBuilder::new()
                         .with_title("Shadows of War — Native")
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
 
-                    builder.build(elwt).unwrap()
+                    let win = builder.build(elwt).unwrap();
+                    win
                 });
                 
                 if surface.is_none() {
@@ -416,6 +447,22 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         camera_y = last_mouse_y as f32 - factor * (last_mouse_y as f32 - camera_y);
                     }
                     WindowEvent::RedrawRequested => {
+                        #[cfg(target_arch = "wasm32")]
+                        if let Some(win) = window.as_ref() {
+                            let web_win = web_sys::window().unwrap();
+                            let w = web_win.inner_width().unwrap().as_f64().unwrap();
+                            let h = web_win.inner_height().unwrap().as_f64().unwrap();
+                            
+                            // Use the logical size and sf to calculate current physical size
+                            let sf = win.scale_factor();
+                            let expected_w = (w * sf) as u32;
+                            let expected_h = (h * sf) as u32;
+                            
+                            if expected_w.abs_diff(screen_w as u32) > 1 || expected_h.abs_diff(screen_h as u32) > 1 {
+                                let _ = win.request_inner_size(winit::dpi::LogicalSize::new(w, h));
+                            }
+                        }
+
                         if let Some(ref mut s) = surface {
                             if let Some(win) = window.as_ref() {
                                 win.pre_present_notify();
@@ -460,7 +507,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                             // ── UI UPDATE ───────────────────────────────────────
                             let mut sf = window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
-                            if cfg!(any(target_os = "android", target_family = "wasm")) && sf < 1.5 && screen_h > 800.0 {
+                            if cfg!(target_os = "android") && sf < 1.5 && screen_h > 800.0 {
                                 sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
                             }
                             
@@ -613,12 +660,16 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             app.main_menu_state.is_connecting = true;
                                             let url_clone = addr.clone();
                                             let tx = connect_tx.clone();
-                                            tokio_rt.spawn(async move {
+                                            let connect_future = async move {
                                                 match SowClient::connect(&url_clone).await {
                                                     Ok(c) => { let _ = tx.send(Ok(c)); }
                                                     Err(e) => { let _ = tx.send(Err(e.to_string())); }
                                                 }
-                                            });
+                                            };
+                                            #[cfg(target_arch = "wasm32")]
+                                            wasm_bindgen_futures::spawn_local(connect_future);
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            tokio_rt.spawn(connect_future);
                                         }
                                         UiAction::JoinLobby(id) => {
                                             let join_msg = sow_core::protocol::ClientMessage::Join {
@@ -839,27 +890,26 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             let tx = map_tx.clone();
                             app.main_menu_state.is_downloading_map = true;
                             app.main_menu_state.cached_map = None;
-                            std::thread::spawn(move || {
-                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
-                                let url = format!("{}/{}/map.bin", maps_base.trim_end_matches('/'), map_name);
-                                log::info!("Downloading map from: {}", url);
-                                match ureq::get(&url).call() {
-                                    Ok(resp) => {
-                                        let len = resp.header("Content-Length")
-                                            .and_then(|s| s.parse::<usize>().ok())
-                                            .unwrap_or(0);
-                                        let mut bytes: Vec<u8> = Vec::with_capacity(len);
-                                        if resp.into_reader().read_to_end(&mut bytes).is_ok() && !bytes.is_empty() {
-                                            log::info!("Downloaded {} bytes", bytes.len());
-                                            let _ = tx.send(Ok(bytes));
+                            
+                            let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                            let url = format!("{}/{}/map.bin", maps_base.trim_end_matches('/'), map_name);
+                            log::info!("Downloading map from: {}", url);
+                            
+                            let request = ehttp::Request::get(&url);
+                            ehttp::fetch(request, move |result| {
+                                match result {
+                                    Ok(response) => {
+                                        if response.ok {
+                                            log::info!("Downloaded {} bytes", response.bytes.len());
+                                            let _ = tx.send(Ok(response.bytes));
                                         } else {
-                                            log::error!("Failed to read map body");
-                                            let _ = tx.send(Err("Failed to read map body".to_string()));
+                                            log::error!("Failed to fetch map, HTTP {}", response.status);
+                                            let _ = tx.send(Err(format!("HTTP Error: {}", response.status)));
                                         }
                                     }
-                                    Err(e) => {
-                                        log::error!("Failed to fetch map from HTTP server: {:?}", e);
-                                        let _ = tx.send(Err(format!("HTTP Error: {}", e)));
+                                    Err(err) => {
+                                        log::error!("Failed to fetch map: {}", err);
+                                        let _ = tx.send(Err(format!("Fetch error: {}", err)));
                                     }
                                 }
                             });
@@ -1080,6 +1130,19 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     log::info!("SOW ENGINE STARTING...");
 
     let event_loop = EventLoopBuilder::default().with_android_app(app).build().unwrap();
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+
+    run_game(event_loop);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn wasm_main() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    console_log::init_with_level(log::Level::Info).expect("error initializing logger");
+    log::info!("SOW ENGINE WASM STARTING...");
+
+    let event_loop = winit::event_loop::EventLoop::new().unwrap();
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
 
     run_game(event_loop);

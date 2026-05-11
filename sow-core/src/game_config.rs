@@ -163,11 +163,11 @@ impl Default for GameConfig {
             random_spawn: false,
 
             // Core Simulation Pacing
-            tick_rate_ms: 100.0, // Server clock ticks 4 times per second
-            global_speed_multiplier: 0.25, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
+            tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)
+            global_speed_multiplier: 0.1, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
             
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 4.0,   // Extremely low: 100 troops = 50 enemy tiles bursts
+            attack_cost_enemy: 3.0,   // Extremely low: 100 troops = 50 enemy tiles bursts
             attack_cost_neutral: 1.5, // Extremely low: 100 troops = 200 neutral tiles bursts
             terrain_multiplier_highland: 1.75, // Highlands cost 75% more to conquer
             terrain_multiplier_mountain: 3.5,  // Mountains cost 3.5x more to conquer

@@ -12,7 +12,7 @@ serde_json.workspace = true
 log = { workspace = true }
 env_logger = { workspace = true }
 tokio = { version = "1.0", features = ["full"] }
-tokio-tungstenite = "0.20"
+tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 rand = "0.10.1"
 brotli = "8.0.2"
