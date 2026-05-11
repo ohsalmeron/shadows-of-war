@@ -191,8 +191,7 @@ impl MapRenderer {
     }
 
     /// Pack the game map into the upload buffer and copy to the GPU texture.
-    /// Each texel is a u32: low 16 bits = owner_id, bits 16..24 = terrain byte.
-    pub fn update(&self, encoder: &mut gpu::CommandEncoder, map: &GameMap) {
+    pub fn update(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, map: &GameMap) {
         let total = (self.width * self.height) as usize;
         let dst_ptr = self.upload_buffer.data();
         assert!(!dst_ptr.is_null(), "Upload buffer not mapped");
@@ -207,6 +206,8 @@ impl MapRenderer {
             // Pack: bits 0..15 = owner_id, bits 16..23 = terrain byte
             slice[i] = owner_id | (terrain_byte << 16);
         }
+
+        context.sync_buffer(self.upload_buffer);
 
         // GPU transfer: copy upload buffer -> texture
         let bytes_per_row = self.width * 4; // 4 bytes per R32Uint texel

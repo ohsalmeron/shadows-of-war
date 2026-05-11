@@ -164,7 +164,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks 4 times per second
-            global_speed_multiplier: 0.5, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
+            global_speed_multiplier: 0.25, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
             
             // Combat & Expansion Mechanics
             attack_cost_enemy: 4.0,   // Extremely low: 100 troops = 50 enemy tiles bursts

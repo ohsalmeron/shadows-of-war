@@ -55,7 +55,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
     // ── UI State ────────────────────────────────────────────────────────────
     let mut app = ClientApp::new();
-    let egui_ctx = Context::default();
+    let mut egui_ctx = Context::default();
     sow_ui::ui::theme::apply_theme(&egui_ctx);
     let mut raw_input = RawInput::default();
 
@@ -99,6 +99,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut last_mouse_y: f64 = 0.0;
 
     let mut label_positions: HashMap<u16, (f32, f32)> = HashMap::new();
+    
+    // Touch state for pinch-to-zoom
+    let mut active_touches: HashMap<u64, (f64, f64)> = HashMap::new();
+    let mut last_pinch_distance: Option<f64> = None;
 
     let mut prev_sync_point: Option<gpu::SyncPoint> = None;
     let mut last_tick = Instant::now();
@@ -162,6 +166,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     
                     gui_painter = Some(GuiPainter::new(s.info(), &render_ctx.context));
                     surface = Some(s);
+                    
+                    // Re-create egui context to force it to re-upload its font texture!
+                    egui_ctx = Context::default();
+                    sow_ui::ui::theme::apply_theme(&egui_ctx);
                 }
             }
             Event::WindowEvent { event, window_id } => {
@@ -300,59 +308,97 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         use winit::event::TouchPhase;
                         let pressed = touch.phase == TouchPhase::Started;
                         let released = touch.phase == TouchPhase::Ended || touch.phase == TouchPhase::Cancelled;
-                        
-                        if pressed {
-                            last_mouse_x = touch.location.x;
-                            last_mouse_y = touch.location.y;
-                            dragging = true;
-                            raw_input.events.push(egui::Event::PointerMoved(Pos2::new(last_mouse_x as f32, last_mouse_y as f32)));
-                            raw_input.events.push(egui::Event::PointerButton {
-                                pos: Pos2::new(last_mouse_x as f32, last_mouse_y as f32),
-                                button: egui::PointerButton::Primary,
-                                pressed: true,
-                                modifiers: Default::default(),
-                            });
-                        } else if released {
-                            dragging = false;
-                            raw_input.events.push(egui::Event::PointerButton {
-                                pos: Pos2::new(last_mouse_x as f32, last_mouse_y as f32),
-                                button: egui::PointerButton::Primary,
-                                pressed: false,
-                                modifiers: Default::default(),
-                            });
 
-                            if !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
-                                let map_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
-                                let map_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
+                        if pressed || touch.phase == TouchPhase::Moved {
+                            active_touches.insert(touch.id, (touch.location.x, touch.location.y));
+                        }
+                        if released {
+                            active_touches.remove(&touch.id);
+                        }
 
-                                if map_x >= 0.0 && map_y >= 0.0 && map_x < map_w as f32 && map_y < map_h as f32 {
-                                    let owner = engine.state.map.owner_id(map_x as u32, map_y as u32);
-                                    let attack = sow_core::protocol::AttackIntent {
-                                        target_owner: owner,
-                                        troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
-                                    };
-                                    let intent = sow_core::protocol::GameplayIntent::Attack(attack);
-                                    if let Some(c) = net_client.as_ref() {
-                                        let msg = sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() };
-                                        if let Ok(json) = serde_json::to_string(&msg) {
-                                            c.send(json);
+                        if active_touches.len() >= 2 {
+                            dragging = false; // Cancel map drag while pinching
+                            let mut it = active_touches.values();
+                            let p1 = *it.next().unwrap();
+                            let p2 = *it.next().unwrap();
+                            let dx = p1.0 - p2.0;
+                            let dy = p1.1 - p2.1;
+                            let distance = (dx * dx + dy * dy).sqrt();
+
+                            if let Some(last_dist) = last_pinch_distance {
+                                let delta = distance - last_dist;
+                                let old_zoom = camera_zoom;
+                                camera_zoom *= 1.0 + (delta as f32 * 0.005);
+                                camera_zoom = camera_zoom.clamp(0.25, 20.0);
+
+                                let pinch_cx = (p1.0 + p2.0) / 2.0;
+                                let pinch_cy = (p1.1 + p2.1) / 2.0;
+                                let map_x = (pinch_cx as f32 - camera_x) / old_zoom;
+                                let map_y = (pinch_cy as f32 - camera_y) / old_zoom;
+                                camera_x = pinch_cx as f32 - map_x * camera_zoom;
+                                camera_y = pinch_cy as f32 - map_y * camera_zoom;
+                            }
+                            last_pinch_distance = Some(distance);
+                        } else {
+                            last_pinch_distance = None;
+                            
+                            if active_touches.len() == 1 {
+                                if pressed {
+                                    last_mouse_x = touch.location.x;
+                                    last_mouse_y = touch.location.y;
+                                    dragging = true;
+                                    raw_input.events.push(egui::Event::PointerMoved(Pos2::new(last_mouse_x as f32, last_mouse_y as f32)));
+                                    raw_input.events.push(egui::Event::PointerButton {
+                                        pos: Pos2::new(last_mouse_x as f32, last_mouse_y as f32),
+                                        button: egui::PointerButton::Primary,
+                                        pressed: true,
+                                        modifiers: Default::default(),
+                                    });
+                                } else if touch.phase == TouchPhase::Moved {
+                                    let dx = touch.location.x - last_mouse_x;
+                                    let dy = touch.location.y - last_mouse_y;
+                                    if dragging && !egui_ctx.egui_wants_pointer_input() {
+                                        camera_x += dx as f32;
+                                        camera_y += dy as f32;
+                                    }
+                                    last_mouse_x = touch.location.x;
+                                    last_mouse_y = touch.location.y;
+                                    raw_input.events.push(egui::Event::PointerMoved(Pos2::new(last_mouse_x as f32, last_mouse_y as f32)));
+                                }
+                            }
+                            
+                            if released {
+                                dragging = false;
+                                raw_input.events.push(egui::Event::PointerButton {
+                                    pos: Pos2::new(last_mouse_x as f32, last_mouse_y as f32),
+                                    button: egui::PointerButton::Primary,
+                                    pressed: false,
+                                    modifiers: Default::default(),
+                                });
+
+                                if !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
+                                    let map_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
+                                    let map_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
+
+                                    if map_x >= 0.0 && map_y >= 0.0 && map_x < map_w as f32 && map_y < map_h as f32 {
+                                        let owner = engine.state.map.owner_id(map_x as u32, map_y as u32);
+                                        let attack = sow_core::protocol::AttackIntent {
+                                            target_owner: owner,
+                                            troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
+                                        };
+                                        let intent = sow_core::protocol::GameplayIntent::Attack(attack);
+                                        if let Some(c) = net_client.as_ref() {
+                                            let msg = sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() };
+                                            if let Ok(json) = serde_json::to_string(&msg) {
+                                                c.send(json);
+                                            }
+                                        } else {
+                                            let stamped = sow_core::protocol::StampedIntent { player_id: my_player_id.unwrap_or(1), intent };
+                                            engine.apply_stamped_intent(&stamped, 0);
                                         }
-                                    } else {
-                                        let stamped = sow_core::protocol::StampedIntent { player_id: my_player_id.unwrap_or(1), intent };
-                                        engine.apply_stamped_intent(&stamped, 0);
                                     }
                                 }
                             }
-                        } else if touch.phase == TouchPhase::Moved {
-                            let dx = touch.location.x - last_mouse_x;
-                            let dy = touch.location.y - last_mouse_y;
-                            if dragging && !egui_ctx.egui_wants_pointer_input() {
-                                camera_x += dx as f32;
-                                camera_y += dy as f32;
-                            }
-                            last_mouse_x = touch.location.x;
-                            last_mouse_y = touch.location.y;
-                            raw_input.events.push(egui::Event::PointerMoved(Pos2::new(last_mouse_x as f32, last_mouse_y as f32)));
                         }
                     }
                     WindowEvent::MouseWheel { delta, .. } => {
@@ -390,7 +436,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     needs_first_upload = false;
                                 }
                                 if needs_map_upload {
-                                    mr.update(&mut render_ctx.command_encoder, &engine.state.map);
+                                    mr.update(&mut render_ctx.command_encoder, &render_ctx.context, &engine.state.map);
                                     needs_map_upload = false;
                                 }
 
@@ -457,8 +503,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     for player in &engine.state.players {
                                         if player.tile_count == 0 || !player.alive { continue; }
                                         
-                                        let target_cx = player.sum_x as f32 / player.tile_count as f32;
-                                        let target_cy = player.sum_y as f32 / player.tile_count as f32;
+                                        let target_cx = (player.sum_x as f32 / player.tile_count as f32) + 0.5;
+                                        let target_cy = (player.sum_y as f32 / player.tile_count as f32) + 0.5;
                                         
                                         // Smooth position interpolation
                                         let pos = label_positions.entry(player.id).or_insert((target_cx, target_cy));
@@ -476,8 +522,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             pos.1 = target_cy;
                                         }
                                         
-                                        let screen_x = pos.0 * camera_zoom + camera_x;
-                                        let screen_y = pos.1 * camera_zoom + camera_y;
+                                        let screen_x = (pos.0 * camera_zoom + camera_x) / sf;
+                                        let screen_y = (pos.1 * camera_zoom + camera_y) / sf;
                                         
                                         // Frustum cull
                                         if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
@@ -672,7 +718,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 gp.paint(&mut pass, &paint_jobs, &screen_desc, &render_ctx.context);
                                 drop(pass);
                             }
-
+                            if let Some(ref mut gp) = gui_painter {
+                                gp.sync(&render_ctx.context);
+                            }
                             render_ctx.command_encoder.present(frame);
                             let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
                             
