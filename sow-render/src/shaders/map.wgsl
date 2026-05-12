@@ -15,6 +15,7 @@ struct Globals {
     lod_3_zoom: f32,
     local_player_id: u32,
     padding1: u32,
+    padding2: u32,
 }
 
 var<uniform> globals: Globals;

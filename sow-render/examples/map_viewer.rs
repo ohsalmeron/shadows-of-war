@@ -71,6 +71,7 @@ fn main() {
         lod_3_zoom: 20.0,
         local_player_id: 1,
         padding1: 0,
+        padding2: 0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

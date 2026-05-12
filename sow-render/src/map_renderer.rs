@@ -22,6 +22,7 @@ pub struct MapGlobals {
     pub lod_3_zoom: f32,
     pub local_player_id: u32,
     pub padding1: u32,
+    pub padding2: u32,
 }
 
 #[derive(blade_macros::ShaderData)]

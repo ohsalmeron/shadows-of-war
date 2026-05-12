@@ -194,7 +194,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 // App or tab foregrounded — retry WS soon if the socket died in the background.
                 ws_reconnect_after_resume = true;
                 let win = window.get_or_insert_with(|| {
-                    #[cfg(target_os = "android")]
+                    #[cfg(any(target_os = "android", target_os = "ios"))]
                     let mut builder = winit::window::WindowBuilder::new()
                         .with_title("Shadows of War")
                         .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
@@ -222,7 +222,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         builder = builder.with_canvas(Some(canvas));
                     }
 
-                    #[cfg(not(any(target_os = "android", target_family = "wasm")))]
+                    #[cfg(not(any(target_os = "android", target_os = "ios", target_family = "wasm")))]
                     let builder = winit::window::WindowBuilder::new()
                         .with_title("Shadows of War — Native")
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
@@ -601,13 +601,17 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     lod_3_zoom: ClientVisualConfig::default().ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
                                     padding1: 0,
+                                    padding2: 0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }
 
                             // ── UI UPDATE ───────────────────────────────────────
                             let mut sf = window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
-                            if cfg!(target_os = "android") && sf < 1.5 && screen_h > 800.0 {
+                            if cfg!(any(target_os = "android", target_os = "ios"))
+                                && sf < 1.5
+                                && screen_h > 800.0
+                            {
                                 sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
                             }
                             
