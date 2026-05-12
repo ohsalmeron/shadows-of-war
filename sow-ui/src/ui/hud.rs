@@ -7,6 +7,7 @@ pub struct HudState {
     pub max_troops: f64,
     pub attack_ratio: f32,
     pub is_mobile: bool,
+    pub sync_state: Option<sow_core::protocol::ServerSyncStateMessage>,
 }
 
 #[allow(deprecated)]
@@ -76,6 +77,54 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                 action = Some(UiAction::CenterCamera);
             }
         });
+
+    if let Some(sync) = &state.sync_state {
+        // Draw a dark full-screen overlay to block input visually and practically
+        let screen_rect = ctx.screen_rect();
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("sync_overlay")))
+            .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+
+        egui::Window::new("WAITING FOR PLAYERS")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false) // Custom polished look
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    if sync.is_starting {
+                        ui.label(RichText::new("All Players Ready!").size(24.0).strong().color(Color32::GREEN));
+                        ui.label(RichText::new("Stabilizing connection...").size(16.0).color(Color32::LIGHT_GRAY));
+                    } else {
+                        ui.label(RichText::new("WAITING FOR PLAYERS").size(24.0).strong().color(Color32::WHITE));
+                        ui.label(RichText::new(format!("Starting in: {:.1}s", sync.time_remaining)).size(18.0).color(Color32::YELLOW));
+                    }
+                    
+                    ui.add_space(20.0);
+                    
+                    let total = sync.players.len();
+                    let ready = sync.ready_players.len();
+                    ui.add(egui::ProgressBar::new(ready as f32 / total as f32)
+                        .text(format!("{}/{} Players Ready", ready, total)));
+                        
+                    ui.add_space(15.0);
+                    
+                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        for p in &sync.players {
+                            ui.horizontal(|ui| {
+                                let is_ready = sync.ready_players.contains(p);
+                                let (icon, color) = if is_ready { 
+                                    ("✅", Color32::GREEN)
+                                } else { 
+                                    ("⏳", Color32::LIGHT_GRAY) 
+                                };
+                                ui.label(RichText::new(icon).color(color));
+                                ui.label(RichText::new(p).color(Color32::WHITE));
+                            });
+                        }
+                    });
+                });
+            });
+    }
 
     action
 }

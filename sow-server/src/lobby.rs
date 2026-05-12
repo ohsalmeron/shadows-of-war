@@ -116,13 +116,11 @@ pub fn primary_lobby_id(games: &[ServerLobby]) -> Option<u64> {
 
 fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<u64> {
     if let Some(id) = requested {
-        games
-            .iter()
-            .find(|g| g.id == id && g.joinable())
-            .map(|g| g.id)
-    } else {
-        primary_lobby_id(games)
+        if let Some(g) = games.iter().find(|g| g.id == id && g.joinable()) {
+            return Some(g.id);
+        }
     }
+    primary_lobby_id(games)
 }
 
 pub fn join_player(
@@ -249,7 +247,7 @@ fn start_match(lobby: &mut ServerLobby) {
     }
     engine.spawn_ai(lobby.config.nation_count, lobby.config.bot_count);
     lobby.engine = Some(engine);
-    lobby.countdown_secs = 10.0; // Max 10 seconds wait for clients to load
+    lobby.countdown_secs = 16.5; // 15s load + 1.5s stabilize
     lobby.phase = LobbyPhase::Loading;
 
     lobby.active_empty_secs = if lobby.players.is_empty() {
@@ -344,18 +342,61 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                 LobbyPhase::CountingDown => {
                     lobby.countdown_secs -= TICK_SECS;
                     let cap = lobby.config.max_players as usize;
-                    if lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap {
+                    if lobby.countdown_secs <= -3.0 || lobby.players.len() >= cap {
                         start_match(lobby);
                     }
                     false
                 }
                 LobbyPhase::Loading => {
                     lobby.countdown_secs -= TICK_SECS;
-                    if lobby.countdown_secs <= 0.0 || (lobby.ready_players.len() >= lobby.players.len() && !lobby.players.is_empty()) {
-                        if lobby.countdown_secs <= 0.0 && lobby.ready_players.len() < lobby.players.len() {
-                            log::warn!("Lobby {} loading phase timed out! Starting match anyway to let slow clients catch up.", lobby.id);
+                    
+                    let players: Vec<String> = lobby.players.iter().map(|p| p.name.clone()).collect();
+                    let ready_players: Vec<String> = lobby.players.iter()
+                        .filter(|p| lobby.ready_players.contains(&p.player_id))
+                        .map(|p| p.name.clone()).collect();
+                    
+                    let all_ready = ready_players.len() >= players.len() && !players.is_empty();
+                    
+                    // If everyone is ready, we force the countdown to jump to 1.5s if it was higher,
+                    // serving as the "Stabilizing..." delay.
+                    if all_ready && lobby.countdown_secs > 1.5 {
+                        lobby.countdown_secs = 1.5;
+                    }
+                    
+                    let is_starting = all_ready;
+                    
+                    let sync_msg = sow_core::protocol::ServerSyncStateMessage {
+                        time_remaining: lobby.countdown_secs.max(0.0),
+                        players,
+                        ready_players,
+                        is_starting,
+                    };
+                    let sync_json = serde_json::to_string(&sync_msg).unwrap();
+                    for p in &lobby.players {
+                        let _ = p.tx.try_send(sync_json.clone());
+                    }
+
+                    if lobby.countdown_secs <= 0.0 {
+                        if !all_ready {
+                            log::warn!("Lobby {} loading phase timed out! Removing slow clients.", lobby.id);
+                            let closed_msg = sow_core::protocol::ServerLobbyClosedMessage {
+                                lobby_id: lobby.id,
+                                reason: "Sync timeout. Requeueing...".to_string(),
+                            };
+                            let closed_json = serde_json::to_string(&closed_msg).unwrap();
+                            lobby.players.retain(|p| {
+                                if lobby.ready_players.contains(&p.player_id) {
+                                    true
+                                } else {
+                                    let _ = p.tx.try_send(closed_json.clone());
+                                    false
+                                }
+                            });
                         } else {
                             log::info!("Lobby {} all clients ready, starting active match!", lobby.id);
+                        }
+                        if lobby.players.is_empty() {
+                            lobby.active_empty_secs = ACTIVE_EMPTY_SECS;
                         }
                         lobby.phase = LobbyPhase::Active;
                     }

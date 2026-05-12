@@ -142,3 +142,12 @@ pub struct ServerTurnMessage {
     pub turn: Turn,
 }
 
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ServerSyncStateMessage {
+    pub time_remaining: f32,
+    pub players: Vec<String>,
+    pub ready_players: Vec<String>,
+    pub is_starting: bool,
+}
+

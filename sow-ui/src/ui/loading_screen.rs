@@ -3,6 +3,7 @@ use egui::{Color32, Context, Frame, RichText};
 pub struct LoadingState {
     pub status_text: String,
     pub progress: f32, // 0.0 to 1.0
+    pub frames_drawn: u32,
 }
 
 impl Default for LoadingState {
@@ -10,11 +11,13 @@ impl Default for LoadingState {
         Self {
             status_text: "Initializing...".to_string(),
             progress: 0.0,
+            frames_drawn: 0,
         }
     }
 }
 
-pub fn draw(ctx: &Context, state: &LoadingState) {
+pub fn draw(ctx: &Context, state: &mut LoadingState) {
+    state.frames_drawn += 1;
     #[allow(deprecated)]
     egui::CentralPanel::default()
         .frame(Frame::default().fill(crate::ui::theme::menu_backdrop()))

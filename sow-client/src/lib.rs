@@ -99,6 +99,10 @@ use client_config::ClientVisualConfig;
 const CAMERA_MIN_ZOOM: f32 = 0.01;
 const CAMERA_MAX_ZOOM: f32 = 20.0;
 
+/// Zoom level used only for nameplate **font** sizing (not LOD). Matches default `camera_zoom` so
+/// first-frame text size matches the old formula, while zooming no longer churns egui glyph atlas sizes.
+const NAMEPLATE_REFERENCE_ZOOM: f32 = 2.0;
+
 
 
 fn spawn_sow_client_connect(
@@ -382,7 +386,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             dragging = pressed;
 
                             // If it's a click (pressed) and not intercepted by egui UI
-                            if pressed && !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
+                            if pressed && !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing && app.hud_state.sync_state.is_none() {
                                 // Project mouse to map tile!
                                 let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
                                 let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
@@ -534,7 +538,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     modifiers: Default::default(),
                                 });
 
-                                if !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing {
+                                if !egui_ctx.egui_wants_pointer_input() && app.phase == ClientPhase::Playing && app.hud_state.sync_state.is_none() {
                                     let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
                                     let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
                                     
@@ -734,32 +738,36 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             (rgb[2] * 255.0) as u8,
                                         );
                                         
-                                        // Territory-driven visibility & size (OpenFront style, scaled for readability)
+                                        // `lod_presence` uses zoom (when zoomed out, dots only). `sizing_presence`
+                                        // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
+                                        // invalidated every scroll step (fixes garbled glyphs). Font size is rounded
+                                        // to whole points for fewer distinct `FontId`s.
                                         let importance = (player.tile_count as f32).sqrt().max(1.0);
-                                        let screen_presence = importance * (camera_zoom / sf);
-                                        
-                                        // Small nations require zooming in to appear. 
+                                        let lod_presence = importance * (camera_zoom / sf);
+                                        let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
+
+                                        // Small nations require zooming in to appear.
                                         // Increased threshold to 12.0 to cull more tiny labels and boost performance.
-                                        let show_full = screen_presence >= 12.0;
-                                        
+                                        let show_full = lod_presence >= 12.0;
+
                                         if show_full {
-                                            let ui_text_scale = ClientVisualConfig::default().ui_text_scale; 
-                                            
-                                            // 1. Calculate physical bounding box of the empire on screen
-                                            let empire_width_px = screen_presence * 2.5; // Hexagons spread out
-                                            let empire_height_px = screen_presence * 1.5;
-                                            
+                                            let ui_text_scale = ClientVisualConfig::default().ui_text_scale;
+
+                                            // 1. Bounding box for font fitting (reference zoom, not current zoom)
+                                            let empire_width_px = sizing_presence * 2.5; // Hexagons spread out
+                                            let empire_height_px = sizing_presence * 1.5;
+
                                             // 2. Constrain font size so the text fits INSIDE those pixels
                                             let name_len = player.name.len().max(1) as f32;
                                             let max_by_width = empire_width_px / (name_len * 0.6); // Avg char width is ~60% of height
                                             let max_by_height = empire_height_px / 2.5; // Need space for 2 lines of text (name + troops)
-                                            
-                                            // 3. Raw font size that perfectly inscribes the territory
+
+                                            // 3. Raw font size that inscribes the territory at reference zoom
                                             let raw_font_size = max_by_width.min(max_by_height);
-                                            
-                                            // 4. Apply user scale and clamp (continuous size — no quantization)
+
+                                            // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
-                                            let font_size = target_font_size.max(4.0).min(64.0);
+                                            let font_size = target_font_size.round().clamp(4.0, 64.0);
                                             
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
                                             let new_troops_str = render_troops(player.troops);
@@ -1047,6 +1055,14 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             serde_json::from_str::<sow_core::protocol::ServerTurnMessage>(&msg)
                         {
                             turn_queue.push_back(turn_msg.turn);
+                            app.hud_state.sync_state = None;
+                            continue;
+                        }
+
+                        if let Ok(sync_msg) =
+                            serde_json::from_str::<sow_core::protocol::ServerSyncStateMessage>(&msg)
+                        {
+                            app.hud_state.sync_state = Some(sync_msg);
                             continue;
                         }
 
@@ -1078,12 +1094,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             serde_json::from_str::<sow_core::protocol::ServerLobbyClosedMessage>(&msg)
                         {
                             log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
-                            app.phase = ClientPhase::MainMenu;
-                            app.main_menu_state.is_waiting = false;
-                            app.main_menu_state.pending_join_lobby_id = None;
-                            app.main_menu_state.joined_lobby_id = None;
+                            app.hud_state.sync_state = None;
                             my_lobby_id = None;
                             my_player_id = None;
+
+                            // Clean the engine state to prevent zombie data
                             let config = GameConfig::default();
                             let state = GameState::new(12345, map_w, map_h, config);
                             let water = WaterComponents::compute(&state.map);
@@ -1093,8 +1108,28 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             turn_queue.clear();
                             label_positions.clear();
                             needs_first_upload = true;
+
+                            if closed.reason.contains("Requeueing") {
+                                log::info!("Auto-requeueing to a new lobby...");
+                                app.phase = ClientPhase::MainMenu;
+                                app.main_menu_state.is_waiting = true;
+                                let join_msg = sow_core::protocol::ClientMessage::Join {
+                                    name: app.main_menu_state.player_name.clone(),
+                                    is_observer: false,
+                                    target_lobby_id: None, // Ask for next available lobby
+                                    preferred_map: Some(app.main_menu_state.selected_map.clone()),
+                                };
+                                let json = serde_json::to_string(&join_msg).unwrap();
+                                c.send(json);
+                            } else {
+                                app.phase = ClientPhase::MainMenu;
+                                app.main_menu_state.is_waiting = false;
+                                app.main_menu_state.pending_join_lobby_id = None;
+                                app.main_menu_state.joined_lobby_id = None;
+                            }
                             continue;
                         }
+
 
                         if let Ok(fail) =
                             serde_json::from_str::<sow_core::protocol::ServerJoinFailedMessage>(&msg)
@@ -1201,6 +1236,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         log::info!("Received ServerStartMessage; entering match");
                         log::info!("Received ServerStartMessage; computing heavy init in background");
                         app.phase = sow_ui::app::ClientPhase::Loading;
+                        app.loading_state.frames_drawn = 0;
                         app.main_menu_state.is_waiting = false;
                         app.main_menu_state.pending_join_lobby_id = None;
                         app.main_menu_state.joined_lobby_id = None;
@@ -1257,7 +1293,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 // Poll engine init channel
                 if app.phase == sow_ui::app::ClientPhase::Loading {
                     app.loading_state.progress = (app.loading_state.progress + 0.05).min(0.95);
-                    if let Ok((state, water, start_msg)) = engine_init_rx.try_recv() {
+                    // Wait at least 2 frames before blocking to guarantee the loading screen flips to the GPU
+                    if app.loading_state.frames_drawn > 1 {
+                        if let Ok((state, water, start_msg)) = engine_init_rx.try_recv() {
                         log::info!("Engine initialization complete in background thread.");
                         app.loading_state.status_text = "Uploading assets to GPU...".to_string();
                         app.loading_state.progress = 1.0;
@@ -1308,6 +1346,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
                         }
                     }
+                }
                 }
 
                 app.hud_state.is_mobile = screen_w < 900.0;

@@ -27,6 +27,7 @@ impl ClientApp {
                 max_troops: 0.0,
                 attack_ratio: 0.25,
                 is_mobile: false,
+                sync_state: None,
             },
             loading_state: loading_screen::LoadingState::default(),
         }
@@ -38,7 +39,7 @@ impl ClientApp {
                 main_menu::draw(ctx, &mut self.main_menu_state)
             }
             ClientPhase::Loading => {
-                loading_screen::draw(ctx, &self.loading_state);
+                loading_screen::draw(ctx, &mut self.loading_state);
                 None
             }
             ClientPhase::Playing => {
