@@ -149,16 +149,16 @@ impl Default for GameConfig {
             attack_cost_neutral: 1.5, // Standard neutral cost
             terrain_multiplier_highland: 1.5,
             terrain_multiplier_mountain: 3.0,
-            bot_attack_interval_ticks: 64,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
-            max_tiles_per_tick: 10.0,          // Cap per attack to make expansion flow like a frontline
+            bot_attack_interval_ticks: 16,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
+            max_tiles_per_tick: 8.0,          // Cap per attack to make expansion flow like a frontline
             momentum_divisor: 2500.0,          // Troops needed for 1x momentum
 
             // Economy & Income Rates
             starting_troops: 100.0,  // Initial burst to allow early expansion
             starting_gold: 10.0,
-            gold_base_income: 6.0,
-            troop_base_income: 75.0, // Smooth baseline troop recovery
-            troop_per_tile: 3.0,     // Rewards map control, but doesn't instantly snowball
+            gold_base_income: 4.0,
+            troop_base_income: 8.0, // Smooth baseline troop recovery
+            troop_per_tile: 4.0,     // Rewards map control, but doesn't instantly snowball
             max_troops_base: 100.0,
             max_troops_scale: 50.0,
             city_max_troops_per_level: 2000.0,

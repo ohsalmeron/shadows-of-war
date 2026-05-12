@@ -342,7 +342,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                 LobbyPhase::CountingDown => {
                     lobby.countdown_secs -= TICK_SECS;
                     let cap = lobby.config.max_players as usize;
-                    if lobby.countdown_secs <= -3.0 || lobby.players.len() >= cap {
+                    if lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap {
                         start_match(lobby);
                     }
                     false

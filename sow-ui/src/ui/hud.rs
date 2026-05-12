@@ -112,12 +112,11 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                         for p in &sync.players {
                             ui.horizontal(|ui| {
                                 let is_ready = sync.ready_players.contains(p);
-                                let (icon, color) = if is_ready { 
-                                    ("✅", Color32::GREEN)
+                                if is_ready { 
+                                    ui.label(RichText::new("✅").color(Color32::GREEN));
                                 } else { 
-                                    ("⏳", Color32::LIGHT_GRAY) 
-                                };
-                                ui.label(RichText::new(icon).color(color));
+                                    ui.add(egui::Spinner::new().size(14.0).color(Color32::LIGHT_GRAY));
+                                }
                                 ui.label(RichText::new(p).color(Color32::WHITE));
                             });
                         }

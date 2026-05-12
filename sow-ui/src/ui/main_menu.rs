@@ -271,11 +271,6 @@ fn draw_queue_overlay(
                 
                 if let Some(lobby_id) = state.joined_lobby_id.or(state.pending_join_lobby_id) {
                     if let Some(lobby) = state.lobbies.iter().find(|l| l.id == lobby_id) {
-                        if state.is_downloading_map {
-                            ui.label(RichText::new("⏬ Downloading Map...").strong().color(Color32::YELLOW));
-                        } else if state.cached_map.is_some() {
-                            ui.label(RichText::new("✅ Map Cached").strong().color(Color32::GREEN));
-                        }
                         ui.label(RichText::new(format!("Connected Players ({}/{})", lobby.num_players, lobby.max_players)).strong().color(text_secondary()));
                         ui.add_space(8.0);
                         for name in &lobby.player_names {

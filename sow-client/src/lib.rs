@@ -767,7 +767,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                                             // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
-                                            let font_size = target_font_size.round().clamp(4.0, 64.0);
+                                            let font_size = target_font_size.round().clamp(12.0, 72.0);
                                             
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
                                             let new_troops_str = render_troops(player.troops);
@@ -1216,6 +1216,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             log::info!("Map download completed successfully.");
                             app.main_menu_state.cached_map = Some(bytes);
                             app.main_menu_state.is_downloading_map = false;
+                            app.loading_state.is_downloading_map = false;
                         }
                         Err(e) => {
                             log::error!("Map download aborted: {}", e);
@@ -1230,17 +1231,20 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 }
 
                 if let Some(start_msg) = pending_start_msg.take() {
+                    log::info!("Received ServerStartMessage; entering match");
+                    app.phase = sow_ui::app::ClientPhase::Loading;
+                    app.loading_state.frames_drawn = 0;
+                    app.loading_state.is_downloading_map = app.main_menu_state.is_downloading_map;
+                    app.main_menu_state.is_waiting = false;
+                    app.main_menu_state.pending_join_lobby_id = None;
+                    app.main_menu_state.joined_lobby_id = None;
+                    my_player_id = start_msg.my_player_id;
+
                     if app.main_menu_state.is_downloading_map {
+                        // We must keep pending_start_msg so the loading phase can use it once the download finishes
                         pending_start_msg = Some(start_msg);
                     } else {
-                        log::info!("Received ServerStartMessage; entering match");
                         log::info!("Received ServerStartMessage; computing heavy init in background");
-                        app.phase = sow_ui::app::ClientPhase::Loading;
-                        app.loading_state.frames_drawn = 0;
-                        app.main_menu_state.is_waiting = false;
-                        app.main_menu_state.pending_join_lobby_id = None;
-                        app.main_menu_state.joined_lobby_id = None;
-                        my_player_id = start_msg.my_player_id;
                         
                         app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
                         app.loading_state.progress = 0.1;
@@ -1293,8 +1297,48 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 // Poll engine init channel
                 if app.phase == sow_ui::app::ClientPhase::Loading {
                     app.loading_state.progress = (app.loading_state.progress + 0.05).min(0.95);
-                    // Wait at least 2 frames before blocking to guarantee the loading screen flips to the GPU
-                    if app.loading_state.frames_drawn > 1 {
+                    
+                    if app.loading_state.is_downloading_map {
+                        if !app.main_menu_state.is_downloading_map {
+                            app.loading_state.is_downloading_map = false;
+                            if let Some(start_msg) = pending_start_msg.take() {
+                                log::info!("Map download finished in Loading phase. Computing heavy init.");
+                                app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
+                                let cached_map = app.main_menu_state.cached_map.take();
+                                let start_msg_clone = start_msg.clone();
+                                let tx = engine_init_tx.clone();
+
+                                let init_logic = move || {
+                                    let w = start_msg_clone.config.map_width;
+                                    let h = start_msg_clone.config.map_height;
+                                    let mut state = sow_core::game::GameState::new(
+                                        start_msg_clone.seed,
+                                        w,
+                                        h,
+                                        start_msg_clone.config.clone(),
+                                    );
+                                    
+                                    if let Some(bytes) = cached_map {
+                                        if bytes.len() == state.map.terrain.len() {
+                                            let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                                            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len()); }
+                                        } else {
+                                            for (i, &b) in bytes.iter().enumerate() {
+                                                if i < state.map.terrain.len() {
+                                                    state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    let water = sow_core::water_components::WaterComponents::compute(&state.map);
+                                    let _ = tx.send((state, water, start_msg_clone));
+                                };
+                                std::thread::spawn(init_logic);
+                            }
+                        }
+                    } else if app.loading_state.frames_drawn > 1 {
+                        // Wait at least 2 frames before blocking to guarantee the loading screen flips to the GPU
                         if let Ok((state, water, start_msg)) = engine_init_rx.try_recv() {
                         log::info!("Engine initialization complete in background thread.");
                         app.loading_state.status_text = "Uploading assets to GPU...".to_string();
