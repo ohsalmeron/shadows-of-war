@@ -82,21 +82,28 @@ def main():
     # 4. Assemble Web Client (UI, sw.js, HTML)
     print("🎨 4. Assembling Web UI & Assets...")
     
-    # Copy from dark-rift web assets
-    dark_rift_web = PROJECT_ROOT / "dark-rift" / "web"
-    shutil.copytree(dark_rift_web / "favicon_io", dist_dir / "favicon_io", dirs_exist_ok=True)
-    for ext in ["png", "ico", "json"]:
-        for file in (dist_dir / "favicon_io").glob(f"*.{ext}"):
-            shutil.copy2(file, dist_dir / file.name)
-    if (dark_rift_web / "sw.js").exists():
-        shutil.copy2(dark_rift_web / "sw.js", dist_dir / "sw.js")
+    # Copy web assets if they exist
+    favicon_src = PROJECT_ROOT / "assets" / "favicon_io"
+    if favicon_src.exists():
+        shutil.copytree(favicon_src, dist_dir / "favicon_io", dirs_exist_ok=True)
+        for ext in ["png", "ico", "json"]:
+            for file in (dist_dir / "favicon_io").glob(f"*.{ext}"):
+                shutil.copy2(file, dist_dir / file.name)
+    
+    sw_src = PROJECT_ROOT / "web" / "sw.js"
+    if sw_src.exists():
+        shutil.copy2(sw_src, dist_dir / "sw.js")
     
     # Copy UI loader assets
-    shutil.copytree(PROJECT_ROOT / "dark-rift" / "assets", dist_dir / "assets", dirs_exist_ok=True)
+    shutil.copytree(PROJECT_ROOT / "assets", dist_dir / "assets", dirs_exist_ok=True)
     
     # Template
-    template_path = dark_rift_web / "index.html.template"
-    template_str = template_path.read_text(encoding="utf-8")
+    web_dir = PROJECT_ROOT / "web"
+    template_path = web_dir / "index.html.template"
+    if not template_path.exists() and (web_dir / "index.html").exists():
+        template_str = (web_dir / "index.html").read_text(encoding="utf-8")
+    else:
+        template_str = template_path.read_text(encoding="utf-8")
     
     version = "0.1.0"
     template_str = template_str.replace("__VERSION__", version)
@@ -122,7 +129,7 @@ def main():
     print("   -> Uploading Backend Binary...")
     subprocess.run(["rsync", "-avz", str(server_bin), f"{VPS_USER}@{VPS_HOST}:{BACKEND_DEST}/dark-rift-server"], check=True)
     
-    maps_src = PROJECT_ROOT / "OpenFrontIO" / "resources" / "maps"
+    maps_src = PROJECT_ROOT / "assets" / "maps"
     print("   -> Uploading Map Assets (Backend)...")
     subprocess.run(["rsync", "-avz", f"{maps_src}/", f"{VPS_USER}@{VPS_HOST}:{SERVER_MAPS_DEST}/"], check=True)
     

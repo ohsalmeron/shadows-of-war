@@ -77,10 +77,10 @@ pub fn text_secondary() -> Color32 {
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "Rajdhani".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../dark-rift/assets/fonts/Rajdhani-Medium.ttf"))),
+        "CinzelDecorative-Black".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/CinzelDecorative-Black.ttf"))),
     );
-    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Rajdhani".to_owned());
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "CinzelDecorative-Black".to_owned());
     ctx.set_fonts(fonts);
 
     let mut style = Style::default();
