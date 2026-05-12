@@ -13,6 +13,11 @@ pub struct ClientVisualConfig {
     // Master volume for nameplate text sizes.
     // 1.0 = Original size, 0.5 = Half size, 2.0 = Double size.
     pub ui_text_scale: f32,
+    
+    // Algorithmic Visual Effects (1.0 = Standard, 0.0 = Disabled)
+    pub effect_shockwave_intensity: f32,
+    pub effect_border_breathe: f32,
+    pub effect_energy_flow: f32,
 }
 
 impl Default for ClientVisualConfig {
@@ -31,6 +36,11 @@ impl Default for ClientVisualConfig {
             
             // Nameplates
             ui_text_scale: 0.25,
+            
+            // Effects
+            effect_shockwave_intensity: 1.0,
+            effect_border_breathe: 1.0,
+            effect_energy_flow: 1.0,
         }
     }
 }

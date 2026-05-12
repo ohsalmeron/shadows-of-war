@@ -8,10 +8,13 @@ struct Globals {
     visual_interior_alpha: f32,
     visual_border_alpha: f32,
     visual_border_thickness: f32,
+    effect_shockwave_intensity: f32,
+    effect_border_breathe: f32,
+    effect_energy_flow: f32,
     lod_2_zoom: f32,
     lod_3_zoom: f32,
     local_player_id: u32,
-    padding1: f32,
+    padding1: u32,
 }
 
 var<uniform> globals: Globals;
@@ -90,6 +93,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let owner_id = val & 0xFFFFu;
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
+    
+    // Shockwave flash value [0.0 = none, 1.0 = just conquered]
+    let flash_byte = (val >> 24u) & 0xFFu;
+    let flash_val = f32(flash_byte) / 255.0;
 
     let is_odd = (cell_y % 2) != 0;
     
@@ -227,7 +234,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if is_human {
             // Holographic Animated Cyber-Stripes (Additive Blending)
             let stripe = (sin((world_x + world_y) * 0.15 - globals.time * 2.5) + 1.0) * 0.5;
-            let holo_color = player_color.rgb * (0.6 + 0.6 * stripe);
+            let stripe_fx = mix(1.0, (0.6 + 0.6 * stripe), globals.effect_energy_flow);
+            let holo_color = player_color.rgb * stripe_fx;
             base_color = vec4<f32>(terrain_color.rgb + holo_color * globals.visual_interior_alpha * 0.7, 1.0);
         } else if is_nation {
             // Static Additive Glow
@@ -235,6 +243,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         } else {
             // Flat mix for tribes (traditional skin)
             base_color = mix(terrain_color, player_color, globals.visual_interior_alpha * 0.6);
+        }
+        
+        // Conquest Shockwave Flash on interior
+        if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
+            let shockwave = flash_val * globals.effect_shockwave_intensity;
+            let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), player_color.rgb, 1.0 - flash_val);
+            base_color = vec4<f32>(mix(base_color.rgb, flash_color, shockwave * 0.8), 1.0);
         }
     } else {
         base_color = terrain_color;
@@ -252,7 +267,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var should_draw_border = false;
     let center = hex_to_world(cell_x, cell_y);
     let local_pos = vec2<f32>(world_x, world_y) - center;
-    let border_threshold = 0.5 - globals.visual_border_thickness;
+    
+    // Dynamic border thickness: Breathe + Shockwave
+    var thickness = globals.visual_border_thickness;
+    if globals.effect_border_breathe > 0.0 {
+        let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5; // 0 to 1
+        thickness += breathe * 0.05 * globals.effect_border_breathe;
+    }
+    if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
+        // Explode outward on conquer, then snap back
+        thickness += flash_val * 0.2 * globals.effect_shockwave_intensity;
+    }
+    
+    let border_threshold = 0.5 - thickness;
 
     for (var i = 0u; i < 6u; i = i + 1u) {
         var is_diff = false;
@@ -280,7 +307,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 let pulse = (sin(globals.time * 6.0) + 1.0) * 0.5;
                 let highlight = mix(player_color.rgb, vec3<f32>(1.0, 1.0, 1.0), pulse * 0.7);
                 border_color = vec4<f32>(highlight, 1.0);
-                // Force maximum opacity for local player borders
                 base_color = border_color;
             } else {
                 // Standard contrast border logic
@@ -290,6 +316,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 } else {
                     border_color = min(player_color * 1.5 + vec4<f32>(0.2, 0.2, 0.2, 0.0), vec4<f32>(1.0));
                 }
+                
+                // Add energy flow for borders if enabled
+                if globals.effect_energy_flow > 0.0 {
+                    let flow = (sin((world_x - world_y) * 2.0 - globals.time * 8.0) + 1.0) * 0.5;
+                    border_color = vec4<f32>(border_color.rgb + player_color.rgb * flow * 0.6 * globals.effect_energy_flow, 1.0);
+                }
+                
+                // Add shockwave flash to border color
+                if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
+                    let flash_color = mix(border_color.rgb, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave_intensity);
+                    border_color = vec4<f32>(flash_color, 1.0);
+                }
+                
                 base_color = mix(base_color, border_color, globals.visual_border_alpha);
             }
         } else {

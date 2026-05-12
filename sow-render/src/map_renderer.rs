@@ -15,10 +15,13 @@ pub struct MapGlobals {
     pub visual_interior_alpha: f32,
     pub visual_border_alpha: f32,
     pub visual_border_thickness: f32,
+    pub effect_shockwave_intensity: f32,
+    pub effect_border_breathe: f32,
+    pub effect_energy_flow: f32,
     pub lod_2_zoom: f32,
     pub lod_3_zoom: f32,
     pub local_player_id: u32,
-    pub padding1: f32,
+    pub padding1: u32,
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -42,6 +45,8 @@ pub struct MapRenderer {
     pub width: u32,
     pub height: u32,
     pub water_upload_buf: Option<gpu::Buffer>,
+    pub prev_owners: Vec<u16>,
+    pub conquest_flash: Vec<u8>,
 }
 
 impl MapRenderer {
@@ -187,11 +192,13 @@ impl MapRenderer {
             width,
             height,
             water_upload_buf: Some(water_upload_buf),
+            prev_owners: vec![0; (width * height) as usize],
+            conquest_flash: vec![0; (width * height) as usize],
         }
     }
 
     /// Pack the game map into the upload buffer and copy to the GPU texture.
-    pub fn update(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, map: &GameMap) {
+    pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, map: &GameMap) {
         let total = (self.width * self.height) as usize;
         let dst_ptr = self.upload_buffer.data();
         assert!(!dst_ptr.is_null(), "Upload buffer not mapped");
@@ -203,8 +210,22 @@ impl MapRenderer {
         for i in 0..total {
             let terrain_byte = map.terrain[i].as_byte() as u32;
             let owner_id = map.state[i] as u32;
-            // Pack: bits 0..15 = owner_id, bits 16..23 = terrain byte
-            slice[i] = owner_id | (terrain_byte << 16);
+            
+            // Conquest flash logic
+            if self.prev_owners[i] != map.state[i] {
+                self.prev_owners[i] = map.state[i];
+                // Only flash if transitioning from/to a valid owner, not initialization
+                if owner_id > 0 {
+                    self.conquest_flash[i] = 255;
+                }
+            } else if self.conquest_flash[i] > 0 {
+                // Decay flash (approx 1 second at 60fps)
+                self.conquest_flash[i] = self.conquest_flash[i].saturating_sub(4);
+            }
+            let flash = self.conquest_flash[i] as u32;
+
+            // Pack: bits 0..15 = owner_id, bits 16..23 = terrain byte, bits 24..31 = conquest flash
+            slice[i] = owner_id | (terrain_byte << 16) | (flash << 24);
         }
 
         context.sync_buffer(self.upload_buffer);

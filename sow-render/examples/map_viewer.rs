@@ -64,10 +64,13 @@ fn main() {
         visual_interior_alpha: 1.0,
         visual_border_alpha: 1.0,
         visual_border_thickness: 1.0,
+        effect_shockwave_intensity: 1.0,
+        effect_border_breathe: 1.0,
+        effect_energy_flow: 1.0,
         lod_2_zoom: 10.0,
         lod_3_zoom: 20.0,
         local_player_id: 1,
-        padding1: 0.0,
+        padding1: 0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

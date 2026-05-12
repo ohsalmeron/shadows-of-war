@@ -594,10 +594,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     visual_interior_alpha: ClientVisualConfig::default().shader_interior_alpha,
                                     visual_border_alpha: ClientVisualConfig::default().shader_border_alpha,
                                     visual_border_thickness: ClientVisualConfig::default().shader_border_thickness,
+                                    effect_shockwave_intensity: ClientVisualConfig::default().effect_shockwave_intensity,
+                                    effect_border_breathe: ClientVisualConfig::default().effect_border_breathe,
+                                    effect_energy_flow: ClientVisualConfig::default().effect_energy_flow,
                                     lod_2_zoom: ClientVisualConfig::default().ui_lod_2_zoom,
                                     lod_3_zoom: ClientVisualConfig::default().ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
-                                    padding1: 0.0,
+                                    padding1: 0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -676,21 +679,32 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         let importance = (player.tile_count as f32).sqrt().max(1.0);
                                         let screen_presence = importance * (camera_zoom / sf);
                                         
-                                        // Small nations require zooming in to appear (e.g. 1 tile needs 6.0 zoom)
-                                        let show_full = screen_presence >= 6.0;
+                                        // Small nations require zooming in to appear. 
+                                        // Increased threshold to 12.0 to cull more tiny labels and boost performance.
+                                        let show_full = screen_presence >= 12.0;
                                         
                                         if show_full {
                                             let ui_text_scale = ClientVisualConfig::default().ui_text_scale; 
                                             
-                                            // Scale font with both empire size and camera zoom
-                                            let zoom_factor = (camera_zoom / sf).max(1.0).sqrt();
-                                            let empire_factor = importance.sqrt();
+                                            // 1. Calculate physical bounding box of the empire on screen
+                                            let empire_width_px = screen_presence * 2.5; // Hexagons spread out
+                                            let empire_height_px = screen_presence * 1.5;
                                             
-                                            // Base calculation
-                                            let target_font_size = 12.0 + (6.0 * empire_factor * zoom_factor);
+                                            // 2. Constrain font size so the text fits INSIDE those pixels
+                                            let name_len = player.name.len().max(1) as f32;
+                                            let max_by_width = empire_width_px / (name_len * 0.6); // Avg char width is ~60% of height
+                                            let max_by_height = empire_height_px / 2.5; // Need space for 2 lines of text (name + troops)
                                             
-                                            // Apply master scale and clamp
-                                            let font_size = (target_font_size * ui_text_scale).max(4.0).min(60.0);
+                                            // 3. Raw font size that perfectly inscribes the territory
+                                            let raw_font_size = max_by_width.min(max_by_height);
+                                            
+                                            // 4. Apply user scale and clamp
+                                            let target_font_size = raw_font_size * ui_text_scale;
+                                            let clamped_font_size = target_font_size.max(4.0).min(64.0);
+                                            
+                                            // 5. QUANTIZE font size to steps of 2.0 (Massive Performance Fix)
+                                            // This prevents Egui from re-calculating text layouts every frame while zooming smoothly.
+                                            let font_size = (clamped_font_size / 2.0).round() * 2.0;
                                             
                                             // 10 Hz Cache Logic
                                             let now = Instant::now();
@@ -721,8 +735,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                     cache_entry.last_formatted_troops = new_troops_str;
                                                 }
                                                 // Dynamic font size scaling updates
-                                                let current_font_size = cache_entry.last_font_size;
-                                                if (current_font_size - font_size).abs() > 0.5 {
+                                                // Since font_size is quantized, this only triggers when visually jumping a step!
+                                                if cache_entry.last_font_size != font_size {
                                                     let font_id = egui::FontId::proportional(font_size);
                                                     let display_name = if player.player_type == sow_core::player::PlayerType::Human {
                                                         format!("★ {}", player.name)
