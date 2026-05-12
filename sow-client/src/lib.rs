@@ -45,7 +45,7 @@ fn render_troops(mut num: f64) -> String {
 mod client_config;
 use client_config::ClientVisualConfig;
 
-const CAMERA_MIN_ZOOM: f32 = 0.25;
+const CAMERA_MIN_ZOOM: f32 = 0.05;
 const CAMERA_MAX_ZOOM: f32 = 20.0;
 
 
@@ -195,7 +195,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 ws_reconnect_after_resume = true;
                 let win = window.get_or_insert_with(|| {
                     #[cfg(any(target_os = "android", target_os = "ios"))]
-                    let mut builder = winit::window::WindowBuilder::new()
+                    let builder = winit::window::WindowBuilder::new()
                         .with_title("Shadows of War")
                         .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
 

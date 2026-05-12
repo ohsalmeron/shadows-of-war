@@ -91,7 +91,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_coords = vec2<i32>(cell_x, cell_y);
     let val = textureLoad(territory_texture, pixel_coords, 0).x;
     
-    let owner_id = val & 0xFFFFu;
+    let owner_id = val & 0x3FFu;
+    let border_mask = (val >> 10u) & 0x3Fu;
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
     
@@ -99,50 +100,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let flash_byte = (val >> 24u) & 0xFFu;
     let flash_val = f32(flash_byte) / 255.0;
 
-    let is_odd = (cell_y % 2) != 0;
-    
-    var offsets: array<vec2<i32>, 6>;
-    if is_odd {
-        offsets = array<vec2<i32>, 6>(
-            vec2<i32>(1, 0), vec2<i32>(-1, 0),
-            vec2<i32>(0, -1), vec2<i32>(1, -1),
-            vec2<i32>(0, 1), vec2<i32>(1, 1)
-        );
-    } else {
-        offsets = array<vec2<i32>, 6>(
-            vec2<i32>(1, 0), vec2<i32>(-1, 0),
-            vec2<i32>(-1, -1), vec2<i32>(0, -1),
-            vec2<i32>(-1, 1), vec2<i32>(0, 1)
-        );
-    }
-
-    let val_0 = textureLoad(territory_texture, pixel_coords + offsets[0], 0).x;
-    let val_1 = textureLoad(territory_texture, pixel_coords + offsets[1], 0).x;
-    let val_2 = textureLoad(territory_texture, pixel_coords + offsets[2], 0).x;
-    let val_3 = textureLoad(territory_texture, pixel_coords + offsets[3], 0).x;
-    let val_4 = textureLoad(territory_texture, pixel_coords + offsets[4], 0).x;
-    let val_5 = textureLoad(territory_texture, pixel_coords + offsets[5], 0).x;
-
-    let own_0 = val_0 & 0xFFFFu;
-    let own_1 = val_1 & 0xFFFFu;
-    let own_2 = val_2 & 0xFFFFu;
-    let own_3 = val_3 & 0xFFFFu;
-    let own_4 = val_4 & 0xFFFFu;
-    let own_5 = val_5 & 0xFFFFu;
-
-    let is_border = (owner_id != own_0 || owner_id != own_1 || owner_id != own_2 || 
-                     owner_id != own_3 || owner_id != own_4 || owner_id != own_5);
-
     var base_color = vec4<f32>(0.0);
 
     let mag_center = f32(terrain_byte & 0x1Fu);
-    let mag_left = f32((val_1 >> 16u) & 0x1Fu);
-    let mag_up = f32((val_2 >> 16u) & 0x1Fu);
-
-    // Topographical shading (bump mapping approximation, sun from top-left)
-    let dx = mag_center - mag_left;
-    let dy = mag_center - mag_up;
-    let shade = (dx + dy) * globals.visual_terrain_sharpness; // Configurable shading intensity
 
     var terrain_color = vec4<f32>(0.0);
     
@@ -156,43 +116,49 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let snow = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
             terrain_color = mix(vec4<f32>(0.35, 0.35, 0.35, 1.0), vec4<f32>(0.9, 0.9, 0.95, 1.0), snow); // Snowy Mountains
         }
-        // Apply topographical shading to land
-        terrain_color = vec4<f32>(terrain_color.rgb + vec3<f32>(shade), 1.0);
     } else {
-        // High-performance tiled water shader with LODs based on zoom
         let t = globals.time;
-        var wave = 0.0;
         
-        // Always calculate the base large waves
-        let uv0 = vec2<f32>(world_x, world_y) * 0.02 + vec2<f32>(0.015, 0.010) * t;
-        let n0 = textureSampleLevel(water_texture, water_sampler, uv0, 0.0).r;
-        wave += n0 * 0.5;
-
-        // Add medium waves only if we are somewhat zoomed in
-        let min_lod = min(globals.lod_2_zoom, globals.lod_3_zoom);
-        let max_lod = max(globals.lod_2_zoom, globals.lod_3_zoom);
+        let DEEP_OCEAN_COLOR = vec3<f32>(0.01, 0.08, 0.23);
+        let COASTAL_COLOR = vec3<f32>(0.1, 0.5, 0.6);
+        let FOAM_COLOR = vec3<f32>(0.9, 0.95, 1.0);
+        let SPECULAR_COLOR = vec3<f32>(1.0, 0.95, 0.8);
         
-        if globals.zoom >= min_lod * 0.5 {
-            let uv1 = vec2<f32>(world_x, world_y) * 0.04 + vec2<f32>(-0.020, 0.015) * t;
-            let n1 = textureSampleLevel(water_texture, water_sampler, uv1, 0.0).r;
-            wave += n1 * 0.25;
-            
-            // Add fine detail waves only when closely zoomed in
-            if globals.zoom >= max_lod {
-                let uv2 = vec2<f32>(world_x, world_y) * 0.08 + vec2<f32>(0.025, -0.010) * t;
-                let uv3 = vec2<f32>(world_x, world_y) * 0.16 + vec2<f32>(-0.010, -0.025) * t;
-                let n2 = textureSampleLevel(water_texture, water_sampler, uv2, 0.0).r;
-                let n3 = textureSampleLevel(water_texture, water_sampler, uv3, 0.0).r;
-                wave += n2 * 0.125 + n3 * 0.0625;
-            }
+        var base_color = DEEP_OCEAN_COLOR;
+        
+        // Coastal Detection: if border_mask > 0, at least one neighbor is land
+        if border_mask > 0u {
+            base_color = COASTAL_COLOR;
         }
+
+        // Texture-based organic waves using water.bin (256x256 wrapping noise)
+        let uv = vec2<f32>(world_x, world_y) * 0.005;
         
-        let pool_dark = vec3<f32>(0.01, 0.35, 0.55);
-        let pool_light = vec3<f32>(0.15, 0.75, 0.85);
-        let color = mix(pool_dark, pool_light, wave);
-        let specular = pow(wave, 12.0) * 1.5;
+        let uv1 = uv * 0.5 + vec2<f32>(t * 0.02, t * 0.01);
+        let wave1 = textureSampleLevel(water_texture, water_sampler, uv1, 0.0).r;
         
-        return vec4<f32>(color + vec3<f32>(specular), 1.0);
+        let uv2 = uv * 1.5 + vec2<f32>(-t * 0.03, t * 0.02);
+        let wave2 = textureSampleLevel(water_texture, water_sampler, uv2, 0.0).r;
+        
+        let uv3 = uv * 4.0 + vec2<f32>(t * 0.05, -t * 0.04);
+        let wave3 = textureSampleLevel(water_texture, water_sampler, uv3, 0.0).r;
+        
+        let combined_waves = (wave1 + wave2 * 0.5 + wave3 * 0.25) / 1.75;
+        
+        let WAVE_HIGHLIGHT_COLOR = vec3<f32>(0.1, 0.2, 0.7);
+        var final_color = mix(base_color, WAVE_HIGHLIGHT_COLOR, combined_waves * 0.5);
+        
+        // If coastal, mix in foam based on noise
+        if border_mask > 0u {
+            let foam_mix = smoothstep(0.4, 0.8, wave2 + wave3 * 0.5);
+            final_color = mix(final_color, FOAM_COLOR, foam_mix * 0.8);
+        }
+
+        // Specular glint (sun reflection)
+        let glint = pow(combined_waves, 8.0);
+        final_color += glint * SPECULAR_COLOR * 1.5;
+        
+        return vec4<f32>(final_color, 1.0);
     }
 
     var player_color = vec4<f32>(1.0);
@@ -212,24 +178,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if is_human {
             // Highly saturated colors for humans based on golden ratio hue
             let hue = f32(owner_id) * 0.618033988749895;
-            let r = 0.5 + 0.5 * sin(hue * 6.28318 + 0.0);
-            let g = 0.5 + 0.5 * sin(hue * 6.28318 + 2.09439);
-            let b = 0.5 + 0.5 * sin(hue * 6.28318 + 4.18879);
+            // Simple approximation of sin using triangle wave to save ALU
+            let r = abs(fract(hue) * 2.0 - 1.0);
+            let g = abs(fract(hue + 0.333) * 2.0 - 1.0);
+            let b = abs(fract(hue + 0.666) * 2.0 - 1.0);
             player_color = vec4<f32>(r, g, b, 1.0);
         } else if is_nation {
             // Mid-tone stable colors for nations
             let id = f32(owner_id);
-            let r = 0.3 + 0.5 * fract(sin(id * 12.9898) * 43758.5453);
-            let g = 0.3 + 0.5 * fract(sin(id * 78.233) * 43758.5453);
-            let b = 0.3 + 0.5 * fract(sin(id * 39.346) * 43758.5453);
-            player_color = vec4<f32>(r, g, b, 1.0);
+            let r = fract(id * 0.123);
+            let g = fract(id * 0.456);
+            let b = fract(id * 0.789);
+            player_color = vec4<f32>(0.3 + r * 0.5, 0.3 + g * 0.5, 0.3 + b * 0.5, 1.0);
         } else {
             // Soft, washed-out pastels for tribes
             let id = f32(owner_id);
-            let r = 0.5 + 0.3 * fract(sin(id * 12.9898) * 43758.5453);
-            let g = 0.5 + 0.3 * fract(sin(id * 78.233) * 43758.5453);
-            let b = 0.5 + 0.3 * fract(sin(id * 39.346) * 43758.5453);
-            player_color = vec4<f32>(r, g, b, 1.0);
+            let r = fract(id * 0.123);
+            let g = fract(id * 0.456);
+            let b = fract(id * 0.789);
+            player_color = vec4<f32>(0.5 + r * 0.3, 0.5 + g * 0.3, 0.5 + b * 0.3, 1.0);
         }
         
         if is_human {
@@ -258,46 +225,50 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Border and Shoreline Logic
     // In OpenFront, a border is drawn if the owner changes OR if a land tile borders water
-    let is_0_water = ((val_0 >> 16u) & 0x80u) == 0u;
-    let is_1_water = ((val_1 >> 16u) & 0x80u) == 0u;
-    let is_2_water = ((val_2 >> 16u) & 0x80u) == 0u;
-    let is_3_water = ((val_3 >> 16u) & 0x80u) == 0u;
-    let is_4_water = ((val_4 >> 16u) & 0x80u) == 0u;
-    let is_5_water = ((val_5 >> 16u) & 0x80u) == 0u;
-    
     var should_draw_border = false;
-    let center = hex_to_world(cell_x, cell_y);
-    let local_pos = vec2<f32>(world_x, world_y) - center;
     
-    // Dynamic border thickness: Breathe + Shockwave
-    var thickness = globals.visual_border_thickness;
-    if globals.effect_border_breathe > 0.0 {
-        let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5; // 0 to 1
-        thickness += breathe * 0.05 * globals.effect_border_breathe;
-    }
-    if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-        // Explode outward on conquer, then snap back
-        thickness += flash_val * 0.2 * globals.effect_shockwave_intensity;
-    }
-    
-    let border_threshold = 0.5 - thickness;
-
-    for (var i = 0u; i < 6u; i = i + 1u) {
-        var is_diff = false;
-        if i == 0u { is_diff = (owner_id != own_0) || (owner_id == 0u && is_0_water); }
-        else if i == 1u { is_diff = (owner_id != own_1) || (owner_id == 0u && is_1_water); }
-        else if i == 2u { is_diff = (owner_id != own_2) || (owner_id == 0u && is_2_water); }
-        else if i == 3u { is_diff = (owner_id != own_3) || (owner_id == 0u && is_3_water); }
-        else if i == 4u { is_diff = (owner_id != own_4) || (owner_id == 0u && is_4_water); }
-        else if i == 5u { is_diff = (owner_id != own_5) || (owner_id == 0u && is_5_water); }
-
-        if is_diff {
-            let neighbor_center = hex_to_world(cell_x + offsets[i].x, cell_y + offsets[i].y);
-            let dir = neighbor_center - center; 
-            if dot(local_pos, dir) > border_threshold {
-                should_draw_border = true;
-            }
+    if border_mask != 0u {
+        let center = hex_to_world(cell_x, cell_y);
+        let local_pos = vec2<f32>(world_x, world_y) - center;
+        
+        // Dynamic border thickness: Breathe + Shockwave
+        var thickness = globals.visual_border_thickness;
+        if globals.effect_border_breathe > 0.0 {
+            let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5; // 0 to 1
+            thickness += breathe * 0.05 * globals.effect_border_breathe;
         }
+        if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
+            thickness += flash_val * 0.2 * globals.effect_shockwave_intensity;
+        }
+        
+        let border_threshold = 0.5 - thickness;
+
+        let is_odd = (cell_y % 2) != 0;
+        var dir_0: vec2<f32>; var dir_1: vec2<f32>; var dir_2: vec2<f32>; 
+        var dir_3: vec2<f32>; var dir_4: vec2<f32>; var dir_5: vec2<f32>;
+        
+        if is_odd {
+            dir_0 = hex_to_world(cell_x + 1, cell_y) - center;
+            dir_1 = hex_to_world(cell_x - 1, cell_y) - center;
+            dir_2 = hex_to_world(cell_x, cell_y - 1) - center;
+            dir_3 = hex_to_world(cell_x + 1, cell_y - 1) - center;
+            dir_4 = hex_to_world(cell_x, cell_y + 1) - center;
+            dir_5 = hex_to_world(cell_x + 1, cell_y + 1) - center;
+        } else {
+            dir_0 = hex_to_world(cell_x + 1, cell_y) - center;
+            dir_1 = hex_to_world(cell_x - 1, cell_y) - center;
+            dir_2 = hex_to_world(cell_x - 1, cell_y - 1) - center;
+            dir_3 = hex_to_world(cell_x, cell_y - 1) - center;
+            dir_4 = hex_to_world(cell_x - 1, cell_y + 1) - center;
+            dir_5 = hex_to_world(cell_x, cell_y + 1) - center;
+        }
+
+        if (border_mask & 1u) != 0u && dot(local_pos, dir_0) > border_threshold { should_draw_border = true; }
+        if (border_mask & 2u) != 0u && dot(local_pos, dir_1) > border_threshold { should_draw_border = true; }
+        if (border_mask & 4u) != 0u && dot(local_pos, dir_2) > border_threshold { should_draw_border = true; }
+        if (border_mask & 8u) != 0u && dot(local_pos, dir_3) > border_threshold { should_draw_border = true; }
+        if (border_mask & 16u) != 0u && dot(local_pos, dir_4) > border_threshold { should_draw_border = true; }
+        if (border_mask & 32u) != 0u && dot(local_pos, dir_5) > border_threshold { should_draw_border = true; }
     }
 
     if should_draw_border {

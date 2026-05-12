@@ -34,6 +34,20 @@ pub struct MapShaderData {
     water_sampler: gpu::Sampler,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct MapComputeGlobals {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(blade_macros::ShaderData)]
+pub struct MapComputeData {
+    raw_data: gpu::BufferPiece,
+    baked_data: gpu::BufferPiece,
+    globals: MapComputeGlobals,
+}
+
 pub struct MapRenderer {
     pub texture: gpu::Texture,
     pub texture_view: gpu::TextureView,
@@ -42,7 +56,9 @@ pub struct MapRenderer {
     pub water_texture_view: gpu::TextureView,
     pub water_sampler: gpu::Sampler,
     pub pipeline: gpu::RenderPipeline,
-    pub upload_buffer: gpu::Buffer,
+    pub compute_pipeline: gpu::ComputePipeline,
+    pub raw_buffer: gpu::Buffer,
+    pub baked_buffer: gpu::Buffer,
     pub width: u32,
     pub height: u32,
     pub water_upload_buf: Option<gpu::Buffer>,
@@ -149,16 +165,35 @@ impl MapRenderer {
         // We must keep water_upload_buf alive until the command encoder is submitted and executed.
         // So we will store it in the MapRenderer struct and clean it up later.
 
-        let upload_buffer = context.create_buffer(gpu::BufferDesc {
-            name: "map_upload",
+        let raw_buffer = context.create_buffer(gpu::BufferDesc {
+            name: "map_raw",
             size: (width * height * 4) as u64,
             memory: gpu::Memory::Shared,
+        });
+
+        let baked_buffer = context.create_buffer(gpu::BufferDesc {
+            name: "map_baked",
+            size: (width * height * 4) as u64,
+            memory: gpu::Memory::Device,
         });
 
         let source = include_str!("shaders/map.wgsl");
         let shader = context.create_shader(gpu::ShaderDesc {
             source,
             naga_module: None,
+        });
+
+        let compute_source = include_str!("shaders/map_compute.wgsl");
+        let compute_shader = context.create_shader(gpu::ShaderDesc {
+            source: compute_source,
+            naga_module: None,
+        });
+
+        let compute_layout = <MapComputeData as gpu::ShaderData>::layout();
+        let compute_pipeline = context.create_compute_pipeline(gpu::ComputePipelineDesc {
+            name: "map_compute",
+            data_layouts: &[&compute_layout],
+            compute: compute_shader.at("cs_main"),
         });
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
@@ -189,7 +224,9 @@ impl MapRenderer {
             water_texture_view,
             water_sampler,
             pipeline,
-            upload_buffer,
+            compute_pipeline,
+            raw_buffer,
+            baked_buffer,
             width,
             height,
             water_upload_buf: Some(water_upload_buf),
@@ -201,10 +238,9 @@ impl MapRenderer {
     /// Pack the game map into the upload buffer and copy to the GPU texture.
     pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, map: &GameMap) {
         let total = (self.width * self.height) as usize;
-        let dst_ptr = self.upload_buffer.data();
-        assert!(!dst_ptr.is_null(), "Upload buffer not mapped");
+        let dst_ptr = self.raw_buffer.data();
+        assert!(!dst_ptr.is_null(), "Raw buffer not mapped");
 
-        // Write packed u32 per tile directly into the shared buffer
         let slice = unsafe {
             std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total)
         };
@@ -212,31 +248,46 @@ impl MapRenderer {
             let terrain_byte = map.terrain[i].as_byte() as u32;
             let owner_id = map.state[i] as u32;
             
-            // Conquest flash logic
             if self.prev_owners[i] != map.state[i] {
                 self.prev_owners[i] = map.state[i];
-                // Only flash if transitioning from/to a valid owner, not initialization
                 if owner_id > 0 {
                     self.conquest_flash[i] = 255;
                 }
             } else if self.conquest_flash[i] > 0 {
-                // Decay flash (approx 1 second at 60fps)
                 self.conquest_flash[i] = self.conquest_flash[i].saturating_sub(4);
             }
             let flash = self.conquest_flash[i] as u32;
 
-            // Pack: bits 0..15 = owner_id, bits 16..23 = terrain byte, bits 24..31 = conquest flash
             slice[i] = owner_id | (terrain_byte << 16) | (flash << 24);
         }
 
-        context.sync_buffer(self.upload_buffer);
+        context.sync_buffer(self.raw_buffer);
 
-        // GPU transfer: copy upload buffer -> texture
-        let bytes_per_row = self.width * 4; // 4 bytes per R32Uint texel
+        // Run Compute Shader to bake the border masks
+        {
+            let mut compute = encoder.compute("map_compute");
+            let mut pass = compute.with(&self.compute_pipeline);
+            pass.bind(
+                0,
+                &MapComputeData {
+                    raw_data: self.raw_buffer.into(),
+                    baked_data: self.baked_buffer.into(),
+                    globals: MapComputeGlobals {
+                        width: self.width,
+                        height: self.height,
+                    },
+                },
+            );
+            let group_count = (total as u32 + 63) / 64;
+            pass.dispatch([group_count, 1, 1]);
+        }
+
+        // Copy baked buffer to texture
+        let bytes_per_row = self.width * 4;
         {
             let mut transfer = encoder.transfer("map_upload");
             transfer.copy_buffer_to_texture(
-                self.upload_buffer.into(),
+                self.baked_buffer.into(),
                 bytes_per_row,
                 self.texture.into(),
                 gpu::Extent {
@@ -284,7 +335,8 @@ impl MapRenderer {
         render_ctx.context.destroy_texture_view(self.texture_view);
         render_ctx.context.destroy_texture(self.texture);
         render_ctx.context.destroy_sampler(self.sampler);
-        render_ctx.context.destroy_buffer(self.upload_buffer);
+        render_ctx.context.destroy_buffer(self.raw_buffer);
+        render_ctx.context.destroy_buffer(self.baked_buffer);
         render_ctx.context.destroy_render_pipeline(&mut self.pipeline);
     }
 }
