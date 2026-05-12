@@ -78,27 +78,52 @@ def main():
         "--no-typescript",
         str(wasm_in)
     ], env=env, check=True)
+    
+    wasm_out_path = dist_dir / wasm_file
+    if shutil.which("wasm-opt"):
+        print("🗜️  Optimizing WASM with wasm-opt...")
+        subprocess.run(["wasm-opt", "--all-features", "-O3", "-o", str(wasm_out_path), str(wasm_out_path)], check=True)
+    else:
+        print("⚠️  'wasm-opt' not found! Skipping advanced WASM optimization (sudo pacman -S binaryen)")
 
     # 4. Assemble Web Client (UI, sw.js, HTML)
     print("🎨 4. Assembling Web UI & Assets...")
     
-    # Copy from dark-rift web assets
-    dark_rift_web = PROJECT_ROOT / "dark-rift" / "web"
-    shutil.copytree(dark_rift_web / "favicon_io", dist_dir / "favicon_io", dirs_exist_ok=True)
-    for ext in ["png", "ico", "json"]:
-        for file in (dist_dir / "favicon_io").glob(f"*.{ext}"):
-            shutil.copy2(file, dist_dir / file.name)
-    if (dark_rift_web / "sw.js").exists():
-        shutil.copy2(dark_rift_web / "sw.js", dist_dir / "sw.js")
+    # Copy from local web assets
+    web_dir = PROJECT_ROOT / "web"
+    if (web_dir / "favicon_io").exists():
+        shutil.copytree(web_dir / "favicon_io", dist_dir / "favicon_io", dirs_exist_ok=True)
+        for ext in ["png", "ico", "json"]:
+            for file in (dist_dir / "favicon_io").glob(f"*.{ext}"):
+                shutil.copy2(file, dist_dir / file.name)
+    if (web_dir / "sw.js").exists():
+        shutil.copy2(web_dir / "sw.js", dist_dir / "sw.js")
     
     # Copy UI loader assets
-    shutil.copytree(PROJECT_ROOT / "dark-rift" / "assets", dist_dir / "assets", dirs_exist_ok=True)
+    shutil.copytree(PROJECT_ROOT / "assets", dist_dir / "assets", dirs_exist_ok=True)
     
     # Template
-    template_path = dark_rift_web / "index.html.template"
-    template_str = template_path.read_text(encoding="utf-8")
+    template_path = web_dir / "index.html.template"
+    if not template_path.exists() and (web_dir / "index.html").exists():
+        template_str = (web_dir / "index.html").read_text(encoding="utf-8")
+    else:
+        template_str = template_path.read_text(encoding="utf-8")
     
-    version = "0.1.0"
+    version_file = PROJECT_ROOT / "version.txt"
+    if version_file.exists():
+        version = version_file.read_text(encoding="utf-8").strip()
+    else:
+        version = "0.1.0"
+        
+    parts = version.split('.')
+    if len(parts) == 3:
+        try:
+            parts[2] = str(int(parts[2]) + 1)
+            version = '.'.join(parts)
+        except ValueError:
+            pass
+            
+    version_file.write_text(version, encoding="utf-8")
     template_str = template_str.replace("__VERSION__", version)
     template_str = template_str.replace("__JS_FILE__", js_file)
     template_str = template_str.replace("__WASM_FILE__", wasm_file)
@@ -111,6 +136,15 @@ def main():
     if shutil.which("brotli"):
         subprocess.run(["brotli", "-f", "-Z", str(dist_dir / wasm_file)], check=False)
         subprocess.run(["brotli", "-f", "-Z", str(dist_dir / js_file)], check=False)
+        
+        # Compress maps too
+        maps_dir = dist_dir / "assets" / "maps"
+        if maps_dir.exists():
+            for root, _, files in os.walk(maps_dir):
+                for file in files:
+                    if file.endswith((".bin", ".json", ".webp")):
+                        subprocess.run(["brotli", "-f", "-Z", os.path.join(root, file)], check=False)
+                        
         print("✅ Brotli compression finished.")
     else:
         print("⚠️ 'brotli' command not found, skipping compression.")
@@ -122,7 +156,7 @@ def main():
     print("   -> Uploading Backend Binary...")
     subprocess.run(["rsync", "-avz", str(server_bin), f"{VPS_USER}@{VPS_HOST}:{BACKEND_DEST}/dark-rift-server"], check=True)
     
-    maps_src = PROJECT_ROOT / "OpenFrontIO" / "resources" / "maps"
+    maps_src = dist_dir / "assets" / "maps"
     print("   -> Uploading Map Assets (Backend)...")
     subprocess.run(["rsync", "-avz", f"{maps_src}/", f"{VPS_USER}@{VPS_HOST}:{SERVER_MAPS_DEST}/"], check=True)
     

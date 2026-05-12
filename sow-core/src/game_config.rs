@@ -168,7 +168,7 @@ impl Default for GameConfig {
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
-            map_name: "europe".to_string(),
+            map_name: "world".to_string(),
             map_width: 2904,
             map_height: 1672,
             random_spawn: false,
@@ -207,16 +207,16 @@ impl Default for GameConfig {
             shader_border_alpha: 1.95,       // High opacity solid border lines
             
             // User Interface & HUD
-            ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font
+            ui_font: crate::ui_font::UI_FONT_FILENAME.to_string(), // Cyber/RTS theme font
             ui_label_base_size: 12.0,                    // Min point size for nameplates
-            ui_label_max_scale: 2.0,                    // Nameplates grow up to 4x size
-            ui_label_ref_tiles: 400.0,                  // Reach 4x size when owning 400 tiles
+            ui_label_max_scale: 8.0,                    // Nameplates grow up to 4x size
+            ui_label_ref_tiles: 20000.0,                  // Reach 4x size when owning 400 tiles
             
             // Level-Of-Detail (LOD) Camera Thresholds (camera zoom clamp: 0.25..20.0)
             // Desired order: far/simplified -> normal/full -> max zoom.
-            ui_lod_1_zoom: 0.25, // Farthest zoom band
-            ui_lod_2_zoom: 10.0,  // Normal gameplay zoom starts full plates
-            ui_lod_3_zoom: 20.0, // Max zoom band
+            ui_lod_1_zoom: 1.25, // Farthest zoom band
+            ui_lod_2_zoom: 2.0,  // Normal gameplay zoom starts full plates
+            ui_lod_3_zoom: 3.0, // Max zoom band
             ui_lod_dot_radius: 2.0,
         }
     }

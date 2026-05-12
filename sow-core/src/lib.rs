@@ -25,3 +25,4 @@ pub mod checksum;
 pub mod water_components;
 pub mod protocol;
 pub mod map_openfront;
+pub mod ui_font;

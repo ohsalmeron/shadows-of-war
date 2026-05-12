@@ -601,17 +601,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let cfg = &engine.state.config;
                                     let dot_r = cfg.ui_lod_dot_radius;
                                     
-                                    // Determine LOD tier from zoom.
-                                    // LOD 1: far/simplified
-                                    // LOD 2: normal/full plates
-                                    // LOD 3: max zoom
-                                    let lod = if camera_zoom >= cfg.ui_lod_3_zoom {
-                                        3u8
-                                    } else if camera_zoom >= cfg.ui_lod_2_zoom {
-                                        2u8
-                                    } else {
-                                        1u8
-                                    };
+                                    
                                     
                                     for player in &engine.state.players {
                                         if player.tile_count == 0 || !player.alive { continue; }
@@ -645,21 +635,31 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
                                         
                                         let is_nation_or_human = player.player_type != sow_core::player::PlayerType::Bot;
-                                        let show_full = lod >= 2;
                                         
-                                        let center = egui::pos2(screen_x, screen_y);
+                                        // 1. Pixel-Perfect Coordinate Snapping
+                                        let center = egui::pos2(screen_x.round(), screen_y.round());
                                         let pc = egui::Color32::from_rgb(
                                             (player.color[0] * 255.0) as u8,
                                             (player.color[1] * 255.0) as u8,
                                             (player.color[2] * 255.0) as u8,
                                         );
                                         
-                                        if show_full {
-                                            // Full nameplate
-                                            let scale = player_label_scale(player.tile_count, cfg.ui_label_ref_tiles, cfg.ui_label_max_scale);
-                                            let font_size = cfg.ui_label_base_size * scale;
+                                        // 2. Hybrid Zoom Scaling
+                                        let territory_scale = player_label_scale(player.tile_count, cfg.ui_label_ref_tiles, cfg.ui_label_max_scale);
+                                        // Anchor text size to camera zoom slightly, clamped for readability
+                                        let zoom_scale = (camera_zoom / cfg.ui_lod_2_zoom).clamp(0.6, 1.8);
+                                        let scale = territory_scale * zoom_scale;
+                                        let font_size = (cfg.ui_label_base_size * scale).round(); // Snap font size to integer
+                                        
+                                        // 3. Graceful Alpha Fading
+                                        let fade_start = cfg.ui_lod_1_zoom;
+                                        let fade_end = cfg.ui_lod_2_zoom;
+                                        // Larger empires fade in earlier (stay visible when zoomed out further)
+                                        let dynamic_fade_end = (fade_end - (territory_scale * 0.4)).max(fade_start + 0.05);
+                                        let alpha_factor = ((camera_zoom - fade_start) / (dynamic_fade_end - fade_start)).clamp(0.0, 1.0);
+                                        
+                                        if alpha_factor > 0.0 {
                                             let font_id = egui::FontId::proportional(font_size);
-                                            
                                             let troops = player.troops as f64;
                                             let troops_str = if troops >= 1_000_000.0 {
                                                 format!("{:.1}M", troops / 1_000_000.0)
@@ -675,29 +675,39 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                 player.name.clone()
                                             };
                                             
-                                            let name_galley = painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE);
-                                            let troops_galley = painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE);
+                                            // Pre-multiply alpha for pristine blending
+                                            let text_color = egui::Color32::WHITE.gamma_multiply(alpha_factor);
+                                            let bg_color = egui::Color32::from_black_alpha(200).gamma_multiply(alpha_factor);
+                                            let accent_color = pc.gamma_multiply(alpha_factor);
+                                            
+                                            let name_galley = painter.layout_no_wrap(display_name, font_id.clone(), text_color);
+                                            let troops_galley = painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, text_color);
                                             
                                             let w = name_galley.rect.width().max(troops_galley.rect.width());
                                             let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
                                             
-                                            let bg_rect = egui::Rect::from_center_size(center, egui::vec2(w, h)).expand(6.0);
-                                            painter.rect_filled(bg_rect, 4.0, egui::Color32::from_black_alpha(200));
+                                            // Snap the background rectangle coordinates
+                                            let bg_rect = egui::Rect::from_center_size(center, egui::vec2(w.round(), h.round())).expand(6.0);
+                                            painter.rect_filled(bg_rect, 4.0, bg_color);
                                             
                                             if is_nation_or_human {
-                                                // Thin colored accent line at top
                                                 let accent = egui::Rect::from_min_size(bg_rect.left_top(), egui::vec2(bg_rect.width(), 2.0));
-                                                painter.rect_filled(accent, 2.0, pc);
+                                                painter.rect_filled(accent, 2.0, accent_color);
                                             }
                                             
-                                            let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
-                                            let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                            painter.galley(name_pos, name_galley, egui::Color32::WHITE);
-                                            painter.galley(troops_pos, troops_galley, egui::Color32::WHITE);
-                                        } else {
-                                            // Dot only — zero text layout, bare metal fast
-                                            painter.circle_filled(center, dot_r, pc);
-                                            painter.circle_stroke(center, dot_r, egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)));
+                                            // Snap final galley coordinates to prevent sub-pixel interpolation blur
+                                            let name_pos = egui::pos2((center.x - name_galley.rect.width() / 2.0).round(), (center.y - h / 2.0).round());
+                                            let troops_pos = egui::pos2((center.x - troops_galley.rect.width() / 2.0).round(), (center.y - h / 2.0 + name_galley.rect.height() + 2.0).round());
+                                            
+                                            painter.galley(name_pos, name_galley, text_color);
+                                            painter.galley(troops_pos, troops_galley, text_color);
+                                        }
+                                        
+                                        // Draw dot if text is not fully opaque
+                                        if alpha_factor < 1.0 {
+                                            let dot_alpha = 1.0 - alpha_factor;
+                                            painter.circle_filled(center, dot_r, pc.gamma_multiply(dot_alpha));
+                                            painter.circle_stroke(center, dot_r, egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180).gamma_multiply(dot_alpha)));
                                         }
                                     }
                                 }

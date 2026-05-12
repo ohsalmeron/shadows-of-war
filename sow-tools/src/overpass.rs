@@ -18,10 +18,11 @@ pub async fn fetch_bbox(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) 
         out skel qt;"#
     );
 
+    let query_single_line = query.replace("\n", " ");
     let client = Client::new();
     let res = client.post("https://overpass-api.de/api/interpreter")
-        .header("User-Agent", "DarkRiftMapGenerator/1.0 (contact: test@example.com)")
-        .body(query)
+        .header("User-Agent", "curl/8.9.1")
+        .form(&[("data", &query_single_line)])
         .send()
         .await?;
 

@@ -2,7 +2,7 @@ use egui::{
     Context, Color32, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals,
 };
 
-/// Dark Rift palette — see `dark-rift/crates/client/src/ui/theme.rs`.
+/// Shadows of War palette — see `dark-rift/crates/client/src/ui/theme.rs`.
 
 #[inline]
 pub fn menu_backdrop() -> Color32 {
@@ -77,10 +77,10 @@ pub fn text_secondary() -> Color32 {
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "Rajdhani".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../dark-rift/assets/fonts/Rajdhani-Medium.ttf"))),
+        sow_core::ui_font::UI_FONT_FAMILY.to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(sow_core::ui_font::UI_FONT_TTF)),
     );
-    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Rajdhani".to_owned());
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, sow_core::ui_font::UI_FONT_FAMILY.to_owned());
     ctx.set_fonts(fonts);
 
     let mut style = Style::default();

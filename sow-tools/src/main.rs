@@ -6,7 +6,7 @@ mod rasterizer;
 mod poi_extractor;
 mod exporter;
 
-/// Dark Rift Automated Map Generator
+/// Shadows of War Automated Map Generator
 /// Fetches OpenStreetMap data for a bounding box and generates a playable map.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

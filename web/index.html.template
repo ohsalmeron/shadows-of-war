@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadows of War</title>
+    <link rel="icon" href="data:,">
+    <link rel="modulepreload" href="./__JS_FILE__">
+    <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden; /* Prevent scrolling */
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #version {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: sans-serif;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="blade" oncontextmenu="return false;"></canvas>
+    <div id="version">v__VERSION__</div>
+    <script type="module">
+        // Force unregister any legacy dark-rift service workers to prevent cache crashes
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+
+        import init from './__JS_FILE__';
+        
+        async function run() {
+            try {
+                await init({ module_or_path: './__WASM_FILE__' });
+            } catch (e) {
+                if (e.message !== "Using exceptions for control flow, don't mind me. This isn't actually an error!") {
+                    throw e;
+                }
+            }
+        }
+        
+        run();
+    </script>
+</body>
+</html>

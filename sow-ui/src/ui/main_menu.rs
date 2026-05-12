@@ -1,4 +1,4 @@
-//! Lobby browser layout aligned with Dark Rift (`dark-rift/crates/client/src/ui/lobby_browser.rs`):
+//! Lobby browser layout aligned with Shadows of War (`dark-rift/crates/client/src/ui/lobby_browser.rs`):
 //! header, two-column desktop / stacked compact, queue overlay, scrollable lobby cards.
 
 use crate::UiAction;

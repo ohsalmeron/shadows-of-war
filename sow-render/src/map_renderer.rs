@@ -82,7 +82,7 @@ impl MapRenderer {
         });
 
         // Load and create the water texture
-        let water_bytes = include_bytes!("../../sow-client/assets/water.bin");
+        let water_bytes = include_bytes!("../../assets/water.bin");
         // Decode the simple R8 raw bytes (256x256 * 1 = 65536 bytes)
         let water_size = gpu::Extent { width: 256, height: 256, depth: 1 };
         

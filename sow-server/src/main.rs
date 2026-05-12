@@ -117,7 +117,7 @@ async fn main() {
     // HTTP Static File Server for maps
     tokio::spawn(async move {
         let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-        let app = axum::Router::new().nest_service("/maps", tower_http::services::ServeDir::new(root));
+        let app = axum::Router::new().nest_service("/maps", tower_http::services::ServeDir::new(root).precompressed_br());
         let http_addr = std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
         log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
         let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
