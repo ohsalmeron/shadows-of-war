@@ -34,19 +34,6 @@ pub struct MapShaderData {
     water_sampler: gpu::Sampler,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-pub struct MapComputeGlobals {
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(blade_macros::ShaderData)]
-pub struct MapComputeData {
-    raw_data: gpu::BufferPiece,
-    baked_data: gpu::BufferPiece,
-    globals: MapComputeGlobals,
-}
 
 pub struct MapRenderer {
     pub texture: gpu::Texture,
@@ -56,14 +43,15 @@ pub struct MapRenderer {
     pub water_texture_view: gpu::TextureView,
     pub water_sampler: gpu::Sampler,
     pub pipeline: gpu::RenderPipeline,
-    pub compute_pipeline: gpu::ComputePipeline,
     pub raw_buffer: gpu::Buffer,
-    pub baked_buffer: gpu::Buffer,
     pub width: u32,
     pub height: u32,
     pub water_upload_buf: Option<gpu::Buffer>,
     pub prev_owners: Vec<u16>,
     pub conquest_flash: Vec<u8>,
+    pub cached_pixels: Vec<u32>,
+    pub dirty_flags: Vec<bool>,
+    pub active_flashes: Vec<usize>,
 }
 
 impl MapRenderer {
@@ -171,29 +159,10 @@ impl MapRenderer {
             memory: gpu::Memory::Shared,
         });
 
-        let baked_buffer = context.create_buffer(gpu::BufferDesc {
-            name: "map_baked",
-            size: (width * height * 4) as u64,
-            memory: gpu::Memory::Device,
-        });
-
         let source = include_str!("shaders/map.wgsl");
         let shader = context.create_shader(gpu::ShaderDesc {
             source,
             naga_module: None,
-        });
-
-        let compute_source = include_str!("shaders/map_compute.wgsl");
-        let compute_shader = context.create_shader(gpu::ShaderDesc {
-            source: compute_source,
-            naga_module: None,
-        });
-
-        let compute_layout = <MapComputeData as gpu::ShaderData>::layout();
-        let compute_pipeline = context.create_compute_pipeline(gpu::ComputePipelineDesc {
-            name: "map_compute",
-            data_layouts: &[&compute_layout],
-            compute: compute_shader.at("cs_main"),
         });
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
@@ -224,14 +193,15 @@ impl MapRenderer {
             water_texture_view,
             water_sampler,
             pipeline,
-            compute_pipeline,
             raw_buffer,
-            baked_buffer,
             width,
             height,
             water_upload_buf: Some(water_upload_buf),
             prev_owners: vec![0; (width * height) as usize],
             conquest_flash: vec![0; (width * height) as usize],
+            cached_pixels: Vec::new(),
+            dirty_flags: Vec::new(),
+            active_flashes: Vec::new(),
         }
     }
 
@@ -244,50 +214,140 @@ impl MapRenderer {
         let slice = unsafe {
             std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total)
         };
+        
+        let w = self.width as i32;
+        let h = self.height as i32;
+
+        if self.cached_pixels.is_empty() {
+            self.cached_pixels = vec![0; total];
+            self.dirty_flags = vec![true; total];
+        }
+
+        let mut dirty_indices = Vec::new();
+
+        // 1. Scan for owner changes
         for i in 0..total {
-            let terrain_byte = map.terrain[i].as_byte() as u32;
-            let owner_id = map.state[i] as u32;
-            
             if self.prev_owners[i] != map.state[i] {
                 self.prev_owners[i] = map.state[i];
+                let owner_id = map.state[i] as u32;
                 if owner_id > 0 {
                     self.conquest_flash[i] = 255;
+                    self.active_flashes.push(i);
                 }
-            } else if self.conquest_flash[i] > 0 {
-                self.conquest_flash[i] = self.conquest_flash[i].saturating_sub(4);
+                
+                // Mark center tile dirty
+                if !self.dirty_flags[i] {
+                    self.dirty_flags[i] = true;
+                    dirty_indices.push(i);
+                }
+                
+                // Mark neighbors dirty
+                let y = (i as i32) / w;
+                let x = (i as i32) % w;
+                let is_odd = (y % 2) != 0;
+                let neighbors_offsets = if is_odd {
+                    [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+                } else {
+                    [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+                };
+                
+                for (dx, dy) in neighbors_offsets.iter() {
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if nx >= 0 && nx < w && ny >= 0 && ny < h {
+                        let ni = (ny * w + nx) as usize;
+                        if !self.dirty_flags[ni] {
+                            self.dirty_flags[ni] = true;
+                            dirty_indices.push(ni);
+                        }
+                    }
+                }
             }
+        }
+
+        // 2. Add previously full-dirty pass tiles if first frame
+        if self.dirty_flags[0] && dirty_indices.is_empty() {
+            for i in 0..total {
+                dirty_indices.push(i);
+            }
+        }
+
+        // 3. Process fading flashes
+        let mut next_flashes = Vec::new();
+        for &i in &self.active_flashes {
+            if self.conquest_flash[i] > 0 {
+                self.conquest_flash[i] = self.conquest_flash[i].saturating_sub(4);
+                
+                // Update flash byte directly in cache if not already marked dirty
+                if !self.dirty_flags[i] {
+                    let flash = self.conquest_flash[i] as u32;
+                    self.cached_pixels[i] = (self.cached_pixels[i] & 0x00FFFFFF) | (flash << 24);
+                }
+                
+                if self.conquest_flash[i] > 0 {
+                    next_flashes.push(i);
+                }
+            }
+        }
+        self.active_flashes = next_flashes;
+
+        let check_neighbor = |nx: i32, ny: i32, center_owner: u32, c_is_water: bool| -> bool {
+            if nx >= 0 && ny >= 0 && nx < w && ny < h {
+                let ni = (ny * w + nx) as usize;
+                let n_owner = map.state[ni] as u32;
+                let n_t_byte = map.terrain[ni].as_byte() as u32;
+                let n_is_water = (n_t_byte & 0x80) == 0;
+                if c_is_water {
+                    return !n_is_water;
+                } else {
+                    return (center_owner != n_owner) || (center_owner == 0 && n_is_water);
+                }
+            }
+            !c_is_water
+        };
+
+        // 4. Update ONLY dirty tiles
+        for i in dirty_indices {
+            let y = (i as i32) / w;
+            let x = (i as i32) % w;
+            let terrain_byte = map.terrain[i].as_byte() as u32;
+            let owner_id = map.state[i] as u32;
             let flash = self.conquest_flash[i] as u32;
 
-            slice[i] = owner_id | (terrain_byte << 16) | (flash << 24);
+            let c_is_water = (terrain_byte & 0x80) == 0;
+            let mut border_mask = 0u32;
+            let is_odd = (y % 2) != 0;
+            
+            if is_odd {
+                if check_neighbor(x+1, y, owner_id, c_is_water) { border_mask |= 1; }
+                if check_neighbor(x-1, y, owner_id, c_is_water) { border_mask |= 2; }
+                if check_neighbor(x, y-1, owner_id, c_is_water) { border_mask |= 4; }
+                if check_neighbor(x+1, y-1, owner_id, c_is_water) { border_mask |= 8; }
+                if check_neighbor(x, y+1, owner_id, c_is_water) { border_mask |= 16; }
+                if check_neighbor(x+1, y+1, owner_id, c_is_water) { border_mask |= 32; }
+            } else {
+                if check_neighbor(x+1, y, owner_id, c_is_water) { border_mask |= 1; }
+                if check_neighbor(x-1, y, owner_id, c_is_water) { border_mask |= 2; }
+                if check_neighbor(x-1, y-1, owner_id, c_is_water) { border_mask |= 4; }
+                if check_neighbor(x, y-1, owner_id, c_is_water) { border_mask |= 8; }
+                if check_neighbor(x-1, y+1, owner_id, c_is_water) { border_mask |= 16; }
+                if check_neighbor(x, y+1, owner_id, c_is_water) { border_mask |= 32; }
+            }
+
+            self.cached_pixels[i] = owner_id | (border_mask << 10) | (terrain_byte << 16) | (flash << 24);
+            self.dirty_flags[i] = false; // Reset dirty flag
         }
+
+        // 5. Copy cached pixels to GPU mapped buffer
+        slice.copy_from_slice(&self.cached_pixels);
 
         context.sync_buffer(self.raw_buffer);
 
-        // Run Compute Shader to bake the border masks
-        {
-            let mut compute = encoder.compute("map_compute");
-            let mut pass = compute.with(&self.compute_pipeline);
-            pass.bind(
-                0,
-                &MapComputeData {
-                    raw_data: self.raw_buffer.into(),
-                    baked_data: self.baked_buffer.into(),
-                    globals: MapComputeGlobals {
-                        width: self.width,
-                        height: self.height,
-                    },
-                },
-            );
-            let group_count = (total as u32 + 63) / 64;
-            pass.dispatch([group_count, 1, 1]);
-        }
-
-        // Copy baked buffer to texture
         let bytes_per_row = self.width * 4;
         {
             let mut transfer = encoder.transfer("map_upload");
             transfer.copy_buffer_to_texture(
-                self.baked_buffer.into(),
+                self.raw_buffer.into(),
                 bytes_per_row,
                 self.texture.into(),
                 gpu::Extent {
@@ -336,7 +396,6 @@ impl MapRenderer {
         render_ctx.context.destroy_texture(self.texture);
         render_ctx.context.destroy_sampler(self.sampler);
         render_ctx.context.destroy_buffer(self.raw_buffer);
-        render_ctx.context.destroy_buffer(self.baked_buffer);
         render_ctx.context.destroy_render_pipeline(&mut self.pipeline);
     }
 }

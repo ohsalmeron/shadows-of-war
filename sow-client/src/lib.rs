@@ -7,6 +7,7 @@ use sow_core::water_components::WaterComponents;
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
 use egui::{Context, RawInput, Pos2, Rect, Vec2};
+use egui::text::{LayoutJob, TextFormat};
 use sow_ui::{ClientApp, app::ClientPhase, UiAction};
 use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
@@ -18,7 +19,56 @@ struct CachedNameplate {
     troops_galley: Arc<egui::Galley>,
     last_formatted_troops: String,
     last_font_size: f32,
-    last_update_time: web_time::Instant,
+}
+
+/// Black halo behind text — circular samples (not axis + diagonal) for a smoother ring.
+fn paint_galley_outlined(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    galley: Arc<egui::Galley>,
+    font_size: f32,
+) {
+    if galley.is_empty() {
+        return;
+    }
+    let step = (font_size * 0.07).clamp(0.9, 2.2);
+    const SAMPLES: usize = 20;
+    let tau = std::f32::consts::TAU;
+    for ring_scale in [1.0_f32, 0.48] {
+        let r = step * ring_scale;
+        for i in 0..SAMPLES {
+            let a = (i as f32 / SAMPLES as f32) * tau + ring_scale * 0.08;
+            let o = egui::vec2(a.cos() * r, a.sin() * r);
+            painter.galley_with_override_text_color(
+                pos + o,
+                galley.clone(),
+                egui::Color32::BLACK,
+            );
+        }
+    }
+    painter.galley(pos, galley, egui::Color32::WHITE);
+}
+
+fn layout_nameplate_name_galley(
+    painter: &egui::Painter,
+    font_id: egui::FontId,
+    name: &str,
+    is_human: bool,
+    player_color: egui::Color32,
+) -> Arc<egui::Galley> {
+    if is_human {
+        let mut job = LayoutJob::default();
+        job.break_on_newline = false;
+        job.append(
+            "★ ",
+            0.0,
+            TextFormat::simple(font_id.clone(), player_color),
+        );
+        job.append(name, 0.0, TextFormat::simple(font_id, egui::Color32::WHITE));
+        painter.layout_job(job)
+    } else {
+        painter.layout_no_wrap(name.to_owned(), font_id, egui::Color32::WHITE)
+    }
 }
 
 fn render_troops(mut num: f64) -> String {
@@ -45,7 +95,8 @@ fn render_troops(mut num: f64) -> String {
 mod client_config;
 use client_config::ClientVisualConfig;
 
-const CAMERA_MIN_ZOOM: f32 = 0.05;
+/// Allow very wide map views (scroll / pinch clamp to this minimum).
+const CAMERA_MIN_ZOOM: f32 = 0.01;
 const CAMERA_MAX_ZOOM: f32 = 20.0;
 
 
@@ -670,13 +721,17 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         // Frustum cull
                                         if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
                                         
-                                        let is_nation_or_human = player.player_type != sow_core::player::PlayerType::Bot;
-                                        
                                         let center = egui::pos2(screen_x, screen_y);
+                                        // Map shader derives human tint from id, not `player.color`; match that for dots + ★.
+                                        let rgb = if player.player_type == sow_core::player::PlayerType::Human {
+                                            sow_core::player::human_shader_territory_rgb(player.id)
+                                        } else {
+                                            player.color
+                                        };
                                         let pc = egui::Color32::from_rgb(
-                                            (player.color[0] * 255.0) as u8,
-                                            (player.color[1] * 255.0) as u8,
-                                            (player.color[2] * 255.0) as u8,
+                                            (rgb[0] * 255.0) as u8,
+                                            (rgb[1] * 255.0) as u8,
+                                            (rgb[2] * 255.0) as u8,
                                         );
                                         
                                         // Territory-driven visibility & size (OpenFront style, scaled for readability)
@@ -702,77 +757,65 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             // 3. Raw font size that perfectly inscribes the territory
                                             let raw_font_size = max_by_width.min(max_by_height);
                                             
-                                            // 4. Apply user scale and clamp
+                                            // 4. Apply user scale and clamp (continuous size — no quantization)
                                             let target_font_size = raw_font_size * ui_text_scale;
-                                            let clamped_font_size = target_font_size.max(4.0).min(64.0);
+                                            let font_size = target_font_size.max(4.0).min(64.0);
                                             
-                                            // 5. QUANTIZE font size to steps of 2.0 (Massive Performance Fix)
-                                            // This prevents Egui from re-calculating text layouts every frame while zooming smoothly.
-                                            let font_size = (clamped_font_size / 2.0).round() * 2.0;
-                                            
-                                            // 10 Hz Cache Logic
-                                            let now = Instant::now();
+                                            let is_human = player.player_type == sow_core::player::PlayerType::Human;
+                                            let new_troops_str = render_troops(player.troops);
                                             let cache_entry = nameplate_cache.entry(player.id).or_insert_with(|| {
                                                 let font_id = egui::FontId::proportional(font_size);
-                                                let troops_str = render_troops(player.troops);
-                                                
-                                                let display_name = if player.player_type == sow_core::player::PlayerType::Human {
-                                                    format!("★ {}", player.name)
-                                                } else {
-                                                    player.name.clone()
-                                                };
+                                                let troops_str = new_troops_str.clone();
                                                 
                                                 CachedNameplate {
-                                                    name_galley: painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE),
+                                                    name_galley: layout_nameplate_name_galley(
+                                                        &painter,
+                                                        font_id.clone(),
+                                                        &player.name,
+                                                        is_human,
+                                                        pc,
+                                                    ),
                                                     troops_galley: painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE),
                                                     last_formatted_troops: troops_str,
                                                     last_font_size: font_size,
-                                                    last_update_time: now,
                                                 }
                                             });
                                             
-                                            if now.duration_since(cache_entry.last_update_time).as_millis() >= 100 {
-                                                let new_troops_str = render_troops(player.troops);
-                                                if new_troops_str != cache_entry.last_formatted_troops {
-                                                    let font_id = egui::FontId::proportional(font_size);
-                                                    cache_entry.troops_galley = painter.layout_no_wrap(format!("⚔ {}", new_troops_str), font_id, egui::Color32::WHITE);
-                                                    cache_entry.last_formatted_troops = new_troops_str;
-                                                }
-                                                // Dynamic font size scaling updates
-                                                // Since font_size is quantized, this only triggers when visually jumping a step!
-                                                if cache_entry.last_font_size != font_size {
-                                                    let font_id = egui::FontId::proportional(font_size);
-                                                    let display_name = if player.player_type == sow_core::player::PlayerType::Human {
-                                                        format!("★ {}", player.name)
-                                                    } else {
-                                                        player.name.clone()
-                                                    };
-                                                    cache_entry.name_galley = painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE);
-                                                    cache_entry.troops_galley = painter.layout_no_wrap(format!("⚔ {}", cache_entry.last_formatted_troops), font_id, egui::Color32::WHITE);
-                                                    cache_entry.last_font_size = font_size;
-                                                }
-                                                cache_entry.last_update_time = now;
+                                            if cache_entry.last_font_size != font_size {
+                                                let font_id = egui::FontId::proportional(font_size);
+                                                cache_entry.name_galley = layout_nameplate_name_galley(
+                                                    &painter,
+                                                    font_id.clone(),
+                                                    &player.name,
+                                                    is_human,
+                                                    pc,
+                                                );
+                                                cache_entry.troops_galley = painter.layout_no_wrap(
+                                                    format!("⚔ {}", new_troops_str),
+                                                    font_id,
+                                                    egui::Color32::WHITE,
+                                                );
+                                                cache_entry.last_formatted_troops = new_troops_str.clone();
+                                                cache_entry.last_font_size = font_size;
+                                            } else if new_troops_str != cache_entry.last_formatted_troops {
+                                                let font_id = egui::FontId::proportional(font_size);
+                                                cache_entry.troops_galley = painter.layout_no_wrap(
+                                                    format!("⚔ {}", new_troops_str),
+                                                    font_id,
+                                                    egui::Color32::WHITE,
+                                                );
+                                                cache_entry.last_formatted_troops = new_troops_str;
                                             }
                                             
                                             let name_galley = &cache_entry.name_galley;
                                             let troops_galley = &cache_entry.troops_galley;
                                             
-                                            let w = name_galley.rect.width().max(troops_galley.rect.width());
                                             let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
-                                            
-                                            let bg_rect = egui::Rect::from_center_size(center, egui::vec2(w, h)).expand(6.0);
-                                            painter.rect_filled(bg_rect, 4.0, egui::Color32::from_black_alpha(200));
-                                            
-                                            if is_nation_or_human {
-                                                // Thin colored accent line at top
-                                                let accent = egui::Rect::from_min_size(bg_rect.left_top(), egui::vec2(bg_rect.width(), 2.0));
-                                                painter.rect_filled(accent, 2.0, pc);
-                                            }
                                             
                                             let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
                                             let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                            painter.galley(name_pos, name_galley.clone(), egui::Color32::WHITE);
-                                            painter.galley(troops_pos, troops_galley.clone(), egui::Color32::WHITE);
+                                            paint_galley_outlined(&painter, name_pos, name_galley.clone(), cache_entry.last_font_size);
+                                            paint_galley_outlined(&painter, troops_pos, troops_galley.clone(), cache_entry.last_font_size);
                                         } else {
                                             // Dot only — zero text layout, bare metal fast
                                             painter.circle_filled(center, dot_r, pc);
