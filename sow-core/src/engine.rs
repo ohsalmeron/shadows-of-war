@@ -90,7 +90,7 @@ impl SowEngine {
     pub fn tick(&mut self) {
         self.state.tick();
         self.execute_income();
-        self.tick_bots();
+        self.execute_ai_think();
         self.execute_combat();
         // TODO: buildings, fleets, pending turns...
     }

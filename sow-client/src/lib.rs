@@ -11,6 +11,36 @@ use sow_ui::{ClientApp, app::ClientPhase, UiAction};
 use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+struct CachedNameplate {
+    name_galley: Arc<egui::Galley>,
+    troops_galley: Arc<egui::Galley>,
+    last_formatted_troops: String,
+    last_font_size: f32,
+    last_update_time: web_time::Instant,
+}
+
+fn render_troops(mut num: f64) -> String {
+    num = num.max(0.0);
+    if num >= 10_000_000.0 {
+        let value = (num / 100_000.0).floor() / 10.0;
+        format!("{:.1}M", value)
+    } else if num >= 1_000_000.0 {
+        let value = (num / 10_000.0).floor() / 100.0;
+        format!("{:.2}M", value)
+    } else if num >= 100_000.0 {
+        format!("{}K", (num / 1000.0).floor())
+    } else if num >= 10_000.0 {
+        let value = (num / 100.0).floor() / 10.0;
+        format!("{:.1}K", value)
+    } else if num >= 1_000.0 {
+        let value = (num / 10.0).floor() / 100.0;
+        format!("{:.2}K", value)
+    } else {
+        format!("{:.0}", num.floor())
+    }
+}
 
 const CAMERA_MIN_ZOOM: f32 = 0.25;
 const CAMERA_MAX_ZOOM: f32 = 20.0;
@@ -95,6 +125,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
     let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
     let mut pending_start_msg: Option<sow_core::protocol::ServerStartMessage> = None;
+
+    let mut nameplate_cache: HashMap<u16, CachedNameplate> = HashMap::new();
 
     let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
@@ -658,25 +690,53 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             // Full nameplate
                                             let scale = player_label_scale(player.tile_count, cfg.ui_label_ref_tiles, cfg.ui_label_max_scale);
                                             let font_size = cfg.ui_label_base_size * scale;
-                                            let font_id = egui::FontId::proportional(font_size);
                                             
-                                            let troops = player.troops as f64;
-                                            let troops_str = if troops >= 1_000_000.0 {
-                                                format!("{:.1}M", troops / 1_000_000.0)
-                                            } else if troops >= 1_000.0 {
-                                                format!("{:.1}K", troops / 1_000.0)
-                                            } else {
-                                                format!("{:.0}", troops)
-                                            };
+                                            // 10 Hz Cache Logic
+                                            let now = Instant::now();
+                                            let cache_entry = nameplate_cache.entry(player.id).or_insert_with(|| {
+                                                let font_id = egui::FontId::proportional(font_size);
+                                                let troops_str = render_troops(player.troops);
+                                                
+                                                let display_name = if player.player_type == sow_core::player::PlayerType::Human {
+                                                    format!("★ {}", player.name)
+                                                } else {
+                                                    player.name.clone()
+                                                };
+                                                
+                                                CachedNameplate {
+                                                    name_galley: painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE),
+                                                    troops_galley: painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE),
+                                                    last_formatted_troops: troops_str,
+                                                    last_font_size: font_size,
+                                                    last_update_time: now,
+                                                }
+                                            });
                                             
-                                            let display_name = if player.player_type == sow_core::player::PlayerType::Human {
-                                                format!("★ {}", player.name)
-                                            } else {
-                                                player.name.clone()
-                                            };
+                                            if now.duration_since(cache_entry.last_update_time).as_millis() >= 100 {
+                                                let new_troops_str = render_troops(player.troops);
+                                                if new_troops_str != cache_entry.last_formatted_troops {
+                                                    let font_id = egui::FontId::proportional(font_size);
+                                                    cache_entry.troops_galley = painter.layout_no_wrap(format!("⚔ {}", new_troops_str), font_id, egui::Color32::WHITE);
+                                                    cache_entry.last_formatted_troops = new_troops_str;
+                                                }
+                                                // Dynamic font size scaling updates
+                                                let current_font_size = cache_entry.last_font_size;
+                                                if (current_font_size - font_size).abs() > 0.5 {
+                                                    let font_id = egui::FontId::proportional(font_size);
+                                                    let display_name = if player.player_type == sow_core::player::PlayerType::Human {
+                                                        format!("★ {}", player.name)
+                                                    } else {
+                                                        player.name.clone()
+                                                    };
+                                                    cache_entry.name_galley = painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE);
+                                                    cache_entry.troops_galley = painter.layout_no_wrap(format!("⚔ {}", cache_entry.last_formatted_troops), font_id, egui::Color32::WHITE);
+                                                    cache_entry.last_font_size = font_size;
+                                                }
+                                                cache_entry.last_update_time = now;
+                                            }
                                             
-                                            let name_galley = painter.layout_no_wrap(display_name, font_id.clone(), egui::Color32::WHITE);
-                                            let troops_galley = painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE);
+                                            let name_galley = &cache_entry.name_galley;
+                                            let troops_galley = &cache_entry.troops_galley;
                                             
                                             let w = name_galley.rect.width().max(troops_galley.rect.width());
                                             let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
@@ -692,8 +752,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             
                                             let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
                                             let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                            painter.galley(name_pos, name_galley, egui::Color32::WHITE);
-                                            painter.galley(troops_pos, troops_galley, egui::Color32::WHITE);
+                                            painter.galley(name_pos, name_galley.clone(), egui::Color32::WHITE);
+                                            painter.galley(troops_pos, troops_galley.clone(), egui::Color32::WHITE);
                                         } else {
                                             // Dot only — zero text layout, bare metal fast
                                             painter.circle_filled(center, dot_r, pc);
@@ -776,6 +836,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             engine.spawn_ai(0, 4);
                                             turn_queue.clear();
                                             label_positions.clear();
+                                            nameplate_cache.clear();
                                             needs_first_upload = true;
                                             needs_map_upload = true;
                                         }

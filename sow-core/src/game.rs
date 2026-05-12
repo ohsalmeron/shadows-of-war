@@ -93,8 +93,16 @@ impl GameState {
             let is_border = self.map.is_border_tile(x, y, new_owner);
             if is_border { if let Some(p) = self.player_mut(new_owner) { p.border_insert(linear_idx); } }
         }
-        let neighbors = self.map.neighbors(x, y);
-        for (nx, ny) in neighbors {
+        
+        let mut neighbors = [(0, 0); 6];
+        let mut n_count = 0;
+        self.map.for_each_neighbor(x, y, |nx, ny| {
+            neighbors[n_count] = (nx, ny);
+            n_count += 1;
+        });
+        
+        for i in 0..n_count {
+            let (nx, ny) = neighbors[i];
             let n_owner = self.map.owner_id(nx, ny);
             let n_idx = (ny * self.map.width + nx) as u32;
             if n_owner == old_owner && old_owner != 0 {

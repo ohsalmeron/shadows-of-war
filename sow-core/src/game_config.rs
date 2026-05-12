@@ -163,8 +163,8 @@ impl Default for GameConfig {
         Self {
             // Lobby & Match Setup
             max_players: 12,
-            bot_count: 200,      // Tribes (Simple, static filler AI)
-            nation_count: 100,   // Nations (Dynamic expanding AI)
+            bot_count: 2000,      // Tribes (Simple, static filler AI)
+            nation_count: 250,   // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
@@ -176,23 +176,23 @@ impl Default for GameConfig {
             // Core Simulation Pacing
             tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)
             // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
-            global_speed_multiplier: 0.25, // 0.5 = Game plays at exactly half speed (attacks last 2x longer, income 2x slower)
+            global_speed_multiplier: 0.85, // 0.85 = Slightly slower, more tactical pace
             
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 3.0,   // Extremely low: 100 troops = 50 enemy tiles bursts
-            attack_cost_neutral: 1.0, // Extremely low: 100 troops = 200 neutral tiles bursts
-            terrain_multiplier_highland: 1.5, // Highlands cost 75% more to conquer
-            terrain_multiplier_mountain: 3.0,  // Mountains cost 3.5x more to conquer
-            bot_attack_interval_ticks: 64,    // Nerfed aggression: bots wait ~64 seconds between waves
-            max_tiles_per_tick: 40.0,          // Hard cap per attack (was 100). Visible, paced spread.
-            momentum_divisor: 5000.0,          // Troops needed for 1x momentum (was 1000). Halved speed.
+            attack_cost_enemy: 4.0,   // Balanced: harder to melt through enemy territory
+            attack_cost_neutral: 1.5, // Standard neutral cost
+            terrain_multiplier_highland: 1.5,
+            terrain_multiplier_mountain: 3.0,
+            bot_attack_interval_ticks: 120,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
+            max_tiles_per_tick: 20.0,          // Cap per attack to make expansion flow like a frontline
+            momentum_divisor: 5000.0,          // Troops needed for 1x momentum
 
-            // Economy & Income Rates (Halved to pace the game down 2x)
-            starting_troops: 1000.0,
-            starting_gold: 1000.0,
-            gold_base_income: 4.0,   // Reduced from 8.0: Forces slower macro progression
-            troop_base_income: 50.0, // Reduced from 100.0: Takes twice as long to prep an attack
-            troop_per_tile: 2.0,     // Reduced from 4.0: Expansion snowballs slower
+            // Economy & Income Rates
+            starting_troops: 500.0,  // Initial burst to allow early expansion
+            starting_gold: 100.0,
+            gold_base_income: 6.0,
+            troop_base_income: 75.0, // Smooth baseline troop recovery
+            troop_per_tile: 3.0,     // Rewards map control, but doesn't instantly snowball
             max_troops_base: 100.0,
             max_troops_scale: 50.0,
             city_max_troops_per_level: 2000.0,
@@ -202,9 +202,9 @@ impl Default for GameConfig {
             troop_income_pace: 1.0, // Designer-only troop refill multiplier (see field doc)
             
             // Rendering & Shaders (Visual Adjustments)
-            shader_terrain_sharpness: 0.001, // Soft topographical bump map
-            shader_interior_alpha: 2.95,     // High opacity, terrain shows through slightly
-            shader_border_alpha: 1.95,       // High opacity solid border lines
+            shader_terrain_sharpness: 0.0001, // Soft topographical bump map
+            shader_interior_alpha: 0.95,     // High opacity, terrain shows through slightly
+            shader_border_alpha: 0.95,       // High opacity solid border lines
             
             // User Interface & HUD
             ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font

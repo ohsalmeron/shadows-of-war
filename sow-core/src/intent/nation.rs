@@ -8,7 +8,7 @@ use wyrand::WyRand;
 /// Maximum number of AI entities that may produce decisions in a single tick.
 /// This prevents thundering-herd spikes when many bots/nations have aligned
 /// intervals. Excess entities are deferred to the next tick via round-robin.
-const MAX_AI_DECISIONS_PER_TICK: usize = 1;
+const MAX_AI_DECISIONS_PER_TICK: usize = 12;
 
 fn bot_structure_target_count(
     kind: BuildingKind,
