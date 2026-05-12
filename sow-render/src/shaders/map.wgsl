@@ -7,11 +7,11 @@ struct Globals {
     visual_terrain_sharpness: f32,
     visual_interior_alpha: f32,
     visual_border_alpha: f32,
+    visual_border_thickness: f32,
     lod_2_zoom: f32,
     lod_3_zoom: f32,
     local_player_id: u32,
     padding1: f32,
-    padding2: f32,
 }
 
 var<uniform> globals: Globals;
@@ -60,6 +60,14 @@ fn world_to_hex(world: vec2<f32>) -> vec2<i32> {
     let col = q + (r - (r & 1i)) / 2i;
     let row = r;
     return vec2<i32>(col, row);
+}
+
+fn hex_to_world(cell_x: i32, cell_y: i32) -> vec2<f32> {
+    let r = f32(cell_y);
+    let q = f32(cell_x - (cell_y - (cell_y & 1)) / 2);
+    let y = r * 0.86602540378;
+    let x = q + y * 0.577350269;
+    return vec2<f32>(x, y);
 }
 
 @fragment
@@ -241,15 +249,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_4_water = ((val_4 >> 16u) & 0x80u) == 0u;
     let is_5_water = ((val_5 >> 16u) & 0x80u) == 0u;
     
-    let has_water_neighbor = is_0_water || is_1_water || is_2_water || is_3_water || is_4_water || is_5_water;
-    
     var should_draw_border = false;
-    if owner_id == 0u {
-        // Wilderness draws borders against owned tiles AND shorelines
-        should_draw_border = is_border || has_water_neighbor;
-    } else {
-        // Owned territory draws borders where ownership changes
-        should_draw_border = is_border;
+    let center = hex_to_world(cell_x, cell_y);
+    let local_pos = vec2<f32>(world_x, world_y) - center;
+    let border_threshold = 0.5 - globals.visual_border_thickness;
+
+    for (var i = 0u; i < 6u; i = i + 1u) {
+        var is_diff = false;
+        if i == 0u { is_diff = (owner_id != own_0) || (owner_id == 0u && is_0_water); }
+        else if i == 1u { is_diff = (owner_id != own_1) || (owner_id == 0u && is_1_water); }
+        else if i == 2u { is_diff = (owner_id != own_2) || (owner_id == 0u && is_2_water); }
+        else if i == 3u { is_diff = (owner_id != own_3) || (owner_id == 0u && is_3_water); }
+        else if i == 4u { is_diff = (owner_id != own_4) || (owner_id == 0u && is_4_water); }
+        else if i == 5u { is_diff = (owner_id != own_5) || (owner_id == 0u && is_5_water); }
+
+        if is_diff {
+            let neighbor_center = hex_to_world(cell_x + offsets[i].x, cell_y + offsets[i].y);
+            let dir = neighbor_center - center; 
+            if dot(local_pos, dir) > border_threshold {
+                should_draw_border = true;
+            }
+        }
     }
 
     if should_draw_border {

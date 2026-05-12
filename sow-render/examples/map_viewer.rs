@@ -60,14 +60,14 @@ fn main() {
         time: 0.0,
         screen_size: [MW as f32, MH as f32],
         map_size: [MW as f32, MH as f32],
-        visual_terrain_sharpness: 0.05,
-        visual_interior_alpha: 0.35,
+        visual_terrain_sharpness: 0.0001,
+        visual_interior_alpha: 1.0,
         visual_border_alpha: 1.0,
-        lod_2_zoom: 4.0,
-        lod_3_zoom: 12.0,
+        visual_border_thickness: 1.0,
+        lod_2_zoom: 10.0,
+        lod_3_zoom: 20.0,
         local_player_id: 1,
         padding1: 0.0,
-        padding2: 0.0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

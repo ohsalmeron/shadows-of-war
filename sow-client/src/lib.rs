@@ -45,10 +45,11 @@ fn render_troops(mut num: f64) -> String {
 const CAMERA_MIN_ZOOM: f32 = 0.25;
 const CAMERA_MAX_ZOOM: f32 = 20.0;
 
-fn player_label_scale(tiles_owned: u32, ref_tiles: f32, max_scale: f32) -> f32 {
-    let t = tiles_owned.max(1) as f32;
-    let r = ref_tiles.max(1.0);
-    (t / r).sqrt().max(1.0).min(max_scale.max(1.0))
+fn territory_font_size(tile_count: u32, name_len: usize) -> f32 {
+    let span = (tile_count as f32).sqrt().max(1.0);
+    let width_constrained = (span / name_len.max(1) as f32) * 2.0;
+    let height_constrained = span / 3.0;
+    width_constrained.min(height_constrained).max(4.0)
 }
 
 fn spawn_sow_client_connect(
@@ -594,11 +595,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     visual_terrain_sharpness: engine.state.config.shader_terrain_sharpness,
                                     visual_interior_alpha: engine.state.config.shader_interior_alpha,
                                     visual_border_alpha: engine.state.config.shader_border_alpha,
+                                    visual_border_thickness: engine.state.config.shader_border_thickness,
                                     lod_2_zoom: engine.state.config.ui_lod_2_zoom,
                                     lod_3_zoom: engine.state.config.ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
                                     padding1: 0.0,
-                                    padding2: 0.0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -633,18 +634,6 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let cfg = &engine.state.config;
                                     let dot_r = cfg.ui_lod_dot_radius;
                                     
-                                    // Determine LOD tier from zoom.
-                                    // LOD 1: far/simplified
-                                    // LOD 2: normal/full plates
-                                    // LOD 3: max zoom
-                                    let lod = if camera_zoom >= cfg.ui_lod_3_zoom {
-                                        3u8
-                                    } else if camera_zoom >= cfg.ui_lod_2_zoom {
-                                        2u8
-                                    } else {
-                                        1u8
-                                    };
-                                    
                                     for player in &engine.state.players {
                                         if player.tile_count == 0 || !player.alive { continue; }
                                         
@@ -677,7 +666,6 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
                                         
                                         let is_nation_or_human = player.player_type != sow_core::player::PlayerType::Bot;
-                                        let show_full = lod >= 2;
                                         
                                         let center = egui::pos2(screen_x, screen_y);
                                         let pc = egui::Color32::from_rgb(
@@ -686,10 +674,14 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             (player.color[2] * 255.0) as u8,
                                         );
                                         
+                                        // Territory-driven visibility (OpenFront style)
+                                        let base_size = territory_font_size(player.tile_count, player.name.len());
+                                        let screen_size = (camera_zoom / sf) * base_size;
+                                        let show_full = screen_size >= 7.0;
+                                        
                                         if show_full {
-                                            // Full nameplate
-                                            let scale = player_label_scale(player.tile_count, cfg.ui_label_ref_tiles, cfg.ui_label_max_scale);
-                                            let font_size = cfg.ui_label_base_size * scale;
+                                            // Full nameplate — font size driven by territory
+                                            let font_size = (base_size * 1.5).max(cfg.ui_label_base_size).min(base_size);
                                             
                                             // 10 Hz Cache Logic
                                             let now = Instant::now();

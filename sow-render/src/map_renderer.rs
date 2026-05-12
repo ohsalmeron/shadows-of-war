@@ -14,11 +14,11 @@ pub struct MapGlobals {
     pub visual_terrain_sharpness: f32,
     pub visual_interior_alpha: f32,
     pub visual_border_alpha: f32,
+    pub visual_border_thickness: f32,
     pub lod_2_zoom: f32,
     pub lod_3_zoom: f32,
     pub local_player_id: u32,
     pub padding1: f32,
-    pub padding2: f32,
 }
 
 #[derive(blade_macros::ShaderData)]

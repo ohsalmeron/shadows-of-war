@@ -131,6 +131,8 @@ pub struct GameConfig {
     pub shader_interior_alpha: f32,
     /// Opacity of the solid borders outlining a player's territory.
     pub shader_border_alpha: f32,
+    /// Thickness of the territory border (1.0 = full hex width, 0.1 = thin outline)
+    pub shader_border_thickness: f32,
     
     // ==========================================
     // User Interface & HUD
@@ -205,6 +207,7 @@ impl Default for GameConfig {
             shader_terrain_sharpness: 0.0001, // Soft topographical bump map
             shader_interior_alpha: 0.95,     // High opacity, terrain shows through slightly
             shader_border_alpha: 0.95,       // High opacity solid border lines
+            shader_border_thickness: 0.1,    // Thin borders
             
             // User Interface & HUD
             ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font
