@@ -42,15 +42,13 @@ fn render_troops(mut num: f64) -> String {
     }
 }
 
+mod client_config;
+use client_config::ClientVisualConfig;
+
 const CAMERA_MIN_ZOOM: f32 = 0.25;
 const CAMERA_MAX_ZOOM: f32 = 20.0;
 
-fn territory_font_size(tile_count: u32, name_len: usize) -> f32 {
-    let span = (tile_count as f32).sqrt().max(1.0);
-    let width_constrained = (span / name_len.max(1) as f32) * 2.0;
-    let height_constrained = span / 3.0;
-    width_constrained.min(height_constrained).max(4.0)
-}
+
 
 fn spawn_sow_client_connect(
     url: String,
@@ -592,12 +590,12 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     time: start_time.elapsed().as_secs_f32(),
                                     screen_size: [screen_w, screen_h],
                                     map_size: [map_w as f32, map_h as f32],
-                                    visual_terrain_sharpness: engine.state.config.shader_terrain_sharpness,
-                                    visual_interior_alpha: engine.state.config.shader_interior_alpha,
-                                    visual_border_alpha: engine.state.config.shader_border_alpha,
-                                    visual_border_thickness: engine.state.config.shader_border_thickness,
-                                    lod_2_zoom: engine.state.config.ui_lod_2_zoom,
-                                    lod_3_zoom: engine.state.config.ui_lod_3_zoom,
+                                    visual_terrain_sharpness: ClientVisualConfig::default().shader_terrain_sharpness,
+                                    visual_interior_alpha: ClientVisualConfig::default().shader_interior_alpha,
+                                    visual_border_alpha: ClientVisualConfig::default().shader_border_alpha,
+                                    visual_border_thickness: ClientVisualConfig::default().shader_border_thickness,
+                                    lod_2_zoom: ClientVisualConfig::default().ui_lod_2_zoom,
+                                    lod_3_zoom: ClientVisualConfig::default().ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
                                     padding1: 0.0,
                                 };
@@ -631,8 +629,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 if app.phase == ClientPhase::Playing {
                                     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("world_overlays")));
                                     
-                                    let cfg = &engine.state.config;
-                                    let dot_r = cfg.ui_lod_dot_radius;
+                                    // Configuration variables removed from GameConfig
+                                    let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
                                     
                                     for player in &engine.state.players {
                                         if player.tile_count == 0 || !player.alive { continue; }
@@ -674,14 +672,25 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             (player.color[2] * 255.0) as u8,
                                         );
                                         
-                                        // Territory-driven visibility (OpenFront style)
-                                        let base_size = territory_font_size(player.tile_count, player.name.len());
-                                        let screen_size = (camera_zoom / sf) * base_size;
-                                        let show_full = screen_size >= 7.0;
+                                        // Territory-driven visibility & size (OpenFront style, scaled for readability)
+                                        let importance = (player.tile_count as f32).sqrt().max(1.0);
+                                        let screen_presence = importance * (camera_zoom / sf);
+                                        
+                                        // Small nations require zooming in to appear (e.g. 1 tile needs 6.0 zoom)
+                                        let show_full = screen_presence >= 6.0;
                                         
                                         if show_full {
-                                            // Full nameplate — font size driven by territory
-                                            let font_size = (base_size * 1.5).max(cfg.ui_label_base_size).min(base_size);
+                                            let ui_text_scale = ClientVisualConfig::default().ui_text_scale; 
+                                            
+                                            // Scale font with both empire size and camera zoom
+                                            let zoom_factor = (camera_zoom / sf).max(1.0).sqrt();
+                                            let empire_factor = importance.sqrt();
+                                            
+                                            // Base calculation
+                                            let target_font_size = 12.0 + (6.0 * empire_factor * zoom_factor);
+                                            
+                                            // Apply master scale and clamp
+                                            let font_size = (target_font_size * ui_text_scale).max(4.0).min(60.0);
                                             
                                             // 10 Hz Cache Logic
                                             let now = Instant::now();

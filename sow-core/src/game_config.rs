@@ -122,42 +122,6 @@ pub struct GameConfig {
     #[serde(default = "default_troop_income_pace")]
     pub troop_income_pace: f64,
     
-    // ==========================================
-    // Rendering & Shaders (Visual Adjustments)
-    // ==========================================
-    /// Controls how dramatic the heightmap topology looks in the pixel shader.
-    pub shader_terrain_sharpness: f32,
-    /// Opacity of the filling inside a player's territory borders.
-    pub shader_interior_alpha: f32,
-    /// Opacity of the solid borders outlining a player's territory.
-    pub shader_border_alpha: f32,
-    /// Thickness of the territory border (1.0 = full hex width, 0.1 = thin outline)
-    pub shader_border_thickness: f32,
-    
-    // ==========================================
-    // User Interface & HUD
-    // ==========================================
-    /// Font file embedded to draw the UI.
-    pub ui_font: String,
-    /// Minimum font size for drawing player nameplates.
-    pub ui_label_base_size: f32,
-    /// Maximum scale multiplier applied to the nameplate based on territory size.
-    pub ui_label_max_scale: f32,
-    /// Number of tiles required to reach the maximum label scale.
-    pub ui_label_ref_tiles: f32,
-    
-    // ==========================================
-    // Level-Of-Detail (LOD) Camera Thresholds
-    // Camera zoom is clamped in sow-client to [0.25, 20.0].
-    // ==========================================
-    /// LOD 1 threshold (farthest / simplified): below LOD 2 threshold, use minimal labels.
-    pub ui_lod_1_zoom: f32,
-    /// LOD 2 threshold (normal view): zoom levels >= this value render normal full plates.
-    pub ui_lod_2_zoom: f32,
-    /// LOD 3 threshold (max zoom view): zoom levels >= this value are in LOD 3.
-    pub ui_lod_3_zoom: f32,
-    /// Radius of the minimalist dot icon used when zooming out.
-    pub ui_lod_dot_radius: f32,
 }
 
 impl Default for GameConfig {
@@ -185,13 +149,13 @@ impl Default for GameConfig {
             attack_cost_neutral: 1.5, // Standard neutral cost
             terrain_multiplier_highland: 1.5,
             terrain_multiplier_mountain: 3.0,
-            bot_attack_interval_ticks: 120,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
-            max_tiles_per_tick: 20.0,          // Cap per attack to make expansion flow like a frontline
-            momentum_divisor: 5000.0,          // Troops needed for 1x momentum
+            bot_attack_interval_ticks: 64,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
+            max_tiles_per_tick: 10.0,          // Cap per attack to make expansion flow like a frontline
+            momentum_divisor: 2500.0,          // Troops needed for 1x momentum
 
             // Economy & Income Rates
-            starting_troops: 500.0,  // Initial burst to allow early expansion
-            starting_gold: 100.0,
+            starting_troops: 100.0,  // Initial burst to allow early expansion
+            starting_gold: 10.0,
             gold_base_income: 6.0,
             troop_base_income: 75.0, // Smooth baseline troop recovery
             troop_per_tile: 3.0,     // Rewards map control, but doesn't instantly snowball
@@ -202,25 +166,6 @@ impl Default for GameConfig {
             factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
             gold_income_per_city_level: 1.0,      // +1 flat gold per city level
             troop_income_pace: 1.0, // Designer-only troop refill multiplier (see field doc)
-            
-            // Rendering & Shaders (Visual Adjustments)
-            shader_terrain_sharpness: 0.0001, // Soft topographical bump map
-            shader_interior_alpha: 0.95,     // High opacity, terrain shows through slightly
-            shader_border_alpha: 0.95,       // High opacity solid border lines
-            shader_border_thickness: 0.1,    // Thin borders
-            
-            // User Interface & HUD
-            ui_font: "Rajdhani-Medium.ttf".to_string(), // Cyber/RTS theme font
-            ui_label_base_size: 12.0,                    // Min point size for nameplates
-            ui_label_max_scale: 2.0,                    // Nameplates grow up to 4x size
-            ui_label_ref_tiles: 400.0,                  // Reach 4x size when owning 400 tiles
-            
-            // Level-Of-Detail (LOD) Camera Thresholds (camera zoom clamp: 0.25..20.0)
-            // Desired order: far/simplified -> normal/full -> max zoom.
-            ui_lod_1_zoom: 0.25, // Farthest zoom band
-            ui_lod_2_zoom: 10.0,  // Normal gameplay zoom starts full plates
-            ui_lod_3_zoom: 20.0, // Max zoom band
-            ui_lod_dot_radius: 2.0,
         }
     }
 }
