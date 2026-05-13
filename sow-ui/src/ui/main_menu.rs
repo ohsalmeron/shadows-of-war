@@ -20,14 +20,13 @@ pub struct MainMenuState {
     pub server_address: String,
     pub lobbies: Vec<LobbyInfo>,
     pub player_name: String,
-    /// Set when user clicks JOIN until the server accepts (optional optimistic target).
     pub pending_join_lobby_id: Option<u64>,
-    /// Populated from `ServerJoinAckMessage` while waiting in the queue.
     pub joined_lobby_id: Option<u64>,
     pub available_maps: Vec<String>,
     pub selected_map: String,
     pub is_downloading_map: bool,
     pub cached_map: Option<Vec<u8>>,
+    pub map_download_progress: u8,
 }
 
 impl Default for MainMenuState {
@@ -66,6 +65,7 @@ impl Default for MainMenuState {
             selected_map,
             is_downloading_map: false,
             cached_map: None,
+            map_download_progress: 0,
         }
     }
 }
@@ -75,7 +75,6 @@ fn lobby_compact_layout(ctx: &egui::Context) -> bool {
     ctx.content_rect().width() < 900.0
 }
 
-/// Same priority as Dark Rift `primary_lobby_for_browser`.
 pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     if lobbies.is_empty() {
         return None;

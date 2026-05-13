@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use egui::{Align2, Color32, Context, RichText, Slider};
 use crate::UiAction;

@@ -237,7 +237,7 @@ fn start_match(lobby: &mut ServerLobby) {
         }
     }
 
-    let water = WaterComponents::compute(&state.map);
+    let water = WaterComponents::compute(&state.map, |_| {});
     let mut engine = SowEngine::new(state, water);
 
     let mut player_infos: Vec<PlayerInfo> = Vec::new();

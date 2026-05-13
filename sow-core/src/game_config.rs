@@ -159,8 +159,8 @@ impl Default for GameConfig {
             global_speed_multiplier: 0.85, // 0.85 = Slightly slower, more tactical pace
             
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 4.0,   // Balanced: harder to melt through enemy territory
-            attack_cost_neutral: 1.5, // Standard neutral cost
+            attack_cost_enemy: 1.0,   // Balanced: harder to melt through enemy territory
+            attack_cost_neutral: 0.5, // Standard neutral cost
             terrain_multiplier_highland: 1.5,
             terrain_multiplier_mountain: 3.0,
             bot_attack_interval_ticks: 16,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
@@ -173,8 +173,8 @@ impl Default for GameConfig {
             starting_troops: 100.0,  // Initial burst to allow early expansion
             starting_gold: 10.0,
             gold_base_income: 4.0,
-            troop_base_income: 8.0, // Smooth baseline troop recovery
-            troop_per_tile: 4.0,     // Rewards map control, but doesn't instantly snowball
+            troop_base_income: 2.0, // Smooth baseline troop recovery
+            troop_per_tile: 2.0,     // Rewards map control, but doesn't instantly snowball
             max_troops_base: 100.0,
             max_troops_scale: 50.0,
             city_max_troops_per_level: 2000.0,

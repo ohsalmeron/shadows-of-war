@@ -7,135 +7,13 @@ use sow_core::water_components::WaterComponents;
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
 use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use egui::text::{LayoutJob, TextFormat};
 use sow_ui::{ClientApp, app::ClientPhase, UiAction};
 use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
-use std::sync::Arc;
 
-struct CachedNameplate {
-    name_galley: Arc<egui::Galley>,
-    troops_galley: Arc<egui::Galley>,
-    last_formatted_troops: String,
-    last_font_size: f32,
-}
-
-/// Nameplate troop text: snap to sim at most ~2/s per player (OpenFront-style).
-#[derive(Default)]
-struct TroopLabelThrottle {
-    last_refresh_wall_secs: HashMap<u16, f64>,
-    shown_troops: HashMap<u16, f64>,
-}
-
-impl TroopLabelThrottle {
-    const INTERVAL: f64 = 0.5;
-
-    fn displayed_troops(&mut self, wall_secs: f64, player_id: u16, sim_troops: f64) -> f64 {
-        let refresh = match self.last_refresh_wall_secs.get(&player_id) {
-            None => true,
-            Some(&t) if wall_secs - t >= Self::INTERVAL => true,
-            _ => false,
-        };
-        if refresh {
-            self.last_refresh_wall_secs.insert(player_id, wall_secs);
-            self.shown_troops.insert(player_id, sim_troops);
-            sim_troops
-        } else {
-            *self.shown_troops.get(&player_id).unwrap_or(&sim_troops)
-        }
-    }
-
-    fn clear(&mut self) {
-        self.last_refresh_wall_secs.clear();
-        self.shown_troops.clear();
-    }
-}
-
-/// Paper-map label ink (off-white, not pure white).
-const NAMEPLATE_FILL: egui::Color32 = egui::Color32::from_rgb(226, 226, 224);
-
-fn nameplate_matte_player_rgb(rgb: [f32; 3]) -> egui::Color32 {
-    let y = 0.299_f64 * rgb[0] as f64 + 0.587 * rgb[1] as f64 + 0.114 * rgb[2] as f64;
-    let sat = 0.58_f64;
-    let mut r = y + (rgb[0] as f64 - y) * sat;
-    let mut g = y + (rgb[1] as f64 - y) * sat;
-    let mut b = y + (rgb[2] as f64 - y) * sat;
-    r = (r * 0.92).clamp(0.12, 0.70);
-    g = (g * 0.92).clamp(0.12, 0.70);
-    b = (b * 0.92).clamp(0.12, 0.70);
-    egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
-}
-
-/// Black halo behind text — circular samples (not axis + diagonal) for a smoother ring.
-fn paint_galley_outlined(
-    painter: &egui::Painter,
-    pos: egui::Pos2,
-    galley: Arc<egui::Galley>,
-    font_size: f32,
-) {
-    if galley.is_empty() {
-        return;
-    }
-    let step = (font_size * 0.055).clamp(0.1, 1.95);
-    const SAMPLES: usize = 12;
-    let tau = std::f32::consts::TAU;
-    let shadow = egui::Color32::from_rgba_unmultiplied(18, 18, 22, 105);
-    let r = step;
-    for i in 0..SAMPLES {
-        let a = (i as f32 / SAMPLES as f32) * tau;
-        let o = egui::vec2(a.cos() * r, a.sin() * r);
-        painter.galley_with_override_text_color(
-            pos + o,
-            galley.clone(),
-            shadow,
-        );
-    }
-    painter.galley(pos, galley, NAMEPLATE_FILL);
-}
-
-fn layout_nameplate_name_galley(
-    painter: &egui::Painter,
-    font_id: egui::FontId,
-    name: &str,
-    is_human: bool,
-    player_color: egui::Color32,
-) -> Arc<egui::Galley> {
-    if is_human {
-        let mut job = LayoutJob::default();
-        job.break_on_newline = false;
-        job.append(
-            "★ ",
-            0.0,
-            TextFormat::simple(font_id.clone(), player_color),
-        );
-        job.append(name, 0.0, TextFormat::simple(font_id, NAMEPLATE_FILL));
-        painter.layout_job(job)
-    } else {
-        painter.layout_no_wrap(name.to_owned(), font_id, NAMEPLATE_FILL)
-    }
-}
-
-fn render_troops(mut num: f64) -> String {
-    num = num.max(0.0);
-    if num >= 10_000_000.0 {
-        let value = (num / 100_000.0).floor() / 10.0;
-        format!("{:.1}M", value)
-    } else if num >= 1_000_000.0 {
-        let value = (num / 10_000.0).floor() / 100.0;
-        format!("{:.2}M", value)
-    } else if num >= 100_000.0 {
-        format!("{}K", (num / 1000.0).floor())
-    } else if num >= 10_000.0 {
-        let value = (num / 100.0).floor() / 10.0;
-        format!("{:.1}K", value)
-    } else if num >= 1_000.0 {
-        let value = (num / 10.0).floor() / 100.0;
-        format!("{:.2}K", value)
-    } else {
-        format!("{:.0}", num.floor())
-    }
-}
+mod nameplates;
+use nameplates::*;
 
 mod client_config;
 use client_config::ClientVisualConfig;
@@ -181,6 +59,17 @@ fn spawn_sow_client_connect(
 }
 
 
+pub enum MapDownloadEvent {
+    Progress(String, u8),
+    Complete(String, Vec<u8>),
+    Error(String),
+}
+
+pub enum EngineInitEvent {
+    Progress(f32),
+    Complete(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage),
+}
+
 pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     #[cfg(target_os = "android")]
     {
@@ -202,7 +91,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut map_h: u32 = 600;
     let config = GameConfig::default();
     let state = GameState::new(12345, map_w, map_h, config);
-    let water = WaterComponents::compute(&state.map);
+    let water = WaterComponents::compute(&state.map, |_| {});
     let mut engine = SowEngine::new(state, water);
 
     engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
@@ -228,9 +117,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut turn_queue = std::collections::VecDeque::new();
     let mut my_player_id: Option<u16> = None;
     let mut my_lobby_id: Option<u64> = None;
-    let (map_tx, map_rx) = crossbeam_channel::unbounded::<Result<Vec<u8>, String>>();
+    let (map_tx, map_rx) = crossbeam_channel::unbounded::<MapDownloadEvent>();
     type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
-    let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
+    let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitEvent>();
     let mut pending_engine_init_data: Option<EngineInitData> = None;
     let mut engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
@@ -737,7 +626,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     lod_2_zoom: ClientVisualConfig::default().ui_lod_2_zoom,
                                     lod_3_zoom: ClientVisualConfig::default().ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
-                                    padding1: 0,
+                                    uniform_reserved: 0.0,
                                     padding2: 0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
@@ -982,7 +871,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             // and the next singleplayer/multiplayer game doesn't inherit old state.
                                             let config = GameConfig::default();
                                             let state = GameState::new(12345, map_w, map_h, config);
-                                            let water = WaterComponents::compute(&state.map);
+                                            let water = WaterComponents::compute(&state.map, |_| {});
                                             engine = SowEngine::new(state, water);
                                             engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
                                             engine.spawn_ai(0, 4);
@@ -1083,6 +972,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     ws_reconnect_after_resume = false;
                     ws_connect_not_before = ws_connect_not_before.min(now);
                 }
+                // No fake map download simulation! Progress is real!
 
                 while let Ok(res) = connect_rx.try_recv() {
                     match res {
@@ -1191,7 +1081,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             // Clean the engine state to prevent zombie data
                             let config = GameConfig::default();
                             let state = GameState::new(12345, map_w, map_h, config);
-                            let water = WaterComponents::compute(&state.map);
+                            let water = WaterComponents::compute(&state.map, |_| {});
                             engine = SowEngine::new(state, water);
                             engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
                             engine.spawn_ai(0, 4);
@@ -1242,6 +1132,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             
                             // Start downloading the map via HTTP
                             let map_name = ack.map_name.clone();
+                            app.main_menu_state.selected_map = map_name.clone();
                             let tx = map_tx.clone();
                             app.main_menu_state.is_downloading_map = true;
                             app.loading_state.is_downloading_map = true;
@@ -1262,20 +1153,64 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             );
                             
                             let request = ehttp::Request::get(&url);
-                            ehttp::fetch(request, move |result| {
+                            let map_name_for_closure = map_name.clone();
+                            let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                            let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+                            
+                            ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
                                 match result {
-                                    Ok(response) => {
-                                        if response.ok {
-                                            log::info!("Downloaded {} bytes", response.bytes.len());
-                                            let _ = tx.send(Ok(response.bytes));
-                                        } else {
-                                            log::error!("Failed to fetch map, HTTP {}", response.status);
-                                            let _ = tx.send(Err(format!("HTTP Error: {}", response.status)));
+                                    Ok(ehttp::streaming::Part::Response(res)) => {
+                                        if !res.ok {
+                                            log::error!("Failed to fetch map, HTTP {}", res.status);
+                                            let _ = tx.send(MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
+                                            return std::ops::ControlFlow::Break(());
                                         }
+                                        log::info!("Server map response ok! headers: {:?}", res.headers);
+                                        let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
+                                        if let Some(cl) = cl {
+                                            if let Ok(len) = cl.parse::<usize>() {
+                                                *total_bytes.lock().unwrap() = len;
+                                                log::info!("Map content-length parsed as: {}", len);
+                                            } else {
+                                                log::warn!("Failed to parse content-length: {}", cl);
+                                            }
+                                        } else {
+                                            log::warn!("No content-length header received!");
+                                        }
+                                        std::ops::ControlFlow::Continue(())
+                                    }
+                                    Ok(ehttp::streaming::Part::Chunk(chunk)) => {
+                                        if chunk.is_empty() {
+                                            // Done!
+                                            let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
+                                            log::info!("Map fully downloaded: {} bytes", final_bytes.len());
+                                            let _ = tx.send(MapDownloadEvent::Complete(map_name_for_closure.clone(), final_bytes));
+                                            return std::ops::ControlFlow::Break(());
+                                        }
+                                        
+                                        let mut acc = accumulated.lock().unwrap();
+                                        acc.extend_from_slice(&chunk);
+                                        let downloaded = acc.len();
+                                        let total = *total_bytes.lock().unwrap();
+                                        if total > 0 {
+                                            let progress = ((downloaded as f64 / total as f64) * 100.0) as u8;
+                                            // Send progress max 99, 100 is sent when MapDownloadEvent::Complete is handled
+                                            let _ = tx.send(MapDownloadEvent::Progress(map_name_for_closure.clone(), progress.min(99)));
+                                            // Log occasionally to avoid spam
+                                            if downloaded % 524288 < chunk.len() {
+                                                log::info!("Downloading map... {} / {} bytes ({}%)", downloaded, total, progress.min(99));
+                                            }
+                                        } else {
+                                            if downloaded % 524288 < chunk.len() {
+                                                log::info!("Downloading map... {} bytes (unknown total)", downloaded);
+                                            }
+                                        }
+                                        std::ops::ControlFlow::Continue(())
                                     }
                                     Err(err) => {
                                         log::error!("Failed to fetch map: {}", err);
-                                        let _ = tx.send(Err(format!("Fetch error: {}", err)));
+                                        let _ = tx.send(MapDownloadEvent::Error(format!("Fetch error: {}", err)));
+                                        std::ops::ControlFlow::Break(())
                                     }
                                 }
                             });
@@ -1313,25 +1248,44 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 }
 
                 // Poll map download channel
-                if let Ok(res) = map_rx.try_recv() {
+                while let Ok(res) = map_rx.try_recv() {
                     match res {
-                        Ok(bytes) => {
-                            log::info!("Map download completed successfully.");
-                            app.main_menu_state.cached_map = Some(bytes);
-                            app.main_menu_state.is_downloading_map = false;
-                            app.loading_state.is_downloading_map = false;
-                            
-                            if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
-                                if let Some(c) = net_client.as_ref() {
-                                    c.send(serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
-                                        lobby_id: lid,
-                                        player_id: pid,
-                                        progress: 100,
-                                    }).unwrap());
+                        MapDownloadEvent::Progress(downloaded_map_name, progress) => {
+                            if downloaded_map_name == app.main_menu_state.selected_map {
+                                app.main_menu_state.map_download_progress = progress;
+                                if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
+                                    if let Some(c) = net_client.as_ref() {
+                                        c.send(serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                            lobby_id: lid,
+                                            player_id: pid,
+                                            progress,
+                                        }).unwrap());
+                                    }
                                 }
                             }
                         }
-                        Err(e) => {
+                        MapDownloadEvent::Complete(downloaded_map_name, bytes) => {
+                            if downloaded_map_name == app.main_menu_state.selected_map {
+                                log::info!("Map download completed successfully.");
+                                app.main_menu_state.cached_map = Some(bytes);
+                                app.main_menu_state.is_downloading_map = false;
+                                app.loading_state.is_downloading_map = false;
+                                app.main_menu_state.map_download_progress = 100;
+                                
+                                if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
+                                    if let Some(c) = net_client.as_ref() {
+                                        c.send(serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                            lobby_id: lid,
+                                            player_id: pid,
+                                            progress: 100,
+                                        }).unwrap());
+                                    }
+                                }
+                            } else {
+                                log::warn!("Discarding old map download for {}", downloaded_map_name);
+                            }
+                        }
+                        MapDownloadEvent::Error(e) => {
                             log::error!("Map download aborted: {}", e);
                             app.main_menu_state.is_downloading_map = false;
                             app.loading_state.is_downloading_map = false;
@@ -1386,8 +1340,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 log::error!("Cached map data not found! Terrain will be empty.");
                             }
 
-                            let water = sow_core::water_components::WaterComponents::compute(&state.map);
-                            let _ = tx.send((state, water, start_msg_clone));
+                            let tx_prog = tx.clone();
+                            let water = sow_core::water_components::WaterComponents::compute(&state.map, move |prog| {
+                                let _ = tx_prog.send(EngineInitEvent::Progress(prog));
+                            });
+                            let _ = tx.send(EngineInitEvent::Complete(state, water, start_msg_clone));
                         };
 
                         #[cfg(target_arch = "wasm32")]
@@ -1404,20 +1361,24 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 }
                 // Poll engine init channel
                 if app.phase == sow_ui::app::ClientPhase::Loading {
-                    app.loading_state.progress = (app.loading_state.progress + 0.05).min(0.95);
-                    // Wait at least 2 frames before blocking to guarantee the loading screen flips to the GPU
-                    if app.loading_state.frames_drawn > 1 {
-                        if pending_engine_init_data.is_none() {
-                            if let Ok(data) = engine_init_rx.try_recv() {
+                    while let Ok(event) = engine_init_rx.try_recv() {
+                        match event {
+                            EngineInitEvent::Progress(prog) => {
+                                app.loading_state.progress = prog;
+                            }
+                            EngineInitEvent::Complete(state, water, start_msg) => {
                                 log::info!("Engine initialization complete in background thread.");
                                 app.loading_state.status_text = "Uploading assets to GPU...".to_string();
                                 app.loading_state.progress = 1.0;
                                 app.loading_state.frames_drawn = 0; // Reset to ensure we draw the new text
-                                pending_engine_init_data = Some(data);
+                                pending_engine_init_data = Some((state, water, start_msg));
                             }
-                        } else if app.loading_state.frames_drawn > 1 {
-                            // We have drawn the "Uploading assets to GPU..." screen, now block the main thread!
-                            let (state, water, start_msg) = pending_engine_init_data.take().unwrap();
+                        }
+                    }
+
+                    if pending_engine_init_data.is_some() && app.loading_state.frames_drawn > 1 {
+                        // We have drawn the "Uploading assets to GPU..." screen, now block the main thread!
+                        let (state, water, start_msg) = pending_engine_init_data.take().unwrap();
                             
                             engine = SowEngine::new(state, water);
 
@@ -1466,8 +1427,6 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
                         }
                     }
-                }
-
                 app.hud_state.is_mobile = screen_w < 900.0;
                 if let sow_core::game::GamePhase::Spawning { end_tick } = engine.state.phase {
                     let rem_ticks = end_tick.saturating_sub(engine.state.tick);

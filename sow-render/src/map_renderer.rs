@@ -21,7 +21,11 @@ pub struct MapGlobals {
     pub lod_2_zoom: f32,
     pub lod_3_zoom: f32,
     pub local_player_id: u32,
-    pub padding1: u32,
+    /// Reserved for uniform layout; keep 0 (land opacity is rgb mix in `map.wgsl`).
+    pub uniform_reserved: f32,
+    /// WGSL uniform `struct Globals` is aligned to 8 (from `vec2` members), so its size must be a
+    /// multiple of 8. Without this tail, `size_of::<MapGlobals>()` is 76 while Naga/SPIR-V use 80;
+    /// Blade then binds a too-small UBO range, which breaks on stricter Vulkan (common on Android).
     pub padding2: u32,
 }
 
@@ -33,6 +37,7 @@ pub struct MapShaderData {
     water_texture: gpu::TextureView,
     water_sampler: gpu::Sampler,
 }
+
 
 
 pub struct MapRenderer {
@@ -164,6 +169,11 @@ impl MapRenderer {
             source,
             naga_module: None,
         });
+        assert_eq!(
+            std::mem::size_of::<MapGlobals>(),
+            shader.get_struct_size("Globals") as usize,
+            "MapGlobals must match WGSL `struct Globals` uniform layout (see `padding2`)"
+        );
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
         let pipeline = context.create_render_pipeline(gpu::RenderPipelineDesc {
@@ -343,6 +353,7 @@ impl MapRenderer {
 
         context.sync_buffer(self.raw_buffer);
 
+        // Copy baked buffer to texture
         let bytes_per_row = self.width * 4;
         {
             let mut transfer = encoder.transfer("map_upload");

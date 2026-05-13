@@ -22,10 +22,10 @@ blade-egui = { workspace = true }
 serde_json.workspace = true
 sow-net = { workspace = true }
 brotli = "8.0.2"
-ehttp = "0.5.0"
+ehttp = { version = "0.5.0", features = ["streaming"] }
 crossbeam-channel = "0.5.15"
 android_logger = "0.14"
-web-time = "0.2"
+web-time = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"

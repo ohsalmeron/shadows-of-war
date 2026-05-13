@@ -70,7 +70,7 @@ fn main() {
         lod_2_zoom: 128.0,
         lod_3_zoom: 1024.0,
         local_player_id: 1,
-        padding1: 0,
+        uniform_reserved: 0.0,
         padding2: 0,
     };
 

@@ -38,6 +38,7 @@ bitfield = "0.17"
 
 # Math
 bytemuck = { version = "1", features = ["derive"] }
+web-time = "1.1"
 
 [profile.dev]
 opt-level = 1

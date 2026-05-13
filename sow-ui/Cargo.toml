@@ -11,3 +11,4 @@ blade-egui = { workspace = true }
 blade-graphics = { workspace = true }
 egui = "0.34"
 log = { workspace = true }
+web-time = { workspace = true }

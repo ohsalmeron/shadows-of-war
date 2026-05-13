@@ -119,7 +119,7 @@ mod tests {
         game.players.push(Player::new_human(owner, "c".into(), [1.0, 0.0, 0.0], &crate::game_config::GameConfig::default()));
         game.player_lookup.resize(owner as usize + 1, None);
         game.player_lookup[owner as usize] = Some(0);
-        let water = WaterComponents::compute(&game.map);
+        let water = WaterComponents::compute(&game.map, |_| {});
         let mut engine = SowEngine::new(game, water);
         engine.buildings.push(Building {
             id: 7,
@@ -152,7 +152,7 @@ mod tests {
         game.players.push(Player::new_human(owner, "d".into(), [1.0, 0.0, 0.0], &crate::game_config::GameConfig::default()));
         game.player_lookup.resize(owner as usize + 1, None);
         game.player_lookup[owner as usize] = Some(0);
-        let water = WaterComponents::compute(&game.map);
+        let water = WaterComponents::compute(&game.map, |_| {});
         let mut engine = SowEngine::new(game, water);
         engine.buildings.push(Building {
             id: 2,

@@ -167,7 +167,7 @@ mod border_mask_tests {
                 mask |= 1 << bit;
                 continue;
             }
-            if c_land != n_land {
+            if owner == 0 && no == 0 && c_land != n_land {
                 let n_ocean = is_ocean_water(nterr as u8);
                 let c_ocean = is_ocean_water(terr as u8);
                 if (c_land && !n_land && n_ocean) || (n_land && !c_land && c_ocean) {
@@ -196,7 +196,7 @@ mod border_mask_tests {
     }
 
     #[test]
-    fn land_next_to_ocean_same_owner_sets_coast_bit() {
+    fn land_next_to_ocean_same_claimed_owner_has_no_coast_mask_bit() {
         let w = 6u32;
         let h = 6u32;
         let land = 0x80u32;
@@ -209,7 +209,22 @@ mod border_mask_tests {
         let ni = (cy * w + nx) as usize;
         raw[ni] = owner | (ocean << 16);
         let m = compute_border_mask_u32(&raw, w, h, cx, cy);
-        assert_ne!(m & 1, 0, "east bit: land vs ocean same owner should still coast-border");
+        assert_eq!(m & 1, 0, "claimed tiles: no same-owner coast bits");
+    }
+
+    #[test]
+    fn neutral_land_next_to_ocean_owner_zero_keeps_coast_mask_bit() {
+        let w = 6u32;
+        let h = 6u32;
+        let land = 0x80u32;
+        let ocean = 0x20u32;
+        let mut raw: Vec<u32> = (0..(w * h)).map(|_| ocean << 16).collect();
+        let cx = 2u32;
+        let cy = 2u32;
+        let ni = (cy * w + cx) as usize;
+        raw[ni] = land << 16;
+        let m = compute_border_mask_u32(&raw, w, h, cx, cy);
+        assert_ne!(m & 1, 0, "neutral ocean still gets coast bits for water shader");
     }
 
     #[test]
