@@ -27,7 +27,7 @@ pub struct WaterComponents {
 impl WaterComponents {
     /// One-shot flood-fill (4-connectivity) over water tiles, followed by shore
     /// inheritance. `O(width * height)` time, `O(width * height)` memory.
-    pub fn compute(map: &GameMap) -> Self {
+    pub fn compute<F: FnMut(f32)>(map: &GameMap, mut on_progress: F) -> Self {
         let n = (map.width as usize) * (map.height as usize);
         if n == 0 {
             return Self::default();
@@ -38,7 +38,11 @@ impl WaterComponents {
         let mut queue: VecDeque<u32> = VecDeque::new();
 
         // ── 1. Label water bodies ────────────────────────────────────────
+        let step1 = (n / 100).max(1);
         for start in 0..n {
+            if start % step1 == 0 {
+                on_progress((start as f32 / n as f32) * 0.8);
+            }
             if map.terrain[start].is_land() || components[start] != 0 {
                 continue;
             }
@@ -62,7 +66,11 @@ impl WaterComponents {
 
         // ── 2. Shore tiles inherit the smallest adjacent water component ─
         //    (min-ID tie-break keeps this 100% deterministic across clients)
+        let step2 = (n / 100).max(1);
         for idx in 0..n {
+            if idx % step2 == 0 {
+                on_progress(0.8 + (idx as f32 / n as f32) * 0.2);
+            }
             let tile = map.terrain[idx];
             if !tile.is_land() || !tile.is_shoreline() {
                 continue;

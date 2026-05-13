@@ -22,6 +22,7 @@ pub struct MapManifest {
     pub map4x: Option<MapSize>,
     pub map16x: Option<MapSize>,
     pub nations: Option<Vec<Nation>>,
+    pub map_md5: Option<String>,
 }
 
 pub fn game_map_from_openfront(manifest: &MapManifest, bin: &[u8]) -> Result<GameMap, String> {

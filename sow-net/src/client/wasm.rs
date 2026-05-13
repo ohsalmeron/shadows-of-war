@@ -6,7 +6,7 @@ use web_sys::{ErrorEvent, MessageEvent, WebSocket};
 
 pub struct SowClient {
     ws: WebSocket,
-    pub rx: std::sync::mpsc::Receiver<String>,
+    pub rx: std::sync::mpsc::Receiver<Vec<u8>>,
     socket_closed: Arc<AtomicBool>,
 }
 
@@ -20,14 +20,18 @@ impl SowClient {
     pub async fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let ws = WebSocket::new(url).map_err(|e| e.as_string().unwrap_or_else(|| "WebSocket creation failed".to_string()))?;
         
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+        
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         let socket_closed = Arc::new(AtomicBool::new(false));
 
         let tx_clone = tx.clone();
         let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
-            if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
-                let text: String = txt.into();
-                let _ = tx_clone.send(text);
+            if let Ok(ab) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
+                let array = js_sys::Uint8Array::new(&ab);
+                let mut data = vec![0; array.length() as usize];
+                array.copy_to(&mut data);
+                let _ = tx_clone.send(data);
             }
         });
         ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
@@ -50,7 +54,8 @@ impl SowClient {
         Ok(Self { ws, rx, socket_closed })
     }
 
-    pub fn send(&self, msg: String) {
-        let _ = self.ws.send_with_str(&msg);
+    pub fn send(&self, msg: Vec<u8>) {
+        let array = js_sys::Uint8Array::from(msg.as_slice());
+        let _ = self.ws.send_with_array_buffer(&array.buffer());
     }
 }

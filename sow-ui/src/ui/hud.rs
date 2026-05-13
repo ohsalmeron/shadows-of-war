@@ -1,51 +1,89 @@
+use web_time::{Duration, Instant};
+
 use egui::{Align2, Color32, Context, RichText, Slider};
 use crate::UiAction;
 
 pub struct HudState {
     pub gold: f64,
+    /// Sim truth (updated on sim ticks); attack intents must use this.
     pub troops: f64,
+    /// Throttled for the HUD label only (~2/s), OpenFront-style.
+    pub troops_display: f64,
     pub max_troops: f64,
+    pub max_troops_display: f64,
     pub attack_ratio: f32,
     pub is_mobile: bool,
+    pub spawn_timer_secs: Option<f32>,
+    pub sync_state: Option<sow_core::protocol::ServerSyncStateMessage>,
+    pub(crate) last_troops_ui_refresh: Option<Instant>,
+}
+
+impl HudState {
+    /// Call each frame. Wall clock (not egui time) caps label updates at ~2/s.
+    pub fn refresh_troop_display_if_due(&mut self) {
+        const MIN_INTERVAL: Duration = Duration::from_millis(500);
+        let now = Instant::now();
+        let refresh = match self.last_troops_ui_refresh {
+            None => true,
+            Some(t) if now.duration_since(t) >= MIN_INTERVAL => true,
+            _ => false,
+        };
+        if refresh {
+            self.troops_display = self.troops;
+            self.max_troops_display = self.max_troops;
+            self.last_troops_ui_refresh = Some(now);
+        }
+    }
 }
 
 #[allow(deprecated)]
 pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     let mut action = None;
 
-    egui::Panel::top("economy_panel").show(ctx, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(format!("Troops: {:.0} / {:.0}", state.troops, state.max_troops));
-            ui.add_space(20.0);
-            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
-        });
-    });
+    state.refresh_troop_display_if_due();
 
-    // Bottom Panel: Attack Controls
-    egui::Panel::bottom("attack_panel").show(ctx, |ui| {
+    // Top panel removed as requested.
+
+    if let Some(secs) = state.spawn_timer_secs {
+        egui::Window::new("deployment_phase")
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .anchor(Align2::CENTER_TOP, [0.0, 50.0])
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading(RichText::new("DEPLOYMENT PHASE").color(Color32::GOLD).size(32.0));
+                    ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(24.0));
+                    ui.add_space(10.0);
+                    ui.label("Click anywhere on the map to place your capital!");
+                });
+            });
+    }
+
+    // Bottom Panel: Economy & Attack Controls
+    egui::TopBottomPanel::bottom("attack_panel").show(ctx, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Attack Ratio:");
+            // Economy
+            ui.label(format!("Troops: {:.0} / {:.0}", state.troops_display, state.max_troops_display));
+            ui.add_space(10.0);
+            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
+            
+            ui.add_space(30.0);
+            
+            // Attack Controls
+            ui.label("Attack:");
             let mut ratio = state.attack_ratio;
             if ui
-                .add(Slider::new(&mut ratio, 0.01..=1.0).show_value(false).text(""))
+                .add(Slider::new(&mut ratio, 0.01..=0.5).show_value(false).text(""))
                 .changed()
             {
                 action = Some(UiAction::SetAttackRatio(ratio));
             }
-            if ui.button("1%").clicked() {
+            if ui.small_button("1%").clicked() {
                 action = Some(UiAction::SetAttackRatio(0.01));
             }
-            if ui.button("10%").clicked() {
-                action = Some(UiAction::SetAttackRatio(0.1));
-            }
-            if ui.button("25%").clicked() {
-                action = Some(UiAction::SetAttackRatio(0.25));
-            }
-            if ui.button("50%").clicked() {
+            if ui.small_button("Max").clicked() {
                 action = Some(UiAction::SetAttackRatio(0.5));
-            }
-            if ui.button("100%").clicked() {
-                action = Some(UiAction::SetAttackRatio(1.0));
             }
         });
     });
@@ -76,6 +114,53 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                 action = Some(UiAction::CenterCamera);
             }
         });
+
+    if let Some(sync) = &state.sync_state {
+        // Draw a dark full-screen overlay to block input visually and practically
+        let screen_rect = ctx.screen_rect();
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("sync_overlay")))
+            .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+
+        egui::Window::new("WAITING FOR PLAYERS")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false) // Custom polished look
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    if sync.is_starting {
+                        ui.label(RichText::new("All Players Ready!").size(24.0).strong().color(Color32::GREEN));
+                        ui.label(RichText::new("Stabilizing connection...").size(16.0).color(Color32::LIGHT_GRAY));
+                    } else {
+                        ui.label(RichText::new("WAITING FOR PLAYERS").size(24.0).strong().color(Color32::WHITE));
+                        ui.label(RichText::new(format!("Starting in: {:.1}s", sync.time_remaining)).size(18.0).color(Color32::YELLOW));
+                    }
+                    
+                    ui.add_space(20.0);
+                    
+                    let total = sync.players.len();
+                    let ready = sync.players.iter().filter(|p| p.is_ready).count();
+                    let ratio = if total == 0 { 0.0 } else { ready as f32 / total as f32 };
+                    ui.add(egui::ProgressBar::new(ratio)
+                        .text(format!("{}/{} Players Ready", ready, total)));
+                        
+                    ui.add_space(15.0);
+                    
+                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        for p in &sync.players {
+                            ui.horizontal(|ui| {
+                                if p.is_ready { 
+                                    ui.label(RichText::new("✔").color(Color32::GREEN));
+                                } else { 
+                                    ui.add(egui::Spinner::new().size(14.0).color(Color32::LIGHT_GRAY));
+                                }
+                                ui.label(RichText::new(&p.name).color(Color32::WHITE));
+                            });
+                        }
+                    });
+                });
+            });
+    }
 
     action
 }

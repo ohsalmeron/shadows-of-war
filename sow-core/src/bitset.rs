@@ -6,16 +6,12 @@ use serde::{Deserialize, Serialize};
 /// For network efficiency via Serde, `serialize` and `deserialize` convert this dense
 /// array into a sparse `Vec<u32>` payload, sending only the active indices over the wire.
 #[derive(Clone, Debug, PartialEq)]
+#[derive(Default)]
 pub struct DenseBitSet {
     /// Each u64 holds 64 bits. Total length = (max_capacity + 63) / 64.
     pub blocks: Vec<u64>,
 }
 
-impl Default for DenseBitSet {
-    fn default() -> Self {
-        Self { blocks: Vec::new() }
-    }
-}
 
 impl DenseBitSet {
     /// Creates an empty BitSet.
@@ -25,7 +21,7 @@ impl DenseBitSet {
 
     /// Creates a BitSet pre-sized for the given capacity (e.g., total map tiles).
     pub fn with_capacity(capacity: usize) -> Self {
-        let block_count = (capacity + 63) / 64;
+        let block_count = capacity.div_ceil(64);
         Self {
             blocks: vec![0; block_count],
         }

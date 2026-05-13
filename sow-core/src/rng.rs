@@ -20,7 +20,7 @@ impl NextIntExt for WyRand {
         if odds == 0 {
             false
         } else {
-            (self.rand() % odds as u64) == 0
+            self.rand().is_multiple_of(odds as u64)
         }
     }
 }

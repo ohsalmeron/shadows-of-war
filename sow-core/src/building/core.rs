@@ -124,8 +124,8 @@ impl DefenseGrid {
     /// This is allocation-free after the first few calls because the `cells` array
     /// simply clears its internal `Vec`s without dropping capacity.
     pub fn rebuild(&mut self, buildings: &[Building], map_width: u32, map_height: u32, cell_size: u32) {
-        let grid_w = (map_width + cell_size - 1) / cell_size;
-        let grid_h = (map_height + cell_size - 1) / cell_size;
+        let grid_w = map_width.div_ceil(cell_size);
+        let grid_h = map_height.div_ceil(cell_size);
         
         self.grid_w = grid_w;
         self.grid_h = grid_h;
@@ -226,8 +226,8 @@ impl BuildingGrid {
     /// Fill grid from all buildings (including under construction), matching legacy `existing_structure_positions_with_width`.
     pub fn rebuild<'a>(&mut self, buildings: impl Iterator<Item = &'a Building>, map_w: u32, map_h: u32) {
         let cell_size = BUILDING_GRID_CELL_SIZE;
-        let grid_w = (map_w + cell_size - 1) / cell_size;
-        let grid_h = (map_h + cell_size - 1) / cell_size;
+        let grid_w = map_w.div_ceil(cell_size);
+        let grid_h = map_h.div_ceil(cell_size);
 
         self.grid_w = grid_w;
         self.grid_h = grid_h;
@@ -256,8 +256,8 @@ impl BuildingGrid {
     /// Rebuild from raw tile coordinates (tests / tooling; no `Building` structs).
     pub fn rebuild_from_pairs(&mut self, map_w: u32, map_h: u32, pairs: &[(u32, u32)]) {
         let cell_size = BUILDING_GRID_CELL_SIZE;
-        let grid_w = (map_w + cell_size - 1) / cell_size;
-        let grid_h = (map_h + cell_size - 1) / cell_size;
+        let grid_w = map_w.div_ceil(cell_size);
+        let grid_h = map_h.div_ceil(cell_size);
         self.grid_w = grid_w;
         self.grid_h = grid_h;
         self.cell_size = cell_size;

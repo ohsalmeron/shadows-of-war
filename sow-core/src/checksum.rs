@@ -29,8 +29,8 @@ pub fn compute_state_hash<'a>(
         hash = hash.wrapping_add(p.troops.to_bits());
         hash = hash.wrapping_add(p.gold.to_bits());
         hash = hash.wrapping_add(p.tile_count as u64);
-        hash = hash.wrapping_add(p.sum_x as u64);
-        hash = hash.wrapping_add(p.sum_y as u64);
+        hash = hash.wrapping_add(p.sum_x);
+        hash = hash.wrapping_add(p.sum_y);
     }
 
     for b in buildings {

@@ -19,6 +19,7 @@ pub struct AttackIntent {
 pub enum GameplayIntent {
     Attack(AttackIntent),
     CancelAttack { attack_id: u64 },
+    Spawn { x: u32, y: u32 },
     /// Water transport: raw clicked tile (`y * width + x`); sim snaps to nearest owned shoreline.
     LaunchFleet {
         target_tile: u32,
@@ -46,23 +47,40 @@ pub struct Turn {
     pub turn_number: u64,
     pub intents: Vec<StampedIntent>,
 }
+/// Envelope for all client → server messages (bincode-safe: has a discriminant).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(tag = "type")]
 pub enum ClientMessage {
     Join {
         name: String,
         is_observer: bool,
         target_lobby_id: Option<u64>,
-        preferred_map: Option<String>,
+        build_version: String,
     },
     Gameplay {
         intent: GameplayIntent,
+    },
+    MapDownloadProgress {
+        lobby_id: u64,
+        player_id: u16,
+        progress: u8,
     },
     Leave {},
     Ready {
         lobby_id: u64,
         player_id: u16,
     },
+}
+
+/// Envelope for all server → client messages (bincode-safe: has a discriminant).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ServerMessage {
+    LobbiesBroadcast(ServerLobbiesBroadcastMessage),
+    JoinAck(ServerJoinAckMessage),
+    JoinFailed(ServerJoinFailedMessage),
+    LobbyClosed(ServerLobbyClosedMessage),
+    Start(Box<ServerStartMessage>),
+    Turn(ServerTurnMessage),
+    SyncState(ServerSyncStateMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -73,7 +91,8 @@ pub struct LobbyInfo {
     pub is_counting_down: bool,
     pub timer_secs: f32,
     pub map_name: String,
-    pub player_names: Vec<String>,
+    pub map_md5: Option<String>,
+    pub players: Vec<LobbyPlayerSyncState>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -110,7 +129,7 @@ pub struct ServerStartMessage {
     pub seed: u64,
     pub players: Vec<PlayerInfo>,
     pub missed_turns: Vec<Turn>,
-    pub map_data: Option<Vec<u8>>, // deflate compressed map.bin data
+    pub map_data: Option<Vec<u8>>, // currently unused (maps fetched via HTTP)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -140,5 +159,20 @@ pub struct PlayerInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ServerTurnMessage {
     pub turn: Turn,
+}
+
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct LobbyPlayerSyncState {
+    pub name: String,
+    pub is_ready: bool,
+    pub download_progress: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ServerSyncStateMessage {
+    pub time_remaining: f32,
+    pub players: Vec<LobbyPlayerSyncState>,
+    pub is_starting: bool,
 }
 

@@ -42,6 +42,10 @@ This script will:
 2. Launch the `sow-server` matchmaking daemon.
 3. Launch 2 instances of `sow-client` connected to the local server.
 
+### iPhone / iPad (Xcode)
+
+Open [`ios/sow_ios.xcodeproj`](ios/sow_ios.xcodeproj), set your **Team** on the **ShadowsOfWar** target (Signing & Capabilities), plug in the device, choose it as the run destination, then Run. The **Rust** build phase compiles `sow-client` and installs it as the app executable (same idea as the Bevy mobile template). One-time: `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`.
+
 ---
 
 ## 🧠 Technical Highlights & Recent Design Choices

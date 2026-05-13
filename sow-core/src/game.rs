@@ -4,7 +4,7 @@ use crate::map::GameMap;
 use crate::player::{Player, PlayerId};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum GamePhase { Lobby, Playing, GameOver }
+pub enum GamePhase { Lobby, Spawning { end_tick: u64 }, Playing, GameOver }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
@@ -42,16 +42,25 @@ fn default_one() -> u64 { 1 }
 
 impl GameState {
     pub fn new(seed: u64, width: u32, height: u32, config: crate::game_config::GameConfig) -> Self {
-        Self { seed, config, phase: GamePhase::Playing, map: GameMap::new(width, height),
+        let phase = if !config.random_spawn {
+            let ticks = (15.0 * 1000.0 / config.tick_rate_ms) as u64;
+            GamePhase::Spawning { end_tick: ticks }
+        } else {
+            GamePhase::Playing
+        };
+        Self { seed, config, phase, map: GameMap::new(width, height),
             players: Vec::new(), player_lookup: Vec::new(), tick: 0, winner: None,
             events: Vec::new(), next_fleet_id: 1, next_building_id: 1, next_attack_id: 1 }
     }
-    pub fn spawn_player(&mut self, player: Player, cx: u32, cy: u32) {
+    pub fn register_player(&mut self, player: Player) {
         let pid = player.id; let index = self.players.len();
         self.players.push(player);
         let pid_usize = pid as usize;
         if pid_usize >= self.player_lookup.len() { self.player_lookup.resize(pid_usize + 1, None); }
         self.player_lookup[pid_usize] = Some(index);
+    }
+    
+    pub fn place_spawn(&mut self, pid: u16, cx: u32, cy: u32) {
         let r = config::SPAWN_RADIUS as i32;
         for dy in -r..=r { for dx in -r..=r {
             if dx*dx + dy*dy > r*r { continue; }
@@ -64,6 +73,12 @@ impl GameState {
             }
         }}
         if let Some(p) = self.player_mut(pid) { p.has_spawned = true; }
+    }
+
+    pub fn spawn_player(&mut self, player: Player, cx: u32, cy: u32) {
+        let pid = player.id;
+        self.register_player(player);
+        self.place_spawn(pid, cx, cy);
     }
     pub fn tick(&mut self) {
         if self.phase != GamePhase::Playing { return; }
@@ -80,7 +95,7 @@ impl GameState {
     pub fn set_tile_owner(&mut self, x: u32, y: u32, new_owner: u16) {
         let old_owner = self.map.owner_id(x, y);
         if old_owner == new_owner { return; }
-        let linear_idx = (y * self.map.width + x) as u32;
+        let linear_idx = y * self.map.width + x;
         if old_owner != 0 { if let Some(p) = self.player_mut(old_owner) {
             p.sum_x = p.sum_x.saturating_sub(x as u64); p.sum_y = p.sum_y.saturating_sub(y as u64);
             p.tile_count = p.tile_count.saturating_sub(1); p.border_remove(linear_idx);
@@ -93,10 +108,17 @@ impl GameState {
             let is_border = self.map.is_border_tile(x, y, new_owner);
             if is_border { if let Some(p) = self.player_mut(new_owner) { p.border_insert(linear_idx); } }
         }
-        let neighbors = self.map.neighbors(x, y);
-        for (nx, ny) in neighbors {
+        
+        let mut neighbors = [(0, 0); 6];
+        let mut n_count = 0;
+        self.map.for_each_neighbor(x, y, |nx, ny| {
+            neighbors[n_count] = (nx, ny);
+            n_count += 1;
+        });
+        
+        for &(nx, ny) in neighbors.iter().take(n_count) {
             let n_owner = self.map.owner_id(nx, ny);
-            let n_idx = (ny * self.map.width + nx) as u32;
+            let n_idx = ny * self.map.width + nx;
             if n_owner == old_owner && old_owner != 0 {
                 if let Some(p) = self.player_mut(old_owner) { p.border_insert(n_idx); }
             } else if n_owner == new_owner && new_owner != 0 {

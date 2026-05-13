@@ -25,7 +25,7 @@ fn main() {
     let format = surface.info().format;
 
     render_ctx.command_encoder.start();
-    let map_renderer = MapRenderer::new(
+    let mut map_renderer = MapRenderer::new(
         &render_ctx.context,
         &mut render_ctx.command_encoder,
         MW,
@@ -50,7 +50,7 @@ fn main() {
     }
 
     render_ctx.command_encoder.start();
-    map_renderer.update(&mut render_ctx.command_encoder, &game_map);
+    map_renderer.update(&mut render_ctx.command_encoder, &render_ctx.context, &game_map);
     let sp_up = render_ctx.context.submit(&mut render_ctx.command_encoder);
     let _ = render_ctx.context.wait_for(&sp_up, !0);
 
@@ -60,14 +60,18 @@ fn main() {
         time: 0.0,
         screen_size: [MW as f32, MH as f32],
         map_size: [MW as f32, MH as f32],
-        visual_terrain_sharpness: 0.05,
-        visual_interior_alpha: 0.35,
+        visual_terrain_sharpness: 0.0001,
+        visual_interior_alpha: 1.0,
         visual_border_alpha: 1.0,
-        lod_2_zoom: 4.0,
-        lod_3_zoom: 12.0,
+        visual_border_thickness: 1.0,
+        effect_shockwave_intensity: 1.0,
+        effect_border_breathe: 1.0,
+        effect_energy_flow: 1.0,
+        lod_2_zoom: 128.0,
+        lod_3_zoom: 1024.0,
         local_player_id: 1,
-        padding1: 0.0,
-        padding2: 0.0,
+        uniform_reserved: 0.0,
+        padding2: 0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

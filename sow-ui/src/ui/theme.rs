@@ -2,16 +2,15 @@ use egui::{
     Context, Color32, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals,
 };
 
-/// Shadows of War palette — see `dark-rift/crates/client/src/ui/theme.rs`.
-
+/// Dark Rift palette — see `dark-rift/crates/client/src/ui/theme.rs`.
 #[inline]
 pub fn menu_backdrop() -> Color32 {
-    Color32::from_rgba_unmultiplied(10, 20, 29, 247)
+    Color32::from_rgb(10, 20, 29)
 }
 
 #[inline]
 pub fn panel_bg() -> Color32 {
-    Color32::from_rgba_unmultiplied(25, 28, 36, 230)
+    Color32::from_rgb(25, 28, 36)
 }
 
 #[inline]
@@ -77,22 +76,23 @@ pub fn text_secondary() -> Color32 {
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        sow_core::ui_font::UI_FONT_FAMILY.to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(sow_core::ui_font::UI_FONT_TTF)),
+        "CinzelDecorative-Black".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/CinzelDecorative-Black.ttf"))),
     );
-    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, sow_core::ui_font::UI_FONT_FAMILY.to_owned());
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "CinzelDecorative-Black".to_owned());
     ctx.set_fonts(fonts);
 
-    let mut style = Style::default();
-
-    style.text_styles = [
-        (TextStyle::Heading, FontId::proportional(32.0)),
-        (TextStyle::Body, FontId::proportional(18.0)),
-        (TextStyle::Monospace, FontId::monospace(14.0)),
-        (TextStyle::Button, FontId::proportional(20.0)),
-        (TextStyle::Small, FontId::proportional(14.0)),
-    ]
-    .into();
+    let mut style = Style {
+        text_styles: [
+            (TextStyle::Heading, FontId::proportional(32.0)),
+            (TextStyle::Body, FontId::proportional(18.0)),
+            (TextStyle::Monospace, FontId::monospace(14.0)),
+            (TextStyle::Button, FontId::proportional(20.0)),
+            (TextStyle::Small, FontId::proportional(14.0)),
+        ]
+        .into(),
+        ..Default::default()
+    };
 
     style.spacing.item_spacing = egui::vec2(10.0, 10.0);
     style.spacing.button_padding = egui::vec2(16.0, 8.0);

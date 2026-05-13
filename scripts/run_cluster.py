@@ -8,6 +8,8 @@ import os
 import subprocess
 import time
 import shutil
+import json
+import hashlib
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -78,52 +80,34 @@ def main():
         "--no-typescript",
         str(wasm_in)
     ], env=env, check=True)
-    
-    wasm_out_path = dist_dir / wasm_file
-    if shutil.which("wasm-opt"):
-        print("🗜️  Optimizing WASM with wasm-opt...")
-        subprocess.run(["wasm-opt", "--all-features", "-O3", "-o", str(wasm_out_path), str(wasm_out_path)], check=True)
-    else:
-        print("⚠️  'wasm-opt' not found! Skipping advanced WASM optimization (sudo pacman -S binaryen)")
 
     # 4. Assemble Web Client (UI, sw.js, HTML)
     print("🎨 4. Assembling Web UI & Assets...")
     
-    # Copy from local web assets
-    web_dir = PROJECT_ROOT / "web"
-    if (web_dir / "favicon_io").exists():
-        shutil.copytree(web_dir / "favicon_io", dist_dir / "favicon_io", dirs_exist_ok=True)
+    # Copy web assets if they exist
+    favicon_src = PROJECT_ROOT / "assets" / "favicon_io"
+    if favicon_src.exists():
+        shutil.copytree(favicon_src, dist_dir / "favicon_io", dirs_exist_ok=True)
         for ext in ["png", "ico", "json"]:
             for file in (dist_dir / "favicon_io").glob(f"*.{ext}"):
                 shutil.copy2(file, dist_dir / file.name)
-    if (web_dir / "sw.js").exists():
-        shutil.copy2(web_dir / "sw.js", dist_dir / "sw.js")
+    
+    sw_src = PROJECT_ROOT / "web" / "sw.js"
+    if sw_src.exists():
+        shutil.copy2(sw_src, dist_dir / "sw.js")
     
     # Copy UI loader assets
     shutil.copytree(PROJECT_ROOT / "assets", dist_dir / "assets", dirs_exist_ok=True)
     
     # Template
+    web_dir = PROJECT_ROOT / "web"
     template_path = web_dir / "index.html.template"
     if not template_path.exists() and (web_dir / "index.html").exists():
         template_str = (web_dir / "index.html").read_text(encoding="utf-8")
     else:
         template_str = template_path.read_text(encoding="utf-8")
     
-    version_file = PROJECT_ROOT / "version.txt"
-    if version_file.exists():
-        version = version_file.read_text(encoding="utf-8").strip()
-    else:
-        version = "0.1.0"
-        
-    parts = version.split('.')
-    if len(parts) == 3:
-        try:
-            parts[2] = str(int(parts[2]) + 1)
-            version = '.'.join(parts)
-        except ValueError:
-            pass
-            
-    version_file.write_text(version, encoding="utf-8")
+    version = "0.1.0"
     template_str = template_str.replace("__VERSION__", version)
     template_str = template_str.replace("__JS_FILE__", js_file)
     template_str = template_str.replace("__WASM_FILE__", wasm_file)
@@ -132,20 +116,30 @@ def main():
     (dist_dir / "index.html").write_text(template_str, encoding="utf-8")
 
     # 5. Compress
-    print("🗜️  5. Compressing Web Assets (Brotli)...")
+    print("🗜️  5. Compressing Web Assets & Maps (Brotli)...")
     if shutil.which("brotli"):
         subprocess.run(["brotli", "-f", "-Z", str(dist_dir / wasm_file)], check=False)
         subprocess.run(["brotli", "-f", "-Z", str(dist_dir / js_file)], check=False)
         
-        # Compress maps too
-        maps_dir = dist_dir / "assets" / "maps"
-        if maps_dir.exists():
-            for root, _, files in os.walk(maps_dir):
-                for file in files:
-                    if file.endswith((".bin", ".json", ".webp")):
-                        subprocess.run(["brotli", "-f", "-Z", os.path.join(root, file)], check=False)
-                        
-        print("✅ Brotli compression finished.")
+        maps_src = PROJECT_ROOT / "assets" / "maps"
+        for map_bin in maps_src.rglob("map.bin"):
+            print(f"   -> Compressing {map_bin.relative_to(PROJECT_ROOT)}...")
+            subprocess.run(["brotli", "-f", "-Z", str(map_bin)], check=True)
+            map_bin.unlink()
+            
+            map_br = map_bin.parent / (map_bin.name + ".br")
+            with open(map_br, "rb") as f:
+                md5_hash = hashlib.md5(f.read()).hexdigest()
+            
+            manifest_path = map_br.parent / "manifest.json"
+            if manifest_path.exists():
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+                manifest["map_md5"] = md5_hash
+                with open(manifest_path, "w") as f:
+                    json.dump(manifest, f, indent=2)
+            
+        print("✅ Brotli compression and MD5 hashing finished.")
     else:
         print("⚠️ 'brotli' command not found, skipping compression.")
 
@@ -156,7 +150,7 @@ def main():
     print("   -> Uploading Backend Binary...")
     subprocess.run(["rsync", "-avz", str(server_bin), f"{VPS_USER}@{VPS_HOST}:{BACKEND_DEST}/dark-rift-server"], check=True)
     
-    maps_src = dist_dir / "assets" / "maps"
+    maps_src = PROJECT_ROOT / "assets" / "maps"
     print("   -> Uploading Map Assets (Backend)...")
     subprocess.run(["rsync", "-avz", f"{maps_src}/", f"{VPS_USER}@{VPS_HOST}:{SERVER_MAPS_DEST}/"], check=True)
     

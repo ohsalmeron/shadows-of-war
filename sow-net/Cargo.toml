@@ -8,6 +8,7 @@ description = "Shadows of War — Pure WebSocket networking and turn relay proto
 sow-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+bincode = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

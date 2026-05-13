@@ -1,4 +1,4 @@
-/// Game balance constants.
+//! Game balance constants.
 
 /// Starting troops for a new player.
 pub const STARTING_TROOPS: f64 = 100.0;

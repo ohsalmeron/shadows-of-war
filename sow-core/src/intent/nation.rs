@@ -8,7 +8,7 @@ use wyrand::WyRand;
 /// Maximum number of AI entities that may produce decisions in a single tick.
 /// This prevents thundering-herd spikes when many bots/nations have aligned
 /// intervals. Excess entities are deferred to the next tick via round-robin.
-const MAX_AI_DECISIONS_PER_TICK: usize = 1;
+const MAX_AI_DECISIONS_PER_TICK: usize = 12;
 
 fn bot_structure_target_count(
     kind: BuildingKind,
@@ -283,7 +283,7 @@ pub fn execute_ai_think(&mut self) {
                         let owner = self.state.map.owner_id(nx, ny);
                         if owner != bot_id {
                             if owner == 0 {
-                                if self.state.map.terrain[self.state.map.ref_id(nx as u32, ny as u32)].is_land() {
+                                if self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
                                     has_neutral = true;
                                 }
                             } else {

@@ -77,6 +77,18 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
     [r, g, b]
 }
 
+/// RGB used for human-owned territory in the sow-render map shader (`map.wgsl`).
+/// Matches WGSL `owner_id <= 16` branch so UI (nameplates) matches the map tint.
+#[inline]
+pub fn human_shader_territory_rgb(player_id: u16) -> [f32; 3] {
+    let hue = player_id as f32 * 0.618_034;
+    let fract = |x: f32| x - x.floor();
+    let r = (fract(hue) * 2.0 - 1.0).abs();
+    let g = (fract(hue + 0.333) * 2.0 - 1.0).abs();
+    let b = (fract(hue + 0.666) * 2.0 - 1.0).abs();
+    [r, g, b]
+}
+
 pub fn bot_territory_color(game_seed: u64, bot_id: u16) -> [f32; 3] {
     let mix = game_seed.wrapping_mul(0x9E37_79B9_7F4A_7C15)
         ^ (bot_id as u64).wrapping_shl(32) ^ (bot_id as u64);
