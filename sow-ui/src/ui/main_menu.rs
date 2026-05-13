@@ -399,7 +399,7 @@ fn lobby_card(
                         );
                     } else {
                         ui.label(
-                            RichText::new("Waiting — join to queue")
+                            RichText::new("Waiting for players...")
                                 .color(text_secondary()),
                         );
                     }

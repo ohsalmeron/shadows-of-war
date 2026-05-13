@@ -101,10 +101,10 @@ fn promote_countdown(games: &mut [ServerLobby]) {
         return;
     }
     
-    // Pick the first waiting lobby that HAS PLAYERS!
+    // Pick the first waiting lobby
     let target = games
         .iter_mut()
-        .find(|g| matches!(g.phase, LobbyPhase::Waiting) && !g.players.is_empty());
+        .find(|g| matches!(g.phase, LobbyPhase::Waiting));
         
     if let Some(lobby) = target {
         lobby.phase = LobbyPhase::CountingDown;

@@ -242,13 +242,18 @@ async fn main() {
                         }
                     }
                     Some(direct_data) = direct_rx.recv() => {
-                        if let Ok(ack) = bincode::deserialize::<ServerJoinAckMessage>(&direct_data) {
-                            my_lobby_id = Some(ack.lobby_id);
-                            my_player_id = Some(ack.player_id);
-                        }
-                        if let Ok(start) = bincode::deserialize::<ServerStartMessage>(&direct_data) {
-                            if let Some(pid) = start.my_player_id {
-                                my_player_id = Some(pid);
+                        if let Ok(server_msg) = bincode::deserialize::<sow_core::protocol::ServerMessage>(&direct_data) {
+                            match server_msg {
+                                sow_core::protocol::ServerMessage::JoinAck(ack) => {
+                                    my_lobby_id = Some(ack.lobby_id);
+                                    my_player_id = Some(ack.player_id);
+                                }
+                                sow_core::protocol::ServerMessage::Start(start) => {
+                                    if let Some(pid) = start.my_player_id {
+                                        my_player_id = Some(pid);
+                                    }
+                                }
+                                _ => {}
                             }
                         }
 

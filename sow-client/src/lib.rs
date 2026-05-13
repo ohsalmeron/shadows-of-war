@@ -1099,7 +1099,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 app.hud_state.sync_state = Some(sync_msg);
                             }
                             ServerMessage::LobbiesBroadcast(broadcast) => {
-                                log::info!("[LOBBY] Received broadcast: {} lobbies", broadcast.lobbies.len());
+
                                 app.main_menu_state.lobbies = broadcast.lobbies.clone();
 
                                 let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
@@ -1155,7 +1155,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     if let Some(l_id) = key {
                                         if let Some(lobby) = broadcast.lobbies.iter().find(|l| l.id == l_id) {
                                             if lobby.is_counting_down {
-                                                log::info!("[LOBBY] Countdown sync: {:.1}s", lobby.timer_secs);
+
                                                 app.main_menu_state.wait_timer_secs = lobby.timer_secs;
                                             }
                                         }
