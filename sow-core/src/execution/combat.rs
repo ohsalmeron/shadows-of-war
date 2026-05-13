@@ -1,4 +1,4 @@
-
+use crate::game_config::max_tiles_cap_for_troops;
 use crate::game::{GameEvent, GamePhase};
 use crate::map::TerrainType;
 use crate::warp_fleet::best_shore_spawn_for_transport;
@@ -56,7 +56,7 @@ impl SowEngine {
         // Fast approximation of active frontier size without scanning the entire empire border
         let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 
-        let max_cap = self.state.config.max_tiles_per_tick;
+        let max_cap = max_tiles_cap_for_troops(execution.troops, &self.state.config);
 
         let mut max_tiles_f64 = if execution.target_owner == 0 {
             // Neutral expansion speed: proportional to true border size

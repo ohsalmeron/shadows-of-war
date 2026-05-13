@@ -21,6 +21,21 @@ struct CachedNameplate {
     last_font_size: f32,
 }
 
+/// Paper-map label ink (off-white, not pure white).
+const NAMEPLATE_FILL: egui::Color32 = egui::Color32::from_rgb(226, 226, 224);
+
+fn nameplate_matte_player_rgb(rgb: [f32; 3]) -> egui::Color32 {
+    let y = 0.299_f64 * rgb[0] as f64 + 0.587 * rgb[1] as f64 + 0.114 * rgb[2] as f64;
+    let sat = 0.58_f64;
+    let mut r = y + (rgb[0] as f64 - y) * sat;
+    let mut g = y + (rgb[1] as f64 - y) * sat;
+    let mut b = y + (rgb[2] as f64 - y) * sat;
+    r = (r * 0.92).clamp(0.12, 0.70);
+    g = (g * 0.92).clamp(0.12, 0.70);
+    b = (b * 0.92).clamp(0.12, 0.70);
+    egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
 /// Black halo behind text — circular samples (not axis + diagonal) for a smoother ring.
 fn paint_galley_outlined(
     painter: &egui::Painter,
@@ -31,22 +46,21 @@ fn paint_galley_outlined(
     if galley.is_empty() {
         return;
     }
-    let step = (font_size * 0.07).clamp(0.9, 2.2);
-    const SAMPLES: usize = 20;
+    let step = (font_size * 0.055).clamp(0.65, 1.55);
+    const SAMPLES: usize = 12;
     let tau = std::f32::consts::TAU;
-    for ring_scale in [1.0_f32, 0.48] {
-        let r = step * ring_scale;
-        for i in 0..SAMPLES {
-            let a = (i as f32 / SAMPLES as f32) * tau + ring_scale * 0.08;
-            let o = egui::vec2(a.cos() * r, a.sin() * r);
-            painter.galley_with_override_text_color(
-                pos + o,
-                galley.clone(),
-                egui::Color32::BLACK,
-            );
-        }
+    let shadow = egui::Color32::from_rgba_unmultiplied(18, 18, 22, 105);
+    let r = step;
+    for i in 0..SAMPLES {
+        let a = (i as f32 / SAMPLES as f32) * tau;
+        let o = egui::vec2(a.cos() * r, a.sin() * r);
+        painter.galley_with_override_text_color(
+            pos + o,
+            galley.clone(),
+            shadow,
+        );
     }
-    painter.galley(pos, galley, egui::Color32::WHITE);
+    painter.galley(pos, galley, NAMEPLATE_FILL);
 }
 
 fn layout_nameplate_name_galley(
@@ -64,10 +78,10 @@ fn layout_nameplate_name_galley(
             0.0,
             TextFormat::simple(font_id.clone(), player_color),
         );
-        job.append(name, 0.0, TextFormat::simple(font_id, egui::Color32::WHITE));
+        job.append(name, 0.0, TextFormat::simple(font_id, NAMEPLATE_FILL));
         painter.layout_job(job)
     } else {
-        painter.layout_no_wrap(name.to_owned(), font_id, egui::Color32::WHITE)
+        painter.layout_no_wrap(name.to_owned(), font_id, NAMEPLATE_FILL)
     }
 }
 
@@ -178,6 +192,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let (map_tx, map_rx) = crossbeam_channel::unbounded::<Result<Vec<u8>, String>>();
     type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
     let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
+    let mut pending_engine_init_data: Option<EngineInitData> = None;
     let mut pending_start_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
     let mut nameplate_cache: HashMap<u16, CachedNameplate> = HashMap::new();
@@ -413,14 +428,16 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 let row = rr as i32;
 
                                 if col >= 0 && row >= 0 && col < map_w as i32 && row < map_h as i32 {
-                                    let owner = engine.state.map.owner_id(col as u32, row as u32);
-                                    
-                                    // Apply intent locally instantly for single player responsiveness!
-                                    let attack = sow_core::protocol::AttackIntent {
-                                        target_owner: owner,
-                                        troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
+                                    let intent = if matches!(engine.state.phase, sow_core::game::GamePhase::Spawning { .. }) {
+                                        sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
+                                    } else {
+                                        let owner = engine.state.map.owner_id(col as u32, row as u32);
+                                        let attack = sow_core::protocol::AttackIntent {
+                                            target_owner: owner,
+                                            troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
+                                        };
+                                        sow_core::protocol::GameplayIntent::Attack(attack)
                                     };
-                                    let intent = sow_core::protocol::GameplayIntent::Attack(attack);
                                     
                                     if let Some(c) = net_client.as_ref() {
                                         // Multiplayer: send intent to server
@@ -564,12 +581,17 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let row = rr as i32;
 
                                     if col >= 0 && row >= 0 && col < map_w as i32 && row < map_h as i32 {
-                                        let owner = engine.state.map.owner_id(col as u32, row as u32);
-                                        let attack = sow_core::protocol::AttackIntent {
-                                            target_owner: owner,
-                                            troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
+                                        let intent = if matches!(engine.state.phase, sow_core::game::GamePhase::Spawning { .. }) {
+                                            sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
+                                        } else {
+                                            let owner = engine.state.map.owner_id(col as u32, row as u32);
+                                            let attack = sow_core::protocol::AttackIntent {
+                                                target_owner: owner,
+                                                troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
+                                            };
+                                            sow_core::protocol::GameplayIntent::Attack(attack)
                                         };
-                                        let intent = sow_core::protocol::GameplayIntent::Attack(attack);
+
                                         if let Some(c) = net_client.as_ref() {
                                             let msg = sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() };
                                             if let Ok(json) = serde_json::to_string(&msg) {
@@ -732,11 +754,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         } else {
                                             player.color
                                         };
-                                        let pc = egui::Color32::from_rgb(
-                                            (rgb[0] * 255.0) as u8,
-                                            (rgb[1] * 255.0) as u8,
-                                            (rgb[2] * 255.0) as u8,
-                                        );
+                                        let pc = nameplate_matte_player_rgb(rgb);
                                         
                                         // `lod_presence` uses zoom (when zoomed out, dots only). `sizing_presence`
                                         // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
@@ -783,7 +801,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                         is_human,
                                                         pc,
                                                     ),
-                                                    troops_galley: painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, egui::Color32::WHITE),
+                                                    troops_galley: painter.layout_no_wrap(format!("⚔ {}", troops_str), font_id, NAMEPLATE_FILL),
                                                     last_formatted_troops: troops_str,
                                                     last_font_size: font_size,
                                                 }
@@ -801,7 +819,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                 cache_entry.troops_galley = painter.layout_no_wrap(
                                                     format!("⚔ {}", new_troops_str),
                                                     font_id,
-                                                    egui::Color32::WHITE,
+                                                    NAMEPLATE_FILL,
                                                 );
                                                 cache_entry.last_formatted_troops = new_troops_str.clone();
                                                 cache_entry.last_font_size = font_size;
@@ -810,7 +828,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                 cache_entry.troops_galley = painter.layout_no_wrap(
                                                     format!("⚔ {}", new_troops_str),
                                                     font_id,
-                                                    egui::Color32::WHITE,
+                                                    NAMEPLATE_FILL,
                                                 );
                                                 cache_entry.last_formatted_troops = new_troops_str;
                                             }
@@ -1152,6 +1170,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             let map_name = ack.map_name.clone();
                             let tx = map_tx.clone();
                             app.main_menu_state.is_downloading_map = true;
+                            app.loading_state.is_downloading_map = true;
                             app.main_menu_state.cached_map = None;
                             
                             let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
@@ -1221,6 +1240,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         Err(e) => {
                             log::error!("Map download aborted: {}", e);
                             app.main_menu_state.is_downloading_map = false;
+                            app.loading_state.is_downloading_map = false;
                             // Optionally return to main menu or show error
                             app.phase = ClientPhase::MainMenu;
                             app.main_menu_state.is_waiting = false;
@@ -1231,20 +1251,17 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 }
 
                 if let Some(start_msg) = pending_start_msg.take() {
-                    log::info!("Received ServerStartMessage; entering match");
-                    app.phase = sow_ui::app::ClientPhase::Loading;
-                    app.loading_state.frames_drawn = 0;
-                    app.loading_state.is_downloading_map = app.main_menu_state.is_downloading_map;
-                    app.main_menu_state.is_waiting = false;
-                    app.main_menu_state.pending_join_lobby_id = None;
-                    app.main_menu_state.joined_lobby_id = None;
-                    my_player_id = start_msg.my_player_id;
-
                     if app.main_menu_state.is_downloading_map {
-                        // We must keep pending_start_msg so the loading phase can use it once the download finishes
                         pending_start_msg = Some(start_msg);
                     } else {
+                        log::info!("Received ServerStartMessage; entering match");
                         log::info!("Received ServerStartMessage; computing heavy init in background");
+                        app.phase = sow_ui::app::ClientPhase::Loading;
+                        app.loading_state.frames_drawn = 0;
+                        app.main_menu_state.is_waiting = false;
+                        app.main_menu_state.pending_join_lobby_id = None;
+                        app.main_menu_state.joined_lobby_id = None;
+                        my_player_id = start_msg.my_player_id;
                         
                         app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
                         app.loading_state.progress = 0.1;
@@ -1297,104 +1314,76 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 // Poll engine init channel
                 if app.phase == sow_ui::app::ClientPhase::Loading {
                     app.loading_state.progress = (app.loading_state.progress + 0.05).min(0.95);
-                    
-                    if app.loading_state.is_downloading_map {
-                        if !app.main_menu_state.is_downloading_map {
-                            app.loading_state.is_downloading_map = false;
-                            if let Some(start_msg) = pending_start_msg.take() {
-                                log::info!("Map download finished in Loading phase. Computing heavy init.");
-                                app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
-                                let cached_map = app.main_menu_state.cached_map.take();
-                                let start_msg_clone = start_msg.clone();
-                                let tx = engine_init_tx.clone();
-
-                                let init_logic = move || {
-                                    let w = start_msg_clone.config.map_width;
-                                    let h = start_msg_clone.config.map_height;
-                                    let mut state = sow_core::game::GameState::new(
-                                        start_msg_clone.seed,
-                                        w,
-                                        h,
-                                        start_msg_clone.config.clone(),
-                                    );
-                                    
-                                    if let Some(bytes) = cached_map {
-                                        if bytes.len() == state.map.terrain.len() {
-                                            let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
-                                            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len()); }
-                                        } else {
-                                            for (i, &b) in bytes.iter().enumerate() {
-                                                if i < state.map.terrain.len() {
-                                                    state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    let water = sow_core::water_components::WaterComponents::compute(&state.map);
-                                    let _ = tx.send((state, water, start_msg_clone));
-                                };
-                                std::thread::spawn(init_logic);
+                    // Wait at least 2 frames before blocking to guarantee the loading screen flips to the GPU
+                    if app.loading_state.frames_drawn > 1 {
+                        if pending_engine_init_data.is_none() {
+                            if let Ok(data) = engine_init_rx.try_recv() {
+                                log::info!("Engine initialization complete in background thread.");
+                                app.loading_state.status_text = "Uploading assets to GPU...".to_string();
+                                app.loading_state.progress = 1.0;
+                                app.loading_state.frames_drawn = 0; // Reset to ensure we draw the new text
+                                pending_engine_init_data = Some(data);
                             }
-                        }
-                    } else if app.loading_state.frames_drawn > 1 {
-                        // Wait at least 2 frames before blocking to guarantee the loading screen flips to the GPU
-                        if let Ok((state, water, start_msg)) = engine_init_rx.try_recv() {
-                        log::info!("Engine initialization complete in background thread.");
-                        app.loading_state.status_text = "Uploading assets to GPU...".to_string();
-                        app.loading_state.progress = 1.0;
-                        
-                        engine = SowEngine::new(state, water);
-
-                        for p in start_msg.players {
-                            engine.spawn_human(p.id, p.name.clone(), p.color);
-                        }
-                        engine.spawn_ai(engine.state.config.nation_count, engine.state.config.bot_count);
-
-                        map_w = start_msg.config.map_width;
-                        map_h = start_msg.config.map_height;
-                        if let Some(sp) = prev_sync_point.take() {
-                            let _ = render_ctx.context.wait_for(&sp, !0);
-                        }
-                        if let Some(mut mr) = map_renderer.take() {
-                            mr.destroy(&render_ctx);
-                        }
-                        if let Some(ref s) = surface {
-                            render_ctx.command_encoder.start();
-                            map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, s.info().format));
-                            let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
-                            prev_sync_point = Some(sync_point);
+                        } else if app.loading_state.frames_drawn > 1 {
+                            // We have drawn the "Uploading assets to GPU..." screen, now block the main thread!
+                            let (state, water, start_msg) = pending_engine_init_data.take().unwrap();
                             
-                            needs_first_upload = true;
-                            needs_map_upload = true;
-                        }
-                        
-                        app.phase = sow_ui::app::ClientPhase::Playing;
-                        if let Some(pid) = my_player_id {
-                            if let Some(player) = engine.state.players.iter().find(|p| p.id == pid) {
-                                if player.tile_count > 0 && player.alive {
-                                    let cx = player.sum_x as f32 / player.tile_count as f32;
-                                    let cy = player.sum_y as f32 / player.tile_count as f32;
-                                    camera_zoom = 1.5;
-                                    camera_x = screen_w * 0.5 - cx * camera_zoom;
-                                    camera_y = screen_h * 0.5 - cy * camera_zoom;
+                            engine = SowEngine::new(state, water);
+
+                            for p in start_msg.players {
+                                engine.spawn_human(p.id, p.name.clone(), p.color);
+                            }
+                            engine.spawn_ai(engine.state.config.nation_count, engine.state.config.bot_count);
+
+                            map_w = start_msg.config.map_width;
+                            map_h = start_msg.config.map_height;
+                            if let Some(sp) = prev_sync_point.take() {
+                                let _ = render_ctx.context.wait_for(&sp, !0);
+                            }
+                            if let Some(mut mr) = map_renderer.take() {
+                                mr.destroy(&render_ctx);
+                            }
+                            if let Some(ref s) = surface {
+                                render_ctx.command_encoder.start();
+                                map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, s.info().format));
+                                let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
+                                prev_sync_point = Some(sync_point);
+                                
+                                needs_first_upload = true;
+                                needs_map_upload = true;
+                            }
+                            
+                            app.phase = sow_ui::app::ClientPhase::Playing;
+                            if let Some(pid) = my_player_id {
+                                if let Some(player) = engine.state.players.iter().find(|p| p.id == pid) {
+                                    if player.tile_count > 0 && player.alive {
+                                        let cx = player.sum_x as f32 / player.tile_count as f32;
+                                        let cy = player.sum_y as f32 / player.tile_count as f32;
+                                        camera_zoom = 1.5;
+                                        camera_x = screen_w * 0.5 - cx * camera_zoom;
+                                        camera_y = screen_h * 0.5 - cy * camera_zoom;
+                                    }
                                 }
                             }
-                        }
 
-                        if let Some(c) = net_client.as_ref() {
-                            if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
-                                let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
-                                let json = serde_json::to_string(&ready_msg).unwrap();
-                                c.send(json);
+                            if let Some(c) = net_client.as_ref() {
+                                if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
+                                    let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
+                                    let json = serde_json::to_string(&ready_msg).unwrap();
+                                    c.send(json);
+                                }
                             }
                         }
                     }
                 }
-                }
 
                 app.hud_state.is_mobile = screen_w < 900.0;
-                
+                if let sow_core::game::GamePhase::Spawning { end_tick } = engine.state.phase {
+                    let rem_ticks = end_tick.saturating_sub(engine.state.tick);
+                    app.hud_state.spawn_timer_secs = Some(rem_ticks as f32 * engine.state.config.tick_rate_ms / 1000.0);
+                } else {
+                    app.hud_state.spawn_timer_secs = None;
+                }
                 if app.phase == sow_ui::app::ClientPhase::Playing {
                     if net_client.is_some() {
                         // Multiplayer: lockstep execution dictated by server

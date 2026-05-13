@@ -7,6 +7,7 @@ pub struct HudState {
     pub max_troops: f64,
     pub attack_ratio: f32,
     pub is_mobile: bool,
+    pub spawn_timer_secs: Option<f32>,
     pub sync_state: Option<sow_core::protocol::ServerSyncStateMessage>,
 }
 
@@ -21,6 +22,22 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
             ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
         });
     });
+
+    if let Some(secs) = state.spawn_timer_secs {
+        egui::Window::new("deployment_phase")
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .anchor(Align2::CENTER_TOP, [0.0, 50.0])
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading(RichText::new("DEPLOYMENT PHASE").color(Color32::GOLD).size(32.0));
+                    ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(24.0));
+                    ui.add_space(10.0);
+                    ui.label("Click anywhere on the map to place your capital!");
+                });
+            });
+    }
 
     // Bottom Panel: Attack Controls
     egui::Panel::bottom("attack_panel").show(ctx, |ui| {

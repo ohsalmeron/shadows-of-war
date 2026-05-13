@@ -74,6 +74,15 @@ fn hex_to_world(cell_x: i32, cell_y: i32) -> vec2<f32> {
     return vec2<f32>(x, y);
 }
 
+/// HOI-style matte paper map: partial desaturation + mid luminance clamp (no neon plastic).
+fn grade_paper_rgb(rgb: vec3<f32>, saturation: f32) -> vec3<f32> {
+    let y = dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
+    let grey = vec3<f32>(y);
+    var out = mix(grey, rgb, saturation);
+    out = out * 0.94;
+    return clamp(out, vec3<f32>(0.14), vec3<f32>(0.68));
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let screen_pixel = in.uv * globals.screen_size;
@@ -146,17 +155,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let combined_waves = (wave1 + wave2 * 0.5 + wave3 * 0.25) / 1.75;
         
         let WAVE_HIGHLIGHT_COLOR = vec3<f32>(0.1, 0.2, 0.7);
-        var final_color = mix(base_color, WAVE_HIGHLIGHT_COLOR, combined_waves * 0.5);
+        var final_color = mix(base_color, WAVE_HIGHLIGHT_COLOR, combined_waves * 0.18);
         
         // If coastal, mix in foam based on noise
         if border_mask > 0u {
             let foam_mix = smoothstep(0.4, 0.8, wave2 + wave3 * 0.5);
-            final_color = mix(final_color, FOAM_COLOR, foam_mix * 0.8);
+            final_color = mix(final_color, FOAM_COLOR, foam_mix * 0.32);
         }
 
-        // Specular glint (sun reflection)
-        let glint = pow(combined_waves, 8.0);
-        final_color += glint * SPECULAR_COLOR * 1.5;
+        // Specular glint — keep very subtle (matte paper map; avoid shiny ocean).
+        let glint = pow(combined_waves, 10.0);
+        final_color += glint * SPECULAR_COLOR * 0.22;
         
         return vec4<f32>(final_color, 1.0);
     }
@@ -175,49 +184,54 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         is_nation = owner_id > 16u && owner_id <= 116u;
         is_tribe = owner_id > 116u;
 
+        var raw_rgb = vec3<f32>(0.0);
+        var paper_sat = 0.68;
+
         if is_human {
-            // Highly saturated colors for humans based on golden ratio hue
+            // Hue from id (unchanged identity); saturation applied after via grade_paper_rgb.
             let hue = f32(owner_id) * 0.618033988749895;
-            // Simple approximation of sin using triangle wave to save ALU
             let r = abs(fract(hue) * 2.0 - 1.0);
             let g = abs(fract(hue + 0.333) * 2.0 - 1.0);
             let b = abs(fract(hue + 0.666) * 2.0 - 1.0);
-            player_color = vec4<f32>(r, g, b, 1.0);
+            raw_rgb = vec3<f32>(r, g, b);
+            paper_sat = 0.52;
         } else if is_nation {
-            // Mid-tone stable colors for nations
             let id = f32(owner_id);
             let r = fract(id * 0.123);
             let g = fract(id * 0.456);
             let b = fract(id * 0.789);
-            player_color = vec4<f32>(0.3 + r * 0.5, 0.3 + g * 0.5, 0.3 + b * 0.5, 1.0);
+            raw_rgb = vec3<f32>(0.3 + r * 0.5, 0.3 + g * 0.5, 0.3 + b * 0.5);
+            paper_sat = 0.58;
         } else {
-            // Soft, washed-out pastels for tribes
             let id = f32(owner_id);
             let r = fract(id * 0.123);
             let g = fract(id * 0.456);
             let b = fract(id * 0.789);
-            player_color = vec4<f32>(0.5 + r * 0.3, 0.5 + g * 0.3, 0.5 + b * 0.3, 1.0);
+            raw_rgb = vec3<f32>(0.5 + r * 0.3, 0.5 + g * 0.3, 0.5 + b * 0.3);
+            paper_sat = 0.68;
         }
+        player_color = vec4<f32>(grade_paper_rgb(raw_rgb, paper_sat), 1.0);
         
         if is_human {
-            // Holographic Animated Cyber-Stripes (Additive Blending)
+            // Stripe amplitude scales with effect_energy_flow (0 = calm matte interior).
             let stripe = (sin((world_x + world_y) * 0.15 - globals.time * 2.5) + 1.0) * 0.5;
             let stripe_fx = mix(1.0, (0.6 + 0.6 * stripe), globals.effect_energy_flow);
             let holo_color = player_color.rgb * stripe_fx;
-            base_color = vec4<f32>(terrain_color.rgb + holo_color * globals.visual_interior_alpha * 0.7, 1.0);
+            let interior_mix = min(1.0, globals.visual_interior_alpha * 0.46);
+            base_color = mix(terrain_color, vec4<f32>(holo_color, 1.0), interior_mix);
         } else if is_nation {
-            // Static Additive Glow
-            base_color = vec4<f32>(terrain_color.rgb + player_color.rgb * globals.visual_interior_alpha * 0.4, 1.0);
+            let interior_mix = min(1.0, globals.visual_interior_alpha * 0.50);
+            base_color = mix(terrain_color, player_color, interior_mix);
         } else {
-            // Flat mix for tribes (traditional skin)
-            base_color = mix(terrain_color, player_color, globals.visual_interior_alpha * 0.6);
+            let interior_mix = min(1.0, globals.visual_interior_alpha * 0.42);
+            base_color = mix(terrain_color, player_color, interior_mix);
         }
         
-        // Conquest Shockwave Flash on interior
+        // Conquest Shockwave Flash on interior (softer toward white when intensity low)
         if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
             let shockwave = flash_val * globals.effect_shockwave_intensity;
             let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), player_color.rgb, 1.0 - flash_val);
-            base_color = vec4<f32>(mix(base_color.rgb, flash_color, shockwave * 0.8), 1.0);
+            base_color = vec4<f32>(mix(base_color.rgb, flash_color, shockwave * 0.42), 1.0);
         }
     } else {
         base_color = terrain_color;
@@ -235,10 +249,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var thickness = globals.visual_border_thickness;
         if globals.effect_border_breathe > 0.0 {
             let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5; // 0 to 1
-            thickness += breathe * 0.05 * globals.effect_border_breathe;
+            thickness += breathe * 0.028 * globals.effect_border_breathe;
         }
         if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-            thickness += flash_val * 0.2 * globals.effect_shockwave_intensity;
+            thickness += flash_val * 0.12 * globals.effect_shockwave_intensity;
         }
         
         let border_threshold = 0.5 - thickness;
@@ -275,9 +289,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var border_color: vec4<f32>;
         if has_player_color {
             if owner_id == globals.local_player_id {
-                // Pulsating bright highlight for MY borders
+                // Subtle edge emphasis (avoid bright pulsing "neon" border).
                 let pulse = (sin(globals.time * 6.0) + 1.0) * 0.5;
-                let highlight = mix(player_color.rgb, vec3<f32>(1.0, 1.0, 1.0), pulse * 0.7);
+                let highlight = mix(player_color.rgb, vec3<f32>(1.0, 1.0, 1.0), pulse * 0.22);
                 border_color = vec4<f32>(highlight, 1.0);
                 base_color = border_color;
             } else {
@@ -292,12 +306,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 // Add energy flow for borders if enabled
                 if globals.effect_energy_flow > 0.0 {
                     let flow = (sin((world_x - world_y) * 2.0 - globals.time * 8.0) + 1.0) * 0.5;
-                    border_color = vec4<f32>(border_color.rgb + player_color.rgb * flow * 0.6 * globals.effect_energy_flow, 1.0);
+                    border_color = vec4<f32>(border_color.rgb + player_color.rgb * flow * 0.35 * globals.effect_energy_flow, 1.0);
                 }
                 
                 // Add shockwave flash to border color
                 if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-                    let flash_color = mix(border_color.rgb, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave_intensity);
+                    let flash_color = mix(border_color.rgb, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave_intensity * 0.55);
                     border_color = vec4<f32>(flash_color, 1.0);
                 }
                 

@@ -70,9 +70,10 @@ async fn main() {
 
                 Some(event) = event_rx.recv() => {
                     let mut games = games_clone.lock().await;
+                    let mut nid = next_id_clone.lock().await;
                     match event {
                         ServerEvent::Join { client_tx, name, target_lobby_id, preferred_map } => {
-                            match join_player(&mut games, name, client_tx.clone(), target_lobby_id, preferred_map) {
+                            match join_player(&mut games, &mut nid, name, client_tx.clone(), target_lobby_id, preferred_map) {
                                 Ok((lobby_id, player_id, map_name)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name };
                                     let json = serde_json::to_string(&ack).unwrap();

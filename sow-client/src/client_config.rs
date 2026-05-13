@@ -25,7 +25,8 @@ impl Default for ClientVisualConfig {
         Self {
             // Shaders
             shader_terrain_sharpness: 0.0001,
-            shader_interior_alpha: 0.95,
+            // Matte paper-map: moderate fill; combine with lower mix weights in map.wgsl.
+            shader_interior_alpha: 0.88,
             shader_border_alpha: 0.95,
             shader_border_thickness: 0.1,
             
@@ -37,10 +38,10 @@ impl Default for ClientVisualConfig {
             // Nameplates
             ui_text_scale: 0.25,
             
-            // Effects
-            effect_shockwave_intensity: 1.0,
-            effect_border_breathe: 1.0,
-            effect_energy_flow: 1.0,
+            // Effects (defaults low — raise for “cyber” map; HOI-style stays calm)
+            effect_shockwave_intensity: 0.28,
+            effect_border_breathe: 0.22,
+            effect_energy_flow: 0.12,
         }
     }
 }

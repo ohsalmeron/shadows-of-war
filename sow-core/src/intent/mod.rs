@@ -84,6 +84,29 @@ pub fn apply_stamped_intent(
         GameplayIntent::UpgradeStructure { building_id } => {
             self.apply_upgrade_structure_intent(stamped.player_id, *building_id);
         }
+        GameplayIntent::Spawn { x, y } => {
+            if let crate::game::GamePhase::Spawning { .. } = self.state.phase {
+                let x = *x; let y = *y;
+                let pid = stamped.player_id;
+                
+                if self.state.map.is_valid_coord(x as i32, y as i32) {
+                    if self.state.map.terrain[self.state.map.ref_id(x, y)].is_land() && self.state.map.owner_id(x, y) == 0 {
+                        // Clear old tiles for this player
+                        let w = self.state.map.width;
+                        let mut to_clear = Vec::new();
+                        for (i, &owner) in self.state.map.state.iter().enumerate() {
+                            if owner == pid { to_clear.push(i as u32); }
+                        }
+                        for i in to_clear {
+                            self.state.set_tile_owner(i % w, i / w, 0);
+                        }
+                        
+                        // Set new spawn
+                        self.state.place_spawn(pid, x, y);
+                    }
+                }
+            }
+        }
     }
 }
 }

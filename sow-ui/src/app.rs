@@ -27,6 +27,7 @@ impl ClientApp {
                 max_troops: 0.0,
                 attack_ratio: 0.25,
                 is_mobile: false,
+                spawn_timer_secs: None,
                 sync_state: None,
             },
             loading_state: loading_screen::LoadingState::default(),

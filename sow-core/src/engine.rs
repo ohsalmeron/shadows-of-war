@@ -88,6 +88,54 @@ impl SowEngine {
     }
 
     pub fn tick(&mut self) {
+        if let crate::game::GamePhase::Spawning { end_tick } = self.state.phase {
+            self.state.tick += 1;
+            if self.state.tick >= end_tick {
+                self.state.phase = crate::game::GamePhase::Playing;
+                // Auto-spawn players who missed the window
+                let unspawned: Vec<u16> = self.state.players.iter()
+                    .filter(|p| !p.has_spawned)
+                    .map(|p| p.id)
+                    .collect();
+                
+                for pid in unspawned {
+                    use wyrand::WyRand;
+                    use crate::rng::NextIntExt;
+                    let mut rng = WyRand::new(self.state.seed.wrapping_add(pid as u64));
+                    let mut tries = 0;
+                    let (mut sx, mut sy) = (0, 0);
+
+                    while tries < 1000 {
+                        sx = rng.next_int(0, self.state.map.width as i32) as u32;
+                        sy = rng.next_int(0, self.state.map.height as i32) as u32;
+                        
+                        if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
+                            tries += 1; continue;
+                        }
+
+                        let mut valid = true;
+                        for dy in -15..=15 {
+                            for dx in -15..=15 {
+                                let nx = sx as i32 + dx; let ny = sy as i32 + dy;
+                                if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
+                                    valid = false; break;
+                                }
+                            }
+                            if !valid { break; }
+                        }
+                        if valid { break; }
+                        tries += 1;
+                    }
+
+                    if tries < 1000 {
+                        self.state.place_spawn(pid, sx, sy);
+                        log::info!("Auto-spawned missing player {} at {}, {}", pid, sx, sy);
+                    }
+                }
+            }
+            return;
+        }
+
         self.state.tick();
         self.execute_income();
         self.execute_ai_think();
@@ -192,6 +240,12 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed.wrapping_add(player_id as u64));
         let config = self.state.config.clone();
         
+        if !config.random_spawn {
+            let player = Player::new_human(player_id, name, color, &config);
+            self.state.register_player(player);
+            return;
+        }
+
         let mut tries = 0;
         let (mut sx, mut sy) = (0, 0);
 

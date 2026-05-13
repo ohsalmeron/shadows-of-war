@@ -4,7 +4,7 @@ use crate::map::GameMap;
 use crate::player::{Player, PlayerId};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum GamePhase { Lobby, Playing, GameOver }
+pub enum GamePhase { Lobby, Spawning { end_tick: u64 }, Playing, GameOver }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
@@ -42,16 +42,25 @@ fn default_one() -> u64 { 1 }
 
 impl GameState {
     pub fn new(seed: u64, width: u32, height: u32, config: crate::game_config::GameConfig) -> Self {
-        Self { seed, config, phase: GamePhase::Playing, map: GameMap::new(width, height),
+        let phase = if !config.random_spawn {
+            let ticks = (15.0 * 1000.0 / config.tick_rate_ms) as u64;
+            GamePhase::Spawning { end_tick: ticks }
+        } else {
+            GamePhase::Playing
+        };
+        Self { seed, config, phase, map: GameMap::new(width, height),
             players: Vec::new(), player_lookup: Vec::new(), tick: 0, winner: None,
             events: Vec::new(), next_fleet_id: 1, next_building_id: 1, next_attack_id: 1 }
     }
-    pub fn spawn_player(&mut self, player: Player, cx: u32, cy: u32) {
+    pub fn register_player(&mut self, player: Player) {
         let pid = player.id; let index = self.players.len();
         self.players.push(player);
         let pid_usize = pid as usize;
         if pid_usize >= self.player_lookup.len() { self.player_lookup.resize(pid_usize + 1, None); }
         self.player_lookup[pid_usize] = Some(index);
+    }
+    
+    pub fn place_spawn(&mut self, pid: u16, cx: u32, cy: u32) {
         let r = config::SPAWN_RADIUS as i32;
         for dy in -r..=r { for dx in -r..=r {
             if dx*dx + dy*dy > r*r { continue; }
@@ -64,6 +73,12 @@ impl GameState {
             }
         }}
         if let Some(p) = self.player_mut(pid) { p.has_spawned = true; }
+    }
+
+    pub fn spawn_player(&mut self, player: Player, cx: u32, cy: u32) {
+        let pid = player.id;
+        self.register_player(player);
+        self.place_spawn(pid, cx, cy);
     }
     pub fn tick(&mut self) {
         if self.phase != GamePhase::Playing { return; }

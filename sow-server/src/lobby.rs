@@ -125,14 +125,20 @@ fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<
 
 pub fn join_player(
     games: &mut Vec<ServerLobby>,
+    next_id: &mut u64,
     name: String,
     client_tx: mpsc::Sender<String>,
     target_lobby_id: Option<u64>,
     preferred_map: Option<String>,
 ) -> Result<(u64, u16, String), String> {
-    let lobby_id = resolve_join_target(target_lobby_id, games).ok_or_else(|| {
-        "No joinable lobby available (try again)".to_string()
-    })?;
+    let lobby_id = match resolve_join_target(target_lobby_id, games) {
+        Some(id) => id,
+        None => {
+            spawn_waiting_lobby(games, next_id);
+            games.last().unwrap().id
+        }
+    };
+
     let lobby = games
         .iter_mut()
         .find(|g| g.id == lobby_id)

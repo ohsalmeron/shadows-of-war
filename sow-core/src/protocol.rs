@@ -19,6 +19,7 @@ pub struct AttackIntent {
 pub enum GameplayIntent {
     Attack(AttackIntent),
     CancelAttack { attack_id: u64 },
+    Spawn { x: u32, y: u32 },
     /// Water transport: raw clicked tile (`y * width + x`); sim snaps to nearest owned shoreline.
     LaunchFleet {
         target_tile: u32,
