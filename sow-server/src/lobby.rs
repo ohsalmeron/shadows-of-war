@@ -27,7 +27,7 @@ pub enum LobbyPhase {
 pub struct PlayerConnection {
     pub name: String,
     pub player_id: u16,
-    pub tx: mpsc::Sender<String>,
+    pub tx: mpsc::Sender<Vec<u8>>,
     pub download_progress: u8,
 }
 
@@ -100,10 +100,13 @@ fn promote_countdown(games: &mut [ServerLobby]) {
     if has_counting {
         return;
     }
-    if let Some(lobby) = games
+    
+    // Pick the first waiting lobby that HAS PLAYERS!
+    let target = games
         .iter_mut()
-        .find(|g| matches!(g.phase, LobbyPhase::Waiting))
-    {
+        .find(|g| matches!(g.phase, LobbyPhase::Waiting) && !g.players.is_empty());
+        
+    if let Some(lobby) = target {
         lobby.phase = LobbyPhase::CountingDown;
         lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
         log::info!("Lobby {} promoted to CountingDown", lobby.id);
@@ -146,7 +149,7 @@ pub fn join_player(
     games: &mut Vec<ServerLobby>,
     next_id: &mut u64,
     name: String,
-    client_tx: mpsc::Sender<String>,
+    client_tx: mpsc::Sender<Vec<u8>>,
     target_lobby_id: Option<u64>,
 ) -> Result<(u64, u16, String), String> {
     let lobby_id = match resolve_join_target(target_lobby_id, games) {
@@ -300,7 +303,7 @@ fn start_match(lobby: &mut ServerLobby) {
             missed_turns: vec![],
             map_data: None, // clients load locally via config.map_name
         };
-        let json = serde_json::to_string(&start_msg).expect("serialize ServerStartMessage");
+        let json = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(start_msg))).expect("serialize ServerStartMessage");
         let _ = p.tx.try_send(json);
     }
 }
@@ -310,7 +313,7 @@ fn close_lobby(lobby: &ServerLobby, reason: &str) {
         lobby_id: lobby.id,
         reason: reason.to_string(),
     };
-    let json = serde_json::to_string(&msg).expect("serialize ServerLobbyClosedMessage");
+    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).expect("serialize ServerLobbyClosedMessage");
     for p in &lobby.players {
         let _ = p.tx.try_send(json.clone());
     }
@@ -349,7 +352,7 @@ fn tick_active(lobby: &mut ServerLobby) -> bool {
     }
 
     let msg = ServerTurnMessage { turn };
-    let json = serde_json::to_string(&msg).expect("serialize ServerTurnMessage");
+    let json = bincode::serialize(&sow_core::protocol::ServerMessage::Turn(msg)).expect("serialize ServerTurnMessage");
     for p in &lobby.players {
         let _ = p.tx.try_send(json.clone());
     }
@@ -401,7 +404,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                         players,
                         is_starting,
                     };
-                    let sync_json = serde_json::to_string(&sync_msg).unwrap();
+                    let sync_json = bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg)).unwrap();
                     for p in &lobby.players {
                         let _ = p.tx.try_send(sync_json.clone());
                     }
@@ -413,7 +416,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                 lobby_id: lobby.id,
                                 reason: "Sync timeout. Requeueing...".to_string(),
                             };
-                            let closed_json = serde_json::to_string(&closed_msg).unwrap();
+                            let closed_json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(closed_msg)).unwrap();
                             lobby.players.retain(|p| {
                                 if lobby.ready_players.contains(&p.player_id) {
                                     true

@@ -3209,6 +3209,7 @@ name = "sow-client"
 version = "0.1.0"
 dependencies = [
  "android_logger",
+ "bincode",
  "blade-egui",
  "blade-graphics",
  "brotli",
@@ -3220,6 +3221,7 @@ dependencies = [
  "env_logger",
  "getrandom 0.2.17",
  "image",
+ "js-sys",
  "libc",
  "log",
  "md5",
@@ -3252,6 +3254,7 @@ dependencies = [
 name = "sow-net"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "env_logger",
  "futures-channel",
  "futures-util",
@@ -3286,6 +3289,7 @@ name = "sow-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bincode",
  "brotli",
  "env_logger",
  "futures-util",

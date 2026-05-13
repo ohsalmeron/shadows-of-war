@@ -16,9 +16,10 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 enum ServerEvent {
     Join {
-        client_tx: mpsc::Sender<String>,
+        client_tx: mpsc::Sender<Vec<u8>>,
         name: String,
         target_lobby_id: Option<u64>,
+        build_version: String,
     },
     Gameplay {
         lobby_id: u64,
@@ -51,7 +52,7 @@ async fn main() {
     let games_state = Arc::new(Mutex::new(games));
     let next_id_state = Arc::new(Mutex::new(next_lobby_id));
 
-    let (global_tx, _rx) = broadcast::channel::<String>(100);
+    let (global_tx, _rx) = broadcast::channel::<Vec<u8>>(100);
     let (event_tx, mut event_rx) = mpsc::channel::<ServerEvent>(1000);
 
     let games_clone = Arc::clone(&games_state);
@@ -68,7 +69,7 @@ async fn main() {
                     master_tick(&mut games, &mut nid);
                     let lobbies_info = build_lobby_broadcast(&games);
                     let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
-                    let json = serde_json::to_string(&broadcast_msg).unwrap();
+                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)).unwrap();
                     let _ = global_tx_clone.send(json);
                 }
 
@@ -76,16 +77,17 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, target_lobby_id } => {
+                        ServerEvent::Join { client_tx, name, target_lobby_id, build_version } => {
+                            log::info!("Player {} joining with version: {}", name, build_version);
                             match join_player(&mut games, &mut nid, name, client_tx.clone(), target_lobby_id) {
                                 Ok((lobby_id, player_id, map_name)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name };
-                                    let json = serde_json::to_string(&ack).unwrap();
+                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)).unwrap();
                                     let _ = client_tx.try_send(json);
                                 }
                                 Err(reason) => {
                                     let fail = ServerJoinFailedMessage { reason };
-                                    let json = serde_json::to_string(&fail).unwrap();
+                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinFailed(fail)).unwrap();
                                     let _ = client_tx.try_send(json);
                                 }
                             }
@@ -150,7 +152,7 @@ async fn main() {
             let (mut write, mut read) = ws_stream.split();
             log::info!("Client connected");
 
-            let (direct_tx, mut direct_rx) = mpsc::channel::<String>(100);
+            let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(100);
 
             let mut my_lobby_id: Option<u64> = None;
             let mut my_player_id: Option<u16> = None;
@@ -160,16 +162,28 @@ async fn main() {
                     msg = read.next() => {
                         match msg {
                             Some(Ok(msg)) => {
-                                if msg.is_text() {
-                                    let text = msg.to_text().unwrap();
+                                if msg.is_binary() {
+                                    let data = msg.into_data();
 
-                                    if let Ok(msg) = serde_json::from_str::<sow_core::protocol::ClientMessage>(text) {
+                                    if let Ok(msg) = bincode::deserialize::<sow_core::protocol::ClientMessage>(&data) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, build_version } => {
+                                                let server_version = std::env::var("SOW_BUILD_VERSION")
+                                                    .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
+                                                
+                                                if !server_version.is_empty() && build_version != server_version {
+                                                    log::warn!("Client version mismatch: expected {}, got {}", server_version, build_version);
+                                                    let fail = sow_core::protocol::ServerJoinFailedMessage { reason: "VERSION_MISMATCH".to_string() };
+                                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinFailed(fail)).unwrap();
+                                                    let _ = direct_tx.try_send(json);
+                                                    continue;
+                                                }
+                                                
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
                                                     client_tx: direct_tx.clone(),
                                                     target_lobby_id,
+                                                    build_version,
                                                 }).await;
                                             }
                                             sow_core::protocol::ClientMessage::Gameplay { intent } => {
@@ -216,29 +230,29 @@ async fn main() {
                                         continue;
                                     }
 
-                                    log::warn!("[SERVER] Unrecognized message: {}", text);
+                                    log::warn!("[SERVER] Unrecognized message");
                                 }
                             }
                             _ => break,
                         }
                     }
-                    Ok(broadcast_text) = global_rx.recv() => {
-                        if write.send(Message::Text(broadcast_text)).await.is_err() {
+                    Ok(broadcast_data) = global_rx.recv() => {
+                        if write.send(Message::Binary(broadcast_data)).await.is_err() {
                             break;
                         }
                     }
-                    Some(direct_text) = direct_rx.recv() => {
-                        if let Ok(ack) = serde_json::from_str::<ServerJoinAckMessage>(&direct_text) {
+                    Some(direct_data) = direct_rx.recv() => {
+                        if let Ok(ack) = bincode::deserialize::<ServerJoinAckMessage>(&direct_data) {
                             my_lobby_id = Some(ack.lobby_id);
                             my_player_id = Some(ack.player_id);
                         }
-                        if let Ok(start) = serde_json::from_str::<ServerStartMessage>(&direct_text) {
+                        if let Ok(start) = bincode::deserialize::<ServerStartMessage>(&direct_data) {
                             if let Some(pid) = start.my_player_id {
                                 my_player_id = Some(pid);
                             }
                         }
 
-                        if write.send(Message::Text(direct_text)).await.is_err() {
+                        if write.send(Message::Binary(direct_data)).await.is_err() {
                             break;
                         }
                     }

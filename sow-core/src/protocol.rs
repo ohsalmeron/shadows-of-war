@@ -47,13 +47,14 @@ pub struct Turn {
     pub turn_number: u64,
     pub intents: Vec<StampedIntent>,
 }
+/// Envelope for all client → server messages (bincode-safe: has a discriminant).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(tag = "type")]
 pub enum ClientMessage {
     Join {
         name: String,
         is_observer: bool,
         target_lobby_id: Option<u64>,
+        build_version: String,
     },
     Gameplay {
         intent: GameplayIntent,
@@ -68,6 +69,18 @@ pub enum ClientMessage {
         lobby_id: u64,
         player_id: u16,
     },
+}
+
+/// Envelope for all server → client messages (bincode-safe: has a discriminant).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ServerMessage {
+    LobbiesBroadcast(ServerLobbiesBroadcastMessage),
+    JoinAck(ServerJoinAckMessage),
+    JoinFailed(ServerJoinFailedMessage),
+    LobbyClosed(ServerLobbyClosedMessage),
+    Start(Box<ServerStartMessage>),
+    Turn(ServerTurnMessage),
+    SyncState(ServerSyncStateMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

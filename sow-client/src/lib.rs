@@ -12,6 +12,26 @@ use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
 
+fn get_build_version() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            if let Ok(val) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_BUILD_VERSION")) {
+                if let Some(s) = val.as_string() {
+                    if s != "__BUILD_TS__" {
+                        return s;
+                    }
+                }
+            }
+        }
+        "unknown".to_string()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::fs::read_to_string(".version").unwrap_or_else(|_| "unknown".to_string()).trim().to_string()
+    }
+}
+
 mod nameplates;
 use nameplates::*;
 
@@ -379,7 +399,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         let msg = sow_core::protocol::ClientMessage::Gameplay {
                                             intent: intent.clone(),
                                         };
-                                        if let Ok(json) = serde_json::to_string(&msg) {
+                                        if let Ok(json) = bincode::serialize(&msg) {
                                             c.send(json);
                                         }
                                     } else {
@@ -530,7 +550,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                                         if let Some(c) = net_client.as_ref() {
                                             let msg = sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() };
-                                            if let Ok(json) = serde_json::to_string(&msg) {
+                                            if let Ok(json) = bincode::serialize(&msg) {
                                                 c.send(json);
                                             }
                                         } else {
@@ -657,6 +677,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
                             
                             raw_input.predicted_dt = 1.0 / 60.0;
+                            
+                            if app.main_menu_state.is_waiting && app.main_menu_state.wait_timer_secs > 0.0 {
+                                app.main_menu_state.wait_timer_secs = (app.main_menu_state.wait_timer_secs - raw_input.predicted_dt).max(0.0);
+                            }
+                            
                             let egui_output = egui_ctx.run_ui(raw_input.clone(), |ctx| {
                                 if app.phase == ClientPhase::Playing {
                                     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("world_overlays")));
@@ -882,9 +907,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                 name: app.main_menu_state.player_name.clone(),
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
+                                                build_version: get_build_version(),
                                             };
                                             app.main_menu_state.pending_join_lobby_id = Some(id);
-                                            if let Ok(json) = serde_json::to_string(&join_msg) {
+                                            if let Ok(json) = bincode::serialize(&join_msg) {
                                                 if let Some(c) = net_client.as_ref() {
                                                     c.send(json);
                                                 }
@@ -894,7 +920,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         UiAction::LeaveLobby => {
                                             if let Some(c) = net_client.as_ref() {
                                                 let leave = sow_core::protocol::ClientMessage::Leave {};
-                                                if let Ok(json) = serde_json::to_string(&leave) {
+                                                if let Ok(json) = bincode::serialize(&leave) {
                                                     c.send(json);
                                                 }
                                             }
@@ -1044,267 +1070,240 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 }
                             };
 
-                        if let Ok(start_msg) =
-                            serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
-                        {
-                            log::info!("Received ServerStartMessage; entering Splash phase immediately");
-                            app.phase = sow_ui::app::ClientPhase::Splash;
-                            app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
-                            app.splash_state.frames_drawn = 0;
-                            app.main_menu_state.is_waiting = false;
-                            app.main_menu_state.pending_join_lobby_id = None;
-                            app.main_menu_state.joined_lobby_id = None;
-                            my_player_id = start_msg.my_player_id;
-                            
-                            engine_init_queued_msg = Some(start_msg);
-                            continue;
-                        }
-                        
-                        if let Ok(turn_msg) =
-                            serde_json::from_str::<sow_core::protocol::ServerTurnMessage>(&msg)
-                        {
-                            turn_queue.push_back(turn_msg.turn);
-                            app.hud_state.sync_state = None;
-                            continue;
-                        }
-
-                        if let Ok(sync_msg) =
-                            serde_json::from_str::<sow_core::protocol::ServerSyncStateMessage>(&msg)
-                        {
-                            app.hud_state.sync_state = Some(sync_msg);
-                            continue;
-                        }
-
-                        if let Ok(broadcast) =
-                            serde_json::from_str::<sow_core::protocol::ServerLobbiesBroadcastMessage>(
-                                &msg,
-                            )
-                        {
-                            app.main_menu_state.lobbies = broadcast.lobbies.clone();
-
-                            let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
-                            let (thumbs_to_fetch, maps_to_fetch) = app.asset_loader.get_assets_to_fetch(&app.main_menu_state.lobbies);
-                            
-                            for map_name in thumbs_to_fetch {
-                                let url = format!("{}/{}/thumbnail.webp", maps_base.trim_end_matches('/'), map_name);
-                                let tx = map_tx.clone();
-                                let map_name_for_closure = map_name.clone();
-                                let request = ehttp::Request::get(&url);
-                                ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-                                    if let Ok(res) = result {
-                                        if res.ok {
-                                            let _ = tx.send(MapDownloadEvent::ThumbnailReady(map_name_for_closure, res.bytes));
-                                        }
-                                    }
-                                });
+                        use sow_core::protocol::ServerMessage;
+                        let server_msg = match bincode::deserialize::<ServerMessage>(&msg) {
+                            Ok(m) => m,
+                            Err(e) => {
+                                log::warn!("[NET] Failed to deserialize server message ({} bytes): {}", msg.len(), e);
+                                continue;
                             }
-                            
-                            for map_name in maps_to_fetch {
-                                let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
-                                let tx = map_tx.clone();
-                                let map_name_for_closure = map_name.clone();
-                                
-                                let request = ehttp::Request::get(&url);
-                                let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-                                
-                                ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
-                                    match result {
-                                        Ok(ehttp::streaming::Part::Response(res)) => {
-                                            if !res.ok {
-                                                log::warn!("Prefetch failed for {}", map_name_for_closure);
-                                                return std::ops::ControlFlow::Break(());
-                                            }
-                                            std::ops::ControlFlow::Continue(())
-                                        }
-                                        Ok(ehttp::streaming::Part::Chunk(chunk)) => {
-                                            if chunk.is_empty() {
-                                                let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
-                                                let _ = tx.send(MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
-                                                return std::ops::ControlFlow::Break(());
-                                            }
-                                            accumulated.lock().unwrap().extend_from_slice(&chunk);
-                                            std::ops::ControlFlow::Continue(())
-                                        }
-                                        Err(_) => std::ops::ControlFlow::Break(()),
-                                    }
-                                });
-                            }
+                        };
 
-                            if app.main_menu_state.is_waiting {
-                                let key = my_lobby_id
-                                    .or(app.main_menu_state.joined_lobby_id)
-                                    .or(app.main_menu_state.pending_join_lobby_id);
-                                if let Some(l_id) = key {
-                                    if let Some(lobby) =
-                                        broadcast.lobbies.iter().find(|l| l.id == l_id)
-                                    {
-                                        if lobby.is_counting_down {
-                                            app.main_menu_state.wait_timer_secs = lobby.timer_secs;
-                                        }
-                                    }
-                                }
-                            }
-                            continue;
-                        }
-
-                        if let Ok(closed) =
-                            serde_json::from_str::<sow_core::protocol::ServerLobbyClosedMessage>(&msg)
-                        {
-                            log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
-                            app.hud_state.sync_state = None;
-                            my_lobby_id = None;
-                            my_player_id = None;
-
-                            if closed.reason.contains("Requeueing") {
-                                log::info!("Auto-requeueing to a new lobby...");
-                                app.phase = ClientPhase::MainMenu;
-                                app.main_menu_state.is_waiting = true;
-                                let join_msg = sow_core::protocol::ClientMessage::Join {
-                                    name: app.main_menu_state.player_name.clone(),
-                                    is_observer: false,
-                                    target_lobby_id: None, // Ask for next available lobby
-                                };
-                                let json = serde_json::to_string(&join_msg).unwrap();
-                                c.send(json);
-                            } else {
-                                app.phase = ClientPhase::Splash;
-                                app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                        match server_msg {
+                            ServerMessage::Start(start_msg) => {
+                                log::info!("Received ServerStartMessage; entering Splash phase immediately");
+                                app.phase = sow_ui::app::ClientPhase::Splash;
+                                app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
                                 app.splash_state.frames_drawn = 0;
                                 app.main_menu_state.is_waiting = false;
                                 app.main_menu_state.pending_join_lobby_id = None;
                                 app.main_menu_state.joined_lobby_id = None;
+                                my_player_id = start_msg.my_player_id;
+                                engine_init_queued_msg = Some(*start_msg);
                             }
-                            continue;
-                        }
-
-
-                        if let Ok(fail) =
-                            serde_json::from_str::<sow_core::protocol::ServerJoinFailedMessage>(&msg)
-                        {
-                            log::warn!("Join failed: {}", fail.reason);
-                            app.main_menu_state.is_waiting = false;
-                            app.main_menu_state.pending_join_lobby_id = None;
-                            app.main_menu_state.joined_lobby_id = None;
-                            continue;
-                        }
-
-                        if let Ok(ack) =
-                            serde_json::from_str::<sow_core::protocol::ServerJoinAckMessage>(&msg)
-                        {
-                            my_lobby_id = Some(ack.lobby_id);
-                            my_player_id = Some(ack.player_id);
-                            app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
-                            
-                            let map_name = ack.map_name.clone();
-                            app.main_menu_state.downloading_map_name = Some(map_name.clone());
-                            
-                            if let Some(texture) = app.asset_loader.thumbnail(&map_name) {
-                                app.splash_state.thumbnail = Some(texture.clone());
-                            } else {
-                                app.splash_state.thumbnail = None;
+                            ServerMessage::Turn(turn_msg) => {
+                                turn_queue.push_back(turn_msg.turn);
+                                app.hud_state.sync_state = None;
                             }
-                            
-                            if app.asset_loader.has_map(&map_name) {
-                                log::info!("Map already cached, skipping download.");
-                                app.main_menu_state.cached_map = app.asset_loader.take_map(&map_name);
-                                app.main_menu_state.is_downloading_map = false;
-                                app.main_menu_state.map_download_progress = 100;
-                                c.send(
-                                    serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                            ServerMessage::SyncState(sync_msg) => {
+                                app.hud_state.sync_state = Some(sync_msg);
+                            }
+                            ServerMessage::LobbiesBroadcast(broadcast) => {
+                                log::info!("[LOBBY] Received broadcast: {} lobbies", broadcast.lobbies.len());
+                                app.main_menu_state.lobbies = broadcast.lobbies.clone();
+
+                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                                let (thumbs_to_fetch, maps_to_fetch) = app.asset_loader.get_assets_to_fetch(&app.main_menu_state.lobbies);
+                                
+                                for map_name in thumbs_to_fetch {
+                                    let url = format!("{}/{}/thumbnail.webp", maps_base.trim_end_matches('/'), map_name);
+                                    let tx = map_tx.clone();
+                                    let map_name_for_closure = map_name.clone();
+                                    let request = ehttp::Request::get(&url);
+                                    ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+                                        if let Ok(res) = result {
+                                            if res.ok {
+                                                let _ = tx.send(MapDownloadEvent::ThumbnailReady(map_name_for_closure, res.bytes));
+                                            }
+                                        }
+                                    });
+                                }
+                                
+                                for map_name in maps_to_fetch {
+                                    let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                                    let tx = map_tx.clone();
+                                    let map_name_for_closure = map_name.clone();
+                                    let request = ehttp::Request::get(&url);
+                                    let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                                    ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
+                                        match result {
+                                            Ok(ehttp::streaming::Part::Response(res)) => {
+                                                if !res.ok {
+                                                    log::warn!("Prefetch failed for {}", map_name_for_closure);
+                                                    return std::ops::ControlFlow::Break(());
+                                                }
+                                                std::ops::ControlFlow::Continue(())
+                                            }
+                                            Ok(ehttp::streaming::Part::Chunk(chunk)) => {
+                                                if chunk.is_empty() {
+                                                    let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
+                                                    let _ = tx.send(MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                                    return std::ops::ControlFlow::Break(());
+                                                }
+                                                accumulated.lock().unwrap().extend_from_slice(&chunk);
+                                                std::ops::ControlFlow::Continue(())
+                                            }
+                                            Err(_) => std::ops::ControlFlow::Break(()),
+                                        }
+                                    });
+                                }
+
+                                if app.main_menu_state.is_waiting {
+                                    let key = my_lobby_id
+                                        .or(app.main_menu_state.joined_lobby_id)
+                                        .or(app.main_menu_state.pending_join_lobby_id);
+                                    if let Some(l_id) = key {
+                                        if let Some(lobby) = broadcast.lobbies.iter().find(|l| l.id == l_id) {
+                                            if lobby.is_counting_down {
+                                                log::info!("[LOBBY] Countdown sync: {:.1}s", lobby.timer_secs);
+                                                app.main_menu_state.wait_timer_secs = lobby.timer_secs;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            ServerMessage::LobbyClosed(closed) => {
+                                log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
+                                app.hud_state.sync_state = None;
+                                my_lobby_id = None;
+                                my_player_id = None;
+
+                                if closed.reason.contains("Requeueing") {
+                                    log::info!("Auto-requeueing to a new lobby...");
+                                    app.phase = ClientPhase::MainMenu;
+                                    app.main_menu_state.is_waiting = true;
+                                    let join_msg = sow_core::protocol::ClientMessage::Join {
+                                        name: app.main_menu_state.player_name.clone(),
+                                        is_observer: false,
+                                        target_lobby_id: None,
+                                        build_version: get_build_version(),
+                                    };
+                                    c.send(bincode::serialize(&join_msg).unwrap());
+                                } else {
+                                    app.phase = ClientPhase::Splash;
+                                    app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                                    app.splash_state.frames_drawn = 0;
+                                    app.main_menu_state.is_waiting = false;
+                                    app.main_menu_state.pending_join_lobby_id = None;
+                                    app.main_menu_state.joined_lobby_id = None;
+                                }
+                            }
+                            ServerMessage::JoinFailed(fail) => {
+                                log::warn!("Join failed: {}", fail.reason);
+                                if fail.reason == "VERSION_MISMATCH" {
+                                    log::info!("Version mismatch — reloading...");
+                                    #[cfg(target_arch = "wasm32")]
+                                    if let Some(window) = web_sys::window() {
+                                        let _ = window.location().reload();
+                                    }
+                                }
+                                app.main_menu_state.is_waiting = false;
+                                app.main_menu_state.pending_join_lobby_id = None;
+                                app.main_menu_state.joined_lobby_id = None;
+                            }
+                            ServerMessage::JoinAck(ack) => {
+                                log::info!("[LOBBY] Joined lobby {} as player {} (map: {})", ack.lobby_id, ack.player_id, ack.map_name);
+                                my_lobby_id = Some(ack.lobby_id);
+                                my_player_id = Some(ack.player_id);
+                                app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
+                                
+                                let map_name = ack.map_name.clone();
+                                app.main_menu_state.downloading_map_name = Some(map_name.clone());
+                                
+                                if let Some(texture) = app.asset_loader.thumbnail(&map_name) {
+                                    app.splash_state.thumbnail = Some(texture.clone());
+                                } else {
+                                    app.splash_state.thumbnail = None;
+                                }
+                                
+                                if app.asset_loader.has_map(&map_name) {
+                                    log::info!("Map already cached, skipping download.");
+                                    app.main_menu_state.cached_map = app.asset_loader.take_map(&map_name);
+                                    app.main_menu_state.is_downloading_map = false;
+                                    app.main_menu_state.map_download_progress = 100;
+                                    c.send(bincode::serialize(&sow_core::protocol::ClientMessage::MapDownloadProgress {
                                         lobby_id: ack.lobby_id,
                                         player_id: ack.player_id,
                                         progress: 100,
-                                    })
-                                    .unwrap(),
-                                );
-                            } else {
-                                let tx = map_tx.clone();
-                                app.main_menu_state.is_downloading_map = true;
-                                app.main_menu_state.cached_map = None;
-                                
-                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
-                                let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
-                                log::info!("Downloading map from: {}", url);
-                                
-                                // Send progress: 0 (Downloading)
-                                c.send(
-                                    serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                    }).unwrap());
+                                } else {
+                                    let tx = map_tx.clone();
+                                    app.main_menu_state.is_downloading_map = true;
+                                    app.main_menu_state.cached_map = None;
+                                    
+                                    let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                                    let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                                    log::info!("Downloading map from: {}", url);
+                                    
+                                    c.send(bincode::serialize(&sow_core::protocol::ClientMessage::MapDownloadProgress {
                                         lobby_id: ack.lobby_id,
                                         player_id: ack.player_id,
                                         progress: 0,
-                                    })
-                                    .unwrap(),
-                                );
-                            
-                            let request = ehttp::Request::get(&url);
-                            let map_name_for_closure = map_name.clone();
-                            let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-                            let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
-                            
-                            ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
-                                match result {
-                                    Ok(ehttp::streaming::Part::Response(res)) => {
-                                        if !res.ok {
-                                            log::error!("Failed to fetch map, HTTP {}", res.status);
-                                            let _ = tx.send(MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
-                                            return std::ops::ControlFlow::Break(());
-                                        }
-                                        log::info!("Server map response ok! headers: {:?}", res.headers);
-                                        let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
-                                        if let Some(cl) = cl {
-                                            if let Ok(len) = cl.parse::<usize>() {
-                                                *total_bytes.lock().unwrap() = len;
-                                                log::info!("Map content-length parsed as: {}", len);
-                                            } else {
-                                                log::warn!("Failed to parse content-length: {}", cl);
+                                    }).unwrap());
+                                
+                                    let request = ehttp::Request::get(&url);
+                                    let map_name_for_closure = map_name.clone();
+                                    let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                                    let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+                                    
+                                    ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
+                                        match result {
+                                            Ok(ehttp::streaming::Part::Response(res)) => {
+                                                if !res.ok {
+                                                    log::error!("Failed to fetch map, HTTP {}", res.status);
+                                                    let _ = tx.send(MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
+                                                    return std::ops::ControlFlow::Break(());
+                                                }
+                                                log::info!("Server map response ok! headers: {:?}", res.headers);
+                                                let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
+                                                if let Some(cl) = cl {
+                                                    if let Ok(len) = cl.parse::<usize>() {
+                                                        *total_bytes.lock().unwrap() = len;
+                                                        log::info!("Map content-length parsed as: {}", len);
+                                                    } else {
+                                                        log::warn!("Failed to parse content-length: {}", cl);
+                                                    }
+                                                } else {
+                                                    log::warn!("No content-length header received!");
+                                                }
+                                                std::ops::ControlFlow::Continue(())
                                             }
-                                        } else {
-                                            log::warn!("No content-length header received!");
-                                        }
-                                        std::ops::ControlFlow::Continue(())
-                                    }
-                                    Ok(ehttp::streaming::Part::Chunk(chunk)) => {
-                                        if chunk.is_empty() {
-                                            // Done!
-                                            let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
-                                            log::info!("Map fully downloaded: {} bytes", final_bytes.len());
-                                            let _ = tx.send(MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
-                                            return std::ops::ControlFlow::Break(());
-                                        }
-                                        
-                                        let mut acc = accumulated.lock().unwrap();
-                                        acc.extend_from_slice(&chunk);
-                                        let downloaded = acc.len();
-                                        let total = *total_bytes.lock().unwrap();
-                                        if total > 0 {
-                                            let progress = ((downloaded as f64 / total as f64) * 100.0) as u8;
-                                            // Send progress max 99, 100 is sent when MapDownloadEvent::Complete is handled
-                                            let _ = tx.send(MapDownloadEvent::Progress(map_name_for_closure.clone(), progress.min(99)));
-                                            // Log occasionally to avoid spam
-                                            if downloaded % 524288 < chunk.len() {
-                                                log::info!("Downloading map... {} / {} bytes ({}%)", downloaded, total, progress.min(99));
+                                            Ok(ehttp::streaming::Part::Chunk(chunk)) => {
+                                                if chunk.is_empty() {
+                                                    let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
+                                                    log::info!("Map fully downloaded: {} bytes", final_bytes.len());
+                                                    let _ = tx.send(MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                                    return std::ops::ControlFlow::Break(());
+                                                }
+                                                let mut acc = accumulated.lock().unwrap();
+                                                acc.extend_from_slice(&chunk);
+                                                let downloaded = acc.len();
+                                                let total = *total_bytes.lock().unwrap();
+                                                if total > 0 {
+                                                    let progress = ((downloaded as f64 / total as f64) * 100.0) as u8;
+                                                    let _ = tx.send(MapDownloadEvent::Progress(map_name_for_closure.clone(), progress.min(99)));
+                                                    if downloaded % 524288 < chunk.len() {
+                                                        log::info!("Downloading map... {} / {} bytes ({}%)", downloaded, total, progress.min(99));
+                                                    }
+                                                } else if downloaded % 524288 < chunk.len() {
+                                                    log::info!("Downloading map... {} bytes (unknown total)", downloaded);
+                                                }
+                                                std::ops::ControlFlow::Continue(())
                                             }
-                                        } else {
-                                            if downloaded % 524288 < chunk.len() {
-                                                log::info!("Downloading map... {} bytes (unknown total)", downloaded);
+                                            Err(err) => {
+                                                log::error!("Failed to fetch map: {}", err);
+                                                let _ = tx.send(MapDownloadEvent::Error(format!("Fetch error: {}", err)));
+                                                std::ops::ControlFlow::Break(())
                                             }
                                         }
-                                        std::ops::ControlFlow::Continue(())
-                                    }
-                                    Err(err) => {
-                                        log::error!("Failed to fetch map: {}", err);
-                                        let _ = tx.send(MapDownloadEvent::Error(format!("Fetch error: {}", err)));
-                                        std::ops::ControlFlow::Break(())
-                                    }
+                                    });
                                 }
-                            });
                             }
-                            
-                            continue;
                         }
-                        }
-                    }
-                }
+                        } // end loop
+                    } // end if !ws_disconnected
+                } // end if let Some(c)
+                
                 if ws_disconnected {
                     log::warn!("WebSocket disconnected; will reconnect.");
                     net_client = None;
@@ -1348,7 +1347,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 app.main_menu_state.map_download_progress = progress;
                                 if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
                                     if let Some(c) = net_client.as_ref() {
-                                        c.send(serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        c.send(bincode::serialize(&sow_core::protocol::ClientMessage::MapDownloadProgress {
                                             lobby_id: lid,
                                             player_id: pid,
                                             progress,
@@ -1399,7 +1398,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 
                                 if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
                                     if let Some(c) = net_client.as_ref() {
-                                        c.send(serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        c.send(bincode::serialize(&sow_core::protocol::ClientMessage::MapDownloadProgress {
                                             lobby_id: lid,
                                             player_id: pid,
                                             progress: 100,
@@ -1587,7 +1586,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             if let Some(c) = net_client.as_ref() {
                                 if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
                                     let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
-                                    let json = serde_json::to_string(&ready_msg).unwrap();
+                                    let json = bincode::serialize(&ready_msg).unwrap();
                                     c.send(json);
                                 }
                             }

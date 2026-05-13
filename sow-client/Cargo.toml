@@ -20,6 +20,7 @@ sow-ui = { path = "../sow-ui" }
 egui = "0.34"
 blade-egui = { workspace = true }
 serde_json.workspace = true
+bincode.workspace = true
 sow-net = { workspace = true }
 brotli = "8.0.2"
 ehttp = { version = "0.5.0", features = ["streaming"] }
@@ -35,7 +36,8 @@ wasm-bindgen = "0.2.100"
 getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1.7"
 console_log = "1.0"
-web-sys = { version = "0.3.69", features = ["Window", "Document", "HtmlElement", "Node", "VisibilityState"] }
+web-sys = { version = "0.3.69", features = ["Window", "Document", "HtmlElement", "Node", "VisibilityState", "Location", "BinaryType"] }
+js-sys = "0.3.69"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread"] }
