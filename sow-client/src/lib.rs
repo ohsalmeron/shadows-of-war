@@ -77,7 +77,7 @@ fn paint_galley_outlined(
     if galley.is_empty() {
         return;
     }
-    let step = (font_size * 0.055).clamp(0.65, 1.55);
+    let step = (font_size * 0.055).clamp(0.1, 1.95);
     const SAMPLES: usize = 12;
     let tau = std::f32::consts::TAU;
     let shadow = egui::Color32::from_rgba_unmultiplied(18, 18, 22, 105);
@@ -141,8 +141,16 @@ mod client_config;
 use client_config::ClientVisualConfig;
 
 /// Allow very wide map views (scroll / pinch clamp to this minimum).
-const CAMERA_MIN_ZOOM: f32 = 0.01;
-const CAMERA_MAX_ZOOM: f32 = 20.0;
+const CAMERA_MIN_ZOOM: f32 = 0.001;
+/// Hard ceiling so zoom stays finite and GPU paths stay well-behaved.
+const CAMERA_MAX_ZOOM_CAP: f32 = 8192.0;
+
+/// Pixels-per-world-unit zoom max scales with window size so you can fill ~one hex tile
+/// across the long screen axis (hex neighbor spacing ≈ 1 world unit in the map shader).
+fn camera_zoom_upper_bound(screen_w: f32, screen_h: f32) -> f32 {
+    let longest = screen_w.max(screen_h).max(1.0);
+    (longest * 3.0).clamp(768.0, CAMERA_MAX_ZOOM_CAP)
+}
 
 /// Zoom level used only for nameplate **font** sizing (not LOD). Matches default `camera_zoom` so
 /// first-frame text size matches the old formula, while zooming no longer churns egui glyph atlas sizes.
@@ -338,6 +346,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     let s = render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1));
                     screen_w = sz.width as f32;
                     screen_h = sz.height as f32;
+                    let zmax = camera_zoom_upper_bound(screen_w, screen_h);
+                    camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
                     raw_input.screen_rect = Some(Rect::from_min_size(
                         Pos2::ZERO,
                         Vec2::new(screen_w, screen_h)
@@ -401,6 +411,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
                             screen_w = physical_size.width as f32;
                             screen_h = physical_size.height as f32;
+                            let zmax = camera_zoom_upper_bound(screen_w, screen_h);
+                            camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
                             raw_input.screen_rect = Some(Rect::from_min_size(
                                 Pos2::ZERO,
                                 Vec2::new(screen_w, screen_h)
@@ -540,7 +552,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 let delta = distance - last_dist;
                                 let old_zoom = camera_zoom;
                                 camera_zoom *= 1.0 + (delta as f32 * 0.005);
-                                camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+                                let zmax = camera_zoom_upper_bound(screen_w, screen_h);
+                                camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
 
                                 let pinch_cx = (p1.0 + p2.0) / 2.0;
                                 let pinch_cy = (p1.1 + p2.1) / 2.0;
@@ -640,12 +653,27 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     }
                     WindowEvent::MouseWheel { delta, .. } => {
                         let scroll = match delta {
-                            MouseScrollDelta::LineDelta(_, y) => y,
-                            MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 50.0,
+                            MouseScrollDelta::LineDelta(x, y) => {
+                                if y.abs() >= x.abs() {
+                                    y
+                                } else {
+                                    x
+                                }
+                            }
+                            MouseScrollDelta::PixelDelta(pos) => {
+                                let x = pos.x as f32 / 50.0;
+                                let y = pos.y as f32 / 50.0;
+                                if y.abs() >= x.abs() {
+                                    y
+                                } else {
+                                    x
+                                }
+                            }
                         };
                         let old_zoom = camera_zoom;
                         camera_zoom *= 1.0 + scroll * 0.15;
-                        camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+                        let zmax = camera_zoom_upper_bound(screen_w, screen_h);
+                        camera_zoom = camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
 
                         // Zoom towards cursor
                         let factor = camera_zoom / old_zoom;
@@ -819,7 +847,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
                                             // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
-                                            let font_size = (((target_font_size.round() as i32).clamp(12, 72) + 1) / 2 * 2) as f32;
+                                            let font_size = (((target_font_size.round() as i32).clamp(16, 96) + 1) / 2 * 2) as f32;
 
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
                                             let troops_for_label = troop_label_throttle

@@ -25,7 +25,7 @@ fn main() {
     let format = surface.info().format;
 
     render_ctx.command_encoder.start();
-    let map_renderer = MapRenderer::new(
+    let mut map_renderer = MapRenderer::new(
         &render_ctx.context,
         &mut render_ctx.command_encoder,
         MW,
@@ -50,7 +50,7 @@ fn main() {
     }
 
     render_ctx.command_encoder.start();
-    map_renderer.update(&mut render_ctx.command_encoder, &game_map);
+    map_renderer.update(&mut render_ctx.command_encoder, &render_ctx.context, &game_map);
     let sp_up = render_ctx.context.submit(&mut render_ctx.command_encoder);
     let _ = render_ctx.context.wait_for(&sp_up, !0);
 

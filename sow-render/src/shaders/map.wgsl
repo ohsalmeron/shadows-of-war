@@ -74,13 +74,62 @@ fn hex_to_world(cell_x: i32, cell_y: i32) -> vec2<f32> {
     return vec2<f32>(x, y);
 }
 
-/// HOI-style matte paper map: partial desaturation + mid luminance clamp (no neon plastic).
+/// Unit directions from hex center toward each neighbor (odd/even row layout matches border tests).
+fn hex_neighbor_dirs(cell_x: i32, cell_y: i32) -> array<vec2<f32>, 6> {
+    var d: array<vec2<f32>, 6>;
+    let center = hex_to_world(cell_x, cell_y);
+    let is_odd = (cell_y % 2) != 0;
+    if is_odd {
+        d[0] = hex_to_world(cell_x + 1, cell_y) - center;
+        d[1] = hex_to_world(cell_x - 1, cell_y) - center;
+        d[2] = hex_to_world(cell_x, cell_y - 1) - center;
+        d[3] = hex_to_world(cell_x + 1, cell_y - 1) - center;
+        d[4] = hex_to_world(cell_x, cell_y + 1) - center;
+        d[5] = hex_to_world(cell_x + 1, cell_y + 1) - center;
+    } else {
+        d[0] = hex_to_world(cell_x + 1, cell_y) - center;
+        d[1] = hex_to_world(cell_x - 1, cell_y) - center;
+        d[2] = hex_to_world(cell_x - 1, cell_y - 1) - center;
+        d[3] = hex_to_world(cell_x, cell_y - 1) - center;
+        d[4] = hex_to_world(cell_x - 1, cell_y + 1) - center;
+        d[5] = hex_to_world(cell_x, cell_y + 1) - center;
+    }
+    return d;
+}
+
+/// How close this fragment is to any land-facing edge (0 = hex interior, 1 = at rim).
+fn water_coastal_edge_weight(local_pos: vec2<f32>, border_mask: u32, dirs: array<vec2<f32>, 6>) -> f32 {
+    var w = 0.0;
+    if (border_mask & 1u) != 0u {
+        w = max(w, smoothstep(0.05, 0.42, dot(local_pos, normalize(dirs[0]))));
+    }
+    if (border_mask & 2u) != 0u {
+        w = max(w, smoothstep(0.05, 0.42, dot(local_pos, normalize(dirs[1]))));
+    }
+    if (border_mask & 4u) != 0u {
+        w = max(w, smoothstep(0.05, 0.42, dot(local_pos, normalize(dirs[2]))));
+    }
+    if (border_mask & 8u) != 0u {
+        w = max(w, smoothstep(0.05, 0.42, dot(local_pos, normalize(dirs[3]))));
+    }
+    if (border_mask & 16u) != 0u {
+        w = max(w, smoothstep(0.05, 0.42, dot(local_pos, normalize(dirs[4]))));
+    }
+    if (border_mask & 32u) != 0u {
+        w = max(w, smoothstep(0.05, 0.42, dot(local_pos, normalize(dirs[5]))));
+    }
+    return clamp(w, 0.0, 1.0);
+}
+
+/// Rich map-grade: keep chroma, deepen lows, avoid pastel mid-grey wash.
 fn grade_paper_rgb(rgb: vec3<f32>, saturation: f32) -> vec3<f32> {
     let y = dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
     let grey = vec3<f32>(y);
     var out = mix(grey, rgb, saturation);
-    out = out * 0.94;
-    return clamp(out, vec3<f32>(0.14), vec3<f32>(0.72));
+    // Richer chroma: keep deep blacks in lows, avoid pastel mid-grey wash on highs.
+    let lift = 0.58 + 0.52 * y;
+    out = out * lift;
+    return clamp(out, vec3<f32>(0.04), vec3<f32>(0.98));
 }
 
 @fragment
@@ -132,12 +181,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let COASTAL_COLOR = vec3<f32>(0.1, 0.5, 0.6);
         let FOAM_COLOR = vec3<f32>(0.9, 0.95, 1.0);
         let SPECULAR_COLOR = vec3<f32>(1.0, 0.95, 0.8);
-        
+
         var base_color = DEEP_OCEAN_COLOR;
-        
-        // Coastal Detection: if border_mask > 0, at least one neighbor is land
+
+        // Thinner visual shores: blend deep/coast by how enclosed the water is (land neighbor count),
+        // and only emphasize cyan/foam near land-facing hex edges (not the whole water tile).
+        var foam_coast_scale = 0.0;
         if border_mask > 0u {
-            base_color = COASTAL_COLOR;
+            let n = countOneBits(border_mask);
+            // Open water (few land neighbors) stays vivid; narrow channels / holes pull toward deep blue.
+            let k_enclosure = clamp(0.24 + 0.76 / f32(n * n), 0.1, 1.0);
+            let center_w = hex_to_world(cell_x, cell_y);
+            let local_w = vec2<f32>(world_x, world_y) - center_w;
+            let dirs_w = hex_neighbor_dirs(cell_x, cell_y);
+            let edge_w = water_coastal_edge_weight(local_w, border_mask, dirs_w);
+            let coast_mix = clamp(k_enclosure * edge_w, 0.0, 1.0);
+            base_color = mix(DEEP_OCEAN_COLOR, COASTAL_COLOR, coast_mix);
+            foam_coast_scale = 0.32 * clamp(1.0 - 0.13 * f32(n - 1u), 0.18, 1.0);
         }
 
         // Texture-based organic waves using water.bin (256x256 wrapping noise)
@@ -157,10 +217,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let WAVE_HIGHLIGHT_COLOR = vec3<f32>(0.1, 0.2, 0.7);
         var final_color = mix(base_color, WAVE_HIGHLIGHT_COLOR, combined_waves * 0.18);
         
-        // If coastal, mix in foam based on noise
+        // If coastal, mix in foam based on noise (weaker in enclosed water).
         if border_mask > 0u {
             let foam_mix = smoothstep(0.4, 0.8, wave2 + wave3 * 0.5);
-            final_color = mix(final_color, FOAM_COLOR, foam_mix * 0.32);
+            final_color = mix(final_color, FOAM_COLOR, foam_mix * foam_coast_scale);
         }
 
         // Specular glint — keep very subtle (matte paper map; avoid shiny ocean).
@@ -194,21 +254,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let g = abs(fract(hue + 0.333) * 2.0 - 1.0);
             let b = abs(fract(hue + 0.666) * 2.0 - 1.0);
             raw_rgb = vec3<f32>(r, g, b);
-            paper_sat = 0.52;
+            paper_sat = 0.82;
         } else if is_nation {
             let id = f32(owner_id);
             let r = fract(id * 0.123);
             let g = fract(id * 0.456);
             let b = fract(id * 0.789);
-            raw_rgb = vec3<f32>(0.3 + r * 0.5, 0.3 + g * 0.5, 0.3 + b * 0.5);
-            paper_sat = 0.58;
+            raw_rgb = vec3<f32>(0.1 + r * 0.78, 0.08 + g * 0.76, 0.12 + b * 0.8);
+            paper_sat = 0.86;
         } else {
             let id = f32(owner_id);
             let r = fract(id * 0.123);
             let g = fract(id * 0.456);
             let b = fract(id * 0.789);
-            raw_rgb = vec3<f32>(0.5 + r * 0.3, 0.5 + g * 0.3, 0.5 + b * 0.3);
-            paper_sat = 0.68;
+            raw_rgb = vec3<f32>(0.18 + r * 0.72, 0.12 + g * 0.76, 0.14 + b * 0.74);
+            paper_sat = 0.9;
         }
         player_color = vec4<f32>(grade_paper_rgb(raw_rgb, paper_sat), 1.0);
         
@@ -232,14 +292,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
             let shockwave = flash_val * globals.effect_shockwave_intensity;
             let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), player_color.rgb, 1.0 - flash_val);
-            base_color = vec4<f32>(mix(base_color.rgb, flash_color, shockwave * 0.42), 1.0);
+            base_color = vec4<f32>(mix(base_color.rgb, flash_color, shockwave * 0.32), 1.0);
         }
     } else {
         base_color = terrain_color;
     }
 
-    // Border and Shoreline Logic
-    // In OpenFront, a border is drawn if the owner changes OR if a land tile borders water
+    // Owned tiles: rim shadow + slow micro-gradient (depth without washing toward white).
+    if has_player_color {
+        let hc = hex_to_world(cell_x, cell_y);
+        let lp = vec2<f32>(world_x, world_y) - hc;
+        let rim = clamp(length(lp) * 0.36, 0.0, 1.0);
+        let depth = mix(1.0, 0.64, rim * rim);
+        let grain = sin(dot(lp, vec2<f32>(11.0, 7.3)) + f32(cell_x * 17 + cell_y * 3) + globals.time * 0.07) * 0.042;
+        base_color = vec4<f32>(clamp(base_color.rgb * (depth + grain), vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    }
+
+    // Border: political owner change, or land vs open ocean (not inland lake — see map_compute.wgsl).
     var should_draw_border = false;
     
     if border_mask != 0u {
@@ -258,32 +327,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         
         let border_threshold = 0.5 - thickness;
 
-        let is_odd = (cell_y % 2) != 0;
-        var dir_0: vec2<f32>; var dir_1: vec2<f32>; var dir_2: vec2<f32>; 
-        var dir_3: vec2<f32>; var dir_4: vec2<f32>; var dir_5: vec2<f32>;
-        
-        if is_odd {
-            dir_0 = hex_to_world(cell_x + 1, cell_y) - center;
-            dir_1 = hex_to_world(cell_x - 1, cell_y) - center;
-            dir_2 = hex_to_world(cell_x, cell_y - 1) - center;
-            dir_3 = hex_to_world(cell_x + 1, cell_y - 1) - center;
-            dir_4 = hex_to_world(cell_x, cell_y + 1) - center;
-            dir_5 = hex_to_world(cell_x + 1, cell_y + 1) - center;
-        } else {
-            dir_0 = hex_to_world(cell_x + 1, cell_y) - center;
-            dir_1 = hex_to_world(cell_x - 1, cell_y) - center;
-            dir_2 = hex_to_world(cell_x - 1, cell_y - 1) - center;
-            dir_3 = hex_to_world(cell_x, cell_y - 1) - center;
-            dir_4 = hex_to_world(cell_x - 1, cell_y + 1) - center;
-            dir_5 = hex_to_world(cell_x, cell_y + 1) - center;
-        }
-
-        if (border_mask & 1u) != 0u && dot(local_pos, dir_0) > border_threshold { should_draw_border = true; }
-        if (border_mask & 2u) != 0u && dot(local_pos, dir_1) > border_threshold { should_draw_border = true; }
-        if (border_mask & 4u) != 0u && dot(local_pos, dir_2) > border_threshold { should_draw_border = true; }
-        if (border_mask & 8u) != 0u && dot(local_pos, dir_3) > border_threshold { should_draw_border = true; }
-        if (border_mask & 16u) != 0u && dot(local_pos, dir_4) > border_threshold { should_draw_border = true; }
-        if (border_mask & 32u) != 0u && dot(local_pos, dir_5) > border_threshold { should_draw_border = true; }
+        let dirs_b = hex_neighbor_dirs(cell_x, cell_y);
+        if (border_mask & 1u) != 0u && dot(local_pos, dirs_b[0]) > border_threshold { should_draw_border = true; }
+        if (border_mask & 2u) != 0u && dot(local_pos, dirs_b[1]) > border_threshold { should_draw_border = true; }
+        if (border_mask & 4u) != 0u && dot(local_pos, dirs_b[2]) > border_threshold { should_draw_border = true; }
+        if (border_mask & 8u) != 0u && dot(local_pos, dirs_b[3]) > border_threshold { should_draw_border = true; }
+        if (border_mask & 16u) != 0u && dot(local_pos, dirs_b[4]) > border_threshold { should_draw_border = true; }
+        if (border_mask & 32u) != 0u && dot(local_pos, dirs_b[5]) > border_threshold { should_draw_border = true; }
     }
 
     if should_draw_border {
@@ -292,7 +342,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             if owner_id == globals.local_player_id {
                 // Subtle edge emphasis (avoid bright pulsing "neon" border).
                 let pulse = (sin(globals.time * 6.0) + 1.0) * 0.5;
-                let highlight = mix(player_color.rgb, vec3<f32>(1.0, 1.0, 1.0), pulse * 0.22);
+                let highlight = mix(player_color.rgb, vec3<f32>(1.0, 1.0, 1.0), pulse * 0.12);
                 border_color = vec4<f32>(highlight, 1.0);
                 base_color = border_color;
             } else {
@@ -312,7 +362,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 
                 // Add shockwave flash to border color
                 if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-                    let flash_color = mix(border_color.rgb, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave_intensity * 0.55);
+                    let flash_color = mix(border_color.rgb, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave_intensity * 0.38);
                     border_color = vec4<f32>(flash_color, 1.0);
                 }
                 

@@ -138,6 +138,10 @@ mod border_mask_tests {
         }
     }
 
+    fn is_ocean_water(tb: u8) -> bool {
+        (tb & 0x80) == 0 && (tb & 0x20) != 0
+    }
+
     fn compute_border_mask_u32(raw: &[u32], w: u32, h: u32, x: u32, y: u32) -> u32 {
         let i = (y * w + x) as usize;
         let cell = raw[i];
@@ -159,11 +163,53 @@ mod border_mask_tests {
             let no = nraw & 0x3FF;
             let nterr = (nraw >> 16) & 0xFF;
             let n_land = (nterr & 0x80) != 0;
-            if no != owner || c_land != n_land {
+            if no != owner {
                 mask |= 1 << bit;
+                continue;
+            }
+            if c_land != n_land {
+                let n_ocean = is_ocean_water(nterr as u8);
+                let c_ocean = is_ocean_water(terr as u8);
+                if (c_land && !n_land && n_ocean) || (n_land && !c_land && c_ocean) {
+                    mask |= 1 << bit;
+                }
             }
         }
         mask
+    }
+
+    #[test]
+    fn land_next_to_inland_lake_same_owner_does_not_set_border_bit() {
+        let w = 6u32;
+        let h = 6u32;
+        let land = 0x80u32;
+        let lake = 0x03u32;
+        let owner = 120u32;
+        let mut raw: Vec<u32> = (0..(w * h)).map(|_| owner | (land << 16)).collect();
+        let cx = 2u32;
+        let cy = 2u32;
+        let nx = cx + 1;
+        let ni = (cy * w + nx) as usize;
+        raw[ni] = owner | (lake << 16);
+        let m = compute_border_mask_u32(&raw, w, h, cx, cy);
+        assert_eq!(m & 1, 0, "east bit: land vs inland lake same owner should not border");
+    }
+
+    #[test]
+    fn land_next_to_ocean_same_owner_sets_coast_bit() {
+        let w = 6u32;
+        let h = 6u32;
+        let land = 0x80u32;
+        let ocean = 0x20u32;
+        let owner = 120u32;
+        let mut raw: Vec<u32> = (0..(w * h)).map(|_| owner | (land << 16)).collect();
+        let cx = 2u32;
+        let cy = 2u32;
+        let nx = cx + 1;
+        let ni = (cy * w + nx) as usize;
+        raw[ni] = owner | (ocean << 16);
+        let m = compute_border_mask_u32(&raw, w, h, cx, cy);
+        assert_ne!(m & 1, 0, "east bit: land vs ocean same owner should still coast-border");
     }
 
     #[test]

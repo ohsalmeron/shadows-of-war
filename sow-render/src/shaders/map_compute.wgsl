@@ -1,6 +1,8 @@
 // Bakes packed territory texels: owner (0..9), border_mask (10..15), terrain byte (16..23), flash (24..31).
 // Neighbor order for border_mask bits 0..5 matches `GameMap::for_each_neighbor` in sow-core/src/map.rs
 // and edge direction tests in map.wgsl (odd vs even row).
+// Same-owner land vs *inland lake* (water without `is_ocean` / bit 5) does **not** set a bit — avoids
+// a hex “skeleton” over tribal interiors that mix land and lakes. Land vs open ocean still borders.
 struct MapComputeGlobals {
     width: u32,
     height: u32,
@@ -14,6 +16,11 @@ var<storage, read_write> baked_data: array<u32>;
 
 @group(0) @binding(2)
 var<uniform> globals: MapComputeGlobals;
+
+// Matches `MapTile` in sow-core: bit7 is_land, bit5 is_ocean (see terrain_type / lake vs ocean).
+fn is_ocean_water(tb: u32) -> bool {
+    return ((tb & 0x80u) == 0u) && ((tb & 0x20u) != 0u);
+}
 
 fn neighbor_delta(bit: u32, odd_row: bool) -> vec2<i32> {
     if odd_row {
@@ -77,7 +84,11 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             continue;
         }
         if c_land != n_land {
-            mask |= 1u << b;
+            let n_ocean = is_ocean_water(n_terrain);
+            let c_ocean = is_ocean_water(terrain_byte);
+            if (c_land && !n_land && n_ocean) || (n_land && !c_land && c_ocean) {
+                mask |= 1u << b;
+            }
         }
     }
 
