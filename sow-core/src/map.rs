@@ -34,6 +34,7 @@ pub enum TerrainType { Water, Lake, Land, Highland, Mountain }
 pub struct GameMap {
     pub width: u32, pub height: u32,
     pub terrain: Vec<MapTile>, pub state: Vec<u16>,
+    #[serde(skip)] pub dirty_tiles: Vec<usize>,
 }
 
 /// Delta `(dx, dy)` for `border_mask` bit `bit_index` (0..6). `odd_row` means `(cell_y % 2 != 0)`.
@@ -70,7 +71,7 @@ impl GameMap {
     pub const PLAYER_ID_MASK: u16 = 0x0FFF;
     pub fn new(width: u32, height: u32) -> Self {
         let size = (width * height) as usize;
-        Self { width, height, terrain: vec![MapTile::from_byte(0b10000000); size], state: vec![0; size] }
+        Self { width, height, terrain: vec![MapTile::from_byte(0b10000000); size], state: vec![0; size], dirty_tiles: Vec::new() }
     }
     pub fn ref_id(&self, x: u32, y: u32) -> usize { (y * self.width + x) as usize }
     pub fn terrain_type(&self, x: u32, y: u32) -> TerrainType { self.terrain[self.ref_id(x, y)].terrain_type() }
@@ -78,7 +79,12 @@ impl GameMap {
     pub fn owner_id(&self, x: u32, y: u32) -> u16 { self.state[self.ref_id(x, y)] & Self::PLAYER_ID_MASK }
     pub fn set_owner_id(&mut self, x: u32, y: u32, player_id: u16) {
         let r = self.ref_id(x, y);
-        self.state[r] = (self.state[r] & !Self::PLAYER_ID_MASK) | (player_id & Self::PLAYER_ID_MASK);
+        let old = self.state[r];
+        let new = (self.state[r] & !Self::PLAYER_ID_MASK) | (player_id & Self::PLAYER_ID_MASK);
+        if old != new {
+            self.state[r] = new;
+            self.dirty_tiles.push(r);
+        }
     }
     pub fn for_each_neighbor(&self, x: u32, y: u32, mut f: impl FnMut(u32, u32)) {
         let is_odd = !y.is_multiple_of(2);

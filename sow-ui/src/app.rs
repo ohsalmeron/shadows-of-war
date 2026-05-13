@@ -1,19 +1,19 @@
 use egui::Context;
-use crate::{UiAction, ui::{main_menu, hud, loading_screen}};
+use crate::{UiAction, ui::{main_menu, hud, loading_screen, asset_loader}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientPhase {
+    Splash,
     MainMenu,
-    Loading,
     Playing,
-    GameOver,
 }
 
 pub struct ClientApp {
     pub phase: ClientPhase,
     pub main_menu_state: main_menu::MainMenuState,
     pub hud_state: hud::HudState,
-    pub loading_state: loading_screen::LoadingState,
+    pub splash_state: loading_screen::SplashState,
+    pub asset_loader: asset_loader::AssetLoader,
 }
 
 impl Default for ClientApp {
@@ -25,7 +25,7 @@ impl Default for ClientApp {
 impl ClientApp {
     pub fn new() -> Self {
         Self {
-            phase: ClientPhase::MainMenu,
+            phase: ClientPhase::Splash,
             main_menu_state: main_menu::MainMenuState::default(),
             hud_state: hud::HudState {
                 gold: 0.0,
@@ -39,17 +39,18 @@ impl ClientApp {
                 sync_state: None,
                 last_troops_ui_refresh: None,
             },
-            loading_state: loading_screen::LoadingState::default(),
+            splash_state: loading_screen::SplashState::default(),
+            asset_loader: asset_loader::AssetLoader::new(),
         }
     }
 
     pub fn draw(&mut self, ctx: &Context) -> Option<UiAction> {
         match self.phase {
-            ClientPhase::MainMenu | ClientPhase::GameOver => {
-                main_menu::draw(ctx, &mut self.main_menu_state)
+            ClientPhase::MainMenu => {
+                main_menu::draw(ctx, &mut self.main_menu_state, &self.asset_loader)
             }
-            ClientPhase::Loading => {
-                loading_screen::draw(ctx, &mut self.loading_state);
+            ClientPhase::Splash => {
+                loading_screen::draw(ctx, &mut self.splash_state);
                 None
             }
             ClientPhase::Playing => {

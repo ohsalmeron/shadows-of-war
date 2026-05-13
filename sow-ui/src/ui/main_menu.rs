@@ -22,8 +22,7 @@ pub struct MainMenuState {
     pub player_name: String,
     pub pending_join_lobby_id: Option<u64>,
     pub joined_lobby_id: Option<u64>,
-    pub available_maps: Vec<String>,
-    pub selected_map: String,
+    pub downloading_map_name: Option<String>,
     pub is_downloading_map: bool,
     pub cached_map: Option<Vec<u8>>,
     pub map_download_progress: u8,
@@ -31,25 +30,6 @@ pub struct MainMenuState {
 
 impl Default for MainMenuState {
     fn default() -> Self {
-        // Load available maps
-        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-        let mut available_maps = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&root) {
-            for entry in entries.filter_map(|e| e.ok()) {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    if let Ok(name) = entry.file_name().into_string() {
-                        available_maps.push(name);
-                    }
-                }
-            }
-        }
-        available_maps.sort();
-        let selected_map = if available_maps.contains(&"europe".to_string()) {
-            "europe".to_string()
-        } else {
-            available_maps.first().cloned().unwrap_or_else(|| "europe".to_string())
-        };
-
         Self {
             is_connected: false,
             is_connecting: false,
@@ -61,8 +41,7 @@ impl Default for MainMenuState {
             player_name: "Commander".to_string(),
             pending_join_lobby_id: None,
             joined_lobby_id: None,
-            available_maps,
-            selected_map,
+            downloading_map_name: None,
             is_downloading_map: false,
             cached_map: None,
             map_download_progress: 0,
@@ -90,7 +69,7 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
 }
 
 #[allow(deprecated)]
-pub fn draw(ctx: &egui::Context, state: &mut MainMenuState) -> Option<UiAction> {
+pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate::ui::asset_loader::AssetLoader) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(ctx);
     let outer_pad = if compact { 16.0 } else { 24.0 };
@@ -163,11 +142,11 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState) -> Option<UiAction> 
                                 action_min_h,
                                 compact,
                                 &mut action,
+                                asset_loader,
                             );
                             ui.add_space(section_gap);
                             draw_right_column(
                                 ui,
-                                state,
                                 section_gap,
                                 action_min_h,
                                 compact,
@@ -192,6 +171,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState) -> Option<UiAction> 
                                         action_min_h,
                                         compact,
                                         &mut action,
+                                        asset_loader,
                                     );
                                 },
                             );
@@ -202,7 +182,6 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState) -> Option<UiAction> 
                                 |ui| {
                                     draw_right_column(
                                         ui,
-                                        state,
                                         section_gap,
                                         action_min_h,
                                         compact,
@@ -329,6 +308,7 @@ fn draw_left_column(
     action_min_h: f32,
     compact: bool,
     action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     ui.label(
         RichText::new("Nickname")
@@ -372,7 +352,7 @@ fn draw_left_column(
                 );
             } else {
                 for lobby in &state.lobbies {
-                    lobby_card(ui, lobby, action_min_h, action);
+                    lobby_card(ui, lobby, action_min_h, action, asset_loader);
                     ui.add_space(8.0);
                 }
             }
@@ -384,6 +364,7 @@ fn lobby_card(
     lobby: &LobbyInfo,
     action_min_h: f32,
     action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     let stroke = if lobby.is_counting_down {
         Stroke::new(1.5_f32, accent_solo_cyan())
@@ -398,6 +379,10 @@ fn lobby_card(
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
+                if let Some(texture) = asset_loader.thumbnail(&lobby.map_name) {
+                    ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(60.0, 45.0)).corner_radius(CornerRadius::same(4)));
+                    ui.add_space(8.0);
+                }
                 ui.vertical(|ui| {
                     ui.label(RichText::new(&lobby.map_name).strong().size(18.0));
                     ui.label(
@@ -434,7 +419,6 @@ fn lobby_card(
 
 fn draw_right_column(
     ui: &mut egui::Ui,
-    state: &mut MainMenuState,
     section_gap: f32,
     action_min_h: f32,
     compact: bool,
@@ -442,17 +426,7 @@ fn draw_right_column(
 ) {
     let solo_primary = if compact { 24.0 } else { 28.0 };
 
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Selected Map:").color(Color32::WHITE).strong());
-        egui::ComboBox::from_id_salt("map_picker")
-            .selected_text(state.selected_map.clone())
-            .show_ui(ui, |ui| {
-                for map in &state.available_maps {
-                    ui.selectable_value(&mut state.selected_map, map.clone(), map.clone());
-                }
-            });
-    });
-    ui.add_space(8.0);
+
 
     let solo_btn = egui::Button::new(
         RichText::new("SINGLE PLAYER").size(solo_primary).strong().color(Color32::BLACK),

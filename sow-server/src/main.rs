@@ -19,7 +19,6 @@ enum ServerEvent {
         client_tx: mpsc::Sender<String>,
         name: String,
         target_lobby_id: Option<u64>,
-        preferred_map: Option<String>,
     },
     Gameplay {
         lobby_id: u64,
@@ -77,8 +76,8 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, target_lobby_id, preferred_map } => {
-                            match join_player(&mut games, &mut nid, name, client_tx.clone(), target_lobby_id, preferred_map) {
+                        ServerEvent::Join { client_tx, name, target_lobby_id } => {
+                            match join_player(&mut games, &mut nid, name, client_tx.clone(), target_lobby_id) {
                                 Ok((lobby_id, player_id, map_name)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name };
                                     let json = serde_json::to_string(&ack).unwrap();
@@ -166,12 +165,11 @@ async fn main() {
 
                                     if let Ok(msg) = serde_json::from_str::<sow_core::protocol::ClientMessage>(text) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, preferred_map } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id } => {
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
                                                     client_tx: direct_tx.clone(),
                                                     target_lobby_id,
-                                                    preferred_map,
                                                 }).await;
                                             }
                                             sow_core::protocol::ClientMessage::Gameplay { intent } => {

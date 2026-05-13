@@ -26,6 +26,8 @@ ehttp = { version = "0.5.0", features = ["streaming"] }
 crossbeam-channel = "0.5.15"
 android_logger = "0.14"
 web-time = { workspace = true }
+image = { version = "0.25.10", default-features = false, features = ["webp"] }
+md5 = "0.8.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"

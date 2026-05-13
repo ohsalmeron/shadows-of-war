@@ -54,7 +54,6 @@ pub enum ClientMessage {
         name: String,
         is_observer: bool,
         target_lobby_id: Option<u64>,
-        preferred_map: Option<String>,
     },
     Gameplay {
         intent: GameplayIntent,
@@ -79,6 +78,7 @@ pub struct LobbyInfo {
     pub is_counting_down: bool,
     pub timer_secs: f32,
     pub map_name: String,
+    pub map_md5: Option<String>,
     pub players: Vec<LobbyPlayerSyncState>,
 }
 
@@ -116,7 +116,7 @@ pub struct ServerStartMessage {
     pub seed: u64,
     pub players: Vec<PlayerInfo>,
     pub missed_turns: Vec<Turn>,
-    pub map_data: Option<Vec<u8>>, // deflate compressed map.bin data
+    pub map_data: Option<Vec<u8>>, // currently unused (maps fetched via HTTP)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]

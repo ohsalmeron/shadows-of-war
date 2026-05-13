@@ -60,12 +60,14 @@ fn spawn_sow_client_connect(
 
 
 pub enum MapDownloadEvent {
+    MapReady(String, Vec<u8>),
+    ThumbnailReady(String, Vec<u8>),
     Progress(String, u8),
-    Complete(String, Vec<u8>),
     Error(String),
 }
 
 pub enum EngineInitEvent {
+    Status(String),
     Progress(f32),
     Complete(Box<sow_core::game::GameState>, sow_core::water_components::WaterComponents, Box<sow_core::protocol::ServerStartMessage>),
 }
@@ -666,6 +668,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     // Configuration variables removed from GameConfig
                                     let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
                                     
+                                    struct VisPlayer<'a> {
+                                        player: &'a sow_core::player::Player,
+                                        center: egui::Pos2,
+                                        pc: egui::Color32,
+                                        sizing_presence: f32,
+                                        lod_presence: f32,
+                                    }
+                                    let mut visible_players = Vec::with_capacity(engine.state.players.len());
+
                                     for player in &engine.state.players {
                                         if player.tile_count == 0 || !player.alive { continue; }
                                         
@@ -714,11 +725,42 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         let lod_presence = importance * (camera_zoom / sf);
                                         let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
 
+                                        visible_players.push(VisPlayer {
+                                            player, center, pc, sizing_presence, lod_presence
+                                        });
+                                    }
+
+                                    visible_players.sort_unstable_by(|a, b| {
+                                        let a_is_human = a.player.player_type == sow_core::player::PlayerType::Human;
+                                        let b_is_human = b.player.player_type == sow_core::player::PlayerType::Human;
+                                        if a_is_human != b_is_human {
+                                            return b_is_human.cmp(&a_is_human); // true > false
+                                        }
+                                        
+                                        let a_is_nation = a.player.id < 200;
+                                        let b_is_nation = b.player.id < 200;
+                                        if a_is_nation != b_is_nation {
+                                            return b_is_nation.cmp(&a_is_nation); // true > false
+                                        }
+                                        
+                                        b.lod_presence.partial_cmp(&a.lod_presence).unwrap_or(std::cmp::Ordering::Equal)
+                                    });
+
+                                    let mut full_labels_drawn = 0;
+
+                                    for vp in visible_players {
+                                        let player = vp.player;
+                                        let center = vp.center;
+                                        let pc = vp.pc;
+                                        let sizing_presence = vp.sizing_presence;
+                                        let lod_presence = vp.lod_presence;
+
                                         // Small nations require zooming in to appear.
                                         // Increased threshold to 12.0 to cull more tiny labels and boost performance.
-                                        let show_full = lod_presence >= 12.0;
+                                        let show_full = lod_presence >= 12.0 && full_labels_drawn < 100;
 
                                         if show_full {
+                                            full_labels_drawn += 1;
                                             let ui_text_scale = ClientVisualConfig::default().ui_text_scale;
 
                                             // 1. Bounding box for font fitting (reference zoom, not current zoom)
@@ -769,19 +811,19 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                     is_human,
                                                     pc,
                                                 );
-                                                cache_entry.troops_galley = painter.layout_no_wrap(
-                                                    format!("⚔ {}", new_troops_str),
+                                                cache_entry.troops_galley = crate::nameplates::layout_nameplate_troops_galley(
+                                                    &painter,
                                                     font_id,
-                                                    NAMEPLATE_FILL,
+                                                    &new_troops_str,
                                                 );
                                                 cache_entry.last_formatted_troops = new_troops_str.clone();
                                                 cache_entry.last_font_size = font_size;
                                             } else if new_troops_str != cache_entry.last_formatted_troops {
                                                 let font_id = egui::FontId::proportional(font_size);
-                                                cache_entry.troops_galley = painter.layout_no_wrap(
-                                                    format!("⚔ {}", new_troops_str),
+                                                cache_entry.troops_galley = crate::nameplates::layout_nameplate_troops_galley(
+                                                    &painter,
                                                     font_id,
-                                                    NAMEPLATE_FILL,
+                                                    &new_troops_str,
                                                 );
                                                 cache_entry.last_formatted_troops = new_troops_str;
                                             }
@@ -839,7 +881,6 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                 name: app.main_menu_state.player_name.clone(),
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
-                                                preferred_map: Some(app.main_menu_state.selected_map.clone()),
                                             };
                                             app.main_menu_state.pending_join_lobby_id = Some(id);
                                             if let Ok(json) = serde_json::to_string(&join_msg) {
@@ -864,23 +905,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             camera_x = 0.0;
                                             camera_y = 0.0;
                                             camera_zoom = 2.0;
-                                            app.phase = ClientPhase::MainMenu;
-                                            
-                                            // ── Proper Memory Cleanup ──
-                                            // Reset the engine to a clean preview state so the background menu is clean
-                                            // and the next singleplayer/multiplayer game doesn't inherit old state.
-                                            let config = GameConfig::default();
-                                            let state = GameState::new(12345, map_w, map_h, config);
-                                            let water = WaterComponents::compute(&state.map, |_| {});
-                                            engine = SowEngine::new(state, water);
-                                            engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-                                            engine.spawn_ai(0, 4);
-                                            turn_queue.clear();
-                                            label_positions.clear();
-                                            nameplate_cache.clear();
-                                            troop_label_throttle.clear();
-                                            needs_first_upload = true;
-                                            needs_map_upload = true;
+                                            app.phase = ClientPhase::Splash;
+                                            app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                                            app.splash_state.frames_drawn = 0;
                                         }
                                         UiAction::SetAttackRatio(r) => {
                                             app.hud_state.attack_ratio = r;
@@ -1019,9 +1046,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         if let Ok(start_msg) =
                             serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
                         {
-                            log::info!("Received ServerStartMessage; entering Loading phase immediately");
-                            app.phase = sow_ui::app::ClientPhase::Loading;
-                            app.loading_state.frames_drawn = 0;
+                            log::info!("Received ServerStartMessage; entering Splash phase immediately");
+                            app.phase = sow_ui::app::ClientPhase::Splash;
+                            app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
+                            app.splash_state.frames_drawn = 0;
                             app.main_menu_state.is_waiting = false;
                             app.main_menu_state.pending_join_lobby_id = None;
                             app.main_menu_state.joined_lobby_id = None;
@@ -1053,6 +1081,54 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         {
                             app.main_menu_state.lobbies = broadcast.lobbies.clone();
 
+                            let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                            let (thumbs_to_fetch, maps_to_fetch) = app.asset_loader.get_assets_to_fetch(&app.main_menu_state.lobbies);
+                            
+                            for map_name in thumbs_to_fetch {
+                                let url = format!("{}/{}/thumbnail.webp", maps_base.trim_end_matches('/'), map_name);
+                                let tx = map_tx.clone();
+                                let map_name_for_closure = map_name.clone();
+                                let request = ehttp::Request::get(&url);
+                                ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+                                    if let Ok(res) = result {
+                                        if res.ok {
+                                            let _ = tx.send(MapDownloadEvent::ThumbnailReady(map_name_for_closure, res.bytes));
+                                        }
+                                    }
+                                });
+                            }
+                            
+                            for map_name in maps_to_fetch {
+                                let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                                let tx = map_tx.clone();
+                                let map_name_for_closure = map_name.clone();
+                                
+                                let request = ehttp::Request::get(&url);
+                                let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                                
+                                ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
+                                    match result {
+                                        Ok(ehttp::streaming::Part::Response(res)) => {
+                                            if !res.ok {
+                                                log::warn!("Prefetch failed for {}", map_name_for_closure);
+                                                return std::ops::ControlFlow::Break(());
+                                            }
+                                            std::ops::ControlFlow::Continue(())
+                                        }
+                                        Ok(ehttp::streaming::Part::Chunk(chunk)) => {
+                                            if chunk.is_empty() {
+                                                let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
+                                                let _ = tx.send(MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                                return std::ops::ControlFlow::Break(());
+                                            }
+                                            accumulated.lock().unwrap().extend_from_slice(&chunk);
+                                            std::ops::ControlFlow::Continue(())
+                                        }
+                                        Err(_) => std::ops::ControlFlow::Break(()),
+                                    }
+                                });
+                            }
+
                             if app.main_menu_state.is_waiting {
                                 let key = my_lobby_id
                                     .or(app.main_menu_state.joined_lobby_id)
@@ -1078,19 +1154,6 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             my_lobby_id = None;
                             my_player_id = None;
 
-                            // Clean the engine state to prevent zombie data
-                            let config = GameConfig::default();
-                            let state = GameState::new(12345, map_w, map_h, config);
-                            let water = WaterComponents::compute(&state.map, |_| {});
-                            engine = SowEngine::new(state, water);
-                            engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-                            engine.spawn_ai(0, 4);
-                            turn_queue.clear();
-                            label_positions.clear();
-                            nameplate_cache.clear();
-                            troop_label_throttle.clear();
-                            needs_first_upload = true;
-
                             if closed.reason.contains("Requeueing") {
                                 log::info!("Auto-requeueing to a new lobby...");
                                 app.phase = ClientPhase::MainMenu;
@@ -1099,12 +1162,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     name: app.main_menu_state.player_name.clone(),
                                     is_observer: false,
                                     target_lobby_id: None, // Ask for next available lobby
-                                    preferred_map: Some(app.main_menu_state.selected_map.clone()),
                                 };
                                 let json = serde_json::to_string(&join_msg).unwrap();
                                 c.send(json);
                             } else {
-                                app.phase = ClientPhase::MainMenu;
+                                app.phase = ClientPhase::Splash;
+                                app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                                app.splash_state.frames_drawn = 0;
                                 app.main_menu_state.is_waiting = false;
                                 app.main_menu_state.pending_join_lobby_id = None;
                                 app.main_menu_state.joined_lobby_id = None;
@@ -1130,27 +1194,46 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             my_player_id = Some(ack.player_id);
                             app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
                             
-                            // Start downloading the map via HTTP
                             let map_name = ack.map_name.clone();
-                            app.main_menu_state.selected_map = map_name.clone();
-                            let tx = map_tx.clone();
-                            app.main_menu_state.is_downloading_map = true;
-                            app.loading_state.is_downloading_map = true;
-                            app.main_menu_state.cached_map = None;
+                            app.main_menu_state.downloading_map_name = Some(map_name.clone());
                             
-                            let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
-                            let url = format!("{}/{}/map.bin", maps_base.trim_end_matches('/'), map_name);
-                            log::info!("Downloading map from: {}", url);
+                            if let Some(texture) = app.asset_loader.thumbnail(&map_name) {
+                                app.splash_state.thumbnail = Some(texture.clone());
+                            } else {
+                                app.splash_state.thumbnail = None;
+                            }
                             
-                            // Send progress: 0 (Downloading)
-                            c.send(
-                                serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
-                                    lobby_id: ack.lobby_id,
-                                    player_id: ack.player_id,
-                                    progress: 0,
-                                })
-                                .unwrap(),
-                            );
+                            if app.asset_loader.has_map(&map_name) {
+                                log::info!("Map already cached, skipping download.");
+                                app.main_menu_state.cached_map = app.asset_loader.take_map(&map_name);
+                                app.main_menu_state.is_downloading_map = false;
+                                app.main_menu_state.map_download_progress = 100;
+                                c.send(
+                                    serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        lobby_id: ack.lobby_id,
+                                        player_id: ack.player_id,
+                                        progress: 100,
+                                    })
+                                    .unwrap(),
+                                );
+                            } else {
+                                let tx = map_tx.clone();
+                                app.main_menu_state.is_downloading_map = true;
+                                app.main_menu_state.cached_map = None;
+                                
+                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                                let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                                log::info!("Downloading map from: {}", url);
+                                
+                                // Send progress: 0 (Downloading)
+                                c.send(
+                                    serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        lobby_id: ack.lobby_id,
+                                        player_id: ack.player_id,
+                                        progress: 0,
+                                    })
+                                    .unwrap(),
+                                );
                             
                             let request = ehttp::Request::get(&url);
                             let map_name_for_closure = map_name.clone();
@@ -1184,7 +1267,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             // Done!
                                             let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
                                             log::info!("Map fully downloaded: {} bytes", final_bytes.len());
-                                            let _ = tx.send(MapDownloadEvent::Complete(map_name_for_closure.clone(), final_bytes));
+                                            let _ = tx.send(MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
                                             return std::ops::ControlFlow::Break(());
                                         }
                                         
@@ -1214,6 +1297,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     }
                                 }
                             });
+                            }
                             
                             continue;
                         }
@@ -1251,7 +1335,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 while let Ok(res) = map_rx.try_recv() {
                     match res {
                         MapDownloadEvent::Progress(downloaded_map_name, progress) => {
-                            if downloaded_map_name == app.main_menu_state.selected_map {
+                            if Some(downloaded_map_name.clone()) == app.main_menu_state.downloading_map_name {
                                 app.main_menu_state.map_download_progress = progress;
                                 if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
                                     if let Some(c) = net_client.as_ref() {
@@ -1264,12 +1348,44 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 }
                             }
                         }
-                        MapDownloadEvent::Complete(downloaded_map_name, bytes) => {
-                            if downloaded_map_name == app.main_menu_state.selected_map {
+                        MapDownloadEvent::ThumbnailReady(map_name, bytes) => {
+                            if let Ok(img) = image::load_from_memory(&bytes) {
+                                let size = [img.width() as _, img.height() as _];
+                                let image_buffer = img.to_rgba8();
+                                let pixels = image_buffer.as_flat_samples();
+                                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                                let texture = egui_ctx.load_texture(&map_name, color_image, egui::TextureOptions::LINEAR);
+                                app.asset_loader.thumbnails.insert(map_name.clone(), texture);
+                            } else {
+                                log::warn!("Failed to decode thumbnail for {}", map_name);
+                            }
+                            app.asset_loader.thumbnails_in_flight.remove(&map_name);
+                        }
+                        MapDownloadEvent::MapReady(map_name, bytes) => {
+                            let mut valid = true;
+                            if let Some(expected_md5) = app.asset_loader.expected_md5s.get(&map_name) {
+                                let digest = md5::compute(&bytes);
+                                let actual_md5 = format!("{:x}", digest);
+                                if actual_md5 != *expected_md5 {
+                                    log::error!("MD5 mismatch for map {}: expected {}, got {}", map_name, expected_md5, actual_md5);
+                                    valid = false;
+                                } else {
+                                    log::info!("MD5 verified for map {}", map_name);
+                                }
+                            }
+                            
+                            app.asset_loader.maps_in_flight.remove(&map_name);
+                            if valid {
+                                app.asset_loader.maps.insert(map_name.clone(), bytes.clone());
+                            } else {
+                                // Optionally handle failure, we just drop it so it can be retried later
+                                continue;
+                            }
+                            
+                            if Some(map_name.clone()) == app.main_menu_state.downloading_map_name {
                                 log::info!("Map download completed successfully.");
                                 app.main_menu_state.cached_map = Some(bytes);
                                 app.main_menu_state.is_downloading_map = false;
-                                app.loading_state.is_downloading_map = false;
                                 app.main_menu_state.map_download_progress = 100;
                                 
                                 if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
@@ -1281,14 +1397,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         }).unwrap());
                                     }
                                 }
-                            } else {
-                                log::warn!("Discarding old map download for {}", downloaded_map_name);
                             }
                         }
                         MapDownloadEvent::Error(e) => {
                             log::error!("Map download aborted: {}", e);
                             app.main_menu_state.is_downloading_map = false;
-                            app.loading_state.is_downloading_map = false;
                             // Optionally return to main menu or show error
                             app.phase = ClientPhase::MainMenu;
                             app.main_menu_state.is_waiting = false;
@@ -1300,20 +1413,35 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                 if let Some(start_msg) = engine_init_queued_msg.take() {
                     if app.main_menu_state.is_downloading_map {
-                        app.loading_state.is_downloading_map = true;
                         engine_init_queued_msg = Some(start_msg);
                     } else {
-                        app.loading_state.is_downloading_map = false;
                         log::info!("Map downloaded, computing heavy init in background");
                         
-                        app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
-                        app.loading_state.progress = 0.1;
+                        app.splash_state.status_text = "Computing terrain and water geometry...".to_string();
+                        app.splash_state.progress = 0.1;
 
                         let cached_map = app.main_menu_state.cached_map.take();
                         let start_msg_clone = start_msg.clone();
                         let tx = engine_init_tx.clone();
 
                         let init_logic = move || {
+                            let _ = tx.send(EngineInitEvent::Status("Decompressing map...".to_string()));
+                            
+                            let mut uncompressed_map = None;
+                            if let Some(bytes) = cached_map {
+                                let mut uncompressed = Vec::new();
+                                let mut decompressor = brotli::Decompressor::new(bytes.as_slice(), 4096);
+                                if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed).is_ok() {
+                                    uncompressed_map = Some(uncompressed);
+                                } else {
+                                    log::error!("Failed to decompress map.bin.br payload");
+                                }
+                            } else {
+                                log::error!("Cached map data not found! Terrain will be empty.");
+                            }
+                            
+                            let _ = tx.send(EngineInitEvent::Status("Computing terrain and water geometry...".to_string()));
+
                             let w = start_msg_clone.config.map_width;
                             let h = start_msg_clone.config.map_height;
                             let mut state = sow_core::game::GameState::new(
@@ -1323,7 +1451,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 start_msg_clone.config.clone(),
                             );
                             
-                            if let Some(bytes) = cached_map {
+                            if let Some(bytes) = uncompressed_map {
                                 if bytes.len() == state.map.terrain.len() {
                                     let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
                                     unsafe {
@@ -1336,8 +1464,6 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         }
                                     }
                                 }
-                            } else {
-                                log::error!("Cached map data not found! Terrain will be empty.");
                             }
 
                             let tx_prog = tx.clone();
@@ -1360,23 +1486,54 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     }
                 }
                 // Poll engine init channel
-                if app.phase == sow_ui::app::ClientPhase::Loading {
-                    while let Ok(event) = engine_init_rx.try_recv() {
-                        match event {
-                            EngineInitEvent::Progress(prog) => {
-                                app.loading_state.progress = prog;
+                if app.phase == sow_ui::app::ClientPhase::Splash {
+                    match app.splash_state.job {
+                        sow_ui::ui::loading_screen::SplashJob::Boot | sow_ui::ui::loading_screen::SplashJob::Reconnect => {
+                            if app.main_menu_state.is_connected {
+                                app.phase = ClientPhase::MainMenu;
+                            } else {
+                                app.splash_state.status_text = "Connecting to Server...".to_string();
                             }
-                            EngineInitEvent::Complete(state, water, start_msg) => {
-                                log::info!("Engine initialization complete in background thread.");
-                                app.loading_state.status_text = "Uploading assets to GPU...".to_string();
-                                app.loading_state.progress = 1.0;
-                                app.loading_state.frames_drawn = 0; // Reset to ensure we draw the new text
-                                pending_engine_init_data = Some((*state, water, *start_msg));
+                        }
+                        sow_ui::ui::loading_screen::SplashJob::ExitGame => {
+                            // Clean the engine state
+                            let config = GameConfig::default();
+                            let state = GameState::new(12345, map_w, map_h, config);
+                            let water = WaterComponents::compute(&state.map, |_| {});
+                            engine = SowEngine::new(state, water);
+                            engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
+                            engine.spawn_ai(0, 4);
+                            turn_queue.clear();
+                            label_positions.clear();
+                            nameplate_cache.clear();
+                            troop_label_throttle.clear();
+                            needs_first_upload = true;
+                            needs_map_upload = true;
+                            
+                            app.phase = ClientPhase::MainMenu;
+                        }
+                        sow_ui::ui::loading_screen::SplashJob::EnterGame => {
+                            while let Ok(event) = engine_init_rx.try_recv() {
+                                match event {
+                                    EngineInitEvent::Status(msg) => {
+                                        app.splash_state.status_text = msg;
+                                    }
+                                    EngineInitEvent::Progress(prog) => {
+                                        app.splash_state.progress = prog;
+                                    }
+                                    EngineInitEvent::Complete(state, water, start_msg) => {
+                                        log::info!("Engine initialization complete in background thread.");
+                                        app.splash_state.status_text = "Uploading assets to GPU...".to_string();
+                                        app.splash_state.progress = 1.0;
+                                        app.splash_state.frames_drawn = 0; // Reset to ensure we draw the new text
+                                        pending_engine_init_data = Some((*state, water, *start_msg));
+                                    }
+                                }
                             }
                         }
                     }
 
-                    if pending_engine_init_data.is_some() && app.loading_state.frames_drawn > 1 {
+                    if app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame && pending_engine_init_data.is_some() && app.splash_state.frames_drawn > 1 {
                         // We have drawn the "Uploading assets to GPU..." screen, now block the main thread!
                         let (state, water, start_msg) = pending_engine_init_data.take().unwrap();
                             

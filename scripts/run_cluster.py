@@ -8,6 +8,8 @@ import os
 import subprocess
 import time
 import shutil
+import json
+import hashlib
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -114,11 +116,30 @@ def main():
     (dist_dir / "index.html").write_text(template_str, encoding="utf-8")
 
     # 5. Compress
-    print("🗜️  5. Compressing Web Assets (Brotli)...")
+    print("🗜️  5. Compressing Web Assets & Maps (Brotli)...")
     if shutil.which("brotli"):
         subprocess.run(["brotli", "-f", "-Z", str(dist_dir / wasm_file)], check=False)
         subprocess.run(["brotli", "-f", "-Z", str(dist_dir / js_file)], check=False)
-        print("✅ Brotli compression finished.")
+        
+        maps_src = PROJECT_ROOT / "assets" / "maps"
+        for map_bin in maps_src.rglob("map.bin"):
+            print(f"   -> Compressing {map_bin.relative_to(PROJECT_ROOT)}...")
+            subprocess.run(["brotli", "-f", "-Z", str(map_bin)], check=True)
+            map_bin.unlink()
+            
+            map_br = map_bin.parent / (map_bin.name + ".br")
+            with open(map_br, "rb") as f:
+                md5_hash = hashlib.md5(f.read()).hexdigest()
+            
+            manifest_path = map_br.parent / "manifest.json"
+            if manifest_path.exists():
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+                manifest["map_md5"] = md5_hash
+                with open(manifest_path, "w") as f:
+                    json.dump(manifest, f, indent=2)
+            
+        print("✅ Brotli compression and MD5 hashing finished.")
     else:
         print("⚠️ 'brotli' command not found, skipping compression.")
 

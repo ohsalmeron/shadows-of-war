@@ -12,3 +12,4 @@ blade-graphics = { workspace = true }
 egui = "0.34"
 log = { workspace = true }
 web-time = { workspace = true }
+image = { version = "0.25.10", default-features = false, features = ["webp"] }

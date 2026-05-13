@@ -44,6 +44,7 @@ pub struct ServerLobby {
     pub pending_intents: Vec<StampedIntent>,
     pub seed: u64,
     pub config: GameConfig,
+    pub map_md5: Option<String>,
 }
 
 impl ServerLobby {
@@ -60,6 +61,16 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let maps = ["europe", "world"];
     config.map_name = maps[map_idx % maps.len()].to_string();
+    
+    let mut map_md5 = None;
+    let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
+    let map_dir = std::path::Path::new(&root).join(&config.map_name);
+    let manifest_path = map_dir.join("manifest.json");
+    if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
+        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data) {
+            map_md5 = manifest.map_md5;
+        }
+    }
 
     games.push(ServerLobby {
         id,
@@ -72,6 +83,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         pending_intents: Vec::new(),
         seed: 0,
         config,
+        map_md5,
     });
 }
 
@@ -136,7 +148,6 @@ pub fn join_player(
     name: String,
     client_tx: mpsc::Sender<String>,
     target_lobby_id: Option<u64>,
-    preferred_map: Option<String>,
 ) -> Result<(u64, u16, String), String> {
     let lobby_id = match resolve_join_target(target_lobby_id, games) {
         Some(id) => id,
@@ -159,11 +170,7 @@ pub fn join_player(
         return Err("Lobby is full".to_string());
     }
 
-    if lobby.players.is_empty() {
-        if let Some(map_name) = preferred_map {
-            lobby.config.map_name = map_name;
-        }
-    }
+    // (Map is strictly server-assigned)
 
     let player_id = lobby
         .players
@@ -205,14 +212,21 @@ fn start_match(lobby: &mut ServerLobby) {
     let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
     let map_dir = std::path::Path::new(&root).join(&lobby.config.map_name);
     let manifest_path = map_dir.join("manifest.json");
-    let bin_path = map_dir.join("map.bin");
+    let bin_path = map_dir.join("map.bin.br");
 
     let mut map_bytes = None;
     if let (Ok(m_data), Ok(b_data)) = (std::fs::read_to_string(&manifest_path), std::fs::read(&bin_path)) {
         if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data) {
             lobby.config.map_width = manifest.map.width;
             lobby.config.map_height = manifest.map.height;
-            map_bytes = Some(b_data);
+            
+            let mut uncompressed = Vec::new();
+            let mut decompressor = brotli::Decompressor::new(b_data.as_slice(), 4096);
+            if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed).is_ok() {
+                map_bytes = Some(uncompressed);
+            } else {
+                log::error!("Failed to decompress map.bin.br for {}", lobby.config.map_name);
+            }
         } else {
             log::error!("Failed to parse map manifest at {:?}", manifest_path);
         }
@@ -446,6 +460,7 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
                 0.0
             },
             map_name: g.config.map_name.clone(),
+            map_md5: g.map_md5.clone(),
             players: g.players.iter().map(|p| sow_core::protocol::LobbyPlayerSyncState {
                 name: p.name.clone(),
                 is_ready: g.ready_players.contains(&p.player_id),
