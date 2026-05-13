@@ -283,7 +283,7 @@ pub fn execute_ai_think(&mut self) {
                         let owner = self.state.map.owner_id(nx, ny);
                         if owner != bot_id {
                             if owner == 0 {
-                                if self.state.map.terrain[self.state.map.ref_id(nx as u32, ny as u32)].is_land() {
+                                if self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
                                     has_neutral = true;
                                 }
                             } else {

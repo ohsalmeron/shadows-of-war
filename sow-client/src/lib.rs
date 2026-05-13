@@ -67,7 +67,7 @@ pub enum MapDownloadEvent {
 
 pub enum EngineInitEvent {
     Progress(f32),
-    Complete(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage),
+    Complete(Box<sow_core::game::GameState>, sow_core::water_components::WaterComponents, Box<sow_core::protocol::ServerStartMessage>),
 }
 
 pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
@@ -226,8 +226,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         .with_title("Shadows of War — Native")
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
 
-                    let win = builder.build(elwt).unwrap();
-                    win
+                    
+                    builder.build(elwt).unwrap()
                 });
                 
                 if surface.is_none() {
@@ -339,8 +339,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
                                 let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
                                 
-                                let q_f = world_x - world_y * 0.577350269;
-                                let r_f = world_y * 1.154700538;
+                                let q_f = world_x - world_y * 0.577_350_26;
+                                let r_f = world_y * 1.154_700_5;
                                 let s_f = -q_f - r_f;
 
                                 let mut rq = q_f.round();
@@ -493,8 +493,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
                                     let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
                                     
-                                    let q_f = world_x - world_y * 0.577350269;
-                                    let r_f = world_y * 1.154700538;
+                                    let q_f = world_x - world_y * 0.577_350_26;
+                                    let r_f = world_y * 1.154_700_5;
                                     let s_f = -q_f - r_f;
 
                                     let mut rq = q_f.round();
@@ -673,7 +673,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         let avg_row = player.sum_y as f32 / player.tile_count as f32;
                                         
                                         let target_cx = avg_col + 0.5 + (avg_row as i32 % 2) as f32 * 0.5;
-                                        let target_cy = (avg_row + 0.5) * 0.86602540378;
+                                        let target_cy = (avg_row + 0.5) * 0.866_025_4;
                                         
                                         // Smooth position interpolation
                                         let pos = label_positions.entry(player.id).or_insert((target_cx, target_cy));
@@ -897,7 +897,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                                         / player.tile_count as f32;
                                                     
                                                     let world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
-                                                    let world_cy = (cy + 0.5) * 0.86602540378;
+                                                    let world_cy = (cy + 0.5) * 0.866_025_4;
 
                                                     camera_x = screen_w * 0.5 - world_cx * camera_zoom;
                                                     camera_y = screen_h * 0.5 - world_cy * camera_zoom;
@@ -1344,7 +1344,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             let water = sow_core::water_components::WaterComponents::compute(&state.map, move |prog| {
                                 let _ = tx_prog.send(EngineInitEvent::Progress(prog));
                             });
-                            let _ = tx.send(EngineInitEvent::Complete(state, water, start_msg_clone));
+                            let _ = tx.send(EngineInitEvent::Complete(Box::new(state), water, Box::new(start_msg_clone)));
                         };
 
                         #[cfg(target_arch = "wasm32")]
@@ -1371,7 +1371,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 app.loading_state.status_text = "Uploading assets to GPU...".to_string();
                                 app.loading_state.progress = 1.0;
                                 app.loading_state.frames_drawn = 0; // Reset to ensure we draw the new text
-                                pending_engine_init_data = Some((state, water, start_msg));
+                                pending_engine_init_data = Some((*state, water, *start_msg));
                             }
                         }
                     }

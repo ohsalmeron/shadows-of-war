@@ -30,7 +30,7 @@ impl SowClient {
                     msg = rx.recv() => {
                         if let Some(text) = msg {
                             // log::debug!("[SOW-CLIENT] Sending msg to websocket: {}", text);
-                            if let Err(e) = write.send(Message::Text(text.into())).await {
+                            if let Err(e) = write.send(Message::Text(text)).await {
                                 log::error!("[SOW-CLIENT] Write error: {}", e);
                                 break;
                             }

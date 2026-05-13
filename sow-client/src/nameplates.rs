@@ -90,8 +90,7 @@ pub fn layout_nameplate_name_galley(
     player_color: egui::Color32,
 ) -> Arc<egui::Galley> {
     if is_human {
-        let mut job = LayoutJob::default();
-        job.break_on_newline = false;
+        let mut job = LayoutJob { break_on_newline: false, ..Default::default() };
         job.append(
             "★ ",
             0.0,

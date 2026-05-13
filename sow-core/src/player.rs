@@ -81,7 +81,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
 /// Matches WGSL `owner_id <= 16` branch so UI (nameplates) matches the map tint.
 #[inline]
 pub fn human_shader_territory_rgb(player_id: u16) -> [f32; 3] {
-    let hue = player_id as f32 * 0.618_033_99;
+    let hue = player_id as f32 * 0.618_034;
     let fract = |x: f32| x - x.floor();
     let r = (fract(hue) * 2.0 - 1.0).abs();
     let g = (fract(hue + 0.333) * 2.0 - 1.0).abs();

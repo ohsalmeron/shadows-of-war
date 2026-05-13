@@ -3,8 +3,8 @@
 //! The launch decision is gated by [`WaterComponents`]: a boat is only viable when
 //! the sender owns a shoreline tile on the **same connected water body** as the
 //! target's shoreline. This mirrors OpenFront's `SpatialQuery.closestShoreByWater`
-//! + `WaterManager.getWaterComponent` pair; it correctly handles lakes, rivers,
-//! and disjoint oceans instead of relying on an arbitrary Manhattan radius.
+//! and `WaterManager.getWaterComponent` pair; it correctly handles lakes, rivers,
+//!   and disjoint oceans instead of relying on an arbitrary Manhattan radius.
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -69,6 +69,7 @@ impl fmt::Display for FleetLaunchError {
 ///
 /// `target_border`: required when `target_owner != 0` (enemy player's `border_tiles`);
 /// ignored for neutral (`target_owner == 0`).
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_fleet_route(
     map: &GameMap,
     water_components: &WaterComponents,
@@ -384,6 +385,7 @@ pub fn closest_target_shore_for_player(
 ///
 /// `max_dist = 200` mirrors OpenFront's `canAttack` Manhattan cap for neutral
 /// (see `PlayerImpl.canAttack`); scratch buffers are reused across calls.
+#[allow(clippy::too_many_arguments)]
 pub fn closest_neutral_shore_on_components(
     map: &GameMap,
     components: &WaterComponents,

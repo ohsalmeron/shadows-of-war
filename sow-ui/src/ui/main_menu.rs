@@ -197,7 +197,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState) -> Option<UiAction> 
                             );
 
                             ui.allocate_ui_with_layout(
-                                egui::vec2(right_w.max(280.0).min(420.0), ui.available_height()),
+                                egui::vec2(right_w.clamp(280.0, 420.0), ui.available_height()),
                                 Layout::top_down(Align::Min),
                                 |ui| {
                                     draw_right_column(

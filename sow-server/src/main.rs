@@ -66,7 +66,7 @@ async fn main() {
                 _ = interval.tick() => {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
-                    master_tick(&mut games, &mut *nid);
+                    master_tick(&mut games, &mut nid);
                     let lobbies_info = build_lobby_broadcast(&games);
                     let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
                     let json = serde_json::to_string(&broadcast_msg).unwrap();
@@ -225,7 +225,7 @@ async fn main() {
                         }
                     }
                     Ok(broadcast_text) = global_rx.recv() => {
-                        if write.send(Message::Text(broadcast_text.into())).await.is_err() {
+                        if write.send(Message::Text(broadcast_text)).await.is_err() {
                             break;
                         }
                     }
@@ -240,7 +240,7 @@ async fn main() {
                             }
                         }
 
-                        if write.send(Message::Text(direct_text.into())).await.is_err() {
+                        if write.send(Message::Text(direct_text)).await.is_err() {
                             break;
                         }
                     }

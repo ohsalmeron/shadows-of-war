@@ -10,7 +10,7 @@ use crate::map::GameMap;
 const LAND_BIT: u8 = 7;
 const MAGNITUDE_MASK: u8 = 0x1f;
 const COST_SCALE: u32 = 100;
-const BASE_COST: u32 = 1 * COST_SCALE;
+const BASE_COST: u32 = COST_SCALE;
 
 #[inline]
 fn magnitude_penalty(magnitude: u8) -> u32 {
@@ -19,7 +19,7 @@ fn magnitude_penalty(magnitude: u8) -> u32 {
     } else if magnitude <= 10 {
         0
     } else {
-        1 * COST_SCALE
+        COST_SCALE
     }
 }
 
@@ -152,7 +152,7 @@ impl WaterAStar {
         let start_y = s0 / width;
         let dx_goal = goal_x as i32 - start_x as i32;
         let dy_goal = goal_y as i32 - start_y as i32;
-        let cross_norm = (dx_goal.unsigned_abs() + dy_goal.unsigned_abs()).max(1) as u32;
+        let cross_norm = (dx_goal.unsigned_abs() + dy_goal.unsigned_abs()).max(1);
 
         self.heap.clear();
 

@@ -16,6 +16,12 @@ pub struct ClientApp {
     pub loading_state: loading_screen::LoadingState,
 }
 
+impl Default for ClientApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClientApp {
     pub fn new() -> Self {
         Self {

@@ -95,7 +95,7 @@ impl GameState {
     pub fn set_tile_owner(&mut self, x: u32, y: u32, new_owner: u16) {
         let old_owner = self.map.owner_id(x, y);
         if old_owner == new_owner { return; }
-        let linear_idx = (y * self.map.width + x) as u32;
+        let linear_idx = y * self.map.width + x;
         if old_owner != 0 { if let Some(p) = self.player_mut(old_owner) {
             p.sum_x = p.sum_x.saturating_sub(x as u64); p.sum_y = p.sum_y.saturating_sub(y as u64);
             p.tile_count = p.tile_count.saturating_sub(1); p.border_remove(linear_idx);
@@ -116,10 +116,9 @@ impl GameState {
             n_count += 1;
         });
         
-        for i in 0..n_count {
-            let (nx, ny) = neighbors[i];
+        for &(nx, ny) in neighbors.iter().take(n_count) {
             let n_owner = self.map.owner_id(nx, ny);
-            let n_idx = (ny * self.map.width + nx) as u32;
+            let n_idx = ny * self.map.width + nx;
             if n_owner == old_owner && old_owner != 0 {
                 if let Some(p) = self.player_mut(old_owner) { p.border_insert(n_idx); }
             } else if n_owner == new_owner && new_owner != 0 {

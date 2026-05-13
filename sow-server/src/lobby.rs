@@ -184,7 +184,7 @@ pub fn join_player(
     Ok((lobby_id, player_id, lobby.config.map_name.clone()))
 }
 
-pub fn leave_player(games: &mut Vec<ServerLobby>, lobby_id: u64, player_id: u16) {
+pub fn leave_player(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
     if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
         let before = lobby.players.len();
         lobby.players.retain(|p| p.player_id != player_id);
