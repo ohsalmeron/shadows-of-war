@@ -170,7 +170,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let start_time = Instant::now();
     let tick_interval = Duration::from_millis(100);
     let mut needs_first_upload = true;
-    let mut needs_map_upload = true;
+
     let mut frame_count = 0;
     let mut last_fps_time = Instant::now();
     let mut current_fps = 0;
@@ -607,10 +607,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     render_ctx.command_encoder.init_texture(mr.texture);
                                     needs_first_upload = false;
                                 }
-                                if needs_map_upload {
-                                    mr.update(&mut render_ctx.command_encoder, &render_ctx.context, &engine.state.map);
-                                    needs_map_upload = false;
-                                }
+                                mr.update(&mut render_ctx.command_encoder, &render_ctx.context, &mut engine.state.map);
 
                                 let globals = MapGlobals {
                                     camera_pos: [camera_x, camera_y],
@@ -756,8 +753,12 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         let lod_presence = vp.lod_presence;
 
                                         // Small nations require zooming in to appear.
-                                        // Increased threshold to 12.0 to cull more tiny labels and boost performance.
-                                        let show_full = lod_presence >= 12.0 && full_labels_drawn < 100;
+                                        let threshold = if player.id >= 200 {
+                                            24.0 // Tribes need to be much closer/bigger to show text
+                                        } else {
+                                            8.0 // Nations can show text further away
+                                        };
+                                        let show_full = lod_presence >= threshold && full_labels_drawn < 100;
 
                                         if show_full {
                                             full_labels_drawn += 1;
@@ -778,7 +779,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
                                             // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
-                                            let font_size = (((target_font_size.round() as i32).clamp(16, 96) + 1) / 2 * 2) as f32;
+                                            let font_size = (((target_font_size.round() as i32).clamp(14, 64) + 1) / 2 * 2) as f32;
 
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
                                             let troops_for_label = troop_label_throttle
@@ -835,8 +836,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             
                                             let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
                                             let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                            paint_galley_outlined(&painter, name_pos, name_galley.clone(), cache_entry.last_font_size);
-                                            paint_galley_outlined(&painter, troops_pos, troops_galley.clone(), cache_entry.last_font_size);
+                                            crate::nameplates::paint_nameplate_galley(&painter, name_pos, name_galley.clone());
+                                            crate::nameplates::paint_nameplate_galley(&painter, troops_pos, troops_galley.clone());
                                         } else {
                                             // Dot only — zero text layout, bare metal fast
                                             painter.circle_filled(center, dot_r, pc);
@@ -1311,6 +1312,14 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     app.main_menu_state.is_connecting = false;
                     ws_connect_not_before =
                         ws_connect_not_before.min(now + Duration::from_millis(200));
+                        
+                    // Recover: Send the user back to the loader
+                    if app.phase != sow_ui::app::ClientPhase::Splash {
+                        app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::Reconnect;
+                        app.splash_state.status_text = "Connection lost. Reconnecting...".to_string();
+                        app.splash_state.progress = 0.0;
+                        app.phase = sow_ui::app::ClientPhase::Splash;
+                    }
                 }
 
                 #[cfg(target_arch = "wasm32")]
@@ -1508,7 +1517,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             nameplate_cache.clear();
                             troop_label_throttle.clear();
                             needs_first_upload = true;
-                            needs_map_upload = true;
+
                             
                             app.phase = ClientPhase::MainMenu;
                         }
@@ -1559,7 +1568,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 prev_sync_point = Some(sync_point);
                                 
                                 needs_first_upload = true;
-                                needs_map_upload = true;
+    
                             }
                             
                             app.phase = sow_ui::app::ClientPhase::Playing;
@@ -1600,7 +1609,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 engine.apply_stamped_intent(stamped, 0);
                             }
                             engine.tick();
-                            needs_map_upload = true;
+
                             
                             // Update UI HUD State from my player id
                             if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
@@ -1620,7 +1629,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         // Singleplayer: run freely based on local timer
                         if now.duration_since(last_tick) >= tick_interval {
                             engine.tick();
-                            needs_map_upload = true;
+
                             last_tick = now;
                             
                             if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {

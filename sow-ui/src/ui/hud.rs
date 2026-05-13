@@ -42,16 +42,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
 
     state.refresh_troop_display_if_due();
 
-    egui::Panel::top("economy_panel").show(ctx, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(format!(
-                "Troops: {:.0} / {:.0}",
-                state.troops_display, state.max_troops_display
-            ));
-            ui.add_space(20.0);
-            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
-        });
-    });
+    // Top panel removed as requested.
 
     if let Some(secs) = state.spawn_timer_secs {
         egui::Window::new("deployment_phase")
@@ -69,31 +60,30 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
             });
     }
 
-    // Bottom Panel: Attack Controls
-    egui::Panel::bottom("attack_panel").show(ctx, |ui| {
+    // Bottom Panel: Economy & Attack Controls
+    egui::TopBottomPanel::bottom("attack_panel").show(ctx, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Attack Ratio:");
+            // Economy
+            ui.label(format!("Troops: {:.0} / {:.0}", state.troops_display, state.max_troops_display));
+            ui.add_space(10.0);
+            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
+            
+            ui.add_space(30.0);
+            
+            // Attack Controls
+            ui.label("Attack:");
             let mut ratio = state.attack_ratio;
             if ui
-                .add(Slider::new(&mut ratio, 0.01..=1.0).show_value(false).text(""))
+                .add(Slider::new(&mut ratio, 0.01..=0.5).show_value(false).text(""))
                 .changed()
             {
                 action = Some(UiAction::SetAttackRatio(ratio));
             }
-            if ui.button("1%").clicked() {
+            if ui.small_button("1%").clicked() {
                 action = Some(UiAction::SetAttackRatio(0.01));
             }
-            if ui.button("10%").clicked() {
-                action = Some(UiAction::SetAttackRatio(0.1));
-            }
-            if ui.button("25%").clicked() {
-                action = Some(UiAction::SetAttackRatio(0.25));
-            }
-            if ui.button("50%").clicked() {
+            if ui.small_button("Max").clicked() {
                 action = Some(UiAction::SetAttackRatio(0.5));
-            }
-            if ui.button("100%").clicked() {
-                action = Some(UiAction::SetAttackRatio(1.0));
             }
         });
     });

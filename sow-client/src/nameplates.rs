@@ -55,31 +55,15 @@ pub fn nameplate_matte_player_rgb(rgb: [f32; 3]) -> egui::Color32 {
     egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
-/// Black halo behind text — circular samples (not axis + diagonal) for a smoother ring.
-pub fn paint_galley_outlined(
+/// Draw the text galley directly with high performance (no outline).
+pub fn paint_nameplate_galley(
     painter: &egui::Painter,
     pos: egui::Pos2,
     galley: Arc<egui::Galley>,
-    font_size: f32,
 ) {
-    if galley.is_empty() {
-        return;
+    if !galley.is_empty() {
+        painter.galley(pos, galley, NAMEPLATE_FILL);
     }
-    let step = (font_size * 0.055).clamp(0.1, 1.95);
-    const SAMPLES: usize = 12;
-    let tau = std::f32::consts::TAU;
-    let shadow = egui::Color32::from_white_alpha(150);
-    let r = step;
-    for i in 0..SAMPLES {
-        let a = (i as f32 / SAMPLES as f32) * tau;
-        let o = egui::vec2(a.cos() * r, a.sin() * r);
-        painter.galley_with_override_text_color(
-            pos + o,
-            galley.clone(),
-            shadow,
-        );
-    }
-    painter.galley(pos, galley, NAMEPLATE_FILL);
 }
 
 pub fn layout_nameplate_name_galley(
@@ -112,7 +96,7 @@ pub fn layout_nameplate_troops_galley(
     job.append(
         "⚔ ",
         0.0,
-        TextFormat::simple(font_id.clone(), egui::Color32::from_gray(200)),
+        TextFormat::simple(font_id.clone(), egui::Color32::BLACK),
     );
     job.append(troops_str, 0.0, TextFormat::simple(font_id, NAMEPLATE_FILL));
     painter.layout_job(job)

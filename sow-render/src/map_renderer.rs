@@ -216,27 +216,22 @@ impl MapRenderer {
     }
 
     /// Pack the game map into the upload buffer and copy to the GPU texture.
-    pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, map: &GameMap) {
+    pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, map: &mut GameMap) {
         let total = (self.width * self.height) as usize;
-        let dst_ptr = self.raw_buffer.data();
-        assert!(!dst_ptr.is_null(), "Raw buffer not mapped");
-
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total)
-        };
         
-        let w = self.width as i32;
-        let h = self.height as i32;
-
+        let mut first_frame = false;
         if self.cached_pixels.is_empty() {
             self.cached_pixels = vec![0; total];
             self.dirty_flags = vec![true; total];
+            first_frame = true;
         }
 
         let mut dirty_indices = Vec::new();
+        let w = self.width as i32;
+        let h = self.height as i32;
 
-        // 1. Scan for owner changes
-        for i in 0..total {
+        // 1. Scan for owner changes using map.dirty_tiles
+        for i in map.dirty_tiles.drain(..) {
             if self.prev_owners[i] != map.state[i] {
                 self.prev_owners[i] = map.state[i];
                 let owner_id = map.state[i] as u32;
@@ -276,7 +271,7 @@ impl MapRenderer {
         }
 
         // 2. Add previously full-dirty pass tiles if first frame
-        if self.dirty_flags[0] && dirty_indices.is_empty() {
+        if first_frame {
             for i in 0..total {
                 dirty_indices.push(i);
             }
@@ -301,6 +296,17 @@ impl MapRenderer {
         }
         self.active_flashes = next_flashes;
 
+        if dirty_indices.is_empty() && self.active_flashes.is_empty() && !first_frame {
+            return;
+        }
+
+        let dst_ptr = self.raw_buffer.data();
+        assert!(!dst_ptr.is_null(), "Raw buffer not mapped");
+
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total)
+        };
+        
         let check_neighbor = |nx: i32, ny: i32, center_owner: u32, c_is_water: bool| -> bool {
             if nx >= 0 && ny >= 0 && nx < w && ny < h {
                 let ni = (ny * w + nx) as usize;

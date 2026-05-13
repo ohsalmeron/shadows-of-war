@@ -5,12 +5,12 @@ use egui::{
 /// Dark Rift palette — see `dark-rift/crates/client/src/ui/theme.rs`.
 #[inline]
 pub fn menu_backdrop() -> Color32 {
-    Color32::from_rgba_unmultiplied(10, 20, 29, 247)
+    Color32::from_rgb(10, 20, 29)
 }
 
 #[inline]
 pub fn panel_bg() -> Color32 {
-    Color32::from_rgba_unmultiplied(25, 28, 36, 230)
+    Color32::from_rgb(25, 28, 36)
 }
 
 #[inline]

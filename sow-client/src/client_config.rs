@@ -37,7 +37,7 @@ impl Default for ClientVisualConfig {
             ui_lod_dot_radius: 2.0,
             
             // Nameplates
-            ui_text_scale: 0.25,
+            ui_text_scale: 1.0,
             
             // Effects (defaults low — raise for “cyber” map; HOI-style stays calm)
             effect_shockwave_intensity: 0.28,
