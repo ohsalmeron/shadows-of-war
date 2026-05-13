@@ -34,6 +34,11 @@ enum ServerEvent {
         lobby_id: u64,
         player_id: u16,
     },
+    MapDownloadProgress {
+        lobby_id: u64,
+        player_id: u16,
+        progress: u8,
+    },
 }
 
 #[tokio::main]
@@ -103,6 +108,13 @@ async fn main() {
                         ServerEvent::Ready { lobby_id, player_id } => {
                             if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
                                 lobby.ready_players.insert(player_id);
+                            }
+                        }
+                        ServerEvent::MapDownloadProgress { lobby_id, player_id, progress } => {
+                            if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
+                                if let Some(p) = lobby.players.iter_mut().find(|p| p.player_id == player_id) {
+                                    p.download_progress = progress;
+                                }
                             }
                         }
                     }
@@ -187,6 +199,17 @@ async fn main() {
                                                         let _ = ev_tx.send(ServerEvent::Ready {
                                                             lobby_id: l_id,
                                                             player_id: p_id,
+                                                        }).await;
+                                                    }
+                                                }
+                                            }
+                                            sow_core::protocol::ClientMessage::MapDownloadProgress { lobby_id, player_id, progress } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    if lobby_id == l_id && player_id == p_id {
+                                                        let _ = ev_tx.send(ServerEvent::MapDownloadProgress {
+                                                            lobby_id: l_id,
+                                                            player_id: p_id,
+                                                            progress,
                                                         }).await;
                                                     }
                                                 }

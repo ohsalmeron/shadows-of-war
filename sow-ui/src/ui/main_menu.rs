@@ -273,7 +273,7 @@ fn draw_queue_overlay(
                     if let Some(lobby) = state.lobbies.iter().find(|l| l.id == lobby_id) {
                         ui.label(RichText::new(format!("Connected Players ({}/{})", lobby.num_players, lobby.max_players)).strong().color(text_secondary()));
                         ui.add_space(8.0);
-                        for name in &lobby.player_names {
+                        for p in &lobby.players {
                             Frame::new()
                                 .fill(menu_secondary_button())
                                 .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 200)))
@@ -281,8 +281,20 @@ fn draw_queue_overlay(
                                 .inner_margin(Margin::same(10))
                                 .show(ui, |ui| {
                                     ui.set_width(220.0);
-                                    ui.vertical_centered(|ui| {
-                                        ui.label(RichText::new(name).size(16.0).color(Color32::WHITE));
+                                    ui.horizontal(|ui| {
+                                        let map_ready = p.download_progress == 100 || p.is_ready;
+                                        if map_ready {
+                                            ui.label(RichText::new("✔").color(Color32::GREEN));
+                                        } else {
+                                            ui.add(egui::Spinner::new().size(12.0));
+                                        }
+                                        ui.add_space(8.0);
+                                        ui.label(RichText::new(&p.name).size(16.0).color(Color32::WHITE));
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if !map_ready && p.download_progress > 0 {
+                                                ui.label(RichText::new(format!("{}%", p.download_progress)).size(12.0).color(text_secondary()));
+                                            }
+                                        });
                                     });
                                 });
                             ui.add_space(6.0);

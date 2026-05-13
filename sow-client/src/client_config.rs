@@ -25,14 +25,14 @@ impl Default for ClientVisualConfig {
         Self {
             // Shaders
             shader_terrain_sharpness: 0.0001,
-            // Matte paper-map: moderate fill; combine with lower mix weights in map.wgsl.
+            // Scales interior tint in map.wgsl (~0.9 effective fill at 0.88).
             shader_interior_alpha: 0.88,
-            shader_border_alpha: 0.95,
-            shader_border_thickness: 0.1,
+            shader_border_alpha: 0.92,
+            shader_border_thickness: 0.072,
             
-            // LODs & Visibility
-            ui_lod_2_zoom: 10.0,
-            ui_lod_3_zoom: 20.0,
+            // LOD shader thresholds (passed to map globals; keep below typical `camera_zoom_upper_bound`).
+            ui_lod_2_zoom: 128.0,
+            ui_lod_3_zoom: 1024.0,
             ui_lod_dot_radius: 2.0,
             
             // Nameplates

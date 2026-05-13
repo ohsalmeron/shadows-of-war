@@ -21,6 +21,37 @@ struct CachedNameplate {
     last_font_size: f32,
 }
 
+/// Nameplate troop text: snap to sim at most ~2/s per player (OpenFront-style).
+#[derive(Default)]
+struct TroopLabelThrottle {
+    last_refresh_wall_secs: HashMap<u16, f64>,
+    shown_troops: HashMap<u16, f64>,
+}
+
+impl TroopLabelThrottle {
+    const INTERVAL: f64 = 0.5;
+
+    fn displayed_troops(&mut self, wall_secs: f64, player_id: u16, sim_troops: f64) -> f64 {
+        let refresh = match self.last_refresh_wall_secs.get(&player_id) {
+            None => true,
+            Some(&t) if wall_secs - t >= Self::INTERVAL => true,
+            _ => false,
+        };
+        if refresh {
+            self.last_refresh_wall_secs.insert(player_id, wall_secs);
+            self.shown_troops.insert(player_id, sim_troops);
+            sim_troops
+        } else {
+            *self.shown_troops.get(&player_id).unwrap_or(&sim_troops)
+        }
+    }
+
+    fn clear(&mut self) {
+        self.last_refresh_wall_secs.clear();
+        self.shown_troops.clear();
+    }
+}
+
 /// Paper-map label ink (off-white, not pure white).
 const NAMEPLATE_FILL: egui::Color32 = egui::Color32::from_rgb(226, 226, 224);
 
@@ -193,9 +224,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     type EngineInitData = (sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage);
     let (engine_init_tx, engine_init_rx) = crossbeam_channel::unbounded::<EngineInitData>();
     let mut pending_engine_init_data: Option<EngineInitData> = None;
-    let mut pending_start_msg: Option<sow_core::protocol::ServerStartMessage> = None;
+    let mut engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
     let mut nameplate_cache: HashMap<u16, CachedNameplate> = HashMap::new();
+    let mut troop_label_throttle = TroopLabelThrottle::default();
 
     let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
@@ -712,7 +744,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             let egui_output = egui_ctx.run_ui(raw_input.clone(), |ctx| {
                                 if app.phase == ClientPhase::Playing {
                                     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("world_overlays")));
-                                    
+                                    let wall_secs = start_time.elapsed().as_secs_f64();
+
                                     // Configuration variables removed from GameConfig
                                     let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
                                     
@@ -785,10 +818,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                                             // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
-                                            let font_size = target_font_size.round().clamp(12.0, 72.0);
-                                            
+                                            // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
+                                            let font_size = (((target_font_size.round() as i32).clamp(12, 72) + 1) / 2 * 2) as f32;
+
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
-                                            let new_troops_str = render_troops(player.troops);
+                                            let troops_for_label = troop_label_throttle
+                                                .displayed_troops(wall_secs, player.id, player.troops);
+                                            let new_troops_str = render_troops(troops_for_label);
                                             let cache_entry = nameplate_cache.entry(player.id).or_insert_with(|| {
                                                 let font_id = egui::FontId::proportional(font_size);
                                                 let troops_str = new_troops_str.clone();
@@ -925,6 +961,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             turn_queue.clear();
                                             label_positions.clear();
                                             nameplate_cache.clear();
+                                            troop_label_throttle.clear();
                                             needs_first_upload = true;
                                             needs_map_upload = true;
                                         }
@@ -1064,8 +1101,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         if let Ok(start_msg) =
                             serde_json::from_str::<sow_core::protocol::ServerStartMessage>(&msg)
                         {
-                            log::info!("Received ServerStartMessage; queuing for engine init until map finishes downloading");
-                            pending_start_msg = Some(start_msg);
+                            log::info!("Received ServerStartMessage; entering Loading phase immediately");
+                            app.phase = sow_ui::app::ClientPhase::Loading;
+                            app.loading_state.frames_drawn = 0;
+                            app.main_menu_state.is_waiting = false;
+                            app.main_menu_state.pending_join_lobby_id = None;
+                            app.main_menu_state.joined_lobby_id = None;
+                            my_player_id = start_msg.my_player_id;
+                            
+                            engine_init_queued_msg = Some(start_msg);
                             continue;
                         }
                         
@@ -1125,6 +1169,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             engine.spawn_ai(0, 4);
                             turn_queue.clear();
                             label_positions.clear();
+                            nameplate_cache.clear();
+                            troop_label_throttle.clear();
                             needs_first_upload = true;
 
                             if closed.reason.contains("Requeueing") {
@@ -1176,6 +1222,16 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
                             let url = format!("{}/{}/map.bin", maps_base.trim_end_matches('/'), map_name);
                             log::info!("Downloading map from: {}", url);
+                            
+                            // Send progress: 0 (Downloading)
+                            c.send(
+                                serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                    lobby_id: ack.lobby_id,
+                                    player_id: ack.player_id,
+                                    progress: 0,
+                                })
+                                .unwrap(),
+                            );
                             
                             let request = ehttp::Request::get(&url);
                             ehttp::fetch(request, move |result| {
@@ -1236,6 +1292,16 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             app.main_menu_state.cached_map = Some(bytes);
                             app.main_menu_state.is_downloading_map = false;
                             app.loading_state.is_downloading_map = false;
+                            
+                            if let (Some(lid), Some(pid)) = (my_lobby_id, my_player_id) {
+                                if let Some(c) = net_client.as_ref() {
+                                    c.send(serde_json::to_string(&sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        lobby_id: lid,
+                                        player_id: pid,
+                                        progress: 100,
+                                    }).unwrap());
+                                }
+                            }
                         }
                         Err(e) => {
                             log::error!("Map download aborted: {}", e);
@@ -1250,18 +1316,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     }
                 }
 
-                if let Some(start_msg) = pending_start_msg.take() {
+                if let Some(start_msg) = engine_init_queued_msg.take() {
                     if app.main_menu_state.is_downloading_map {
-                        pending_start_msg = Some(start_msg);
+                        app.loading_state.is_downloading_map = true;
+                        engine_init_queued_msg = Some(start_msg);
                     } else {
-                        log::info!("Received ServerStartMessage; entering match");
-                        log::info!("Received ServerStartMessage; computing heavy init in background");
-                        app.phase = sow_ui::app::ClientPhase::Loading;
-                        app.loading_state.frames_drawn = 0;
-                        app.main_menu_state.is_waiting = false;
-                        app.main_menu_state.pending_join_lobby_id = None;
-                        app.main_menu_state.joined_lobby_id = None;
-                        my_player_id = start_msg.my_player_id;
+                        app.loading_state.is_downloading_map = false;
+                        log::info!("Map downloaded, computing heavy init in background");
                         
                         app.loading_state.status_text = "Computing terrain and water geometry...".to_string();
                         app.loading_state.progress = 0.1;
@@ -1308,6 +1369,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         std::thread::spawn(init_logic);
 
                         turn_queue.clear();
+                        nameplate_cache.clear();
+                        troop_label_throttle.clear();
                         needs_first_upload = true;
                     }
                 }

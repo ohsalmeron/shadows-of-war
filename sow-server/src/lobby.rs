@@ -28,6 +28,7 @@ pub struct PlayerConnection {
     pub name: String,
     pub player_id: u16,
     pub tx: mpsc::Sender<String>,
+    pub download_progress: u8,
 }
 
 pub struct ServerLobby {
@@ -54,6 +55,12 @@ impl ServerLobby {
 fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     let id = *next_id;
     *next_id += 1;
+    let mut config = GameConfig::default();
+    static NEXT_MAP_INDEX: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let maps = ["europe", "world"];
+    config.map_name = maps[map_idx % maps.len()].to_string();
+
     games.push(ServerLobby {
         id,
         phase: LobbyPhase::Waiting,
@@ -64,7 +71,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         engine: None,
         pending_intents: Vec::new(),
         seed: 0,
-        config: GameConfig::default(),
+        config,
     });
 }
 
@@ -170,6 +177,7 @@ pub fn join_player(
         name,
         player_id,
         tx: client_tx,
+        download_progress: 0,
     });
 
     log::info!("Player {} joined lobby {}", player_id, lobby_id);
@@ -356,12 +364,15 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                 LobbyPhase::Loading => {
                     lobby.countdown_secs -= TICK_SECS;
                     
-                    let players: Vec<String> = lobby.players.iter().map(|p| p.name.clone()).collect();
-                    let ready_players: Vec<String> = lobby.players.iter()
-                        .filter(|p| lobby.ready_players.contains(&p.player_id))
-                        .map(|p| p.name.clone()).collect();
+                    let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby.players.iter().map(|p| {
+                        sow_core::protocol::LobbyPlayerSyncState {
+                            name: p.name.clone(),
+                            is_ready: lobby.ready_players.contains(&p.player_id),
+                            download_progress: p.download_progress,
+                        }
+                    }).collect();
                     
-                    let all_ready = ready_players.len() >= players.len() && !players.is_empty();
+                    let all_ready = players.iter().all(|p| p.is_ready) && !players.is_empty();
                     
                     // If everyone is ready, we force the countdown to jump to 1.5s if it was higher,
                     // serving as the "Stabilizing..." delay.
@@ -374,7 +385,6 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                     let sync_msg = sow_core::protocol::ServerSyncStateMessage {
                         time_remaining: lobby.countdown_secs.max(0.0),
                         players,
-                        ready_players,
                         is_starting,
                     };
                     let sync_json = serde_json::to_string(&sync_msg).unwrap();
@@ -436,7 +446,11 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
                 0.0
             },
             map_name: g.config.map_name.clone(),
-            player_names: g.players.iter().map(|p| p.name.clone()).collect(),
+            players: g.players.iter().map(|p| sow_core::protocol::LobbyPlayerSyncState {
+                name: p.name.clone(),
+                is_ready: g.ready_players.contains(&p.player_id),
+                download_progress: p.download_progress,
+            }).collect(),
         })
         .collect();
     infos.sort_by_key(|l| l.id);

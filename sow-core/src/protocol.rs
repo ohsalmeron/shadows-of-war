@@ -59,6 +59,11 @@ pub enum ClientMessage {
     Gameplay {
         intent: GameplayIntent,
     },
+    MapDownloadProgress {
+        lobby_id: u64,
+        player_id: u16,
+        progress: u8,
+    },
     Leave {},
     Ready {
         lobby_id: u64,
@@ -74,7 +79,7 @@ pub struct LobbyInfo {
     pub is_counting_down: bool,
     pub timer_secs: f32,
     pub map_name: String,
-    pub player_names: Vec<String>,
+    pub players: Vec<LobbyPlayerSyncState>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -145,10 +150,16 @@ pub struct ServerTurnMessage {
 
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct LobbyPlayerSyncState {
+    pub name: String,
+    pub is_ready: bool,
+    pub download_progress: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ServerSyncStateMessage {
     pub time_remaining: f32,
-    pub players: Vec<String>,
-    pub ready_players: Vec<String>,
+    pub players: Vec<LobbyPlayerSyncState>,
     pub is_starting: bool,
 }
 

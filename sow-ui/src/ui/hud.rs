@@ -1,23 +1,53 @@
+use std::time::{Duration, Instant};
+
 use egui::{Align2, Color32, Context, RichText, Slider};
 use crate::UiAction;
 
 pub struct HudState {
     pub gold: f64,
+    /// Sim truth (updated on sim ticks); attack intents must use this.
     pub troops: f64,
+    /// Throttled for the HUD label only (~2/s), OpenFront-style.
+    pub troops_display: f64,
     pub max_troops: f64,
+    pub max_troops_display: f64,
     pub attack_ratio: f32,
     pub is_mobile: bool,
     pub spawn_timer_secs: Option<f32>,
     pub sync_state: Option<sow_core::protocol::ServerSyncStateMessage>,
+    pub(crate) last_troops_ui_refresh: Option<Instant>,
+}
+
+impl HudState {
+    /// Call each frame. Wall clock (not egui time) caps label updates at ~2/s.
+    pub fn refresh_troop_display_if_due(&mut self) {
+        const MIN_INTERVAL: Duration = Duration::from_millis(500);
+        let now = Instant::now();
+        let refresh = match self.last_troops_ui_refresh {
+            None => true,
+            Some(t) if now.duration_since(t) >= MIN_INTERVAL => true,
+            _ => false,
+        };
+        if refresh {
+            self.troops_display = self.troops;
+            self.max_troops_display = self.max_troops;
+            self.last_troops_ui_refresh = Some(now);
+        }
+    }
 }
 
 #[allow(deprecated)]
 pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     let mut action = None;
 
+    state.refresh_troop_display_if_due();
+
     egui::Panel::top("economy_panel").show(ctx, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label(format!("Troops: {:.0} / {:.0}", state.troops, state.max_troops));
+            ui.label(format!(
+                "Troops: {:.0} / {:.0}",
+                state.troops_display, state.max_troops_display
+            ));
             ui.add_space(20.0);
             ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
         });
@@ -119,8 +149,9 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                     ui.add_space(20.0);
                     
                     let total = sync.players.len();
-                    let ready = sync.ready_players.len();
-                    ui.add(egui::ProgressBar::new(ready as f32 / total as f32)
+                    let ready = sync.players.iter().filter(|p| p.is_ready).count();
+                    let ratio = if total == 0 { 0.0 } else { ready as f32 / total as f32 };
+                    ui.add(egui::ProgressBar::new(ratio)
                         .text(format!("{}/{} Players Ready", ready, total)));
                         
                     ui.add_space(15.0);
@@ -128,13 +159,12 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                     egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                         for p in &sync.players {
                             ui.horizontal(|ui| {
-                                let is_ready = sync.ready_players.contains(p);
-                                if is_ready { 
-                                    ui.label(RichText::new("✅").color(Color32::GREEN));
+                                if p.is_ready { 
+                                    ui.label(RichText::new("✔").color(Color32::GREEN));
                                 } else { 
                                     ui.add(egui::Spinner::new().size(14.0).color(Color32::LIGHT_GRAY));
                                 }
-                                ui.label(RichText::new(p).color(Color32::WHITE));
+                                ui.label(RichText::new(&p.name).color(Color32::WHITE));
                             });
                         }
                     });

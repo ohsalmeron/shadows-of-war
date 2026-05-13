@@ -80,7 +80,7 @@ fn grade_paper_rgb(rgb: vec3<f32>, saturation: f32) -> vec3<f32> {
     let grey = vec3<f32>(y);
     var out = mix(grey, rgb, saturation);
     out = out * 0.94;
-    return clamp(out, vec3<f32>(0.14), vec3<f32>(0.68));
+    return clamp(out, vec3<f32>(0.14), vec3<f32>(0.72));
 }
 
 @fragment
@@ -217,13 +217,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let stripe = (sin((world_x + world_y) * 0.15 - globals.time * 2.5) + 1.0) * 0.5;
             let stripe_fx = mix(1.0, (0.6 + 0.6 * stripe), globals.effect_energy_flow);
             let holo_color = player_color.rgb * stripe_fx;
-            let interior_mix = min(1.0, globals.visual_interior_alpha * 0.46);
+            // ~0.9 effective tint at default `visual_interior_alpha` (see client_config `shader_interior_alpha`).
+            let interior_mix = min(1.0, globals.visual_interior_alpha * 1.023);
             base_color = mix(terrain_color, vec4<f32>(holo_color, 1.0), interior_mix);
         } else if is_nation {
-            let interior_mix = min(1.0, globals.visual_interior_alpha * 0.50);
+            let interior_mix = min(1.0, globals.visual_interior_alpha * 1.023);
             base_color = mix(terrain_color, player_color, interior_mix);
         } else {
-            let interior_mix = min(1.0, globals.visual_interior_alpha * 0.42);
+            let interior_mix = min(1.0, globals.visual_interior_alpha * 1.023);
             base_color = mix(terrain_color, player_color, interior_mix);
         }
         
@@ -249,10 +250,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var thickness = globals.visual_border_thickness;
         if globals.effect_border_breathe > 0.0 {
             let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5; // 0 to 1
-            thickness += breathe * 0.028 * globals.effect_border_breathe;
+            thickness += breathe * 0.022 * globals.effect_border_breathe;
         }
         if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-            thickness += flash_val * 0.12 * globals.effect_shockwave_intensity;
+            thickness += flash_val * 0.065 * globals.effect_shockwave_intensity;
         }
         
         let border_threshold = 0.5 - thickness;
