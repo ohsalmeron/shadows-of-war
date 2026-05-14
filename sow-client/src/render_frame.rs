@@ -116,6 +116,7 @@ impl SowApp {
                             if let Some(ref mut sync) = self.app.hud_state.sync_state {
                                 sync.time_remaining = (sync.time_remaining - self.raw_input.predicted_dt).max(0.0);
                             }
+                            let mut local_cancel_intents = Vec::new();
                             
                             let egui_output = self.egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
                                 if self.app.phase == ClientPhase::Playing {
@@ -305,7 +306,89 @@ impl SowApp {
                                             painter.circle_stroke(center, dot_r, egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)));
                                         }
                                     }
+                                    // --- Render Fleets ---
+                                    if let Some(snap) = &self.current_snapshot {
+                                        for fleet in &snap.fleets {
+                                            let mut r = 0.5; let mut g = 0.5; let mut b = 0.5;
+                                            if let Some(owner) = snap.players.iter().find(|p| p.id == fleet.owner_id) {
+                                                r = owner.color[0]; g = owner.color[1]; b = owner.color[2];
+                                            }
+                                            let color = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
+                                            let trail_color = egui::Color32::from_rgba_premultiplied((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 150);
+
+                                            // Render trail
+                                            let trail_len = fleet.path_cursor.min(fleet.path.len());
+                                            for &tile in &fleet.path[..trail_len] {
+                                                let wx = (tile % self.map_w) as f32;
+                                                let wy = (tile / self.map_w) as f32;
+                                                let screen_x = self.camera_x + wx * self.camera_zoom;
+                                                let screen_y = self.camera_y + wy * self.camera_zoom;
+                                                let rect = egui::Rect::from_min_size(
+                                                    egui::pos2(screen_x, screen_y),
+                                                    egui::vec2(self.camera_zoom, self.camera_zoom)
+                                                );
+                                                painter.rect_filled(rect, 0.0, trail_color);
+                                            }
+
+                                            // Render boat
+                                            let wx = (fleet.current_tile % self.map_w) as f32;
+                                            let wy = (fleet.current_tile / self.map_w) as f32;
+                                            let screen_x = self.camera_x + wx * self.camera_zoom;
+                                            let screen_y = self.camera_y + wy * self.camera_zoom;
+                                            
+                                            let margin = self.camera_zoom * 0.15;
+                                            let rect = egui::Rect::from_min_max(
+                                                egui::pos2(screen_x + margin, screen_y + margin),
+                                                egui::pos2(screen_x + self.camera_zoom - margin, screen_y + self.camera_zoom - margin)
+                                            );
+                                            
+                                            painter.rect(rect, 2.0, color, egui::Stroke::new(1.5_f32, egui::Color32::from_black_alpha(200)), egui::StrokeKind::Middle);
+
+                                            if fleet.retreating && (self.start_time.elapsed().as_millis() / 500) % 2 == 0 {
+                                                let center = rect.center();
+                                                painter.line_segment([egui::pos2(center.x - margin, center.y - margin), egui::pos2(center.x + margin, center.y + margin)], egui::Stroke::new(2.0_f32, egui::Color32::BLACK));
+                                                painter.line_segment([egui::pos2(center.x + margin, center.y - margin), egui::pos2(center.x - margin, center.y + margin)], egui::Stroke::new(2.0_f32, egui::Color32::BLACK));
+                                            }
+                                        }
+                                        
+                                        for attack in &snap.attacks {
+                                            if attack.target_owner == 0 { continue; }
+                                            
+                                            let mut rx = 0.5; let mut ry = 0.5;
+                                            let mut tx = 0.5; let mut ty = 0.5;
+                                            let mut r = 0.5; let mut g = 0.5; let mut b = 0.5;
+                                            
+                                            if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
+                                                rx = attacker.centroid_x + 0.5;
+                                                ry = attacker.centroid_y + 0.5;
+                                                r = attacker.color[0]; g = attacker.color[1]; b = attacker.color[2];
+                                            }
+                                            if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
+                                                tx = target.centroid_x + 0.5;
+                                                ty = target.centroid_y + 0.5;
+                                            }
+                                            
+                                            let start_x = self.camera_x + rx * self.camera_zoom;
+                                            let start_y = self.camera_y + ry * self.camera_zoom;
+                                            let end_x = self.camera_x + tx * self.camera_zoom;
+                                            let end_y = self.camera_y + ty * self.camera_zoom;
+                                            
+                                            let color = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
+                                            let start_pos = egui::pos2(start_x, start_y);
+                                            let end_pos = egui::pos2(end_x, end_y);
+                                            
+                                            // Simple thick line to represent attack
+                                            painter.line_segment([start_pos, end_pos], egui::Stroke::new(3.0_f32, egui::Color32::from_black_alpha(150)));
+                                            painter.line_segment([start_pos, end_pos], egui::Stroke::new(1.5_f32, color));
+                                            
+                                            if attack.retreating && (self.start_time.elapsed().as_millis() / 500) % 2 == 0 {
+                                                let center = start_pos.lerp(end_pos, 0.5);
+                                                painter.text(center, egui::Align2::CENTER_CENTER, "[X]", egui::FontId::proportional(20.0), egui::Color32::RED);
+                                            }
+                                        }
+                                    }
                                 }
+
                                 self.frame_count += 1;
                                 if self.last_fps_time.elapsed().as_secs_f64() >= 1.0 {
                                     self.current_fps = self.frame_count;
@@ -326,6 +409,62 @@ impl SowApp {
                                 }
                                 
                                 if self.app.phase == ClientPhase::Playing {
+                                    // Check long press
+                                    if let Some((start, mx, my)) = self.map_touch_start {
+                                        if start.elapsed().as_millis() > 500 {
+                                            let world_x = (mx as f32 - self.camera_x) / self.camera_zoom;
+                                            let world_y = (my as f32 - self.camera_y) / self.camera_zoom;
+                                            let col = world_x.floor() as i32;
+                                            let row = world_y.floor() as i32;
+                                            if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
+                                                let idx = (row * self.map_w as i32 + col) as u32;
+                                                self.map_context_menu = Some((mx as f32, my as f32, idx));
+                                            }
+                                            self.map_touch_start = None; // clear it so it doesn't re-trigger
+                                        }
+                                    }
+
+                                    if let Some((mx, my, tile_idx)) = self.map_context_menu {
+                                        let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[tile_idx as usize]).unwrap_or(0);
+                                        let is_land = (terrain_byte & 0x80) != 0;
+                                        
+                                        egui::Area::new(egui::Id::new("map_context_menu"))
+                                            .anchor(egui::Align2::LEFT_TOP, egui::vec2(mx, my))
+                                            .order(egui::Order::Foreground)
+                                            .show(ctx, |ui| {
+                                                egui::Frame::menu(&ctx.style()).show(ui, |ui| {
+                                                    if is_land {
+                                                        ui.label("Land Tile");
+                                                    } else {
+                                                        if ui.button("★ Send Fleet").clicked() {
+                                                            let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                                            let intent = sow_core::protocol::GameplayIntent::LaunchFleet {
+                                                                target_tile: tile_idx,
+                                                                troops,
+                                                            };
+                                                            if let Some(c) = self.net_client.as_ref() {
+                                                                if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
+                                                                    c.send(json);
+                                                                }
+                                                            } else {
+                                                                let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
+                                                                self.bridge.send_command(sow_core::protocol::SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                                            }
+                                                            self.map_context_menu = None;
+                                                        }
+                                                    }
+                                                    if ui.button("[X] Cancel").clicked() {
+                                                        self.map_context_menu = None;
+                                                    }
+                                                });
+                                            });
+                                            
+                                        // Auto-close if clicked elsewhere
+                                        if ctx.input(|i| i.pointer.any_pressed()) && !ctx.egui_wants_pointer_input() {
+                                            self.map_context_menu = None;
+                                        }
+                                    }
+
                                     egui::Area::new(egui::Id::new("fps_counter"))
                                         .anchor(egui::Align2::LEFT_TOP, egui::vec2(10.0, 10.0))
                                         .show(ctx, |ui| {
@@ -344,6 +483,69 @@ impl SowApp {
                                                 );
                                             });
                                         });
+                                }
+
+                                if self.app.phase == ClientPhase::Playing {
+                                    if let Some(snap) = &self.current_snapshot {
+                                        let my_pid = self.my_player_id.unwrap_or(0);
+                                        if my_pid > 0 && (!snap.attacks.is_empty() || !snap.fleets.is_empty()) {
+                                            egui::Window::new("Attacks")
+                                                .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -140.0))
+                                                .title_bar(false)
+                                                .resizable(false)
+                                                .collapsible(false)
+                                                .frame(egui::Frame::window(&ctx.style()).fill(egui::Color32::from_black_alpha(200)))
+                                                .show(ctx, |ui| {
+                                                    ui.set_max_height(150.0);
+                                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                                        for attack in &snap.attacks {
+                                                            if attack.owner_id == my_pid {
+                                                                ui.horizontal(|ui| {
+                                                                    ui.label(egui::RichText::new(format!("⚔ OUT {:.0}", attack.troops)).color(egui::Color32::from_rgb(0, 200, 255)));
+                                                                    if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
+                                                                        ui.label(&target.name);
+                                                                    } else {
+                                                                        ui.label("Wilderness");
+                                                                    }
+                                                                    if attack.retreating {
+                                                                        ui.label("(Retreating...)");
+                                                                    } else {
+                                                                        if ui.button("[X]").clicked() {
+                                                                            local_cancel_intents.push(sow_core::protocol::GameplayIntent::CancelAttack { attack_id: attack.id });
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+                                                        }
+                                                        for fleet in &snap.fleets {
+                                                            if fleet.owner_id == my_pid {
+                                                                ui.horizontal(|ui| {
+                                                                    ui.label(egui::RichText::new(format!("★ NAVY {:.0}", fleet.troops)).color(egui::Color32::from_rgb(0, 200, 255)));
+                                                                    ui.label("Naval Invasion");
+                                                                    if fleet.retreating {
+                                                                        ui.label("(Retreating...)");
+                                                                    } else {
+                                                                        if ui.button("[X]").clicked() {
+                                                                            local_cancel_intents.push(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id: fleet.id });
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+                                                        }
+                                                        for attack in &snap.attacks {
+                                                            if attack.target_owner == my_pid {
+                                                                ui.horizontal(|ui| {
+                                                                    ui.label(egui::RichText::new(format!("⚔ IN {:.0}", attack.troops)).color(egui::Color32::RED));
+                                                                    if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
+                                                                        ui.label(&attacker.name);
+                                                                    }
+                                                                });
+                                                            }
+                                                        }
+                                                    });
+                                                });
+                                        }
+                                    }
                                 }
 
                                 if let Some(action) = self.app.draw(ctx) {
@@ -391,6 +593,7 @@ impl SowApp {
                                             self.camera_zoom = 2.0;
                                             self.app.phase = ClientPhase::Splash;
                                             self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                                            self.app.splash_state.gpu_load_step = 0;
                                             self.app.splash_state.frames_drawn = 0;
                                         }
                                         UiAction::SetAttackRatio(r) => {
@@ -419,6 +622,21 @@ impl SowApp {
 
                                 // The new nameplates are rendered before self.app.draw()
                             });
+
+                            for intent in local_cancel_intents {
+                                if let Some(c) = self.net_client.as_ref() {
+                                    let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
+                                    if let Ok(json) = bincode::serialize(&msg) {
+                                        c.send(json);
+                                    }
+                                } else {
+                                    let stamped = sow_core::protocol::StampedIntent {
+                                        player_id: self.my_player_id.unwrap_or(1),
+                                        intent,
+                                    };
+                                    self.bridge.send_command(sow_core::protocol::SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                }
+                            }
 
                             if let Some(win) = self.window.as_ref() {
                                 let ime_opt = egui_output.platform_output.ime;

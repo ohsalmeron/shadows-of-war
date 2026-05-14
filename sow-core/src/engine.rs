@@ -139,8 +139,9 @@ impl SowEngine {
         self.state.tick();
         self.execute_income();
         self.execute_ai_think();
+        self.execute_construction();
         self.execute_combat();
-        // TODO: buildings, fleets, pending turns...
+        self.execute_fleets();
     }
     pub fn spawn_ai(&mut self, nation_count: u32, tribe_count: u32) {
         let mut spawned_nations = 0;
@@ -319,11 +320,31 @@ impl SowEngine {
             }
         }).collect();
 
+        let fleets = self.fleets.iter().map(|f| crate::protocol::FleetSnapshot {
+            id: f.id,
+            owner_id: f.owner_id,
+            troops: f.troops,
+            current_tile: f.current_tile,
+            path: f.path.clone(),
+            path_cursor: f.path_cursor,
+            retreating: f.retreating,
+        }).collect();
+
+        let attacks = self.attacks.iter().map(|a| crate::protocol::AttackSnapshot {
+            id: a.id,
+            owner_id: a.owner_id,
+            target_owner: a.target_owner,
+            troops: a.troops,
+            retreating: a.retreating,
+        }).collect();
+
         crate::protocol::SimSnapshot {
             tick: self.state.tick,
             phase: self.state.phase.clone(),
             players,
             dirty_tiles,
+            fleets,
+            attacks,
             winner: self.state.winner,
         }
     }

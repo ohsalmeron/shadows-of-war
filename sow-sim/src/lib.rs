@@ -25,7 +25,7 @@ pub fn main_js() -> Result<(), JsValue> {
 
         match bincode::deserialize::<SimCommand>(&bytes) {
             Ok(SimCommand::Init { config, seed, map_bytes, players }) => {
-                log::info!("Sim Worker received Init: map size {}x{}", config.map_width, config.map_height);
+                log::debug!("Sim Worker received Init: map size {}x{}", config.map_width, config.map_height);
                 let mut state = sow_core::game::GameState::new(seed, config.map_width, config.map_height, config);
                 
                 if map_bytes.len() == state.map.terrain.len() {

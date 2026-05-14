@@ -161,6 +161,10 @@ pub(super) fn apply_attack_intent(
         return;
     }
 
+    if target_owner == player_id {
+        return;
+    }
+
     let pool_cap = player.troops;
     let requested = attack
         .troops

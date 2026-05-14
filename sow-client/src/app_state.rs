@@ -1,9 +1,7 @@
 #![allow(unused_imports)]
 use sow_render::{RenderContext, MapRenderer, MapGlobals};
 use crate::sim_bridge::{SimBridge, PlatformSimBridge};
-use sow_core::protocol::{SimCommand, SimSnapshot};
-
-use sow_core::game_config::GameConfig;
+use sow_core::protocol::SimSnapshot;
 
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
@@ -69,6 +67,8 @@ pub struct SowApp {
     pub last_mouse_y: f64,
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub active_touches: std::collections::HashMap<u64, (f64, f64)>,
+    pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
+    pub map_context_menu: Option<(f32, f32, u32)>,
     pub last_pinch_distance: Option<f64>,
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,
@@ -106,16 +106,11 @@ impl SowApp {
     // ── Simulation ──────────────────────────────────────────────────────────
     let map_w: u32 = 800;
     let map_h: u32 = 600;
-    let config = GameConfig::default();
-    
+
     let bridge = PlatformSimBridge::spawn();
-    bridge.send_command(SimCommand::Init {
-        config,
-        seed: 12345,
-        map_bytes: vec![],
-        players: vec![],
-    });
-    
+    // Sim stays idle until a real `SimCommand::Init` (EnterGame or ExitGame cleanup).
+    // Eager Init here duplicated the whole map sim at startup and doubled worker snapshots.
+
     let current_snapshot: Option<SimSnapshot> = None;
 
     // ── Renderer ────────────────────────────────────────────────────────────
@@ -189,10 +184,10 @@ impl SowApp {
     let last_mouse_x: f64 = 0.0;
     let last_mouse_y: f64 = 0.0;
 
-    let label_positions: HashMap<u16, (f32, f32)> = HashMap::new();
-    
     // Touch state for pinch-to-zoom
     let active_touches: HashMap<u64, (f64, f64)> = HashMap::new();
+    let map_touch_start: Option<(Instant, f64, f64)> = None;
+    let map_context_menu: Option<(f32, f32, u32)> = None;
     let last_pinch_distance: Option<f64> = None;
 
     // Tracks last `Window::set_ime_allowed` value (mirrors egui-winit debounce).
@@ -225,7 +220,11 @@ impl SowApp {
             connect_tx, connect_rx, ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
             ws_url, camera_x, camera_y, camera_zoom, screen_w, screen_h,
-            dragging, last_mouse_x, last_mouse_y, label_positions, active_touches, last_pinch_distance,
+            dragging, last_mouse_x, last_mouse_y, label_positions: HashMap::new(),
+            active_touches,
+            map_touch_start,
+            map_context_menu,
+            last_pinch_distance,
             ime_allowed_state, ime_cursor_rect_px, prev_sync_point, last_tick, start_time, tick_interval,
             needs_first_upload, frame_count, last_fps_time, current_fps, current_ping_ms, last_ping_time, last_frame_time,
         }

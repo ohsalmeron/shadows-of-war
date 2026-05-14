@@ -224,6 +224,26 @@ pub struct DirtyTile {
     pub new_owner: u16,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FleetSnapshot {
+    pub id: u64,
+    pub owner_id: u16,
+    pub troops: f64,
+    pub current_tile: u32,
+    pub path: Vec<u32>,
+    pub path_cursor: usize,
+    pub retreating: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AttackSnapshot {
+    pub id: u64,
+    pub owner_id: u16,
+    pub target_owner: u16,
+    pub troops: f64,
+    pub retreating: bool,
+}
+
 /// Snapshot sent from the simulation thread to the main thread every tick.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimSnapshot {
@@ -231,5 +251,7 @@ pub struct SimSnapshot {
     pub phase: crate::game::GamePhase,
     pub players: Vec<PlayerSnapshot>,
     pub dirty_tiles: Vec<DirtyTile>,
+    pub fleets: Vec<FleetSnapshot>,
+    pub attacks: Vec<AttackSnapshot>,
     pub winner: Option<u16>,
 }

@@ -62,33 +62,71 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
             });
     }
 
-    // Bottom Panel: Economy & Attack Controls
-    egui::TopBottomPanel::bottom("attack_panel").show(ctx, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            // Economy
-            ui.label(format!("Troops: {:.0} / {:.0}", state.troops_display, state.max_troops_display));
-            ui.add_space(10.0);
-            ui.label(RichText::new(format!("Gold: {:.0}", state.gold)).color(Color32::GOLD));
+    // Bottom Panel: Economy & Attack Controls (Modern Floating Layout)
+    egui::Area::new(egui::Id::new("hud_bottom_panel"))
+        .anchor(Align2::CENTER_BOTTOM, egui::vec2(0.0, -20.0))
+        .show(ctx, |ui| {
+            let frame = egui::Frame::window(&ctx.style())
+                .rounding(16.0)
+                .fill(Color32::from_black_alpha(220))
+                .inner_margin(16.0)
+                .stroke(egui::Stroke::new(1.0_f32, Color32::from_white_alpha(40)));
             
-            ui.add_space(30.0);
-            
-            // Attack Controls
-            ui.label("Attack:");
-            let mut ratio = state.attack_ratio;
-            if ui
-                .add(Slider::new(&mut ratio, 0.01..=0.5).show_value(false).text(""))
-                .changed()
-            {
-                action = Some(UiAction::SetAttackRatio(ratio));
-            }
-            if ui.small_button("1%").clicked() {
-                action = Some(UiAction::SetAttackRatio(0.01));
-            }
-            if ui.small_button("Max").clicked() {
-                action = Some(UiAction::SetAttackRatio(0.5));
-            }
+            frame.show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    // Troops display with progress bar
+                    ui.vertical(|ui| {
+                        let fraction = if state.max_troops_display > 0.0 {
+                            (state.troops_display / state.max_troops_display) as f32
+                        } else {
+                            0.0
+                        };
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Troops").strong().size(16.0).color(Color32::WHITE));
+                            ui.label(RichText::new(format!("{:.0} / {:.0}", state.troops_display, state.max_troops_display)).color(Color32::LIGHT_GRAY));
+                        });
+                        
+                        ui.add(
+                            egui::ProgressBar::new(fraction)
+                                .desired_width(180.0)
+                                .desired_height(14.0)
+                                .fill(Color32::from_rgb(40, 150, 255))
+                        );
+                    });
+                    
+                    ui.add_space(20.0);
+                    
+                    // Gold display
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Gold").strong().size(16.0).color(Color32::GOLD));
+                        ui.label(RichText::new(format!("{:.0}", state.gold)).size(20.0).strong().color(Color32::GOLD));
+                    });
+                    
+                    ui.add_space(20.0);
+                    
+                    // Attack Controls
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Attack Strength").strong().size(16.0).color(Color32::WHITE));
+                        ui.horizontal(|ui| {
+                            let mut ratio = state.attack_ratio;
+                            if ui
+                                .add(Slider::new(&mut ratio, 0.01..=0.5).show_value(false).text(format!("{:.0}%", state.attack_ratio * 100.0)))
+                                .changed()
+                            {
+                                action = Some(UiAction::SetAttackRatio(ratio));
+                            }
+                            if ui.button("1%").clicked() {
+                                action = Some(UiAction::SetAttackRatio(0.01));
+                            }
+                            if ui.button("Max").clicked() {
+                                action = Some(UiAction::SetAttackRatio(0.5));
+                            }
+                        });
+                    });
+                });
+            });
         });
-    });
 
     // Keep these controls pinned to screen corners so mobile wrapping never pushes them left.
     egui::Area::new(egui::Id::new("hud_exit_button"))

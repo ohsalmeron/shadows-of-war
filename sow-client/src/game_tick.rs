@@ -245,6 +245,7 @@ impl SowApp {
                                 } else {
                                     self.app.phase = ClientPhase::Splash;
                                     self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                                    self.app.splash_state.gpu_load_step = 0;
                                     self.app.splash_state.frames_drawn = 0;
                                     self.app.main_menu_state.is_waiting = false;
                                     self.app.main_menu_state.pending_join_lobby_id = None;
@@ -578,23 +579,38 @@ impl SowApp {
                             }
                         }
                         sow_ui::ui::loading_screen::SplashJob::ExitGame => {
-                            // Clean the engine state
-                            let config = GameConfig::default();
-                            self.bridge.send_command(SimCommand::Init {
-                                config,
-                                seed: 12345,
-                                map_bytes: vec![],
-                                players: vec![],
-                            });
-                            self.turn_queue.clear();
-                            self.label_positions.clear();
-                            self.nameplate_cache.clear();
-                            self.troop_label_throttle.clear();
-                            self.current_snapshot = None;
-                            self.needs_first_upload = true;
+                            let step = self.app.splash_state.gpu_load_step;
+                            if step == 0 {
+                                self.app.splash_state.status_text = "Cleaning up Game Session...".to_string();
+                                self.app.splash_state.progress = 0.5;
+                                self.app.splash_state.gpu_load_step = 1;
+                                self.app.splash_state.frames_drawn = 0;
+                            } else if step == 1 && self.app.splash_state.frames_drawn > 1 {
+                                // Clean the engine state
+                                let config = GameConfig::default();
+                                self.bridge.send_command(SimCommand::Init {
+                                    config,
+                                    seed: 12345,
+                                    map_bytes: vec![],
+                                    players: vec![],
+                                });
+                                self.turn_queue.clear();
+                                self.label_positions.clear();
+                                self.nameplate_cache.clear();
+                                self.troop_label_throttle.clear();
+                                self.current_snapshot = None;
+                                self.needs_first_upload = true;
 
-                            
-                            self.app.phase = ClientPhase::MainMenu;
+                                // Free GPU memory
+                                if let Some(sp) = self.prev_sync_point.take() {
+                                    let _ = self.render_ctx.context.wait_for(&sp, !0);
+                                }
+                                if let Some(mut mr) = self.map_renderer.take() {
+                                    mr.destroy(&self.render_ctx);
+                                }
+                                
+                                self.app.phase = ClientPhase::MainMenu;
+                            }
                         }
                         sow_ui::ui::loading_screen::SplashJob::EnterGame => {
                             while let Ok(event) = self.engine_init_rx.try_recv() {

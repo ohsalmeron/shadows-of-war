@@ -88,9 +88,9 @@ pub fn resolve_fleet_route(
     if target_owner == player_id {
         return Err(FleetLaunchError::SelfTarget);
     }
-    if !has_completed_port {
-        return Err(FleetLaunchError::NoPort);
-    }
+    // if !has_completed_port {
+    //     return Err(FleetLaunchError::NoPort);
+    // }
 
     let my_comps = player_water_components(map, water_components, player_id, border_tiles);
     if my_comps.is_empty() {

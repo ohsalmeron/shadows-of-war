@@ -52,6 +52,8 @@ pub(super) fn apply_launch_fleet_intent(
         None
     };
 
+        let has_port = crate::building::cost::player_has_completed_port(&self.buildings, player_id);
+
     let route = match resolve_fleet_route(
         &self.state.map,
         &self.water,
@@ -61,7 +63,7 @@ pub(super) fn apply_launch_fleet_intent(
         target_tile,
         border_tiles,
         target_border,
-        true,
+        has_port,
     ) {
         Ok(r) => r,
         Err(e) => {
