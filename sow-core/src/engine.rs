@@ -52,7 +52,6 @@ impl SowEngine {
         }
     }
 
-    /// Rebuilds [`BuildingGrid`] when dirty or first use (`grid_w == 0`).
     pub fn refresh_building_grid(&mut self) {
         if !self.building_grid.dirty && self.building_grid.grid_w > 0 {
             return;
@@ -60,6 +59,25 @@ impl SowEngine {
         let w = self.state.map.width;
         let h = self.state.map.height;
         self.building_grid.rebuild(self.buildings.iter(), w, h);
+    }
+
+    pub fn kill_player(&mut self, player_id: u16) {
+        if let Some(player) = self.state.player_mut(player_id) {
+            player.alive = false;
+        }
+        let mut to_clear = Vec::new();
+        for (i, &owner) in self.state.map.state.iter().enumerate() {
+            if owner == player_id {
+                let x = (i % self.state.map.width as usize) as u32;
+                let y = (i / self.state.map.width as usize) as u32;
+                to_clear.push((x, y));
+            }
+        }
+        for (x, y) in to_clear {
+            self.state.set_tile_owner(x, y, 0);
+        }
+        self.attacks.retain(|a| a.owner_id != player_id);
+        self.fleets.retain(|f| f.owner_id != player_id);
     }
 
     #[inline]

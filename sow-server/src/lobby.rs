@@ -203,6 +203,9 @@ pub fn leave_player(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
             if lobby.phase == LobbyPhase::Active && lobby.players.is_empty() {
                 lobby.active_empty_secs = ACTIVE_EMPTY_SECS;
             }
+            if let Some(engine) = &mut lobby.engine {
+                engine.kill_player(player_id);
+            }
         }
     }
 }

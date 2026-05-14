@@ -377,7 +377,9 @@ impl SowApp {
                         self.ws_connect_not_before.min(now + Duration::from_millis(200));
                         
                     // Recover: Send the user back to the loader
-                    if self.app.phase != sow_ui::app::ClientPhase::Splash {
+                    if self.app.phase == sow_ui::app::ClientPhase::Playing {
+                        self.app.hud_state.connection_lost = true;
+                    } else if self.app.phase != sow_ui::app::ClientPhase::Splash {
                         #[cfg(target_arch = "wasm32")]
                         {
                             if let Some(window) = web_sys::window() {
@@ -682,7 +684,7 @@ impl SowApp {
                 if let Some(snap) = &self.current_snapshot {
                     if let sow_core::game::GamePhase::Spawning { end_tick } = snap.phase {
                         let rem_ticks = end_tick.saturating_sub(snap.tick);
-                        let target_secs = rem_ticks as f32 * 0.1; // assume 100ms
+                        let target_secs = rem_ticks as f32 * 0.05; // 50ms server tick rate
                         if let Some(ref mut current) = self.app.hud_state.spawn_timer_secs {
                             if (*current - target_secs).abs() > 0.3 {
                                 *current = target_secs;
@@ -735,7 +737,13 @@ impl SowApp {
                 } else {
                     self.last_tick = now;
                 }
-                if let Some(snap) = self.bridge.try_recv_snapshot() {
+                if let Some(mut snap) = self.bridge.try_recv_snapshot() {
+                    if let Some(mut existing) = self.current_snapshot.take() {
+                        if !existing.dirty_tiles.is_empty() {
+                            existing.dirty_tiles.append(&mut snap.dirty_tiles);
+                            snap.dirty_tiles = existing.dirty_tiles;
+                        }
+                    }
                     self.current_snapshot = Some(snap);
                 }
                     

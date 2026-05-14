@@ -65,6 +65,9 @@ impl SowApp {
                                     self.needs_first_upload = false;
                                 }
                                 mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, &self.current_snapshot.as_ref().map(|s| &s.dirty_tiles).unwrap_or(&vec![]));
+                                if let Some(snap) = &mut self.current_snapshot {
+                                    snap.dirty_tiles.clear();
+                                }
 
                                 let globals = MapGlobals {
                                     camera_pos: [self.camera_x, self.camera_y],
@@ -583,6 +586,7 @@ impl SowApp {
                                                     c.send(json);
                                                 }
                                             }
+                                            self.app.hud_state.connection_lost = false;
                                             self.app.main_menu_state.is_waiting = false;
                                             self.app.main_menu_state.pending_join_lobby_id = None;
                                             self.app.main_menu_state.joined_lobby_id = None;

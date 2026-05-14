@@ -37,6 +37,7 @@ impl ClientApp {
                 is_mobile: false,
                 spawn_timer_secs: None,
                 sync_state: None,
+                connection_lost: false,
                 last_troops_ui_refresh: None,
             },
             splash_state: loading_screen::SplashState::default(),
