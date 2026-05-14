@@ -18,14 +18,8 @@ use crate::nameplates::*;
 use crate::client_config::ClientVisualConfig;
 use crate::{MapDownloadEvent, EngineInitEvent};
 use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
-
 use crate::app_state::SowApp;
 use std::io::Read;
-
-
-
-
-
 
 impl SowApp {
     pub fn handle_window_event(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop, event: WindowEvent) {
@@ -148,7 +142,7 @@ impl SowApp {
                                     let intent = if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
                                         sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
                                     } else {
-                                        let owner = self.map_renderer.as_ref().map(|mr| (mr.cached_pixels[(row * self.map_w as i32 + col) as usize] & 0xFFFF) as u16).unwrap_or(0);
+                                        let owner = self.map_renderer.as_ref().map(|mr| mr.owners[(row * self.map_w as i32 + col) as usize]).unwrap_or(0);
                                         let attack = sow_core::protocol::AttackIntent {
                                             target_owner: owner,
                                             troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),

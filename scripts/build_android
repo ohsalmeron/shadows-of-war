@@ -136,7 +136,9 @@ if [[ -f "${APK_SRC}" ]]; then
     echo ""
     if adb get-state 1>/dev/null 2>&1; then
         cyan "📱 Deploying to connected device..."
-        adb install -r "${APK_SRC}" || fail "Failed to install APK via ADB"
+        adb push "${APK_SRC}" "/data/local/tmp/sow-client.apk" >/dev/null
+        adb shell pm install -r "/data/local/tmp/sow-client.apk" || fail "Failed to install APK via ADB"
+        adb shell rm "/data/local/tmp/sow-client.apk"
         cyan "🚀 Launching application..."
         adb shell monkey -p rust.sow_client -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
         green "✅ Game started on device!"

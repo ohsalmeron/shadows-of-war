@@ -25,8 +25,8 @@ pub struct MapRenderer {
     pub raw_buffer: gpu::Buffer,
     pub width: u32,
     pub height: u32,
-    pub cached_pixels: Vec<u32>,
     pub terrain: Vec<u8>,
+    pub owners: Vec<u16>,
     pub bytes_per_row: u32,
 }
 
@@ -99,14 +99,18 @@ impl MapRenderer {
             multisample_state: gpu::MultisampleState::default(),
         });
 
-        let mut cached_pixels = vec![0; total_u32];
+        let dst_ptr = raw_buffer.data();
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
+        };
         for y in 0..height {
             for x in 0..width {
                 let i = (y * width + x) as usize;
                 let dst_i = (y * u32_per_row + x) as usize;
-                cached_pixels[dst_i] = (initial_terrain[i] as u32) << 16;
+                slice[dst_i] = (initial_terrain[i] as u32) << 16;
             }
         }
+        context.sync_buffer(raw_buffer);
 
         Self {
             texture,
@@ -115,8 +119,8 @@ impl MapRenderer {
             raw_buffer,
             width,
             height,
-            cached_pixels,
             terrain: initial_terrain.to_vec(),
+            owners: vec![0; (width * height) as usize],
             bytes_per_row,
         }
     }
@@ -135,18 +139,24 @@ impl MapRenderer {
         let mut max_x = 0;
         let mut max_y = 0;
 
+        let dst_ptr = self.raw_buffer.data();
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
+        };
+
         // Update only dirty tiles. No CPU neighbor checks!
         for dt in dirty_tiles {
             let i = dt.index as usize;
             if i >= total { continue; }
             let owner_id = dt.new_owner as u32;
             let terrain_byte = self.terrain[i] as u32;
+            self.owners[i] = dt.new_owner;
             
             let x = dt.index % self.width;
             let y = dt.index / self.width;
             let dst_i = (y * u32_per_row + x) as usize;
             
-            self.cached_pixels[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16);
+            slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16);
             
             if x < min_x { min_x = x; }
             if y < min_y { min_y = y; }
@@ -154,21 +164,14 @@ impl MapRenderer {
             if y > max_y { max_y = y; }
         }
 
-        let dst_ptr = self.raw_buffer.data();
-        assert!(!dst_ptr.is_null(), "Raw buffer not mapped");
-
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
-        };
-        
-        // Only need to copy if we didn't just initialize the whole buffer
-        slice.copy_from_slice(&self.cached_pixels);
-
         context.sync_buffer(self.raw_buffer);
 
         if min_x <= max_x && min_y <= max_y {
-            let src_piece: gpu::BufferPiece = self.raw_buffer.into();
-            let dst_piece: gpu::TexturePiece = self.texture.into();
+            let src_offset = (min_y * self.bytes_per_row + min_x * 4) as u64;
+            let src_piece: gpu::BufferPiece = self.raw_buffer.at(src_offset);
+            
+            let mut dst_piece: gpu::TexturePiece = self.texture.into();
+            dst_piece.origin = [min_x, min_y, 0];
 
             let mut transfer = encoder.transfer("map_upload");
             transfer.copy_buffer_to_texture(
@@ -176,8 +179,8 @@ impl MapRenderer {
                 self.bytes_per_row,
                 dst_piece,
                 gpu::Extent {
-                    width: self.width,
-                    height: self.height,
+                    width: max_x - min_x + 1,
+                    height: max_y - min_y + 1,
                     depth: 1,
                 },
             );

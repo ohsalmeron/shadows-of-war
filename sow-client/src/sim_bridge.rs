@@ -32,45 +32,42 @@ pub mod native {
                 // Track when to send snapshots. We want to send one per tick.
                 // Or rather, we process all available commands, then if we ticked, we snapshot.
                 
+                let init_engine = |config: sow_core::game_config::GameConfig, seed: u64, map_bytes: Vec<u8>, players: Vec<sow_core::protocol::PlayerInfo>| -> SowEngine {
+                    let map_w = config.map_width;
+                    let map_h = config.map_height;
+                    let mut state = sow_core::game::GameState::new(seed, map_w, map_h, config);
+                    
+                    if map_bytes.len() == state.map.terrain.len() {
+                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                        unsafe { std::ptr::copy_nonoverlapping(map_bytes.as_ptr(), dest_ptr, map_bytes.len()); }
+                    } else {
+                        for (i, &b) in map_bytes.iter().enumerate() {
+                            if i < state.map.terrain.len() {
+                                state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                            }
+                        }
+                    }
+
+                    let water = sow_core::water_components::WaterComponents::compute(&state.map, |_| {});
+                    let mut new_engine = SowEngine::new(state, water);
+
+                    for p in players {
+                        if p.player_type == sow_core::player::PlayerType::Human {
+                            new_engine.spawn_human(p.id, p.name, p.color);
+                        }
+                    }
+                    
+                    new_engine.spawn_ai(new_engine.state.config.nation_count, new_engine.state.config.bot_count);
+                    new_engine
+                };
+
                 loop {
-                    // Try to process commands
-                    // Block if we have no engine yet, else try_recv
                     let mut processed_commands = false;
                     
                     if engine.is_none() {
-                        // Block waiting for Init
                         match cmd_rx.recv() {
                             Ok(SimCommand::Init { config, seed, map_bytes, players }) => {
-                                // Initialize
-                                let map_w = config.map_width;
-                                let map_h = config.map_height;
-                                let mut state = sow_core::game::GameState::new(seed, map_w, map_h, config);
-                                
-                                // Setup map terrain
-                                if map_bytes.len() == state.map.terrain.len() {
-                                    let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
-                                    unsafe { std::ptr::copy_nonoverlapping(map_bytes.as_ptr(), dest_ptr, map_bytes.len()); }
-                                } else {
-                                    for (i, &b) in map_bytes.iter().enumerate() {
-                                        if i < state.map.terrain.len() {
-                                            state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
-                                        }
-                                    }
-                                }
-
-                                let water = sow_core::water_components::WaterComponents::compute(&state.map, |_| {});
-                                let mut new_engine = SowEngine::new(state, water);
-
-                                // Add players
-                                for p in players {
-                                    if p.player_type == sow_core::player::PlayerType::Human {
-                                        new_engine.spawn_human(p.id, p.name, p.color);
-                                    }
-                                }
-                                
-                                new_engine.spawn_ai(new_engine.state.config.nation_count, new_engine.state.config.bot_count);
-                                
-                                engine = Some(new_engine);
+                                engine = Some(init_engine(config, seed, map_bytes, players));
                             }
                             Ok(SimCommand::Shutdown) => break,
                             Ok(SimCommand::Turn(_)) => {
@@ -79,16 +76,16 @@ pub mod native {
                             Err(_) => break,
                         }
                     } else {
-                        // Drain all pending commands for this frame
                         while let Ok(cmd) = cmd_rx.try_recv() {
                             match cmd {
-                                SimCommand::Init { .. } => {
-                                    log::warn!("Received Init but engine already exists");
+                                SimCommand::Init { config, seed, map_bytes, players } => {
+                                    log::info!("Re-initializing Native SimWorker");
+                                    engine = Some(init_engine(config, seed, map_bytes, players));
                                 }
                                 SimCommand::Turn(turn) => {
                                     if let Some(e) = &mut engine {
                                         for intent in &turn.intents {
-                                            e.apply_stamped_intent(intent, 0); // we can pass tick later
+                                            e.apply_stamped_intent(intent, 0);
                                         }
                                         e.tick();
                                         processed_commands = true;

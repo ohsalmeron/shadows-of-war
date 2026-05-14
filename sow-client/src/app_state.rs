@@ -333,3 +333,17 @@ impl SowApp {
 
     }
 }
+
+impl Drop for SowApp {
+    fn drop(&mut self) {
+        if let Some(sp) = self.prev_sync_point.take() {
+            let _ = self.render_ctx.context.wait_for(&sp, !0);
+        }
+        if let Some(mut mr) = self.map_renderer.take() {
+            mr.destroy(&self.render_ctx);
+        }
+        if let Some(mut gui) = self.gui_painter.take() {
+            gui.destroy(&self.render_ctx.context);
+        }
+    }
+}
