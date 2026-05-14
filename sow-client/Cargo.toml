@@ -15,7 +15,7 @@ blade-graphics = { workspace = true }
 
 log = { workspace = true }
 env_logger = { workspace = true }
-winit = { version = "0.29.15", features = ["android-native-activity", "rwh_06"] }
+winit = { path = "../winit/winit", features = ["android-native-activity"] }
 sow-ui = { path = "../sow-ui" }
 egui = "0.34"
 blade-egui = { workspace = true }

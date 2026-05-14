@@ -155,24 +155,17 @@ impl MapRenderer {
         context.sync_buffer(self.raw_buffer);
 
         if min_x <= max_x && min_y <= max_y {
-            let bb_width = max_x - min_x + 1;
-            let bb_height = max_y - min_y + 1;
-            let bytes_per_row = self.width * 4;
-            
-            let mut src_piece: gpu::BufferPiece = self.raw_buffer.into();
-            src_piece.offset = ((min_y * self.width + min_x) * 4) as u64;
-            
-            let mut dst_piece: gpu::TexturePiece = self.texture.into();
-            dst_piece.origin = [min_x, min_y, 0];
+            let src_piece: gpu::BufferPiece = self.raw_buffer.into();
+            let dst_piece: gpu::TexturePiece = self.texture.into();
 
             let mut transfer = encoder.transfer("map_upload");
             transfer.copy_buffer_to_texture(
                 src_piece,
-                bytes_per_row,
+                self.width * 4,
                 dst_piece,
                 gpu::Extent {
-                    width: bb_width,
-                    height: bb_height,
+                    width: self.width,
+                    height: self.height,
                     depth: 1,
                 },
             );

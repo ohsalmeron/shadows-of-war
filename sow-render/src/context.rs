@@ -35,7 +35,13 @@ impl RenderContext {
         window: &I,
         width: u32,
         height: u32,
-    ) -> gpu::Surface {
+    ) -> Result<gpu::Surface, blade_graphics::NotSupportedError> {
+        // PREVENT CRASH: `blade-graphics` unwraps `window.window_handle()`, which panics with
+        // `Unavailable` on Android before the NativeActivity surface is fully initialized.
+        if window.window_handle().is_err() || window.display_handle().is_err() {
+            return Err(blade_graphics::NotSupportedError::PlatformNotSupported);
+        }
+
         let config = gpu::SurfaceConfig {
             size: gpu::Extent {
                 width,
@@ -46,6 +52,6 @@ impl RenderContext {
             display_sync: gpu::DisplaySync::Recent,
             ..Default::default()
         };
-        self.context.create_surface_configured(window, config).unwrap()
+        self.context.create_surface_configured(window, config)
     }
 }
