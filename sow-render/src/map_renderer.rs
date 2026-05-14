@@ -144,31 +144,58 @@ impl MapRenderer {
             std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
         };
 
-        // Update only dirty tiles. No CPU neighbor checks!
+        // Update dirty tiles and their neighbors to compute border bits.
         for dt in dirty_tiles {
             let i = dt.index as usize;
             if i >= total { continue; }
-            let owner_id = dt.new_owner as u32;
-            let terrain_byte = self.terrain[i] as u32;
             self.owners[i] = dt.new_owner;
             
-            let x = dt.index % self.width;
-            let y = dt.index / self.width;
-            let dst_i = (y * u32_per_row + x) as usize;
+            let center_x = dt.index % self.width;
+            let center_y = dt.index / self.width;
             
-            slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16);
-            
-            if x < min_x { min_x = x; }
-            if y < min_y { min_y = y; }
-            if x > max_x { max_x = x; }
-            if y > max_y { max_y = y; }
+            // We need to update the tile itself and its 4 neighbors
+            let mut tiles_to_update = vec![(center_x, center_y)];
+            if center_x > 0 { tiles_to_update.push((center_x - 1, center_y)); }
+            if center_x < self.width - 1 { tiles_to_update.push((center_x + 1, center_y)); }
+            if center_y > 0 { tiles_to_update.push((center_x, center_y - 1)); }
+            if center_y < self.height - 1 { tiles_to_update.push((center_x, center_y + 1)); }
+
+            for (x, y) in tiles_to_update {
+                let idx = (y * self.width + x) as usize;
+                let owner_id = self.owners[idx] as u32;
+                let terrain_byte = self.terrain[idx] as u32;
+                
+                let mut is_border = false;
+                if owner_id > 0 {
+                    let up = if y > 0 { self.owners[idx - self.width as usize] as u32 } else { owner_id };
+                    let down = if y < self.height - 1 { self.owners[idx + self.width as usize] as u32 } else { owner_id };
+                    let left = if x > 0 { self.owners[idx - 1] as u32 } else { owner_id };
+                    let right = if x < self.width - 1 { self.owners[idx + 1] as u32 } else { owner_id };
+                    
+                    if owner_id != up || owner_id != down || owner_id != left || owner_id != right {
+                        is_border = true;
+                    }
+                }
+                
+                let border_bit = if is_border { 1u32 << 31 } else { 0 };
+                let dst_i = (y * u32_per_row + x) as usize;
+                slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16) | border_bit;
+
+                if x < min_x { min_x = x; }
+                if y < min_y { min_y = y; }
+                if x > max_x { max_x = x; }
+                if y > max_y { max_y = y; }
+            }
         }
 
-        context.sync_buffer(self.raw_buffer);
-
         if min_x <= max_x && min_y <= max_y {
-            let src_offset = (min_y * self.bytes_per_row + min_x * 4) as u64;
-            let src_piece: gpu::BufferPiece = self.raw_buffer.at(src_offset);
+            let offset_bytes = (min_y * self.bytes_per_row + min_x * 4) as u64;
+            let width_bytes = ((max_x - min_x + 1) * 4) as u64;
+            let size_bytes = ((max_y - min_y) * self.bytes_per_row) as u64 + width_bytes;
+
+            context.sync_buffer_range(self.raw_buffer, offset_bytes, size_bytes);
+
+            let src_piece: gpu::BufferPiece = self.raw_buffer.at(offset_bytes);
             
             let mut dst_piece: gpu::TexturePiece = self.texture.into();
             dst_piece.origin = [min_x, min_y, 0];

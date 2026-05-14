@@ -103,20 +103,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_color = mix(terrain_color.rgb, albedo, 0.95);
     }
 
-    let max_x = i32(globals.map_size.x) - 1;
-    let max_y = i32(globals.map_size.y) - 1;
-
-    let p_up = vec2<i32>(pixel_coords.x, max(0, pixel_coords.y - 1));
-    let p_down = vec2<i32>(pixel_coords.x, min(max_y, pixel_coords.y + 1));
-    let p_left = vec2<i32>(max(0, pixel_coords.x - 1), pixel_coords.y);
-    let p_right = vec2<i32>(min(max_x, pixel_coords.x + 1), pixel_coords.y);
-
-    let up = textureLoad(territory_texture, p_up, 0).x & 0xFFFFu;
-    let down = textureLoad(territory_texture, p_down, 0).x & 0xFFFFu;
-    let left = textureLoad(territory_texture, p_left, 0).x & 0xFFFFu;
-    let right = textureLoad(territory_texture, p_right, 0).x & 0xFFFFu;
-    
-    let is_border = (owner_id != up || owner_id != down || owner_id != left || owner_id != right);
+    // Check the 31st bit (highest bit of the 32-bit uint) for the CPU-computed border flag
+    let is_border = (val & 0x80000000u) != 0u;
 
     if owner_id > 0u {
         if is_border {
