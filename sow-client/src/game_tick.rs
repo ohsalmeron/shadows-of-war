@@ -52,10 +52,8 @@ impl SowApp {
                         old_terrain = old_mr.terrain.clone();
                         old_mr.destroy(&self.render_ctx);
                     }
-                    self.render_ctx.command_encoder.start();
-                    self.map_renderer = Some(sow_render::MapRenderer::new(&self.render_ctx.context, &mut self.render_ctx.command_encoder, self.map_w, self.map_h, format, &old_terrain));
-                    let sync_point = self.render_ctx.context.submit(&mut self.render_ctx.command_encoder);
-                    self.prev_sync_point = Some(sync_point);
+                    self.map_renderer = Some(sow_render::MapRenderer::new(&self.render_ctx.context, self.map_w, self.map_h, format, &old_terrain));
+                    self.needs_first_upload = true;
                     
                     self.gui_painter = Some(blade_egui::GuiPainter::new(s.info(), &self.render_ctx.context));
                     self.surface = Some(s);
@@ -638,16 +636,13 @@ impl SowApp {
                                 mr.destroy(&self.render_ctx);
                             }
                             if let Some(ref s) = self.surface {
-                                self.render_ctx.command_encoder.start();
-                                self.map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&self.render_ctx.context, &mut self.render_ctx.command_encoder, self.map_w, self.map_h, s.info().format, &map_bytes));
-                                let sync_point = self.render_ctx.context.submit(&mut self.render_ctx.command_encoder);
-                                self.prev_sync_point = Some(sync_point);
-                                
+                                self.map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&self.render_ctx.context, self.map_w, self.map_h, s.info().format, &map_bytes));
                                 self.needs_first_upload = true;
-    
                             }
                             
                             self.app.phase = sow_ui::app::ClientPhase::Playing;
+                            self.app.splash_state.progress = 0.99; // Map loaded, waiting for spawning
+                            self.app.splash_state.status_text = "Simulating Initial Expansions...".to_owned();
                             if let Some(pid) = self.my_player_id {
                                 if let Some(snap) = &self.current_snapshot {
                                     if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
@@ -729,9 +724,6 @@ impl SowApp {
                     self.last_tick = now;
                 }
                 if let Some(snap) = self.bridge.try_recv_snapshot() {
-                    if let Some(mr) = &mut self.map_renderer {
-                        mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, &snap.dirty_tiles);
-                    }
                     self.current_snapshot = Some(snap);
                 }
                 

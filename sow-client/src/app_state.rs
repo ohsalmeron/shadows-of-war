@@ -315,10 +315,8 @@ impl SowApp {
                                 old_terrain = old_mr.terrain.clone();
                                 old_mr.destroy(&self.render_ctx);
                             }
-                            self.render_ctx.command_encoder.start();
-                            self.map_renderer = Some(MapRenderer::new(&self.render_ctx.context, &mut self.render_ctx.command_encoder, self.map_w, self.map_h, format, &old_terrain));
-                            let sync_point = self.render_ctx.context.submit(&mut self.render_ctx.command_encoder);
-                            self.prev_sync_point = Some(sync_point);
+                            self.map_renderer = Some(MapRenderer::new(&self.render_ctx.context, self.map_w, self.map_h, format, &old_terrain));
+                            self.needs_first_upload = true;
                             
                             self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
                             self.surface = Some(s);

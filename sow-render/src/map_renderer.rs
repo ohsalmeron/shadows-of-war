@@ -27,10 +27,15 @@ pub struct MapRenderer {
     pub height: u32,
     pub cached_pixels: Vec<u32>,
     pub terrain: Vec<u8>,
+    pub bytes_per_row: u32,
 }
 
 impl MapRenderer {
-    pub fn new(context: &gpu::Context, encoder: &mut gpu::CommandEncoder, width: u32, height: u32, surface_format: gpu::TextureFormat, initial_terrain: &[u8]) -> Self {
+    pub fn new(context: &gpu::Context, width: u32, height: u32, surface_format: gpu::TextureFormat, initial_terrain: &[u8]) -> Self {
+        let bytes_per_row = (width * 4 + 255) & !255;
+        let u32_per_row = bytes_per_row / 4;
+        let total_u32 = (u32_per_row * height) as usize;
+
         let texture = context.create_texture(gpu::TextureDesc {
             name: "territory_map",
             format: gpu::TextureFormat::R32Uint,
@@ -59,8 +64,8 @@ impl MapRenderer {
 
         let raw_buffer = context.create_buffer(gpu::BufferDesc {
             name: "map_raw",
-            size: (width * height * 4) as u64,
-            memory: gpu::Memory::Shared,
+            size: (bytes_per_row * height) as u64,
+            memory: gpu::Memory::Upload,
         });
 
         let source = include_str!("shaders/map.wgsl");
@@ -94,12 +99,13 @@ impl MapRenderer {
             multisample_state: gpu::MultisampleState::default(),
         });
 
-        encoder.init_texture(texture);
-
-        let total = (width * height) as usize;
-        let mut cached_pixels = vec![0; total];
-        for i in 0..total {
-            cached_pixels[i] = (initial_terrain[i] as u32) << 16;
+        let mut cached_pixels = vec![0; total_u32];
+        for y in 0..height {
+            for x in 0..width {
+                let i = (y * width + x) as usize;
+                let dst_i = (y * u32_per_row + x) as usize;
+                cached_pixels[dst_i] = (initial_terrain[i] as u32) << 16;
+            }
         }
 
         Self {
@@ -111,12 +117,15 @@ impl MapRenderer {
             height,
             cached_pixels,
             terrain: initial_terrain.to_vec(),
+            bytes_per_row,
         }
     }
 
     /// Pack the game map into the upload buffer and copy to the GPU texture.
     pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, dirty_tiles: &[sow_core::protocol::DirtyTile]) {
         let total = (self.width * self.height) as usize;
+        let u32_per_row = self.bytes_per_row / 4;
+        let total_u32 = (u32_per_row * self.height) as usize;
         
         if dirty_tiles.is_empty() {
             return;
@@ -132,10 +141,13 @@ impl MapRenderer {
             if i >= total { continue; }
             let owner_id = dt.new_owner as u32;
             let terrain_byte = self.terrain[i] as u32;
-            self.cached_pixels[i] = (owner_id & 0xFFFF) | (terrain_byte << 16);
             
             let x = dt.index % self.width;
             let y = dt.index / self.width;
+            let dst_i = (y * u32_per_row + x) as usize;
+            
+            self.cached_pixels[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16);
+            
             if x < min_x { min_x = x; }
             if y < min_y { min_y = y; }
             if x > max_x { max_x = x; }
@@ -146,7 +158,7 @@ impl MapRenderer {
         assert!(!dst_ptr.is_null(), "Raw buffer not mapped");
 
         let slice = unsafe {
-            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total)
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
         };
         
         // Only need to copy if we didn't just initialize the whole buffer
@@ -161,7 +173,7 @@ impl MapRenderer {
             let mut transfer = encoder.transfer("map_upload");
             transfer.copy_buffer_to_texture(
                 src_piece,
-                self.width * 4,
+                self.bytes_per_row,
                 dst_piece,
                 gpu::Extent {
                     width: self.width,

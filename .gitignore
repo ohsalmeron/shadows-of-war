@@ -27,3 +27,5 @@ blade/
 .idea/
 scripts/__pycache__/
 dist/
+winit/
+egui/
