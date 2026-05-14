@@ -8,6 +8,10 @@ struct Globals {
     border_darkness: f32,
     shore_thickness: f32,
     shore_darkness: f32,
+    border_roundness: f32,
+    _pad1: f32,
+    _pad2: f32,
+    _pad3: f32,
 }
 
 var<uniform> globals: Globals;
