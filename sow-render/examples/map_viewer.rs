@@ -57,13 +57,9 @@ fn main() {
     let globals = MapGlobals {
         camera_pos: [0.0, 0.0],
         zoom: 1.0,
-        _pad0: 0.0,
+        time: 0.0,
         screen_size: [MW as f32, MH as f32],
         map_size: [MW as f32, MH as f32],
-        local_player_id: 1,
-        _pad1: 0,
-        _pad2: 0,
-        _pad3: 0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

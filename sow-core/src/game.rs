@@ -109,7 +109,7 @@ impl GameState {
             if is_border { if let Some(p) = self.player_mut(new_owner) { p.border_insert(linear_idx); } }
         }
         
-        let mut neighbors = [(0, 0); 6];
+        let mut neighbors = [(0, 0); 4];
         let mut n_count = 0;
         self.map.for_each_neighbor(x, y, |nx, ny| {
             neighbors[n_count] = (nx, ny);
@@ -124,6 +124,32 @@ impl GameState {
             } else if n_owner == new_owner && new_owner != 0 {
                 let ib = self.map.is_border_tile(nx, ny, new_owner);
                 if !ib { if let Some(p) = self.player_mut(new_owner) { p.border_remove(n_idx); } }
+            }
+        }
+
+        if new_owner != 0 {
+            let mut to_capture = [(0, 0); 4];
+            let mut capture_count = 0;
+            
+            for &(nx, ny) in neighbors.iter().take(n_count) {
+                let n_owner = self.map.owner_id(nx, ny);
+                if n_owner != new_owner && self.map.terrain[self.map.ref_id(nx, ny)].is_land() {
+                    let mut surrounded = true;
+                    self.map.for_each_neighbor(nx, ny, |nnx, nny| {
+                        if self.map.owner_id(nnx, nny) != new_owner {
+                            surrounded = false;
+                        }
+                    });
+                    if surrounded {
+                        to_capture[capture_count] = (nx, ny);
+                        capture_count += 1;
+                    }
+                }
+            }
+
+            for i in 0..capture_count {
+                let (cx, cy) = to_capture[i];
+                self.set_tile_owner(cx, cy, new_owner);
             }
         }
     }

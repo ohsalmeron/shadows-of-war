@@ -1,18 +1,13 @@
 struct Globals {
     camera_pos: vec2<f32>,
     zoom: f32,
-    _pad0: f32,
+    time: f32,
     screen_size: vec2<f32>,
     map_size: vec2<f32>,
-    local_player_id: u32,
-    _pad1: u32,
-    _pad2: u32,
-    _pad3: u32,
 }
 
 var<uniform> globals: Globals;
 var territory_texture: texture_2d<u32>;
-var territory_sampler: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -59,13 +54,14 @@ fn owner_albedo(owner_id: u32) -> vec3<f32> {
     }
 }
 
+
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let screen_pixel = in.uv * globals.screen_size;
     let world_x = (screen_pixel.x - globals.camera_pos.x) / globals.zoom;
     let world_y = (screen_pixel.y - globals.camera_pos.y) / globals.zoom;
 
-    // Floor directly into grid coordinates (no hex math)
     let cell_x = i32(floor(world_x));
     let cell_y = i32(floor(world_y));
 
@@ -76,8 +72,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_coords = vec2<i32>(cell_x, cell_y);
     let val = textureLoad(territory_texture, pixel_coords, 0).x;
     
-    let owner_id = val & 0xFFFu;
-    let border_mask = (val >> 12u) & 0xFu;
+    let owner_id = val & 0xFFFFu;
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
@@ -94,12 +89,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             terrain_color = mix(vec4<f32>(0.28, 0.28, 0.3, 1.0), vec4<f32>(0.58, 0.6, 0.62, 1.0), snow); // Snowy Mountains
         }
     } else {
-        // Flat water colors (no animated noise)
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
         if !is_ocean_water {
             terrain_color = vec4<f32>(0.12, 0.38, 0.58, 1.0); // River/Lake
         } else {
-            terrain_color = vec4<f32>(0.04, 0.18, 0.42, 1.0); // Deep Ocean
+            terrain_color = vec4<f32>(0.05, 0.45, 0.65, 1.0); // Plain Ocean
         }
     }
 
@@ -109,22 +103,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_color = mix(terrain_color.rgb, albedo, 0.95);
     }
 
-    // 1px Orthogonal Border
-    if border_mask > 0u {
-        // local_uv goes from 0.0 to 1.0 across the cell
-        let local_uv = vec2<f32>(fract(world_x), fract(world_y));
-        let px_size = 1.0 / globals.zoom; // width of 1 screen pixel in world space
-        
-        var is_border = false;
-        // East
-        if (border_mask & 1u) != 0u && local_uv.x > (1.0 - px_size) { is_border = true; }
-        // West
-        if (border_mask & 2u) != 0u && local_uv.x < px_size { is_border = true; }
-        // North
-        if (border_mask & 4u) != 0u && local_uv.y < px_size { is_border = true; }
-        // South
-        if (border_mask & 8u) != 0u && local_uv.y > (1.0 - px_size) { is_border = true; }
+    let max_x = i32(globals.map_size.x) - 1;
+    let max_y = i32(globals.map_size.y) - 1;
 
+    let p_up = vec2<i32>(pixel_coords.x, max(0, pixel_coords.y - 1));
+    let p_down = vec2<i32>(pixel_coords.x, min(max_y, pixel_coords.y + 1));
+    let p_left = vec2<i32>(max(0, pixel_coords.x - 1), pixel_coords.y);
+    let p_right = vec2<i32>(min(max_x, pixel_coords.x + 1), pixel_coords.y);
+
+    let up = textureLoad(territory_texture, p_up, 0).x & 0xFFFFu;
+    let down = textureLoad(territory_texture, p_down, 0).x & 0xFFFFu;
+    let left = textureLoad(territory_texture, p_left, 0).x & 0xFFFFu;
+    let right = textureLoad(territory_texture, p_right, 0).x & 0xFFFFu;
+    
+    let is_border = (owner_id != up || owner_id != down || owner_id != left || owner_id != right);
+
+    if owner_id > 0u {
         if is_border {
             base_color = base_color * 0.3; // Darken for outline
         }

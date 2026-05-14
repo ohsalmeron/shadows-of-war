@@ -430,7 +430,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let intent = if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
                                         sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
                                     } else {
-                                        let owner = map_renderer.as_ref().map(|mr| mr.prev_owners[(row * map_w as i32 + col) as usize]).unwrap_or(0);
+                                        let owner = map_renderer.as_ref().map(|mr| (mr.cached_pixels[(row * map_w as i32 + col) as usize] & 0xFFFF) as u16).unwrap_or(0);
                                         let attack = sow_core::protocol::AttackIntent {
                                             target_owner: owner,
                                             troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
@@ -567,7 +567,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         let intent = if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
                                             sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
                                         } else {
-                                            let owner = map_renderer.as_ref().map(|mr| mr.prev_owners[(row * map_w as i32 + col) as usize]).unwrap_or(0);
+                                            let owner = map_renderer.as_ref().map(|mr| (mr.cached_pixels[(row * map_w as i32 + col) as usize] & 0xFFFF) as u16).unwrap_or(0);
                                             let attack = sow_core::protocol::AttackIntent {
                                                 target_owner: owner,
                                                 troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
@@ -659,13 +659,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 let globals = MapGlobals {
                                     camera_pos: [camera_x, camera_y],
                                     zoom: camera_zoom,
-                                    _pad0: 0.0,
+                                    time: start_time.elapsed().as_secs_f32(),
                                     screen_size: [screen_w, screen_h],
                                     map_size: [map_w as f32, map_h as f32],
-                                    local_player_id: my_player_id.unwrap_or(1) as u32,
-                                    _pad1: 0,
-                                    _pad2: 0,
-                                    _pad3: 0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }
