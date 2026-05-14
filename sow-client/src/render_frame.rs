@@ -356,6 +356,7 @@ impl SowApp {
                                         
                                         for attack in &snap.attacks {
                                             if attack.target_owner == 0 { continue; }
+                                            if attack.owner_id != self.my_player_id.unwrap_or(0) { continue; }
                                             
                                             let mut rx = 0.5; let mut ry = 0.5;
                                             let mut tx = 0.5; let mut ty = 0.5;

@@ -49,7 +49,7 @@ impl RenderContext {
                 depth: 1,
             },
             usage: gpu::TextureUsage::TARGET,
-            display_sync: gpu::DisplaySync::Recent,
+            display_sync: gpu::DisplaySync::Tear,
             ..Default::default()
         };
         self.context.create_surface_configured(window, config)

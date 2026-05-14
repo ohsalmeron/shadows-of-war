@@ -54,7 +54,7 @@ impl SowApp {
                                         depth: 1,
                                     },
                                     usage: gpu::TextureUsage::TARGET,
-                                    display_sync: gpu::DisplaySync::Recent,
+                                    display_sync: gpu::DisplaySync::Tear,
                                     ..Default::default()
                                 });
                             }
@@ -83,17 +83,15 @@ impl SowApp {
                                     let idx = (row * self.map_w as i32 + col) as usize;
                                     let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
                                     let is_land = (terrain_byte & 0x80) != 0;
-                                    if !is_land {
-                                        let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
-                                        let intent = sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: idx as u32, troops };
-                                        if let Some(c) = self.net_client.as_ref() {
-                                            if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
-                                                c.send(json);
-                                            }
-                                        } else {
-                                            let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
-                                            self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                    let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                    let intent = sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: idx as u32, troops };
+                                    if let Some(c) = self.net_client.as_ref() {
+                                        if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
+                                            c.send(json);
                                         }
+                                    } else {
+                                        let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
+                                        self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                     }
                                 }
                             }
@@ -185,23 +183,19 @@ impl SowApp {
                                     let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
                                     let is_land = (terrain_byte & 0x80) != 0;
 
-                                    if !is_land {
-                                        if is_secondary {
-                                            let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
-                                            intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
-                                                target_tile: idx as u32,
-                                                troops,
-                                            });
-                                        }
-                                    } else {
-                                        if is_primary {
-                                            if owner != self.my_player_id.unwrap_or(0) {
-                                                let attack = sow_core::protocol::AttackIntent {
-                                                    target_owner: owner,
-                                                    troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),
-                                                };
-                                                intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
-                                            }
+                                    if is_secondary {
+                                        let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                        intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
+                                            target_tile: idx as u32,
+                                            troops,
+                                        });
+                                    } else if is_primary {
+                                        if is_land && owner != self.my_player_id.unwrap_or(0) {
+                                            let attack = sow_core::protocol::AttackIntent {
+                                                target_owner: owner,
+                                                troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),
+                                            };
+                                            intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
                                         }
                                     }
                                 }
