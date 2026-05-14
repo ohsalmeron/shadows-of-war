@@ -8,7 +8,8 @@ use crate::ui::theme::{
     menu_secondary_button, nickname_field_bg, nickname_field_border, panel_bg, text_secondary,
 };
 use egui::{
-    Align, CentralPanel, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea, Stroke,
+    Align, CentralPanel, Color32, CornerRadius, Frame, Id, Layout, Margin, RichText, ScrollArea,
+    Stroke,
 };
 use sow_core::protocol::LobbyInfo;
 
@@ -326,6 +327,9 @@ fn draw_left_column(
             ui.set_min_height((action_min_h - 16.0).max(52.0));
             ui.add(
                 egui::TextEdit::singleline(&mut state.player_name)
+                    .id(Id::new("main_menu_nickname"))
+                    .hint_text("Your name")
+                    .char_limit(48)
                     .desired_width(f32::INFINITY)
                     .margin(egui::vec2(4.0, 6.0)),
             );

@@ -37,35 +37,13 @@ pub struct GameMap {
     #[serde(skip)] pub dirty_tiles: Vec<usize>,
 }
 
-/// Delta `(dx, dy)` for `border_mask` bit `bit_index` (0..6). `odd_row` means `(cell_y % 2 != 0)`.
-/// Matches `sow-render` `map.wgsl` edge directions and `map_compute.wgsl` neighbor iteration.
-const HEX_NEIGHBOR_DELTA_ODD: [(i32, i32); 6] = [
-    (1, 0),
-    (-1, 0),
-    (0, -1),
-    (1, -1),
-    (0, 1),
-    (1, 1),
+/// Cardinal 4-neighbor deltas: East, West, North, South. Bit index matches border mask packing.
+pub const CARDINAL_NEIGHBOR_DELTAS: [(i32, i32); 4] = [
+    (1, 0),   // bit 0 — East
+    (-1, 0),  // bit 1 — West
+    (0, -1),  // bit 2 — North
+    (0, 1),   // bit 3 — South
 ];
-const HEX_NEIGHBOR_DELTA_EVEN: [(i32, i32); 6] = [
-    (1, 0),
-    (-1, 0),
-    (-1, -1),
-    (0, -1),
-    (-1, 1),
-    (0, 1),
-];
-
-#[inline]
-pub fn hex_neighbor_delta(bit_index: u32, odd_row: bool) -> (i32, i32) {
-    debug_assert!(bit_index < 6);
-    let i = bit_index as usize;
-    if odd_row {
-        HEX_NEIGHBOR_DELTA_ODD[i]
-    } else {
-        HEX_NEIGHBOR_DELTA_EVEN[i]
-    }
-}
 
 impl GameMap {
     pub const PLAYER_ID_MASK: u16 = 0x0FFF;
@@ -87,9 +65,7 @@ impl GameMap {
         }
     }
     pub fn for_each_neighbor(&self, x: u32, y: u32, mut f: impl FnMut(u32, u32)) {
-        let is_odd = !y.is_multiple_of(2);
-        for bit in 0u32..6 {
-            let (dx, dy) = hex_neighbor_delta(bit, is_odd);
+        for &(dx, dy) in &CARDINAL_NEIGHBOR_DELTAS {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
             if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
@@ -98,7 +74,7 @@ impl GameMap {
         }
     }
     pub fn neighbors(&self, x: u32, y: u32) -> Vec<(u32, u32)> {
-        let mut r = Vec::with_capacity(6);
+        let mut r = Vec::with_capacity(4);
         self.for_each_neighbor(x, y, |nx, ny| r.push((nx, ny)));
         r
     }
@@ -120,44 +96,39 @@ impl GameMap {
 
 #[cfg(test)]
 mod border_mask_tests {
-    use super::{hex_neighbor_delta, GameMap};
+    use super::{CARDINAL_NEIGHBOR_DELTAS, GameMap};
 
     #[test]
-    fn hex_neighbor_deltas_match_for_each_neighbor_at_interior() {
+    fn cardinal_deltas_match_for_each_neighbor_at_interior() {
         let map = GameMap::new(32, 32);
         let x = 10u32;
         for y in [0u32, 1u32, 10u32, 21u32] {
-            let is_odd = !y.is_multiple_of(2);
             let mut from_fe = std::collections::HashSet::new();
             map.for_each_neighbor(x, y, |nx, ny| {
                 from_fe.insert((nx as i32 - x as i32, ny as i32 - y as i32));
             });
-            let from_bits: std::collections::HashSet<_> = (0..6u32)
-                .map(|bit| hex_neighbor_delta(bit, is_odd))
+            let from_deltas: std::collections::HashSet<_> = CARDINAL_NEIGHBOR_DELTAS
+                .iter()
+                .copied()
                 .filter(|&(dx, dy)| {
                     let nx = x as i32 + dx;
                     let ny = y as i32 + dy;
                     nx >= 0 && nx < 32 && ny >= 0 && ny < 32
                 })
                 .collect();
-            assert_eq!(from_fe, from_bits, "y={y}");
+            assert_eq!(from_fe, from_deltas, "y={y}");
         }
-    }
-
-    fn is_ocean_water(tb: u8) -> bool {
-        (tb & 0x80) == 0 && (tb & 0x20) != 0
     }
 
     fn compute_border_mask_u32(raw: &[u32], w: u32, h: u32, x: u32, y: u32) -> u32 {
         let i = (y * w + x) as usize;
         let cell = raw[i];
-        let owner = cell & 0x3FF;
+        let owner = cell & 0xFFF;
         let terr = (cell >> 16) & 0xFF;
         let c_land = (terr & 0x80) != 0;
-        let odd = !y.is_multiple_of(2);
+        let c_ocean = (terr & 0x80) == 0 && (terr & 0x20) != 0;
         let mut mask = 0u32;
-        for bit in 0..6u32 {
-            let (dx, dy) = hex_neighbor_delta(bit, odd);
+        for (bit, &(dx, dy)) in CARDINAL_NEIGHBOR_DELTAS.iter().enumerate() {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
             if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
@@ -166,7 +137,7 @@ mod border_mask_tests {
             }
             let ni = (ny as u32 * w + nx as u32) as usize;
             let nraw = raw[ni];
-            let no = nraw & 0x3FF;
+            let no = nraw & 0xFFF;
             let nterr = (nraw >> 16) & 0xFF;
             let n_land = (nterr & 0x80) != 0;
             if no != owner {
@@ -174,8 +145,7 @@ mod border_mask_tests {
                 continue;
             }
             if owner == 0 && no == 0 && c_land != n_land {
-                let n_ocean = is_ocean_water(nterr as u8);
-                let c_ocean = is_ocean_water(terr as u8);
+                let n_ocean = (nterr & 0x80) == 0 && (nterr & 0x20) != 0;
                 if (c_land && !n_land && n_ocean) || (n_land && !c_land && c_ocean) {
                     mask |= 1 << bit;
                 }
@@ -194,8 +164,7 @@ mod border_mask_tests {
         let mut raw: Vec<u32> = (0..(w * h)).map(|_| owner | (land << 16)).collect();
         let cx = 2u32;
         let cy = 2u32;
-        let nx = cx + 1;
-        let ni = (cy * w + nx) as usize;
+        let ni = (cy * w + (cx + 1)) as usize;
         raw[ni] = owner | (lake << 16);
         let m = compute_border_mask_u32(&raw, w, h, cx, cy);
         assert_eq!(m & 1, 0, "east bit: land vs inland lake same owner should not border");
@@ -211,8 +180,7 @@ mod border_mask_tests {
         let mut raw: Vec<u32> = (0..(w * h)).map(|_| owner | (land << 16)).collect();
         let cx = 2u32;
         let cy = 2u32;
-        let nx = cx + 1;
-        let ni = (cy * w + nx) as usize;
+        let ni = (cy * w + (cx + 1)) as usize;
         raw[ni] = owner | (ocean << 16);
         let m = compute_border_mask_u32(&raw, w, h, cx, cy);
         assert_eq!(m & 1, 0, "claimed tiles: no same-owner coast bits");
@@ -230,7 +198,7 @@ mod border_mask_tests {
         let ni = (cy * w + cx) as usize;
         raw[ni] = land << 16;
         let m = compute_border_mask_u32(&raw, w, h, cx, cy);
-        assert_ne!(m & 1, 0, "neutral ocean still gets coast bits for water shader");
+        assert_ne!(m & 1, 0, "neutral ocean still gets coast bits");
     }
 
     #[test]

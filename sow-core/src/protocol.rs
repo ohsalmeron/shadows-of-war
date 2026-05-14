@@ -69,6 +69,9 @@ pub enum ClientMessage {
         lobby_id: u64,
         player_id: u16,
     },
+    Ping {
+        client_time: f64,
+    },
 }
 
 /// Envelope for all server → client messages (bincode-safe: has a discriminant).
@@ -81,6 +84,9 @@ pub enum ServerMessage {
     Start(Box<ServerStartMessage>),
     Turn(ServerTurnMessage),
     SyncState(ServerSyncStateMessage),
+    Pong {
+        client_time: f64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -176,3 +182,54 @@ pub struct ServerSyncStateMessage {
     pub is_starting: bool,
 }
 
+// ─── SimBridge Protocol (Main Thread ↔ Sim Thread) ──────────────────────────
+
+/// Command sent from the main (render) thread to the simulation thread.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SimCommand {
+    /// Initialize the engine with map data and start config.
+    Init {
+        config: crate::game_config::GameConfig,
+        seed: u64,
+        map_bytes: Vec<u8>,
+        players: Vec<PlayerInfo>,
+    },
+    /// Apply a server turn (network intents + tick).
+    Turn(Turn),
+    /// Shutdown the sim thread.
+    Shutdown,
+}
+
+/// Lightweight per-player summary for HUD/nameplates (no heavy state).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PlayerSnapshot {
+    pub id: u16,
+    pub name: String,
+    pub troops: f64,
+    pub max_troops: f64,
+    pub gold: f64,
+    pub tile_count: u32,
+    pub centroid_x: f32,
+    pub centroid_y: f32,
+    pub player_type: crate::player::PlayerType,
+    pub color: [f32; 3],
+    pub has_spawned: bool,
+    pub alive: bool,
+}
+
+/// A single tile whose owner changed during a tick.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct DirtyTile {
+    pub index: u32,
+    pub new_owner: u16,
+}
+
+/// Snapshot sent from the simulation thread to the main thread every tick.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SimSnapshot {
+    pub tick: u64,
+    pub phase: crate::game::GamePhase,
+    pub players: Vec<PlayerSnapshot>,
+    pub dirty_tiles: Vec<DirtyTile>,
+    pub winner: Option<u16>,
+}

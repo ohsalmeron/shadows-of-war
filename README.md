@@ -50,9 +50,11 @@ Open [`ios/sow_ios.xcodeproj`](ios/sow_ios.xcodeproj), set your **Team** on the 
 
 ## 🧠 Technical Highlights & Recent Design Choices
 
-### Deterministic Lockstep (1000+ Bots)
-To support massive scale RTS combat, `sow-core` uses a strict lockstep model. All clients and the server share the exact identical `GameConfig` (such as `bot_count = 1000`). Only player *inputs* are sent over the network. 
-* **Design Choice**: The server was explicitly stripped of hardcoded constants (e.g., `BOT_COUNT = 4`) and forced to adopt the dynamically broadcasted config. A discrepancy of even 1 bot spawn alters the RNG state, causing catastrophic simulation drift on frame 1. The engine now effortlessly synchronizes 1000 active bots without a single dropped frame or desync.
+### Binary Synchronization (Bincode vs JSON)
+To support massive scale RTS combat, `sow-core` uses a strict lockstep model. All clients and the server share the exact identical `GameConfig` (such as `bot_count = 1000`). Only player *inputs* are sent over the network.
+* **Design Choice**: The network layer was migrated from JSON to strict binary serialization using `bincode` over persistent WebSockets.
+* **Reasoning**: An RTS engine transmits dense numeric arrays (unit coordinates, spawn intents, ticks) up to 60 times a second. Binary packing drastically reduces bandwidth footprint and CPU parsing overhead compared to JSON, crucial for hitting 60 FPS on the single-threaded WASM client.
+* **The "Envelope" Paradigm**: Binary lacks JSON's human-readable metadata, making it prone to silent deserialization failures. To prevent catastrophic packet misrouting, we wrapped all network traffic in strict `ServerMessage` and `ClientMessage` tagged enums. This enforces schema discipline at the Rust type-system level, using the enum discriminant to safely route raw byte payloads.
 
 ### Premium 2D Visuals with "Toaster" Memory Footprint
 Instead of relying on heavy 3D rendering or massive 4K textures, `Shadows of War` leverages extremely lightweight math:

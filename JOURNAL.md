@@ -24,3 +24,7 @@ Diplomacy is a mechanical tool.
 
 ### 5. Design for Discovery
 The game balance relies on chaotic, high-impact modifiers rather than strict unit counters. Players are encouraged to discover overpowered synergies. When a player finds a game-breaking combo, they take total ownership of the strategy.
+
+### 6. Networking & Synchronization Architecture
+* **Binary vs JSON**: The engine relies on `bincode` serialization rather than JSON over WebSockets. While JSON is highly debuggable, RTS data (tile states, intent enums, tick IDs) consists of dense numeric structures. Binary serialization yields massive performance gains in high-throughput environments (60Hz turn data) and drastically reduces payload sizes, avoiding CPU parsing bottlenecks on the WASM client.
+* **Strict Type Envelopes**: Raw binary is opaque and unforgiving. Without explicitly tagged enums (`ServerMessage`), a dropped byte or an un-versioned struct update causes silent deserialization failures. We enforce all network traffic to be wrapped in a strongly typed Rust enum to guarantee schema discipline and correct routing.

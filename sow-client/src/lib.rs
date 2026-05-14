@@ -1,9 +1,10 @@
 use winit::event::{Event, WindowEvent, MouseButton, ElementState, MouseScrollDelta};
 use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use sow_core::engine::SowEngine;
-use sow_core::game::GameState;
+use crate::sim_bridge::{SimBridge, PlatformSimBridge};
+use sow_core::protocol::{SimCommand, SimSnapshot};
+
 use sow_core::game_config::GameConfig;
-use sow_core::water_components::WaterComponents;
+
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
 use egui::{Context, RawInput, Pos2, Rect, Vec2};
@@ -30,6 +31,22 @@ fn get_build_version() -> String {
     {
         std::fs::read_to_string(".version").unwrap_or_else(|_| "unknown".to_string()).trim().to_string()
     }
+}
+
+fn get_maps_url() -> String {
+    #[allow(unused_mut)]
+    let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            if let Ok(val) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_MAPS_URL")) {
+                if let Some(s) = val.as_string() {
+                    url = s;
+                }
+            }
+        }
+    }
+    url
 }
 
 mod nameplates;
@@ -112,12 +129,16 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut map_w: u32 = 800;
     let mut map_h: u32 = 600;
     let config = GameConfig::default();
-    let state = GameState::new(12345, map_w, map_h, config);
-    let water = WaterComponents::compute(&state.map, |_| {});
-    let mut engine = SowEngine::new(state, water);
-
-    engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-    engine.spawn_ai(0, 4);
+    
+    let bridge = PlatformSimBridge::spawn();
+    bridge.send_command(SimCommand::Init {
+        config,
+        seed: 12345,
+        map_bytes: vec![],
+        players: vec![],
+    });
+    
+    let mut current_snapshot: Option<SimSnapshot> = None;
 
     // ── Renderer ────────────────────────────────────────────────────────────
     let mut render_ctx = RenderContext::new();
@@ -157,7 +178,18 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     #[cfg(target_arch = "wasm32")]
     let mut wasm_doc_was_visible: bool = true;
 
-    let ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://darkrift.ai/ws/".to_string());
+    #[allow(unused_mut)]
+    let mut ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://darkrift.ai/ws/".to_string());
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            if let Ok(val) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_WS_URL")) {
+                if let Some(s) = val.as_string() {
+                    ws_url = s;
+                }
+            }
+        }
+    }
     app.main_menu_state.server_address = ws_url.clone();
     
     log::info!("Auto-connecting to {}...", ws_url);
@@ -185,6 +217,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut active_touches: HashMap<u64, (f64, f64)> = HashMap::new();
     let mut last_pinch_distance: Option<f64> = None;
 
+    // Tracks last `Window::set_ime_allowed` value (mirrors egui-winit debounce).
+    let mut ime_allowed_state = false;
+    // Last physical-pixel IME area for `set_ime_cursor_area`, for debouncing.
+    let mut ime_cursor_rect_px: Option<Rect> = None;
+
     let mut prev_sync_point: Option<gpu::SyncPoint> = None;
     let mut last_tick = Instant::now();
     let start_time = Instant::now();
@@ -194,6 +231,9 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
     let mut frame_count = 0;
     let mut last_fps_time = Instant::now();
     let mut current_fps = 0;
+    let mut current_ping_ms: Option<u32> = None;
+    let mut last_ping_time = Instant::now();
+    let mut last_frame_time = Instant::now();
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -268,8 +308,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     if let Some(sp) = prev_sync_point.take() {
                         let _ = render_ctx.context.wait_for(&sp, !0);
                     }
+                    let mut old_terrain = vec![128; (map_w * map_h) as usize];
+                    if let Some(mut old_mr) = map_renderer.take() {
+                        old_terrain = old_mr.terrain.clone();
+                        old_mr.destroy(&render_ctx);
+                    }
                     render_ctx.command_encoder.start();
-                    map_renderer = Some(MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, format));
+                    map_renderer = Some(MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, format, &old_terrain));
                     let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
                     prev_sync_point = Some(sync_point);
                     
@@ -350,6 +395,22 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
                         }
                     }
+                    WindowEvent::Ime(ime) => {
+                        use winit::event::Ime;
+                        match ime {
+                            Ime::Enabled | Ime::Disabled => {}
+                            Ime::Preedit(text, _) => {
+                                raw_input
+                                    .events
+                                    .push(egui::Event::Ime(egui::ImeEvent::Preedit(text.clone())));
+                            }
+                            Ime::Commit(text) => {
+                                raw_input
+                                    .events
+                                    .push(egui::Event::Ime(egui::ImeEvent::Commit(text.clone())));
+                            }
+                        }
+                    }
                     WindowEvent::MouseInput { state: btn_state, button, .. } => {
                         let pressed = btn_state == ElementState::Pressed;
                         if button == MouseButton::Left {
@@ -361,32 +422,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
                                 let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
                                 
-                                let q_f = world_x - world_y * 0.577_350_26;
-                                let r_f = world_y * 1.154_700_5;
-                                let s_f = -q_f - r_f;
-
-                                let mut rq = q_f.round();
-                                let mut rr = r_f.round();
-                                let rs = s_f.round();
-
-                                let q_diff = (rq - q_f).abs();
-                                let r_diff = (rr - r_f).abs();
-                                let s_diff = (rs - s_f).abs();
-
-                                if q_diff > r_diff && q_diff > s_diff {
-                                    rq = -rr - rs;
-                                } else if r_diff > s_diff {
-                                    rr = -rq - rs;
-                                }
-
-                                let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
-                                let row = rr as i32;
+                                let col = world_x.floor() as i32;
+                                let row = world_y.floor() as i32;
 
                                 if col >= 0 && row >= 0 && col < map_w as i32 && row < map_h as i32 {
-                                    let intent = if matches!(engine.state.phase, sow_core::game::GamePhase::Spawning { .. }) {
+                                    let phase = current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+                                    let intent = if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
                                         sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
                                     } else {
-                                        let owner = engine.state.map.owner_id(col as u32, row as u32);
+                                        let owner = map_renderer.as_ref().map(|mr| mr.prev_owners[(row * map_w as i32 + col) as usize]).unwrap_or(0);
                                         let attack = sow_core::protocol::AttackIntent {
                                             target_owner: owner,
                                             troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
@@ -408,7 +452,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             player_id: my_player_id.unwrap_or(1),
                                             intent,
                                         };
-                                        engine.apply_stamped_intent(&stamped, 0);
+                                        bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                     }
                                 }
                             }
@@ -515,32 +559,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let world_x = (last_mouse_x as f32 - camera_x) / camera_zoom;
                                     let world_y = (last_mouse_y as f32 - camera_y) / camera_zoom;
                                     
-                                    let q_f = world_x - world_y * 0.577_350_26;
-                                    let r_f = world_y * 1.154_700_5;
-                                    let s_f = -q_f - r_f;
-
-                                    let mut rq = q_f.round();
-                                    let mut rr = r_f.round();
-                                    let rs = s_f.round();
-
-                                    let q_diff = (rq - q_f).abs();
-                                    let r_diff = (rr - r_f).abs();
-                                    let s_diff = (rs - s_f).abs();
-
-                                    if q_diff > r_diff && q_diff > s_diff {
-                                        rq = -rr - rs;
-                                    } else if r_diff > s_diff {
-                                        rr = -rq - rs;
-                                    }
-
-                                    let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
-                                    let row = rr as i32;
+                                    let col = world_x.floor() as i32;
+                                    let row = world_y.floor() as i32;
 
                                     if col >= 0 && row >= 0 && col < map_w as i32 && row < map_h as i32 {
-                                        let intent = if matches!(engine.state.phase, sow_core::game::GamePhase::Spawning { .. }) {
+                                        let phase = current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+                                        let intent = if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
                                             sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 }
                                         } else {
-                                            let owner = engine.state.map.owner_id(col as u32, row as u32);
+                                            let owner = map_renderer.as_ref().map(|mr| mr.prev_owners[(row * map_w as i32 + col) as usize]).unwrap_or(0);
                                             let attack = sow_core::protocol::AttackIntent {
                                                 target_owner: owner,
                                                 troops: Some(app.hud_state.troops * (app.hud_state.attack_ratio as f64)),
@@ -555,7 +582,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                             }
                                         } else {
                                             let stamped = sow_core::protocol::StampedIntent { player_id: my_player_id.unwrap_or(1), intent };
-                                            engine.apply_stamped_intent(&stamped, 0);
+                                            bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                         }
                                     }
                                 }
@@ -627,26 +654,18 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     render_ctx.command_encoder.init_texture(mr.texture);
                                     needs_first_upload = false;
                                 }
-                                mr.update(&mut render_ctx.command_encoder, &render_ctx.context, &mut engine.state.map);
+                                mr.update(&mut render_ctx.command_encoder, &render_ctx.context, &current_snapshot.as_ref().map(|s| &s.dirty_tiles).unwrap_or(&vec![]));
 
                                 let globals = MapGlobals {
                                     camera_pos: [camera_x, camera_y],
                                     zoom: camera_zoom,
-                                    time: start_time.elapsed().as_secs_f32(),
+                                    _pad0: 0.0,
                                     screen_size: [screen_w, screen_h],
                                     map_size: [map_w as f32, map_h as f32],
-                                    visual_terrain_sharpness: ClientVisualConfig::default().shader_terrain_sharpness,
-                                    visual_interior_alpha: ClientVisualConfig::default().shader_interior_alpha,
-                                    visual_border_alpha: ClientVisualConfig::default().shader_border_alpha,
-                                    visual_border_thickness: ClientVisualConfig::default().shader_border_thickness,
-                                    effect_shockwave_intensity: ClientVisualConfig::default().effect_shockwave_intensity,
-                                    effect_border_breathe: ClientVisualConfig::default().effect_border_breathe,
-                                    effect_energy_flow: ClientVisualConfig::default().effect_energy_flow,
-                                    lod_2_zoom: ClientVisualConfig::default().ui_lod_2_zoom,
-                                    lod_3_zoom: ClientVisualConfig::default().ui_lod_3_zoom,
                                     local_player_id: my_player_id.unwrap_or(1) as u32,
-                                    uniform_reserved: 0.0,
-                                    padding2: 0,
+                                    _pad1: 0,
+                                    _pad2: 0,
+                                    _pad3: 0,
                                 };
                                 mr.draw(&mut render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -676,10 +695,19 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                 }
                             }
                             
-                            raw_input.predicted_dt = 1.0 / 60.0;
+                            let frame_now = Instant::now();
+                            let dt = frame_now.duration_since(last_frame_time).as_secs_f32();
+                            last_frame_time = frame_now;
+                            raw_input.predicted_dt = dt.min(0.1);
                             
                             if app.main_menu_state.is_waiting && app.main_menu_state.wait_timer_secs > 0.0 {
                                 app.main_menu_state.wait_timer_secs = (app.main_menu_state.wait_timer_secs - raw_input.predicted_dt).max(0.0);
+                            }
+                            if let Some(ref mut secs) = app.hud_state.spawn_timer_secs {
+                                *secs = (*secs - raw_input.predicted_dt).max(0.0);
+                            }
+                            if let Some(ref mut sync) = app.hud_state.sync_state {
+                                sync.time_remaining = (sync.time_remaining - raw_input.predicted_dt).max(0.0);
                             }
                             
                             let egui_output = egui_ctx.run_ui(raw_input.clone(), |ctx| {
@@ -691,65 +719,66 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
                                     
                                     struct VisPlayer<'a> {
-                                        player: &'a sow_core::player::Player,
+                                        player: &'a sow_core::protocol::PlayerSnapshot,
                                         center: egui::Pos2,
                                         pc: egui::Color32,
                                         sizing_presence: f32,
                                         lod_presence: f32,
                                     }
-                                    let mut visible_players = Vec::with_capacity(engine.state.players.len());
+                                    let mut visible_players = Vec::new();
+                                    if let Some(snap) = &current_snapshot {
+                                        for player in &snap.players {
+                                            if player.tile_count == 0 || !player.alive { continue; }
+                                            
+                                            let avg_col = player.centroid_x;
+                                            let avg_row = player.centroid_y;
+                                            
+                                            let target_cx = avg_col + 0.5;
+                                            let target_cy = avg_row + 0.5;
+                                            
+                                            // Smooth position interpolation
+                                            let pos = label_positions.entry(player.id).or_insert((target_cx, target_cy));
+                                            let dx = target_cx - pos.0;
+                                            let dy = target_cy - pos.1;
+                                            let dist = (dx * dx + dy * dy).sqrt();
+                                            if dist > 50.0 {
+                                                pos.0 = target_cx;
+                                                pos.1 = target_cy;
+                                            } else if dist > 0.1 {
+                                                pos.0 += dx * 0.2;
+                                                pos.1 += dy * 0.2;
+                                            } else {
+                                                pos.0 = target_cx;
+                                                pos.1 = target_cy;
+                                            }
+                                            
+                                            let screen_x = (pos.0 * camera_zoom + camera_x) / sf;
+                                            let screen_y = (pos.1 * camera_zoom + camera_y) / sf;
+                                            
+                                            // Frustum cull
+                                            if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
+                                            
+                                            let center = egui::pos2(screen_x, screen_y);
+                                            // Map shader derives human tint from id, not `player.color`; match that for dots + ★.
+                                            let rgb = if player.player_type == sow_core::player::PlayerType::Human {
+                                                sow_core::player::human_shader_territory_rgb(player.id)
+                                            } else {
+                                                player.color
+                                            };
+                                            let pc = nameplate_matte_player_rgb(rgb);
+                                            
+                                            // `lod_presence` uses zoom (when zoomed out, dots only). `sizing_presence`
+                                            // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
+                                            // invalidated every scroll step (fixes garbled glyphs). Font size is rounded
+                                            // to whole points for fewer distinct `FontId`s.
+                                            let importance = (player.tile_count as f32).sqrt().max(1.0);
+                                            let lod_presence = importance * (camera_zoom / sf);
+                                            let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
 
-                                    for player in &engine.state.players {
-                                        if player.tile_count == 0 || !player.alive { continue; }
-                                        
-                                        let avg_col = player.sum_x as f32 / player.tile_count as f32;
-                                        let avg_row = player.sum_y as f32 / player.tile_count as f32;
-                                        
-                                        let target_cx = avg_col + 0.5 + (avg_row as i32 % 2) as f32 * 0.5;
-                                        let target_cy = (avg_row + 0.5) * 0.866_025_4;
-                                        
-                                        // Smooth position interpolation
-                                        let pos = label_positions.entry(player.id).or_insert((target_cx, target_cy));
-                                        let dx = target_cx - pos.0;
-                                        let dy = target_cy - pos.1;
-                                        let dist = (dx * dx + dy * dy).sqrt();
-                                        if dist > 50.0 {
-                                            pos.0 = target_cx;
-                                            pos.1 = target_cy;
-                                        } else if dist > 0.1 {
-                                            pos.0 += dx * 0.2;
-                                            pos.1 += dy * 0.2;
-                                        } else {
-                                            pos.0 = target_cx;
-                                            pos.1 = target_cy;
+                                            visible_players.push(VisPlayer {
+                                                player, center, pc, sizing_presence, lod_presence
+                                            });
                                         }
-                                        
-                                        let screen_x = (pos.0 * camera_zoom + camera_x) / sf;
-                                        let screen_y = (pos.1 * camera_zoom + camera_y) / sf;
-                                        
-                                        // Frustum cull
-                                        if screen_x < -100.0 || screen_x > screen_w + 100.0 || screen_y < -100.0 || screen_y > screen_h + 100.0 { continue; }
-                                        
-                                        let center = egui::pos2(screen_x, screen_y);
-                                        // Map shader derives human tint from id, not `player.color`; match that for dots + ★.
-                                        let rgb = if player.player_type == sow_core::player::PlayerType::Human {
-                                            sow_core::player::human_shader_territory_rgb(player.id)
-                                        } else {
-                                            player.color
-                                        };
-                                        let pc = nameplate_matte_player_rgb(rgb);
-                                        
-                                        // `lod_presence` uses zoom (when zoomed out, dots only). `sizing_presence`
-                                        // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
-                                        // invalidated every scroll step (fixes garbled glyphs). Font size is rounded
-                                        // to whole points for fewer distinct `FontId`s.
-                                        let importance = (player.tile_count as f32).sqrt().max(1.0);
-                                        let lod_presence = importance * (camera_zoom / sf);
-                                        let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
-
-                                        visible_players.push(VisPlayer {
-                                            player, center, pc, sizing_presence, lod_presence
-                                        });
                                     }
 
                                     visible_players.sort_unstable_by(|a, b| {
@@ -876,16 +905,37 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     frame_count = 0;
                                     last_fps_time = Instant::now();
                                 }
+
+                                if last_ping_time.elapsed().as_secs_f64() >= 1.0 {
+                                    if let Some(c) = net_client.as_ref() {
+                                        let ping_msg = sow_core::protocol::ClientMessage::Ping {
+                                            client_time: start_time.elapsed().as_secs_f64(),
+                                        };
+                                        if let Ok(json) = bincode::serialize(&ping_msg) {
+                                            c.send(json);
+                                        }
+                                    }
+                                    last_ping_time = Instant::now();
+                                }
                                 
                                 if app.phase == ClientPhase::Playing {
                                     egui::Area::new(egui::Id::new("fps_counter"))
-                                        .fixed_pos(egui::pos2(10.0, 10.0))
+                                        .anchor(egui::Align2::LEFT_TOP, egui::vec2(10.0, 10.0))
                                         .show(ctx, |ui| {
-                                            ui.label(
-                                                egui::RichText::new(format!("FPS: {}", current_fps))
-                                                    .color(egui::Color32::YELLOW)
-                                                    .strong()
-                                            );
+                                            ui.horizontal(|ui| {
+                                                if let Some(ping) = current_ping_ms {
+                                                    ui.label(
+                                                        egui::RichText::new(format!("Ping: {}ms", ping))
+                                                            .color(egui::Color32::WHITE)
+                                                            .strong()
+                                                    );
+                                                }
+                                                ui.label(
+                                                    egui::RichText::new(format!("FPS: {}", current_fps))
+                                                        .color(egui::Color32::YELLOW)
+                                                        .strong()
+                                                );
+                                            });
                                         });
                                 }
 
@@ -942,16 +992,14 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         UiAction::CenterCamera => {
                                             let pid = my_player_id.unwrap_or(1);
                                             if let Some(player) =
-                                                engine.state.players.iter().find(|p| p.id == pid)
+                                                current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == pid))
                                             {
                                                 if player.tile_count > 0 && player.alive {
-                                                    let cx = player.sum_x as f32
-                                                        / player.tile_count as f32;
-                                                    let cy = player.sum_y as f32
-                                                        / player.tile_count as f32;
+                                                    let cx = player.centroid_x;
+                                                    let cy = player.centroid_y;
                                                     
-                                                    let world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
-                                                    let world_cy = (cy + 0.5) * 0.866_025_4;
+                                                    let world_cx = cx + 0.5;
+                                                    let world_cy = cy + 0.5;
 
                                                     camera_x = screen_w * 0.5 - world_cx * camera_zoom;
                                                     camera_y = screen_h * 0.5 - world_cy * camera_zoom;
@@ -964,6 +1012,37 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                                 // The new nameplates are rendered before app.draw()
                             });
+
+                            if let Some(win) = window.as_ref() {
+                                let ime_opt = egui_output.platform_output.ime;
+                                let allow_ime = ime_opt.is_some();
+                                let toggling = ime_allowed_state != allow_ime;
+                                if toggling {
+                                    ime_allowed_state = allow_ime;
+                                    win.set_ime_allowed(allow_ime);
+                                }
+                                if let Some(ime_out) = ime_opt {
+                                    let ppp = egui_output.pixels_per_point;
+                                    let ime_rect_px = ppp * ime_out.rect;
+                                    let had_input_events = !raw_input.events.is_empty();
+                                    if ime_cursor_rect_px != Some(ime_rect_px) || had_input_events {
+                                        ime_cursor_rect_px = Some(ime_rect_px);
+                                        win.set_ime_cursor_area(
+                                            winit::dpi::PhysicalPosition::new(
+                                                ime_rect_px.min.x.round() as i32,
+                                                ime_rect_px.min.y.round() as i32,
+                                            ),
+                                            winit::dpi::PhysicalSize::new(
+                                                ime_rect_px.width().round().max(1.0) as u32,
+                                                ime_rect_px.height().round().max(1.0) as u32,
+                                            ),
+                                        );
+                                    }
+                                } else {
+                                    ime_cursor_rect_px = None;
+                                }
+                            }
+
                             raw_input.events.clear();
 
                             // ── DRAWING UI ──────────────────────────────────────────
@@ -1098,11 +1177,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             ServerMessage::SyncState(sync_msg) => {
                                 app.hud_state.sync_state = Some(sync_msg);
                             }
+                            ServerMessage::Pong { client_time } => {
+                                let rtt = start_time.elapsed().as_secs_f64() - client_time;
+                                current_ping_ms = Some((rtt * 1000.0) as u32);
+                            }
                             ServerMessage::LobbiesBroadcast(broadcast) => {
 
                                 app.main_menu_state.lobbies = broadcast.lobbies.clone();
 
-                                let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                                let maps_base = get_maps_url();
                                 let (thumbs_to_fetch, maps_to_fetch) = app.asset_loader.get_assets_to_fetch(&app.main_menu_state.lobbies);
                                 
                                 for map_name in thumbs_to_fetch {
@@ -1231,7 +1314,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                     app.main_menu_state.is_downloading_map = true;
                                     app.main_menu_state.cached_map = None;
                                     
-                                    let maps_base = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+                                    let maps_base = get_maps_url();
                                     let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
                                     log::info!("Downloading map from: {}", url);
                                     
@@ -1314,10 +1397,19 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         
                     // Recover: Send the user back to the loader
                     if app.phase != sow_ui::app::ClientPhase::Splash {
-                        app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::Reconnect;
-                        app.splash_state.status_text = "Connection lost. Reconnecting...".to_string();
-                        app.splash_state.progress = 0.0;
-                        app.phase = sow_ui::app::ClientPhase::Splash;
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            if let Some(window) = web_sys::window() {
+                                let _ = window.location().reload();
+                            }
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::Reconnect;
+                            app.splash_state.status_text = "Connection lost. Reconnecting...".to_string();
+                            app.splash_state.progress = 0.0;
+                            app.phase = sow_ui::app::ClientPhase::Splash;
+                        }
                     }
                 }
 
@@ -1466,6 +1558,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                                         std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len());
                                     }
                                 } else {
+                                    log::error!("Map size mismatch! Expected {} bytes but decompressed {} bytes. Map will be randomly generated.", state.map.terrain.len(), bytes.len());
                                     for (i, &b) in bytes.iter().enumerate() {
                                         if i < state.map.terrain.len() {
                                             state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
@@ -1506,11 +1599,12 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         sow_ui::ui::loading_screen::SplashJob::ExitGame => {
                             // Clean the engine state
                             let config = GameConfig::default();
-                            let state = GameState::new(12345, map_w, map_h, config);
-                            let water = WaterComponents::compute(&state.map, |_| {});
-                            engine = SowEngine::new(state, water);
-                            engine.spawn_human(1, "Commander".to_string(), [0.1, 0.5, 0.9]);
-                            engine.spawn_ai(0, 4);
+                            bridge.send_command(SimCommand::Init {
+                                config,
+                                seed: 12345,
+                                map_bytes: vec![],
+                                players: vec![],
+                            });
                             turn_queue.clear();
                             label_positions.clear();
                             nameplate_cache.clear();
@@ -1543,14 +1637,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
 
                     if app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame && pending_engine_init_data.is_some() && app.splash_state.frames_drawn > 1 {
                         // We have drawn the "Uploading assets to GPU..." screen, now block the main thread!
-                        let (state, water, start_msg) = pending_engine_init_data.take().unwrap();
+                        let (state, _, start_msg) = pending_engine_init_data.take().unwrap();
                             
-                            engine = SowEngine::new(state, water);
-
-                            for p in start_msg.players {
-                                engine.spawn_human(p.id, p.name.clone(), p.color);
-                            }
-                            engine.spawn_ai(engine.state.config.nation_count, engine.state.config.bot_count);
+                            let map_bytes: Vec<u8> = state.map.terrain.iter().map(|t| t.as_byte()).collect();
+                            bridge.send_command(SimCommand::Init {
+                                config: start_msg.config.clone(),
+                                seed: start_msg.seed,
+                                map_bytes: map_bytes.clone(),
+                                players: start_msg.players.clone(),
+                            });
 
                             map_w = start_msg.config.map_width;
                             map_h = start_msg.config.map_height;
@@ -1562,7 +1657,7 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             }
                             if let Some(ref s) = surface {
                                 render_ctx.command_encoder.start();
-                                map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, s.info().format));
+                                map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&render_ctx.context, &mut render_ctx.command_encoder, map_w, map_h, s.info().format, &map_bytes));
                                 let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
                                 prev_sync_point = Some(sync_point);
                                 
@@ -1572,13 +1667,15 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                             
                             app.phase = sow_ui::app::ClientPhase::Playing;
                             if let Some(pid) = my_player_id {
-                                if let Some(player) = engine.state.players.iter().find(|p| p.id == pid) {
-                                    if player.tile_count > 0 && player.alive {
-                                        let cx = player.sum_x as f32 / player.tile_count as f32;
-                                        let cy = player.sum_y as f32 / player.tile_count as f32;
-                                        camera_zoom = 1.5;
-                                        camera_x = screen_w * 0.5 - cx * camera_zoom;
-                                        camera_y = screen_h * 0.5 - cy * camera_zoom;
+                                if let Some(snap) = &current_snapshot {
+                                    if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
+                                        if player.tile_count > 0 && player.alive {
+                                            let cx = player.centroid_x;
+                                            let cy = player.centroid_y;
+                                            camera_zoom = 1.5;
+                                            camera_x = screen_w * 0.5 - cx * camera_zoom;
+                                            camera_y = screen_h * 0.5 - cy * camera_zoom;
+                                        }
                                     }
                                 }
                             }
@@ -1593,9 +1690,20 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         }
                     }
                 app.hud_state.is_mobile = screen_w < 900.0;
-                if let sow_core::game::GamePhase::Spawning { end_tick } = engine.state.phase {
-                    let rem_ticks = end_tick.saturating_sub(engine.state.tick);
-                    app.hud_state.spawn_timer_secs = Some(rem_ticks as f32 * engine.state.config.tick_rate_ms / 1000.0);
+                if let Some(snap) = &current_snapshot {
+                    if let sow_core::game::GamePhase::Spawning { end_tick } = snap.phase {
+                        let rem_ticks = end_tick.saturating_sub(snap.tick);
+                        let target_secs = rem_ticks as f32 * 0.1; // assume 100ms
+                        if let Some(ref mut current) = app.hud_state.spawn_timer_secs {
+                            if (*current - target_secs).abs() > 0.3 {
+                                *current = target_secs;
+                            }
+                        } else {
+                            app.hud_state.spawn_timer_secs = Some(target_secs);
+                        }
+                    } else {
+                        app.hud_state.spawn_timer_secs = None;
+                    }
                 } else {
                     app.hud_state.spawn_timer_secs = None;
                 }
@@ -1604,14 +1712,10 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                         // Multiplayer: lockstep execution dictated by server
                         let mut ticks_processed = 0;
                         while let Some(turn) = turn_queue.pop_front() {
-                            for stamped in &turn.intents {
-                                engine.apply_stamped_intent(stamped, 0);
-                            }
-                            engine.tick();
-
+                            bridge.send_command(SimCommand::Turn(turn));
                             
                             // Update UI HUD State from my player id
-                            if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
+                            if let Some(player) = current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == my_player_id.unwrap_or(1))) {
                                 app.hud_state.gold = player.gold;
                                 app.hud_state.troops = player.troops;
                                 let owned_tiles = player.tile_count as f64;
@@ -1627,11 +1731,11 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                     } else {
                         // Singleplayer: run freely based on local timer
                         if now.duration_since(last_tick) >= tick_interval {
-                            engine.tick();
+                            bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![] }));
 
                             last_tick = now;
                             
-                            if let Some(player) = engine.state.players.iter().find(|p| p.id == my_player_id.unwrap_or(1)) {
+                            if let Some(player) = current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == my_player_id.unwrap_or(1))) {
                                 app.hud_state.gold = player.gold;
                                 app.hud_state.troops = player.troops;
                                 let owned_tiles = player.tile_count as f64;
@@ -1642,6 +1746,13 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop<()>) {
                 } else {
                     last_tick = now;
                 }
+                if let Some(snap) = bridge.try_recv_snapshot() {
+                    if let Some(mr) = &mut map_renderer {
+                        mr.update(&mut render_ctx.command_encoder, &render_ctx.context, &snap.dirty_tiles);
+                    }
+                    current_snapshot = Some(snap);
+                }
+                
                 if let Some(win) = window.as_ref() {
                     win.request_redraw();
                 }
@@ -1695,3 +1806,4 @@ pub fn wasm_main() {
 
     run_game(event_loop);
 }
+pub mod sim_bridge;

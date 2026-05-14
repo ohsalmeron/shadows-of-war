@@ -57,21 +57,13 @@ fn main() {
     let globals = MapGlobals {
         camera_pos: [0.0, 0.0],
         zoom: 1.0,
-        time: 0.0,
+        _pad0: 0.0,
         screen_size: [MW as f32, MH as f32],
         map_size: [MW as f32, MH as f32],
-        visual_terrain_sharpness: 0.0001,
-        visual_interior_alpha: 1.0,
-        visual_border_alpha: 1.0,
-        visual_border_thickness: 1.0,
-        effect_shockwave_intensity: 1.0,
-        effect_border_breathe: 1.0,
-        effect_energy_flow: 1.0,
-        lod_2_zoom: 128.0,
-        lod_3_zoom: 1024.0,
         local_player_id: 1,
-        uniform_reserved: 0.0,
-        padding2: 0,
+        _pad1: 0,
+        _pad2: 0,
+        _pad3: 0,
     };
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;

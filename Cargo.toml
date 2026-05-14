@@ -7,52 +7,65 @@ members = [
     "sow-server",
     "sow-ui",
     "sow-tools",
+    "sow-sim",
 ]
 exclude = ["blade"]
 resolver = "2"
 
 [workspace.dependencies]
-sow-core = { path = "sow-core" }
-sow-render = { path = "sow-render" }
-sow-net = { path = "sow-net" }
-
-# Graphics
-blade-graphics = { path = "blade/blade-graphics" }
-blade-egui = { path = "blade/blade-egui" }
-blade-macros = { path = "blade/blade-macros" }
+bincode = "1.3.3"
+bitfield = "0.17"
+env_logger = "0.11"
+log = "0.4"
 raw-window-handle = "0.6"
-
-# Deterministic RNG (replaces bevy_prng)
+serde_json = "1"
+web-time = "1.1"
 wyrand = "0.2"
 
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-bincode = "1.3.3"
+[workspace.dependencies.blade-egui]
+path = "blade/blade-egui"
 
-# Logging (replaces bevy::log)
-log = "0.4"
-env_logger = "0.11"
+[workspace.dependencies.blade-graphics]
+path = "blade/blade-graphics"
 
-# Data structures
-bitfield = "0.17"
+[workspace.dependencies.blade-macros]
+path = "blade/blade-macros"
 
-# Math
-bytemuck = { version = "1", features = ["derive"] }
-web-time = "1.1"
+[workspace.dependencies.bytemuck]
+version = "1"
+features = ["derive"]
+
+[workspace.dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[workspace.dependencies.sow-core]
+path = "sow-core"
+
+[workspace.dependencies.sow-net]
+path = "sow-net"
+
+[workspace.dependencies.sow-render]
+path = "sow-render"
 
 [profile.dev]
-opt-level = 1
+opt-level = 3
+lto = true
+codegen-units = 1
 
 [profile.dev.package."*"]
 opt-level = 3
 
-[profile.dev.package.sow-core]
-opt-level = 3
-
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 codegen-units = 1
+panic = "abort"
 strip = true
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = 3
+lto = true
+codegen-units = 1
 panic = "abort"

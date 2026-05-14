@@ -5,7 +5,6 @@ use lobby::{master_tick, ServerLobby, build_lobby_broadcast, join_player, leave_
 use sow_core::protocol::{
     ServerJoinAckMessage,
     ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
-    ServerStartMessage,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -124,19 +123,34 @@ async fn main() {
         }
     });
 
-    let addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
+    let mut addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
+    let mut skip_maps = false;
+
+    // Allow Orchestrator to spawn this as a dedicated relay
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len() {
+        if args[i] == "--port" && i + 1 < args.len() {
+            addr = format!("127.0.0.1:{}", args[i+1]);
+            skip_maps = true; // Relays do not serve maps to avoid port collisions
+        }
+    }
+
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
-    // HTTP Static File Server for maps
-    tokio::spawn(async move {
-        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-        let app = axum::Router::new().nest_service("/maps", tower_http::services::ServeDir::new(root).precompressed_br());
-        let http_addr = std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
-        log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
-        let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
-        axum::serve(listener, app).await.unwrap();
-    });
+    if !skip_maps {
+        // HTTP Static File Server for maps
+        tokio::spawn(async move {
+            let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
+            let app = axum::Router::new()
+                .nest_service("/maps", tower_http::services::ServeDir::new(root).precompressed_br())
+                .layer(tower_http::cors::CorsLayer::permissive());
+            let http_addr = std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
+            log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
+            let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+    }
 
     while let Ok((stream, _)) = listener.accept().await {
         let mut global_rx = global_tx.subscribe();
@@ -225,6 +239,11 @@ async fn main() {
                                                         }).await;
                                                     }
                                                 }
+                                            }
+                                            sow_core::protocol::ClientMessage::Ping { client_time } => {
+                                                let pong = sow_core::protocol::ServerMessage::Pong { client_time };
+                                                let json = bincode::serialize(&pong).unwrap();
+                                                let _ = direct_tx.try_send(json);
                                             }
                                         }
                                         continue;

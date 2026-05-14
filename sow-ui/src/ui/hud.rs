@@ -53,7 +53,9 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.heading(RichText::new("DEPLOYMENT PHASE").color(Color32::GOLD).size(32.0));
-                    ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(24.0));
+                    ui.allocate_ui_with_layout(egui::vec2(250.0, 30.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+                        ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(24.0));
+                    });
                     ui.add_space(10.0);
                     ui.label("Click anywhere on the map to place your capital!");
                 });

@@ -246,6 +246,7 @@ fn start_match(lobby: &mut ServerLobby) {
             let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
             unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len()); }
         } else {
+            log::error!("Map size mismatch for {}! Expected {} bytes but got {}. Falling back to default noise.", lobby.config.map_name, state.map.terrain.len(), bytes.len());
             for (i, &b) in bytes.iter().enumerate() {
                 if i < state.map.terrain.len() {
                     state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);

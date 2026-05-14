@@ -282,4 +282,49 @@ impl SowEngine {
             log::warn!("Failed to spawn Human {} - no room!", player_id);
         }
     }
+
+    /// Build a lightweight snapshot of the current state for the render thread.
+    /// Drains `map.dirty_tiles` so each tile is reported exactly once.
+    pub fn build_snapshot(&mut self) -> crate::protocol::SimSnapshot {
+        let dirty_tiles: Vec<crate::protocol::DirtyTile> = self.state.map.dirty_tiles
+            .drain(..)
+            .map(|i| crate::protocol::DirtyTile {
+                index: i as u32,
+                new_owner: self.state.map.state[i],
+            })
+            .collect();
+
+        let players = self.state.players.iter().map(|p| {
+            let (cx, cy) = if p.tile_count > 0 {
+                (
+                    (p.sum_x / p.tile_count as u64) as f32,
+                    (p.sum_y / p.tile_count as u64) as f32,
+                )
+            } else {
+                (0.0, 0.0)
+            };
+            crate::protocol::PlayerSnapshot {
+                id: p.id,
+                name: p.name.clone(),
+                troops: p.troops,
+                max_troops: p.max_troops,
+                gold: p.gold,
+                tile_count: p.tile_count,
+                centroid_x: cx,
+                centroid_y: cy,
+                player_type: p.player_type,
+                color: p.color,
+                has_spawned: p.has_spawned,
+                alive: p.alive,
+            }
+        }).collect();
+
+        crate::protocol::SimSnapshot {
+            tick: self.state.tick,
+            phase: self.state.phase.clone(),
+            players,
+            dirty_tiles,
+            winner: self.state.winner,
+        }
+    }
 }

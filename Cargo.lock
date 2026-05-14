@@ -3333,6 +3333,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sow-sim"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "console_log",
+ "js-sys",
+ "log",
+ "serde",
+ "sow-core",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "sow-tools"
 version = "0.1.0"
 dependencies = [
