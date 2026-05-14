@@ -131,9 +131,15 @@ pub mod native {
         }
 
         fn try_recv_snapshot(&self) -> Option<SimSnapshot> {
-            // Get the latest snapshot, dropping older ones
-            let mut latest = None;
-            while let Ok(snap) = self.snap_rx.try_recv() {
+            // Get the latest snapshot, dropping older ones, but merging dirty tiles
+            let mut latest: Option<SimSnapshot> = None;
+            while let Ok(mut snap) = self.snap_rx.try_recv() {
+                if let Some(mut existing) = latest {
+                    if !existing.dirty_tiles.is_empty() {
+                        existing.dirty_tiles.append(&mut snap.dirty_tiles);
+                        snap.dirty_tiles = existing.dirty_tiles;
+                    }
+                }
                 latest = Some(snap);
             }
             latest
@@ -163,7 +169,7 @@ pub mod wasm {
     impl WasmSimBridge {
         pub fn spawn() -> Self {
             let worker = Worker::new("/assets/sow_sim_worker_boot.js").expect("failed to load worker script");
-            let latest_snapshot = Rc::new(RefCell::new(None));
+            let latest_snapshot = Rc::new(RefCell::new(None::<SimSnapshot>));
             let latest_snapshot_clone = latest_snapshot.clone();
 
             let onmessage_callback = Closure::wrap(Box::new(move |event: MessageEvent| {
@@ -171,7 +177,13 @@ pub mod wasm {
                 let mut bytes = vec![0; array.length() as usize];
                 array.copy_to(&mut bytes);
                 
-                if let Ok(snap) = bincode::deserialize::<SimSnapshot>(&bytes) {
+                if let Ok(mut snap) = bincode::deserialize::<SimSnapshot>(&bytes) {
+                    if let Some(mut existing) = latest_snapshot_clone.borrow_mut().take() {
+                        if !existing.dirty_tiles.is_empty() {
+                            existing.dirty_tiles.append(&mut snap.dirty_tiles);
+                            snap.dirty_tiles = existing.dirty_tiles;
+                        }
+                    }
                     *latest_snapshot_clone.borrow_mut() = Some(snap);
                 } else {
                     log::error!("WasmSimBridge failed to deserialize snapshot!");
