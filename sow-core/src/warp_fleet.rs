@@ -79,7 +79,7 @@ pub fn resolve_fleet_route(
     target_tile: u32,
     border_tiles: &crate::bitset::DenseBitSet,
     target_border: Option<&crate::bitset::DenseBitSet>,
-    has_completed_port: bool,
+    _has_completed_port: bool,
 ) -> Result<FleetRoute, FleetLaunchError> {
     let map_area = map.width.saturating_mul(map.height);
     if map_area == 0 || target_tile >= map_area {

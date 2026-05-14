@@ -69,7 +69,7 @@ if ! wasm-bindgen --target no-modules --no-typescript \
     exit 1
 fi
 
-echo "importScripts('/assets/sow_sim_worker.js'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_bg.wasm' });" > sow-web/public/assets/sow_sim_worker_boot.js
+echo "importScripts('/assets/sow_sim_worker.js?v=${NEW_VERSION}'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_bg.wasm?v=${NEW_VERSION}' });" > sow-web/public/assets/sow_sim_worker_boot.js
 
 # 3. Start Leptos Watch Server
 echo "🚀 3/3 Booting Leptos Orchestrator (sow-web)..."

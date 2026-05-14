@@ -76,10 +76,10 @@ pub fn text_secondary() -> Color32 {
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "CinzelDecorative-Black".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/CinzelDecorative-Black.ttf"))),
+        "Baloo2-Bold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/Baloo2-Bold.ttf"))),
     );
-    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "CinzelDecorative-Black".to_owned());
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Baloo2-Bold".to_owned());
     ctx.set_fonts(fonts);
 
     let mut style = Style {

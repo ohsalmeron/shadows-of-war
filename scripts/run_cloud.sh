@@ -78,7 +78,7 @@ else
     mkdir -p dist/assets
     ~/.cargo/bin/wasm-bindgen --out-dir dist/assets --target no-modules --out-name "sow_sim_worker" --no-typescript "${SIM_WASM_IN}"
     
-    echo "importScripts('/assets/sow_sim_worker.js'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_bg.wasm' });" > dist/assets/sow_sim_worker_boot.js
+    echo "importScripts('/assets/sow_sim_worker.js?v=${BUILD_TS}'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_bg.wasm?v=${BUILD_TS}' });" > dist/assets/sow_sim_worker_boot.js
 
     rsync -a assets/ dist/assets/ || true
     cp -a web/favicon_io/* dist/ 2>/dev/null || true

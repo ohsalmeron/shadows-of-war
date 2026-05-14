@@ -52,10 +52,15 @@ pub fn main_js() -> Result<(), JsValue> {
 
                 // Build and send the initial snapshot to break the loader deadlock
                 let snapshot = new_engine.build_snapshot();
-                if let Ok(snap_bytes) = bincode::serialize(&snapshot) {
-                    let array = Uint8Array::from(&snap_bytes[..]);
-                    let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
-                    let _ = global.post_message(&array);
+                match bincode::serialize(&snapshot) {
+                    Ok(snap_bytes) => {
+                        let array = Uint8Array::from(&snap_bytes[..]);
+                        let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
+                        let _ = global.post_message(&array);
+                    }
+                    Err(e) => {
+                        log::error!("Sim worker failed to serialize initial snapshot: {:?}", e);
+                    }
                 }
 
                 ENGINE.with(|e| *e.borrow_mut() = Some(new_engine));
@@ -70,10 +75,15 @@ pub fn main_js() -> Result<(), JsValue> {
 
                         // Build and send snapshot back
                         let snapshot = e.build_snapshot();
-                        if let Ok(snap_bytes) = bincode::serialize(&snapshot) {
-                            let array = Uint8Array::from(&snap_bytes[..]);
-                            let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
-                            let _ = global.post_message(&array);
+                        match bincode::serialize(&snapshot) {
+                            Ok(snap_bytes) => {
+                                let array = Uint8Array::from(&snap_bytes[..]);
+                                let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
+                                let _ = global.post_message(&array);
+                            }
+                            Err(err) => {
+                                log::error!("Sim worker failed to serialize snapshot: {:?}", err);
+                            }
                         }
                     }
                 });

@@ -161,6 +161,24 @@ pub mod wasm {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    /// Normalize `MessageEvent.data` from the sim worker into owned bytes.
+    /// Browsers may deliver `Uint8Array`, `ArrayBuffer`, or (on misconfiguration) other types.
+    fn worker_message_bytes(data: &JsValue) -> Option<Vec<u8>> {
+        if data.is_undefined() || data.is_null() {
+            return None;
+        }
+        if let Ok(a) = data.clone().dyn_into::<Uint8Array>() {
+            let n = a.length() as usize;
+            let mut out = vec![0u8; n];
+            a.copy_to(&mut out);
+            return Some(out);
+        }
+        if let Ok(buf) = data.clone().dyn_into::<js_sys::ArrayBuffer>() {
+            return Some(Uint8Array::new(&buf).to_vec());
+        }
+        None
+    }
+
     pub struct WasmSimBridge {
         worker: Worker,
         latest_snapshot: Rc<RefCell<Option<SimSnapshot>>>,
@@ -168,25 +186,41 @@ pub mod wasm {
 
     impl WasmSimBridge {
         pub fn spawn() -> Self {
-            let worker = Worker::new("/assets/sow_sim_worker_boot.js").expect("failed to load worker script");
+            let now = web_time::SystemTime::now().duration_since(web_time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
+            let worker = Worker::new(&format!("/assets/sow_sim_worker_boot.js?v={}", now)).expect("failed to load worker script");
             let latest_snapshot = Rc::new(RefCell::new(None::<SimSnapshot>));
             let latest_snapshot_clone = latest_snapshot.clone();
 
             let onmessage_callback = Closure::wrap(Box::new(move |event: MessageEvent| {
-                let array = Uint8Array::new(&event.data());
-                let mut bytes = vec![0; array.length() as usize];
-                array.copy_to(&mut bytes);
-                
-                if let Ok(mut snap) = bincode::deserialize::<SimSnapshot>(&bytes) {
-                    if let Some(mut existing) = latest_snapshot_clone.borrow_mut().take() {
-                        if !existing.dirty_tiles.is_empty() {
-                            existing.dirty_tiles.append(&mut snap.dirty_tiles);
-                            snap.dirty_tiles = existing.dirty_tiles;
+                let Some(bytes) = worker_message_bytes(&event.data()) else {
+                    log::warn!(
+                        "WasmSimBridge: sim worker sent a non-binary message (ignored). Rebuild `sow_sim` assets if this persists."
+                    );
+                    return;
+                };
+                if bytes.is_empty() {
+                    log::warn!("WasmSimBridge: sim worker sent an empty binary message (ignored).");
+                    return;
+                }
+
+                match bincode::deserialize::<SimSnapshot>(&bytes) {
+                    Ok(mut snap) => {
+                        if let Some(mut existing) = latest_snapshot_clone.borrow_mut().take() {
+                            if !existing.dirty_tiles.is_empty() {
+                                existing.dirty_tiles.append(&mut snap.dirty_tiles);
+                                snap.dirty_tiles = existing.dirty_tiles;
+                            }
                         }
+                        *latest_snapshot_clone.borrow_mut() = Some(snap);
                     }
-                    *latest_snapshot_clone.borrow_mut() = Some(snap);
-                } else {
-                    log::error!("WasmSimBridge failed to deserialize snapshot!");
+                    Err(e) => {
+                        log::error!(
+                            "WasmSimBridge failed to deserialize snapshot ({} bytes): {:?}. \
+                             This usually means `sow_client` and `sow_sim_worker_bg.wasm` were built from different `sow-core` revisions — rerun the wasm build so both artifacts refresh together.",
+                            bytes.len(),
+                            e
+                        );
+                    }
                 }
             }) as Box<dyn FnMut(MessageEvent)>);
 

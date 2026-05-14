@@ -64,24 +64,32 @@ impl SowApp {
                                     self.render_ctx.command_encoder.init_texture(mr.texture);
                                     self.needs_first_upload = false;
                                 }
-                                mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, self.current_snapshot.as_ref());
-                                if let Some(snap) = &mut self.current_snapshot {
-                                    snap.dirty_tiles.clear();
-                                }
 
                                 let mut border_thickness = 0.4f32;
                                 let mut border_darkness = 0.15f32;
                                 let mut shore_thickness = 0.4f32;
                                 let mut shore_darkness = 0.15f32;
                                 let mut border_roundness = 0.5f32;
+                                let mut effect_shockwave_intensity = 1.0f32;
+                                let mut effect_border_breathe = 1.0f32;
+                                let mut effect_energy_flow = 1.0f32;
+
                                 self.egui_ctx.data_mut(|d| {
                                     border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
                                     border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
                                     shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32);
                                     shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32);
                                     border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32);
+                                    effect_shockwave_intensity = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shockwave_intensity"), || 1.0f32);
+                                    effect_border_breathe = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_border_breathe"), || 1.0f32);
+                                    effect_energy_flow = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_energy_flow"), || 1.0f32);
                                 });
 
+                                // Perform CPU-side update of the map
+                                mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, self.current_snapshot.as_ref());
+                                if let Some(snap) = &mut self.current_snapshot {
+                                    snap.dirty_tiles.clear();
+                                }
                                 let globals = MapGlobals {
                                     camera_pos: [self.camera_x, self.camera_y],
                                     zoom: self.camera_zoom,
@@ -93,6 +101,10 @@ impl SowApp {
                                     shore_thickness,
                                     shore_darkness,
                                     border_roundness,
+                                    effect_shockwave_intensity,
+                                    effect_border_breathe,
+                                    effect_energy_flow,
+                                    local_player_id: self.my_player_id.unwrap_or(0) as u32,
                                     _pad: [0.0; 3],
                                 };
                                 mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
@@ -519,8 +531,17 @@ impl SowApp {
                                         let mut s_dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32));
                                         let mut roundness = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32));
                                         
+                                        let mut shockwave = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shockwave_intensity"), || 1.0f32));
+                                        let mut breathe = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_border_breathe"), || 1.0f32));
+                                        let mut flow = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_energy_flow"), || 1.0f32));
+                                        
+                                        ui.separator();
+                                        
                                         ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thickness"));
                                         ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Darkness"));
+                                        ui.add(egui::Slider::new(&mut shockwave, 0.0..=2.0).text("Shockwave Intensity"));
+                                        ui.add(egui::Slider::new(&mut breathe, 0.0..=10.0).text("Border Breathe"));
+                                        ui.add(egui::Slider::new(&mut flow, 0.0..=2.0).text("Energy Flow"));
                                         ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thickness"));
                                         ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Darkness"));
                                         ui.add(egui::Slider::new(&mut roundness, 0.0..=1.0).text("Roundness"));
@@ -530,6 +551,10 @@ impl SowApp {
                                         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
                                         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
                                         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shockwave_intensity"), shockwave));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_border_breathe"), breathe));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_energy_flow"), flow));
                                     });
                                 }
 

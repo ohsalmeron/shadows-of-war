@@ -81,7 +81,6 @@ impl SowApp {
                                 let row = world_y.floor() as i32;
                                 if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
                                     let idx = (row * self.map_w as i32 + col) as usize;
-                                    let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
 
                                     let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
                                     let intent = sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: idx as u32, troops };
