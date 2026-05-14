@@ -50,6 +50,14 @@ pub fn main_js() -> Result<(), JsValue> {
 
                 new_engine.spawn_ai(new_engine.state.config.nation_count, new_engine.state.config.bot_count);
 
+                // Build and send the initial snapshot to break the loader deadlock
+                let snapshot = new_engine.build_snapshot();
+                if let Ok(snap_bytes) = bincode::serialize(&snapshot) {
+                    let array = Uint8Array::from(&snap_bytes[..]);
+                    let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
+                    let _ = global.post_message(&array);
+                }
+
                 ENGINE.with(|e| *e.borrow_mut() = Some(new_engine));
             }
             Ok(SimCommand::Turn(turn)) => {

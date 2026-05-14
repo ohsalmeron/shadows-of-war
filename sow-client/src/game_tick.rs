@@ -563,6 +563,7 @@ impl SowApp {
                         self.turn_queue.clear();
                         self.nameplate_cache.clear();
                         self.troop_label_throttle.clear();
+                        self.current_snapshot = None;
                         self.needs_first_upload = true;
                     }
                 }
@@ -589,6 +590,7 @@ impl SowApp {
                             self.label_positions.clear();
                             self.nameplate_cache.clear();
                             self.troop_label_throttle.clear();
+                            self.current_snapshot = None;
                             self.needs_first_upload = true;
 
                             
@@ -605,9 +607,10 @@ impl SowApp {
                                     }
                                     EngineInitEvent::Complete(state, water, start_msg) => {
                                         log::info!("Engine initialization complete in background thread.");
-                                        self.app.splash_state.status_text = "Uploading assets to GPU...".to_string();
-                                        self.app.splash_state.progress = 1.0;
+                                        self.app.splash_state.status_text = "Allocating GPU Memory...".to_string();
+                                        self.app.splash_state.progress = 0.95;
                                         self.app.splash_state.frames_drawn = 0; // Reset to ensure we draw the new text
+                                        self.app.splash_state.gpu_load_step = 1;
                                         self.pending_engine_init_data = Some((*state, water, *start_msg));
                                     }
                                 }
@@ -615,11 +618,13 @@ impl SowApp {
                         }
                     }
 
-                    if self.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame && self.pending_engine_init_data.is_some() && self.app.splash_state.frames_drawn > 1 {
-                        // We have drawn the "Uploading assets to GPU..." screen, now block the main thread!
-                        let (state, _, start_msg) = self.pending_engine_init_data.take().unwrap();
-                            
+                    if self.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame && self.pending_engine_init_data.is_some() {
+                        let step = self.app.splash_state.gpu_load_step;
+                        if step == 1 && self.app.splash_state.frames_drawn > 1 {
+                            // Step 1: Allocate GPU Memory & Send Init Command
+                            let (state, water, start_msg) = self.pending_engine_init_data.take().unwrap();
                             let map_bytes: Vec<u8> = state.map.terrain.iter().map(|t| t.as_byte()).collect();
+                            
                             self.bridge.send_command(SimCommand::Init {
                                 config: start_msg.config.clone(),
                                 seed: start_msg.seed,
@@ -633,39 +638,30 @@ impl SowApp {
                                 let _ = self.render_ctx.context.wait_for(&sp, !0);
                             }
                             if let Some(mut mr) = self.map_renderer.take() {
-                                mr.destroy(&self.render_ctx);
+                                mr.destroy(&self.render_ctx); // MANDATORY MEMORY LEAK FIX
                             }
                             if let Some(ref s) = self.surface {
                                 self.map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&self.render_ctx.context, self.map_w, self.map_h, s.info().format, &map_bytes));
                                 self.needs_first_upload = true;
                             }
                             
-                            self.app.phase = sow_ui::app::ClientPhase::Playing;
-                            self.app.splash_state.progress = 0.99; // Map loaded, waiting for spawning
-                            self.app.splash_state.status_text = "Simulating Initial Expansions...".to_owned();
-                            if let Some(pid) = self.my_player_id {
-                                if let Some(snap) = &self.current_snapshot {
-                                    if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
-                                        if player.tile_count > 0 && player.alive {
-                                            let cx = player.centroid_x;
-                                            let cy = player.centroid_y;
-                                            self.camera_zoom = 1.5;
-                                            self.camera_x = self.screen_w * 0.5 - cx * self.camera_zoom;
-                                            self.camera_y = self.screen_h * 0.5 - cy * self.camera_zoom;
-                                        }
-                                    }
-                                }
-                            }
-
-                            if let Some(c) = self.net_client.as_ref() {
-                                if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
-                                    let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
-                                    let json = bincode::serialize(&ready_msg).unwrap();
-                                    c.send(json);
-                                }
-                            }
+                            // Move to step 2: Texture uploading happens automatically next frame
+                            self.app.splash_state.gpu_load_step = 2;
+                            self.app.splash_state.frames_drawn = 0;
+                            self.app.splash_state.progress = 0.98;
+                            self.app.splash_state.status_text = "Uploading Map Texture...".to_string();
+                            
+                            // Re-insert pending data so we stay in this block until Step 4
+                            self.pending_engine_init_data = Some((state, water, start_msg));
+                        } else if step == 2 && !self.needs_first_upload {
+                            // Step 2 Finished: GPU Texture is uploaded!
+                            self.app.splash_state.gpu_load_step = 3;
+                            self.app.splash_state.progress = 0.99;
+                            self.app.splash_state.status_text = "Simulating Initial Expansions...".to_string();
                         }
                     }
+                }
+
                 self.app.hud_state.is_mobile = self.screen_w < 900.0;
                 if let Some(snap) = &self.current_snapshot {
                     if let sow_core::game::GamePhase::Spawning { end_tick } = snap.phase {
@@ -725,6 +721,37 @@ impl SowApp {
                 }
                 if let Some(snap) = self.bridge.try_recv_snapshot() {
                     self.current_snapshot = Some(snap);
+                }
+                    
+                if self.app.splash_state.gpu_load_step == 3 && self.current_snapshot.is_some() {
+                    self.app.splash_state.gpu_load_step = 4;
+                    self.app.phase = sow_ui::app::ClientPhase::Playing;
+                    
+                    // Clear pending init data to completely finish EnterGame phase
+                    self.pending_engine_init_data = None;
+                    log::info!("First snapshot received, releasing loader!");
+                    
+                    if let Some(pid) = self.my_player_id {
+                        if let Some(snap) = &self.current_snapshot {
+                            if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
+                                if player.tile_count > 0 && player.alive {
+                                    let cx = player.centroid_x;
+                                    let cy = player.centroid_y;
+                                    self.camera_zoom = 1.5;
+                                    self.camera_x = self.screen_w * 0.5 - cx * self.camera_zoom;
+                                    self.camera_y = self.screen_h * 0.5 - cy * self.camera_zoom;
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(c) = self.net_client.as_ref() {
+                        if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
+                            let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
+                            let json = bincode::serialize(&ready_msg).unwrap();
+                            c.send(json);
+                        }
+                    }
                 }
                 
                 if let Some(win) = self.window.as_ref() {

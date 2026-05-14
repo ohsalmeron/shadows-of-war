@@ -67,7 +67,10 @@ pub mod native {
                     if engine.is_none() {
                         match cmd_rx.recv() {
                             Ok(SimCommand::Init { config, seed, map_bytes, players }) => {
-                                engine = Some(init_engine(config, seed, map_bytes, players));
+                                let mut e = init_engine(config, seed, map_bytes, players);
+                                let snapshot = e.build_snapshot();
+                                let _ = snap_tx.send(snapshot);
+                                engine = Some(e);
                             }
                             Ok(SimCommand::Shutdown) => break,
                             Ok(SimCommand::Turn(_)) => {
@@ -80,7 +83,10 @@ pub mod native {
                             match cmd {
                                 SimCommand::Init { config, seed, map_bytes, players } => {
                                     log::info!("Re-initializing Native SimWorker");
-                                    engine = Some(init_engine(config, seed, map_bytes, players));
+                                    let mut e = init_engine(config, seed, map_bytes, players);
+                                    let snapshot = e.build_snapshot();
+                                    let _ = snap_tx.send(snapshot);
+                                    engine = Some(e);
                                 }
                                 SimCommand::Turn(turn) => {
                                     if let Some(e) = &mut engine {
@@ -167,6 +173,8 @@ pub mod wasm {
                 
                 if let Ok(snap) = bincode::deserialize::<SimSnapshot>(&bytes) {
                     *latest_snapshot_clone.borrow_mut() = Some(snap);
+                } else {
+                    log::error!("WasmSimBridge failed to deserialize snapshot!");
                 }
             }) as Box<dyn FnMut(MessageEvent)>);
 

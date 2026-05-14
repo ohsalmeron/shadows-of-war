@@ -14,6 +14,7 @@ pub struct SplashState {
     pub progress: f32, // 0.0 to 1.0
     pub frames_drawn: u32,
     pub thumbnail: Option<egui::TextureHandle>,
+    pub gpu_load_step: u8,
     pub done: bool,
 }
 
@@ -25,6 +26,7 @@ impl Default for SplashState {
             progress: 0.0,
             frames_drawn: 0,
             thumbnail: None,
+            gpu_load_step: 0,
             done: false,
         }
     }
