@@ -64,16 +64,22 @@ impl SowApp {
                                     self.render_ctx.command_encoder.init_texture(mr.texture);
                                     self.needs_first_upload = false;
                                 }
-                                mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, &self.current_snapshot.as_ref().map(|s| &s.dirty_tiles).unwrap_or(&vec![]));
+                                mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, self.current_snapshot.as_ref());
                                 if let Some(snap) = &mut self.current_snapshot {
                                     snap.dirty_tiles.clear();
                                 }
 
                                 let mut border_thickness = 0.4f32;
                                 let mut border_darkness = 0.15f32;
+                                let mut shore_thickness = 0.4f32;
+                                let mut shore_darkness = 0.15f32;
+                                let mut border_roundness = 0.5f32;
                                 self.egui_ctx.data_mut(|d| {
                                     border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
                                     border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
+                                    shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32);
+                                    shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32);
+                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32);
                                 });
 
                                 let globals = MapGlobals {
@@ -84,7 +90,10 @@ impl SowApp {
                                     map_size: [self.map_w as f32, self.map_h as f32],
                                     border_thickness,
                                     border_darkness,
-                                    pad: [0.0; 2],
+                                    shore_thickness,
+                                    shore_darkness,
+                                    border_roundness,
+                                    _pad: [0.0; 3],
                                 };
                                 mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -506,10 +515,21 @@ impl SowApp {
                                     egui::Window::new("LOD Dev Utils").show(ctx, |ui| {
                                         let mut thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32));
                                         let mut dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32));
-                                        ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Thickness"));
-                                        ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Darkness"));
+                                        let mut s_thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32));
+                                        let mut s_dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32));
+                                        let mut roundness = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32));
+                                        
+                                        ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thickness"));
+                                        ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Darkness"));
+                                        ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thickness"));
+                                        ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Darkness"));
+                                        ui.add(egui::Slider::new(&mut roundness, 0.0..=1.0).text("Roundness"));
+                                        
                                         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
                                         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
                                     });
                                 }
 

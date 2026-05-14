@@ -254,4 +254,6 @@ pub struct SimSnapshot {
     pub fleets: Vec<FleetSnapshot>,
     pub attacks: Vec<AttackSnapshot>,
     pub winner: Option<u16>,
+    pub defense_posts: Vec<u32>,
+    pub defense_dirty: bool,
 }

@@ -12,7 +12,10 @@ pub struct MapGlobals {
     pub map_size: [f32; 2],
     pub border_thickness: f32,
     pub border_darkness: f32,
-    pub pad: [f32; 2],
+    pub shore_thickness: f32,
+    pub shore_darkness: f32,
+    pub border_roundness: f32,
+    pub _pad: [f32; 3],
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -129,14 +132,19 @@ impl MapRenderer {
     }
 
     /// Pack the game map into the upload buffer and copy to the GPU texture.
-    pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, dirty_tiles: &[sow_core::protocol::DirtyTile]) {
+    pub fn update(&mut self, encoder: &mut blade_graphics::CommandEncoder, context: &blade_graphics::Context, snapshot: Option<&sow_core::protocol::SimSnapshot>) {
         let total = (self.width * self.height) as usize;
         let u32_per_row = self.bytes_per_row / 4;
         let total_u32 = (u32_per_row * self.height) as usize;
         
-        if dirty_tiles.is_empty() {
+        let empty_tiles = vec![];
+        let dirty_tiles = snapshot.map(|s| &s.dirty_tiles).unwrap_or(&empty_tiles);
+        let is_defense_dirty = snapshot.map(|s| s.defense_dirty).unwrap_or(false);
+
+        if dirty_tiles.is_empty() && !is_defense_dirty {
             return;
         }
+
         let mut min_x = self.width;
         let mut min_y = self.height;
         let mut max_x = 0;
@@ -147,47 +155,102 @@ impl MapRenderer {
             std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
         };
 
-        // Update dirty tiles and their neighbors to compute border bits.
+        let empty_tiles = vec![];
+        let dirty_tiles = snapshot.map(|s| &s.dirty_tiles).unwrap_or(&empty_tiles);
+        let is_defense_dirty = snapshot.map(|s| s.defense_dirty).unwrap_or(false);
+
         for dt in dirty_tiles {
             let i = dt.index as usize;
-            if i >= total { continue; }
-            self.owners[i] = dt.new_owner;
-            
-            let center_x = dt.index % self.width;
-            let center_y = dt.index / self.width;
-            
-            // We need to update the tile itself and its 4 neighbors
-            let mut tiles_to_update = vec![(center_x, center_y)];
-            if center_x > 0 { tiles_to_update.push((center_x - 1, center_y)); }
-            if center_x < self.width - 1 { tiles_to_update.push((center_x + 1, center_y)); }
-            if center_y > 0 { tiles_to_update.push((center_x, center_y - 1)); }
-            if center_y < self.height - 1 { tiles_to_update.push((center_x, center_y + 1)); }
+            if i < total {
+                self.owners[i] = dt.new_owner;
+            }
+        }
 
-            for (x, y) in tiles_to_update {
-                let idx = (y * self.width + x) as usize;
-                let owner_id = self.owners[idx] as u32;
-                let terrain_byte = self.terrain[idx] as u32;
-                
-                let mut border_bits = 0u32;
-                if owner_id > 0 {
-                    let up = if y > 0 { self.owners[idx - self.width as usize] as u32 } else { owner_id };
-                    let down = if y < self.height - 1 { self.owners[idx + self.width as usize] as u32 } else { owner_id };
-                    let left = if x > 0 { self.owners[idx - 1] as u32 } else { owner_id };
-                    let right = if x < self.width - 1 { self.owners[idx + 1] as u32 } else { owner_id };
-                    
-                    if owner_id != up { border_bits |= 1 << 31; }
-                    if owner_id != down { border_bits |= 1 << 30; }
-                    if owner_id != left { border_bits |= 1 << 29; }
-                    if owner_id != right { border_bits |= 1 << 28; }
+        if is_defense_dirty {
+            for i in 0..total { self.terrain[i] &= !0x40; }
+            let range = 8i32;
+            if let Some(snap) = snapshot {
+                for &post_idx in &snap.defense_posts {
+                    let px = (post_idx % self.width) as i32;
+                    let py = (post_idx / self.width) as i32;
+                    for dy in -range..=range {
+                        for dx in -range..=range {
+                            if dx.abs() + dy.abs() <= range {
+                                let nx = px + dx;
+                                let ny = py + dy;
+                                if nx >= 0 && ny >= 0 && nx < self.width as i32 && ny < self.height as i32 {
+                                    let n_idx = (ny as u32 * self.width + nx as u32) as usize;
+                                    self.terrain[n_idx] |= 0x40;
+                                }
+                            }
+                        }
+                    }
                 }
-                
-                let dst_i = (y * u32_per_row + x) as usize;
-                slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16) | border_bits;
+            }
+            min_x = 0; min_y = 0;
+            max_x = self.width - 1; max_y = self.height - 1;
+        }
 
-                if x < min_x { min_x = x; }
-                if y < min_y { min_y = y; }
-                if x > max_x { max_x = x; }
-                if y > max_y { max_y = y; }
+        let pack_tile = |x: u32, y: u32, w: u32, h: u32, owners: &[u16], terrain: &[u8], slice: &mut [u32]| {
+            let idx = (y * w + x) as usize;
+            let owner_id = owners[idx] as u32;
+            let terrain_byte = terrain[idx] as u32;
+            
+            let mut border_bits = 0u32;
+            if owner_id > 0 {
+                let up = if y > 0 { owners[idx - w as usize] as u32 } else { owner_id };
+                let down = if y < h - 1 { owners[idx + w as usize] as u32 } else { owner_id };
+                let left = if x > 0 { owners[idx - 1] as u32 } else { owner_id };
+                let right = if x < w - 1 { owners[idx + 1] as u32 } else { owner_id };
+                
+                if owner_id != up { border_bits |= 1 << 31; }
+                if owner_id != down { border_bits |= 1 << 30; }
+                if owner_id != left { border_bits |= 1 << 29; }
+                if owner_id != right { border_bits |= 1 << 28; }
+
+                if (terrain_byte & 0x80) != 0 {
+                    let up_ocean = if y > 0 { (terrain[idx - w as usize] & 0x80) == 0 } else { false };
+                    let down_ocean = if y < h - 1 { (terrain[idx + w as usize] & 0x80) == 0 } else { false };
+                    let left_ocean = if x > 0 { (terrain[idx - 1] & 0x80) == 0 } else { false };
+                    let right_ocean = if x < w - 1 { (terrain[idx + 1] & 0x80) == 0 } else { false };
+                    
+                    if up_ocean { border_bits |= 1 << 27; }
+                    if down_ocean { border_bits |= 1 << 26; }
+                    if left_ocean { border_bits |= 1 << 25; }
+                    if right_ocean { border_bits |= 1 << 24; }
+                }
+            }
+            
+            let dst_i = (y * u32_per_row + x) as usize;
+            slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16) | border_bits;
+        };
+
+        if is_defense_dirty {
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    pack_tile(x, y, self.width, self.height, &self.owners, &self.terrain, slice);
+                }
+            }
+        } else {
+            for dt in dirty_tiles {
+                let i = dt.index as usize;
+                if i >= total { continue; }
+                let center_x = dt.index % self.width;
+                let center_y = dt.index / self.width;
+                
+                let mut tiles_to_update = vec![(center_x, center_y)];
+                if center_x > 0 { tiles_to_update.push((center_x - 1, center_y)); }
+                if center_x < self.width - 1 { tiles_to_update.push((center_x + 1, center_y)); }
+                if center_y > 0 { tiles_to_update.push((center_x, center_y - 1)); }
+                if center_y < self.height - 1 { tiles_to_update.push((center_x, center_y + 1)); }
+
+                for (x, y) in tiles_to_update {
+                    pack_tile(x, y, self.width, self.height, &self.owners, &self.terrain, slice);
+                    if x < min_x { min_x = x; }
+                    if y < min_y { min_y = y; }
+                    if x > max_x { max_x = x; }
+                    if y > max_y { max_y = y; }
+                }
             }
         }
 

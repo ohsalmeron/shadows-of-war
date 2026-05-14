@@ -23,8 +23,8 @@ pub struct SowEngine {
     pub path_scratch: WaterPathfinderScratch,
     pub placement_scratch: PlacementScratch,
     pub defense_grid: DefenseGrid,
-    /// When true, [`DefenseGrid::rebuild`] must run before combat queries (new/changed defense posts).
     pub defense_grid_dirty: bool,
+    pub render_defense_dirty: bool,
     pub building_grid: BuildingGrid,
     pub building_aggregates: Vec<BuildingAggregate>,
     pub building_aggregates_dirty: bool,
@@ -45,6 +45,7 @@ impl SowEngine {
             placement_scratch: PlacementScratch::default(),
             defense_grid: DefenseGrid::default(),
             defense_grid_dirty: true,
+            render_defense_dirty: true,
             building_grid: BuildingGrid::default(),
             building_aggregates: Vec::new(),
             building_aggregates_dirty: true,
@@ -90,6 +91,7 @@ impl SowEngine {
         self.building_aggregates_dirty = true;
         if is_ready_defense {
             self.defense_grid_dirty = true;
+            self.render_defense_dirty = true;
         }
     }
 
@@ -356,6 +358,17 @@ impl SowEngine {
             retreating: a.retreating,
         }).collect();
 
+        let mut defense_posts = Vec::new();
+        if self.render_defense_dirty {
+            for b in &self.buildings {
+                if b.kind == crate::game::BuildingKind::DefensePost && !b.under_construction {
+                    defense_posts.push(b.tile_idx);
+                }
+            }
+        }
+        let defense_dirty = self.render_defense_dirty;
+        self.render_defense_dirty = false;
+
         crate::protocol::SimSnapshot {
             tick: self.state.tick,
             phase: self.state.phase.clone(),
@@ -364,6 +377,8 @@ impl SowEngine {
             fleets,
             attacks,
             winner: self.state.winner,
+            defense_posts,
+            defense_dirty,
         }
     }
 }

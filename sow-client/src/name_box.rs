@@ -171,7 +171,7 @@ fn largest_rectangle_in_histogram(widths: &[i32]) -> NameBox {
             if height * width > max_area {
                 max_area = height * width;
                 largest_rect = NameBox {
-                    x: if stack.is_empty() { 0.0 } else { (*stack.last().unwrap() as f32 + 1.0) },
+                    x: if stack.is_empty() { 0.0 } else { *stack.last().unwrap() as f32 + 1.0 },
                     y: 0.0,
                     width: width as f32,
                     height: height as f32,

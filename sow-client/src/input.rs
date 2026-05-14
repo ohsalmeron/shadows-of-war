@@ -82,7 +82,7 @@ impl SowApp {
                                 if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
                                     let idx = (row * self.map_w as i32 + col) as usize;
                                     let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
-                                    let is_land = (terrain_byte & 0x80) != 0;
+
                                     let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
                                     let intent = sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: idx as u32, troops };
                                     if let Some(c) = self.net_client.as_ref() {
@@ -148,74 +148,92 @@ impl SowApp {
                             let id = finger_id.into_raw() as u64;
                             if pressed {
                                 self.active_touches.insert(id, (position.x, position.y));
-                                self.map_touch_start = Some((web_time::Instant::now(), position.x, position.y));
                             } else {
                                 self.active_touches.remove(&id);
-                                self.map_touch_start = None;
                                 if self.active_touches.len() < 2 {
                                     self.last_pinch_distance = None;
                                 }
                             }
                         }
 
+                        let wants_pointer = self.egui_ctx.egui_wants_pointer_input();
+
                         if is_primary {
-                            self.dragging = pressed;
+                            if pressed {
+                                if !wants_pointer {
+                                    self.dragging = true;
+                                }
+                            } else {
+                                self.dragging = false;
+                            }
                         }
 
-                        if (is_primary || is_secondary) && pressed && !self.egui_ctx.egui_wants_pointer_input() && self.app.phase == ClientPhase::Playing && self.app.hud_state.sync_state.is_none() {
-                            let world_x = (self.last_mouse_x as f32 - self.camera_x) / self.camera_zoom;
-                            let world_y = (self.last_mouse_y as f32 - self.camera_y) / self.camera_zoom;
-                            
-                            let col = world_x.floor() as i32;
-                            let row = world_y.floor() as i32;
+                        if pressed && !wants_pointer {
+                            self.map_touch_start = Some((web_time::Instant::now(), position.x, position.y));
+                        }
 
-                            if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
-                                let phase = self.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
-                                let mut intent_opt = None;
+                        if !pressed && !wants_pointer && self.app.phase == ClientPhase::Playing && self.app.hud_state.sync_state.is_none() {
+                            if let Some((_, sx, sy)) = self.map_touch_start {
+                                // Distance check just in case (though movement clears it too)
+                                let dx = position.x - sx;
+                                let dy = position.y - sy;
+                                if dx * dx + dy * dy <= 100.0 {
+                                    let world_x = (sx as f32 - self.camera_x) / self.camera_zoom;
+                                    let world_y = (sy as f32 - self.camera_y) / self.camera_zoom;
+                                    
+                                    let col = world_x.floor() as i32;
+                                    let row = world_y.floor() as i32;
 
-                                if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
-                                    if is_primary {
-                                        intent_opt = Some(sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 });
-                                    }
-                                } else {
-                                    let idx = (row * self.map_w as i32 + col) as usize;
-                                    let owner = self.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
-                                    let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
-                                    let is_land = (terrain_byte & 0x80) != 0;
+                                    if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
+                                        let phase = self.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+                                        let mut intent_opt = None;
 
-                                    if is_secondary {
-                                        let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
-                                        intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
-                                            target_tile: idx as u32,
-                                            troops,
-                                        });
-                                    } else if is_primary {
-                                        if is_land && owner != self.my_player_id.unwrap_or(0) {
-                                            let attack = sow_core::protocol::AttackIntent {
-                                                target_owner: owner,
-                                                troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),
-                                            };
-                                            intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
+                                        if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+                                            if is_primary {
+                                                intent_opt = Some(sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 });
+                                            }
+                                        } else {
+                                            let idx = (row * self.map_w as i32 + col) as usize;
+                                            let owner = self.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+                                            let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
+                                            let is_land = (terrain_byte & 0x80) != 0;
+
+                                            if is_secondary {
+                                                let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                                intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
+                                                    target_tile: idx as u32,
+                                                    troops,
+                                                });
+                                            } else if is_primary {
+                                                if is_land && owner != self.my_player_id.unwrap_or(0) {
+                                                    let attack = sow_core::protocol::AttackIntent {
+                                                        target_owner: owner,
+                                                        troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),
+                                                    };
+                                                    intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
+                                                }
+                                            }
+                                        }
+                                        
+                                        if let Some(intent) = intent_opt {
+                                            if let Some(c) = self.net_client.as_ref() {
+                                                let msg = sow_core::protocol::ClientMessage::Gameplay {
+                                                    intent: intent.clone(),
+                                                };
+                                                if let Ok(json) = bincode::serialize(&msg) {
+                                                    c.send(json);
+                                                }
+                                            } else {
+                                                let stamped = sow_core::protocol::StampedIntent {
+                                                    player_id: self.my_player_id.unwrap_or(1),
+                                                    intent,
+                                                };
+                                                self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                            }
                                         }
                                     }
                                 }
-                                
-                                if let Some(intent) = intent_opt {
-                                    if let Some(c) = self.net_client.as_ref() {
-                                        let msg = sow_core::protocol::ClientMessage::Gameplay {
-                                            intent: intent.clone(),
-                                        };
-                                        if let Ok(json) = bincode::serialize(&msg) {
-                                            c.send(json);
-                                        }
-                                    } else {
-                                        let stamped = sow_core::protocol::StampedIntent {
-                                            player_id: self.my_player_id.unwrap_or(1),
-                                            intent,
-                                        };
-                                        self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
-                                    }
-                                }
+                                self.map_touch_start = None;
                             }
                         }
 
@@ -231,16 +249,16 @@ impl SowApp {
                         });
                     }
                     WindowEvent::PointerMoved { source, position, .. } => {
-                        let is_touch = matches!(source, winit::event::PointerSource::Touch { .. });
                         if let winit::event::PointerSource::Touch { finger_id, .. } = source {
                             let id = finger_id.into_raw() as u64;
                             self.active_touches.insert(id, (position.x, position.y));
-                            if let Some((_, sx, sy)) = self.map_touch_start {
-                                let dx = position.x - sx;
-                                let dy = position.y - sy;
-                                if dx * dx + dy * dy > 100.0 {
-                                    self.map_touch_start = None;
-                                }
+                        }
+
+                        if let Some((_, sx, sy)) = self.map_touch_start {
+                            let dx = position.x - sx;
+                            let dy = position.y - sy;
+                            if dx * dx + dy * dy > 100.0 {
+                                self.map_touch_start = None;
                             }
                         }
 
@@ -269,7 +287,7 @@ impl SowApp {
                             }
                             self.last_pinch_distance = Some(distance);
                         } else {
-                            if self.dragging && (!is_touch || !self.egui_ctx.egui_wants_pointer_input()) {
+                            if self.dragging {
                                 let dx = position.x - self.last_mouse_x;
                                 let dy = position.y - self.last_mouse_y;
                                 self.camera_x += dx as f32;

@@ -6,7 +6,8 @@ struct Globals {
     map_size: vec2<f32>,
     border_thickness: f32,
     border_darkness: f32,
-    pad: vec2<f32>,
+    shore_thickness: f32,
+    shore_darkness: f32,
 }
 
 var<uniform> globals: Globals;
@@ -112,18 +113,51 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let border_left = (val & 0x20000000u) != 0u;
         let border_right = (val & 0x10000000u) != 0u;
 
+        let shore_up = (val & 0x08000000u) != 0u;
+        let shore_down = (val & 0x04000000u) != 0u;
+        let shore_left = (val & 0x02000000u) != 0u;
+        let shore_right = (val & 0x01000000u) != 0u;
+
         let fx = fract(world_x);
         let fy = fract(world_y);
         
         // Retrieve live values from the UI sliders via Globals
         let thickness = globals.border_thickness;
         let border_darkness = globals.border_darkness;
+        let s_thickness = globals.shore_thickness;
+        let s_darkness = globals.shore_darkness;
 
-        if (border_up && fy < thickness) || 
-           (border_down && fy > 1.0 - thickness) || 
-           (border_left && fx < thickness) || 
-           (border_right && fx > 1.0 - thickness) {
-            base_color = base_color * border_darkness; // Darken for outline
+        let roundness = globals.border_roundness;
+        let border_r = thickness * roundness;
+        
+        let core_min_x = select(0.0, thickness + border_r, border_left);
+        let core_max_x = select(1.0, 1.0 - thickness - border_r, border_right);
+        let core_min_y = select(0.0, thickness + border_r, border_up);
+        let core_max_y = select(1.0, 1.0 - thickness - border_r, border_down);
+
+        let dx = max(core_min_x - fx, max(0.0, fx - core_max_x));
+        let dy = max(core_min_y - fy, max(0.0, fy - core_max_y));
+        let is_border = sqrt(dx*dx + dy*dy) > border_r;
+
+        let shore_r = s_thickness * roundness;
+        
+        let s_core_min_x = select(0.0, s_thickness + shore_r, shore_left);
+        let s_core_max_x = select(1.0, 1.0 - s_thickness - shore_r, shore_right);
+        let s_core_min_y = select(0.0, s_thickness + shore_r, shore_up);
+        let s_core_max_y = select(1.0, 1.0 - s_thickness - shore_r, shore_down);
+
+        let s_dx = max(s_core_min_x - fx, max(0.0, fx - s_core_max_x));
+        let s_dy = max(s_core_min_y - fy, max(0.0, fy - s_core_max_y));
+        let is_shore = sqrt(s_dx*s_dx + s_dy*s_dy) > shore_r;
+
+        let is_defended = (terrain_byte & 0x40u) != 0u;
+        let is_even_tile = (u32(world_x) + u32(world_y)) % 2u == 0u;
+        let draw_line = !is_defended || is_even_tile;
+
+        if is_shore && draw_line {
+            base_color = base_color * s_darkness;
+        } else if is_border && draw_line {
+            base_color = base_color * border_darkness;
         }
     }
 
