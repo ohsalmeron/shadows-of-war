@@ -252,9 +252,16 @@ impl SowApp {
                 self.ws_reconnect_after_resume = true;
                 if self.window.is_none() {
                     #[cfg(any(target_os = "android", target_os = "ios"))]
-                    let attributes = winit::window::WindowAttributes::default()
+                    let mut attributes = winit::window::WindowAttributes::default()
                         .with_title("Shadows of War");
 
+                    #[cfg(target_os = "ios")]
+                    {
+                        let ios_attrs = winit::platform::ios::WindowAttributesIos::default()
+                            .with_valid_orientations(winit::platform::ios::ValidOrientations::LandscapeAndPortrait)
+                            .with_prefers_home_indicator_hidden(true);
+                        attributes = attributes.with_platform_attributes(Box::new(ios_attrs));
+                    }
                     #[cfg(target_arch = "wasm32")]
                     let mut attributes = {
                         let window = web_sys::window().unwrap();

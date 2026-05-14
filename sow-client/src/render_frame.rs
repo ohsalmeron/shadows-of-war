@@ -78,11 +78,12 @@ impl SowApp {
 
                             // ── UI UPDATE ───────────────────────────────────────
                             let mut sf = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
-                            if cfg!(any(target_os = "android", target_os = "ios"))
-                                && sf < 1.5
-                                && self.screen_h > 800.0
-                            {
-                                sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
+                            if cfg!(any(target_os = "android", target_os = "ios")) {
+                                if sf < 1.5 && self.screen_h > 800.0 {
+                                    sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
+                                } else if sf > 2.0 {
+                                    sf = 2.0; // Don't let the GUI get too huge on iOS devices that report 3.0
+                                }
                             }
                             
                             self.egui_ctx.set_pixels_per_point(sf);
