@@ -24,7 +24,7 @@ fn get_build_version() -> String {
 
 fn get_maps_url() -> String {
     #[allow(unused_mut)]
-    let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://darkrift.ai/assets/maps".to_string());
+    let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://shadowsofwar.io/assets/maps".to_string());
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {

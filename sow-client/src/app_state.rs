@@ -154,7 +154,7 @@ impl SowApp {
     let wasm_doc_was_visible: bool = true;
 
     #[allow(unused_mut)]
-    let mut ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://darkrift.ai/ws/".to_string());
+    let mut ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://shadowsofwar.io/ws/".to_string());
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {

@@ -61,7 +61,7 @@ if ! wasm-bindgen --target web --no-typescript \
     exit 1
 fi
 if ! wasm-bindgen --target no-modules --no-typescript \
-    --out-name sow_sim_worker \
+    --out-name "sow_sim_worker_${NEW_VERSION}" \
     --out-dir sow-web/public/assets \
     target/wasm32-unknown-unknown/release/sow_sim.wasm; then
     echo "❌ Worker bindings generation failed. Rolling back version..."
@@ -69,7 +69,7 @@ if ! wasm-bindgen --target no-modules --no-typescript \
     exit 1
 fi
 
-echo "importScripts('/assets/sow_sim_worker.js?v=${NEW_VERSION}'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_bg.wasm?v=${NEW_VERSION}' });" > sow-web/public/assets/sow_sim_worker_boot.js
+echo "importScripts('/assets/sow_sim_worker_${NEW_VERSION}.js'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_${NEW_VERSION}_bg.wasm' });" > sow-web/public/assets/sow_sim_worker_boot_${NEW_VERSION}.js
 
 # 3. Start Leptos Watch Server
 echo "🚀 3/3 Booting Leptos Orchestrator (sow-web)..."

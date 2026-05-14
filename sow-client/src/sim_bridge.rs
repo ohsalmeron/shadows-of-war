@@ -186,8 +186,18 @@ pub mod wasm {
 
     impl WasmSimBridge {
         pub fn spawn() -> Self {
-            let now = web_time::SystemTime::now().duration_since(web_time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
-            let worker = Worker::new(&format!("/assets/sow_sim_worker_boot.js?v={}", now)).expect("failed to load worker script");
+            let build_ts = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("SOW_BUILD_TS"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_else(|| "".to_string());
+                
+            let worker_url = if build_ts.is_empty() {
+                "/assets/sow_sim_worker_boot.js".to_string()
+            } else {
+                format!("/assets/sow_sim_worker_boot_{}.js", build_ts)
+            };
+
+            let worker = Worker::new(&worker_url).expect("failed to load worker script");
             let latest_snapshot = Rc::new(RefCell::new(None::<SimSnapshot>));
             let latest_snapshot_clone = latest_snapshot.clone();
 

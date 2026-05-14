@@ -5,10 +5,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
-VPS_IP="74.208.246.177"
+VPS_IP="35.239.160.167"
 VPS_USER="bizkit"
-WEB_DEST_DIR="/var/www/darkrift.ai/html"
-BACKEND_DEST_DIR="/home/bizkit/darkrift"
+WEB_DEST_DIR="/var/www/shadowsofwar.io/html"
+BACKEND_DEST_DIR="/home/bizkit/shadowsofwar"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
 WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
@@ -76,9 +76,9 @@ else
     ~/.cargo/bin/wasm-bindgen --out-dir dist --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
     
     mkdir -p dist/assets
-    ~/.cargo/bin/wasm-bindgen --out-dir dist/assets --target no-modules --out-name "sow_sim_worker" --no-typescript "${SIM_WASM_IN}"
+    ~/.cargo/bin/wasm-bindgen --out-dir dist/assets --target no-modules --out-name "sow_sim_worker_${BUILD_TS}" --no-typescript "${SIM_WASM_IN}"
     
-    echo "importScripts('/assets/sow_sim_worker.js?v=${BUILD_TS}'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_bg.wasm?v=${BUILD_TS}' });" > dist/assets/sow_sim_worker_boot.js
+    echo "importScripts('/assets/sow_sim_worker_${BUILD_TS}.js'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_${BUILD_TS}_bg.wasm' });" > dist/assets/sow_sim_worker_boot_${BUILD_TS}.js
 
     rsync -a assets/ dist/assets/ || true
     cp -a web/favicon_io/* dist/ 2>/dev/null || true
@@ -141,8 +141,8 @@ ssh ${VPS_USER}@${VPS_IP} "mkdir -p ${BACKEND_DEST_DIR}"
 rsync -avz ${SERVER_BIN} ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/dark-rift-server &
 RSYNC_SERVER_PID=$!
 
-ssh ${VPS_USER}@${VPS_IP} "mkdir -p /home/bizkit/dark-rift-prod/assets/maps"
-rsync -avz --exclude='*.bin' assets/maps/ ${VPS_USER}@${VPS_IP}:/home/bizkit/dark-rift-prod/assets/maps/ &
+ssh ${VPS_USER}@${VPS_IP} "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
+rsync -avz --exclude='*.bin' assets/maps/ ${VPS_USER}@${VPS_IP}:/home/bizkit/shadowsofwar/assets/maps/ &
 RSYNC_ASSETS_PID=$!
 
 wait $RSYNC_WEB_PID || { echo "❌ Error subiendo Frontend"; exit 1; }
@@ -152,9 +152,9 @@ echo "✅ VPS sync complete."
 
 # 5. Restart Systemd
 echo "==> Restarting Systemd Service on VPS..."
-ssh -t ${VPS_USER}@${VPS_IP} "sudo systemctl restart darkrift-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+ssh -t ${VPS_USER}@${VPS_IP} "sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
 echo "========================================================="
 echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"
-echo "🕹️  Play live: https://darkrift.ai"
+echo "🕹️  Play live: https://shadowsofwar.io"
 echo "========================================================="
