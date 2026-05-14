@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shadows of War</title>
-    <link rel="icon" href="data:,">
+    <link rel="icon" href="./sow.svg" type="image/svg+xml">
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous">
     <style>

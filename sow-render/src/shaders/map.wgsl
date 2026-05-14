@@ -4,6 +4,9 @@ struct Globals {
     time: f32,
     screen_size: vec2<f32>,
     map_size: vec2<f32>,
+    border_thickness: f32,
+    border_darkness: f32,
+    pad: vec2<f32>,
 }
 
 var<uniform> globals: Globals;
@@ -112,10 +115,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let fx = fract(world_x);
         let fy = fract(world_y);
         
-        // Adjust this value to make the border thinner (e.g. 0.15) or thicker (e.g. 0.4)
-        let thickness = 0.5;
-        // Adjust this value to make the border darker or lighter (0.0 is black, 1.0 is full color)
-        let border_darkness = 0.2;
+        // Retrieve live values from the UI sliders via Globals
+        let thickness = globals.border_thickness;
+        let border_darkness = globals.border_darkness;
 
         if (border_up && fy < thickness) || 
            (border_down && fy > 1.0 - thickness) || 

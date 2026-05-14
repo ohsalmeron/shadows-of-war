@@ -10,6 +10,9 @@ pub struct MapGlobals {
     pub time: f32,
     pub screen_size: [f32; 2],
     pub map_size: [f32; 2],
+    pub border_thickness: f32,
+    pub border_darkness: f32,
+    pub pad: [f32; 2],
 }
 
 #[derive(blade_macros::ShaderData)]

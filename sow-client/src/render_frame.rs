@@ -69,12 +69,22 @@ impl SowApp {
                                     snap.dirty_tiles.clear();
                                 }
 
+                                let mut border_thickness = 0.4f32;
+                                let mut border_darkness = 0.15f32;
+                                self.egui_ctx.data_mut(|d| {
+                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
+                                    border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
+                                });
+
                                 let globals = MapGlobals {
                                     camera_pos: [self.camera_x, self.camera_y],
                                     zoom: self.camera_zoom,
                                     time: self.start_time.elapsed().as_secs_f32(),
                                     screen_size: [self.screen_w, self.screen_h],
                                     map_size: [self.map_w as f32, self.map_h as f32],
+                                    border_thickness,
+                                    border_darkness,
+                                    pad: [0.0; 2],
                                 };
                                 mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -492,6 +502,15 @@ impl SowApp {
                                                 );
                                             });
                                         });
+
+                                    egui::Window::new("LOD Dev Utils").show(ctx, |ui| {
+                                        let mut thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32));
+                                        let mut dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32));
+                                        ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Thickness"));
+                                        ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Darkness"));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
+                                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
+                                    });
                                 }
 
                                 if self.app.phase == ClientPhase::Playing {

@@ -64,6 +64,7 @@ if [[ -f "${LAST_HASH_FILE}" ]] && [[ "$(cat "${LAST_HASH_FILE}")" == "${WASM_HA
     echo "⚡ WASM hasn't changed. Skipping wasm-bindgen and brotli compression!"
     # Update assets just in case they changed
     rsync -a assets/ dist/assets/
+    cp web/sow.svg dist/sow.svg
 else
     echo "🔄 WASM changed. Running wasm-bindgen and brotli..."
     rm -rf dist/*
@@ -81,6 +82,7 @@ else
 
     rsync -a assets/ dist/assets/ || true
     cp -a web/favicon_io/* dist/ 2>/dev/null || true
+    cp web/sow.svg dist/sow.svg
     cp web/sw.js dist/sw.js 2>/dev/null || true
     
     LOADER_TEMPLATE="${ROOT}/web/index.html.template"
