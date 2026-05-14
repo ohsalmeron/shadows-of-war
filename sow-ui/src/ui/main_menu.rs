@@ -464,6 +464,21 @@ fn draw_right_column(
     stub_secondary(ui, "CREATE LOBBY", compact);
     ui.add_space(section_gap * 0.5);
     stub_secondary(ui, "JOIN LOBBY", compact);
+    ui.add_space(section_gap * 0.5);
+    
+    let h = if compact { 48.0 } else { 52.0 };
+    let btn = egui::Button::new(
+        RichText::new("⚙  Settings")
+            .size(if compact { 16.0 } else { 18.0 })
+            .color(text_secondary()),
+    )
+    .fill(Color32::from_rgba_unmultiplied(20, 24, 32, 240))
+    .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 180, 220, 100)))
+    .min_size(egui::vec2(ui.available_width(), h));
+
+    if ui.add(btn).clicked() {
+        *action = Some(UiAction::ToggleSettings);
+    }
 }
 
 fn stub_secondary(ui: &mut egui::Ui, label: &str, compact: bool) {

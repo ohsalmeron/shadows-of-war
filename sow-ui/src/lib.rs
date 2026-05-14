@@ -16,4 +16,5 @@ pub enum UiAction {
         troops: Option<f64>,
     },
     CenterCamera,
+    ToggleSettings,
 }

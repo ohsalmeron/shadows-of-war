@@ -165,21 +165,21 @@ impl MapRenderer {
                 let owner_id = self.owners[idx] as u32;
                 let terrain_byte = self.terrain[idx] as u32;
                 
-                let mut is_border = false;
+                let mut border_bits = 0u32;
                 if owner_id > 0 {
                     let up = if y > 0 { self.owners[idx - self.width as usize] as u32 } else { owner_id };
                     let down = if y < self.height - 1 { self.owners[idx + self.width as usize] as u32 } else { owner_id };
                     let left = if x > 0 { self.owners[idx - 1] as u32 } else { owner_id };
                     let right = if x < self.width - 1 { self.owners[idx + 1] as u32 } else { owner_id };
                     
-                    if owner_id != up || owner_id != down || owner_id != left || owner_id != right {
-                        is_border = true;
-                    }
+                    if owner_id != up { border_bits |= 1 << 31; }
+                    if owner_id != down { border_bits |= 1 << 30; }
+                    if owner_id != left { border_bits |= 1 << 29; }
+                    if owner_id != right { border_bits |= 1 << 28; }
                 }
                 
-                let border_bit = if is_border { 1u32 << 31 } else { 0 };
                 let dst_i = (y * u32_per_row + x) as usize;
-                slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16) | border_bit;
+                slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16) | border_bits;
 
                 if x < min_x { min_x = x; }
                 if y < min_y { min_y = y; }

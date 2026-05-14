@@ -29,3 +29,5 @@ scripts/__pycache__/
 dist/
 winit/
 egui/
+
+shadows-of-war-bizkit/

@@ -485,6 +485,11 @@ impl SowApp {
                                                         .color(egui::Color32::YELLOW)
                                                         .strong()
                                                 );
+                                                ui.label(
+                                                    egui::RichText::new(format!("Zoom: {:.2}", self.camera_zoom))
+                                                        .color(egui::Color32::LIGHT_BLUE)
+                                                        .strong()
+                                                );
                                             });
                                         });
                                 }

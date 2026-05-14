@@ -49,6 +49,7 @@ pub struct SowApp {
     pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
     pub nameplate_cache: std::collections::HashMap<u16, crate::nameplates::CachedNameplate>,
     pub troop_label_throttle: crate::nameplates::TroopLabelThrottle,
+    pub name_box_throttle: crate::nameplates::NameBoxThrottle,
     pub connect_tx: crossbeam_channel::Sender<Result<sow_net::client::SowClient, String>>,
     pub connect_rx: crossbeam_channel::Receiver<Result<sow_net::client::SowClient, String>>,
     pub ws_connect_fail_backoff_ms: u64,
@@ -141,6 +142,7 @@ impl SowApp {
 
     let nameplate_cache: HashMap<u16, CachedNameplate> = HashMap::new();
     let troop_label_throttle = TroopLabelThrottle::default();
+    let name_box_throttle = crate::nameplates::NameBoxThrottle::default();
 
     let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
@@ -216,7 +218,7 @@ impl SowApp {
             #[cfg(not(target_arch = "wasm32"))] tokio_rt,
             net_client, turn_queue, my_player_id, my_lobby_id,
             map_tx, map_rx, engine_init_tx, engine_init_rx,
-            pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle,
+            pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle, name_box_throttle,
             connect_tx, connect_rx, ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
             ws_url, camera_x, camera_y, camera_zoom, screen_w, screen_h,

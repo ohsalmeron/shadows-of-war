@@ -39,6 +39,7 @@ fn get_maps_url() -> String {
 }
 
 mod nameplates;
+pub mod name_box;
 
 mod client_config;
 

@@ -11,7 +11,6 @@ use crate::game::BuildingKind;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AttackIntent {
     pub target_owner: u16,
-    pub target_tile: u32,
     pub troops: Option<f64>,
 }
 

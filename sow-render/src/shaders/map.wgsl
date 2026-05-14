@@ -103,12 +103,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_color = mix(terrain_color.rgb, albedo, 0.95);
     }
 
-    // Check the 31st bit (highest bit of the 32-bit uint) for the CPU-computed border flag
-    let is_border = (val & 0x80000000u) != 0u;
-
     if owner_id > 0u {
-        if is_border {
-            base_color = base_color * 0.3; // Darken for outline
+        let border_up = (val & 0x80000000u) != 0u;
+        let border_down = (val & 0x40000000u) != 0u;
+        let border_left = (val & 0x20000000u) != 0u;
+        let border_right = (val & 0x10000000u) != 0u;
+
+        let fx = fract(world_x);
+        let fy = fract(world_y);
+        
+        // Adjust this value to make the border thinner (e.g. 0.15) or thicker (e.g. 0.4)
+        let thickness = 0.5;
+        // Adjust this value to make the border darker or lighter (0.0 is black, 1.0 is full color)
+        let border_darkness = 0.2;
+
+        if (border_up && fy < thickness) || 
+           (border_down && fy > 1.0 - thickness) || 
+           (border_left && fx < thickness) || 
+           (border_right && fx > 1.0 - thickness) {
+            base_color = base_color * border_darkness; // Darken for outline
         }
     }
 

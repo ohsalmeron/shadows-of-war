@@ -156,18 +156,34 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
             });
         });
 
-    // Keep these controls pinned to screen corners so mobile wrapping never pushes them left.
     egui::Area::new(egui::Id::new("hud_exit_button"))
-        .anchor(Align2::RIGHT_TOP, egui::vec2(-8.0, 8.0))
+        .anchor(Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
-            if ui
-                .button(RichText::new("Exit").size(14.0).color(Color32::RED))
-                .on_hover_text("Exit Game")
-                .clicked()
-            {
-                action = Some(UiAction::LeaveLobby);
-            }
+            egui::Frame::new()
+                .fill(Color32::from_black_alpha(200))
+                .corner_radius(10.0)
+                .stroke(egui::Stroke::new(1.0_f32, Color32::from_white_alpha(30)))
+                .inner_margin(egui::Margin::symmetric(8, 4))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let gear = egui::Button::new(RichText::new("⚙").size(18.0).color(Color32::from_gray(200)))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE);
+                        if ui.add(gear).on_hover_text("Settings").clicked() {
+                            action = Some(UiAction::ToggleSettings);
+                        }
+
+                        ui.add_space(2.0);
+
+                        let exit = egui::Button::new(RichText::new("✖").size(18.0).color(Color32::from_rgb(255, 100, 100)))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE);
+                        if ui.add(exit).on_hover_text("Exit Game").clicked() {
+                            action = Some(UiAction::LeaveLobby);
+                        }
+                    });
+                });
         });
 
     egui::Area::new(egui::Id::new("hud_center_camera_button"))

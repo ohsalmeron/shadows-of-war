@@ -14,6 +14,8 @@ pub struct ClientApp {
     pub hud_state: hud::HudState,
     pub splash_state: loading_screen::SplashState,
     pub asset_loader: asset_loader::AssetLoader,
+    pub is_settings_open: bool,
+    pub settings_state: crate::ui::settings::SettingsState,
 }
 
 impl Default for ClientApp {
@@ -42,11 +44,13 @@ impl ClientApp {
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
+            is_settings_open: false,
+            settings_state: crate::ui::settings::SettingsState::default(),
         }
     }
 
     pub fn draw(&mut self, ctx: &Context) -> Option<UiAction> {
-        match self.phase {
+        let mut action = match self.phase {
             ClientPhase::MainMenu => {
                 main_menu::draw(ctx, &mut self.main_menu_state, &self.asset_loader)
             }
@@ -57,6 +61,18 @@ impl ClientApp {
             ClientPhase::Playing => {
                 hud::draw(ctx, &mut self.hud_state)
             }
+        };
+
+        if self.is_settings_open {
+            let settings_action = crate::ui::settings::draw(ctx, &mut self.settings_state);
+            if let Some(UiAction::ToggleSettings) = settings_action {
+                self.is_settings_open = false;
+            }
+        } else if let Some(UiAction::ToggleSettings) = action {
+            self.is_settings_open = true;
+            action = None; // Consume the action
         }
+
+        action
     }
 }
