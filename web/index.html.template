@@ -3,8 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shadows of War</title>
+    <title>Shadows of War - Epic Multiplayer Grand Strategy Game</title>
+    <meta name="description" content="Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser!">
+    <meta name="keywords" content="strategy game, multiplayer strategy, io game, browser game, grand strategy, conquest, free to play">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://shadowsofwar.io/">
+    <meta property="og:title" content="Shadows of War - Epic Multiplayer Grand Strategy Game">
+    <meta property="og:description" content="Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser!">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://shadowsofwar.io/">
+    <meta property="twitter:title" content="Shadows of War - Epic Multiplayer Grand Strategy Game">
+    <meta property="twitter:description" content="Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser!">
+
+    <meta name="theme-color" content="#000000">
+    <link rel="canonical" href="https://shadowsofwar.io/">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
+    
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous">
     <style>
@@ -34,6 +52,10 @@
     </style>
 </head>
 <body>
+    <div style="display: none;" aria-hidden="true">
+        <h1>Shadows of War</h1>
+        <p>Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser without any downloads. Join thousands of players in real-time tactical warfare, expand your empire, and prove your strategic supremacy.</p>
+    </div>
     <canvas id="blade" oncontextmenu="return false;"></canvas>
     <div id="version">v__VERSION__</div>
     <script type="text/javascript">

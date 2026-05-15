@@ -1,0 +1,19 @@
+[package]
+name = "sow-relay"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sow-core = { workspace = true }
+sow-net = { workspace = true }
+serde = { workspace = true }
+serde_json.workspace = true
+bincode.workspace = true
+log = { workspace = true }
+env_logger = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
+tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"

@@ -7,6 +7,7 @@ members = [
     "sow-server",
     "sow-ui",
     "sow-tools",
+    "sow-relay",
     "sow-sim",
 ]
 exclude = ["blade", "winit"]

@@ -20,11 +20,7 @@ enum ServerEvent {
         target_lobby_id: Option<u64>,
         build_version: String,
     },
-    Gameplay {
-        lobby_id: u64,
-        player_id: u16,
-        intent: sow_core::protocol::GameplayIntent,
-    },
+
     Leave {
         lobby_id: u64,
         player_id: u16,
@@ -66,10 +62,110 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     master_tick(&mut games, &mut nid);
+                    
+                    // Extract lobbies ready for relay
+                    let mut ready_lobbies = Vec::new();
+                    let mut i = 0;
+                    while i < games.len() {
+                        if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
+                            ready_lobbies.push(games.remove(i));
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    
                     let lobbies_info = build_lobby_broadcast(&games);
-                    let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                    
+                    let mut broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                    // Hard cap to 1 lobby for the UI
+                    if broadcast_msg.lobbies.len() > 1 {
+                        broadcast_msg.lobbies.truncate(1);
+                    }
+                    
                     let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)).unwrap();
                     let _ = global_tx_clone.send(json);
+                    
+                    // Spawn relays async
+                    for lobby in ready_lobbies {
+                        tokio::spawn(async move {
+                            static NEXT_RELAY_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(25570);
+                            let relay_port = NEXT_RELAY_PORT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if relay_port > 25600 {
+                                NEXT_RELAY_PORT.store(25570, std::sync::atomic::Ordering::SeqCst); // loop around
+                            }
+                            
+                            let mut players_json = Vec::new();
+                            for p in &lobby.players {
+                                players_json.push(serde_json::json!({
+                                    "player_id": p.player_id,
+                                    "name": p.name,
+                                }));
+                            }
+                            
+                            let relay_config = serde_json::json!({
+                                "lobby_id": lobby.id,
+                                "tick_number": 0,
+                                "active_empty_secs": lobby.active_empty_secs,
+                                "players": players_json
+                            });
+                            
+                            let log_file = std::fs::File::create(format!("relay_{}.log", relay_port)).unwrap();
+                            let mut cmd = tokio::process::Command::new("./sow-relay");
+                            cmd.arg("--port").arg(relay_port.to_string())
+                               .arg("--lobby-json").arg(relay_config.to_string())
+                               .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
+                               .stderr(std::process::Stdio::from(log_file));
+                            
+                            match cmd.spawn() {
+                                Ok(_) => {
+                                    log::info!("Spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
+                                    // VERY IMPORTANT: Wait for relay to boot before telling clients to hop
+                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                    
+                                    let mut player_infos = Vec::new();
+                                    for p in &lobby.players {
+                                        player_infos.push(sow_core::protocol::PlayerInfo {
+                                            id: p.player_id,
+                                            name: p.name.clone(),
+                                            player_type: sow_core::player::PlayerType::Human,
+                                            color: [1.0, 0.0, 0.0],
+                                            spawn_x: 0,
+                                            spawn_y: 0,
+                                        });
+                                    }
+                                    
+                                    let start_msg = sow_core::protocol::ServerStartMessage {
+                                        config: lobby.config.clone(),
+                                        my_player_id: None,
+                                        seed: lobby.seed,
+                                        players: player_infos,
+                                        missed_turns: vec![],
+                                        map_data: None,
+                                        relay_port: Some(relay_port),
+                                    };
+                                    
+                                    for p in &lobby.players {
+                                        let mut player_start = start_msg.clone();
+                                        player_start.my_player_id = Some(p.player_id);
+                                        let json = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(player_start))).unwrap();
+                                        let _ = p.tx.try_send(json);
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to spawn relay for lobby {}: {}", lobby.id, e);
+                                    // Tell clients lobby closed
+                                    let msg = sow_core::protocol::ServerLobbyClosedMessage {
+                                        lobby_id: lobby.id,
+                                        reason: "Server failed to allocate relay".to_string(),
+                                    };
+                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).unwrap();
+                                    for p in &lobby.players {
+                                        let _ = p.tx.try_send(json.clone());
+                                    }
+                                }
+                            }
+                        });
+                    }
                 }
 
                 Some(event) = event_rx.recv() => {
@@ -91,17 +187,7 @@ async fn main() {
                                 }
                             }
                         }
-                        ServerEvent::Gameplay { lobby_id, player_id, intent } => {
-                            if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
-                                if lobby.phase != lobby::LobbyPhase::Active {
-                                    continue;
-                                }
-                                lobby.pending_intents.push(sow_core::protocol::StampedIntent {
-                                    player_id,
-                                    intent,
-                                });
-                            }
-                        }
+
                         ServerEvent::Leave { lobby_id, player_id } => {
                             leave_player(&mut games, lobby_id, player_id);
                         }
@@ -123,23 +209,12 @@ async fn main() {
         }
     });
 
-    let mut addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
-    let mut skip_maps = false;
-
-    // Allow Orchestrator to spawn this as a dedicated relay
-    let args: Vec<String> = std::env::args().collect();
-    for i in 0..args.len() {
-        if args[i] == "--port" && i + 1 < args.len() {
-            addr = format!("127.0.0.1:{}", args[i+1]);
-            skip_maps = true; // Relays do not serve maps to avoid port collisions
-        }
-    }
-
+    let addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
+    
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
-    if !skip_maps {
-        // HTTP Static File Server for maps
+    // HTTP Static File Server for maps
         tokio::spawn(async move {
             let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
             let app = axum::Router::new()
@@ -150,7 +225,7 @@ async fn main() {
             let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
             axum::serve(listener, app).await.unwrap();
         });
-    }
+
 
     while let Ok((stream, _)) = listener.accept().await {
         let mut global_rx = global_tx.subscribe();
@@ -200,14 +275,8 @@ async fn main() {
                                                     build_version,
                                                 }).await;
                                             }
-                                            sow_core::protocol::ClientMessage::Gameplay { intent } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    let _ = ev_tx.send(ServerEvent::Gameplay {
-                                                        lobby_id: l_id,
-                                                        player_id: p_id,
-                                                        intent,
-                                                    }).await;
-                                                }
+                                            sow_core::protocol::ClientMessage::Gameplay { .. } => {
+                                                // Orchestrator ignores gameplay intents
                                             }
                                             sow_core::protocol::ClientMessage::Leave {} => {
                                                 if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {

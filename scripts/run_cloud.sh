@@ -38,16 +38,19 @@ echo "✅ Version bumped to ${CLEAN_VERSION}"
 
 # 2. Build Backend and Frontend
 echo "==> Compiling Backend and Frontend..."
-cargo build --release -p sow-client --target wasm32-unknown-unknown
-cargo build --release -p sow-sim --target wasm32-unknown-unknown
+RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown
+RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-sim --target wasm32-unknown-unknown
 
 # Try MUSL, fallback to GNU
-if cargo build --release -p sow-server --target x86_64-unknown-linux-musl; then
+if cargo build --release -p sow-server --target x86_64-unknown-linux-musl && cargo build --release -p sow-relay --target x86_64-unknown-linux-musl; then
     SERVER_BIN="target/x86_64-unknown-linux-musl/release/sow-server"
+    RELAY_BIN="target/x86_64-unknown-linux-musl/release/sow-relay"
 else
     echo "⚠️ Musl build failed, falling back to gnu target..."
     cargo build --release -p sow-server --target x86_64-unknown-linux-gnu
+    cargo build --release -p sow-relay --target x86_64-unknown-linux-gnu
     SERVER_BIN="target/x86_64-unknown-linux-gnu/release/sow-server"
+    RELAY_BIN="target/x86_64-unknown-linux-gnu/release/sow-relay"
 fi
 
 echo "✅ Rust compilation successful."
@@ -138,21 +141,25 @@ rsync -avz --delete --exclude='*.bin' dist/ ${VPS_USER}@${VPS_IP}:${WEB_DEST_DIR
 RSYNC_WEB_PID=$!
 
 ssh ${VPS_USER}@${VPS_IP} "mkdir -p ${BACKEND_DEST_DIR}"
-rsync -avz ${SERVER_BIN} ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/dark-rift-server &
+rsync -avz ${SERVER_BIN} ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/sow-server &
 RSYNC_SERVER_PID=$!
+
+rsync -avz ${RELAY_BIN} ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/sow-relay &
+RSYNC_RELAY_PID=$!
 
 ssh ${VPS_USER}@${VPS_IP} "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
 rsync -avz --exclude='*.bin' assets/maps/ ${VPS_USER}@${VPS_IP}:/home/bizkit/shadowsofwar/assets/maps/ &
 RSYNC_ASSETS_PID=$!
 
 wait $RSYNC_WEB_PID || { echo "❌ Error subiendo Frontend"; exit 1; }
-wait $RSYNC_SERVER_PID || { echo "❌ Error subiendo Backend"; exit 1; }
+wait $RSYNC_SERVER_PID || { echo "❌ Error subiendo Backend (Orchestrator)"; exit 1; }
+wait $RSYNC_RELAY_PID || { echo "❌ Error subiendo Backend (Relay)"; exit 1; }
 wait $RSYNC_ASSETS_PID || { echo "❌ Error subiendo Assets del servidor"; exit 1; }
 echo "✅ VPS sync complete."
 
 # 5. Restart Systemd
 echo "==> Restarting Systemd Service on VPS..."
-ssh -t ${VPS_USER}@${VPS_IP} "sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+ssh -t ${VPS_USER}@${VPS_IP} "killall -9 sow-relay 2>/dev/null || true; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
 echo "========================================================="
 echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"

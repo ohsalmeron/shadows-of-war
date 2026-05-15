@@ -33,6 +33,8 @@ pub enum GameplayIntent {
     },
     /// pays gold cost again and increments `level`.
     UpgradeStructure { building_id: u64 },
+    /// Informs the engine that the player has disconnected or resigned.
+    Resign,
 }
 
 /// Stamped intent bundled into a turn (attack or cancel).
@@ -87,6 +89,9 @@ pub enum ServerMessage {
     Pong {
         client_time: f64,
     },
+    VersionUpdate {
+        version: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -136,6 +141,7 @@ pub struct ServerStartMessage {
     pub players: Vec<PlayerInfo>,
     pub missed_turns: Vec<Turn>,
     pub map_data: Option<Vec<u8>>, // currently unused (maps fetched via HTTP)
+    pub relay_port: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -249,6 +255,7 @@ pub struct AttackSnapshot {
 pub struct SimSnapshot {
     pub tick: u64,
     pub phase: crate::game::GamePhase,
+    pub spawn_timer_secs: Option<f32>,
     pub players: Vec<PlayerSnapshot>,
     pub dirty_tiles: Vec<DirtyTile>,
     pub fleets: Vec<FleetSnapshot>,

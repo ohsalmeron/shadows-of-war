@@ -91,10 +91,31 @@ impl SowApp {
                     match res {
                         Ok(client) => {
                             log::info!("Connected to server!");
-                            self.net_client = Some(client);
                             self.app.main_menu_state.is_connected = true;
                             self.app.main_menu_state.is_connecting = false;
                             self.ws_connect_fail_backoff_ms = 400;
+
+                            if self.app.phase == sow_ui::app::ClientPhase::Playing || self.app.phase == sow_ui::app::ClientPhase::Splash {
+                                if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
+                                    let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
+                                    let json = bincode::serialize(&ready_msg).unwrap();
+                                    client.send(json);
+                                    log::info!("Sent Ready to Relay server on reconnect/splash!");
+                                }
+                            } else if self.pending_lobby_rejoin {
+                                log::info!("Re-sending Join to lobby after hop");
+                                let join_msg = sow_core::protocol::ClientMessage::Join {
+                                    name: self.app.main_menu_state.player_name.clone(),
+                                    is_observer: false,
+                                    target_lobby_id: self.my_lobby_id.or(self.app.main_menu_state.pending_join_lobby_id),
+                                    build_version: get_build_version(),
+                                };
+                                if let Ok(json) = bincode::serialize(&join_msg) {
+                                    client.send(json);
+                                }
+                                self.pending_lobby_rejoin = false;
+                            }
+                            self.net_client = Some(client);
                         }
                         Err(e) => {
                             log::error!("Failed to connect: {}", e);
@@ -115,6 +136,9 @@ impl SowApp {
                         ws_disconnected = true;
                     }
                 }
+
+                let mut switch_to_relay = None;
+                let switch_to_lobby: Option<u16> = None;
 
                 // Process network messages
                 if let Some(c) = self.net_client.as_ref() {
@@ -147,23 +171,70 @@ impl SowApp {
                                 self.app.main_menu_state.is_waiting = false;
                                 self.app.main_menu_state.pending_join_lobby_id = None;
                                 self.app.main_menu_state.joined_lobby_id = None;
+                                self.app.hud_state.sync_state = None; // REMOVE the modal overlay
                                 self.my_player_id = start_msg.my_player_id;
+
+                                if let Some(relay_port) = start_msg.relay_port {
+                                    switch_to_relay = Some(relay_port);
+                                }
+
                                 self.engine_init_queued_msg = Some(*start_msg);
+                                if switch_to_relay.is_some() {
+                                    break;
+                                }
                             }
                             ServerMessage::Turn(turn_msg) => {
                                 self.turn_queue.push_back(turn_msg.turn);
                                 self.app.hud_state.sync_state = None;
                             }
                             ServerMessage::SyncState(sync_msg) => {
-                                self.app.hud_state.sync_state = Some(sync_msg);
+                                self.app.hud_state.sync_state = Some(sync_msg.clone());
+                                if self.app.main_menu_state.is_waiting {
+                                    self.app.main_menu_state.wait_timer_secs = sync_msg.time_remaining;
+
+                                    // All clients ready: go to loader immediately
+                                    if sync_msg.is_starting {
+                                        log::info!("[LOBBY] All ready (is_starting), entering loader screen");
+                                        self.app.phase = sow_ui::app::ClientPhase::Splash;
+                                        self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
+                                        self.app.splash_state.frames_drawn = 0;
+                                        self.app.main_menu_state.is_waiting = false;
+                                    } else {
+                                        // Update lobby player list in UI
+                                        let key = self.my_lobby_id
+                                            .or(self.app.main_menu_state.joined_lobby_id)
+                                            .or(self.app.main_menu_state.pending_join_lobby_id);
+                                        if let Some(id) = key {
+                                            if let Some(lobby) = self.app.main_menu_state.lobbies.iter_mut().find(|l| l.id == id) {
+                                                lobby.timer_secs = sync_msg.time_remaining;
+                                                lobby.is_counting_down = sync_msg.time_remaining > 0.0 && sync_msg.time_remaining < 30.0;
+                                                lobby.num_players = sync_msg.players.len() as u32;
+                                                lobby.players = sync_msg.players.clone();
+                                            } else {
+                                                self.app.main_menu_state.lobbies.push(sow_core::protocol::LobbyInfo {
+                                                    id,
+                                                    num_players: sync_msg.players.len() as u32,
+                                                    max_players: 8,
+                                                    is_counting_down: sync_msg.time_remaining > 0.0 && sync_msg.time_remaining < 30.0,
+                                                    timer_secs: sync_msg.time_remaining,
+                                                    map_name: "Loading...".to_string(),
+                                                    map_md5: None,
+                                                    players: sync_msg.players.clone(),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             ServerMessage::Pong { client_time } => {
                                 let rtt = self.start_time.elapsed().as_secs_f64() - client_time;
                                 self.current_ping_ms = Some((rtt * 1000.0) as u32);
                             }
                             ServerMessage::LobbiesBroadcast(broadcast) => {
-
-                                self.app.main_menu_state.lobbies = broadcast.lobbies.clone();
+                                // Don't clobber the lobby list once we've started loading into a game
+                                if self.app.phase != sow_ui::app::ClientPhase::Splash {
+                                    self.app.main_menu_state.lobbies = broadcast.lobbies.clone();
+                                }
 
                                 let maps_base = get_maps_url();
                                 let (thumbs_to_fetch, maps_to_fetch) = self.app.asset_loader.get_assets_to_fetch(&self.app.main_menu_state.lobbies);
@@ -224,6 +295,9 @@ impl SowApp {
                                         }
                                     }
                                 }
+                            }
+                            ServerMessage::VersionUpdate { version } => {
+                                log::info!("Received version update: {}", version);
                             }
                             ServerMessage::LobbyClosed(closed) => {
                                 log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
@@ -289,6 +363,10 @@ impl SowApp {
                                         lobby_id: ack.lobby_id,
                                         player_id: ack.player_id,
                                         progress: 100,
+                                    }).unwrap());
+                                    c.send(bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
+                                        lobby_id: ack.lobby_id,
+                                        player_id: ack.player_id,
                                     }).unwrap());
                                 } else {
                                     let tx = self.map_tx.clone();
@@ -367,9 +445,53 @@ impl SowApp {
                         } // end loop
                     } // end if !ws_disconnected
                 } // end if let Some(c)
+
+                if let Some(relay_port) = switch_to_relay {
+                    log::info!("[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {}", relay_port);
+                    if let Ok(mut url) = url::Url::parse(&self.ws_url) {
+                        if url.scheme() == "wss" || self.ws_url.contains("shadowsofwar.io") {
+                            let new_path = format!("/relay/{}/ws/", relay_port);
+                            url.set_path(&new_path);
+                        } else {
+                            let _ = url.set_port(Some(relay_port));
+                        }
+                        self.ws_url = url.to_string();
+                        self.net_client = None; // Drop orchestrator connection
+                        self.app.main_menu_state.server_address = self.ws_url.clone();
+                        ws_disconnected = false;
+                        
+                        #[cfg(target_arch = "wasm32")]
+                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx, &self.tokio_rt);
+                    }
+                } else if let Some(lobby_port) = switch_to_lobby {
+                    log::info!("[CLIENT NET] Handoff from Game Relay -> Master Orchestrator on port {}", lobby_port);
+                    if let Ok(mut url) = url::Url::parse(&self.ws_url) {
+                        if url.scheme() == "wss" || self.ws_url.contains("shadowsofwar.io") {
+                            let new_path = format!("/lobby/{}/ws/", lobby_port);
+                            url.set_path(&new_path);
+                        } else {
+                            let _ = url.set_port(Some(lobby_port));
+                        }
+                        self.ws_url = url.to_string();
+                        self.net_client = None;
+                        self.pending_lobby_rejoin = true;
+                        ws_disconnected = false;
+                        
+                        #[cfg(target_arch = "wasm32")]
+                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx, &self.tokio_rt);
+                    }
+                }
                 
                 if ws_disconnected {
-                    log::warn!("WebSocket disconnected; will reconnect.");
+                    if self.ws_url.contains("/relay/") || self.ws_url.contains("2557") {
+                        log::warn!("[CLIENT NET] Relay connection lost! Game over or relay crashed. Will attempt reconnect.");
+                    } else {
+                        log::warn!("[CLIENT NET] Orchestrator WebSocket disconnected; will reconnect.");
+                    }
                     self.net_client = None;
                     self.app.main_menu_state.is_connected = false;
                     self.app.main_menu_state.is_connecting = false;
@@ -477,6 +599,11 @@ impl SowApp {
                                             lobby_id: lid,
                                             player_id: pid,
                                             progress: 100,
+                                        }).unwrap());
+                                        // Also send Ready to Orchestrator to signal we are prepared for handoff
+                                        c.send(bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
+                                            lobby_id: lid,
+                                            player_id: pid,
                                         }).unwrap());
                                     }
                                 }
@@ -682,9 +809,7 @@ impl SowApp {
 
                 self.app.hud_state.is_mobile = self.screen_w < 900.0;
                 if let Some(snap) = &self.current_snapshot {
-                    if let sow_core::game::GamePhase::Spawning { end_tick } = snap.phase {
-                        let rem_ticks = end_tick.saturating_sub(snap.tick);
-                        let target_secs = rem_ticks as f32 * 0.05; // 50ms server tick rate
+                    if let Some(target_secs) = snap.spawn_timer_secs {
                         if let Some(ref mut current) = self.app.hud_state.spawn_timer_secs {
                             if (*current - target_secs).abs() > 0.3 {
                                 *current = target_secs;

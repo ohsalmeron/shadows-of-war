@@ -76,10 +76,13 @@ pub fn text_secondary() -> Color32 {
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "Baloo2-Bold".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/Baloo2-Bold.ttf"))),
+        "Default".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(sow_core::ui_font::UI_FONT_TTF)),
     );
-    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Baloo2-Bold".to_owned());
+    fonts.families
+        .get_mut(&egui::FontFamily::Proportional)
+        .unwrap()
+        .insert(0, "Default".to_owned());
     ctx.set_fonts(fonts);
 
     let mut style = Style {

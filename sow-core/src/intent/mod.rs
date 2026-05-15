@@ -106,6 +106,9 @@ pub fn apply_stamped_intent(
                     }
             }
         }
+        GameplayIntent::Resign => {
+            self.kill_player(stamped.player_id);
+        }
     }
 }
 }

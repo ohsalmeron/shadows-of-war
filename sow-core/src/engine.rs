@@ -369,9 +369,16 @@ impl SowEngine {
         let defense_dirty = self.render_defense_dirty;
         self.render_defense_dirty = false;
 
+        let spawn_timer_secs = if let crate::game::GamePhase::Spawning { end_tick } = &self.state.phase {
+            Some(end_tick.saturating_sub(self.state.tick) as f32 * (self.state.config.tick_rate_ms / 1000.0))
+        } else {
+            None
+        };
+
         crate::protocol::SimSnapshot {
             tick: self.state.tick,
             phase: self.state.phase.clone(),
+            spawn_timer_secs,
             players,
             dirty_tiles,
             fleets,

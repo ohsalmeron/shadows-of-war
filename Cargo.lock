@@ -3510,6 +3510,7 @@ dependencies = [
  "sow-render",
  "sow-ui",
  "tokio",
+ "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3547,6 +3548,22 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "sow-relay"
+version = "0.31.0-beta.2"
+dependencies = [
+ "bincode",
+ "env_logger",
+ "futures-util",
+ "log",
+ "serde",
+ "serde_json",
+ "sow-core",
+ "sow-net",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

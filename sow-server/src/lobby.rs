@@ -1,19 +1,11 @@
 //! OpenFront / Dark Rift style master lobby: dynamic queue, single countdown promotion,
 //! broadcasts only joinable lobbies, Active GC when no humans remain.
 
-use sow_core::engine::SowEngine;
-use sow_core::game::{GamePhase, GameState};
 use sow_core::game_config::GameConfig;
-use sow_core::player::PlayerType;
-use sow_core::protocol::{
-    LobbyInfo, PlayerInfo, ServerLobbyClosedMessage, ServerStartMessage, ServerTurnMessage,
-    StampedIntent, Turn,
-};
-use sow_core::water_components::WaterComponents;
+use sow_core::protocol::LobbyInfo;
 use tokio::sync::mpsc;
 
 pub const LOBBY_COUNTDOWN_SECS: f32 = 15.0;
-pub const ACTIVE_EMPTY_SECS: f32 = 30.0;
 pub const TICK_SECS: f32 = 0.1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,7 +13,7 @@ pub enum LobbyPhase {
     Waiting,
     CountingDown,
     Loading,
-    Active,
+    ReadyForRelay,
 }
 
 pub struct PlayerConnection {
@@ -40,8 +32,6 @@ pub struct ServerLobby {
     pub active_empty_secs: f32,
     pub players: Vec<PlayerConnection>,
     pub ready_players: std::collections::HashSet<u16>,
-    pub engine: Option<SowEngine>,
-    pub pending_intents: Vec<StampedIntent>,
     pub seed: u64,
     pub config: GameConfig,
     pub map_md5: Option<String>,
@@ -79,8 +69,6 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         active_empty_secs: 0.0,
         players: Vec::new(),
         ready_players: std::collections::HashSet::new(),
-        engine: None,
-        pending_intents: Vec::new(),
         seed: 0,
         config,
         map_md5,
@@ -200,169 +188,49 @@ pub fn leave_player(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
         lobby.players.retain(|p| p.player_id != player_id);
         if before != lobby.players.len() {
             log::info!("Player {} left lobby {}", player_id, lobby_id);
-            if lobby.phase == LobbyPhase::Active && lobby.players.is_empty() {
-                lobby.active_empty_secs = ACTIVE_EMPTY_SECS;
-            }
-            if let Some(engine) = &mut lobby.engine {
-                engine.kill_player(player_id);
-            }
+            log::info!("Player {} left lobby {}", player_id, lobby_id);
+            // Lobbies in ReadyForRelay don't care, they are about to be dropped.
         }
     }
 }
 
 fn start_match(lobby: &mut ServerLobby) {
     lobby.phase = LobbyPhase::Loading;
-    lobby.ready_players.clear();
     lobby.seed = rand::random();
 
     let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
     let map_dir = std::path::Path::new(&root).join(&lobby.config.map_name);
     let manifest_path = map_dir.join("manifest.json");
-    let bin_path = map_dir.join("map.bin.br");
 
-    let mut map_bytes = None;
-    if let (Ok(m_data), Ok(b_data)) = (std::fs::read_to_string(&manifest_path), std::fs::read(&bin_path)) {
+    if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
         if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data) {
             lobby.config.map_width = manifest.map.width;
             lobby.config.map_height = manifest.map.height;
-            
-            let mut uncompressed = Vec::new();
-            let mut decompressor = brotli::Decompressor::new(b_data.as_slice(), 4096);
-            if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed).is_ok() {
-                map_bytes = Some(uncompressed);
-            } else {
-                log::error!("Failed to decompress map.bin.br for {}", lobby.config.map_name);
-            }
         } else {
             log::error!("Failed to parse map manifest at {:?}", manifest_path);
         }
     } else {
-        log::warn!("Could not load map {:?}, falling back to defaults", map_dir);
+        log::warn!("Could not load map manifest {:?}, falling back to defaults", map_dir);
         lobby.config.map_width = 800;
         lobby.config.map_height = 600;
     }
 
-    let mut state = GameState::new(lobby.seed, lobby.config.map_width, lobby.config.map_height, lobby.config.clone());
+    // We no longer build map state or SowEngine here. That is handled by sow-relay.
     
-    if let Some(ref bytes) = map_bytes {
-        if bytes.len() == state.map.terrain.len() {
-            let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
-            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), dest_ptr, bytes.len()); }
-        } else {
-            log::error!("Map size mismatch for {}! Expected {} bytes but got {}. Falling back to default noise.", lobby.config.map_name, state.map.terrain.len(), bytes.len());
-            for (i, &b) in bytes.iter().enumerate() {
-                if i < state.map.terrain.len() {
-                    state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
-                }
-            }
-        }
-    }
-
-    let water = WaterComponents::compute(&state.map, |_| {});
-    let mut engine = SowEngine::new(state, water);
-
-    let mut player_infos: Vec<PlayerInfo> = Vec::new();
-    for p in &lobby.players {
-        engine.spawn_human(p.player_id, p.name.clone(), [1.0, 0.0, 0.0]);
-        let (mut sx, mut sy) = (0, 0);
-        if let Some(player) = engine.state.player(p.player_id) {
-            if player.tile_count > 0 {
-                sx = (player.sum_x / player.tile_count as u64) as u32;
-                sy = (player.sum_y / player.tile_count as u64) as u32;
-            }
-        }
-        player_infos.push(PlayerInfo {
-            id: p.player_id,
-            name: p.name.clone(),
-            player_type: PlayerType::Human,
-            color: [1.0, 0.0, 0.0],
-            spawn_x: sx,
-            spawn_y: sy,
-        });
-    }
-    engine.spawn_ai(lobby.config.nation_count, lobby.config.bot_count);
-    lobby.engine = Some(engine);
     lobby.countdown_secs = 16.5; // 15s load + 1.5s stabilize
     lobby.phase = LobbyPhase::Loading;
 
-    lobby.active_empty_secs = if lobby.players.is_empty() {
-        ACTIVE_EMPTY_SECS
-    } else {
-        0.0
-    };
-
+    lobby.active_empty_secs = 30.0;
     log::info!(
-        "Lobby {} is Active (seed {}, {} humans)",
+        "Lobby {} is Loading (seed {}, {} humans)",
         lobby.id,
         lobby.seed,
         lobby.players.len()
     );
-
-    for p in &lobby.players {
-        let start_msg = ServerStartMessage {
-            config: lobby.config.clone(),
-            my_player_id: Some(p.player_id),
-            seed: lobby.seed,
-            players: player_infos.clone(),
-            missed_turns: vec![],
-            map_data: None, // clients load locally via config.map_name
-        };
-        let json = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(start_msg))).expect("serialize ServerStartMessage");
-        let _ = p.tx.try_send(json);
-    }
 }
 
-fn close_lobby(lobby: &ServerLobby, reason: &str) {
-    let msg = ServerLobbyClosedMessage {
-        lobby_id: lobby.id,
-        reason: reason.to_string(),
-    };
-    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).expect("serialize ServerLobbyClosedMessage");
-    for p in &lobby.players {
-        let _ = p.tx.try_send(json.clone());
-    }
-}
 
-fn tick_active(lobby: &mut ServerLobby) -> bool {
-    let humans = lobby.players.len();
-    if humans == 0 {
-        lobby.active_empty_secs -= TICK_SECS;
-        if lobby.active_empty_secs <= 0.0 {
-            close_lobby(lobby, "empty_timeout");
-            return true;
-        }
-    } else {
-        lobby.active_empty_secs = 0.0;
-    }
 
-    let Some(engine) = lobby.engine.as_mut() else {
-        return false;
-    };
-
-    let turn = Turn {
-        turn_number: engine.state.tick,
-        intents: lobby.pending_intents.clone(),
-    };
-    lobby.pending_intents.clear();
-
-    for intent in &turn.intents {
-        engine.apply_stamped_intent(intent, 0);
-    }
-    engine.tick();
-
-    if engine.state.phase == GamePhase::GameOver {
-        close_lobby(lobby, "game_over");
-        return true;
-    }
-
-    let msg = ServerTurnMessage { turn };
-    let json = bincode::serialize(&sow_core::protocol::ServerMessage::Turn(msg)).expect("serialize ServerTurnMessage");
-    for p in &lobby.players {
-        let _ = p.tx.try_send(json.clone());
-    }
-
-    false
-}
 
 pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     ensure_queue_depth(games, next_id);
@@ -377,8 +245,12 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                 LobbyPhase::CountingDown => {
                     lobby.countdown_secs -= TICK_SECS;
                     let cap = lobby.config.max_players as usize;
-                    if lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap {
+                    let has_humans = !lobby.players.is_empty();
+                    if (lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap) && has_humans {
                         start_match(lobby);
+                    } else if lobby.countdown_secs <= 0.0 && !has_humans {
+                        // No human players, just reset the countdown
+                        lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
                     }
                     false
                 }
@@ -433,13 +305,22 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                             log::info!("Lobby {} all clients ready, starting active match!", lobby.id);
                         }
                         if lobby.players.is_empty() {
-                            lobby.active_empty_secs = ACTIVE_EMPTY_SECS;
+                            log::warn!("[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: No validated human players remaining (they disconnected or failed map sync).", lobby.id);
+                            // If everyone dropped, just remove the lobby
+                            true
+                        } else {
+                            log::info!("[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated human players.", lobby.id, lobby.players.len());
+                            lobby.phase = LobbyPhase::ReadyForRelay;
+                            false
                         }
-                        lobby.phase = LobbyPhase::Active;
+                    } else {
+                        false
                     }
+                }
+                LobbyPhase::ReadyForRelay => {
+                    // Handled async by the orchestrator main loop
                     false
                 }
-                LobbyPhase::Active => tick_active(lobby),
             }
         };
 

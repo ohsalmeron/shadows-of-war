@@ -84,6 +84,7 @@ pub struct SowApp {
     pub current_ping_ms: Option<u32>,
     pub last_ping_time: web_time::Instant,
     pub last_frame_time: web_time::Instant,
+    pub pending_lobby_rejoin: bool,
 
 }
 
@@ -200,7 +201,7 @@ impl SowApp {
     let prev_sync_point: Option<gpu::SyncPoint> = None;
     let last_tick = Instant::now();
     let start_time = Instant::now();
-    let tick_interval = Duration::from_millis(100);
+    let tick_interval = Duration::from_millis(50);
     let needs_first_upload = true;
 
     let frame_count = 0;
@@ -229,6 +230,7 @@ impl SowApp {
             last_pinch_distance,
             ime_allowed_state, ime_cursor_rect_px, prev_sync_point, last_tick, start_time, tick_interval,
             needs_first_upload, frame_count, last_fps_time, current_fps, current_ping_ms, last_ping_time, last_frame_time,
+            pending_lobby_rejoin: false,
         }
     }
     

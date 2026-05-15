@@ -28,7 +28,7 @@ echo "============================================="
 
 # 1. Build the Relay Server
 echo "⚙️  1/3 Compiling Relay Server (sow-server)..."
-if ! cargo build --release -p sow-server; then
+if ! cargo build --release -p sow-server -p sow-relay; then
     echo "❌ Build failed. Rolling back version..."
     echo $VERSION > .version
     exit 1
