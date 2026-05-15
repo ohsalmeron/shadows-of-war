@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use wasm_bindgen::prelude::*;
-use web_sys::{ErrorEvent, MessageEvent, WebSocket};
+use web_sys::{Event, MessageEvent, WebSocket};
 
 pub struct SowClient {
     ws: WebSocket,
@@ -45,8 +45,8 @@ impl SowClient {
         ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
         onclose_callback.forget();
         
-        let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: ErrorEvent| {
-            log::error!("WASM WebSocket error: {:?}", e.message());
+        let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: Event| {
+            log::error!("WASM WebSocket error occurred on connection: {}", e.type_());
         });
         ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
         onerror_callback.forget();

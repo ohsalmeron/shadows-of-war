@@ -57,6 +57,7 @@ pub struct SowApp {
     pub ws_reconnect_after_resume: bool,
     #[cfg(target_arch = "wasm32")]
     pub wasm_doc_was_visible: bool,
+    pub orchestrator_url: String,
     pub ws_url: String,
     pub camera_x: f32,
     pub camera_y: f32,
@@ -167,6 +168,7 @@ impl SowApp {
         }
     }
     app.main_menu_state.server_address = ws_url.clone();
+    let orchestrator_url = ws_url.clone();
     
     log::info!("Auto-connecting to {}...", ws_url);
     app.main_menu_state.is_connecting = true;
@@ -222,7 +224,7 @@ impl SowApp {
             pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle, name_box_throttle,
             connect_tx, connect_rx, ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
-            ws_url, camera_x, camera_y, camera_zoom, screen_w, screen_h,
+            orchestrator_url, ws_url, camera_x, camera_y, camera_zoom, screen_w, screen_h,
             dragging, last_mouse_x, last_mouse_y, label_positions: HashMap::new(),
             active_touches,
             map_touch_start,

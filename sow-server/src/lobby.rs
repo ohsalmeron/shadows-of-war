@@ -35,6 +35,7 @@ pub struct ServerLobby {
     pub seed: u64,
     pub config: GameConfig,
     pub map_md5: Option<String>,
+    pub relay_port: Option<u16>,
 }
 
 impl ServerLobby {
@@ -72,6 +73,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         seed: 0,
         config,
         map_md5,
+        relay_port: None,
     });
 }
 

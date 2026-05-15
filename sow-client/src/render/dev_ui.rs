@@ -132,7 +132,7 @@ impl SowApp {
                                                 .title_bar(false)
                                                 .resizable(false)
                                                 .collapsible(false)
-                                                .frame(egui::Frame::window(&ctx.style()).fill(egui::Color32::from_black_alpha(200)))
+                                                .frame(egui::Frame::window(&ctx.global_style()).fill(egui::Color32::from_black_alpha(200)))
                                                 .show(ctx, |ui| {
                                                     ui.set_max_height(150.0);
                                                     egui::ScrollArea::vertical().show(ui, |ui| {

@@ -49,7 +49,7 @@ impl SowApp {
                                             .anchor(egui::Align2::LEFT_TOP, egui::vec2(mx, my))
                                             .order(egui::Order::Foreground)
                                             .show(ctx, |ui| {
-                                                egui::Frame::menu(&ctx.style()).show(ui, |ui| {
+                                                egui::Frame::menu(&ctx.global_style()).show(ui, |ui| {
                                                     if is_land {
                                                         ui.label("Land Tile");
                                                     } else {
@@ -129,6 +129,9 @@ impl SowApp {
                                             self.camera_x = 0.0;
                                             self.camera_y = 0.0;
                                             self.camera_zoom = 2.0;
+                                            self.ws_url = self.orchestrator_url.clone();
+                                            self.app.main_menu_state.server_address = self.ws_url.clone();
+                                            self.net_client = None;
                                             self.app.phase = ClientPhase::Splash;
                                             self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
                                             self.app.splash_state.gpu_load_step = 0;

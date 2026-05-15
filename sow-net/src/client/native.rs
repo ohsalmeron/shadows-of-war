@@ -52,7 +52,7 @@ impl SowClient {
                                 // log::debug!("[SOW-CLIENT] Received non-binary WS msg");
                             }
                             Some(Err(e)) => {
-                                log::error!("[SOW-CLIENT] read.next() error: {}", e);
+                                log::debug!("[SOW-CLIENT] read.next() error: {}", e);
                                 break;
                             }
                             None => {

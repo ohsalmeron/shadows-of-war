@@ -97,10 +97,11 @@ impl SowApp {
 
                             if self.app.phase == sow_ui::app::ClientPhase::Playing || self.app.phase == sow_ui::app::ClientPhase::Splash {
                                 if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
-                                    let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
-                                    let json = bincode::serialize(&ready_msg).unwrap();
-                                    client.send(json);
-                                    log::info!("Sent Ready to Relay server on reconnect/splash!");
+                                    log::info!("Sent Ready to Relay server on reconnect/splash/playing!");
+                                    client.send(bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
+                                        lobby_id: lid,
+                                        player_id: pid,
+                                    }).unwrap());
                                 }
                             } else if self.pending_lobby_rejoin {
                                 log::info!("Re-sending Join to lobby after hop");
@@ -118,7 +119,7 @@ impl SowApp {
                             self.net_client = Some(client);
                         }
                         Err(e) => {
-                            log::error!("Failed to connect: {}", e);
+                            log::debug!("Failed to connect: {}", e);
                             self.app.main_menu_state.is_connected = false;
                             self.app.main_menu_state.is_connecting = false;
                             self.ws_connect_fail_backoff_ms =
@@ -138,6 +139,7 @@ impl SowApp {
                 }
 
                 let mut switch_to_relay = None;
+                let mut should_reconnect_orchestrator = false;
                 let switch_to_lobby: Option<u16> = None;
 
                 // Process network messages
@@ -317,6 +319,7 @@ impl SowApp {
                                     };
                                     c.send(bincode::serialize(&join_msg).unwrap());
                                 } else {
+                                    should_reconnect_orchestrator = true;
                                     self.app.phase = ClientPhase::Splash;
                                     self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
                                     self.app.splash_state.gpu_load_step = 0;
@@ -486,6 +489,14 @@ impl SowApp {
                     }
                 }
                 
+                if should_reconnect_orchestrator {
+                    log::info!("[CLIENT NET] Reconnecting to Master Orchestrator at {}", self.orchestrator_url);
+                    self.ws_url = self.orchestrator_url.clone();
+                    self.app.main_menu_state.server_address = self.ws_url.clone();
+                    self.net_client = None;
+                    ws_disconnected = false; // Prevent the disconnected popup
+                }
+                
                 if ws_disconnected {
                     if self.ws_url.contains("/relay/") || self.ws_url.contains("2557") {
                         log::warn!("[CLIENT NET] Relay connection lost! Game over or relay crashed. Will attempt reconnect.");
@@ -495,8 +506,7 @@ impl SowApp {
                     self.net_client = None;
                     self.app.main_menu_state.is_connected = false;
                     self.app.main_menu_state.is_connecting = false;
-                    self.ws_connect_not_before =
-                        self.ws_connect_not_before.min(now + Duration::from_millis(200));
+                    self.ws_connect_not_before = now + Duration::from_millis(2000);
                         
                     // Recover: Send the user back to the loader
                     if self.app.phase == sow_ui::app::ClientPhase::Playing {
@@ -710,17 +720,29 @@ impl SowApp {
                         sow_ui::ui::loading_screen::SplashJob::ExitGame => {
                             let step = self.app.splash_state.gpu_load_step;
                             if step == 0 {
-                                self.app.splash_state.status_text = "Cleaning up Game Session...".to_string();
-                                self.app.splash_state.progress = 0.5;
+                                self.app.splash_state.status_text = "Reconnecting to Orchestrator...".to_string();
+                                self.app.splash_state.progress = 0.2;
                                 self.app.splash_state.gpu_load_step = 1;
                                 self.app.splash_state.frames_drawn = 0;
-                            } else if step == 1 && self.app.splash_state.frames_drawn > 1 {
+                            } else if step == 1 {
+                                // Wait for connection to orchestrator or timeout (3 seconds @ 60fps = 180 frames)
+                                if self.net_client.is_some() || self.app.splash_state.frames_drawn > 180 {
+                                    self.app.splash_state.status_text = "Cleaning up Game Session...".to_string();
+                                    self.app.splash_state.progress = 0.5;
+                                    self.app.splash_state.gpu_load_step = 2;
+                                    self.app.splash_state.frames_drawn = 0;
+                                }
+                            } else if step == 2 && self.app.splash_state.frames_drawn > 1 {
                                 // Clean the engine state
-                                let config = GameConfig::default();
+                                let mut config = GameConfig::default();
+                                config.map_width = 1;
+                                config.map_height = 1;
+                                config.nation_count = 0;
+                                config.bot_count = 0;
                                 self.bridge.send_command(SimCommand::Init {
                                     config,
-                                    seed: 12345,
-                                    map_bytes: vec![],
+                                    seed: 0,
+                                    map_bytes: vec![0b10000000], // 1 land tile
                                     players: vec![],
                                 });
                                 self.turn_queue.clear();
@@ -769,6 +791,8 @@ impl SowApp {
                             // Step 1: Allocate GPU Memory & Send Init Command
                             let (state, water, start_msg) = self.pending_engine_init_data.take().unwrap();
                             let map_bytes: Vec<u8> = state.map.terrain.iter().map(|t| t.as_byte()).collect();
+                            
+                            self.current_snapshot = None; // MANDATORY: Clear old snapshot so Step 3 waits for the new one!
                             
                             self.bridge.send_command(SimCommand::Init {
                                 config: start_msg.config.clone(),
@@ -877,7 +901,7 @@ impl SowApp {
                                         }
                                     }
                                     snap.dirty_tiles.clear();
-                                    snap.defense_dirty = true;
+                                    mr.force_full_update = true;
                                 }
                             }
                         }

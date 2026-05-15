@@ -63,31 +63,8 @@ async fn main() {
                     let mut nid = next_id_clone.lock().await;
                     master_tick(&mut games, &mut nid);
                     
-                    // Extract lobbies ready for relay
-                    let mut ready_lobbies = Vec::new();
-                    let mut i = 0;
-                    while i < games.len() {
-                        if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
-                            ready_lobbies.push(games.remove(i));
-                        } else {
-                            i += 1;
-                        }
-                    }
-                    
-                    let lobbies_info = build_lobby_broadcast(&games);
-                    
-                    let mut broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
-                    // Hard cap to 1 lobby for the UI
-                    if broadcast_msg.lobbies.len() > 1 {
-                        broadcast_msg.lobbies.truncate(1);
-                    }
-                    
-                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)).unwrap();
-                    let _ = global_tx_clone.send(json);
-                    
-                    // Spawn relays async
-                    for lobby in ready_lobbies {
-                        tokio::spawn(async move {
+                    for lobby in &mut *games {
+                        if lobby.phase == lobby::LobbyPhase::Loading && lobby.countdown_secs <= 3.0 && lobby.relay_port.is_none() {
                             static NEXT_RELAY_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(25570);
                             let relay_port = NEXT_RELAY_PORT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             if relay_port > 25600 {
@@ -118,53 +95,79 @@ async fn main() {
                             
                             match cmd.spawn() {
                                 Ok(_) => {
-                                    log::info!("Spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
-                                    // VERY IMPORTANT: Wait for relay to boot before telling clients to hop
-                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                                    
-                                    let mut player_infos = Vec::new();
-                                    for p in &lobby.players {
-                                        player_infos.push(sow_core::protocol::PlayerInfo {
-                                            id: p.player_id,
-                                            name: p.name.clone(),
-                                            player_type: sow_core::player::PlayerType::Human,
-                                            color: [1.0, 0.0, 0.0],
-                                            spawn_x: 0,
-                                            spawn_y: 0,
-                                        });
-                                    }
-                                    
-                                    let start_msg = sow_core::protocol::ServerStartMessage {
-                                        config: lobby.config.clone(),
-                                        my_player_id: None,
-                                        seed: lobby.seed,
-                                        players: player_infos,
-                                        missed_turns: vec![],
-                                        map_data: None,
-                                        relay_port: Some(relay_port),
-                                    };
-                                    
-                                    for p in &lobby.players {
-                                        let mut player_start = start_msg.clone();
-                                        player_start.my_player_id = Some(p.player_id);
-                                        let json = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(player_start))).unwrap();
-                                        let _ = p.tx.try_send(json);
-                                    }
+                                    log::info!("Pre-spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
+                                    lobby.relay_port = Some(relay_port);
                                 }
                                 Err(e) => {
                                     log::error!("Failed to spawn relay for lobby {}: {}", lobby.id, e);
-                                    // Tell clients lobby closed
-                                    let msg = sow_core::protocol::ServerLobbyClosedMessage {
-                                        lobby_id: lobby.id,
-                                        reason: "Server failed to allocate relay".to_string(),
-                                    };
-                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).unwrap();
-                                    for p in &lobby.players {
-                                        let _ = p.tx.try_send(json.clone());
-                                    }
                                 }
                             }
-                        });
+                        }
+                    }
+                    
+                    // Extract lobbies ready for relay
+                    let mut ready_lobbies = Vec::new();
+                    let mut i = 0;
+                    while i < games.len() {
+                        if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
+                            ready_lobbies.push(games.remove(i));
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    
+                    let lobbies_info = build_lobby_broadcast(&games);
+                    
+                    let mut broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                    // Hard cap to 1 lobby for the UI
+                    if broadcast_msg.lobbies.len() > 1 {
+                        broadcast_msg.lobbies.truncate(1);
+                    }
+                    
+                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)).unwrap();
+                    let _ = global_tx_clone.send(json);
+                    
+                    for lobby in ready_lobbies {
+                        if let Some(relay_port) = lobby.relay_port {
+                            let mut player_infos = Vec::new();
+                            for p in &lobby.players {
+                                player_infos.push(sow_core::protocol::PlayerInfo {
+                                    id: p.player_id,
+                                    name: p.name.clone(),
+                                    player_type: sow_core::player::PlayerType::Human,
+                                    color: [1.0, 0.0, 0.0],
+                                    spawn_x: 0,
+                                    spawn_y: 0,
+                                });
+                            }
+                            
+                            let start_msg = sow_core::protocol::ServerStartMessage {
+                                config: lobby.config.clone(),
+                                my_player_id: None,
+                                seed: lobby.seed,
+                                players: player_infos,
+                                missed_turns: vec![],
+                                map_data: None,
+                                relay_port: Some(relay_port),
+                            };
+                            
+                            for p in &lobby.players {
+                                let mut player_start = start_msg.clone();
+                                player_start.my_player_id = Some(p.player_id);
+                                let json = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(player_start))).unwrap();
+                                let _ = p.tx.try_send(json);
+                            }
+                        } else {
+                            log::error!("Failed to handoff relay for lobby {}: no relay_port assigned", lobby.id);
+                            let msg = sow_core::protocol::ServerLobbyClosedMessage {
+                                lobby_id: lobby.id,
+                                reason: "Server failed to allocate relay".to_string(),
+                            };
+                            let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).unwrap();
+                            for p in &lobby.players {
+                                let _ = p.tx.try_send(json.clone());
+                            }
+                        }
                     }
                 }
 

@@ -41,6 +41,7 @@ pub struct MapRenderer {
     pub conquest_flash: Vec<u8>,
     pub active_flashes: Vec<usize>,
     pub bytes_per_row: u32,
+    pub force_full_update: bool,
 }
 
 impl MapRenderer {
@@ -139,6 +140,7 @@ impl MapRenderer {
             conquest_flash: vec![0; total],
             active_flashes: Vec::new(),
             bytes_per_row,
+            force_full_update: true,
         }
     }
 
@@ -192,8 +194,18 @@ impl MapRenderer {
             }
         }
 
+        let force_full = self.force_full_update;
+        self.force_full_update = false;
+
+        let mut tiles_to_update = Vec::new();
+
         if is_defense_dirty {
-            for i in 0..total { self.terrain[i] &= !0x40; }
+            for i in 0..total { 
+                if (self.terrain[i] & 0x40) != 0 {
+                    self.terrain[i] &= !0x40; 
+                    tiles_to_update.push(i);
+                }
+            }
             let range = 8i32;
             if let Some(snap) = snapshot {
                 for &post_idx in &snap.defense_posts {
@@ -206,15 +218,16 @@ impl MapRenderer {
                                 let ny = py + dy;
                                 if nx >= 0 && ny >= 0 && nx < self.width as i32 && ny < self.height as i32 {
                                     let n_idx = (ny as u32 * self.width + nx as u32) as usize;
-                                    self.terrain[n_idx] |= 0x40;
+                                    if (self.terrain[n_idx] & 0x40) == 0 {
+                                        self.terrain[n_idx] |= 0x40;
+                                        tiles_to_update.push(n_idx);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            min_x = 0; min_y = 0;
-            max_x = self.width - 1; max_y = self.height - 1;
         }
 
         let pack_tile = |x: u32, y: u32, w: u32, h: u32, slice: &mut [u32], renderer: &mut MapRenderer| {
@@ -290,41 +303,41 @@ impl MapRenderer {
             slice[dst_i] = val;
         };
 
-        if is_defense_dirty {
+        if force_full {
             for y in 0..self.height {
                 for x in 0..self.width {
                     pack_tile(x, y, self.width, self.height, slice, self);
                 }
             }
+            min_x = 0; min_y = 0; max_x = self.width - 1; max_y = self.height - 1;
         } else {
-            let mut tiles_to_update = Vec::new();
             for dt in dirty_tiles {
                 let i = dt.index as usize;
                 if i >= total { continue; }
                 let center_x = dt.index % self.width;
                 let center_y = dt.index / self.width;
                 
-                tiles_to_update.push((center_x, center_y));
-                if center_x > 0 { tiles_to_update.push((center_x - 1, center_y)); }
-                if center_x < self.width - 1 { tiles_to_update.push((center_x + 1, center_y)); }
-                if center_y > 0 { tiles_to_update.push((center_x, center_y - 1)); }
-                if center_y < self.height - 1 { tiles_to_update.push((center_x, center_y + 1)); }
+                tiles_to_update.push(i);
+                if center_x > 0 { tiles_to_update.push(i - 1); }
+                if center_x < self.width - 1 { tiles_to_update.push(i + 1); }
+                if center_y > 0 { tiles_to_update.push(i - self.width as usize); }
+                if center_y < self.height - 1 { tiles_to_update.push(i + self.width as usize); }
             }
 
             for &i in &active_flashes_to_update {
-                let x = i as u32 % self.width;
-                let y = i as u32 / self.width;
-                tiles_to_update.push((x, y));
+                tiles_to_update.push(i);
             }
 
-            for (x, y) in tiles_to_update {
-                    pack_tile(x, y, self.width, self.height, slice, self);
-                    if x < min_x { min_x = x; }
-                    if y < min_y { min_y = y; }
-                    if x > max_x { max_x = x; }
-                    if y > max_y { max_y = y; }
-                }
+            for i in tiles_to_update {
+                let x = i as u32 % self.width;
+                let y = i as u32 / self.width;
+                pack_tile(x, y, self.width, self.height, slice, self);
+                if x < min_x { min_x = x; }
+                if y < min_y { min_y = y; }
+                if x > max_x { max_x = x; }
+                if y > max_y { max_y = y; }
             }
+        }
 
         if min_x <= max_x && min_y <= max_y {
             let offset_bytes = (min_y * self.bytes_per_row + min_x * 4) as u64;
