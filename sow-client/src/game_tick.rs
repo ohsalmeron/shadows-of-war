@@ -867,6 +867,19 @@ impl SowApp {
                         if !existing.dirty_tiles.is_empty() {
                             existing.dirty_tiles.append(&mut snap.dirty_tiles);
                             snap.dirty_tiles = existing.dirty_tiles;
+                            
+                            // Prevent unbounded memory growth and sluggishness when tab is unfocused
+                            if snap.dirty_tiles.len() > 10000 {
+                                if let Some(mr) = &mut self.map_renderer {
+                                    for dt in &snap.dirty_tiles {
+                                        if (dt.index as usize) < mr.owners.len() {
+                                            mr.owners[dt.index as usize] = dt.new_owner;
+                                        }
+                                    }
+                                    snap.dirty_tiles.clear();
+                                    snap.defense_dirty = true;
+                                }
+                            }
                         }
                     }
                     self.current_snapshot = Some(snap);

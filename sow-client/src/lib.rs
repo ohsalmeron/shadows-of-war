@@ -100,7 +100,7 @@ pub enum EngineInitEvent {
 
 pub mod app_state;
 pub mod input;
-pub mod render_frame;
+pub mod render;
 pub mod game_tick;
 
 use app_state::SowApp;

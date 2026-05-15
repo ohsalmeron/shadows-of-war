@@ -155,7 +155,7 @@ impl SowApp {
                             }
                         }
 
-                        let wants_pointer = self.egui_ctx.egui_wants_pointer_input();
+                        let wants_pointer = self.egui_ctx.egui_wants_pointer_input(); log::info!("Pointer! pressed={}, wants={}", pressed, wants_pointer);
 
                         if is_primary {
                             if pressed {
@@ -176,7 +176,7 @@ impl SowApp {
                                 // Distance check just in case (though movement clears it too)
                                 let dx = position.x - sx;
                                 let dy = position.y - sy;
-                                if dx * dx + dy * dy <= 100.0 {
+                                let dist = dx*dx + dy*dy; log::info!("Pointer up! dist={}, wants_pointer={}, is_primary={}", dist, wants_pointer, is_primary); if dist <= 400.0 {
                                     let world_x = (sx as f32 - self.camera_x) / self.camera_zoom;
                                     let world_y = (sy as f32 - self.camera_y) / self.camera_zoom;
                                     
@@ -248,16 +248,19 @@ impl SowApp {
                         });
                     }
                     WindowEvent::PointerMoved { source, position, .. } => {
+                        let is_touch = matches!(source, winit::event::PointerSource::Touch { .. });
                         if let winit::event::PointerSource::Touch { finger_id, .. } = source {
                             let id = finger_id.into_raw() as u64;
                             self.active_touches.insert(id, (position.x, position.y));
                         }
 
-                        if let Some((_, sx, sy)) = self.map_touch_start {
-                            let dx = position.x - sx;
-                            let dy = position.y - sy;
-                            if dx * dx + dy * dy > 100.0 {
-                                self.map_touch_start = None;
+                        if is_touch {
+                            if let Some((_, sx, sy)) = self.map_touch_start {
+                                let dx = position.x - sx;
+                                let dy = position.y - sy;
+                                if dx * dx + dy * dy > 400.0 {
+                                    self.map_touch_start = None;
+                                }
                             }
                         }
 
@@ -286,7 +289,7 @@ impl SowApp {
                             }
                             self.last_pinch_distance = Some(distance);
                         } else {
-                            if self.dragging {
+                            if self.dragging && (!is_touch || !self.egui_ctx.egui_wants_pointer_input()) {
                                 let dx = position.x - self.last_mouse_x;
                                 let dy = position.y - self.last_mouse_y;
                                 self.camera_x += dx as f32;

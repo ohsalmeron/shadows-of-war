@@ -1,0 +1,278 @@
+#![allow(unused_imports)]
+use sow_render::{RenderContext, MapRenderer, MapGlobals};
+use crate::sim_bridge::{SimBridge, PlatformSimBridge};
+use sow_core::protocol::{SimCommand, SimSnapshot};
+
+use sow_core::game_config::GameConfig;
+
+use blade_egui::GuiPainter;
+use egui::{Context, RawInput, Pos2, Rect, Vec2};
+use sow_ui::{ClientApp, app::ClientPhase, UiAction};
+use web_time::{Instant, Duration};
+use sow_net::client::SowClient;
+use std::collections::HashMap;
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
+use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
+use crate::nameplates::*;
+use crate::client_config::ClientVisualConfig;
+use crate::{MapDownloadEvent, EngineInitEvent};
+use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
+
+use blade_graphics as gpu;
+use crate::app_state::SowApp;
+use std::io::Read;
+
+
+pub mod world_overlays;
+pub mod dev_ui;
+pub mod interactions;
+
+
+
+
+
+
+impl SowApp {
+    pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+                        #[cfg(target_arch = "wasm32")]
+                        if let Some(win) = self.window.as_ref() {
+                            let web_win = web_sys::window().unwrap();
+                            let w = web_win.inner_width().unwrap().as_f64().unwrap();
+                            let h = web_win.inner_height().unwrap().as_f64().unwrap();
+                            
+                            // Use the logical size and sf to calculate current physical size
+                            let sf = win.scale_factor();
+                            let expected_w = (w * sf) as u32;
+                            let expected_h = (h * sf) as u32;
+                            
+                            if expected_w.abs_diff(self.screen_w as u32) > 1 || expected_h.abs_diff(self.screen_h as u32) > 1 {
+                                let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
+                            }
+                        }
+
+                        if let Some(ref mut s) = self.surface {
+                            if let Some(win) = self.window.as_ref() {
+                                win.pre_present_notify();
+                            }
+                            let frame = s.acquire_frame();
+
+                            if let Some(sp) = self.prev_sync_point.take() {
+                                let _ = self.render_ctx.context.wait_for(&sp, !0);
+                            }
+
+                            self.render_ctx.command_encoder.start();
+                            self.render_ctx.command_encoder.init_texture(frame.texture());
+
+                            if let Some(ref mut mr) = self.map_renderer {
+                                // Upload map state on first frame or after each tick
+                                if self.needs_first_upload {
+                                    self.render_ctx.command_encoder.init_texture(mr.texture);
+                                    self.needs_first_upload = false;
+                                }
+
+                                let mut border_thickness = 0.4f32;
+                                let mut border_darkness = 0.15f32;
+                                let mut shore_thickness = 0.4f32;
+                                let mut shore_darkness = 0.15f32;
+                                let mut border_roundness = 0.5f32;
+                                let mut effect_shockwave_intensity = 1.0f32;
+                                let mut effect_border_breathe = 1.0f32;
+                                let mut effect_energy_flow = 1.0f32;
+
+                                self.egui_ctx.data_mut(|d| {
+                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
+                                    border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
+                                    shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32);
+                                    shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32);
+                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32);
+                                    effect_shockwave_intensity = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shockwave_intensity"), || 1.0f32);
+                                    effect_border_breathe = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_border_breathe"), || 1.0f32);
+                                    effect_energy_flow = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_energy_flow"), || 1.0f32);
+                                });
+
+                                // Perform CPU-side update of the map
+                                mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, self.current_snapshot.as_ref());
+                                if let Some(snap) = &mut self.current_snapshot {
+                                    snap.dirty_tiles.clear();
+                                }
+                                let globals = MapGlobals {
+                                    camera_pos: [self.camera_x, self.camera_y],
+                                    zoom: self.camera_zoom,
+                                    time: self.start_time.elapsed().as_secs_f32(),
+                                    screen_size: [self.screen_w, self.screen_h],
+                                    map_size: [self.map_w as f32, self.map_h as f32],
+                                    border_thickness,
+                                    border_darkness,
+                                    shore_thickness,
+                                    shore_darkness,
+                                    border_roundness,
+                                    effect_shockwave_intensity,
+                                    effect_border_breathe,
+                                    effect_energy_flow,
+                                    local_player_id: self.my_player_id.unwrap_or(0) as u32,
+                                    _pad: [0.0; 3],
+                                };
+                                mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
+                            }
+
+                            // ── UI UPDATE ───────────────────────────────────────
+                            let mut sf = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+                            if cfg!(any(target_os = "android", target_os = "ios")) {
+                                if sf < 1.5 && self.screen_h > 800.0 {
+                                    sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
+                                } else if sf > 2.0 {
+                                    sf = 2.0; // Don't let the GUI get too huge on iOS devices that report 3.0
+                                }
+                            }
+                            
+                            self.egui_ctx.set_pixels_per_point(sf);
+                            self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::Vec2::new(self.screen_w / sf, self.screen_h / sf)
+                            ));
+                            
+                            for ev in &mut self.raw_input.events {
+                                match ev {
+                                    egui::Event::PointerMoved(pos) | egui::Event::PointerButton { pos, .. } => {
+                                        pos.x /= sf;
+                                        pos.y /= sf;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            
+                            let frame_now = Instant::now();
+                            let dt = frame_now.duration_since(self.last_frame_time).as_secs_f32();
+                            self.last_frame_time = frame_now;
+                            self.raw_input.predicted_dt = dt.min(0.1);
+                            
+                            if self.app.main_menu_state.is_waiting && self.app.main_menu_state.wait_timer_secs > 0.0 {
+                                self.app.main_menu_state.wait_timer_secs = (self.app.main_menu_state.wait_timer_secs - self.raw_input.predicted_dt).max(0.0);
+                            }
+                            if let Some(ref mut secs) = self.app.hud_state.spawn_timer_secs {
+                                *secs = (*secs - self.raw_input.predicted_dt).max(0.0);
+                            }
+                            if let Some(ref mut sync) = self.app.hud_state.sync_state {
+                                sync.time_remaining = (sync.time_remaining - self.raw_input.predicted_dt).max(0.0);
+                            }
+                            let mut local_cancel_intents = Vec::new();
+                            
+
+
+                            let egui_ctx = self.egui_ctx.clone();
+                            let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
+                                if self.app.phase == ClientPhase::Playing {
+                                    self.render_world_overlays(ctx, sf);
+                                }
+                                
+                                self.calculate_fps_and_ping();
+                                
+                                if self.app.phase == ClientPhase::Playing {
+                                    self.handle_map_interactions(ctx);
+                                }
+                                
+                                self.render_dev_panels(ctx, &mut local_cancel_intents);
+                                
+                                self.process_ui_actions(ctx, sf, &mut local_cancel_intents);
+                            });
+
+                            for intent in local_cancel_intents {
+                                if let Some(c) = self.net_client.as_ref() {
+                                    let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
+                                    if let Ok(json) = bincode::serialize(&msg) {
+                                        c.send(json);
+                                    }
+                                } else {
+                                    let stamped = sow_core::protocol::StampedIntent {
+                                        player_id: self.my_player_id.unwrap_or(1),
+                                        intent,
+                                    };
+                                    self.bridge.send_command(sow_core::protocol::SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                }
+                            }
+
+                            if let Some(win) = self.window.as_ref() {
+                                let ime_opt = egui_output.platform_output.ime;
+                                let allow_ime = ime_opt.is_some();
+                                
+                                if let Some(ime_out) = ime_opt {
+                                    let ppp = egui_output.pixels_per_point;
+                                    let ime_rect_px = ppp * ime_out.rect;
+                                    let had_input_events = !self.raw_input.events.is_empty();
+                                    let toggling = self.ime_allowed_state != allow_ime;
+                                    
+                                    if toggling || self.ime_cursor_rect_px != Some(ime_rect_px) || had_input_events {
+                                        self.ime_allowed_state = true;
+                                        self.ime_cursor_rect_px = Some(ime_rect_px);
+                                        
+                                        let request_data = winit::window::ImeRequestData::default()
+                                            .with_cursor_area(
+                                                winit::dpi::PhysicalPosition::new(
+                                                    ime_rect_px.min.x.round() as i32,
+                                                    ime_rect_px.min.y.round() as i32,
+                                                ).into(),
+                                                winit::dpi::PhysicalSize::new(
+                                                    ime_rect_px.width().round().max(1.0) as u32,
+                                                    ime_rect_px.height().round().max(1.0) as u32,
+                                                ).into()
+                                            );
+                                            
+                                        if toggling {
+                                            let caps = winit::window::ImeCapabilities::new().with_cursor_area();
+                                            if let Some(req) = winit::window::ImeEnableRequest::new(caps, request_data) {
+                                                let _ = win.request_ime_update(winit::window::ImeRequest::Enable(req));
+                                            }
+                                        } else {
+                                            let _ = win.request_ime_update(winit::window::ImeRequest::Update(request_data));
+                                        }
+                                    }
+                                } else if self.ime_allowed_state {
+                                    self.ime_allowed_state = false;
+                                    self.ime_cursor_rect_px = None;
+                                    let _ = win.request_ime_update(winit::window::ImeRequest::Disable);
+                                }
+                            }
+
+                            self.raw_input.events.clear();
+
+                            // ── DRAWING UI ──────────────────────────────────────────
+                            if let Some(ref mut gp) = self.gui_painter {
+                                let screen_desc = blade_egui::ScreenDescriptor {
+                                    physical_size: (self.screen_w as u32, self.screen_h as u32),
+                                    scale_factor: sf,
+                                };
+                                let paint_jobs = self.egui_ctx.tessellate(egui_output.shapes, sf);
+                                gp.update_textures(
+                                    &mut self.render_ctx.command_encoder,
+                                    &egui_output.textures_delta,
+                                    &self.render_ctx.context,
+                                );
+
+                                let mut pass = self.render_ctx.command_encoder.render("ui_pass", gpu::RenderTargetSet {
+                                    colors: &[gpu::RenderTarget {
+                                        view: frame.texture_view(),
+                                        init_op: gpu::InitOp::Load,
+                                        finish_op: gpu::FinishOp::Store,
+                                    }],
+                                    depth_stencil: None,
+                                });
+
+                                gp.paint(&mut pass, &paint_jobs, &screen_desc, &self.render_ctx.context);
+                                drop(pass);
+                            }
+                            if let Some(ref mut gp) = self.gui_painter {
+                                gp.sync(&self.render_ctx.context);
+                            }
+                            self.render_ctx.command_encoder.present(frame);
+                            let sync_point = self.render_ctx.context.submit(&mut self.render_ctx.command_encoder);
+                            
+                            if let Some(ref mut gp) = self.gui_painter {
+                                gp.after_submit(&sync_point);
+                            }
+                            
+                            self.prev_sync_point = Some(sync_point);
+                        }
+
+    }
+}
+

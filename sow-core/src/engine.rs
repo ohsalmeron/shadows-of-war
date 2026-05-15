@@ -324,9 +324,17 @@ impl SowEngine {
             } else {
                 (0.0, 0.0)
             };
+            
+            // Optimization: avoid string cloning and bincode serialization for 600+ bots every tick
+            let name = if p.player_type == crate::player::PlayerType::Human {
+                p.name.clone()
+            } else {
+                String::new()
+            };
+
             crate::protocol::PlayerSnapshot {
                 id: p.id,
-                name: p.name.clone(),
+                name,
                 troops: p.troops,
                 max_troops: p.max_troops,
                 gold: p.gold,
