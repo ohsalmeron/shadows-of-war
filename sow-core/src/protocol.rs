@@ -263,4 +263,5 @@ pub struct SimSnapshot {
     pub winner: Option<u16>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,
+    pub debug_mem_info: String,
 }

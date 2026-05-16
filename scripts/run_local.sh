@@ -38,15 +38,10 @@ mkdir -p .logs
 echo "🗺️  Booting Local Map Server (Master Relay) on port 25566..."
 SOW_MAPS_ROOT=dist/assets/maps nohup target/release/sow-server > .logs/sow-server.log 2>&1 &
 
-# 2. Build the WebAssembly Client and Worker
-echo "📦 2/3 Compiling WebAssembly Client (sow-client) and Worker (sow-sim)..."
+# 2. Build the WebAssembly Client
+echo "📦 2/2 Compiling WebAssembly Client (sow-client)..."
 if ! cargo build --release -p sow-client --target wasm32-unknown-unknown; then
     echo "❌ Client build failed. Rolling back version..."
-    echo $VERSION > .version
-    exit 1
-fi
-if ! cargo build --release -p sow-sim --target wasm32-unknown-unknown; then
-    echo "❌ Worker build failed. Rolling back version..."
     echo $VERSION > .version
     exit 1
 fi
@@ -60,16 +55,6 @@ if ! wasm-bindgen --target web --no-typescript \
     echo $VERSION > .version
     exit 1
 fi
-if ! wasm-bindgen --target no-modules --no-typescript \
-    --out-name "sow_sim_worker_${NEW_VERSION}" \
-    --out-dir sow-web/public/assets \
-    target/wasm32-unknown-unknown/release/sow_sim.wasm; then
-    echo "❌ Worker bindings generation failed. Rolling back version..."
-    echo $VERSION > .version
-    exit 1
-fi
-
-echo "importScripts('/assets/sow_sim_worker_${NEW_VERSION}.js'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_${NEW_VERSION}_bg.wasm' });" > sow-web/public/assets/sow_sim_worker_boot_${NEW_VERSION}.js
 
 # 3. Start Leptos Watch Server
 echo "🚀 3/3 Booting Leptos Orchestrator (sow-web)..."

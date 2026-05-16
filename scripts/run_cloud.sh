@@ -12,8 +12,6 @@ BACKEND_DEST_DIR="/home/bizkit/shadowsofwar"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
 WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
-SIM_WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_sim.wasm"
-
 echo "========================================================="
 echo "🚀 Starting Production Deployment (Shadows of War -> VPS)"
 echo "========================================================="
@@ -39,8 +37,6 @@ echo "✅ Version bumped to ${CLEAN_VERSION}"
 # 2. Build Backend and Frontend
 echo "==> Compiling Backend and Frontend..."
 RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown
-RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-sim --target wasm32-unknown-unknown
-
 # Try MUSL, fallback to GNU
 if cargo build --release -p sow-server --target x86_64-unknown-linux-musl && cargo build --release -p sow-relay --target x86_64-unknown-linux-musl; then
     SERVER_BIN="target/x86_64-unknown-linux-musl/release/sow-server"
@@ -60,10 +56,9 @@ echo "==> Packaging Frontend (wasm-bindgen)..."
 mkdir -p dist
 
 WASM_HASH=$(md5sum "${WASM_IN}" | awk '{print $1}')
-SIM_WASM_HASH=$(md5sum "${SIM_WASM_IN}" | awk '{print $1}')
 LAST_HASH_FILE="${ROOT}/.wasm_hash"
 
-if [[ -f "${LAST_HASH_FILE}" ]] && [[ "$(cat "${LAST_HASH_FILE}")" == "${WASM_HASH}_${SIM_WASM_HASH}" ]]; then
+if [[ -f "${LAST_HASH_FILE}" ]] && [[ "$(cat "${LAST_HASH_FILE}")" == "${WASM_HASH}" ]]; then
     echo "⚡ WASM hasn't changed. Skipping wasm-bindgen and brotli compression!"
     # Update assets just in case they changed
     rsync -a assets/ dist/assets/
@@ -77,11 +72,6 @@ else
     WASM_FILE="sow_client_${BUILD_TS}_bg.wasm"
     
     ~/.cargo/bin/wasm-bindgen --out-dir dist --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
-    
-    mkdir -p dist/assets
-    ~/.cargo/bin/wasm-bindgen --out-dir dist/assets --target no-modules --out-name "sow_sim_worker_${BUILD_TS}" --no-typescript "${SIM_WASM_IN}"
-    
-    echo "importScripts('/assets/sow_sim_worker_${BUILD_TS}.js'); wasm_bindgen({ module_or_path: '/assets/sow_sim_worker_${BUILD_TS}_bg.wasm' });" > dist/assets/sow_sim_worker_boot_${BUILD_TS}.js
 
     rsync -a assets/ dist/assets/ || true
     cp -a web/favicon_io/* dist/ 2>/dev/null || true
@@ -110,7 +100,7 @@ else
       echo "✅ Brotli compression finished."
     fi
     
-    echo "${WASM_HASH}_${SIM_WASM_HASH}" > "${LAST_HASH_FILE}"
+    echo "${WASM_HASH}" > "${LAST_HASH_FILE}"
 fi
 
 # 3.5 Update Map MD5 Hashes

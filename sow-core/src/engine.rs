@@ -156,6 +156,7 @@ impl SowEngine {
             return;
         }
 
+        self.state.events.clear(); // Prevent unbounded memory leak (was growing infinitely on tile capture)
         self.state.tick();
         self.execute_income();
         self.execute_ai_think();
@@ -394,6 +395,7 @@ impl SowEngine {
             winner: self.state.winner,
             defense_posts,
             defense_dirty,
+            debug_mem_info: format!("Engine [Attacks: {}, Fleets: {}, Buildings: {}, Events: {}, Players: {}, DirtyTiles: {}]", self.attacks.len(), self.fleets.len(), self.buildings.len(), self.state.events.len(), self.state.players.len(), self.state.map.dirty_tiles.capacity()),
         }
     }
 }

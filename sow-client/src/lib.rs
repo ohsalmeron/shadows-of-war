@@ -102,6 +102,8 @@ pub mod app_state;
 pub mod input;
 pub mod render;
 pub mod game_tick;
+#[cfg(target_arch = "wasm32")]
+mod wasm_ime;
 
 use app_state::SowApp;
 use winit::application::ApplicationHandler;

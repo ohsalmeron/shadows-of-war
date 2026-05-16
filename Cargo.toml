@@ -8,7 +8,6 @@ members = [
     "sow-ui",
     "sow-tools",
     "sow-relay",
-    "sow-sim",
 ]
 exclude = ["blade", "winit"]
 resolver = "2"

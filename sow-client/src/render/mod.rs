@@ -159,6 +159,10 @@ impl SowApp {
                             
 
 
+                            #[cfg(target_arch = "wasm32")]
+                            self.wasm_ime_bridge
+                                .drain_pending_into(&mut self.raw_input.events);
+
                             let egui_ctx = self.egui_ctx.clone();
                             let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
                                 if self.app.phase == ClientPhase::Playing {
@@ -191,6 +195,7 @@ impl SowApp {
                                 }
                             }
 
+                            #[cfg(not(target_arch = "wasm32"))]
                             if let Some(win) = self.window.as_ref() {
                                 let ime_opt = egui_output.platform_output.ime;
                                 let allow_ime = ime_opt.is_some();
@@ -232,6 +237,10 @@ impl SowApp {
                                     let _ = win.request_ime_update(winit::window::ImeRequest::Disable);
                                 }
                             }
+
+                            #[cfg(target_arch = "wasm32")]
+                            self.wasm_ime_bridge
+                                .sync_from_egui_ime(egui_output.platform_output.ime);
 
                             self.raw_input.events.clear();
 

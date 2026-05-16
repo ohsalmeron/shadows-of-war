@@ -964,5 +964,13 @@ impl SowApp {
                     win.request_redraw();
                 }
 
+                // Periodic memory profiler print
+                let now = web_time::Instant::now();
+                if self.last_debug_print.map_or(true, |t| now.duration_since(t).as_secs() >= 5) {
+                    self.last_debug_print = Some(now);
+                    if let Some(snap) = &self.current_snapshot {
+                        log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);
+                    }
+                }
     }
 }

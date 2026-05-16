@@ -149,114 +149,88 @@ pub mod native {
 
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm::WasmSimBridge as PlatformSimBridge;
+pub use wasm::SyncSimBridge as PlatformSimBridge;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm {
     use super::*;
-    use web_sys::{Worker, MessageEvent};
-    use js_sys::Uint8Array;
-    use wasm_bindgen::prelude::*;
-    use wasm_bindgen::JsCast;
+    use sow_core::engine::SowEngine;
     use std::cell::RefCell;
-    use std::rc::Rc;
 
-    /// Normalize `MessageEvent.data` from the sim worker into owned bytes.
-    /// Browsers may deliver `Uint8Array`, `ArrayBuffer`, or (on misconfiguration) other types.
-    fn worker_message_bytes(data: &JsValue) -> Option<Vec<u8>> {
-        if data.is_undefined() || data.is_null() {
-            return None;
-        }
-        if let Ok(a) = data.clone().dyn_into::<Uint8Array>() {
-            let n = a.length() as usize;
-            let mut out = vec![0u8; n];
-            a.copy_to(&mut out);
-            return Some(out);
-        }
-        if let Ok(buf) = data.clone().dyn_into::<js_sys::ArrayBuffer>() {
-            return Some(Uint8Array::new(&buf).to_vec());
-        }
-        None
+    pub struct SyncSimBridge {
+        engine: RefCell<Option<SowEngine>>,
+        latest_snapshot: RefCell<Option<SimSnapshot>>,
+        snapshot_dirty: std::cell::Cell<bool>,
     }
 
-    pub struct WasmSimBridge {
-        worker: Worker,
-        latest_snapshot: Rc<RefCell<Option<SimSnapshot>>>,
-    }
-
-    impl WasmSimBridge {
+    impl SyncSimBridge {
         pub fn spawn() -> Self {
-            let build_ts = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("SOW_BUILD_TS"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_else(|| "".to_string());
-                
-            let worker_url = if build_ts.is_empty() {
-                "/assets/sow_sim_worker_boot.js".to_string()
-            } else {
-                format!("/assets/sow_sim_worker_boot_{}.js", build_ts)
-            };
+            Self {
+                engine: RefCell::new(None),
+                latest_snapshot: RefCell::new(None),
+                snapshot_dirty: std::cell::Cell::new(false),
+            }
+        }
+    }
 
-            let worker = Worker::new(&worker_url).expect("failed to load worker script");
-            let latest_snapshot = Rc::new(RefCell::new(None::<SimSnapshot>));
-            let latest_snapshot_clone = latest_snapshot.clone();
-
-            let onmessage_callback = Closure::wrap(Box::new(move |event: MessageEvent| {
-                let Some(bytes) = worker_message_bytes(&event.data()) else {
-                    log::warn!(
-                        "WasmSimBridge: sim worker sent a non-binary message (ignored). Rebuild `sow_sim` assets if this persists."
-                    );
-                    return;
-                };
-                if bytes.is_empty() {
-                    log::warn!("WasmSimBridge: sim worker sent an empty binary message (ignored).");
-                    return;
-                }
-
-                match bincode::deserialize::<SimSnapshot>(&bytes) {
-                    Ok(mut snap) => {
-                        if let Some(mut existing) = latest_snapshot_clone.borrow_mut().take() {
-                            if !existing.dirty_tiles.is_empty() {
-                                existing.dirty_tiles.append(&mut snap.dirty_tiles);
-                                snap.dirty_tiles = existing.dirty_tiles;
+    impl SimBridge for SyncSimBridge {
+        fn send_command(&self, cmd: SimCommand) {
+            match cmd {
+                SimCommand::Init { config, seed, map_bytes, players } => {
+                    let map_w = config.map_width;
+                    let map_h = config.map_height;
+                    let mut state = sow_core::game::GameState::new(seed, map_w, map_h, config);
+                    
+                    if map_bytes.len() == state.map.terrain.len() {
+                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                        unsafe { std::ptr::copy_nonoverlapping(map_bytes.as_ptr(), dest_ptr, map_bytes.len()); }
+                    } else {
+                        for (i, &b) in map_bytes.iter().enumerate() {
+                            if i < state.map.terrain.len() {
+                                state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
                             }
                         }
-                        if snap.dirty_tiles.len() > 10000 {
-                            snap.dirty_tiles.clear();
-                            snap.defense_dirty = true; // force the renderer to do a full redraw
-                        }
-                        *latest_snapshot_clone.borrow_mut() = Some(snap);
                     }
-                    Err(e) => {
-                        log::error!(
-                            "WasmSimBridge failed to deserialize snapshot ({} bytes): {:?}. \
-                             This usually means `sow_client` and `sow_sim_worker_bg.wasm` were built from different `sow-core` revisions — rerun the wasm build so both artifacts refresh together.",
-                            bytes.len(),
-                            e
-                        );
+
+                    let water = sow_core::water_components::WaterComponents::compute(&state.map, |_| {});
+                    let mut new_engine = SowEngine::new(state, water);
+
+                    for p in players {
+                        if p.player_type == sow_core::player::PlayerType::Human {
+                            new_engine.spawn_human(p.id, p.name, p.color);
+                        }
+                    }
+                    
+                    new_engine.spawn_ai(new_engine.state.config.nation_count, new_engine.state.config.bot_count);
+                    
+                    let snap = new_engine.build_snapshot();
+                    *self.latest_snapshot.borrow_mut() = Some(snap);
+                    *self.engine.borrow_mut() = Some(new_engine);
+                }
+                SimCommand::Turn(turn) => {
+                    if let Some(e) = self.engine.borrow_mut().as_mut() {
+                        for intent in &turn.intents {
+                            e.apply_stamped_intent(intent, 0);
+                        }
+                        e.tick();
+                        self.snapshot_dirty.set(true);
                     }
                 }
-            }) as Box<dyn FnMut(MessageEvent)>);
-
-            worker.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-            onmessage_callback.forget();
-
-            Self { worker, latest_snapshot }
-        }
-    }
-
-    impl SimBridge for WasmSimBridge {
-        fn send_command(&self, cmd: SimCommand) {
-            if let SimCommand::Init { .. } = &cmd {
-                self.latest_snapshot.borrow_mut().take();
-            }
-            if let Ok(bytes) = bincode::serialize(&cmd) {
-                let array = Uint8Array::from(&bytes[..]);
-                let _ = self.worker.post_message(&array);
+                SimCommand::Shutdown => {
+                    *self.engine.borrow_mut() = None;
+                    *self.latest_snapshot.borrow_mut() = None;
+                }
             }
         }
 
         fn try_recv_snapshot(&self) -> Option<SimSnapshot> {
+            if self.snapshot_dirty.get() {
+                self.snapshot_dirty.set(false);
+                if let Some(e) = self.engine.borrow_mut().as_mut() {
+                    let snap = e.build_snapshot();
+                    *self.latest_snapshot.borrow_mut() = Some(snap);
+                }
+            }
             self.latest_snapshot.borrow_mut().take()
         }
     }
