@@ -161,6 +161,15 @@ echo "✅ VPS sync complete."
 echo "==> Restarting Systemd Service on VPS..."
 ssh -t ${VPS_USER}@${VPS_IP} "killall -9 sow-relay 2>/dev/null || true; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
+# 6. Post-deploy Integration Test
+echo "==> Running relay handoff integration test..."
+sleep 3  # Wait for systemd to fully boot the orchestrator
+if cargo run --bin test-relay -- --url wss://shadowsofwar.io/ws/; then
+    echo "✅ Relay integration test passed!"
+else
+    echo "⚠️  Relay integration test FAILED — check output above"
+fi
+
 echo "========================================================="
 echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"
 echo "🕹️  Play live: https://shadowsofwar.io"

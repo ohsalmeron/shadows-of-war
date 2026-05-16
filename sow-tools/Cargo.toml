@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Shadows of War — Map generator and tooling CLI"
 
+[[bin]]
+name = "test-relay"
+path = "src/test_relay.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 serde = { workspace = true }
@@ -16,3 +20,5 @@ geo-types = "0.7"
 bincode = "1.3"
 clap = { version = "4.4", features = ["derive"] }
 env_logger = { workspace = true }
+tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"

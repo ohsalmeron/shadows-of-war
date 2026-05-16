@@ -3621,6 +3621,7 @@ dependencies = [
  "bincode",
  "clap",
  "env_logger",
+ "futures-util",
  "geo",
  "geo-types",
  "log",
@@ -3629,6 +3630,7 @@ dependencies = [
  "serde_json",
  "sow-core",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

@@ -51,11 +51,28 @@ impl SowClient {
         ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
         onerror_callback.forget();
 
+        let (open_tx, open_rx) = futures_channel::oneshot::channel::<()>();
+        let open_tx = std::rc::Rc::new(std::cell::RefCell::new(Some(open_tx)));
+        let onopen_callback = Closure::<dyn FnMut()>::new(move || {
+            if let Some(tx) = open_tx.borrow_mut().take() {
+                let _ = tx.send(());
+            }
+        });
+        ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
+        onopen_callback.forget();
+
+        // Wait for the open event before returning
+        let _ = open_rx.await;
+
         Ok(Self { ws, rx, socket_closed })
     }
 
     pub fn send(&self, msg: Vec<u8>) {
-        let array = js_sys::Uint8Array::from(msg.as_slice());
-        let _ = self.ws.send_with_array_buffer(&array.buffer());
+        if self.ws.ready_state() == WebSocket::OPEN {
+            let array = js_sys::Uint8Array::from(msg.as_slice());
+            let _ = self.ws.send_with_array_buffer(&array.buffer());
+        } else {
+            log::warn!("Attempted to send on non-open WebSocket (state: {})", self.ws.ready_state());
+        }
     }
 }

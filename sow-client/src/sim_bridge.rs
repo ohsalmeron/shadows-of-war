@@ -221,6 +221,10 @@ pub mod wasm {
                                 snap.dirty_tiles = existing.dirty_tiles;
                             }
                         }
+                        if snap.dirty_tiles.len() > 10000 {
+                            snap.dirty_tiles.clear();
+                            snap.defense_dirty = true; // force the renderer to do a full redraw
+                        }
                         *latest_snapshot_clone.borrow_mut() = Some(snap);
                     }
                     Err(e) => {

@@ -90,7 +90,7 @@ impl SowApp {
                 while let Ok(res) = self.connect_rx.try_recv() {
                     match res {
                         Ok(client) => {
-                            log::info!("Connected to server!");
+                            log::warn!("[CLIENT NET] ✅ Received successfully connected WebSocket client from channel!");
                             self.app.main_menu_state.is_connected = true;
                             self.app.main_menu_state.is_connecting = false;
                             self.ws_connect_fail_backoff_ms = 400;
@@ -461,8 +461,15 @@ impl SowApp {
                         self.ws_url = url.to_string();
                         self.net_client = None; // Drop orchestrator connection
                         self.app.main_menu_state.server_address = self.ws_url.clone();
+                        self.app.main_menu_state.is_connecting = true; // PREVENT DUPLICATE CONNECTIONS
                         ws_disconnected = false;
                         
+                        // Clear stale connections
+                        while let Ok(_) = self.connect_rx.try_recv() {
+                            log::warn!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!");
+                        } 
+                        
+                        log::warn!("[CLIENT NET] 🚀 Spawning WS connection task to RELAY: {}", self.ws_url);
                         #[cfg(target_arch = "wasm32")]
                         crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx);
                         #[cfg(not(target_arch = "wasm32"))]
@@ -480,8 +487,15 @@ impl SowApp {
                         self.ws_url = url.to_string();
                         self.net_client = None;
                         self.pending_lobby_rejoin = true;
+                        self.app.main_menu_state.is_connecting = true; // PREVENT DUPLICATE CONNECTIONS
                         ws_disconnected = false;
                         
+                        // Clear stale connections
+                        while let Ok(_) = self.connect_rx.try_recv() {
+                            log::warn!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff back to orchestrator!");
+                        } 
+                        
+                        log::warn!("[CLIENT NET] 🚀 Spawning WS connection task to ORCHESTRATOR: {}", self.ws_url);
                         #[cfg(target_arch = "wasm32")]
                         crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx);
                         #[cfg(not(target_arch = "wasm32"))]
@@ -540,6 +554,7 @@ impl SowApp {
                 {
                     self.app.main_menu_state.is_connecting = true;
                     let url = self.app.main_menu_state.server_address.clone();
+                    log::warn!("[CLIENT NET] 🔄 Auto-reconnect triggered: Spawning WS connection task to {}", url);
                     #[cfg(target_arch = "wasm32")]
                     spawn_sow_client_connect(url, &self.connect_tx);
                     #[cfg(not(target_arch = "wasm32"))]
@@ -800,6 +815,10 @@ impl SowApp {
                                 map_bytes: map_bytes.clone(),
                                 players: start_msg.players.clone(),
                             });
+                            
+                            for turn in &start_msg.missed_turns {
+                                self.bridge.send_command(SimCommand::Turn(turn.clone()));
+                            }
 
                             self.map_w = start_msg.config.map_width;
                             self.map_h = start_msg.config.map_height;
@@ -891,21 +910,22 @@ impl SowApp {
                         if !existing.dirty_tiles.is_empty() {
                             existing.dirty_tiles.append(&mut snap.dirty_tiles);
                             snap.dirty_tiles = existing.dirty_tiles;
-                            
-                            // Prevent unbounded memory growth and sluggishness when tab is unfocused
-                            if snap.dirty_tiles.len() > 10000 {
-                                if let Some(mr) = &mut self.map_renderer {
-                                    for dt in &snap.dirty_tiles {
-                                        if (dt.index as usize) < mr.owners.len() {
-                                            mr.owners[dt.index as usize] = dt.new_owner;
-                                        }
-                                    }
-                                    snap.dirty_tiles.clear();
-                                    mr.force_full_update = true;
-                                }
-                            }
                         }
                     }
+                    
+                    // Prevent unbounded memory growth and sluggishness when tab is unfocused
+                    if snap.dirty_tiles.len() > 10000 {
+                        if let Some(mr) = &mut self.map_renderer {
+                            for dt in &snap.dirty_tiles {
+                                if (dt.index as usize) < mr.owners.len() {
+                                    mr.owners[dt.index as usize] = dt.new_owner;
+                                }
+                            }
+                            mr.force_full_update = true;
+                        }
+                        snap.dirty_tiles.clear();
+                    }
+                    
                     self.current_snapshot = Some(snap);
                 }
                     

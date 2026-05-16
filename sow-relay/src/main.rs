@@ -81,6 +81,10 @@ async fn main() {
     let (event_tx, mut event_rx) = mpsc::channel::<RelayEvent>(1000);
     let event_tx_clone = event_tx.clone();
 
+    // Store match history so late-joiners (or slower loading WASM clients) can catch up
+    let match_history: Arc<Mutex<Vec<Turn>>> = Arc::new(Mutex::new(Vec::new()));
+    let match_history_clone = match_history.clone();
+
     let addr = format!("0.0.0.0:{}", port);
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind relay port");
     info!("Relay for lobby {} listening on ws://{}", lobby_id, addr);
@@ -113,6 +117,8 @@ async fn main() {
                         intents,
                     };
                     tick_number += 1;
+                    
+                    match_history_clone.lock().await.push(turn.clone());
 
                     let msg = ServerTurnMessage { turn };
                     let json = bincode::serialize(&ServerMessage::Turn(msg)).expect("serialize ServerTurnMessage");
@@ -150,6 +156,7 @@ async fn main() {
         let ev_tx = event_tx_clone.clone();
         let clients_map = connected_clients.clone();
         let valid_map = valid_players.clone();
+        let history_arc = match_history.clone();
 
         tokio::spawn(async move {
             let ws_stream = match accept_async(stream).await {
@@ -177,6 +184,15 @@ async fn main() {
                                                     my_player_id = Some(player_id);
                                                     clients_map.lock().await.insert(player_id, direct_tx.clone());
                                                     info!("Player {} reconnected to relay", player_id);
+                                                    
+                                                    // Send all missed turns so they can catch up!
+                                                    let hist = history_arc.lock().await;
+                                                    for past_turn in hist.iter() {
+                                                        let msg = ServerTurnMessage { turn: past_turn.clone() };
+                                                        if let Ok(json) = bincode::serialize(&ServerMessage::Turn(msg)) {
+                                                            let _ = direct_tx.try_send(json);
+                                                        }
+                                                    }
                                                 } else {
                                                     warn!("Invalid Ready request for lobby {} player {}", l_id, player_id);
                                                 }
