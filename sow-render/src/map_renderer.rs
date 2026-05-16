@@ -10,6 +10,14 @@ pub struct MapGlobals {
     pub time: f32,
     pub screen_size: [f32; 2],
     pub map_size: [f32; 2],
+    pub border_thickness: f32,
+    pub border_darkness: f32,
+    pub shore_thickness: f32,
+    pub shore_darkness: f32,
+    pub border_roundness: f32,
+    pub _pad1: f32,
+    pub _pad2: f32,
+    pub _pad3: f32,
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -165,21 +173,60 @@ impl MapRenderer {
                 let owner_id = self.owners[idx] as u32;
                 let terrain_byte = self.terrain[idx] as u32;
                 
-                let mut is_border = false;
+                let mut is_border_up = false;
+                let mut is_border_down = false;
+                let mut is_border_left = false;
+                let mut is_border_right = false;
+
+                let mut is_shore_up = false;
+                let mut is_shore_down = false;
+                let mut is_shore_left = false;
+                let mut is_shore_right = false;
+
                 if owner_id > 0 {
-                    let up = if y > 0 { self.owners[idx - self.width as usize] as u32 } else { owner_id };
-                    let down = if y < self.height - 1 { self.owners[idx + self.width as usize] as u32 } else { owner_id };
-                    let left = if x > 0 { self.owners[idx - 1] as u32 } else { owner_id };
-                    let right = if x < self.width - 1 { self.owners[idx + 1] as u32 } else { owner_id };
-                    
-                    if owner_id != up || owner_id != down || owner_id != left || owner_id != right {
-                        is_border = true;
+                    if y > 0 {
+                        let up = self.owners[idx - self.width as usize] as u32;
+                        if up != owner_id {
+                            is_border_up = true;
+                            if up == 0 { is_shore_up = true; }
+                        }
+                    }
+                    if y < self.height - 1 {
+                        let down = self.owners[idx + self.width as usize] as u32;
+                        if down != owner_id {
+                            is_border_down = true;
+                            if down == 0 { is_shore_down = true; }
+                        }
+                    }
+                    if x > 0 {
+                        let left = self.owners[idx - 1] as u32;
+                        if left != owner_id {
+                            is_border_left = true;
+                            if left == 0 { is_shore_left = true; }
+                        }
+                    }
+                    if x < self.width - 1 {
+                        let right = self.owners[idx + 1] as u32;
+                        if right != owner_id {
+                            is_border_right = true;
+                            if right == 0 { is_shore_right = true; }
+                        }
                     }
                 }
                 
-                let border_bit = if is_border { 1u32 << 31 } else { 0 };
+                let mut val = (owner_id & 0xFFFF) | (terrain_byte << 16);
+                if is_border_up { val |= 0x80000000; }
+                if is_border_down { val |= 0x40000000; }
+                if is_border_left { val |= 0x20000000; }
+                if is_border_right { val |= 0x10000000; }
+
+                if is_shore_up { val |= 0x08000000; }
+                if is_shore_down { val |= 0x04000000; }
+                if is_shore_left { val |= 0x02000000; }
+                if is_shore_right { val |= 0x01000000; }
+
                 let dst_i = (y * u32_per_row + x) as usize;
-                slice[dst_i] = (owner_id & 0xFFFF) | (terrain_byte << 16) | border_bit;
+                slice[dst_i] = val;
 
                 if x < min_x { min_x = x; }
                 if y < min_y { min_y = y; }

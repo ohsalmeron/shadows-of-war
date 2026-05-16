@@ -37,7 +37,7 @@ wasm-bindgen = "0.2.100"
 getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1.7"
 console_log = "1.0"
-web-sys = { version = "0.3.69", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent"] }
+web-sys = { version = "0.3.69", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
 js-sys = "0.3.69"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

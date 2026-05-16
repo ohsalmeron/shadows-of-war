@@ -26,9 +26,17 @@ use std::io::Read;
 
 impl SowApp {
     pub(crate) fn handle_map_interactions(&mut self, ctx: &egui::Context) {
-                                    // Check long press
-                                    if let Some((start, mx, my)) = self.map_touch_start {
-                                        if start.elapsed().as_millis() > 500 {
+        if self.current_snapshot.as_ref().map_or(false, |s| s.winner.is_some()) {
+            return;
+        }
+
+        let _sf = self.egui_ctx.pixels_per_point();
+        if self.app.main_menu_state.is_waiting {
+            return;
+        }
+
+        if let Some((start, mx, my)) = self.map_touch_start {
+            if start.elapsed().as_millis() > 500 {
                                             let world_x = (mx as f32 - self.camera_x) / self.camera_zoom;
                                             let world_y = (my as f32 - self.camera_y) / self.camera_zoom;
                                             let col = world_x.floor() as i32;
@@ -88,7 +96,98 @@ impl SowApp {
                                 if let Some(action) = self.app.draw(ctx) {
                                     match action {
                                         UiAction::StartSinglePlayer => {
-                                            self.app.phase = ClientPhase::Playing;
+                                            self.is_offline = true;
+                                            self.offline_tick_timer = 0.0;
+                                            self.net_client = None;
+                                            self.app.phase = ClientPhase::Splash;
+                                            self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
+                                            self.app.splash_state.frames_drawn = 0;
+                                            self.app.splash_state.gpu_load_step = 0;
+                                            self.my_player_id = Some(1);
+                                            self.my_lobby_id = Some(0);
+
+                                            let map_name = "world".to_string();
+                                            self.app.main_menu_state.downloading_map_name = Some(map_name.clone());
+
+                                            let mut config = sow_core::game_config::GameConfig::default();
+                                            config.map_name = map_name.clone();
+                                            config.bot_count = 20;
+                                            config.nation_count = 5;
+
+                                            let start_msg = sow_core::protocol::ServerStartMessage {
+                                                config,
+                                                my_player_id: Some(1),
+                                                seed: 42,
+                                                players: vec![
+                                                    sow_core::protocol::PlayerInfo {
+                                                        id: 1,
+                                                        name: self.app.main_menu_state.player_name.clone(),
+                                                        color: [0.0, 1.0, 0.0],
+                                                        player_type: sow_core::player::PlayerType::Human,
+                                                        spawn_x: 0,
+                                                        spawn_y: 0,
+                                                    }
+                                                ],
+                                                missed_turns: vec![],
+                                                map_data: None,
+                                                relay_port: None,
+                                            };
+                                            self.engine_init_queued_msg = Some(start_msg);
+
+                                            if self.app.asset_loader.has_map(&map_name) {
+                                                self.app.main_menu_state.cached_map = self.app.asset_loader.take_map(&map_name);
+                                                self.app.main_menu_state.is_downloading_map = false;
+                                            } else {
+                                                self.app.main_menu_state.is_downloading_map = true;
+                                                self.app.main_menu_state.cached_map = None;
+                                                let maps_base = crate::get_maps_url();
+                                                let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                                                let tx = self.map_tx.clone();
+                                                
+                                                let request = ehttp::Request::get(&url);
+                                                let map_name_for_closure = map_name.clone();
+                                                let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                                                let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+                                                
+                                                ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
+                                                    match result {
+                                                        Ok(ehttp::streaming::Part::Response(res)) => {
+                                                            if !res.ok {
+                                                                let _ = tx.send(crate::MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
+                                                                return std::ops::ControlFlow::Break(());
+                                                            }
+                                                            let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
+                                                            if let Some(cl_str) = cl {
+                                                                if let Ok(b) = cl_str.parse::<usize>() {
+                                                                    *total_bytes.lock().unwrap() = b;
+                                                                }
+                                                            }
+                                                            std::ops::ControlFlow::Continue(())
+                                                        }
+                                                        Ok(ehttp::streaming::Part::Chunk(chunk)) => {
+                                                            if chunk.is_empty() {
+                                                                let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
+                                                                let _ = tx.send(crate::MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                                                return std::ops::ControlFlow::Break(());
+                                                            }
+                                                            let mut acc = accumulated.lock().unwrap();
+                                                            acc.extend_from_slice(&chunk);
+                                                            let total = *total_bytes.lock().unwrap();
+                                                            let pct = if total > 0 {
+                                                                ((acc.len() as f64 / total as f64) * 100.0) as u8
+                                                            } else {
+                                                                0
+                                                            };
+                                                            let _ = tx.send(crate::MapDownloadEvent::Progress(map_name_for_closure.clone(), pct));
+                                                            std::ops::ControlFlow::Continue(())
+                                                        }
+                                                        Err(e) => {
+                                                            let _ = tx.send(crate::MapDownloadEvent::Error(e.to_string()));
+                                                            std::ops::ControlFlow::Break(())
+                                                        }
+                                                    }
+                                                });
+                                            }
                                         }
                                         UiAction::ConnectToServer(addr) => {
                                             self.app.main_menu_state.is_connecting = true;

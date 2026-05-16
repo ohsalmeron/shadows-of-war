@@ -64,6 +64,8 @@ pub struct GameConfig {
     pub map_height: u32,
     /// If true, players spawn randomly. If false, they spawn based on preset locations.
     pub random_spawn: bool,
+    /// Percentage of the map's total land tiles needed to trigger an automatic win (e.g. 0.10 for 10%).
+    pub map_control_win_percentage: f32,
     
     // ==========================================
     // Core Simulation Pacing
@@ -152,6 +154,7 @@ impl Default for GameConfig {
             map_width: 2904,
             map_height: 1672,
             random_spawn: false,
+            map_control_win_percentage: 0.10,
 
             // Core Simulation Pacing
             tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)

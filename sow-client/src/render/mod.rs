@@ -26,6 +26,9 @@ use std::io::Read;
 pub mod world_overlays;
 pub mod dev_ui;
 pub mod interactions;
+pub mod endgame_ui;
+pub mod tutorial_ui;
+pub mod leaderboard_ui;
 
 
 
@@ -87,12 +90,34 @@ impl SowApp {
                                 if let Some(snap) = &mut self.current_snapshot {
                                     snap.dirty_tiles.clear();
                                 }
+                                let mut border_thickness = 0.4f32;
+                                let mut border_darkness = 0.15f32;
+                                let mut shore_thickness = 0.4f32;
+                                let mut shore_darkness = 0.15f32;
+                                let mut border_roundness = 0.5f32;
+
+                                self.egui_ctx.data_mut(|d| {
+                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
+                                    border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
+                                    shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32);
+                                    shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32);
+                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32);
+                                });
+
                                 let globals = MapGlobals {
                                     camera_pos: [self.camera_x, self.camera_y],
                                     zoom: self.camera_zoom,
                                     time: self.start_time.elapsed().as_secs_f32(),
                                     screen_size: [self.screen_w, self.screen_h],
                                     map_size: [self.map_w as f32, self.map_h as f32],
+                                    border_thickness,
+                                    border_darkness,
+                                    shore_thickness,
+                                    shore_darkness,
+                                    border_roundness,
+                                    _pad1: 0.0,
+                                    _pad2: 0.0,
+                                    _pad3: 0.0,
                                 };
                                 mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
                             }
@@ -149,31 +174,75 @@ impl SowApp {
                             let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
                                 if self.app.phase == ClientPhase::Playing {
                                     self.render_world_overlays(ctx, sf);
+                                    self.render_tutorial_ui(ctx);
                                 }
                                 
                                 self.calculate_fps_and_ping();
                                 
                                 if self.app.phase == ClientPhase::Playing {
                                     self.handle_map_interactions(ctx);
+                                    self.render_endgame_ui(ctx);
                                 }
                                 
                                 self.render_dev_panels(ctx, &mut local_cancel_intents);
+
+                                if self.update_available {
+                                    egui::Window::new("Update Available")
+                                        .collapsible(false)
+                                        .resizable(false)
+                                        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                                        .show(ctx, |ui| {
+                                            ui.heading("A new version is available!");
+                                            ui.add_space(10.0);
+                                            ui.label("The server has been updated. Please refresh to continue playing.");
+                                            ui.add_space(10.0);
+                                            if ui.button("Update Now").clicked() {
+                                                #[cfg(target_arch = "wasm32")]
+                                                if let Some(window) = web_sys::window() {
+                                                    let _ = window.location().reload();
+                                                }
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                {
+                                                    self.update_available = false;
+                                                }
+                                            }
+                                        });
+                                }
                                 
                                 self.process_ui_actions(ctx, sf, &mut local_cancel_intents);
                             });
 
                             for intent in local_cancel_intents {
-                                if let Some(c) = self.net_client.as_ref() {
+                                if self.is_offline {
+                                    self.offline_intents.push(intent);
+                                } else if let Some(c) = self.net_client.as_ref() {
                                     let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
                                     if let Ok(json) = bincode::serialize(&msg) {
                                         c.send(json);
                                     }
-                                } else {
-                                    let stamped = sow_core::protocol::StampedIntent {
-                                        player_id: self.my_player_id.unwrap_or(1),
-                                        intent,
+                                }
+                            }
+
+                            // ── OFFLINE TICK GENERATOR ────────────────────────
+                            if self.is_offline && self.app.phase == ClientPhase::Playing {
+                                self.offline_tick_timer += self.raw_input.predicted_dt;
+                                while self.offline_tick_timer >= 0.05 { // 20 TPS (50ms)
+                                    self.offline_tick_timer -= 0.05;
+                                    
+                                    let raw_intents = std::mem::take(&mut self.offline_intents);
+                                    let mut stamped_intents = Vec::with_capacity(raw_intents.len());
+                                    for intent in raw_intents {
+                                        stamped_intents.push(sow_core::protocol::StampedIntent {
+                                            player_id: self.my_player_id.unwrap_or(1),
+                                            intent,
+                                        });
+                                    }
+                                    
+                                    let turn = sow_core::protocol::Turn {
+                                        turn_number: 0, // Ignored by client simulation
+                                        intents: stamped_intents,
                                     };
-                                    self.bridge.send_command(sow_core::protocol::SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                    self.bridge.send_command(sow_core::protocol::SimCommand::Turn(turn));
                                 }
                             }
 

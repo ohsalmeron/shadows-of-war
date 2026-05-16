@@ -149,7 +149,7 @@ echo "✅ VPS sync complete."
 
 # 5. Restart Services
 echo "==> Ensuring Redis is running and restarting Orchestrator..."
-ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo apt-get install -y redis-server; sudo systemctl enable --now redis-server; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo apt-get install -y redis-server; sudo systemctl enable --now sow-redis; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
 # 6. Post-deploy Integration Test
 echo "==> Running relay handoff integration test..."

@@ -163,6 +163,49 @@ impl SowEngine {
         self.execute_construction();
         self.execute_combat();
         self.execute_fleets();
+        self.check_winner();
+    }
+    
+    fn check_winner(&mut self) {
+        if self.state.winner.is_some() { return; }
+        
+        if self.state.total_land_tiles == 0 {
+            self.state.total_land_tiles = self.state.map.terrain.iter().filter(|t| t.is_land()).count() as u32;
+            if self.state.total_land_tiles == 0 {
+                self.state.total_land_tiles = 1; // Prevent division by zero
+            }
+        }
+        
+        let win_threshold = (self.state.total_land_tiles as f32 * self.state.config.map_control_win_percentage) as u32;
+
+        let mut alive_players = 0;
+        let mut last_alive_id = None;
+        let mut map_control_winner = None;
+        
+        for p in &self.state.players {
+            if p.alive && p.tile_count > 0 {
+                alive_players += 1;
+                last_alive_id = Some(p.id);
+                if p.tile_count >= win_threshold {
+                    map_control_winner = Some(p.id);
+                }
+            }
+        }
+        
+        if let Some(wid) = map_control_winner {
+            self.state.winner = Some(wid);
+            self.state.phase = crate::game::GamePhase::GameOver;
+            self.state.events.push(crate::game::GameEvent::GameOver { winner_id: wid });
+        } else if alive_players == 1 {
+            self.state.winner = last_alive_id;
+            self.state.phase = crate::game::GamePhase::GameOver;
+            if let Some(wid) = last_alive_id {
+                self.state.events.push(crate::game::GameEvent::GameOver { winner_id: wid });
+            }
+        } else if alive_players == 0 && !self.state.players.is_empty() {
+            // Everyone died? Rare but possible.
+            self.state.phase = crate::game::GamePhase::GameOver;
+        }
     }
     pub fn spawn_ai(&mut self, nation_count: u32, tribe_count: u32) {
         let mut spawned_nations = 0;
@@ -393,6 +436,7 @@ impl SowEngine {
             fleets,
             attacks,
             winner: self.state.winner,
+            total_land_tiles: self.state.total_land_tiles,
             defense_posts,
             defense_dirty,
             debug_mem_info: format!("Engine [Attacks: {}, Fleets: {}, Buildings: {}, Events: {}, Players: {}, DirtyTiles: {}]", self.attacks.len(), self.fleets.len(), self.buildings.len(), self.state.events.len(), self.state.players.len(), self.state.map.dirty_tiles.capacity()),

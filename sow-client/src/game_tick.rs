@@ -332,11 +332,8 @@ impl SowApp {
                             ServerMessage::JoinFailed(fail) => {
                                 log::warn!("Join failed: {}", fail.reason);
                                 if fail.reason == "VERSION_MISMATCH" {
-                                    log::info!("Version mismatch — reloading...");
-                                    #[cfg(target_arch = "wasm32")]
-                                    if let Some(window) = web_sys::window() {
-                                        let _ = window.location().reload();
-                                    }
+                                    log::info!("Version mismatch — prompting user to update...");
+                                    self.update_available = true;
                                 }
                                 self.app.main_menu_state.is_waiting = false;
                                 self.app.main_menu_state.pending_join_lobby_id = None;
@@ -523,9 +520,11 @@ impl SowApp {
                     self.ws_connect_not_before = now + Duration::from_millis(2000);
                         
                     // Recover: Send the user back to the loader
-                    if self.app.phase == sow_ui::app::ClientPhase::Playing {
-                        self.app.hud_state.connection_lost = true;
-                    } else if self.app.phase != sow_ui::app::ClientPhase::Splash {
+                    if self.app.phase == sow_ui::app::ClientPhase::Playing || self.app.phase != sow_ui::app::ClientPhase::Splash {
+                        // Aggressively exit back to Orchestrator to prevent singleplayer leak
+                        self.ws_url = self.orchestrator_url.clone();
+                        self.app.main_menu_state.server_address = self.ws_url.clone();
+                        
                         #[cfg(target_arch = "wasm32")]
                         {
                             if let Some(window) = web_sys::window() {
@@ -534,9 +533,12 @@ impl SowApp {
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         {
-                            self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::Reconnect;
-                            self.app.splash_state.status_text = "Connection lost. Reconnecting...".to_string();
-                            self.app.splash_state.progress = 0.0;
+                            self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+                            self.app.splash_state.gpu_load_step = 0;
+                            self.app.splash_state.frames_drawn = 0;
+                            self.app.main_menu_state.is_waiting = false;
+                            self.app.main_menu_state.pending_join_lobby_id = None;
+                            self.app.main_menu_state.joined_lobby_id = None;
                             self.app.phase = sow_ui::app::ClientPhase::Splash;
                         }
                     }

@@ -37,6 +37,7 @@ pub struct GameState {
     #[serde(default = "default_one")] pub next_fleet_id: u64,
     #[serde(default = "default_one")] pub next_building_id: u64,
     #[serde(default = "default_one")] pub next_attack_id: u64,
+    #[serde(default)] pub total_land_tiles: u32,
 }
 fn default_one() -> u64 { 1 }
 
@@ -50,7 +51,7 @@ impl GameState {
         };
         Self { seed, config, phase, map: GameMap::new(width, height),
             players: Vec::new(), player_lookup: Vec::new(), tick: 0, winner: None,
-            events: Vec::new(), next_fleet_id: 1, next_building_id: 1, next_attack_id: 1 }
+            events: Vec::new(), next_fleet_id: 1, next_building_id: 1, next_attack_id: 1, total_land_tiles: 0 }
     }
     pub fn register_player(&mut self, player: Player) {
         let pid = player.id; let index = self.players.len();

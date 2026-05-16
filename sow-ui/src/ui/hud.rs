@@ -22,7 +22,7 @@ pub struct HudState {
 impl HudState {
     /// Call each frame. Wall clock (not egui time) caps label updates at ~2/s.
     pub fn refresh_troop_display_if_due(&mut self) {
-        const MIN_INTERVAL: Duration = Duration::from_millis(500);
+        const MIN_INTERVAL: Duration = Duration::from_millis(50);
         let now = Instant::now();
         let refresh = match self.last_troops_ui_refresh {
             None => true,

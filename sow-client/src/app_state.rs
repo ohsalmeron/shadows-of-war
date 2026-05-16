@@ -89,7 +89,15 @@ pub struct SowApp {
     pub last_ping_time: web_time::Instant,
     pub last_frame_time: web_time::Instant,
     pub pending_lobby_rejoin: bool,
-
+    pub tutorial_completed: bool,
+    pub tutorial_step: crate::render::tutorial_ui::TutorialStep,
+    pub show_leaderboard: bool,
+    pub leaderboard_timer: f32,
+    pub cached_leaderboard: Vec<(u16, String, u32, f64)>, // (id, name, tiles, troops)
+    pub update_available: bool,
+    pub is_offline: bool,
+    pub offline_tick_timer: f32,
+    pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
 }
 
 impl SowApp {
@@ -218,6 +226,23 @@ impl SowApp {
     let last_ping_time = Instant::now();
     let last_frame_time = Instant::now();
 
+    let mut tutorial_completed = false;
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            if let Ok(Some(val)) = window.local_storage().and_then(|s| Ok(s.and_then(|st| st.get_item("sow_tutorial_completed").ok().flatten()))) {
+                if val == "true" {
+                    tutorial_completed = true;
+                }
+            }
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if std::path::Path::new("sow_tutorial_completed.txt").exists() {
+            tutorial_completed = true;
+        }
+    }
 
         Self {
             map_w, map_h, bridge, current_snapshot,
@@ -239,6 +264,15 @@ impl SowApp {
             ime_allowed_state, ime_cursor_rect_px, prev_sync_point, last_tick, start_time, tick_interval,
             needs_first_upload, frame_count, last_fps_time, current_fps, current_ping_ms, last_ping_time, last_frame_time,
             pending_lobby_rejoin: false,
+            tutorial_completed,
+            tutorial_step: crate::render::tutorial_ui::TutorialStep::Welcome,
+            show_leaderboard: false,
+            leaderboard_timer: 0.0,
+            cached_leaderboard: Vec::new(),
+            update_available: false,
+            is_offline: false,
+            offline_tick_timer: 0.0,
+            offline_intents: Vec::new(),
         }
     }
     

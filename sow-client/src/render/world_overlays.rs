@@ -184,7 +184,7 @@ impl SowApp {
                                                 cache_entry.name_galley = layout_nameplate_name_galley(
                                                     &painter,
                                                     font_id.clone(),
-                                                    &player.name,
+                                                    &display_name,
                                                     is_human,
                                                     pc,
                                                 );

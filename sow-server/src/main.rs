@@ -23,6 +23,7 @@ fn find_free_port(redis_con: &mut redis::Connection) -> Option<u16> {
     (RELAY_PORT_MIN..=RELAY_PORT_MAX).find(|p| !occupied.contains(p))
 }
 
+/// All server events, comming from client 
 enum ServerEvent {
     Join {
         client_tx: mpsc::Sender<Vec<u8>>,
