@@ -2,6 +2,7 @@ mod lobby;
 
 use futures_util::{SinkExt, StreamExt};
 use lobby::{master_tick, ServerLobby, build_lobby_broadcast, join_player, leave_player};
+use redis::Commands;
 use sow_core::protocol::{
     ServerJoinAckMessage,
     ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
@@ -12,6 +13,15 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+const REDIS_PORTS_KEY: &str = "sow:ports";
+const RELAY_PORT_MIN: u16 = 25570;
+const RELAY_PORT_MAX: u16 = 25600;
+
+fn find_free_port(redis_con: &mut redis::Connection) -> Option<u16> {
+    let occupied: std::collections::HashSet<u16> = redis_con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
+    (RELAY_PORT_MIN..=RELAY_PORT_MAX).find(|p| !occupied.contains(p))
+}
 
 enum ServerEvent {
     Join {
@@ -40,6 +50,17 @@ enum ServerEvent {
 async fn main() {
     env_logger::init();
 
+    let redis_url = std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let redis_client = redis::Client::open(redis_url).expect("Failed to connect to Redis");
+    let redis_con = Arc::new(std::sync::Mutex::new(
+        redis_client.get_connection().expect("Failed to get Redis connection"),
+    ));
+    {
+        let mut con = redis_con.lock().unwrap();
+        let occupied: std::collections::HashSet<u16> = con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
+        log::info!("Redis connected. Occupied relay ports: {:?}", occupied);
+    }
+
     let mut games: Vec<ServerLobby> = Vec::new();
     let mut next_lobby_id: u64 = 1;
     master_tick(&mut games, &mut next_lobby_id);
@@ -53,6 +74,7 @@ async fn main() {
     let games_clone = Arc::clone(&games_state);
     let next_id_clone = Arc::clone(&next_id_state);
     let global_tx_clone = global_tx.clone();
+    let redis_clone = Arc::clone(&redis_con);
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
@@ -65,11 +87,16 @@ async fn main() {
                     
                     for lobby in &mut *games {
                         if lobby.phase == lobby::LobbyPhase::Loading && lobby.countdown_secs <= 3.0 && lobby.relay_port.is_none() {
-                            static NEXT_RELAY_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(25570);
-                            let relay_port = NEXT_RELAY_PORT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            if relay_port > 25600 {
-                                NEXT_RELAY_PORT.store(25570, std::sync::atomic::Ordering::SeqCst); // loop around
-                            }
+                            let mut rcon = redis_clone.lock().unwrap();
+                            let relay_port = match find_free_port(&mut rcon) {
+                                Some(p) => p,
+                                None => {
+                                    log::error!("No available relay ports in {}-{}", RELAY_PORT_MIN, RELAY_PORT_MAX);
+                                    continue;
+                                }
+                            };
+                            let _: () = rcon.sadd(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                            drop(rcon);
                             
                             let mut players_json = Vec::new();
                             for p in &lobby.players {
@@ -90,16 +117,19 @@ async fn main() {
                             let mut cmd = tokio::process::Command::new("./sow-relay");
                             cmd.arg("--port").arg(relay_port.to_string())
                                .arg("--lobby-json").arg(relay_config.to_string())
+                               .stdin(std::process::Stdio::null())
                                .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
                                .stderr(std::process::Stdio::from(log_file));
                             
                             match cmd.spawn() {
                                 Ok(_) => {
-                                    log::info!("Pre-spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
+                                    log::info!("Spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
                                     lobby.relay_port = Some(relay_port);
                                 }
                                 Err(e) => {
                                     log::error!("Failed to spawn relay for lobby {}: {}", lobby.id, e);
+                                    let mut rcon = redis_clone.lock().unwrap();
+                                    let _: () = rcon.srem(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
                                 }
                             }
                         }

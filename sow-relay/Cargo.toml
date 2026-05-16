@@ -17,3 +17,4 @@ env_logger = { workspace = true }
 tokio = { version = "1.0", features = ["full"] }
 tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
+redis = "0.27"

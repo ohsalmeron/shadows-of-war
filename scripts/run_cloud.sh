@@ -147,9 +147,9 @@ wait $RSYNC_RELAY_PID || { echo "❌ Error subiendo Backend (Relay)"; exit 1; }
 wait $RSYNC_ASSETS_PID || { echo "❌ Error subiendo Assets del servidor"; exit 1; }
 echo "✅ VPS sync complete."
 
-# 5. Restart Systemd
-echo "==> Restarting Systemd Service on VPS..."
-ssh -t ${VPS_USER}@${VPS_IP} "killall -9 sow-relay 2>/dev/null || true; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+# 5. Restart Services
+echo "==> Ensuring Redis is running and restarting Orchestrator..."
+ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo apt-get install -y redis-server; sudo systemctl enable --now redis-server; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
 # 6. Post-deploy Integration Test
 echo "==> Running relay handoff integration test..."

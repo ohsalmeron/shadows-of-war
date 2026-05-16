@@ -1,5 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
+use redis::Commands;
 use sow_core::protocol::{ClientMessage, GameplayIntent, ServerMessage, ServerTurnMessage, StampedIntent, Turn};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,6 +9,13 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+const REDIS_PORTS_KEY: &str = "sow:ports";
+
+fn redis_connect() -> Option<redis::Connection> {
+    let url = std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    redis::Client::open(url).ok().and_then(|c| c.get_connection().ok())
+}
 
 #[derive(serde::Deserialize)]
 struct RelayConfig {
@@ -89,6 +97,20 @@ async fn main() {
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind relay port");
     info!("Relay for lobby {} listening on ws://{}", lobby_id, addr);
 
+    // Register in Redis
+    let redis_con: Arc<std::sync::Mutex<Option<redis::Connection>>> = Arc::new(std::sync::Mutex::new(redis_connect()));
+    {
+        let mut guard = redis_con.lock().unwrap();
+        if let Some(ref mut con) = *guard {
+            let _: () = con.sadd(REDIS_PORTS_KEY, port).unwrap_or_default();
+            let key = format!("sow:relay:{}", port);
+            let _: () = con.set_ex(&key, lobby_id.to_string(), 60).unwrap_or_default();
+            info!("Registered port {} in Redis", port);
+        }
+    }
+    let redis_cleanup = Arc::clone(&redis_con);
+    let cleanup_port = port;
+
     // Main Tick Loop
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_millis(50)); // 20 ticks per second (Server config tick time = 0.05)
@@ -104,11 +126,16 @@ async fn main() {
                         active_empty_secs -= 0.05;
                         if active_empty_secs <= 0.0 {
                             info!("Relay {} shutting down (empty timeout)", lobby_id);
-                            // TODO: Add logic to receive endgame signal to immediately shut down instance upon declaring a winner
+                            let mut guard = redis_cleanup.lock().unwrap();
+                            if let Some(ref mut con) = *guard {
+                                let _: () = con.srem(REDIS_PORTS_KEY, cleanup_port).unwrap_or_default();
+                                let _: () = con.del(format!("sow:relay:{}", cleanup_port)).unwrap_or_default();
+                                info!("Cleaned up port {} from Redis", cleanup_port);
+                            }
                             std::process::exit(0);
                         }
                     } else {
-                        active_empty_secs = 30.0; // Reset
+                        active_empty_secs = 30.0;
                     }
 
                     let intents = std::mem::take(&mut pending_intents);
@@ -130,6 +157,12 @@ async fn main() {
                     if last_status.elapsed().as_secs() >= 10 {
                         println!("STATUS|{}|{}|{}|{}", lobby_id, std::process::id(), port, humans);
                         last_status = std::time::Instant::now();
+                        // Heartbeat: refresh Redis TTL
+                        let mut guard = redis_cleanup.lock().unwrap();
+                        if let Some(ref mut con) = *guard {
+                            let key = format!("sow:relay:{}", cleanup_port);
+                            let _: () = con.set_ex(&key, lobby_id.to_string(), 60).unwrap_or_default();
+                        }
                     }
                 }
                 Some(event) = event_rx.recv() => {
