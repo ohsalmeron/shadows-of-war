@@ -913,18 +913,6 @@ impl SowApp {
                         }
                     }
                     
-                    // Prevent unbounded memory growth and sluggishness when tab is unfocused
-                    if snap.dirty_tiles.len() > 10000 {
-                        if let Some(mr) = &mut self.map_renderer {
-                            for dt in &snap.dirty_tiles {
-                                if (dt.index as usize) < mr.owners.len() {
-                                    mr.owners[dt.index as usize] = dt.new_owner;
-                                }
-                            }
-                            mr.force_full_update = true;
-                        }
-                        snap.dirty_tiles.clear();
-                    }
                     
                     self.current_snapshot = Some(snap);
                 }

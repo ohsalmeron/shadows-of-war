@@ -90,36 +90,6 @@ impl SowApp {
 
                                             if is_expanded {
                                                 ui.separator();
-                                                ui.style_mut().spacing.slider_width = 100.0;
-                                                ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 4.0);
-
-                                                let mut thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32));
-                                                let mut dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32));
-                                                let mut s_thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32));
-                                                let mut s_dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32));
-                                                let mut roundness = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32));
-                                                
-                                                let mut shockwave = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shockwave_intensity"), || 1.0f32));
-                                                let mut breathe = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_border_breathe"), || 1.0f32));
-                                                let mut flow = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_energy_flow"), || 1.0f32));
-                                                
-                                                ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
-                                                ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
-                                                ui.add(egui::Slider::new(&mut shockwave, 0.0..=2.0).text("Shockwave"));
-                                                ui.add(egui::Slider::new(&mut breathe, 0.0..=10.0).text("Breathe"));
-                                                ui.add(egui::Slider::new(&mut flow, 0.0..=2.0).text("Flow"));
-                                                ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
-                                                ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Drk"));
-                                                ui.add(egui::Slider::new(&mut roundness, 0.0..=1.0).text("Roundness"));
-                                                
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shockwave_intensity"), shockwave));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_border_breathe"), breathe));
-                                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_energy_flow"), flow));
                                             }
                                         });
 

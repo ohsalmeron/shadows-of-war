@@ -4,18 +4,6 @@ struct Globals {
     time: f32,
     screen_size: vec2<f32>,
     map_size: vec2<f32>,
-    border_thickness: f32,
-    border_darkness: f32,
-    shore_thickness: f32,
-    shore_darkness: f32,
-    border_roundness: f32,
-    effect_shockwave_intensity: f32,
-    effect_border_breathe: f32,
-    effect_energy_flow: f32,
-    local_player_id: u32,
-    _pad1: f32,
-    _pad2: f32,
-    _pad3: f32,
 }
 
 var<uniform> globals: Globals;
@@ -84,8 +72,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_coords = vec2<i32>(cell_x, cell_y);
     let val = textureLoad(territory_texture, pixel_coords, 0).x;
     
-    let owner_id = val & 0xFFFu;
-    let flash_val = f32((val >> 12u) & 0xFu) / 15.0; // 4-bit flash decay
+    let owner_id = val & 0xFFFFu;
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
@@ -111,104 +98,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     var base_color = terrain_color.rgb;
-    
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
-        
-        // Apply Bare-Metal Base Mix
         base_color = mix(terrain_color.rgb, albedo, 0.95);
-        
-        let is_human = owner_id <= 16u;
-        if is_human && globals.effect_energy_flow > 0.0 {
-            // Holographic Animated Cyber-Stripes
-            let stripe = (sin((world_x + world_y) * 0.15 - globals.time * 2.5) + 1.0) * 0.5;
-            let stripe_fx = mix(0.0, stripe, globals.effect_energy_flow);
-            base_color = base_color + (albedo * stripe_fx * 0.5);
-        }
-        
-        // Conquest Shockwave Flash
-        if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-            // Noise based on coordinates to stagger the flash organically
-            let noise = fract(sin(dot(vec2<f32>(world_x, world_y), vec2<f32>(12.9898, 78.233))) * 43758.5453);
-            let staggered = clamp(flash_val * 1.5 - noise * 0.5, 0.0, 1.0);
-            let curve = pow(staggered, 0.5); 
-            
-            let shockwave = curve * globals.effect_shockwave_intensity;
-            let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), albedo, 1.0 - curve);
-            base_color = mix(base_color, flash_color, shockwave * 0.8);
-        }
     }
 
+    // Check the 31st bit (highest bit of the 32-bit uint) for the CPU-computed border flag
+    let is_border = (val & 0x80000000u) != 0u;
 
     if owner_id > 0u {
-        let border_up = (val & 0x80000000u) != 0u;
-        let border_down = (val & 0x40000000u) != 0u;
-        let border_left = (val & 0x20000000u) != 0u;
-        let border_right = (val & 0x10000000u) != 0u;
-
-        let shore_up = (val & 0x08000000u) != 0u;
-        let shore_down = (val & 0x04000000u) != 0u;
-        let shore_left = (val & 0x02000000u) != 0u;
-        let shore_right = (val & 0x01000000u) != 0u;
-
-        let fx = fract(world_x);
-        let fy = fract(world_y);
-        
-        // Retrieve live values from the UI sliders via Globals
-        var thickness = globals.border_thickness;
-        if globals.effect_border_breathe > 0.0 && owner_id > 0u {
-            let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5; // 0 to 1
-            thickness += breathe * 0.05 * globals.effect_border_breathe;
-        }
-        if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-            thickness += flash_val * 0.2 * globals.effect_shockwave_intensity;
-        }
-
-        let border_darkness = globals.border_darkness;
-        let s_thickness = globals.shore_thickness;
-        let s_darkness = globals.shore_darkness;
-
-        let roundness = globals.border_roundness;
-        let border_r = thickness * roundness;
-        
-        let core_min_x = select(0.0, thickness + border_r, border_left);
-        let core_max_x = select(1.0, 1.0 - thickness - border_r, border_right);
-        let core_min_y = select(0.0, thickness + border_r, border_up);
-        let core_max_y = select(1.0, 1.0 - thickness - border_r, border_down);
-
-        let dx = max(core_min_x - fx, max(0.0, fx - core_max_x));
-        let dy = max(core_min_y - fy, max(0.0, fy - core_max_y));
-        let is_border = sqrt(dx*dx + dy*dy) > border_r;
-
-        let shore_r = s_thickness * roundness;
-        
-        let s_core_min_x = select(0.0, s_thickness + shore_r, shore_left);
-        let s_core_max_x = select(1.0, 1.0 - s_thickness - shore_r, shore_right);
-        let s_core_min_y = select(0.0, s_thickness + shore_r, shore_up);
-        let s_core_max_y = select(1.0, 1.0 - s_thickness - shore_r, shore_down);
-
-        let s_dx = max(s_core_min_x - fx, max(0.0, fx - s_core_max_x));
-        let s_dy = max(s_core_min_y - fy, max(0.0, fy - s_core_max_y));
-        let is_shore = sqrt(s_dx*s_dx + s_dy*s_dy) > shore_r;
-
-        let is_defended = (terrain_byte & 0x40u) != 0u;
-        let is_even_tile = (u32(world_x) + u32(world_y)) % 2u == 0u;
-        let draw_line = !is_defended || is_even_tile;
-
-        if is_shore && draw_line {
-            base_color = base_color * s_darkness;
-        } else if is_border && draw_line {
-            var b_color = base_color.rgb * border_darkness;
-            
-            // Add shockwave to borders
-            if flash_val > 0.0 && globals.effect_shockwave_intensity > 0.0 {
-                let noise = fract(sin(dot(vec2<f32>(world_x, world_y), vec2<f32>(12.9898, 78.233))) * 43758.5453);
-                let staggered = clamp(flash_val * 1.5 - noise * 0.5, 0.0, 1.0);
-                let curve = pow(staggered, 0.5); 
-                b_color = mix(b_color, vec3<f32>(1.0, 1.0, 1.0), curve * globals.effect_shockwave_intensity * 0.6);
-            }
-            
-            base_color = b_color;
+        if is_border {
+            base_color = base_color * 0.3; // Darken for outline
         }
     }
 
