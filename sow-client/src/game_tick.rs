@@ -666,12 +666,18 @@ impl SowApp {
                             
                             let mut uncompressed_map = None;
                             if let Some(bytes) = cached_map {
-                                let mut uncompressed = Vec::new();
-                                let mut decompressor = brotli::Decompressor::new(bytes.as_slice(), 4096);
-                                if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed).is_ok() {
-                                    uncompressed_map = Some(uncompressed);
+                                let expected_len = (start_msg_clone.config.map_width * start_msg_clone.config.map_height) as usize;
+                                if bytes.len() == expected_len {
+                                    log::info!("Map payload is already uncompressed (browser auto-decompression)");
+                                    uncompressed_map = Some(bytes);
                                 } else {
-                                    log::error!("Failed to decompress map.bin.br payload");
+                                    let mut uncompressed = Vec::new();
+                                    let mut decompressor = brotli::Decompressor::new(bytes.as_slice(), 4096);
+                                    if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed).is_ok() {
+                                        uncompressed_map = Some(uncompressed);
+                                    } else {
+                                        log::error!("Failed to decompress map.bin.br payload");
+                                    }
                                 }
                             } else {
                                 log::error!("Cached map data not found! Terrain will be empty.");
@@ -890,10 +896,8 @@ impl SowApp {
                         }
                         self.last_tick = now;
                     } else {
-                        // Singleplayer: run freely based on local timer
+                        // Singleplayer: HUD updates based on local timer (ticks are handled by mod.rs)
                         if now.duration_since(self.last_tick) >= self.tick_interval {
-                            self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![] }));
-
                             self.last_tick = now;
                             
                             if let Some(player) = self.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.my_player_id.unwrap_or(1))) {

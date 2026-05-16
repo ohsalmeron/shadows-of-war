@@ -90,9 +90,7 @@ pub mod native {
                                 }
                                 SimCommand::Turn(turn) => {
                                     if let Some(e) = &mut engine {
-                                        for intent in &turn.intents {
-                                            e.apply_stamped_intent(intent, 0);
-                                        }
+                                        e.apply_intents(&turn.intents);
                                         e.tick();
                                         processed_commands = true;
                                     }
@@ -209,9 +207,7 @@ pub mod wasm {
                 }
                 SimCommand::Turn(turn) => {
                     if let Some(e) = self.engine.borrow_mut().as_mut() {
-                        for intent in &turn.intents {
-                            e.apply_stamped_intent(intent, 0);
-                        }
+                        e.apply_intents(&turn.intents);
                         e.tick();
                         self.snapshot_dirty.set(true);
                     }

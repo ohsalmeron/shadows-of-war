@@ -157,7 +157,7 @@ impl Default for GameConfig {
             map_control_win_percentage: 0.10,
 
             // Core Simulation Pacing
-            tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)
+            tick_rate_ms: 100.0, // Server clock ticks every 50ms (20 ticks per second)
             // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
             global_speed_multiplier: 0.85, // 0.85 = Slightly slower, more tactical pace
             

@@ -89,7 +89,8 @@ impl SowApp {
                                             c.send(json);
                                         }
                                     } else {
-                                        let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
+                                        println!("Sending spawn intent offline to bridge at x: {}, y: {}", col, row);
+                                                let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
                                         self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                     }
                                 }
@@ -177,6 +178,7 @@ impl SowApp {
                                 let dx = position.x - sx;
                                 let dy = position.y - sy;
                                 let dist = dx*dx + dy*dy;
+                                println!("Clicked map. wants_pointer: {}, phase: {:?}, is_primary: {}, dist: {}", wants_pointer, self.app.phase, is_primary, dist);
                                 if dist <= 400.0 {
                                     let world_x = (sx as f32 - self.camera_x) / self.camera_zoom;
                                     let world_y = (sy as f32 - self.camera_y) / self.camera_zoom;
@@ -224,6 +226,7 @@ impl SowApp {
                                                     c.send(json);
                                                 }
                                             } else {
+                                                println!("Sending spawn intent offline to bridge at x: {}, y: {}", col, row);
                                                 let stamped = sow_core::protocol::StampedIntent {
                                                     player_id: self.my_player_id.unwrap_or(1),
                                                     intent,

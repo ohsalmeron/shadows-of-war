@@ -46,7 +46,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     if state.connection_lost {
         // Draw a dark full-screen overlay
         let screen_rect = ctx.screen_rect();
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("connection_lost_overlay")))
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("connection_lost_overlay")))
             .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(200));
 
         egui::Window::new("CONNECTION LOST")
@@ -202,7 +202,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     if let Some(sync) = &state.sync_state {
         // Draw a dark full-screen overlay to block input visually and practically
         let screen_rect = ctx.screen_rect();
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("sync_overlay")))
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("sync_overlay")))
             .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
 
         egui::Window::new("WAITING FOR PLAYERS")

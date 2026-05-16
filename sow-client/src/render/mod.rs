@@ -182,6 +182,7 @@ impl SowApp {
                                 if self.app.phase == ClientPhase::Playing {
                                     self.handle_map_interactions(ctx);
                                     self.render_endgame_ui(ctx);
+                                    self.render_leaderboard(ctx);
                                 }
                                 
                                 self.render_dev_panels(ctx, &mut local_cancel_intents);
@@ -225,11 +226,14 @@ impl SowApp {
 
                             // ── OFFLINE TICK GENERATOR ────────────────────────
                             if self.is_offline && self.app.phase == ClientPhase::Playing {
-                                self.offline_tick_timer += self.raw_input.predicted_dt;
+                                let mut dt = self.raw_input.predicted_dt;
+                                if dt > 0.1 { dt = 0.05; } // Clamp to prevent tick burst
+                                self.offline_tick_timer += dt;
                                 while self.offline_tick_timer >= 0.05 { // 20 TPS (50ms)
                                     self.offline_tick_timer -= 0.05;
                                     
                                     let raw_intents = std::mem::take(&mut self.offline_intents);
+                                    println!("Offline tick generator sending Turn. dt: {}, timer: {}", dt, self.offline_tick_timer);
                                     let mut stamped_intents = Vec::with_capacity(raw_intents.len());
                                     for intent in raw_intents {
                                         stamped_intents.push(sow_core::protocol::StampedIntent {

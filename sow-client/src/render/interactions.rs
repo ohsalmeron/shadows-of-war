@@ -111,6 +111,13 @@ impl SowApp {
 
                                             let mut config = sow_core::game_config::GameConfig::default();
                                             config.map_name = map_name.clone();
+                                            if map_name == "world" {
+                                                config.map_width = 2000;
+                                                config.map_height = 1000;
+                                            } else {
+                                                config.map_width = 800;
+                                                config.map_height = 400;
+                                            }
                                             config.bot_count = 20;
                                             config.nation_count = 5;
 

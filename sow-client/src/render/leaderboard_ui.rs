@@ -2,7 +2,7 @@ use egui::{Align2, Color32, RichText, Vec2, Window};
 use crate::app_state::SowApp;
 
 impl SowApp {
-    pub fn render_leaderboard(&mut self, ui: &mut egui::Ui) {
+    pub fn render_leaderboard(&mut self, ctx: &egui::Context) {
         // 1. Throttle the leaderboard update to once per second
         self.leaderboard_timer -= self.raw_input.predicted_dt;
         if self.leaderboard_timer <= 0.0 {
@@ -28,49 +28,70 @@ impl SowApp {
             }
         }
 
-        // 2. Render the Egui grid
-        if self.show_leaderboard {
-            ui.separator();
-            ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
-            
-            egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                egui::Grid::new("leaderboard_grid")
-                    .num_columns(5)
-                    .spacing([10.0, 8.0])
-                    .striped(true)
-                    .show(ui, |ui| {
-                        // Headers
-                        ui.label(RichText::new("#").strong());
-                        ui.label(RichText::new("Name").strong());
-                        ui.label(RichText::new("Tiles").strong());
-                        ui.label(RichText::new("Troops").strong());
-                        ui.label(RichText::new("Control").strong());
-                        ui.end_row();
-
-                        // Get total land tiles from snapshot
-                        let total_land_tiles = self.current_snapshot
-                            .as_ref()
-                            .map(|s| s.total_land_tiles)
-                            .unwrap_or(1)
-                            .max(1);
-
-                        // Data rows
-                        for (i, (id, name, tiles, troops)) in self.cached_leaderboard.iter().enumerate() {
-                            // Highlight the player's own row
-                            let is_me = Some(*id) == self.my_player_id;
-                            let color = if is_me { Color32::YELLOW } else { Color32::WHITE };
-                            
-                            let control_pct = (*tiles as f32 / total_land_tiles as f32) * 100.0;
-                            
-                            ui.label(RichText::new(format!("{}", i + 1)).color(color));
-                            ui.label(RichText::new(name).color(color));
-                            ui.label(RichText::new(format!("{}", tiles)).color(color));
-                            ui.label(RichText::new(format!("{:.0}", troops)).color(color));
-                            ui.label(RichText::new(format!("{:.1}%", control_pct)).color(color));
-                            ui.end_row();
-                        }
-                    });
+        // 2. Render the Leaderboard Toggle Button
+        egui::Window::new("Leaderboard_Toggle")
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .anchor(Align2::LEFT_TOP, Vec2::new(10.0, 10.0))
+            .frame(egui::Frame::NONE.inner_margin(4.0))
+            .show(ctx, |ui| {
+                if ui.button(if self.show_leaderboard { "Hide Leaderboard" } else { "🏆 Leaderboard" }).clicked() {
+                    self.show_leaderboard = !self.show_leaderboard;
+                }
             });
-        }
+
+        // 3. Render the Egui window
+        let mut show_leaderboard = self.show_leaderboard;
+        
+        Window::new("Leaderboard")
+            .open(&mut show_leaderboard)
+            .anchor(Align2::LEFT_TOP, Vec2::new(10.0, 40.0))
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+                
+                egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                    egui::Grid::new("leaderboard_grid")
+                        .num_columns(5)
+                        .spacing([10.0, 8.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            // Headers
+                            ui.label(RichText::new("#").strong());
+                            ui.label(RichText::new("Name").strong());
+                            ui.label(RichText::new("Tiles").strong());
+                            ui.label(RichText::new("Troops").strong());
+                            ui.label(RichText::new("Control").strong());
+                            ui.end_row();
+
+                            // Get total land tiles from snapshot
+                            let total_land_tiles = self.current_snapshot
+                                .as_ref()
+                                .map(|s| s.total_land_tiles)
+                                .unwrap_or(1)
+                                .max(1);
+
+                            // Data rows
+                            for (i, (id, name, tiles, troops)) in self.cached_leaderboard.iter().enumerate() {
+                                // Highlight the player's own row
+                                let is_me = Some(*id) == self.my_player_id;
+                                let color = if is_me { Color32::YELLOW } else { Color32::WHITE };
+                                
+                                let control_pct = (*tiles as f32 / total_land_tiles as f32) * 100.0;
+                                
+                                ui.label(RichText::new(format!("{}", i + 1)).color(color));
+                                ui.label(RichText::new(name).color(color));
+                                ui.label(RichText::new(format!("{}", tiles)).color(color));
+                                ui.label(RichText::new(format!("{:.0}", troops)).color(color));
+                                ui.label(RichText::new(format!("{:.1}%", control_pct)).color(color));
+                                ui.end_row();
+                            }
+                        });
+                });
+            });
+            
+        self.show_leaderboard = show_leaderboard;
     }
 }

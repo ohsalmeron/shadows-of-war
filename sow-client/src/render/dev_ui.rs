@@ -120,8 +120,6 @@ impl SowApp {
                                                     ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
                                                     ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
                                                 }
-                                                // 4. Leaderboard Panel
-                                                self.render_leaderboard(ui);
                                             });
                                         });
 

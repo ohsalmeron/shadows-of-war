@@ -16,7 +16,7 @@ impl SowApp {
             
             // Dim background
             egui::Area::new(egui::Id::new("endgame_dimmer"))
-                .order(egui::Order::Foreground)
+                .order(egui::Order::Tooltip)
                 .fixed_pos(egui::Pos2::ZERO)
                 .show(ctx, |ui| {
                     let rect = ctx.screen_rect();
