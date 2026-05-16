@@ -912,6 +912,7 @@ impl SowApp {
                     self.last_tick = now;
                 }
                 if let Some(mut snap) = self.bridge.try_recv_snapshot() {
+                    println!("Received snapshot! phase: {:?}", snap.phase);
                     if let Some(mut existing) = self.current_snapshot.take() {
                         if !existing.dirty_tiles.is_empty() {
                             existing.dirty_tiles.append(&mut snap.dirty_tiles);

@@ -28,7 +28,6 @@ pub mod dev_ui;
 pub mod interactions;
 pub mod endgame_ui;
 pub mod tutorial_ui;
-pub mod leaderboard_ui;
 
 
 
@@ -137,6 +136,27 @@ impl SowApp {
                                 egui::Pos2::ZERO,
                                 egui::Vec2::new(self.screen_w / sf, self.screen_h / sf)
                             ));
+
+                            #[cfg(target_os = "android")]
+                            {
+                                if self.app.phase == sow_ui::app::ClientPhase::MainMenu {
+                                    let config = crate::client_config::ClientVisualConfig::default();
+                                    self.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
+                                        top: config.safe_area_top as i8,
+                                        bottom: config.safe_area_bottom as i8,
+                                        left: 0,
+                                        right: 0,
+                                    }.into()));
+                                } else {
+                                    self.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
+                                        top: 0,
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                    }.into()));
+                                }
+                            }
+
                             
                             for ev in &mut self.raw_input.events {
                                 match ev {
@@ -172,7 +192,28 @@ impl SowApp {
 
                             let egui_ctx = self.egui_ctx.clone();
                             let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
-                                if self.app.phase == ClientPhase::Playing {
+                                #[cfg(target_os = "android")]
+                                if self.app.phase == sow_ui::app::ClientPhase::MainMenu {
+                                    let config = crate::client_config::ClientVisualConfig::default();
+                                    let screen_rect = ctx.screen_rect();
+                                    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("safe_area_bars")));
+                                    
+                                    let top_c = config.top_bar_color;
+                                    painter.rect_filled(
+                                        egui::Rect::from_min_max(screen_rect.min, egui::pos2(screen_rect.max.x, screen_rect.min.y + config.safe_area_top)),
+                                        0.0,
+                                        egui::Color32::from_rgba_premultiplied(top_c[0], top_c[1], top_c[2], top_c[3]),
+                                    );
+                                    
+                                    let bot_c = config.bottom_bar_color;
+                                    painter.rect_filled(
+                                        egui::Rect::from_min_max(egui::pos2(screen_rect.min.x, screen_rect.max.y - config.safe_area_bottom), screen_rect.max),
+                                        0.0,
+                                        egui::Color32::from_rgba_premultiplied(bot_c[0], bot_c[1], bot_c[2], bot_c[3]),
+                                    );
+                                }
+
+                                if self.app.phase == sow_ui::app::ClientPhase::Playing {
                                     self.render_world_overlays(ctx, sf);
                                     self.render_tutorial_ui(ctx);
                                 }
@@ -182,7 +223,6 @@ impl SowApp {
                                 if self.app.phase == ClientPhase::Playing {
                                     self.handle_map_interactions(ctx);
                                     self.render_endgame_ui(ctx);
-                                    self.render_leaderboard(ctx);
                                 }
                                 
                                 self.render_dev_panels(ctx, &mut local_cancel_intents);

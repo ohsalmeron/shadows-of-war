@@ -51,7 +51,7 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
     // Dark scrim behind the modal
     let screen_rect = ctx.content_rect();
     ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Tooltip,
+        egui::Order::Background,
         egui::Id::new("settings_scrim"),
     ))
     .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(200));

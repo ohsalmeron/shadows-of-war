@@ -1,4 +1,4 @@
-use crate::game_config::max_tiles_cap_for_troops;
+
 use crate::game::{GameEvent, GamePhase};
 use crate::map::TerrainType;
 use crate::warp_fleet::best_shore_spawn_for_transport;
@@ -53,23 +53,29 @@ impl SowEngine {
             continue;
         }
 
-        // Fast approximation of active frontier size without scanning the entire empire border
-        let adjacent = (execution.to_conquer.len() as f64).max(1.0);
-
-        let max_cap = max_tiles_cap_for_troops(execution.troops, &self.state.config);
 
         let mut max_tiles_f64 = if execution.target_owner == 0 {
-            // Neutral expansion speed: proportional to true border size
-            (adjacent * 2.0).max(5.0).min(max_cap)
+            // Neutral expansion speed: OpenFront parity (proportional to border size)
+            let adjacent = (execution.to_conquer.len() as f64).max(1.0);
+            (adjacent * 0.4).max(1.0).min(50.0) // Bounded organic growth
         } else {
+            // PvP expansion speed: ratio based
+            // Defensive clamp: troops CAN go negative when multiple attacks drain
+            // simultaneously before income restores them. Negative defender_troops
+            // would produce a negative ratio and (via clamp) identical power across
+            // platforms, BUT the intermediate float bits can diverge on
+            // ARM-WASM vs x86-WASM for negative/zero edge values.  Clamp first.
             let defender_troops = self.state
                 .player(execution.target_owner)
                 .map(|p| p.troops.max(0.0))
                 .unwrap_or(1.0)
                 .max(1.0);
             let ratio = execution.troops / defender_troops;
-            let power = (ratio * 2.0).clamp(0.02, 0.5); 
-            (power * adjacent * 3.0).max(1.0).min(max_cap)
+            let adjacent = (execution.to_conquer.len() as f64).max(1.0);
+
+            // OpenFront parity speed curve
+            let power = (ratio * 0.5).clamp(0.05, 0.4); 
+            (power * adjacent).max(0.1).min(100.0) // At least 0.1 (10% chance per tick), max 100 tiles/tick
         };
 
         // Speed scales with remaining troops. Higher momentum_divisor = slower ramp.

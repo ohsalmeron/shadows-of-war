@@ -188,6 +188,7 @@ impl SowApp {
 
                                     if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
                                         let phase = self.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+                                        println!("Actual snapshot phase: {:?}", phase);
                                         let mut intent_opt = None;
 
                                         if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
