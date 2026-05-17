@@ -41,7 +41,12 @@ impl SowApp {
                                             .anchor(egui::Align2::LEFT_TOP, egui::vec2(mx, my))
                                             .order(egui::Order::Foreground)
                                             .show(ctx, |ui| {
-                                                egui::Frame::menu(&ctx.global_style()).show(ui, |ui| {
+                                                egui::Frame::menu(&ctx.global_style())
+                                                    .fill(sow_ui::ui::theme::panel_bg())
+                                                    .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border()))
+                                                    .corner_radius(12.0)
+                                                    .inner_margin(8.0)
+                                                    .show(ui, |ui| {
                                                     if is_land {
                                                         ui.label("Land Tile");
                                                     } else {

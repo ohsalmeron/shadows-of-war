@@ -123,13 +123,13 @@ impl SowApp {
                                             full_labels_drawn += 1;
                                             let ui_text_scale = ClientVisualConfig::default().ui_text_scale;
 
-                                            // 1. Bounding box for font fitting (reference zoom, not current zoom)
-                                            let empire_width_px = sizing_presence * 2.0; // Hexagons spread out
-                                            let empire_height_px = sizing_presence * 1.5;
+                                            // 1. Bounding box for font fitting (uses current zoom so text scales!)
+                                            let empire_width_px = lod_presence * 1.0; // Hexagons spread out
+                                            let empire_height_px = lod_presence * 1.0;
 
                                             // 2. Constrain font size so the text fits INSIDE those pixels
                                             let name_len = player.name.len().max(1) as f32;
-                                            let max_by_width = empire_width_px / (name_len * 0.6); // Avg char width is ~60% of height
+                                            let max_by_width = empire_width_px / (name_len * 0.25); // Avg char width is ~60% of height
                                             let max_by_height = empire_height_px / 2.0; // Need space for 2 lines of text (name + troops)
 
                                             // 3. Raw font size that inscribes the territory at reference zoom

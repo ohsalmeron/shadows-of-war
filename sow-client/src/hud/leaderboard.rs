@@ -39,12 +39,20 @@ impl SowApp {
                     .show(ui, |ui| {
                         // Toggle Button Row
                         ui.horizontal(|ui| {
-                            let icon = if self.ui.show_leaderboard { "▼" } else { "▶" };
-                            let toggle_btn = egui::Button::new(RichText::new(format!("{} 🏆 Leaderboard", icon)).size(16.0).color(Color32::from_gray(220)))
+                            let toggle_btn = egui::Button::new(RichText::new("🏆").size(18.0).color(Color32::from_gray(200)))
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::NONE);
-                            if ui.add(toggle_btn).clicked() {
+                            if ui.add(toggle_btn).on_hover_text("Leaderboard").clicked() {
                                 self.ui.show_leaderboard = !self.ui.show_leaderboard;
+                            }
+
+                            ui.add_space(2.0);
+
+                            let dev_btn = egui::Button::new(RichText::new("🛠").size(18.0).color(Color32::from_gray(200)))
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::NONE);
+                            if ui.add(dev_btn).on_hover_text("Dev Utils").clicked() {
+                                self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
                             }
                         });
 
@@ -92,6 +100,32 @@ impl SowApp {
                                         }
                                     });
                             });
+                        }
+
+                        if self.ui.show_dev_sidebar {
+                            ui.add_space(4.0);
+                            ui.separator();
+                            ui.add_space(4.0);
+                            ui.style_mut().spacing.slider_width = 100.0;
+                            ui.style_mut().spacing.item_spacing = Vec2::new(4.0, 4.0);
+
+                            let mut thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32));
+                            let mut dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32));
+                            let mut s_thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32));
+                            let mut s_dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32));
+                            let mut roundness = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32));
+                            
+                            ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
+                            ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
+                            ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
+                            ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Drk"));
+                            ui.add(egui::Slider::new(&mut roundness, 0.0..=1.0).text("Roundness"));
+                            
+                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
+                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
+                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
+                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
+                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
                         }
                     });
             });

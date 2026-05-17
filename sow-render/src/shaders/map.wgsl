@@ -164,5 +164,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    return vec4<f32>(base_color, 1.0);
+    // Convert from linear to sRGB for final output to the Unorm surface
+    let final_color = pow(base_color, vec3<f32>(1.0 / 2.2));
+    return vec4<f32>(final_color, 1.0);
 }

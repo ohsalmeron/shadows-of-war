@@ -148,15 +148,6 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
 
                         ui.add_space(2.0);
 
-                        let dev_btn = egui::Button::new(RichText::new("🛠").size(18.0).color(Color32::from_gray(200)))
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE);
-                        if ui.add(dev_btn).on_hover_text("Dev Info").clicked() {
-                            action = Some(UiAction::ToggleDevSidebar);
-                        }
-
-                        ui.add_space(2.0);
-
                         let exit = egui::Button::new(RichText::new("✖").size(18.0).color(Color32::from_rgb(255, 100, 100)))
                             .fill(Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE);

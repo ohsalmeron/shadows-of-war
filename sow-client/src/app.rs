@@ -294,7 +294,7 @@ impl SowApp {
                 label_positions: std::collections::HashMap::new(),
                 tutorial_completed, tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
                 show_leaderboard: false, leaderboard_timer: 0.0, cached_leaderboard: Vec::new(),
-                show_dev_sidebar: true,
+                show_dev_sidebar: false,
                 update_available: false
             },
             time: TimeState {

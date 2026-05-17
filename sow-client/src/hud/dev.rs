@@ -33,16 +33,15 @@ impl SowApp {
     pub(crate) fn render_dev_panels(&mut self, ctx: &egui::Context, local_cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) {
 
 
-        if self.ui.show_dev_sidebar {
-            egui::Window::new("HUD Sidebar")
-                .title_bar(false)
-                .anchor(egui::Align2::LEFT_TOP, egui::vec2(10.0, 10.0))
-                .auto_sized()
-                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg_transparent()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0))
-                .show(ctx, |ui| {
-                    let mut is_expanded = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_utils_expanded"), || false));
-                    ui.vertical(|ui| {
-                        // 1. Stats Row
+        egui::Area::new(egui::Id::new("ping_fps_zoom_area"))
+            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(12.0, -12.0))
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(sow_ui::ui::theme::panel_bg_transparent())
+                    .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border()))
+                    .corner_radius(12.0)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             if let Some(ping) = self.net.current_ping_ms {
                                 ui.label(
@@ -62,48 +61,8 @@ impl SowApp {
                                     .strong()
                             );
                         });
-                        
-                        ui.add_space(4.0);
-
-                        // 2. Buttons Row
-                        ui.horizontal(|ui| {
-
-
-                            let dev_icon = if is_expanded { "▼" } else { "▶" };
-                            let dev_btn = egui::Button::new(egui::RichText::new(format!("{} 🛠 Dev Utils", dev_icon))).min_size(egui::vec2(100.0, 30.0));
-                            if ui.add(dev_btn).clicked() {
-                                is_expanded = !is_expanded;
-                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_utils_expanded"), is_expanded));
-                            }
-                        });
-
-                        // 3. Dev Utils Expanded Panel
-                        if is_expanded {
-                            ui.separator();
-                            ui.style_mut().spacing.slider_width = 100.0;
-                            ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 4.0);
-
-                            let mut thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32));
-                            let mut dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32));
-                            let mut s_thick = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32));
-                            let mut s_dark = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32));
-                            let mut roundness = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32));
-                            
-                            ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
-                            ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
-                            ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
-                            ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Drk"));
-                            ui.add(egui::Slider::new(&mut roundness, 0.0..=1.0).text("Roundness"));
-                            
-                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
-                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
-                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
-                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
-                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_roundness"), roundness));
-                        }
                     });
-                });
-        }
+            });
 
                                 if self.ui.app.phase == ClientPhase::Playing {
                                     if let Some(snap) = &self.sim.current_snapshot {
