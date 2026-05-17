@@ -14,69 +14,96 @@ impl SowApp {
             return;
         }
 
-
         if self.ui.app.main_menu_state.is_waiting {
             return;
         }
 
-        if let Some((start, mx, my)) = self.input.map_touch_start {
-            if start.elapsed().as_millis() > 500 {
-                                            let world_x = (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
-                                            let world_y = (my as f32 - self.input.camera_y) / self.input.camera_zoom;
-                                            let col = world_x.floor() as i32;
-                                            let row = world_y.floor() as i32;
-                                            if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
-                                                let idx = (row * self.sim.map_w as i32 + col) as u32;
-                                                self.input.map_context_menu = Some((mx as f32, my as f32, idx));
-                                            }
-                                            self.input.map_touch_start = None; // clear it so it doesn't re-trigger
-                                        }
-                                    }
+        // ── Hold-to-Attack pump: sends 10% of troops per second while held ──
+        if let Some((target_owner, press_start, sx, sy)) = self.input.hold_attack_target {
+            let held_ms = press_start.elapsed().as_millis();
+            // Only start streaming after 300ms grace period (to distinguish from quick-click)
+            if held_ms > 300 {
+                // Check cursor hasn't drifted too far from press origin
+                let dx = self.input.last_mouse_x - sx;
+                let dy = self.input.last_mouse_y - sy;
+                if dx * dx + dy * dy <= 2500.0 {
+                    // Accumulate real time since last pump
+                    let dt = ctx.input(|i| i.predicted_dt);
+                    self.input.hold_attack_accum += dt;
 
-                                    if let Some((mx, my, tile_idx)) = self.input.map_context_menu {
-                                        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[tile_idx as usize]).unwrap_or(0);
-                                        let is_land = (terrain_byte & 0x80) != 0;
-                                        
-                                        egui::Area::new(egui::Id::new("map_context_menu"))
-                                            .anchor(egui::Align2::LEFT_TOP, egui::vec2(mx, my))
-                                            .order(egui::Order::Foreground)
-                                            .show(ctx, |ui| {
-                                                egui::Frame::menu(&ctx.global_style())
-                                                    .fill(sow_ui::ui::theme::panel_bg())
-                                                    .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border()))
-                                                    .corner_radius(12.0)
-                                                    .inner_margin(8.0)
-                                                    .show(ui, |ui| {
-                                                    if is_land {
-                                                        ui.label("Land Tile");
-                                                    } else {
-                                                        if ui.button("★ Send Fleet").clicked() {
-                                                            let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
-                                                            let intent = sow_core::protocol::GameplayIntent::LaunchFleet {
-                                                                target_tile: tile_idx,
-                                                                troops,
-                                                            };
-                                                            if let Some(c) = self.net.client.as_ref() {
-                                                                if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
-                                                                    c.send(json);
-                                                                }
-                                                            } else {
-                                                                self.sim.offline_intents.push(intent);
-                                                            }
-                                                            self.input.map_context_menu = None;
-                                                        }
-                                                    }
-                                                    if ui.button("[X] Cancel").clicked() {
-                                                        self.input.map_context_menu = None;
-                                                    }
-                                                });
-                                            });
-                                            
-                                        // Auto-close if clicked elsewhere
-                                        if ctx.input(|i| i.pointer.any_pressed()) && !ctx.egui_wants_pointer_input() {
-                                            self.input.map_context_menu = None;
-                                        }
+                    // Send one attack per sim tick interval (50ms)
+                    while self.input.hold_attack_accum >= 0.05 {
+                        self.input.hold_attack_accum -= 0.05;
+                        // 10% per second = 0.5% per tick (0.05s)
+                        let troops = self.ui.app.hud_state.troops * 0.005;
+                        if troops > 0.0 {
+                            let attack = sow_core::protocol::AttackIntent {
+                                target_owner,
+                                troops: Some(troops),
+                            };
+                            let intent = sow_core::protocol::GameplayIntent::Attack(attack);
+                            if let Some(c) = self.net.client.as_ref() {
+                                if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
+                                    c.send(json);
+                                }
+                            } else {
+                                self.sim.offline_intents.push(intent);
+                            }
+                        }
+                    }
+                } else {
+                    // Drifted too far, cancel hold
+                    self.input.hold_attack_target = None;
+                    self.input.hold_attack_accum = 0.0;
+                }
+            }
+        }
+
+        // ── Context menu (right-click on desktop, tap on mobile) ──
+        if let Some((mx, my, tile_idx)) = self.input.map_context_menu {
+            let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[tile_idx as usize]).unwrap_or(0);
+            let is_land = (terrain_byte & 0x80) != 0;
+            
+            egui::Area::new(egui::Id::new("map_context_menu"))
+                .anchor(egui::Align2::LEFT_TOP, egui::vec2(mx, my))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    egui::Frame::menu(&ctx.global_style())
+                        .fill(sow_ui::ui::theme::panel_bg())
+                        .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border()))
+                        .corner_radius(12.0)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                        if is_land {
+                            ui.label("Land Tile");
+                        } else {
+                            if ui.button("★ Send Fleet").clicked() {
+                                let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
+                                let intent = sow_core::protocol::GameplayIntent::LaunchFleet {
+                                    target_tile: tile_idx,
+                                    troops,
+                                };
+                                if let Some(c) = self.net.client.as_ref() {
+                                    if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
+                                        c.send(json);
                                     }
+                                } else {
+                                    self.sim.offline_intents.push(intent);
+                                }
+                                self.input.map_context_menu = None;
+                            }
+                        }
+                        if ui.button("[X] Cancel").clicked() {
+                            self.input.map_context_menu = None;
+                        }
+                    });
+                });
+                
+            // Auto-close if clicked elsewhere
+            if ctx.input(|i| i.pointer.any_pressed()) && !ctx.egui_wants_pointer_input() {
+                self.input.map_context_menu = None;
+            }
+        }
 
     }
 

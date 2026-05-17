@@ -139,7 +139,7 @@ impl SowApp {
                                             let target_font_size = raw_font_size * ui_text_scale;
                                             
                                             // --- Change this value to control how small text can get (e.g. during spawning) ---
-                                            let min_font_size = 12; 
+                                            let min_font_size = 8;
                                             // -----------------------------------------------------------------------------------
                                             
                                             // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.

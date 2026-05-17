@@ -152,6 +152,7 @@ impl SowApp {
                             winit::event::ButtonSource::Mouse(b) => b == MouseButton::Right,
                             _ => false,
                         };
+                        let is_touch = matches!(button, winit::event::ButtonSource::Touch { .. });
 
                         if let winit::event::ButtonSource::Touch { finger_id, .. } = button {
                             let id = finger_id.into_raw() as u64;
@@ -166,23 +167,56 @@ impl SowApp {
                         }
 
                         let wants_pointer = self.ui.egui_ctx.egui_wants_pointer_input();
+                        let in_game = self.ui.app.phase == ClientPhase::Playing && self.ui.app.hud_state.sync_state.is_none();
 
                         if is_primary {
                             if pressed {
                                 if !wants_pointer {
                                     self.input.dragging = true;
                                 }
+                                // Start hold-to-attack tracking
+                                if !wants_pointer && in_game {
+                                    self.input.map_touch_start = Some((web_time::Instant::now(), position.x, position.y));
+                                    self.try_begin_hold_attack(position.x, position.y);
+                                }
                             } else {
                                 self.input.dragging = false;
+                                // On release: if it was a quick tap, handle click actions
+                                if !wants_pointer && in_game {
+                                    let was_quick = self.input.map_touch_start
+                                        .map(|(t, _, _)| t.elapsed().as_millis() < 300)
+                                        .unwrap_or(false);
+                                    let no_drift = self.input.map_touch_start
+                                        .map(|(_, sx, sy)| {
+                                            let dx = position.x - sx;
+                                            let dy = position.y - sy;
+                                            dx * dx + dy * dy <= 400.0
+                                        })
+                                        .unwrap_or(false);
+
+                                    if was_quick && no_drift {
+                                        let is_spawning = self.sim.current_snapshot.as_ref()
+                                            .map(|s| matches!(s.phase, sow_core::game::GamePhase::Spawning { .. }))
+                                            .unwrap_or(false);
+                                        let (sx, sy) = self.input.map_touch_start.map(|(_, x, y)| (x, y)).unwrap_or((position.x, position.y));
+                                        if is_touch && !is_spawning {
+                                            // Tap on mobile → open context menu
+                                            self.open_context_menu_at(sx, sy);
+                                        } else {
+                                            // Quick click on desktop or tap during spawn → one-shot attack/spawn
+                                            self.handle_map_click(sx, sy);
+                                        }
+                                    }
+                                }
+                                self.input.hold_attack_target = None;
+                                self.input.hold_attack_accum = 0.0;
+                                self.input.map_touch_start = None;
                             }
                         }
 
-                        if pressed && !wants_pointer {
-                            self.input.map_touch_start = Some((web_time::Instant::now(), position.x, position.y));
-                        }
-
-                        if !pressed && !wants_pointer && self.ui.app.phase == ClientPhase::Playing && self.ui.app.hud_state.sync_state.is_none() {
-                            self.handle_map_click(position.x, position.y, is_primary, is_secondary);
+                        // Right-click on desktop → open context menu
+                        if is_secondary && !pressed && !wants_pointer && in_game {
+                            self.open_context_menu_at(position.x, position.y);
                         }
 
                         self.ui.raw_input.events.push(egui::Event::PointerButton {
@@ -209,6 +243,8 @@ impl SowApp {
                                 let dy = position.y - sy;
                                 if dx * dx + dy * dy > 400.0 {
                                     self.input.map_touch_start = None;
+                                    self.input.hold_attack_target = None;
+                                    self.input.hold_attack_accum = 0.0;
                                 }
                             }
                         }
@@ -267,66 +303,78 @@ impl SowApp {
         }
     }
 
-    fn handle_map_click(&mut self, x: f64, y: f64, is_primary: bool, is_secondary: bool) {
-        if let Some((_, sx, sy)) = self.input.map_touch_start {
-            // Distance check just in case (though movement clears it too)
-            let dx = x - sx;
-            let dy = y - sy;
-            let dist = dx*dx + dy*dy;
+    fn try_begin_hold_attack(&mut self, x: f64, y: f64) {
+        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+        let col = world_x.floor() as i32;
+        let row = world_y.floor() as i32;
+        if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
+            return;
+        }
+        let idx = (row * self.sim.map_w as i32 + col) as usize;
+        let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
+        let is_land = (terrain_byte & 0x80) != 0;
+        let my_id = self.sim.my_player_id.unwrap_or(0);
 
-            if dist <= 400.0 {
-                let world_x = (sx as f32 - self.input.camera_x) / self.input.camera_zoom;
-                let world_y = (sy as f32 - self.input.camera_y) / self.input.camera_zoom;
-                
-                let col = world_x.floor() as i32;
-                let row = world_y.floor() as i32;
+        if is_land && owner != my_id {
+            self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y));
+            self.input.hold_attack_accum = 0.0;
+        }
+    }
 
-                if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
-                    let phase = self.sim.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+    fn open_context_menu_at(&mut self, x: f64, y: f64) {
+        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+        let col = world_x.floor() as i32;
+        let row = world_y.floor() as i32;
+        if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+            let idx = (row * self.sim.map_w as i32 + col) as u32;
+            self.input.map_context_menu = Some((x as f32, y as f32, idx));
+        }
+    }
 
-                    let mut intent_opt = None;
+    fn handle_map_click(&mut self, x: f64, y: f64) {
+        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+        let col = world_x.floor() as i32;
+        let row = world_y.floor() as i32;
+        if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
+            return;
+        }
 
-                    if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
-                        if is_primary {
-                            intent_opt = Some(sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 });
-                        }
-                    } else {
-                        let idx = (row * self.sim.map_w as i32 + col) as usize;
-                        let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
-                        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
-                        let is_land = (terrain_byte & 0x80) != 0;
+        let phase = self.sim.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
 
-                        if is_secondary {
-                            let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
-                            intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
-                                target_tile: idx as u32,
-                                troops,
-                            });
-                        } else if is_primary
-                            && is_land && owner != self.sim.my_player_id.unwrap_or(0) {
-                                let attack = sow_core::protocol::AttackIntent {
-                                    target_owner: owner,
-                                    troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
-                                };
-                                intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
-                            }
-                    }
-                    
-                    if let Some(intent) = intent_opt {
-                        if let Some(c) = self.net.client.as_ref() {
-                            let msg = sow_core::protocol::ClientMessage::Gameplay {
-                                intent: intent.clone(),
-                            };
-                            if let Ok(json) = bincode::serialize(&msg) {
-                                c.send(json);
-                            }
-                        } else {
-                            self.sim.offline_intents.push(intent);
-                        }
-                    }
-                }
+        if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+            let intent = sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 };
+            self.send_intent(intent);
+            return;
+        }
+
+        let idx = (row * self.sim.map_w as i32 + col) as usize;
+        let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
+        let is_land = (terrain_byte & 0x80) != 0;
+        let my_id = self.sim.my_player_id.unwrap_or(0);
+
+        // Quick click on enemy land → one-shot attack burst
+        if is_land && owner != my_id {
+            let attack = sow_core::protocol::AttackIntent {
+                target_owner: owner,
+                troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
+            };
+            self.send_intent(sow_core::protocol::GameplayIntent::Attack(attack));
+        }
+    }
+
+    fn send_intent(&mut self, intent: sow_core::protocol::GameplayIntent) {
+        if let Some(c) = self.net.client.as_ref() {
+            let msg = sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() };
+            if let Ok(json) = bincode::serialize(&msg) {
+                c.send(json);
             }
-            self.input.map_touch_start = None;
+        } else {
+            self.sim.offline_intents.push(intent);
         }
     }
 

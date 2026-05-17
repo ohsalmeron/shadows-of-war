@@ -62,6 +62,9 @@ pub struct InputState {
     pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
     pub map_context_menu: Option<(f32, f32, u32)>,
     pub last_pinch_distance: Option<f64>,
+    /// Hold-to-attack: (target_owner, press_start_time, screen_x, screen_y)
+    pub hold_attack_target: Option<(u16, web_time::Instant, f64, f64)>,
+    pub hold_attack_accum: f32,
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,
     pub has_snapped_camera_to_spawn: bool,
@@ -287,6 +290,7 @@ impl SowApp {
             input: InputState {
                 camera_x, camera_y, camera_zoom, screen_w, screen_h, dragging,
                 last_mouse_x, last_mouse_y, active_touches, map_touch_start, map_context_menu, last_pinch_distance,
+                hold_attack_target: None, hold_attack_accum: 0.0,
                 ime_allowed_state, ime_cursor_rect_px, has_snapped_camera_to_spawn
             },
             ui: UiState {
