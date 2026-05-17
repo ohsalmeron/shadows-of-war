@@ -39,7 +39,7 @@ fn get_maps_url() -> String {
     url
 }
 
-mod nameplate;
+
 
 
 mod config;

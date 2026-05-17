@@ -18,7 +18,7 @@ impl SowApp {
                         } else {
                             p.name.clone()
                         };
-                        new_board.push((p.id, display_name, p.tile_count, p.troops as f64));
+                        new_board.push((p.id, display_name, p.tile_count, p.troops));
                     }
                 }
                 // O(N log N) extremely fast sort for < 200 elements

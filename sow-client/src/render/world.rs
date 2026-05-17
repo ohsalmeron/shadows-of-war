@@ -1,7 +1,7 @@
 
 
 use crate::NAMEPLATE_REFERENCE_ZOOM;
-use crate::nameplate::*;
+use crate::hud::nameplate::*;
 use crate::config::ClientVisualConfig;
 
 use crate::app::SowApp;
@@ -172,7 +172,7 @@ impl SowApp {
                                                     is_human,
                                                     pc,
                                                 );
-                                                cache_entry.troops_galley = crate::nameplate::layout_nameplate_troops_galley(
+                                                cache_entry.troops_galley = crate::hud::nameplate::layout_nameplate_troops_galley(
                                                     &painter,
                                                     font_id,
                                                     &new_troops_str,
@@ -181,7 +181,7 @@ impl SowApp {
                                                 cache_entry.last_font_size = font_size;
                                             } else if new_troops_str != cache_entry.last_formatted_troops {
                                                 let font_id = egui::FontId::proportional(font_size);
-                                                cache_entry.troops_galley = crate::nameplate::layout_nameplate_troops_galley(
+                                                cache_entry.troops_galley = crate::hud::nameplate::layout_nameplate_troops_galley(
                                                     &painter,
                                                     font_id,
                                                     &new_troops_str,
@@ -196,8 +196,8 @@ impl SowApp {
                                             
                                             let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
                                             let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                            crate::nameplate::paint_nameplate_galley(&painter, name_pos, name_galley.clone());
-                                            crate::nameplate::paint_nameplate_galley(&painter, troops_pos, troops_galley.clone());
+                                            crate::hud::nameplate::paint_nameplate_galley(&painter, name_pos, name_galley.clone());
+                                            crate::hud::nameplate::paint_nameplate_galley(&painter, troops_pos, troops_galley.clone());
                                         } else {
                                             // Dot only — zero text layout, bare metal fast
                                             painter.circle_filled(center, dot_r, pc);
@@ -219,11 +219,12 @@ impl SowApp {
                                             for &tile in &fleet.path[..trail_len] {
                                                 let wx = (tile % self.sim.map_w) as f32;
                                                 let wy = (tile / self.sim.map_w) as f32;
-                                                let screen_x = self.input.camera_x + wx * self.input.camera_zoom;
-                                                let screen_y = self.input.camera_y + wy * self.input.camera_zoom;
+                                                let screen_x = (self.input.camera_x + wx * self.input.camera_zoom) / sf;
+                                                let screen_y = (self.input.camera_y + wy * self.input.camera_zoom) / sf;
+                                                let zoom_scaled = self.input.camera_zoom / sf;
                                                 let rect = egui::Rect::from_min_size(
                                                     egui::pos2(screen_x, screen_y),
-                                                    egui::vec2(self.input.camera_zoom, self.input.camera_zoom)
+                                                    egui::vec2(zoom_scaled, zoom_scaled)
                                                 );
                                                 painter.rect_filled(rect, 0.0, trail_color);
                                             }
@@ -231,13 +232,14 @@ impl SowApp {
                                             // Render boat
                                             let wx = (fleet.current_tile % self.sim.map_w) as f32;
                                             let wy = (fleet.current_tile / self.sim.map_w) as f32;
-                                            let screen_x = self.input.camera_x + wx * self.input.camera_zoom;
-                                            let screen_y = self.input.camera_y + wy * self.input.camera_zoom;
+                                            let screen_x = (self.input.camera_x + wx * self.input.camera_zoom) / sf;
+                                            let screen_y = (self.input.camera_y + wy * self.input.camera_zoom) / sf;
+                                            let zoom_scaled = self.input.camera_zoom / sf;
                                             
-                                            let margin = self.input.camera_zoom * 0.15;
+                                            let margin = zoom_scaled * 0.15;
                                             let rect = egui::Rect::from_min_max(
                                                 egui::pos2(screen_x + margin, screen_y + margin),
-                                                egui::pos2(screen_x + self.input.camera_zoom - margin, screen_y + self.input.camera_zoom - margin)
+                                                egui::pos2(screen_x + zoom_scaled - margin, screen_y + zoom_scaled - margin)
                                             );
                                             
                                             painter.rect(rect, 2.0, color, egui::Stroke::new(1.5_f32, egui::Color32::from_black_alpha(200)), egui::StrokeKind::Middle);
@@ -267,10 +269,10 @@ impl SowApp {
                                                 ty = target.centroid_y + 0.5;
                                             }
                                             
-                                            let start_x = self.input.camera_x + rx * self.input.camera_zoom;
-                                            let start_y = self.input.camera_y + ry * self.input.camera_zoom;
-                                            let end_x = self.input.camera_x + tx * self.input.camera_zoom;
-                                            let end_y = self.input.camera_y + ty * self.input.camera_zoom;
+                                            let start_x = (self.input.camera_x + rx * self.input.camera_zoom) / sf;
+                                            let start_y = (self.input.camera_y + ry * self.input.camera_zoom) / sf;
+                                            let end_x = (self.input.camera_x + tx * self.input.camera_zoom) / sf;
+                                            let end_y = (self.input.camera_y + ty * self.input.camera_zoom) / sf;
                                             
                                             let color = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
                                             let start_pos = egui::pos2(start_x, start_y);

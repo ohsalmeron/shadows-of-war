@@ -10,7 +10,7 @@ use sow_net::client::SowClient;
 use std::collections::HashMap;
 use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use crate::spawn_sow_client_connect;
-use crate::nameplate::*;
+use crate::hud::nameplate::*;
 use crate::{MapDownloadEvent, EngineInitEvent};
 
 pub struct GraphicsState {
@@ -71,8 +71,8 @@ pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
     pub raw_input: egui::RawInput,
-    pub nameplate_cache: std::collections::HashMap<u16, crate::nameplate::CachedNameplate>,
-    pub troop_label_throttle: crate::nameplate::TroopLabelThrottle,
+    pub nameplate_cache: std::collections::HashMap<u16, crate::hud::nameplate::CachedNameplate>,
+    pub troop_label_throttle: crate::hud::nameplate::TroopLabelThrottle,
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub tutorial_completed: bool,
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
@@ -385,18 +385,9 @@ impl SowApp {
 
                     #[cfg(not(any(target_os = "android", target_os = "ios", target_family = "wasm")))]
                     let attributes = {
-                        let mut attrs = winit::window::WindowAttributes::default()
+                        let attrs = winit::window::WindowAttributes::default()
                             .with_title("Shadows of War — Native")
                             .with_surface_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
-                            
-                        let icon_bytes = include_bytes!("../icons/icon.png");
-                        if let Ok(img) = image::load_from_memory(icon_bytes) {
-                            let rgba = img.into_rgba8();
-                            let (width, height) = rgba.dimensions();
-                            if let Ok(rgba_icon) = winit::icon::RgbaIcon::new(rgba.into_raw(), width, height) {
-                                attrs = attrs.with_window_icon(Some(winit::icon::Icon::from(rgba_icon)));
-                            }
-                        }
                         attrs
                     };
 
