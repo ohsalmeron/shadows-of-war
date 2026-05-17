@@ -83,10 +83,10 @@ async fn main() {
     let valid_players: HashMap<u16, String> = config.players.into_iter().map(|p| (p.player_id, p.name)).collect();
     
     // player_id -> Sender
-    let connected_clients: Arc<Mutex<HashMap<u16, mpsc::Sender<Vec<u8>>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let connected_clients: Arc<Mutex<HashMap<u16, mpsc::UnboundedSender<Vec<u8>>>>> = Arc::new(Mutex::new(HashMap::new()));
     let connected_clients_clone = connected_clients.clone();
 
-    let (event_tx, mut event_rx) = mpsc::channel::<RelayEvent>(1000);
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<RelayEvent>();
     let event_tx_clone = event_tx.clone();
 
     // Store match history so late-joiners (or slower loading WASM clients) can catch up
@@ -151,7 +151,7 @@ async fn main() {
                     let json = bincode::serialize(&ServerMessage::Turn(msg)).expect("serialize ServerTurnMessage");
 
                     for tx in clients.values_mut() {
-                        let _ = tx.try_send(json.clone());
+                        let _ = tx.send(json.clone());
                     }
                     
                     if last_status.elapsed().as_secs() >= 10 {
@@ -200,7 +200,7 @@ async fn main() {
                 }
             };
             let (mut write, mut read) = ws_stream.split();
-            let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(100);
+            let (direct_tx, mut direct_rx) = mpsc::unbounded_channel::<Vec<u8>>();
             
             let mut my_player_id: Option<u16> = None;
 
@@ -223,7 +223,7 @@ async fn main() {
                                                     for past_turn in hist.iter() {
                                                         let msg = ServerTurnMessage { turn: past_turn.clone() };
                                                         if let Ok(json) = bincode::serialize(&ServerMessage::Turn(msg)) {
-                                                            let _ = direct_tx.try_send(json);
+                                                            let _ = direct_tx.send(json);
                                                         }
                                                     }
                                                 } else {
@@ -232,19 +232,19 @@ async fn main() {
                                             }
                                             ClientMessage::Gameplay { intent } => {
                                                 if let Some(pid) = my_player_id {
-                                                    let _ = ev_tx.send(RelayEvent::Gameplay { player_id: pid, intent }).await;
+                                                    let _ = ev_tx.send(RelayEvent::Gameplay { player_id: pid, intent });
                                                 }
                                             }
                                             ClientMessage::Leave {} => {
                                                 if let Some(pid) = my_player_id {
-                                                    let _ = ev_tx.send(RelayEvent::Leave { player_id: pid }).await;
+                                                    let _ = ev_tx.send(RelayEvent::Leave { player_id: pid });
                                                 }
                                                 my_player_id = None;
                                             }
                                             ClientMessage::Ping { client_time } => {
                                                 let pong = ServerMessage::Pong { client_time };
                                                 let json = bincode::serialize(&pong).unwrap();
-                                                let _ = direct_tx.try_send(json);
+                                                let _ = direct_tx.send(json);
                                             }
                                             _ => {}
                                         }
@@ -263,7 +263,7 @@ async fn main() {
             }
 
             if let Some(pid) = my_player_id {
-                let _ = ev_tx.send(RelayEvent::Leave { player_id: pid }).await;
+                let _ = ev_tx.send(RelayEvent::Leave { player_id: pid });
             }
         });
     }

@@ -219,7 +219,7 @@ pub fn max_tiles_cap_for_troops(troops: f64, cfg: &GameConfig) -> f64 {
 
     let t_eff = troops.max(t0);
     let ratio = t_eff / t0;
-    let curve = at_ref * 2_f64.powf(ratio.log10());
+    let curve = at_ref * libm::pow(2.0, libm::log10(ratio));
     let curve = if curve.is_finite() { curve } else { sane_ceiling };
     curve.min(sane_ceiling).max(1.0)
 }

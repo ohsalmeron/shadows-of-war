@@ -1,5 +1,5 @@
 use sow_render::{RenderContext, MapRenderer};
-use crate::sim_bridge::PlatformSimBridge;
+use crate::sim::PlatformSimBridge;
 use sow_core::protocol::SimSnapshot;
 
 use blade_graphics as gpu;
@@ -22,7 +22,7 @@ pub struct SowApp {
 
     pub map_w: u32,
     pub map_h: u32,
-    pub bridge: crate::sim_bridge::PlatformSimBridge,
+    pub bridge: crate::sim::PlatformSimBridge,
     pub current_snapshot: Option<sow_core::protocol::SimSnapshot>,
     pub render_ctx: sow_render::RenderContext,
     pub surface: Option<blade_graphics::Surface>,
@@ -46,7 +46,7 @@ pub struct SowApp {
     pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
     pub nameplate_cache: std::collections::HashMap<u16, crate::nameplates::CachedNameplate>,
     pub troop_label_throttle: crate::nameplates::TroopLabelThrottle,
-    pub name_box_throttle: crate::nameplates::NameBoxThrottle,
+
     pub connect_tx: crossbeam_channel::Sender<Result<sow_net::client::SowClient, String>>,
     pub connect_rx: crossbeam_channel::Receiver<Result<sow_net::client::SowClient, String>>,
     pub last_debug_print: Option<web_time::Instant>,
@@ -158,7 +158,7 @@ impl SowApp {
 
     let nameplate_cache: HashMap<u16, CachedNameplate> = HashMap::new();
     let troop_label_throttle = TroopLabelThrottle::default();
-    let name_box_throttle = crate::nameplates::NameBoxThrottle::default();
+
 
     let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
@@ -254,7 +254,7 @@ impl SowApp {
             #[cfg(not(target_arch = "wasm32"))] tokio_rt,
             net_client, turn_queue, my_player_id, my_lobby_id,
             map_tx, map_rx, engine_init_tx, engine_init_rx,
-            pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle, name_box_throttle,
+            pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle,
             connect_tx, connect_rx, last_debug_print: None, ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
             #[cfg(target_arch = "wasm32")] wasm_ime_bridge,
@@ -357,9 +357,21 @@ impl SowApp {
                     }
 
                     #[cfg(not(any(target_os = "android", target_os = "ios", target_family = "wasm")))]
-                    let attributes = winit::window::WindowAttributes::default()
-                        .with_title("Shadows of War — Native")
-                        .with_surface_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+                    let attributes = {
+                        let mut attrs = winit::window::WindowAttributes::default()
+                            .with_title("Shadows of War — Native")
+                            .with_surface_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+                            
+                        let icon_bytes = include_bytes!("../icons/icon.png");
+                        if let Ok(img) = image::load_from_memory(icon_bytes) {
+                            let rgba = img.into_rgba8();
+                            let (width, height) = rgba.dimensions();
+                            if let Ok(rgba_icon) = winit::icon::RgbaIcon::new(rgba.into_raw(), width, height) {
+                                attrs = attrs.with_window_icon(Some(winit::icon::Icon::from(rgba_icon)));
+                            }
+                        }
+                        attrs
+                    };
 
                     match event_loop.create_window(attributes) {
                         Ok(win) => self.window = Some(win),
@@ -423,5 +435,17 @@ impl Drop for SowApp {
         if let Some(mut gui) = self.gui_painter.take() {
             gui.destroy(&self.render_ctx.context);
         }
+    }
+}
+
+impl SowApp {
+    pub fn update(&mut self) {
+        self.check_surface();
+
+        let now = web_time::Instant::now();
+        self.update_net(now);
+        self.update_assets();
+        self.update_loader();
+        self.update_sim(now);
     }
 }

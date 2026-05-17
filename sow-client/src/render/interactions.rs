@@ -1,4 +1,4 @@
-use crate::sim_bridge::SimBridge;
+use crate::sim::SimBridge;
 
 
 use sow_ui::{app::ClientPhase, UiAction};

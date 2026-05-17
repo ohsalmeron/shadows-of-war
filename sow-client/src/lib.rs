@@ -40,7 +40,7 @@ fn get_maps_url() -> String {
 }
 
 mod nameplates;
-pub mod name_box;
+
 
 mod client_config;
 
@@ -102,7 +102,9 @@ pub enum EngineInitEvent {
 pub mod app_state;
 pub mod input;
 pub mod render;
-pub mod game_tick;
+pub mod net;
+pub mod asset;
+pub mod loader;
 #[cfg(target_arch = "wasm32")]
 mod wasm_ime;
 
@@ -139,8 +141,8 @@ impl ApplicationHandler for SowApp {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-        self.game_tick(event_loop);
+    fn about_to_wait(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        self.update();
         if let Some(win) = self.window.as_ref() {
             win.request_redraw();
         }
@@ -195,4 +197,4 @@ pub fn wasm_main() {
 
     run_game(event_loop);
 }
-pub mod sim_bridge;
+pub mod sim;

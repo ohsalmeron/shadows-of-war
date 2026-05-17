@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 pub struct SowClient {
-    tx: mpsc::Sender<Vec<u8>>,
+    tx: mpsc::UnboundedSender<Vec<u8>>,
     pub rx: std::sync::mpsc::Receiver<Vec<u8>>,
     _task: JoinHandle<()>,
 }
@@ -20,7 +20,7 @@ impl SowClient {
         let (ws_stream, _) = connect_async(url).await?;
         let (mut write, mut read) = ws_stream.split();
         
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(32);
+        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (std_tx, std_rx) = std::sync::mpsc::channel::<Vec<u8>>();
         
         let task = tokio::spawn(async move {
@@ -70,6 +70,6 @@ impl SowClient {
     }
 
     pub fn send(&self, msg: Vec<u8>) {
-        let _ = self.tx.try_send(msg);
+        let _ = self.tx.send(msg);
     }
 }

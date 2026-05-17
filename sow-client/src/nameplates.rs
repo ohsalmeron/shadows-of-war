@@ -40,49 +40,7 @@ impl TroopLabelThrottle {
     }
 }
 
-#[derive(Default)]
-pub struct NameBoxThrottle {
-    pub cached_boxes: HashMap<u16, crate::name_box::NameBox>,
-    last_tile_count: HashMap<u16, u32>,
-    last_refresh_wall_secs: HashMap<u16, f64>,
-}
 
-impl NameBoxThrottle {
-    pub const INTERVAL: f64 = 1.0; // Recalculate at most once per second per player
-    
-    pub fn update_and_get(
-        &mut self,
-        wall_secs: f64,
-        player_id: u16,
-        tile_count: u32,
-        map_w: u32,
-        map_h: u32,
-        owners: &[u16],
-        terrain: &[u8],
-    ) -> Option<crate::name_box::NameBox> {
-        let last_count = *self.last_tile_count.get(&player_id).unwrap_or(&0);
-        let last_time = *self.last_refresh_wall_secs.get(&player_id).unwrap_or(&0.0);
-        
-        let needs_update = last_count != tile_count && (wall_secs - last_time >= Self::INTERVAL);
-        
-        if needs_update || !self.cached_boxes.contains_key(&player_id) {
-            self.last_refresh_wall_secs.insert(player_id, wall_secs);
-            self.last_tile_count.insert(player_id, tile_count);
-            
-            if let Some(name_box) = crate::name_box::calculate_name_box(player_id, map_w, map_h, owners, terrain) {
-                self.cached_boxes.insert(player_id, name_box);
-            }
-        }
-        
-        self.cached_boxes.get(&player_id).copied()
-    }
-    
-    pub fn clear(&mut self) {
-        self.cached_boxes.clear();
-        self.last_tile_count.clear();
-        self.last_refresh_wall_secs.clear();
-    }
-}
 
 /// Paper-map label ink (off-white, not pure white).
 pub const NAMEPLATE_FILL: egui::Color32 = egui::Color32::BLACK;
