@@ -7,18 +7,18 @@ use sow_core::protocol::SimCommand;
 
 impl SowApp {
     pub fn update_loader(&mut self) {
-                if let Some(start_msg) = self.engine_init_queued_msg.take() {
-                    if self.app.main_menu_state.is_downloading_map {
-                        self.engine_init_queued_msg = Some(start_msg);
+                if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
+                    if self.ui.app.main_menu_state.is_downloading_map {
+                        self.tasks.engine_init_queued_msg = Some(start_msg);
                     } else {
                         log::info!("Map downloaded, computing heavy init in background");
                         
-                        self.app.splash_state.status_text = "Computing terrain and water geometry...".to_string();
-                        self.app.splash_state.progress = 0.1;
+                        self.ui.app.splash_state.status_text = "Computing terrain and water geometry...".to_string();
+                        self.ui.app.splash_state.progress = 0.1;
 
-                        let cached_map = self.app.main_menu_state.cached_map.take();
+                        let cached_map = self.ui.app.main_menu_state.cached_map.take();
                         let start_msg_clone = start_msg.clone();
-                        let tx = self.engine_init_tx.clone();
+                        let tx = self.tasks.engine_init_tx.clone();
 
                         let init_logic = move || {
                             let _ = tx.send(EngineInitEvent::Status("Decompressing map...".to_string()));
@@ -83,38 +83,38 @@ impl SowApp {
                         std::thread::spawn(init_logic);
 
                         self.sim.turn_queue.clear();
-                        self.nameplate_cache.clear();
-                        self.troop_label_throttle.clear();
+                        self.ui.nameplate_cache.clear();
+                        self.ui.troop_label_throttle.clear();
                         self.sim.current_snapshot = None;
                         self.gfx.needs_first_upload = true;
                     }
                 }
                 // Poll engine init channel
-                if self.app.phase == sow_ui::app::ClientPhase::Splash {
-                    match self.app.splash_state.job {
+                if self.ui.app.phase == sow_ui::app::ClientPhase::Splash {
+                    match self.ui.app.splash_state.job {
                         sow_ui::ui::loading_screen::SplashJob::Boot => {
-                            if self.app.main_menu_state.is_connected {
-                                self.app.phase = ClientPhase::MainMenu;
+                            if self.ui.app.main_menu_state.is_connected {
+                                self.ui.app.phase = ClientPhase::MainMenu;
                             } else {
-                                self.app.splash_state.status_text = "Connecting to Server...".to_string();
+                                self.ui.app.splash_state.status_text = "Connecting to Server...".to_string();
                             }
                         }
                         sow_ui::ui::loading_screen::SplashJob::ExitGame => {
-                            let step = self.app.splash_state.gpu_load_step;
+                            let step = self.ui.app.splash_state.gpu_load_step;
                             if step == 0 {
-                                self.app.splash_state.status_text = "Reconnecting to Orchestrator...".to_string();
-                                self.app.splash_state.progress = 0.2;
-                                self.app.splash_state.gpu_load_step = 1;
-                                self.app.splash_state.frames_drawn = 0;
+                                self.ui.app.splash_state.status_text = "Reconnecting to Orchestrator...".to_string();
+                                self.ui.app.splash_state.progress = 0.2;
+                                self.ui.app.splash_state.gpu_load_step = 1;
+                                self.ui.app.splash_state.frames_drawn = 0;
                             } else if step == 1 {
                                 // Wait for connection to orchestrator or timeout (3 seconds @ 60fps = 180 frames)
-                                if self.net.client.is_some() || self.app.splash_state.frames_drawn > 180 {
-                                    self.app.splash_state.status_text = "Cleaning up Game Session...".to_string();
-                                    self.app.splash_state.progress = 0.5;
-                                    self.app.splash_state.gpu_load_step = 2;
-                                    self.app.splash_state.frames_drawn = 0;
+                                if self.net.client.is_some() || self.ui.app.splash_state.frames_drawn > 180 {
+                                    self.ui.app.splash_state.status_text = "Cleaning up Game Session...".to_string();
+                                    self.ui.app.splash_state.progress = 0.5;
+                                    self.ui.app.splash_state.gpu_load_step = 2;
+                                    self.ui.app.splash_state.frames_drawn = 0;
                                 }
-                            } else if step == 2 && self.app.splash_state.frames_drawn > 1 {
+                            } else if step == 2 && self.ui.app.splash_state.frames_drawn > 1 {
                                 // Clean the engine state
                                 let mut config = GameConfig::default();
                                 config.map_width = 1;
@@ -128,9 +128,9 @@ impl SowApp {
                                     players: vec![],
                                 });
                                 self.sim.turn_queue.clear();
-                                self.label_positions.clear();
-                                self.nameplate_cache.clear();
-                                self.troop_label_throttle.clear();
+                                self.ui.label_positions.clear();
+                                self.ui.nameplate_cache.clear();
+                                self.ui.troop_label_throttle.clear();
                                 self.sim.current_snapshot = None;
                                 self.gfx.needs_first_upload = true;
 
@@ -142,36 +142,36 @@ impl SowApp {
                                     mr.destroy(&self.gfx.render_ctx);
                                 }
                                 
-                                self.app.phase = ClientPhase::MainMenu;
+                                self.ui.app.phase = ClientPhase::MainMenu;
                             }
                         }
                         sow_ui::ui::loading_screen::SplashJob::EnterGame => {
-                            while let Ok(event) = self.engine_init_rx.try_recv() {
+                            while let Ok(event) = self.tasks.engine_init_rx.try_recv() {
                                 match event {
                                     EngineInitEvent::Status(msg) => {
-                                        self.app.splash_state.status_text = msg;
+                                        self.ui.app.splash_state.status_text = msg;
                                     }
                                     EngineInitEvent::Progress(prog) => {
-                                        self.app.splash_state.progress = prog;
+                                        self.ui.app.splash_state.progress = prog;
                                     }
                                     EngineInitEvent::Complete(state, water, start_msg) => {
                                         log::info!("Engine initialization complete in background thread.");
-                                        self.app.splash_state.status_text = "Allocating GPU Memory...".to_string();
-                                        self.app.splash_state.progress = 0.95;
-                                        self.app.splash_state.frames_drawn = 0; // Reset to ensure we draw the new text
-                                        self.app.splash_state.gpu_load_step = 1;
-                                        self.pending_engine_init_data = Some((*state, water, *start_msg));
+                                        self.ui.app.splash_state.status_text = "Allocating GPU Memory...".to_string();
+                                        self.ui.app.splash_state.progress = 0.95;
+                                        self.ui.app.splash_state.frames_drawn = 0; // Reset to ensure we draw the new text
+                                        self.ui.app.splash_state.gpu_load_step = 1;
+                                        self.tasks.pending_engine_init_data = Some((*state, water, *start_msg));
                                     }
                                 }
                             }
                         }
                     }
 
-                    if self.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame && self.pending_engine_init_data.is_some() {
-                        let step = self.app.splash_state.gpu_load_step;
-                        if step == 1 && self.app.splash_state.frames_drawn > 1 {
+                    if self.ui.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame && self.tasks.pending_engine_init_data.is_some() {
+                        let step = self.ui.app.splash_state.gpu_load_step;
+                        if step == 1 && self.ui.app.splash_state.frames_drawn > 1 {
                             // Step 1: Allocate GPU Memory & Send Init Command
-                            let (state, water, start_msg) = self.pending_engine_init_data.take().unwrap();
+                            let (state, water, start_msg) = self.tasks.pending_engine_init_data.take().unwrap();
                             let map_bytes: Vec<u8> = state.map.terrain.iter().map(|t| t.as_byte()).collect();
                             
                             self.sim.current_snapshot = None; // MANDATORY: Clear old snapshot so Step 3 waits for the new one!
@@ -201,18 +201,18 @@ impl SowApp {
                             }
                             
                             // Move to step 2: Texture uploading happens automatically next frame
-                            self.app.splash_state.gpu_load_step = 2;
-                            self.app.splash_state.frames_drawn = 0;
-                            self.app.splash_state.progress = 0.98;
-                            self.app.splash_state.status_text = "Uploading Map Texture...".to_string();
+                            self.ui.app.splash_state.gpu_load_step = 2;
+                            self.ui.app.splash_state.frames_drawn = 0;
+                            self.ui.app.splash_state.progress = 0.98;
+                            self.ui.app.splash_state.status_text = "Uploading Map Texture...".to_string();
                             
                             // Re-insert pending data so we stay in this block until Step 4
-                            self.pending_engine_init_data = Some((state, water, start_msg));
+                            self.tasks.pending_engine_init_data = Some((state, water, start_msg));
                         } else if step == 2 && !self.gfx.needs_first_upload {
                             // Step 2 Finished: GPU Texture is uploaded!
-                            self.app.splash_state.gpu_load_step = 3;
-                            self.app.splash_state.progress = 0.99;
-                            self.app.splash_state.status_text = "Simulating Initial Expansions...".to_string();
+                            self.ui.app.splash_state.gpu_load_step = 3;
+                            self.ui.app.splash_state.progress = 0.99;
+                            self.ui.app.splash_state.status_text = "Simulating Initial Expansions...".to_string();
                         }
                         }
                     }

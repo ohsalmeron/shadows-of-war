@@ -1,4 +1,5 @@
 use sow_render::MapGlobals;
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use crate::sim::SimBridge;
 
 
@@ -10,12 +11,8 @@ use crate::app::SowApp;
 
 
 
-pub mod world_overlays;
-pub mod dev_ui;
-pub mod interactions;
-pub mod endgame_ui;
-pub mod tutorial_ui;
-pub mod leaderboard_ui;
+pub mod world;
+pub mod interact;
 
 
 
@@ -83,7 +80,7 @@ impl SowApp {
                                 let mut shore_darkness = 0.15f32;
                                 let mut border_roundness = 0.5f32;
 
-                                self.egui_ctx.data_mut(|d| {
+                                self.ui.egui_ctx.data_mut(|d| {
                                     border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
                                     border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
                                     shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32);
@@ -94,7 +91,7 @@ impl SowApp {
                                 let globals = MapGlobals {
                                     camera_pos: [self.input.camera_x, self.input.camera_y],
                                     zoom: self.input.camera_zoom,
-                                    time: self.start_time.elapsed().as_secs_f32(),
+                                    time: self.time.start_time.elapsed().as_secs_f32(),
                                     screen_size: [self.input.screen_w, self.input.screen_h],
                                     map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
                                     border_thickness,
@@ -119,23 +116,23 @@ impl SowApp {
                                 }
                             }
                             
-                            self.egui_ctx.set_pixels_per_point(sf);
-                            self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                            self.ui.egui_ctx.set_pixels_per_point(sf);
+                            self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
                                 egui::Pos2::ZERO,
                                 egui::Vec2::new(self.input.screen_w / sf, self.input.screen_h / sf)
                             ));
 
                             if cfg!(target_os = "android") {
-                                if self.app.phase == sow_ui::app::ClientPhase::MainMenu {
+                                if self.ui.app.phase == sow_ui::app::ClientPhase::MainMenu {
                                     let config = crate::config::ClientVisualConfig::default();
-                                    self.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
+                                    self.ui.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
                                         top: config.safe_area_top as i8,
                                         bottom: config.safe_area_bottom as i8,
                                         left: 0,
                                         right: 0,
                                     }.into()));
                                 } else {
-                                    self.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
+                                    self.ui.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
                                         top: 0,
                                         bottom: 0,
                                         left: 0,
@@ -145,7 +142,7 @@ impl SowApp {
                             }
 
                             
-                            for ev in &mut self.raw_input.events {
+                            for ev in &mut self.ui.raw_input.events {
                                 match ev {
                                     egui::Event::PointerMoved(pos) | egui::Event::PointerButton { pos, .. } => {
                                         pos.x /= sf;
@@ -156,18 +153,18 @@ impl SowApp {
                             }
                             
                             let frame_now = Instant::now();
-                            let dt = frame_now.duration_since(self.last_frame_time).as_secs_f32();
-                            self.last_frame_time = frame_now;
-                            self.raw_input.predicted_dt = dt.min(0.1);
+                            let dt = frame_now.duration_since(self.time.last_frame_time).as_secs_f32();
+                            self.time.last_frame_time = frame_now;
+                            self.ui.raw_input.predicted_dt = dt.min(0.1);
                             
-                            if self.app.main_menu_state.is_waiting && self.app.main_menu_state.wait_timer_secs > 0.0 {
-                                self.app.main_menu_state.wait_timer_secs = (self.app.main_menu_state.wait_timer_secs - self.raw_input.predicted_dt).max(0.0);
+                            if self.ui.app.main_menu_state.is_waiting && self.ui.app.main_menu_state.wait_timer_secs > 0.0 {
+                                self.ui.app.main_menu_state.wait_timer_secs = (self.ui.app.main_menu_state.wait_timer_secs - self.ui.raw_input.predicted_dt).max(0.0);
                             }
-                            if let Some(ref mut secs) = self.app.hud_state.spawn_timer_secs {
-                                *secs = (*secs - self.raw_input.predicted_dt).max(0.0);
+                            if let Some(ref mut secs) = self.ui.app.hud_state.spawn_timer_secs {
+                                *secs = (*secs - self.ui.raw_input.predicted_dt).max(0.0);
                             }
-                            if let Some(ref mut sync) = self.app.hud_state.sync_state {
-                                sync.time_remaining = (sync.time_remaining - self.raw_input.predicted_dt).max(0.0);
+                            if let Some(ref mut sync) = self.ui.app.hud_state.sync_state {
+                                sync.time_remaining = (sync.time_remaining - self.ui.raw_input.predicted_dt).max(0.0);
                             }
                             let mut local_cancel_intents = Vec::new();
                             
@@ -175,12 +172,12 @@ impl SowApp {
 
                             #[cfg(target_arch = "wasm32")]
                             self.ime_bridge
-                                .drain_pending_into(&mut self.raw_input.events);
+                                .drain_pending_into(&mut self.ui.raw_input.events);
 
-                            let egui_ctx = self.egui_ctx.clone();
-                            let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
+                            let egui_ctx = self.ui.egui_ctx.clone();
+                            let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {
                                 if cfg!(target_os = "android")
-                                    && self.app.phase == sow_ui::app::ClientPhase::MainMenu {
+                                    && self.ui.app.phase == sow_ui::app::ClientPhase::MainMenu {
                                         let config = crate::config::ClientVisualConfig::default();
                                         let screen_rect = ctx.content_rect();
                                         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("safe_area_bars")));
@@ -200,14 +197,14 @@ impl SowApp {
                                         );
                                     }
 
-                                if self.app.phase == sow_ui::app::ClientPhase::Playing {
+                                if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
                                     self.render_world_overlays(ctx, sf);
                                     self.render_tutorial_ui(ctx);
                                 }
                                 
                                 self.calculate_fps_and_ping();
                                 
-                                if self.app.phase == ClientPhase::Playing {
+                                if self.ui.app.phase == ClientPhase::Playing {
                                     self.handle_map_interactions(ctx);
                                     self.render_endgame_ui(ctx);
                                     self.render_leaderboard(ctx);
@@ -215,7 +212,7 @@ impl SowApp {
                                 
                                 self.render_dev_panels(ctx, &mut local_cancel_intents);
 
-                                if self.update_available {
+                                if self.ui.update_available {
                                     egui::Window::new("Update Available")
                                         .collapsible(false)
                                         .resizable(false)
@@ -232,7 +229,7 @@ impl SowApp {
                                                 }
                                                 #[cfg(not(target_arch = "wasm32"))]
                                                 {
-                                                    self.update_available = false;
+                                                    self.ui.update_available = false;
                                                 }
                                             }
                                         });
@@ -243,7 +240,7 @@ impl SowApp {
 
                             for intent in local_cancel_intents {
                                 if self.net.is_offline {
-                                    self.offline_intents.push(intent);
+                                    self.sim.offline_intents.push(intent);
                                 } else if let Some(c) = self.net.client.as_ref() {
                                     let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
                                     if let Ok(json) = bincode::serialize(&msg) {
@@ -253,15 +250,15 @@ impl SowApp {
                             }
 
                             // ── OFFLINE TICK GENERATOR ────────────────────────
-                            if self.net.is_offline && self.app.phase == ClientPhase::Playing {
-                                let mut dt = self.raw_input.predicted_dt;
+                            if self.net.is_offline && self.ui.app.phase == ClientPhase::Playing {
+                                let mut dt = self.ui.raw_input.predicted_dt;
                                 if dt > 0.1 { dt = 0.05; } // Clamp to prevent tick burst
-                                self.offline_tick_timer += dt;
-                                while self.offline_tick_timer >= 0.05 { // 20 TPS (50ms)
-                                    self.offline_tick_timer -= 0.05;
+                                self.sim.offline_tick_timer += dt;
+                                while self.sim.offline_tick_timer >= 0.05 { // 20 TPS (50ms)
+                                    self.sim.offline_tick_timer -= 0.05;
                                     
-                                    let raw_intents = std::mem::take(&mut self.offline_intents);
-                                    log::debug!("Offline tick generator sending Turn. dt: {}, timer: {}", dt, self.offline_tick_timer);
+                                    let raw_intents = std::mem::take(&mut self.sim.offline_intents);
+                                    log::debug!("Offline tick generator sending Turn. dt: {}, timer: {}", dt, self.sim.offline_tick_timer);
                                     let mut stamped_intents = Vec::with_capacity(raw_intents.len());
                                     for intent in raw_intents {
                                         stamped_intents.push(sow_core::protocol::StampedIntent {
@@ -286,12 +283,12 @@ impl SowApp {
                                 if let Some(ime_out) = ime_opt {
                                     let ppp = egui_output.pixels_per_point;
                                     let ime_rect_px = ppp * ime_out.rect;
-                                    let had_input_events = !self.raw_input.events.is_empty();
-                                    let toggling = self.ime_allowed_state != allow_ime;
+                                    let had_input_events = !self.ui.raw_input.events.is_empty();
+                                    let toggling = self.input.ime_allowed_state != allow_ime;
                                     
-                                    if toggling || self.ime_cursor_rect_px != Some(ime_rect_px) || had_input_events {
-                                        self.ime_allowed_state = true;
-                                        self.ime_cursor_rect_px = Some(ime_rect_px);
+                                    if toggling || self.input.ime_cursor_rect_px != Some(ime_rect_px) || had_input_events {
+                                        self.input.ime_allowed_state = true;
+                                        self.input.ime_cursor_rect_px = Some(ime_rect_px);
                                         
                                         let request_data = winit::window::ImeRequestData::default()
                                             .with_cursor_area(
@@ -314,9 +311,9 @@ impl SowApp {
                                             let _ = win.request_ime_update(winit::window::ImeRequest::Update(request_data));
                                         }
                                     }
-                                } else if self.ime_allowed_state {
-                                    self.ime_allowed_state = false;
-                                    self.ime_cursor_rect_px = None;
+                                } else if self.input.ime_allowed_state {
+                                    self.input.ime_allowed_state = false;
+                                    self.input.ime_cursor_rect_px = None;
                                     let _ = win.request_ime_update(winit::window::ImeRequest::Disable);
                                 }
                             }
@@ -325,7 +322,7 @@ impl SowApp {
                             self.ime_bridge
                                 .sync_from_egui_ime(egui_output.platform_output.ime);
 
-                            self.raw_input.events.clear();
+                            self.ui.raw_input.events.clear();
 
                             // ── DRAWING UI ──────────────────────────────────────────
                             if let Some(ref mut gp) = self.gfx.gui_painter {
@@ -333,7 +330,7 @@ impl SowApp {
                                     physical_size: (self.input.screen_w as u32, self.input.screen_h as u32),
                                     scale_factor: sf,
                                 };
-                                let paint_jobs = self.egui_ctx.tessellate(egui_output.shapes, sf);
+                                let paint_jobs = self.ui.egui_ctx.tessellate(egui_output.shapes, sf);
                                 gp.update_textures(
                                     &mut self.gfx.render_ctx.command_encoder,
                                     &egui_output.textures_delta,
@@ -368,4 +365,47 @@ impl SowApp {
     }
 }
 
-pub mod surface;
+
+impl SowApp {
+    pub fn check_surface(&mut self) {
+        if self.gfx.surface.is_none() && self.gfx.window.is_some() {
+            let win = self.gfx.window.as_ref().unwrap();
+            let sz = win.surface_size();
+            match self.gfx.render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
+                Ok(s) => {
+                    self.input.screen_w = sz.width as f32;
+                    self.input.screen_h = sz.height as f32;
+                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+                    self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                    self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::Vec2::new(self.input.screen_w, self.input.screen_h)
+                    ));
+                    let format = s.info().format;
+                    
+                    if let Some(sp) = self.gfx.prev_sync_point.take() {
+                        let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+                    }
+                    let mut old_terrain = vec![128; (self.sim.map_w * self.sim.map_h) as usize];
+                    if let Some(mut old_mr) = self.gfx.map_renderer.take() {
+                        old_terrain = old_mr.terrain.clone();
+                        old_mr.destroy(&self.gfx.render_ctx);
+                    }
+                    self.gfx.map_renderer = Some(sow_render::MapRenderer::new(&self.gfx.render_ctx.context, self.sim.map_w, self.sim.map_h, format, &old_terrain));
+                    self.gfx.needs_first_upload = true;
+                    
+                    self.gfx.gui_painter = Some(blade_egui::GuiPainter::new(s.info(), &self.gfx.render_ctx.context));
+                    self.gfx.surface = Some(s);
+                    
+                    self.ui.egui_ctx = egui::Context::default();
+                    sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
+                    log::info!("Successfully created surface on retry.");
+                }
+                Err(_) => {
+                    // Still unavailable
+                }
+            }
+        }
+
+    }
+}

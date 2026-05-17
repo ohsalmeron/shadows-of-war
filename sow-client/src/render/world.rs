@@ -11,7 +11,7 @@ use crate::app::SowApp;
 impl SowApp {
     pub(crate) fn render_world_overlays(&mut self, ctx: &egui::Context, sf: f32) {
                                     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("world_overlays")));
-                                    let wall_secs = self.start_time.elapsed().as_secs_f64();
+                                    let wall_secs = self.time.start_time.elapsed().as_secs_f64();
 
                                     // Configuration variables removed from GameConfig
                                     let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
@@ -35,7 +35,7 @@ impl SowApp {
                                             let target_cy = avg_row + 0.5;
                                             
                                             // Smooth position interpolation
-                                            let pos = self.label_positions.entry(player.id).or_insert((target_cx, target_cy));
+                                            let pos = self.ui.label_positions.entry(player.id).or_insert((target_cx, target_cy));
                                             let dx = target_cx - pos.0;
                                             let dy = target_cy - pos.1;
                                             let dist = (dx * dx + dy * dy).sqrt();
@@ -134,7 +134,7 @@ impl SowApp {
                                             let font_size = (((target_font_size.round() as i32).clamp(14, 64) + 1) / 2 * 2) as f32;
 
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
-                                            let troops_for_label = self.troop_label_throttle
+                                            let troops_for_label = self.ui.troop_label_throttle
                                                 .displayed_troops(wall_secs, player.id, player.troops);
                                             let new_troops_str = render_troops(troops_for_label);
                                             
@@ -145,7 +145,7 @@ impl SowApp {
                                                 player.name.clone()
                                             };
 
-                                            let cache_entry = self.nameplate_cache.entry(player.id).or_insert_with(|| {
+                                            let cache_entry = self.ui.nameplate_cache.entry(player.id).or_insert_with(|| {
                                                 let font_id = egui::FontId::proportional(font_size);
                                                 let troops_str = new_troops_str.clone();
                                                 
@@ -242,7 +242,7 @@ impl SowApp {
                                             
                                             painter.rect(rect, 2.0, color, egui::Stroke::new(1.5_f32, egui::Color32::from_black_alpha(200)), egui::StrokeKind::Middle);
 
-                                            if fleet.retreating && (self.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
+                                            if fleet.retreating && (self.time.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
                                                 let center = rect.center();
                                                 painter.line_segment([egui::pos2(center.x - margin, center.y - margin), egui::pos2(center.x + margin, center.y + margin)], egui::Stroke::new(2.0_f32, egui::Color32::BLACK));
                                                 painter.line_segment([egui::pos2(center.x + margin, center.y - margin), egui::pos2(center.x - margin, center.y + margin)], egui::Stroke::new(2.0_f32, egui::Color32::BLACK));
@@ -280,7 +280,7 @@ impl SowApp {
                                             painter.line_segment([start_pos, end_pos], egui::Stroke::new(3.0_f32, egui::Color32::from_black_alpha(150)));
                                             painter.line_segment([start_pos, end_pos], egui::Stroke::new(1.5_f32, color));
                                             
-                                            if attack.retreating && (self.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
+                                            if attack.retreating && (self.time.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
                                                 let center = start_pos.lerp(end_pos, 0.5);
                                                 painter.text(center, egui::Align2::CENTER_CENTER, "[X]", egui::FontId::proportional(20.0), egui::Color32::RED);
                                             }

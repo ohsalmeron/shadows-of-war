@@ -102,6 +102,7 @@ pub enum EngineInitEvent {
 pub mod app;
 pub mod input;
 pub mod render;
+pub mod hud;
 pub mod net;
 pub mod asset;
 pub mod loader;

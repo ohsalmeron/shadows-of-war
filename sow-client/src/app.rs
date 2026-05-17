@@ -1,7 +1,6 @@
 use sow_render::{RenderContext, MapRenderer};
 use crate::sim::PlatformSimBridge;
 use sow_core::protocol::SimSnapshot;
-
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
 use egui::{Context, RawInput, Pos2, Rect, Vec2};
@@ -13,10 +12,6 @@ use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use crate::spawn_sow_client_connect;
 use crate::nameplate::*;
 use crate::{MapDownloadEvent, EngineInitEvent};
-
-
-
-
 
 pub struct GraphicsState {
     pub window: Option<Box<dyn winit::window::Window>>,
@@ -51,6 +46,8 @@ pub struct SimState {
     pub my_lobby_id: Option<u64>,
     pub map_w: u32,
     pub map_h: u32,
+    pub offline_tick_timer: f32,
+    pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
 }
 
 pub struct InputState {
@@ -66,35 +63,26 @@ pub struct InputState {
     pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
     pub map_context_menu: Option<(f32, f32, u32)>,
     pub last_pinch_distance: Option<f64>,
+    pub ime_allowed_state: bool,
+    pub ime_cursor_rect_px: Option<egui::Rect>,
 }
 
-pub struct SowApp {
-    pub gfx: GraphicsState,
-    pub net: NetState,
-    pub sim: SimState,
-    pub input: InputState,
-
+pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
     pub raw_input: egui::RawInput,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub tokio_rt: tokio::runtime::Runtime,
-    pub map_tx: crossbeam_channel::Sender<crate::MapDownloadEvent>,
-    pub map_rx: crossbeam_channel::Receiver<crate::MapDownloadEvent>,
-    pub engine_init_tx: crossbeam_channel::Sender<crate::EngineInitEvent>,
-    pub engine_init_rx: crossbeam_channel::Receiver<crate::EngineInitEvent>,
-    pub pending_engine_init_data: Option<(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage)>,
-    pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
     pub nameplate_cache: std::collections::HashMap<u16, crate::nameplate::CachedNameplate>,
     pub troop_label_throttle: crate::nameplate::TroopLabelThrottle,
-    pub last_debug_print: Option<web_time::Instant>,
-    #[cfg(target_arch = "wasm32")]
-    pub wasm_doc_was_visible: bool,
-    #[cfg(target_arch = "wasm32")]
-    pub(crate) ime_bridge: crate::ime::WasmImeBridge,
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
-    pub ime_allowed_state: bool,
-    pub ime_cursor_rect_px: Option<egui::Rect>,
+    pub tutorial_completed: bool,
+    pub tutorial_step: crate::hud::tutorial::TutorialStep,
+    pub show_leaderboard: bool,
+    pub leaderboard_timer: f32,
+    pub cached_leaderboard: Vec<(u16, String, u32, f64)>,
+    pub update_available: bool,
+}
+
+pub struct TimeState {
     pub last_tick: web_time::Instant,
     pub start_time: web_time::Instant,
     pub tick_interval: web_time::Duration,
@@ -102,14 +90,33 @@ pub struct SowApp {
     pub last_fps_time: web_time::Instant,
     pub current_fps: u32,
     pub last_frame_time: web_time::Instant,
-    pub tutorial_completed: bool,
-    pub tutorial_step: crate::render::tutorial_ui::TutorialStep,
-    pub update_available: bool,
-    pub offline_tick_timer: f32,
-    pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
-    pub show_leaderboard: bool,
-    pub leaderboard_timer: f32,
-    pub cached_leaderboard: Vec<(u16, String, u32, f64)>,
+    pub last_debug_print: Option<web_time::Instant>,
+}
+
+pub struct TaskState {
+    pub map_tx: crossbeam_channel::Sender<crate::MapDownloadEvent>,
+    pub map_rx: crossbeam_channel::Receiver<crate::MapDownloadEvent>,
+    pub engine_init_tx: crossbeam_channel::Sender<crate::EngineInitEvent>,
+    pub engine_init_rx: crossbeam_channel::Receiver<crate::EngineInitEvent>,
+    pub pending_engine_init_data: Option<(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage)>,
+    pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
+}
+
+pub struct SowApp {
+    pub gfx: GraphicsState,
+    pub net: NetState,
+    pub sim: SimState,
+    pub input: InputState,
+    pub ui: UiState,
+    pub time: TimeState,
+    pub tasks: TaskState,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub tokio_rt: tokio::runtime::Runtime,
+    #[cfg(target_arch = "wasm32")]
+    pub wasm_doc_was_visible: bool,
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) ime_bridge: crate::ime::WasmImeBridge,
 }
 
 impl Default for SowApp {
@@ -272,30 +279,30 @@ impl SowApp {
                 pending_lobby_rejoin: false, current_ping_ms, last_ping_time
             },
             sim: SimState {
-                bridge, current_snapshot, turn_queue, my_player_id, my_lobby_id, map_w, map_h
+                bridge, current_snapshot, turn_queue, my_player_id, my_lobby_id, map_w, map_h,
+                offline_tick_timer: 0.0, offline_intents: Vec::new()
             },
             input: InputState {
                 camera_x, camera_y, camera_zoom, screen_w, screen_h, dragging,
-                last_mouse_x, last_mouse_y, active_touches, map_touch_start, map_context_menu, last_pinch_distance
+                last_mouse_x, last_mouse_y, active_touches, map_touch_start, map_context_menu, last_pinch_distance,
+                ime_allowed_state, ime_cursor_rect_px
             },
-            app, egui_ctx, raw_input,
+            ui: UiState {
+                app, egui_ctx, raw_input, nameplate_cache, troop_label_throttle,
+                label_positions: std::collections::HashMap::new(),
+                tutorial_completed, tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
+                show_leaderboard: false, leaderboard_timer: 0.0, cached_leaderboard: Vec::new(),
+                update_available: false
+            },
+            time: TimeState {
+                last_tick, start_time, tick_interval, frame_count, last_fps_time, current_fps, last_frame_time, last_debug_print: None
+            },
+            tasks: TaskState {
+                map_tx, map_rx, engine_init_tx, engine_init_rx, pending_engine_init_data, engine_init_queued_msg
+            },
             #[cfg(not(target_arch = "wasm32"))] tokio_rt,
-            map_tx, map_rx, engine_init_tx, engine_init_rx,
-            pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle,
-            last_debug_print: None,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
             #[cfg(target_arch = "wasm32")] ime_bridge,
-            label_positions: std::collections::HashMap::new(),
-            ime_allowed_state, ime_cursor_rect_px, last_tick, start_time, tick_interval,
-            frame_count, last_fps_time, current_fps, last_frame_time,
-            tutorial_completed,
-            tutorial_step: crate::render::tutorial_ui::TutorialStep::Welcome,
-            update_available: false,
-            offline_tick_timer: 0.0,
-            offline_intents: Vec::new(),
-            show_leaderboard: false,
-            leaderboard_timer: 0.0,
-            cached_leaderboard: Vec::new(),
         }
     }
     
@@ -303,17 +310,17 @@ impl SowApp {
     pub(crate) fn begin_exit_to_main_menu(&mut self) {
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
-        self.app.main_menu_state.server_address = self.net.ws_url.clone();
-        self.app.main_menu_state.is_waiting = false;
-        self.app.main_menu_state.pending_join_lobby_id = None;
-        self.app.main_menu_state.joined_lobby_id = None;
-        self.app.hud_state.sync_state = None;
+        self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
+        self.ui.app.main_menu_state.is_waiting = false;
+        self.ui.app.main_menu_state.pending_join_lobby_id = None;
+        self.ui.app.main_menu_state.joined_lobby_id = None;
+        self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
-        self.app.phase = ClientPhase::Splash;
-        self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
-        self.app.splash_state.gpu_load_step = 0;
-        self.app.splash_state.frames_drawn = 0;
+        self.ui.app.phase = ClientPhase::Splash;
+        self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+        self.ui.app.splash_state.gpu_load_step = 0;
+        self.ui.app.splash_state.frames_drawn = 0;
     }
 
     #[inline]
@@ -411,7 +418,7 @@ impl SowApp {
                             self.input.screen_h = sz.height as f32;
                             let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                             self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                            self.raw_input.screen_rect = Some(Rect::from_min_size(
+                            self.ui.raw_input.screen_rect = Some(Rect::from_min_size(
                                 Pos2::ZERO,
                                 Vec2::new(self.input.screen_w, self.input.screen_h)
                             ));
@@ -432,8 +439,8 @@ impl SowApp {
                             self.gfx.surface = Some(s);
                             
                             // Re-create egui context to force it to re-upload its font texture!
-                            self.egui_ctx = Context::default();
-                            sow_ui::ui::theme::apply_theme(&self.egui_ctx);
+                            self.ui.egui_ctx = Context::default();
+                            sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
                         }
                         Err(e) => {
                             log::warn!("Surface creation failed/unavailable, will retry later: {:?}", e);

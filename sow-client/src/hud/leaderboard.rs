@@ -4,9 +4,9 @@ use crate::app::SowApp;
 impl SowApp {
     pub fn render_leaderboard(&mut self, ctx: &egui::Context) {
         // 1. Throttle the leaderboard update to once per second
-        self.leaderboard_timer -= self.raw_input.predicted_dt;
-        if self.leaderboard_timer <= 0.0 {
-            self.leaderboard_timer = 1.0; // Reset timer
+        self.ui.leaderboard_timer -= self.ui.raw_input.predicted_dt;
+        if self.ui.leaderboard_timer <= 0.0 {
+            self.ui.leaderboard_timer = 1.0; // Reset timer
             
             if let Some(snap) = &self.sim.current_snapshot {
                 let mut new_board = Vec::new();
@@ -24,12 +24,12 @@ impl SowApp {
                 // O(N log N) extremely fast sort for < 200 elements
                 // Sort descending by tile count
                 new_board.sort_unstable_by(|a, b| b.2.cmp(&a.2));
-                self.cached_leaderboard = new_board;
+                self.ui.cached_leaderboard = new_board;
             }
         }
 
         // 2. Render the Egui window
-        let mut show_leaderboard = self.show_leaderboard;
+        let mut show_leaderboard = self.ui.show_leaderboard;
         
         Window::new("Leaderboard")
             .open(&mut show_leaderboard)
@@ -61,7 +61,7 @@ impl SowApp {
                                 .max(1);
 
                             // Data rows
-                            for (i, (id, name, tiles, troops)) in self.cached_leaderboard.iter().enumerate() {
+                            for (i, (id, name, tiles, troops)) in self.ui.cached_leaderboard.iter().enumerate() {
                                 // Highlight the player's own row
                                 let is_me = Some(*id) == self.sim.my_player_id;
                                 let color = if is_me { Color32::YELLOW } else { Color32::WHITE };
@@ -79,6 +79,6 @@ impl SowApp {
                 });
             });
             
-        self.show_leaderboard = show_leaderboard;
+        self.ui.show_leaderboard = show_leaderboard;
     }
 }

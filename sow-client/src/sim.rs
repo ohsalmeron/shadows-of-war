@@ -231,23 +231,23 @@ use web_time::Instant;
 
 impl SowApp {
     pub fn update_sim(&mut self, now: Instant) {
-                self.app.hud_state.is_mobile = self.input.screen_w < 900.0;
+                self.ui.app.hud_state.is_mobile = self.input.screen_w < 900.0;
                 if let Some(snap) = &self.sim.current_snapshot {
                     if let Some(target_secs) = snap.spawn_timer_secs {
-                        if let Some(ref mut current) = self.app.hud_state.spawn_timer_secs {
+                        if let Some(ref mut current) = self.ui.app.hud_state.spawn_timer_secs {
                             if (*current - target_secs).abs() > 0.3 {
                                 *current = target_secs;
                             }
                         } else {
-                            self.app.hud_state.spawn_timer_secs = Some(target_secs);
+                            self.ui.app.hud_state.spawn_timer_secs = Some(target_secs);
                         }
                     } else {
-                        self.app.hud_state.spawn_timer_secs = None;
+                        self.ui.app.hud_state.spawn_timer_secs = None;
                     }
                 } else {
-                    self.app.hud_state.spawn_timer_secs = None;
+                    self.ui.app.hud_state.spawn_timer_secs = None;
                 }
-                if self.app.phase == sow_ui::app::ClientPhase::Playing {
+                if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
                     if self.net.client.is_some() {
                         // Multiplayer: lockstep execution dictated by server
                         let mut ticks_processed = 0;
@@ -256,10 +256,10 @@ impl SowApp {
                             
                             // Update UI HUD State from my player id
                             if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
-                                self.app.hud_state.gold = player.gold;
-                                self.app.hud_state.troops = player.troops;
+                                self.ui.app.hud_state.gold = player.gold;
+                                self.ui.app.hud_state.troops = player.troops;
                                 let owned_tiles = player.tile_count as f64;
-                                self.app.hud_state.max_troops = owned_tiles * 50.0;
+                                self.ui.app.hud_state.max_troops = owned_tiles * 50.0;
                             }
 
                             ticks_processed += 1;
@@ -267,22 +267,22 @@ impl SowApp {
                                 break;
                             }
                         }
-                        self.last_tick = now;
+                        self.time.last_tick = now;
                     } else {
                         // Singleplayer: HUD updates based on local timer (ticks are handled by mod.rs)
-                        if now.duration_since(self.last_tick) >= self.tick_interval {
-                            self.last_tick = now;
+                        if now.duration_since(self.time.last_tick) >= self.time.tick_interval {
+                            self.time.last_tick = now;
                             
                             if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
-                                self.app.hud_state.gold = player.gold;
-                                self.app.hud_state.troops = player.troops;
+                                self.ui.app.hud_state.gold = player.gold;
+                                self.ui.app.hud_state.troops = player.troops;
                                 let owned_tiles = player.tile_count as f64;
-                                self.app.hud_state.max_troops = owned_tiles * 50.0;
+                                self.ui.app.hud_state.max_troops = owned_tiles * 50.0;
                             }
                         }
                     }
                 } else {
-                    self.last_tick = now;
+                    self.time.last_tick = now;
                 }
                 if let Some(mut snap) = self.sim.bridge.try_recv_snapshot() {
 
@@ -297,12 +297,12 @@ impl SowApp {
                     self.sim.current_snapshot = Some(snap);
                 }
                     
-                if self.app.splash_state.gpu_load_step == 3 && self.sim.current_snapshot.is_some() {
-                    self.app.splash_state.gpu_load_step = 4;
-                    self.app.phase = sow_ui::app::ClientPhase::Playing;
+                if self.ui.app.splash_state.gpu_load_step == 3 && self.sim.current_snapshot.is_some() {
+                    self.ui.app.splash_state.gpu_load_step = 4;
+                    self.ui.app.phase = sow_ui::app::ClientPhase::Playing;
                     
                     // Clear pending init data to completely finish EnterGame phase
-                    self.pending_engine_init_data = None;
+                    self.tasks.pending_engine_init_data = None;
                     log::info!("First snapshot received, releasing loader!");
                     
                     if let Some(pid) = self.sim.my_player_id {
@@ -334,8 +334,8 @@ impl SowApp {
 
                 // Periodic memory profiler print
                 let now = web_time::Instant::now();
-                if self.last_debug_print.is_none_or(|t| now.duration_since(t).as_secs() >= 5) {
-                    self.last_debug_print = Some(now);
+                if self.time.last_debug_print.is_none_or(|t| now.duration_since(t).as_secs() >= 5) {
+                    self.time.last_debug_print = Some(now);
                     if let Some(snap) = &self.sim.current_snapshot {
                         log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.sim.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);
                     }

@@ -51,7 +51,7 @@ impl SowApp {
                             self.input.screen_h = physical_size.height as f32;
                             let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                             self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                            self.raw_input.screen_rect = Some(Rect::from_min_size(
+                            self.ui.raw_input.screen_rect = Some(Rect::from_min_size(
                                 Pos2::ZERO,
                                 Vec2::new(self.input.screen_w, self.input.screen_h)
                             ));
@@ -62,7 +62,7 @@ impl SowApp {
                     }
                     WindowEvent::KeyboardInput { event, .. } => {
                         let pressed = event.state == ElementState::Pressed;
-                        if pressed && !self.egui_ctx.egui_wants_keyboard_input() && self.app.phase == ClientPhase::Playing && self.app.hud_state.sync_state.is_none() {
+                        if pressed && !self.ui.egui_ctx.egui_wants_keyboard_input() && self.ui.app.phase == ClientPhase::Playing && self.ui.app.hud_state.sync_state.is_none() {
                             if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) = event.physical_key {
                                 let world_x = (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;
                                 let world_y = (self.input.last_mouse_y as f32 - self.input.camera_y) / self.input.camera_zoom;
@@ -71,7 +71,7 @@ impl SowApp {
                                 if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
                                     let idx = (row * self.sim.map_w as i32 + col) as usize;
 
-                                    let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                    let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
                                     let intent = sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: idx as u32, troops };
                                     if let Some(c) = self.net.client.as_ref() {
                                         if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
@@ -88,10 +88,10 @@ impl SowApp {
 
                         if pressed {
                             if let winit::keyboard::Key::Character(text) = &event.logical_key {
-                                self.raw_input.events.push(egui::Event::Text(text.to_string()));
+                                self.ui.raw_input.events.push(egui::Event::Text(text.to_string()));
                             } else if let winit::keyboard::Key::Named(named) = &event.logical_key {
                                 if *named == winit::keyboard::NamedKey::Backspace {
-                                    self.raw_input.events.push(egui::Event::Key {
+                                    self.ui.raw_input.events.push(egui::Event::Key {
                                         key: egui::Key::Backspace,
                                         physical_key: None,
                                         pressed: true,
@@ -107,12 +107,12 @@ impl SowApp {
                         match ime {
                             Ime::Enabled | Ime::Disabled | Ime::DeleteSurrounding { .. } => {}
                             Ime::Preedit(text, _) => {
-                                self.raw_input
+                                self.ui.raw_input
                                     .events
                                     .push(egui::Event::Ime(egui::ImeEvent::Preedit(text.clone())));
                             }
                             Ime::Commit(text) => {
-                                self.raw_input
+                                self.ui.raw_input
                                     .events
                                     .push(egui::Event::Ime(egui::ImeEvent::Commit(text.clone())));
                             }
@@ -145,7 +145,7 @@ impl SowApp {
                             }
                         }
 
-                        let wants_pointer = self.egui_ctx.egui_wants_pointer_input();
+                        let wants_pointer = self.ui.egui_ctx.egui_wants_pointer_input();
 
                         if is_primary {
                             if pressed {
@@ -161,7 +161,7 @@ impl SowApp {
                             self.input.map_touch_start = Some((web_time::Instant::now(), position.x, position.y));
                         }
 
-                        if !pressed && !wants_pointer && self.app.phase == ClientPhase::Playing && self.app.hud_state.sync_state.is_none() {
+                        if !pressed && !wants_pointer && self.ui.app.phase == ClientPhase::Playing && self.ui.app.hud_state.sync_state.is_none() {
                             if let Some((_, sx, sy)) = self.input.map_touch_start {
                                 // Distance check just in case (though movement clears it too)
                                 let dx = position.x - sx;
@@ -191,7 +191,7 @@ impl SowApp {
                                             let is_land = (terrain_byte & 0x80) != 0;
 
                                             if is_secondary {
-                                                let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                                let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
                                                 intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
                                                     target_tile: idx as u32,
                                                     troops,
@@ -200,7 +200,7 @@ impl SowApp {
                                                 && is_land && owner != self.sim.my_player_id.unwrap_or(0) {
                                                     let attack = sow_core::protocol::AttackIntent {
                                                         target_owner: owner,
-                                                        troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),
+                                                        troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
                                                     };
                                                     intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
                                                 }
@@ -229,7 +229,7 @@ impl SowApp {
                             }
                         }
 
-                        self.raw_input.events.push(egui::Event::PointerButton {
+                        self.ui.raw_input.events.push(egui::Event::PointerButton {
                             pos: Pos2::new(self.input.last_mouse_x as f32, self.input.last_mouse_y as f32),
                             button: match button {
                                 winit::event::ButtonSource::Mouse(MouseButton::Right) => egui::PointerButton::Secondary,
@@ -282,7 +282,7 @@ impl SowApp {
                             }
                             self.input.last_pinch_distance = Some(distance);
                         } else {
-                            if self.input.dragging && (!is_touch || !self.egui_ctx.egui_wants_pointer_input()) {
+                            if self.input.dragging && (!is_touch || !self.ui.egui_ctx.egui_wants_pointer_input()) {
                                 let dx = position.x - self.input.last_mouse_x;
                                 let dy = position.y - self.input.last_mouse_y;
                                 self.input.camera_x += dx as f32;
@@ -291,7 +291,7 @@ impl SowApp {
                         }
                         self.input.last_mouse_x = position.x;
                         self.input.last_mouse_y = position.y;
-                        self.raw_input.events.push(egui::Event::PointerMoved(Pos2::new(self.input.last_mouse_x as f32, self.input.last_mouse_y as f32)));
+                        self.ui.raw_input.events.push(egui::Event::PointerMoved(Pos2::new(self.input.last_mouse_x as f32, self.input.last_mouse_y as f32)));
                     }
                     WindowEvent::MouseWheel { delta, .. } => {
                         let scroll = match delta {

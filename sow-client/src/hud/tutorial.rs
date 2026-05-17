@@ -11,7 +11,7 @@ pub enum TutorialStep {
 
 impl SowApp {
     pub(crate) fn render_tutorial_ui(&mut self, ctx: &egui::Context) {
-        if self.tutorial_completed {
+        if self.ui.tutorial_completed {
             return;
         }
 
@@ -19,16 +19,16 @@ impl SowApp {
         if let Some(snap) = &self.sim.current_snapshot {
             let my_id = self.sim.my_player_id.unwrap_or(0);
             if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
-                if self.tutorial_step == TutorialStep::Expansion && me.tile_count > 1 {
-                    self.tutorial_step = TutorialStep::Combat;
-                } else if self.tutorial_step == TutorialStep::Combat && snap.attacks.iter().any(|a| a.owner_id == my_id) {
-                    self.tutorial_step = TutorialStep::Complete;
+                if self.ui.tutorial_step == TutorialStep::Expansion && me.tile_count > 1 {
+                    self.ui.tutorial_step = TutorialStep::Combat;
+                } else if self.ui.tutorial_step == TutorialStep::Combat && snap.attacks.iter().any(|a| a.owner_id == my_id) {
+                    self.ui.tutorial_step = TutorialStep::Complete;
                     self.mark_tutorial_completed();
                 }
             }
         }
 
-        let (title, desc) = match self.tutorial_step {
+        let (title, desc) = match self.ui.tutorial_step {
             TutorialStep::Welcome => ("Welcome Commander", "Let's establish your empire. Your base is the single tile you own."),
             TutorialStep::Expansion => ("Expand Territory", "Tap on a neutral (empty) tile next to your border to expand."),
             TutorialStep::Combat => ("Launch an Attack", "Enemies approach. Drag from your territory into an enemy tile to attack!"),
@@ -54,15 +54,15 @@ impl SowApp {
                     
                     ui.add_space(10.0);
                     
-                    if self.tutorial_step == TutorialStep::Welcome || self.tutorial_step == TutorialStep::Complete {
-                        let btn_text = if self.tutorial_step == TutorialStep::Welcome { "Next" } else { "Finish" };
+                    if self.ui.tutorial_step == TutorialStep::Welcome || self.ui.tutorial_step == TutorialStep::Complete {
+                        let btn_text = if self.ui.tutorial_step == TutorialStep::Welcome { "Next" } else { "Finish" };
                         if ui.button(RichText::new(btn_text).color(Color32::WHITE)).clicked() {
                             next_clicked = true;
                         }
                     } else {
                         // Skip button for the action steps
                         if ui.button(RichText::new("Skip").color(Color32::GRAY).size(12.0)).clicked() {
-                            self.tutorial_step = TutorialStep::Complete;
+                            self.ui.tutorial_step = TutorialStep::Complete;
                             self.mark_tutorial_completed();
                         }
                     }
@@ -70,16 +70,16 @@ impl SowApp {
             });
 
         if next_clicked {
-            if self.tutorial_step == TutorialStep::Welcome {
-                self.tutorial_step = TutorialStep::Expansion;
-            } else if self.tutorial_step == TutorialStep::Complete {
+            if self.ui.tutorial_step == TutorialStep::Welcome {
+                self.ui.tutorial_step = TutorialStep::Expansion;
+            } else if self.ui.tutorial_step == TutorialStep::Complete {
                 self.mark_tutorial_completed();
             }
         }
     }
 
     fn mark_tutorial_completed(&mut self) {
-        self.tutorial_completed = true;
+        self.ui.tutorial_completed = true;
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(window) = web_sys::window() {

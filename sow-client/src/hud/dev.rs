@@ -9,17 +9,17 @@ use crate::app::SowApp;
 
 impl SowApp {
     pub(crate) fn calculate_fps_and_ping(&mut self) {
-                                self.frame_count += 1;
-                                if self.last_fps_time.elapsed().as_secs_f64() >= 1.0 {
-                                    self.current_fps = self.frame_count;
-                                    self.frame_count = 0;
-                                    self.last_fps_time = Instant::now();
+                                self.time.frame_count += 1;
+                                if self.time.last_fps_time.elapsed().as_secs_f64() >= 1.0 {
+                                    self.time.current_fps = self.time.frame_count;
+                                    self.time.frame_count = 0;
+                                    self.time.last_fps_time = Instant::now();
                                 }
 
                                 if self.net.last_ping_time.elapsed().as_secs_f64() >= 1.0 {
                                     if let Some(c) = self.net.client.as_ref() {
                                         let ping_msg = sow_core::protocol::ClientMessage::Ping {
-                                            client_time: self.start_time.elapsed().as_secs_f64(),
+                                            client_time: self.time.start_time.elapsed().as_secs_f64(),
                                         };
                                         if let Ok(json) = bincode::serialize(&ping_msg) {
                                             c.send(json);
@@ -49,7 +49,7 @@ impl SowApp {
                                                         );
                                                     }
                                                     ui.label(
-                                                        egui::RichText::new(format!("FPS: {}", self.current_fps))
+                                                        egui::RichText::new(format!("FPS: {}", self.time.current_fps))
                                                             .color(egui::Color32::YELLOW)
                                                             .strong()
                                                     );
@@ -64,10 +64,10 @@ impl SowApp {
 
                                                 // 2. Buttons Row
                                                 ui.horizontal(|ui| {
-                                                    let ld_icon = if self.show_leaderboard { "▼" } else { "▶" };
+                                                    let ld_icon = if self.ui.show_leaderboard { "▼" } else { "▶" };
                                                     let ld_btn = egui::Button::new(egui::RichText::new(format!("{} 🏆 Leaderboard", ld_icon))).min_size(egui::vec2(100.0, 30.0));
                                                     if ui.add(ld_btn).clicked() {
-                                                        self.show_leaderboard = !self.show_leaderboard;
+                                                        self.ui.show_leaderboard = !self.ui.show_leaderboard;
                                                     }
 
                                                     let dev_icon = if is_expanded { "▼" } else { "▶" };
@@ -105,7 +105,7 @@ impl SowApp {
                                             });
                                         });
 
-                                if self.app.phase == ClientPhase::Playing {
+                                if self.ui.app.phase == ClientPhase::Playing {
                                     if let Some(snap) = &self.sim.current_snapshot {
                                         let my_pid = self.sim.my_player_id.unwrap_or(0);
                                         if my_pid > 0 && (!snap.attacks.is_empty() || !snap.fleets.is_empty()) {

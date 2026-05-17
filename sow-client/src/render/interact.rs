@@ -15,7 +15,7 @@ impl SowApp {
         }
 
 
-        if self.app.main_menu_state.is_waiting {
+        if self.ui.app.main_menu_state.is_waiting {
             return;
         }
 
@@ -46,7 +46,7 @@ impl SowApp {
                                                         ui.label("Land Tile");
                                                     } else {
                                                         if ui.button("★ Send Fleet").clicked() {
-                                                            let troops = Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64));
+                                                            let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
                                                             let intent = sow_core::protocol::GameplayIntent::LaunchFleet {
                                                                 target_tile: tile_idx,
                                                                 troops,
@@ -77,21 +77,21 @@ impl SowApp {
     }
 
     pub(crate) fn process_ui_actions(&mut self, ctx: &egui::Context) {
-                                if let Some(action) = self.app.draw(ctx) {
+                                if let Some(action) = self.ui.app.draw(ctx) {
                                     match action {
                                         UiAction::StartSinglePlayer => {
                                             self.net.is_offline = true;
-                                            self.offline_tick_timer = 0.0;
+                                            self.sim.offline_tick_timer = 0.0;
                                             self.net.client = None;
-                                            self.app.phase = ClientPhase::Splash;
-                                            self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
-                                            self.app.splash_state.frames_drawn = 0;
-                                            self.app.splash_state.gpu_load_step = 0;
+                                            self.ui.app.phase = ClientPhase::Splash;
+                                            self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
+                                            self.ui.app.splash_state.frames_drawn = 0;
+                                            self.ui.app.splash_state.gpu_load_step = 0;
                                             self.sim.my_player_id = Some(1);
                                             self.sim.my_lobby_id = Some(0);
 
                                             let map_name = "world".to_string();
-                                            self.app.main_menu_state.downloading_map_name = Some(map_name.clone());
+                                            self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
 
                                             let mut config = sow_core::game_config::GameConfig::default();
                                             config.map_name = map_name.clone();
@@ -112,7 +112,7 @@ impl SowApp {
                                                 players: vec![
                                                     sow_core::protocol::PlayerInfo {
                                                         id: 1,
-                                                        name: self.app.main_menu_state.player_name.clone(),
+                                                        name: self.ui.app.main_menu_state.player_name.clone(),
                                                         color: [0.0, 1.0, 0.0],
                                                         player_type: sow_core::player::PlayerType::Human,
                                                         spawn_x: 0,
@@ -123,17 +123,17 @@ impl SowApp {
                                                 map_data: None,
                                                 relay_port: None,
                                             };
-                                            self.engine_init_queued_msg = Some(start_msg);
+                                            self.tasks.engine_init_queued_msg = Some(start_msg);
 
-                                            if self.app.asset_loader.has_map(&map_name) {
-                                                self.app.main_menu_state.cached_map = self.app.asset_loader.take_map(&map_name);
-                                                self.app.main_menu_state.is_downloading_map = false;
+                                            if self.ui.app.asset_loader.has_map(&map_name) {
+                                                self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_name);
+                                                self.ui.app.main_menu_state.is_downloading_map = false;
                                             } else {
-                                                self.app.main_menu_state.is_downloading_map = true;
-                                                self.app.main_menu_state.cached_map = None;
+                                                self.ui.app.main_menu_state.is_downloading_map = true;
+                                                self.ui.app.main_menu_state.cached_map = None;
                                                 let maps_base = crate::get_maps_url();
                                                 let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
-                                                let tx = self.map_tx.clone();
+                                                let tx = self.tasks.map_tx.clone();
                                                 
                                                 let request = ehttp::Request::get(&url);
                                                 let map_name_for_closure = map_name.clone();
@@ -181,7 +181,7 @@ impl SowApp {
                                             }
                                         }
                                         UiAction::ConnectToServer(addr) => {
-                                            self.app.main_menu_state.is_connecting = true;
+                                            self.ui.app.main_menu_state.is_connecting = true;
                                             let url = addr.clone();
                                             #[cfg(target_arch = "wasm32")]
                                             spawn_sow_client_connect(url, &self.net.connect_tx);
@@ -190,18 +190,18 @@ impl SowApp {
                                         }
                                         UiAction::JoinLobby(id) => {
                                             let join_msg = sow_core::protocol::ClientMessage::Join {
-                                                name: self.app.main_menu_state.player_name.clone(),
+                                                name: self.ui.app.main_menu_state.player_name.clone(),
                                                 is_observer: false,
                                                 target_lobby_id: Some(id),
                                                 build_version: get_build_version(),
                                             };
-                                            self.app.main_menu_state.pending_join_lobby_id = Some(id);
+                                            self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
                                             if let Ok(json) = bincode::serialize(&join_msg) {
                                                 if let Some(c) = self.net.client.as_ref() {
                                                     c.send(json);
                                                 }
                                             }
-                                            self.app.main_menu_state.is_waiting = true;
+                                            self.ui.app.main_menu_state.is_waiting = true;
                                         }
                                         UiAction::LeaveLobby => {
                                             if let Some(c) = self.net.client.as_ref() {
@@ -217,7 +217,7 @@ impl SowApp {
                                             self.begin_exit_to_main_menu();
                                         }
                                         UiAction::SetAttackRatio(r) => {
-                                            self.app.hud_state.attack_ratio = r;
+                                            self.ui.app.hud_state.attack_ratio = r;
                                         }
                                         UiAction::CenterCamera => {
                                             let pid = self.sim.my_player_id.unwrap_or(1);

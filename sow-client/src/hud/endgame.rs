@@ -50,8 +50,8 @@ impl SowApp {
                             self.net.client = None;
                             self.sim.current_snapshot = None;
                             self.sim.my_lobby_id = None;
-                            self.app.phase = ClientPhase::MainMenu;
-                            self.app.main_menu_state.is_waiting = false;
+                            self.ui.app.phase = ClientPhase::MainMenu;
+                            self.ui.app.main_menu_state.is_waiting = false;
                         }
                     });
                 });
