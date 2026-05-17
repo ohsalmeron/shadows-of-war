@@ -39,12 +39,14 @@ impl SowApp {
                                             let dx = target_cx - pos.0;
                                             let dy = target_cy - pos.1;
                                             let dist = (dx * dx + dy * dy).sqrt();
+                                            let dt = self.ui.raw_input.predicted_dt;
+                                            let smooth_factor = 1.0 - (-10.0 * dt).exp(); // Frame-rate independent
                                             if dist > 50.0 {
                                                 pos.0 = target_cx;
                                                 pos.1 = target_cy;
                                             } else if dist > 0.1 {
-                                                pos.0 += dx * 0.2;
-                                                pos.1 += dy * 0.2;
+                                                pos.0 += dx * smooth_factor;
+                                                pos.1 += dy * smooth_factor;
                                             } else {
                                                 pos.0 = target_cx;
                                                 pos.1 = target_cy;
@@ -216,6 +218,12 @@ impl SowApp {
                                     }
                                     // --- Render Fleets ---
                                     if let Some(snap) = &self.sim.current_snapshot {
+                                        let now = web_time::Instant::now();
+                                        let sim_dt = now.duration_since(self.time.last_tick).as_secs_f32();
+                                        let tick_dur = self.time.tick_interval.as_secs_f32().max(0.01);
+                                        let mut t = (sim_dt / tick_dur).clamp(0.0, 1.0);
+                                        t = t * t * (3.0 - 2.0 * t); // Smoothstep curve
+                                        
                                         for fleet in &snap.fleets {
                                             let mut r = 0.5; let mut g = 0.5; let mut b = 0.5;
                                             if let Some(owner) = snap.players.iter().find(|p| p.id == fleet.owner_id) {
@@ -229,28 +237,25 @@ impl SowApp {
                                             let color = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
                                             let trail_color = egui::Color32::from_rgba_premultiplied((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 150);
 
-                                            // Render trail
+                                            // Render trail as a single line shape for massive performance boost
                                             let trail_len = fleet.path_cursor.min(fleet.path.len());
+                                            let mut points = Vec::with_capacity(trail_len);
                                             for &tile in &fleet.path[..trail_len] {
                                                 let wx = (tile % self.sim.map_w) as f32;
                                                 let wy = (tile / self.sim.map_w) as f32;
-                                                let screen_x = (self.input.camera_x + wx * self.input.camera_zoom) / sf;
-                                                let screen_y = (self.input.camera_y + wy * self.input.camera_zoom) / sf;
-                                                let zoom_scaled = self.input.camera_zoom / sf;
-                                                let rect = egui::Rect::from_min_size(
-                                                    egui::pos2(screen_x, screen_y),
-                                                    egui::vec2(zoom_scaled, zoom_scaled)
-                                                );
-                                                painter.rect_filled(rect, 0.0, trail_color);
+                                                // Center the points in the tile
+                                                let screen_x = (self.input.camera_x + (wx + 0.5) * self.input.camera_zoom) / sf;
+                                                let screen_y = (self.input.camera_y + (wy + 0.5) * self.input.camera_zoom) / sf;
+                                                points.push(egui::pos2(screen_x, screen_y));
+                                            }
+                                            let zoom_scaled = self.input.camera_zoom / sf;
+                                            if points.len() > 1 {
+                                                painter.add(egui::Shape::line(points, egui::Stroke::new(zoom_scaled * 0.4, trail_color)));
+                                            } else if points.len() == 1 {
+                                                painter.circle_filled(points[0], zoom_scaled * 0.2, trail_color);
                                             }
 
                                             // Render boat with smooth visual interpolation
-                                            let now = web_time::Instant::now();
-                                            let dt = now.duration_since(self.time.last_tick).as_secs_f32();
-                                            let tick_dur = self.time.tick_interval.as_secs_f32().max(0.01);
-                                            let mut t = (dt / tick_dur).clamp(0.0, 1.0);
-                                            t = t * t * (3.0 - 2.0 * t); // Smoothstep curve
-                                            
                                             let wx_curr = (fleet.current_tile % self.sim.map_w) as f32;
                                             let wy_curr = (fleet.current_tile / self.sim.map_w) as f32;
                                             

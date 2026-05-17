@@ -1,3 +1,2 @@
 // Embed the TTF at compile time
-pub static UI_FONT_TTF: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/fonts/Quicksand-VariableFont_wght.ttf"));
-pub static EMOJI_FONT_TTF: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/fonts/NotoEmoji-Regular.ttf"));
+pub static UI_FONT_TTF: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/fonts/Quicksand-Bold.ttf"));

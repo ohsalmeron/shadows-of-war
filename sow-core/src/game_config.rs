@@ -159,13 +159,13 @@ impl Default for GameConfig {
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 50ms (20 ticks per second)
             // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
-            global_speed_multiplier: 0.25, // 0.85 = Slightly slower, more tactical pace
+            global_speed_multiplier: 0.45, // 0.85 = Slightly slower, more tactical pace
             
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.0,   // Balanced: harder to melt through enemy territory
             attack_cost_neutral: 0.1, // Standard neutral cost
-            terrain_multiplier_highland: 1.5,
-            terrain_multiplier_mountain: 3.0,
+            terrain_multiplier_highland: 3.5,
+            terrain_multiplier_mountain: 7.0,
             bot_attack_interval_ticks: 16,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
             max_tiles_per_tick: 64.0, // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
             max_tiles_per_tick_reference_troops: 1000.0,

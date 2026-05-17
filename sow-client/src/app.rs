@@ -504,6 +504,7 @@ impl SowApp {
                 self.input.camera_zoom = 0.5;
                 self.input.camera_x = self.input.screen_w * 0.5 - (map_w as f32 * 0.5) * self.input.camera_zoom;
                 self.input.camera_y = self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
+                self.input.has_snapped_camera_to_spawn = false;
             }
             sow_core::protocol::SimCommand::Turn(turn) => {
                 if let Some(e) = &mut self.sim.engine {
