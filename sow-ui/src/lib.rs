@@ -13,4 +13,5 @@ pub enum UiAction {
     SetAttackRatio(f32),
     CenterCamera,
     ToggleSettings,
+    ToggleDevSidebar,
 }

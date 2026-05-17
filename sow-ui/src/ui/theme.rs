@@ -5,12 +5,17 @@ use egui::{
 /// Dark Rift palette — see `dark-rift/crates/client/src/ui/theme.rs`.
 #[inline]
 pub fn menu_backdrop() -> Color32 {
-    Color32::from_rgb(21, 28, 21) // Dark forest
+    Color32::from_rgb(35, 42, 35) // Dark forest (lightened)
 }
 
 #[inline]
 pub fn panel_bg() -> Color32 {
-    Color32::from_rgb(34, 45, 34) // Moss panel
+    Color32::from_rgb(48, 60, 48) // Moss panel (lightened)
+}
+
+#[inline]
+pub fn panel_bg_transparent() -> Color32 {
+    Color32::from_rgba_unmultiplied(48, 60, 48, 200) // Moss panel with transparency
 }
 
 #[inline]
@@ -40,22 +45,22 @@ pub fn accent_ranked_gold_hover() -> Color32 {
 
 #[inline]
 pub fn menu_secondary_button() -> Color32 {
-    Color32::from_rgb(45, 59, 45) // Lighter panel
+    Color32::from_rgb(60, 75, 60) // Lighter panel (lightened)
 }
 
 #[inline]
 pub fn menu_secondary_button_hover() -> Color32 {
-    Color32::from_rgb(61, 78, 61)
+    Color32::from_rgb(75, 95, 75)
 }
 
 #[inline]
 pub fn nickname_field_bg() -> Color32 {
-    Color32::from_rgb(16, 21, 16) // Very dark input
+    Color32::from_rgb(25, 32, 25) // Very dark input (lightened)
 }
 
 #[inline]
 pub fn nickname_field_border() -> Color32 {
-    Color32::from_rgb(58, 76, 58)
+    Color32::from_rgb(75, 95, 75)
 }
 
 #[inline]

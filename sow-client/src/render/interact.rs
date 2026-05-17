@@ -235,7 +235,12 @@ impl SowApp {
                                                 }
                                             }
                                         }
-                                        _ => {}
+                                        UiAction::ToggleDevSidebar => {
+                                            self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
+                                        }
+                                        UiAction::ToggleSettings => {
+                                            // Handle settings toggle if it's there
+                                        }
                                     }
                                 }
 

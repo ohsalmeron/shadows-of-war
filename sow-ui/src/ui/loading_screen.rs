@@ -67,7 +67,7 @@ pub fn draw(ctx: &Context, state: &mut SplashState) {
                             ui.add(
                                 egui::ProgressBar::new(progress)
                                     .desired_width(bar_width)
-                                    .fill(Color32::from_rgb(255, 180, 50))
+                                    .fill(crate::ui::theme::accent_ranked_gold())
                                     .text(RichText::new(format!("{}% Complete", (progress * 100.0) as u32)).color(Color32::BLACK))
                             );
                             ui.add_space(10.0);
@@ -88,7 +88,7 @@ pub fn draw(ctx: &Context, state: &mut SplashState) {
                         RichText::new("SHADOWS OF WAR")
                             .strong()
                             .size(if is_mobile { 36.0 } else { 64.0 })
-                            .color(Color32::from_rgb(255, 230, 200))
+                            .color(crate::ui::theme::accent_ranked_gold())
                     );
                 });
             });

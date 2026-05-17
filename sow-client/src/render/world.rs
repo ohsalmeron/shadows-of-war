@@ -113,9 +113,9 @@ impl SowApp {
 
                                         // Small nations require zooming in to appear.
                                         let threshold = if player.id >= 200 {
-                                            0.50 // Tribes need to be much closer/bigger to show text
+                                            1.00 // Tribes need to be much closer/bigger to show text
                                         } else {
-                                            0.25 // Nations can show text further away
+                                            0.5 // Nations can show text further away
                                         };
                                         let show_full = lod_presence >= threshold && full_labels_drawn < 100;
 

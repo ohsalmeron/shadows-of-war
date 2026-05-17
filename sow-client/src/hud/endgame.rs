@@ -50,7 +50,7 @@ impl SowApp {
                 .collapsible(false)
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-                .frame(egui::Frame::window(&ctx.global_style()).fill(Color32::from_rgb(20, 20, 25)).inner_margin(30.0))
+                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0).inner_margin(30.0))
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         let title_color = if is_victory { Color32::GOLD } else { Color32::RED };

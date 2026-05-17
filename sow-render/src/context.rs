@@ -50,6 +50,7 @@ impl RenderContext {
             },
             usage: gpu::TextureUsage::TARGET,
             display_sync: gpu::DisplaySync::Tear,
+            color_space: gpu::ColorSpace::Srgb,
             ..Default::default()
         };
         self.context.create_surface_configured(window, config)

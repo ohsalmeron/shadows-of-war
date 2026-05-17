@@ -67,10 +67,10 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
         .anchor(Align2::CENTER_BOTTOM, egui::vec2(0.0, -20.0))
         .show(ctx, |ui| {
             let frame = egui::Frame::window(&ctx.style())
-                .rounding(16.0)
-                .fill(Color32::from_black_alpha(220))
+                .rounding(12.0)
+                .fill(crate::ui::theme::panel_bg_transparent())
                 .inner_margin(16.0)
-                .stroke(egui::Stroke::new(1.0_f32, Color32::from_white_alpha(40)));
+                .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()));
             
             frame.show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -133,9 +133,9 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             egui::Frame::new()
-                .fill(Color32::from_black_alpha(200))
-                .corner_radius(10.0)
-                .stroke(egui::Stroke::new(1.0_f32, Color32::from_white_alpha(30)))
+                .fill(crate::ui::theme::panel_bg_transparent())
+                .corner_radius(12.0)
+                .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
                 .inner_margin(egui::Margin::symmetric(8, 4))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -144,6 +144,15 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                             .stroke(egui::Stroke::NONE);
                         if ui.add(gear).on_hover_text("Settings").clicked() {
                             action = Some(UiAction::ToggleSettings);
+                        }
+
+                        ui.add_space(2.0);
+
+                        let dev_btn = egui::Button::new(RichText::new("🛠").size(18.0).color(Color32::from_gray(200)))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE);
+                        if ui.add(dev_btn).on_hover_text("Dev Info").clicked() {
+                            action = Some(UiAction::ToggleDevSidebar);
                         }
 
                         ui.add_space(2.0);

@@ -108,7 +108,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var base_color = terrain_color.rgb;
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
-        base_color = mix(terrain_color.rgb, albedo, 0.95);
+        base_color = mix(terrain_color.rgb, albedo, 0.50);
     }
 
     if owner_id > 0u {

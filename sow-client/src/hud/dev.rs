@@ -31,25 +31,14 @@ impl SowApp {
     }
 
     pub(crate) fn render_dev_panels(&mut self, ctx: &egui::Context, local_cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) {
-        egui::Window::new("Dev Toggle")
-            .title_bar(false)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 10.0))
-            .auto_sized()
-            .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0))
-            .show(ctx, |ui| {
-                let icon = if self.ui.show_dev_sidebar { "▼" } else { "▶" };
-                let btn = egui::Button::new(egui::RichText::new(format!("{} Dev Info", icon))).min_size(egui::vec2(80.0, 30.0));
-                if ui.add(btn).clicked() {
-                    self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
-                }
-            });
+
 
         if self.ui.show_dev_sidebar {
             egui::Window::new("HUD Sidebar")
                 .title_bar(false)
                 .anchor(egui::Align2::LEFT_TOP, egui::vec2(10.0, 10.0))
                 .auto_sized()
-                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0))
+                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg_transparent()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0))
                 .show(ctx, |ui| {
                     let mut is_expanded = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("dev_utils_expanded"), || false));
                     ui.vertical(|ui| {
@@ -78,11 +67,7 @@ impl SowApp {
 
                         // 2. Buttons Row
                         ui.horizontal(|ui| {
-                            let ld_icon = if self.ui.show_leaderboard { "▼" } else { "▶" };
-                            let ld_btn = egui::Button::new(egui::RichText::new(format!("{} 🏆 Leaderboard", ld_icon))).min_size(egui::vec2(100.0, 30.0));
-                            if ui.add(ld_btn).clicked() {
-                                self.ui.show_leaderboard = !self.ui.show_leaderboard;
-                            }
+
 
                             let dev_icon = if is_expanded { "▼" } else { "▶" };
                             let dev_btn = egui::Button::new(egui::RichText::new(format!("{} 🛠 Dev Utils", dev_icon))).min_size(egui::vec2(100.0, 30.0));
@@ -129,7 +114,7 @@ impl SowApp {
                                                 .title_bar(false)
                                                 .resizable(false)
                                                 .collapsible(false)
-                                                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0))
+                                                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg_transparent()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0))
                                                 .show(ctx, |ui| {
                                                     ui.set_max_height(150.0);
                                                     egui::ScrollArea::vertical().show(ui, |ui| {

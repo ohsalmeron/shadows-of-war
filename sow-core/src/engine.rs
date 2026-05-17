@@ -120,34 +120,8 @@ impl SowEngine {
                 
                 for pid in unspawned {
                     use wyrand::WyRand;
-                    use crate::rng::NextIntExt;
                     let mut rng = WyRand::new(self.state.seed.wrapping_add(pid as u64));
-                    let mut tries = 0;
-                    let (mut sx, mut sy) = (0, 0);
-
-                    while tries < 1000 {
-                        sx = rng.next_int(0, self.state.map.width as i32) as u32;
-                        sy = rng.next_int(0, self.state.map.height as i32) as u32;
-                        
-                        if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
-                            tries += 1; continue;
-                        }
-
-                        let mut valid = true;
-                        for dy in -15..=15 {
-                            for dx in -15..=15 {
-                                let nx = sx as i32 + dx; let ny = sy as i32 + dy;
-                                if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
-                                    valid = false; break;
-                                }
-                            }
-                            if !valid { break; }
-                        }
-                        if valid { break; }
-                        tries += 1;
-                    }
-
-                    if tries < 1000 {
+                    if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
                         self.state.place_spawn(pid, sx, sy);
                         log::info!("Auto-spawned missing player {} at {}, {}", pid, sx, sy);
                     }
@@ -211,7 +185,6 @@ impl SowEngine {
         let mut spawned_nations = 0;
         let mut spawned_tribes = 0;
         use wyrand::WyRand;
-        use crate::rng::NextIntExt;
         use crate::player::Player;
 
         let mut rng = WyRand::new(self.state.seed);
@@ -220,35 +193,7 @@ impl SowEngine {
         // Spawn Nations (IDs 104 to 199)
         for i in 0..nation_count {
             let bot_id = 104 + i as u16;
-            let mut tries = 0;
-            let (mut sx, mut sy) = (0, 0);
-
-            while tries < 1000 {
-                sx = rng.next_int(0, self.state.map.width as i32) as u32;
-                sy = rng.next_int(0, self.state.map.height as i32) as u32;
-                
-                if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
-                    tries += 1;
-                    continue;
-                }
-
-                let mut valid = true;
-                for dy in -15..=15 {
-                    for dx in -15..=15 {
-                        let nx = sx as i32 + dx;
-                        let ny = sy as i32 + dy;
-                        if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
-                            valid = false;
-                            break;
-                        }
-                    }
-                    if !valid { break; }
-                }
-                if valid { break; }
-                tries += 1;
-            }
-
-            if tries < 1000 {
+            if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
                 // Nations have a starting advantage? Or just distinct colors for now.
                 let player = Player::new_bot(bot_id, format!("Nation {}", i+1), [0.8, 0.8, 0.8], &config);
                 self.state.spawn_player(player, sx, sy);
@@ -259,35 +204,7 @@ impl SowEngine {
         // Spawn Tribes (IDs 200+)
         for i in 0..tribe_count {
             let bot_id = 200 + i as u16;
-            let mut tries = 0;
-            let (mut sx, mut sy) = (0, 0);
-
-            while tries < 1000 {
-                sx = rng.next_int(0, self.state.map.width as i32) as u32;
-                sy = rng.next_int(0, self.state.map.height as i32) as u32;
-                
-                if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
-                    tries += 1;
-                    continue;
-                }
-
-                let mut valid = true;
-                for dy in -15..=15 {
-                    for dx in -15..=15 {
-                        let nx = sx as i32 + dx;
-                        let ny = sy as i32 + dy;
-                        if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
-                            valid = false;
-                            break;
-                        }
-                    }
-                    if !valid { break; }
-                }
-                if valid { break; }
-                tries += 1;
-            }
-
-            if tries < 1000 {
+            if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
                 let player = Player::new_bot(bot_id, format!("Tribe {}", i+1), [0.4, 0.4, 0.4], &config);
                 self.state.spawn_player(player, sx, sy);
                 spawned_tribes += 1;
@@ -298,7 +215,6 @@ impl SowEngine {
 
     pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3]) {
         use wyrand::WyRand;
-        use crate::rng::NextIntExt;
         use crate::player::Player;
 
         // Use a different seed offset for human to avoid clashing exactly with bots
@@ -311,12 +227,21 @@ impl SowEngine {
             return;
         }
 
+        if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+            let player = Player::new_human(player_id, name, color, &config);
+            self.state.spawn_player(player, sx, sy);
+        } else {
+            log::warn!("Failed to spawn Human {} - no room!", player_id);
+        }
+    }
+
+    fn find_valid_spawn(&self, rng: &mut wyrand::WyRand) -> Option<(u32, u32)> {
+        use crate::rng::NextIntExt;
         let mut tries = 0;
-        let (mut sx, mut sy) = (0, 0);
 
         while tries < 1000 {
-            sx = rng.next_int(0, self.state.map.width as i32) as u32;
-            sy = rng.next_int(0, self.state.map.height as i32) as u32;
+            let sx = rng.next_int(0, self.state.map.width as i32) as u32;
+            let sy = rng.next_int(0, self.state.map.height as i32) as u32;
             
             if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
                 tries += 1;
@@ -336,16 +261,10 @@ impl SowEngine {
                 }
                 if !valid { break; }
             }
-            if valid { break; }
+            if valid { return Some((sx, sy)); }
             tries += 1;
         }
-
-        if tries < 1000 {
-            let player = Player::new_human(player_id, name, color, &config);
-            self.state.spawn_player(player, sx, sy);
-        } else {
-            log::warn!("Failed to spawn Human {} - no room!", player_id);
-        }
+        None
     }
 
     /// Build a lightweight snapshot of the current state for the render thread.
