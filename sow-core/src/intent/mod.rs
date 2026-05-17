@@ -85,12 +85,10 @@ pub fn apply_stamped_intent(
             self.apply_upgrade_structure_intent(stamped.player_id, *building_id);
         }
         GameplayIntent::Spawn { x, y } => {
-            println!("Spawn intent received for player {} at {}, {}", stamped.player_id, x, y);
             if let crate::game::GamePhase::Spawning { .. } = self.state.phase {
                 let x = *x; let y = *y;
                 let pid = stamped.player_id;
                 
-                println!("Spawn phase: {:?}, is_valid: {}, is_land: {}, owner: {}", self.state.phase, self.state.map.is_valid_coord(x as i32, y as i32), self.state.map.terrain[self.state.map.ref_id(x, y)].is_land(), self.state.map.owner_id(x, y));
                 if self.state.map.is_valid_coord(x as i32, y as i32)
                     && self.state.map.terrain[self.state.map.ref_id(x, y)].is_land() && self.state.map.owner_id(x, y) == 0 {
                         // Clear old tiles for this player

@@ -75,7 +75,8 @@ impl SowApp {
                                             // 40_000 is a reference 200x200 map.
                                             let map_area = (self.sim.map_w * self.sim.map_h).max(1) as f32;
                                             let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
-                                            let importance = normalized_tiles.sqrt().max(1.0);
+                                            let importance = (normalized_tiles * 0.35).max(0.15);
+
                                             
                                             let lod_presence = importance * (self.input.camera_zoom / sf);
                                             let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
@@ -108,7 +109,7 @@ impl SowApp {
                                         let player = vp.player;
                                         let center = vp.center;
                                         let pc = vp.pc;
-                                        let sizing_presence = vp.sizing_presence;
+                                        let _sizing_presence = vp.sizing_presence;
                                         let lod_presence = vp.lod_presence;
 
                                         // Small nations require zooming in to appear.
@@ -138,12 +139,18 @@ impl SowApp {
                                             // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
                                             
-                                            // --- Change this value to control how small text can get (e.g. during spawning) ---
-                                            let min_font_size = 8;
+                                            // --- Dynamic minimum font sizes based on player type ---
+                                            let min_font_size = if Some(player.id) == self.sim.my_player_id {
+                                                12 // My own player (stays most visible)
+                                            } else if player.id < 200 {
+                                                8 // AI Nations (medium visibility)
+                                            } else {
+                                                6 // Tribes (fades into the background when zooming out)
+                                            };
                                             // -----------------------------------------------------------------------------------
                                             
                                             // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
-                                            let font_size = (((target_font_size.round() as i32).clamp(min_font_size, 64) + 1) / 2 * 2) as f32;
+                                            let font_size = (((target_font_size.round() as i32).clamp(min_font_size, 100) + 1) / 2 * 2) as f32;
 
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
                                             let troops_for_label = self.ui.troop_label_throttle

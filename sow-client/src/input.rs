@@ -177,7 +177,7 @@ impl SowApp {
                                 // Start hold-to-attack tracking
                                 if !wants_pointer && in_game {
                                     self.input.map_touch_start = Some((web_time::Instant::now(), position.x, position.y));
-                                    self.try_begin_hold_attack(position.x, position.y);
+                                    self.try_begin_hold_attack(position.x, position.y, is_touch);
                                 }
                             } else {
                                 self.input.dragging = false;
@@ -303,7 +303,12 @@ impl SowApp {
         }
     }
 
-    fn try_begin_hold_attack(&mut self, x: f64, y: f64) {
+    fn try_begin_hold_attack(&mut self, x: f64, y: f64, is_touch: bool) {
+        let phase = self.sim.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+        if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+            return;
+        }
+
         let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
         let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
         let col = world_x.floor() as i32;
@@ -318,7 +323,18 @@ impl SowApp {
         let my_id = self.sim.my_player_id.unwrap_or(0);
 
         if is_land && owner != my_id {
-            self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y));
+            if !is_touch {
+                // Desktop: fire immediately
+                let attack = sow_core::protocol::AttackIntent {
+                    target_owner: owner,
+                    troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
+                };
+                self.send_intent(sow_core::protocol::GameplayIntent::Attack(attack));
+                self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y, true));
+            } else {
+                // Mobile: wait for hold to distinguish from tap (context menu)
+                self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y, false));
+            }
             self.input.hold_attack_accum = 0.0;
         }
     }
@@ -335,35 +351,18 @@ impl SowApp {
     }
 
     fn handle_map_click(&mut self, x: f64, y: f64) {
-        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
-        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
-        let col = world_x.floor() as i32;
-        let row = world_y.floor() as i32;
-        if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
-            return;
-        }
-
         let phase = self.sim.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
 
         if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+            let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+            let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+            let col = world_x.floor() as i32;
+            let row = world_y.floor() as i32;
+            if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
+                return;
+            }
             let intent = sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 };
             self.send_intent(intent);
-            return;
-        }
-
-        let idx = (row * self.sim.map_w as i32 + col) as usize;
-        let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
-        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
-        let is_land = (terrain_byte & 0x80) != 0;
-        let my_id = self.sim.my_player_id.unwrap_or(0);
-
-        // Quick click on enemy land → one-shot attack burst
-        if is_land && owner != my_id {
-            let attack = sow_core::protocol::AttackIntent {
-                target_owner: owner,
-                troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
-            };
-            self.send_intent(sow_core::protocol::GameplayIntent::Attack(attack));
         }
     }
 

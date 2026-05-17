@@ -62,8 +62,8 @@ pub struct InputState {
     pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
     pub map_context_menu: Option<(f32, f32, u32)>,
     pub last_pinch_distance: Option<f64>,
-    /// Hold-to-attack: (target_owner, press_start_time, screen_x, screen_y)
-    pub hold_attack_target: Option<(u16, web_time::Instant, f64, f64)>,
+    /// Hold-to-attack: (target_owner, press_start_time, screen_x, screen_y, has_fired_initial)
+    pub hold_attack_target: Option<(u16, web_time::Instant, f64, f64, bool)>,
     pub hold_attack_accum: f32,
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,

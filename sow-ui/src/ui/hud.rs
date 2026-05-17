@@ -139,6 +139,15 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                 .inner_margin(egui::Margin::symmetric(8, 4))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
+                        let center_cam = egui::Button::new(RichText::new("⌖").size(18.0).color(Color32::from_gray(200)))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE);
+                        if ui.add(center_cam).on_hover_text("Center Camera").clicked() {
+                            action = Some(UiAction::CenterCamera);
+                        }
+
+                        ui.add_space(2.0);
+
                         let gear = egui::Button::new(RichText::new("⚙").size(18.0).color(Color32::from_gray(200)))
                             .fill(Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE);
@@ -158,18 +167,6 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                 });
         });
 
-    egui::Area::new(egui::Id::new("hud_center_camera_button"))
-        .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-8.0, -8.0))
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            if ui
-                .button(RichText::new("⌖").size(18.0))
-                .on_hover_text("Center Camera")
-                .clicked()
-            {
-                action = Some(UiAction::CenterCamera);
-            }
-        });
 
     if let Some(sync) = &state.sync_state {
         // Draw a dark full-screen overlay to block input visually and practically
