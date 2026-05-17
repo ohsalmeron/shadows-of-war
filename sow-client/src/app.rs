@@ -65,6 +65,7 @@ pub struct InputState {
     pub last_pinch_distance: Option<f64>,
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,
+    pub has_snapped_camera_to_spawn: bool,
 }
 
 pub struct UiState {
@@ -216,9 +217,9 @@ impl SowApp {
     spawn_sow_client_connect(ws_url.clone(), &connect_tx, &tokio_rt);
 
     // ── Camera state ────────────────────────────────────────────────────────
-    let camera_x: f32 = 0.0;
-    let camera_y: f32 = 0.0;
-    let camera_zoom: f32 = 2.0;
+    let camera_zoom: f32 = 0.5;
+    let camera_x: f32 = 1280.0 * 0.5 - (map_w as f32 * 0.5) * camera_zoom;
+    let camera_y: f32 = 720.0 * 0.5 - (map_h as f32 * 0.5) * camera_zoom;
     let screen_w: f32 = 1280.0;
     let screen_h: f32 = 720.0;
 
@@ -237,6 +238,7 @@ impl SowApp {
     let ime_allowed_state = false;
     // Last physical-pixel IME area for `set_ime_cursor_area`, for debouncing.
     let ime_cursor_rect_px: Option<Rect> = None;
+    let has_snapped_camera_to_spawn = false;
 
     let prev_sync_point: Option<gpu::SyncPoint> = None;
     let last_tick = Instant::now();
@@ -285,7 +287,7 @@ impl SowApp {
             input: InputState {
                 camera_x, camera_y, camera_zoom, screen_w, screen_h, dragging,
                 last_mouse_x, last_mouse_y, active_touches, map_touch_start, map_context_menu, last_pinch_distance,
-                ime_allowed_state, ime_cursor_rect_px
+                ime_allowed_state, ime_cursor_rect_px, has_snapped_camera_to_spawn
             },
             ui: UiState {
                 app, egui_ctx, raw_input, nameplate_cache, troop_label_throttle,
@@ -349,7 +351,7 @@ impl SowApp {
                 self.net.ws_reconnect_after_resume = true;
                 if self.gfx.window.is_none() {
                     #[cfg(any(target_os = "android", target_os = "ios"))]
-                    let mut attributes = winit::window::WindowAttributes::default()
+                    let attributes = winit::window::WindowAttributes::default()
                         .with_title("Shadows of War");
 
                     #[cfg(target_os = "ios")]
@@ -498,6 +500,10 @@ impl SowApp {
                 let snap = new_engine.build_snapshot();
                 self.sim.current_snapshot = Some(snap);
                 self.sim.engine = Some(new_engine);
+                
+                self.input.camera_zoom = 0.5;
+                self.input.camera_x = self.input.screen_w * 0.5 - (map_w as f32 * 0.5) * self.input.camera_zoom;
+                self.input.camera_y = self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
             }
             sow_core::protocol::SimCommand::Turn(turn) => {
                 if let Some(e) = &mut self.sim.engine {

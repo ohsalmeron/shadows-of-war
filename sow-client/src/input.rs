@@ -1,7 +1,4 @@
 
-use sow_core::protocol::SimCommand;
-
-
 use blade_graphics as gpu;
 use egui::{Pos2, Rect, Vec2};
 use sow_ui::app::ClientPhase;
@@ -78,9 +75,7 @@ impl SowApp {
                                             c.send(json);
                                         }
                                     } else {
-
-                                                let stamped = sow_core::protocol::StampedIntent { player_id: self.sim.my_player_id.unwrap_or(1), intent };
-                                        self.dispatch_sim_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                        self.sim.offline_intents.push(intent);
                                     }
                                 }
                             }
@@ -215,12 +210,7 @@ impl SowApp {
                                                     c.send(json);
                                                 }
                                             } else {
-
-                                                let stamped = sow_core::protocol::StampedIntent {
-                                                    player_id: self.sim.my_player_id.unwrap_or(1),
-                                                    intent,
-                                                };
-                                                self.dispatch_sim_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                                self.sim.offline_intents.push(intent);
                                             }
                                         }
                                     }

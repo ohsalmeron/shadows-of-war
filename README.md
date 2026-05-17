@@ -65,6 +65,18 @@ Instead of relying on heavy 3D rendering or massive 4K textures, `Shadows of War
 * **Design Choice**: Generating pathfinding chunks, water geometry, and unrolling the map state is highly CPU intensive. Doing this on the main thread would freeze the application and panic the OS watchdog.
 * **Solution**: Upon receiving the `ServerStartMessage`, `sow-client` spins up an OS-level `std::thread` to crunch the map generation. Meanwhile, the main loop drops into an asynchronous `Loading` phase, effortlessly rendering the 60 FPS `sow-ui` Loading Screen until the background thread pipes the constructed `GameState` over a crossbeam channel.
 
+### State Machine & Phase Transitions (Avoiding Race Conditions)
+The engine strictly separates the UI state (`ClientPhase`) from the deterministic simulation state (`GamePhase`) to avoid race conditions. 
+* **`ClientPhase`** (UI Layer): `Splash` -> `MainMenu` -> `Playing`
+* **`GamePhase`** (Simulation Layer): `Lobby` -> `Spawning` (Deployment) -> `Playing` -> `GameOver`
+
+**The Lifecycle Cue Flow:**
+1. **Lobby & Loading**: The user connects and waits. `ClientPhase::MainMenu`.
+2. **Init / Map Download**: The map is downloaded, engine spins up in the background. `ClientPhase::Splash` (loading screen). The map is instantiated.
+3. **Deployment Phase (`GamePhase::Spawning`)**: The loading screen finishes (`gpu_load_step == 4`). The client swaps to `ClientPhase::Playing` so the HUD and map are visible, **BUT** the engine is still in `GamePhase::Spawning`. In this phase, the simulation ticks process only placement logic, not combat/movement. The user clicks to deploy.
+4. **Game Starts (`GamePhase::Playing`)**: Once the spawn timer ends, the engine swaps to `GamePhase::Playing`. 
+* **Important Rule**: **Never tie player-specific logic (like camera snapping to their base)** to the end of the Loading Screen. It must execute only after the player has actually deployed (detected by checking their `tile_count > 0` and observing the transition into `GamePhase::Playing`), ensuring it works flawlessly for both multiplayer and single-player.
+
 ### Custom GPU Pipeline (`blade-graphics`)
 * The map state is efficiently bit-packed into `u32` arrays by the CPU (16 bits for Owner ID, 8 bits for Terrain).
 * Uploaded to the GPU via Shared Memory buffers perfectly synchronized with `wait_for` lifecycle barriers to prevent use-after-free `invalid size` driver panics.

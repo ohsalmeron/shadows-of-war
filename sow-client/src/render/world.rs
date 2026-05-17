@@ -111,9 +111,9 @@ impl SowApp {
 
                                         // Small nations require zooming in to appear.
                                         let threshold = if player.id >= 200 {
-                                            16.0 // Tribes need to be much closer/bigger to show text
+                                            12.0 // Tribes need to be much closer/bigger to show text
                                         } else {
-                                            4.0 // Nations can show text further away
+                                            2.0 // Nations can show text further away
                                         };
                                         let show_full = lod_presence >= threshold && full_labels_drawn < 100;
 
@@ -244,9 +244,29 @@ impl SowApp {
                                                 painter.rect_filled(rect, 0.0, trail_color);
                                             }
 
-                                            // Render boat
-                                            let wx = (fleet.current_tile % self.sim.map_w) as f32;
-                                            let wy = (fleet.current_tile / self.sim.map_w) as f32;
+                                            // Render boat with smooth visual interpolation
+                                            let now = web_time::Instant::now();
+                                            let dt = now.duration_since(self.time.last_tick).as_secs_f32();
+                                            let tick_dur = self.time.tick_interval.as_secs_f32().max(0.01);
+                                            let mut t = (dt / tick_dur).clamp(0.0, 1.0);
+                                            t = t * t * (3.0 - 2.0 * t); // Smoothstep curve
+                                            
+                                            let wx_curr = (fleet.current_tile % self.sim.map_w) as f32;
+                                            let wy_curr = (fleet.current_tile / self.sim.map_w) as f32;
+                                            
+                                            let mut wx = wx_curr;
+                                            let mut wy = wy_curr;
+                                            
+                                            if fleet.path_cursor > 0 && !fleet.path.is_empty() {
+                                                let prev_idx = fleet.path_cursor.saturating_sub(2).min(fleet.path.len().saturating_sub(1));
+                                                let prev_tile = fleet.path[prev_idx];
+                                                let wx_prev = (prev_tile % self.sim.map_w) as f32;
+                                                let wy_prev = (prev_tile / self.sim.map_w) as f32;
+                                                
+                                                wx = wx_prev + (wx_curr - wx_prev) * t;
+                                                wy = wy_prev + (wy_curr - wy_prev) * t;
+                                            }
+                                            
                                             let screen_x = (self.input.camera_x + wx * self.input.camera_zoom) / sf;
                                             let screen_y = (self.input.camera_y + wy * self.input.camera_zoom) / sf;
                                             let zoom_scaled = self.input.camera_zoom / sf;

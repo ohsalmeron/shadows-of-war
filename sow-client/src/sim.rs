@@ -65,25 +65,30 @@ impl SowApp {
                     self.tasks.pending_engine_init_data = None;
                     log::info!("First snapshot received, releasing loader!");
                     
-                    if let Some(pid) = self.sim.my_player_id {
-                        if let Some(snap) = &self.sim.current_snapshot {
-                            if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
-                                if player.tile_count > 0 && player.alive {
-                                    let cx = player.centroid_x;
-                                    let cy = player.centroid_y;
-                                    self.input.camera_zoom = 1.5;
-                                    self.input.camera_x = self.input.screen_w * 0.5 - cx * self.input.camera_zoom;
-                                    self.input.camera_y = self.input.screen_h * 0.5 - cy * self.input.camera_zoom;
-                                }
-                            }
-                        }
-                    }
-
                     if let Some(c) = self.net.client.as_ref() {
                         if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
                             let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
                             let json = bincode::serialize(&ready_msg).unwrap();
                             c.send(json);
+                        }
+                    }
+                }
+                
+                if self.ui.app.phase == sow_ui::app::ClientPhase::Playing && !self.input.has_snapped_camera_to_spawn {
+                    if let Some(pid) = self.sim.my_player_id {
+                        if let Some(snap) = &self.sim.current_snapshot {
+                            if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
+                                let is_playing = matches!(snap.phase, sow_core::game::GamePhase::Playing);
+                                if player.tile_count > 0 && player.alive && is_playing {
+                                    let world_cx = player.centroid_x + 0.5;
+                                    let world_cy = player.centroid_y + 0.5;
+                                    self.input.camera_zoom = 20.0;
+                                    self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
+                                    self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
+                                    self.input.has_snapped_camera_to_spawn = true;
+                                    log::info!("Game started! Camera snapped to player spawn at ({}, {}), zoom={}", world_cx, world_cy, self.input.camera_zoom);
+                                }
+                            }
                         }
                     }
                 }
