@@ -1,4 +1,4 @@
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 
 impl SowApp {

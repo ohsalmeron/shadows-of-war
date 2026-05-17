@@ -1,4 +1,4 @@
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 use crate::MapDownloadEvent;
 use sow_ui::app::ClientPhase;
 

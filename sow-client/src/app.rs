@@ -11,7 +11,7 @@ use sow_net::client::SowClient;
 use std::collections::HashMap;
 use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use crate::spawn_sow_client_connect;
-use crate::nameplates::*;
+use crate::nameplate::*;
 use crate::{MapDownloadEvent, EngineInitEvent};
 
 
@@ -44,8 +44,8 @@ pub struct SowApp {
     pub engine_init_rx: crossbeam_channel::Receiver<crate::EngineInitEvent>,
     pub pending_engine_init_data: Option<(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage)>,
     pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
-    pub nameplate_cache: std::collections::HashMap<u16, crate::nameplates::CachedNameplate>,
-    pub troop_label_throttle: crate::nameplates::TroopLabelThrottle,
+    pub nameplate_cache: std::collections::HashMap<u16, crate::nameplate::CachedNameplate>,
+    pub troop_label_throttle: crate::nameplate::TroopLabelThrottle,
 
     pub connect_tx: crossbeam_channel::Sender<Result<sow_net::client::SowClient, String>>,
     pub connect_rx: crossbeam_channel::Receiver<Result<sow_net::client::SowClient, String>>,
@@ -56,7 +56,7 @@ pub struct SowApp {
     #[cfg(target_arch = "wasm32")]
     pub wasm_doc_was_visible: bool,
     #[cfg(target_arch = "wasm32")]
-    pub(crate) wasm_ime_bridge: crate::wasm_ime::WasmImeBridge,
+    pub(crate) ime_bridge: crate::ime::WasmImeBridge,
     pub orchestrator_url: String,
     pub ws_url: String,
     pub camera_x: f32,
@@ -169,7 +169,7 @@ impl SowApp {
     #[cfg(target_arch = "wasm32")]
     let wasm_doc_was_visible: bool = true;
     #[cfg(target_arch = "wasm32")]
-    let wasm_ime_bridge = crate::wasm_ime::WasmImeBridge::new();
+    let ime_bridge = crate::ime::WasmImeBridge::new();
 
     #[allow(unused_mut)]
     let mut ws_url = std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://shadowsofwar.io/ws/".to_string());
@@ -257,7 +257,7 @@ impl SowApp {
             pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle,
             connect_tx, connect_rx, last_debug_print: None, ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
-            #[cfg(target_arch = "wasm32")] wasm_ime_bridge,
+            #[cfg(target_arch = "wasm32")] ime_bridge,
             orchestrator_url, ws_url, camera_x, camera_y, camera_zoom, screen_w, screen_h,
             dragging, last_mouse_x, last_mouse_y, label_positions: HashMap::new(),
             active_touches,
@@ -353,7 +353,7 @@ impl SowApp {
                             .unwrap();
                         let web_attrs = winit::platform::web::WindowAttributesWeb::default().with_canvas(Some(canvas));
                         attributes = attributes.with_platform_attributes(Box::new(web_attrs));
-                        crate::wasm_ime::ensure_canvas_tabindex();
+                        crate::ime::ensure_canvas_tabindex();
                     }
 
                     #[cfg(not(any(target_os = "android", target_os = "ios", target_family = "wasm")))]

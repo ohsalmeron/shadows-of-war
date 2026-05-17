@@ -7,7 +7,7 @@ use egui::{Pos2, Rect, Vec2};
 use sow_ui::app::ClientPhase;
 use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 
 
 impl SowApp {

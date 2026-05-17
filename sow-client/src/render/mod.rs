@@ -6,7 +6,7 @@ use sow_ui::app::ClientPhase;
 use web_time::Instant;
 
 use blade_graphics as gpu;
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 
 
 
@@ -127,7 +127,7 @@ impl SowApp {
 
                             if cfg!(target_os = "android") {
                                 if self.app.phase == sow_ui::app::ClientPhase::MainMenu {
-                                    let config = crate::client_config::ClientVisualConfig::default();
+                                    let config = crate::config::ClientVisualConfig::default();
                                     self.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
                                         top: config.safe_area_top as i8,
                                         bottom: config.safe_area_bottom as i8,
@@ -174,14 +174,14 @@ impl SowApp {
 
 
                             #[cfg(target_arch = "wasm32")]
-                            self.wasm_ime_bridge
+                            self.ime_bridge
                                 .drain_pending_into(&mut self.raw_input.events);
 
                             let egui_ctx = self.egui_ctx.clone();
                             let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
                                 if cfg!(target_os = "android")
                                     && self.app.phase == sow_ui::app::ClientPhase::MainMenu {
-                                        let config = crate::client_config::ClientVisualConfig::default();
+                                        let config = crate::config::ClientVisualConfig::default();
                                         let screen_rect = ctx.content_rect();
                                         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("safe_area_bars")));
                                         
@@ -322,7 +322,7 @@ impl SowApp {
                             }
 
                             #[cfg(target_arch = "wasm32")]
-                            self.wasm_ime_bridge
+                            self.ime_bridge
                                 .sync_from_egui_ime(egui_output.platform_output.ime);
 
                             self.raw_input.events.clear();

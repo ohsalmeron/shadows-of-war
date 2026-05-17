@@ -1,4 +1,4 @@
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 use egui::{Align2, Color32, FontId, RichText};
 
 #[derive(Debug, Clone, PartialEq)]

@@ -39,10 +39,10 @@ fn get_maps_url() -> String {
     url
 }
 
-mod nameplates;
+mod nameplate;
 
 
-mod client_config;
+mod config;
 
 /// Allow very wide map views (scroll / pinch clamp to this minimum).
 const CAMERA_MIN_ZOOM: f32 = 0.001;
@@ -99,16 +99,16 @@ pub enum EngineInitEvent {
 }
 
 
-pub mod app_state;
+pub mod app;
 pub mod input;
 pub mod render;
 pub mod net;
 pub mod asset;
 pub mod loader;
 #[cfg(target_arch = "wasm32")]
-mod wasm_ime;
+mod ime;
 
-use app_state::SowApp;
+use app::SowApp;
 use winit::application::ApplicationHandler;
 
 impl ApplicationHandler for SowApp {

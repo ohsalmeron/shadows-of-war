@@ -1,5 +1,4 @@
-use crate::app_state::SowApp;
-use sow_core::protocol::ServerMessage;
+use crate::app::SowApp;
 use sow_ui::app::ClientPhase;
 use web_time::{Instant, Duration};
 use crate::{spawn_sow_client_connect, get_build_version, get_maps_url, MapDownloadEvent};

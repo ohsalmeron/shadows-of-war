@@ -4,7 +4,7 @@ use crate::sim::SimBridge;
 use sow_ui::{app::ClientPhase, UiAction};
 use crate::{spawn_sow_client_connect, get_build_version};
 
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 
 
 

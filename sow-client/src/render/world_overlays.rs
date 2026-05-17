@@ -1,10 +1,10 @@
 
 
 use crate::NAMEPLATE_REFERENCE_ZOOM;
-use crate::nameplates::*;
-use crate::client_config::ClientVisualConfig;
+use crate::nameplate::*;
+use crate::config::ClientVisualConfig;
 
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 
 
 
@@ -172,7 +172,7 @@ impl SowApp {
                                                     is_human,
                                                     pc,
                                                 );
-                                                cache_entry.troops_galley = crate::nameplates::layout_nameplate_troops_galley(
+                                                cache_entry.troops_galley = crate::nameplate::layout_nameplate_troops_galley(
                                                     &painter,
                                                     font_id,
                                                     &new_troops_str,
@@ -181,7 +181,7 @@ impl SowApp {
                                                 cache_entry.last_font_size = font_size;
                                             } else if new_troops_str != cache_entry.last_formatted_troops {
                                                 let font_id = egui::FontId::proportional(font_size);
-                                                cache_entry.troops_galley = crate::nameplates::layout_nameplate_troops_galley(
+                                                cache_entry.troops_galley = crate::nameplate::layout_nameplate_troops_galley(
                                                     &painter,
                                                     font_id,
                                                     &new_troops_str,
@@ -196,8 +196,8 @@ impl SowApp {
                                             
                                             let name_pos = egui::pos2(center.x - name_galley.rect.width() / 2.0, center.y - h / 2.0);
                                             let troops_pos = egui::pos2(center.x - troops_galley.rect.width() / 2.0, center.y - h / 2.0 + name_galley.rect.height() + 2.0);
-                                            crate::nameplates::paint_nameplate_galley(&painter, name_pos, name_galley.clone());
-                                            crate::nameplates::paint_nameplate_galley(&painter, troops_pos, troops_galley.clone());
+                                            crate::nameplate::paint_nameplate_galley(&painter, name_pos, name_galley.clone());
+                                            crate::nameplate::paint_nameplate_galley(&painter, troops_pos, troops_galley.clone());
                                         } else {
                                             // Dot only — zero text layout, bare metal fast
                                             painter.circle_filled(center, dot_r, pc);

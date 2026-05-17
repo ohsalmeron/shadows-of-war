@@ -226,7 +226,7 @@ pub mod wasm {
     }
 }
 
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 use web_time::Instant;
 
 impl SowApp {

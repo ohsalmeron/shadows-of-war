@@ -1,5 +1,5 @@
 use crate::sim::SimBridge;
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 use crate::EngineInitEvent;
 use sow_ui::app::ClientPhase;
 use sow_core::game_config::GameConfig;

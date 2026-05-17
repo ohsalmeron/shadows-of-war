@@ -1,5 +1,5 @@
 use egui::{Align2, Color32, RichText, Vec2, Window};
-use crate::app_state::SowApp;
+use crate::app::SowApp;
 
 impl SowApp {
     pub fn render_leaderboard(&mut self, ctx: &egui::Context) {
