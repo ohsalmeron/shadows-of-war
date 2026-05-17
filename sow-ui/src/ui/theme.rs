@@ -84,10 +84,28 @@ pub fn apply_theme(ctx: &Context) {
         "Default".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_TTF)),
     );
+    fonts.font_data.insert(
+        "Bold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_BOLD_TTF)),
+    );
+    fonts.font_data.insert(
+        "Thin".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_THIN_TTF)),
+    );
+
     fonts.families
         .get_mut(&egui::FontFamily::Proportional)
         .unwrap()
         .insert(0, "Default".to_owned());
+        
+    fonts.families.insert(
+        egui::FontFamily::Name("Bold".into()),
+        vec!["Bold".to_owned(), "Default".to_owned()],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("Thin".into()),
+        vec!["Thin".to_owned(), "Default".to_owned()],
+    );
     ctx.set_fonts(fonts);
 
     let mut style = Style {

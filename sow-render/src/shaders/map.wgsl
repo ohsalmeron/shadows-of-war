@@ -32,45 +32,6 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     return out;
 }
 
-fn star_hash(p: vec2<f32>) -> f32 {
-    // Wrap to prevent float precision loss and striping over large distances
-    let q = p - floor(p / 4096.0) * 4096.0;
-    var p3 = fract(vec3<f32>(q.x, q.y, q.x) * 0.1031);
-    let d = dot(p3, p3.yzx + vec3<f32>(33.33, 33.33, 33.33));
-    p3 = p3 + vec3<f32>(d, d, d);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-fn star_layer(screen_pos: vec2<f32>, cam: vec2<f32>, cell_size: f32, speed: f32, density: f32, offset: vec2<f32>) -> f32 {
-    let grid_pos = (screen_pos - cam * speed) / cell_size + offset;
-    let cell_id = floor(grid_pos);
-    let cell_uv = fract(grid_pos);
-    
-    let h = star_hash(cell_id);
-    if h > density {
-        return 0.0; // No star in this cell
-    }
-    
-    // Random position within cell (keep slightly away from edges)
-    let h2 = star_hash(cell_id + vec2<f32>(1.0, 0.0));
-    let h3 = star_hash(cell_id + vec2<f32>(0.0, 1.0));
-    let center = vec2<f32>(0.2 + 0.6 * h2, 0.2 + 0.6 * h3);
-    
-    // Distance from current pixel (in cell uv space) to star center
-    let dist = distance(cell_uv, center);
-    
-    // Random star size and glow falloff
-    let max_radius = 0.05 + 0.15 * star_hash(cell_id + vec2<f32>(1.0, 1.0));
-    
-    // Smooth, dot-like falloff
-    let brightness = max(0.0, 1.0 - (dist / max_radius));
-    let final_brightness = brightness * brightness * brightness; // sharper core, softer edge
-    
-    let intensity = 0.4 + 0.6 * star_hash(cell_id + vec2<f32>(2.0, 2.0));
-    
-    return final_brightness * intensity;
-}
-
 fn owner_albedo(owner_id: u32) -> vec3<f32> {
     if owner_id <= 16u {
         let hue = f32(owner_id) * 0.618033988749895;
@@ -113,19 +74,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cell_y = i32(floor(world_y));
 
     if cell_x < 0 || cell_y < 0 || cell_x >= i32(globals.map_size.x) || cell_y >= i32(globals.map_size.y) {
-        let bg = vec3<f32>(0.015, 0.02, 0.04);
-        
-        // Layer 1: Distant, dense, moving slow
-        let l1 = star_layer(screen_pixel, globals.camera_pos, 20.0, 0.05, 0.35, vec2<f32>(0.0));
-        // Layer 2: Mid-distance, medium density
-        let l2 = star_layer(screen_pixel, globals.camera_pos, 35.0, 0.1, 0.20, vec2<f32>(12.34, 56.78));
-        // Layer 3: Close, sparse, moving fast
-        let l3 = star_layer(screen_pixel, globals.camera_pos, 60.0, 0.2, 0.10, vec2<f32>(89.12, 34.56));
-
-        let stars = vec3<f32>(0.6, 0.8, 1.0) * l1 + 
-                    vec3<f32>(0.9, 0.9, 1.0) * l2 + 
-                    vec3<f32>(1.0, 0.8, 0.6) * l3;
-        return vec4<f32>(bg + stars, 1.0);
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0); // Matte black background
     }
 
     let pixel_coords = vec2<i32>(cell_x, cell_y);

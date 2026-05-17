@@ -5,10 +5,10 @@ use crate::UiAction;
 use crate::ui::theme::{
     self, accent_danger, accent_danger_border, accent_ranked_gold, accent_ranked_gold_hover,
     accent_solo_cyan, accent_solo_cyan_hover, menu_backdrop, menu_panel_border_glow,
-    menu_secondary_button, nickname_field_bg, nickname_field_border, panel_bg, text_secondary,
+    menu_secondary_button, nickname_field_border, panel_bg, text_secondary,
 };
 use egui::{
-    Align, CentralPanel, Color32, CornerRadius, Frame, Id, Layout, Margin, RichText, ScrollArea,
+    Align, CentralPanel, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea,
     Stroke,
 };
 use sow_core::protocol::LobbyInfo;
@@ -39,7 +39,10 @@ impl Default for MainMenuState {
             server_address: std::env::var("SOW_WS_URL")
                 .unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string()),
             lobbies: Vec::new(),
-            player_name: "Commander".to_string(),
+            player_name: {
+                let ms = web_time::SystemTime::now().duration_since(web_time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
+                format!("ANON{:03}", ms % 1000)
+            },
             pending_join_lobby_id: None,
             joined_lobby_id: None,
             downloading_map_name: None,
@@ -76,7 +79,6 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
     let outer_pad = if compact { 16.0 } else { 24.0 };
     let section_gap = if compact { 12.0 } else { 16.0 };
     let title_fs = if compact { 40.0 } else { 56.0 };
-    let subtitle_fs = if compact { 15.0 } else { 17.0 };
     let status_large = if compact { 28.0 } else { 40.0 };
     let action_min_h = if compact { 64.0 } else { 72.0 };
 
@@ -111,14 +113,8 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
                         ui.vertical(|ui| {
                             ui.label(
                                 RichText::new("SHADOWS OF WAR")
-                                    .size(title_fs)
-                                    .strong()
+                                    .font(egui::FontId::new(title_fs, egui::FontFamily::Name("Bold".into())))
                                     .color(Color32::WHITE),
-                            );
-                            ui.label(
-                                RichText::new("Browse lobbies or jump into a solo match.")
-                                    .size(subtitle_fs)
-                                    .color(text_secondary()),
                             );
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -228,13 +224,6 @@ fn draw_queue_overlay(
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
                 ui.label(
-                    RichText::new("QUEUE")
-                        .size(16.0)
-                        .strong()
-                        .color(text_secondary()),
-                );
-                ui.add_space(section_gap * 0.5);
-                ui.label(
                     RichText::new("WAITING FOR PLAYERS…")
                         .size(status_large)
                         .strong()
@@ -305,38 +294,12 @@ fn outer_pad_for_overlay(ctx: &egui::Context) -> f32 {
 fn draw_left_column(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
-    section_gap: f32,
+    _section_gap: f32,
     action_min_h: f32,
     compact: bool,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
-    ui.label(
-        RichText::new("Nickname")
-            .size(if compact { 14.0 } else { 16.0 })
-            .color(text_secondary()),
-    );
-    ui.add_space(6.0);
-
-    Frame::new()
-        .fill(nickname_field_bg())
-        .stroke(Stroke::new(1.0_f32, nickname_field_border()))
-        .corner_radius(CornerRadius::same(14))
-        .inner_margin(Margin::symmetric(16, 12))
-        .show(ui, |ui| {
-            ui.set_min_height((action_min_h - 16.0).max(52.0));
-            ui.add(
-                egui::TextEdit::singleline(&mut state.player_name)
-                    .id(Id::new("main_menu_nickname"))
-                    .hint_text("Your name")
-                    .char_limit(48)
-                    .desired_width(f32::INFINITY)
-                    .margin(egui::vec2(4.0, 6.0)),
-            );
-        });
-
-    ui.add_space(section_gap);
-
     ui.label(
         RichText::new("Open lobbies")
             .size(if compact { 14.0 } else { 16.0 })
@@ -388,7 +351,7 @@ fn lobby_card(
                     ui.add_space(8.0);
                 }
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(&lobby.map_name).strong().size(18.0));
+                    ui.label(RichText::new(&lobby.map_name).font(egui::FontId::new(18.0, egui::FontFamily::Name("Bold".into()))));
                     ui.label(
                         RichText::new(format!(
                             "Players: {}/{}",
