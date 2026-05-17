@@ -5,13 +5,13 @@ use sow_ui::app::ClientPhase;
 impl SowApp {
     #[allow(deprecated)]
     pub(crate) fn render_endgame_ui(&mut self, ctx: &egui::Context) {
-        let winner_id = match &self.current_snapshot {
+        let winner_id = match &self.sim.current_snapshot {
             Some(snap) => snap.winner,
             None => None,
         };
 
         if let Some(winner) = winner_id {
-            let my_id = self.my_player_id.unwrap_or(0);
+            let my_id = self.sim.my_player_id.unwrap_or(0);
             let is_victory = winner == my_id;
             
             // Dim background
@@ -38,7 +38,7 @@ impl SowApp {
                         } else {
                             ui.label(RichText::new("DEFEAT").color(Color32::RED).font(FontId::proportional(64.0)).strong());
                             ui.add_space(10.0);
-                            let winner_name = self.current_snapshot.as_ref().unwrap().players.iter().find(|p| p.id == winner).map(|p| p.name.clone()).unwrap_or_else(|| "Unknown".to_string());
+                            let winner_name = self.sim.current_snapshot.as_ref().unwrap().players.iter().find(|p| p.id == winner).map(|p| p.name.clone()).unwrap_or_else(|| "Unknown".to_string());
                             ui.label(RichText::new(format!("{} emerged victorious.", winner_name)).color(Color32::LIGHT_GRAY).font(FontId::proportional(24.0)));
                         }
                         
@@ -47,9 +47,9 @@ impl SowApp {
                         let btn_color = if is_victory { Color32::from_rgb(40, 140, 40) } else { Color32::from_rgb(140, 40, 40) };
                         if ui.add_sized([200.0, 50.0], egui::Button::new(RichText::new("Return to Lobby").color(Color32::WHITE).font(FontId::proportional(20.0))).fill(btn_color)).clicked() {
                             // Disconnect and return to main menu
-                            self.net_client = None;
-                            self.current_snapshot = None;
-                            self.my_lobby_id = None;
+                            self.net.client = None;
+                            self.sim.current_snapshot = None;
+                            self.sim.my_lobby_id = None;
                             self.app.phase = ClientPhase::MainMenu;
                             self.app.main_menu_state.is_waiting = false;
                         }

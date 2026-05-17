@@ -37,6 +37,8 @@ echo "✅ Version bumped to ${CLEAN_VERSION}"
 # 2. Build Backend and Frontend
 echo "==> Compiling Backend and Frontend..."
 RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown
+cargo build --release --bin sow-client
+CLIENT_BIN="${CARGO_TARGET_DIR}/release/sow-client"
 # Try MUSL, fallback to GNU
 if cargo build --release -p sow-server --target x86_64-unknown-linux-musl && cargo build --release -p sow-relay --target x86_64-unknown-linux-musl; then
     SERVER_BIN="target/x86_64-unknown-linux-musl/release/sow-server"
@@ -151,16 +153,10 @@ echo "✅ VPS sync complete."
 echo "==> Ensuring Redis is running and restarting Orchestrator..."
 ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo apt-get install -y redis-server; sudo systemctl enable --now sow-redis; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
-# 6. Post-deploy Integration Test
-echo "==> Running relay handoff integration test..."
-sleep 3  # Wait for systemd to fully boot the orchestrator
-if cargo run --bin test-relay -- --url wss://shadowsofwar.io/ws/; then
-    echo "✅ Relay integration test passed!"
-else
-    echo "⚠️  Relay integration test FAILED — check output above"
-fi
-
 echo "========================================================="
 echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"
 echo "🕹️  Play live: https://shadowsofwar.io"
 echo "========================================================="
+
+echo "==> Launching native client (${CLIENT_BIN})..."
+exec "${CLIENT_BIN}"

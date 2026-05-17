@@ -24,7 +24,7 @@ impl SowApp {
                                         lod_presence: f32,
                                     }
                                     let mut visible_players = Vec::new();
-                                    if let Some(snap) = &self.current_snapshot {
+                                    if let Some(snap) = &self.sim.current_snapshot {
                                         for player in &snap.players {
                                             if player.tile_count == 0 || !player.alive { continue; }
                                             
@@ -50,11 +50,11 @@ impl SowApp {
                                                 pos.1 = target_cy;
                                             }
                                             
-                                            let screen_x = (pos.0 * self.camera_zoom + self.camera_x) / sf;
-                                            let screen_y = (pos.1 * self.camera_zoom + self.camera_y) / sf;
+                                            let screen_x = (pos.0 * self.input.camera_zoom + self.input.camera_x) / sf;
+                                            let screen_y = (pos.1 * self.input.camera_zoom + self.input.camera_y) / sf;
                                             
                                             // Frustum cull
-                                            if screen_x < -100.0 || screen_x > self.screen_w + 100.0 || screen_y < -100.0 || screen_y > self.screen_h + 100.0 { continue; }
+                                            if screen_x < -100.0 || screen_x > self.input.screen_w + 100.0 || screen_y < -100.0 || screen_y > self.input.screen_h + 100.0 { continue; }
                                             
                                             let center = egui::pos2(screen_x, screen_y);
                                             // Map shader derives human tint from id, not `player.color`; match that for dots + ★.
@@ -70,7 +70,7 @@ impl SowApp {
                                             // invalidated every scroll step (fixes garbled glyphs). Font size is rounded
                                             // to whole points for fewer distinct `FontId`s.
                                             let importance = (player.tile_count as f32).sqrt().max(1.0);
-                                            let lod_presence = importance * (self.camera_zoom / sf);
+                                            let lod_presence = importance * (self.input.camera_zoom / sf);
                                             let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
 
                                             visible_players.push(VisPlayer {
@@ -205,7 +205,7 @@ impl SowApp {
                                         }
                                     }
                                     // --- Render Fleets ---
-                                    if let Some(snap) = &self.current_snapshot {
+                                    if let Some(snap) = &self.sim.current_snapshot {
                                         for fleet in &snap.fleets {
                                             let mut r = 0.5; let mut g = 0.5; let mut b = 0.5;
                                             if let Some(owner) = snap.players.iter().find(|p| p.id == fleet.owner_id) {
@@ -217,27 +217,27 @@ impl SowApp {
                                             // Render trail
                                             let trail_len = fleet.path_cursor.min(fleet.path.len());
                                             for &tile in &fleet.path[..trail_len] {
-                                                let wx = (tile % self.map_w) as f32;
-                                                let wy = (tile / self.map_w) as f32;
-                                                let screen_x = self.camera_x + wx * self.camera_zoom;
-                                                let screen_y = self.camera_y + wy * self.camera_zoom;
+                                                let wx = (tile % self.sim.map_w) as f32;
+                                                let wy = (tile / self.sim.map_w) as f32;
+                                                let screen_x = self.input.camera_x + wx * self.input.camera_zoom;
+                                                let screen_y = self.input.camera_y + wy * self.input.camera_zoom;
                                                 let rect = egui::Rect::from_min_size(
                                                     egui::pos2(screen_x, screen_y),
-                                                    egui::vec2(self.camera_zoom, self.camera_zoom)
+                                                    egui::vec2(self.input.camera_zoom, self.input.camera_zoom)
                                                 );
                                                 painter.rect_filled(rect, 0.0, trail_color);
                                             }
 
                                             // Render boat
-                                            let wx = (fleet.current_tile % self.map_w) as f32;
-                                            let wy = (fleet.current_tile / self.map_w) as f32;
-                                            let screen_x = self.camera_x + wx * self.camera_zoom;
-                                            let screen_y = self.camera_y + wy * self.camera_zoom;
+                                            let wx = (fleet.current_tile % self.sim.map_w) as f32;
+                                            let wy = (fleet.current_tile / self.sim.map_w) as f32;
+                                            let screen_x = self.input.camera_x + wx * self.input.camera_zoom;
+                                            let screen_y = self.input.camera_y + wy * self.input.camera_zoom;
                                             
-                                            let margin = self.camera_zoom * 0.15;
+                                            let margin = self.input.camera_zoom * 0.15;
                                             let rect = egui::Rect::from_min_max(
                                                 egui::pos2(screen_x + margin, screen_y + margin),
-                                                egui::pos2(screen_x + self.camera_zoom - margin, screen_y + self.camera_zoom - margin)
+                                                egui::pos2(screen_x + self.input.camera_zoom - margin, screen_y + self.input.camera_zoom - margin)
                                             );
                                             
                                             painter.rect(rect, 2.0, color, egui::Stroke::new(1.5_f32, egui::Color32::from_black_alpha(200)), egui::StrokeKind::Middle);
@@ -251,7 +251,7 @@ impl SowApp {
                                         
                                         for attack in &snap.attacks {
                                             if attack.target_owner == 0 { continue; }
-                                            if attack.owner_id != self.my_player_id.unwrap_or(0) { continue; }
+                                            if attack.owner_id != self.sim.my_player_id.unwrap_or(0) { continue; }
                                             
                                             let mut rx = 0.5; let mut ry = 0.5;
                                             let mut tx = 0.5; let mut ty = 0.5;
@@ -267,10 +267,10 @@ impl SowApp {
                                                 ty = target.centroid_y + 0.5;
                                             }
                                             
-                                            let start_x = self.camera_x + rx * self.camera_zoom;
-                                            let start_y = self.camera_y + ry * self.camera_zoom;
-                                            let end_x = self.camera_x + tx * self.camera_zoom;
-                                            let end_y = self.camera_y + ty * self.camera_zoom;
+                                            let start_x = self.input.camera_x + rx * self.input.camera_zoom;
+                                            let start_y = self.input.camera_y + ry * self.input.camera_zoom;
+                                            let end_x = self.input.camera_x + tx * self.input.camera_zoom;
+                                            let end_y = self.input.camera_y + ty * self.input.camera_zoom;
                                             
                                             let color = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
                                             let start_pos = egui::pos2(start_x, start_y);

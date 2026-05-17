@@ -10,7 +10,7 @@ use crate::app::SowApp;
 
 impl SowApp {
     pub(crate) fn handle_map_interactions(&mut self, ctx: &egui::Context) {
-        if self.current_snapshot.as_ref().is_some_and(|s| s.winner.is_some()) {
+        if self.sim.current_snapshot.as_ref().is_some_and(|s| s.winner.is_some()) {
             return;
         }
 
@@ -19,22 +19,22 @@ impl SowApp {
             return;
         }
 
-        if let Some((start, mx, my)) = self.map_touch_start {
+        if let Some((start, mx, my)) = self.input.map_touch_start {
             if start.elapsed().as_millis() > 500 {
-                                            let world_x = (mx as f32 - self.camera_x) / self.camera_zoom;
-                                            let world_y = (my as f32 - self.camera_y) / self.camera_zoom;
+                                            let world_x = (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
+                                            let world_y = (my as f32 - self.input.camera_y) / self.input.camera_zoom;
                                             let col = world_x.floor() as i32;
                                             let row = world_y.floor() as i32;
-                                            if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
-                                                let idx = (row * self.map_w as i32 + col) as u32;
-                                                self.map_context_menu = Some((mx as f32, my as f32, idx));
+                                            if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                                                let idx = (row * self.sim.map_w as i32 + col) as u32;
+                                                self.input.map_context_menu = Some((mx as f32, my as f32, idx));
                                             }
-                                            self.map_touch_start = None; // clear it so it doesn't re-trigger
+                                            self.input.map_touch_start = None; // clear it so it doesn't re-trigger
                                         }
                                     }
 
-                                    if let Some((mx, my, tile_idx)) = self.map_context_menu {
-                                        let terrain_byte = self.map_renderer.as_ref().map(|mr| mr.terrain[tile_idx as usize]).unwrap_or(0);
+                                    if let Some((mx, my, tile_idx)) = self.input.map_context_menu {
+                                        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[tile_idx as usize]).unwrap_or(0);
                                         let is_land = (terrain_byte & 0x80) != 0;
                                         
                                         egui::Area::new(egui::Id::new("map_context_menu"))
@@ -51,26 +51,26 @@ impl SowApp {
                                                                 target_tile: tile_idx,
                                                                 troops,
                                                             };
-                                                            if let Some(c) = self.net_client.as_ref() {
+                                                            if let Some(c) = self.net.client.as_ref() {
                                                                 if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
                                                                     c.send(json);
                                                                 }
                                                             } else {
-                                                                let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
-                                                                self.bridge.send_command(sow_core::protocol::SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                                                let stamped = sow_core::protocol::StampedIntent { player_id: self.sim.my_player_id.unwrap_or(1), intent };
+                                                                self.sim.bridge.send_command(sow_core::protocol::SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                                             }
-                                                            self.map_context_menu = None;
+                                                            self.input.map_context_menu = None;
                                                         }
                                                     }
                                                     if ui.button("[X] Cancel").clicked() {
-                                                        self.map_context_menu = None;
+                                                        self.input.map_context_menu = None;
                                                     }
                                                 });
                                             });
                                             
                                         // Auto-close if clicked elsewhere
                                         if ctx.input(|i| i.pointer.any_pressed()) && !ctx.egui_wants_pointer_input() {
-                                            self.map_context_menu = None;
+                                            self.input.map_context_menu = None;
                                         }
                                     }
 
@@ -80,15 +80,15 @@ impl SowApp {
                                 if let Some(action) = self.app.draw(ctx) {
                                     match action {
                                         UiAction::StartSinglePlayer => {
-                                            self.is_offline = true;
+                                            self.net.is_offline = true;
                                             self.offline_tick_timer = 0.0;
-                                            self.net_client = None;
+                                            self.net.client = None;
                                             self.app.phase = ClientPhase::Splash;
                                             self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
                                             self.app.splash_state.frames_drawn = 0;
                                             self.app.splash_state.gpu_load_step = 0;
-                                            self.my_player_id = Some(1);
-                                            self.my_lobby_id = Some(0);
+                                            self.sim.my_player_id = Some(1);
+                                            self.sim.my_lobby_id = Some(0);
 
                                             let map_name = "world".to_string();
                                             self.app.main_menu_state.downloading_map_name = Some(map_name.clone());
@@ -184,9 +184,9 @@ impl SowApp {
                                             self.app.main_menu_state.is_connecting = true;
                                             let url = addr.clone();
                                             #[cfg(target_arch = "wasm32")]
-                                            spawn_sow_client_connect(url, &self.connect_tx);
+                                            spawn_sow_client_connect(url, &self.net.connect_tx);
                                             #[cfg(not(target_arch = "wasm32"))]
-                                            spawn_sow_client_connect(url, &self.connect_tx, &self.tokio_rt);
+                                            spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
                                         }
                                         UiAction::JoinLobby(id) => {
                                             let join_msg = sow_core::protocol::ClientMessage::Join {
@@ -197,32 +197,32 @@ impl SowApp {
                                             };
                                             self.app.main_menu_state.pending_join_lobby_id = Some(id);
                                             if let Ok(json) = bincode::serialize(&join_msg) {
-                                                if let Some(c) = self.net_client.as_ref() {
+                                                if let Some(c) = self.net.client.as_ref() {
                                                     c.send(json);
                                                 }
                                             }
                                             self.app.main_menu_state.is_waiting = true;
                                         }
                                         UiAction::LeaveLobby => {
-                                            if let Some(c) = self.net_client.as_ref() {
+                                            if let Some(c) = self.net.client.as_ref() {
                                                 let leave = sow_core::protocol::ClientMessage::Leave {};
                                                 if let Ok(json) = bincode::serialize(&leave) {
                                                     c.send(json);
                                                 }
                                             }
-                                            self.camera_x = 0.0;
-                                            self.camera_y = 0.0;
-                                            self.camera_zoom = 2.0;
-                                            self.net_client = None;
+                                            self.input.camera_x = 0.0;
+                                            self.input.camera_y = 0.0;
+                                            self.input.camera_zoom = 2.0;
+                                            self.net.client = None;
                                             self.begin_exit_to_main_menu();
                                         }
                                         UiAction::SetAttackRatio(r) => {
                                             self.app.hud_state.attack_ratio = r;
                                         }
                                         UiAction::CenterCamera => {
-                                            let pid = self.my_player_id.unwrap_or(1);
+                                            let pid = self.sim.my_player_id.unwrap_or(1);
                                             if let Some(player) =
-                                                self.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == pid))
+                                                self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == pid))
                                             {
                                                 if player.tile_count > 0 && player.alive {
                                                     let cx = player.centroid_x;
@@ -231,8 +231,8 @@ impl SowApp {
                                                     let world_cx = cx + 0.5;
                                                     let world_cy = cy + 0.5;
 
-                                                    self.camera_x = self.screen_w * 0.5 - world_cx * self.camera_zoom;
-                                                    self.camera_y = self.screen_h * 0.5 - world_cy * self.camera_zoom;
+                                                    self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
+                                                    self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
                                                 }
                                             }
                                         }

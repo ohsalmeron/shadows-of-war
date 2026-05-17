@@ -25,7 +25,7 @@ pub mod leaderboard_ui;
 impl SowApp {
     pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
                         #[cfg(target_arch = "wasm32")]
-                        if let Some(win) = self.window.as_ref() {
+                        if let Some(win) = self.gfx.window.as_ref() {
                             let web_win = web_sys::window().unwrap();
                             let w = web_win.inner_width().unwrap().as_f64().unwrap();
                             let h = web_win.inner_height().unwrap().as_f64().unwrap();
@@ -35,34 +35,34 @@ impl SowApp {
                             let expected_w = (w * sf) as u32;
                             let expected_h = (h * sf) as u32;
                             
-                            if expected_w.abs_diff(self.screen_w as u32) > 1 || expected_h.abs_diff(self.screen_h as u32) > 1 {
+                            if expected_w.abs_diff(self.input.screen_w as u32) > 1 || expected_h.abs_diff(self.input.screen_h as u32) > 1 {
                                 let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
                             }
                         }
 
-                        if let Some(ref mut s) = self.surface {
-                            if let Some(win) = self.window.as_ref() {
+                        if let Some(ref mut s) = self.gfx.surface {
+                            if let Some(win) = self.gfx.window.as_ref() {
                                 win.pre_present_notify();
                             }
                             let frame = s.acquire_frame();
 
-                            if let Some(sp) = self.prev_sync_point.take() {
-                                let _ = self.render_ctx.context.wait_for(&sp, !0);
+                            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                             }
 
-                            self.render_ctx.command_encoder.start();
-                            self.render_ctx.command_encoder.init_texture(frame.texture());
+                            self.gfx.render_ctx.command_encoder.start();
+                            self.gfx.render_ctx.command_encoder.init_texture(frame.texture());
 
-                            if let Some(ref mut mr) = self.map_renderer {
+                            if let Some(ref mut mr) = self.gfx.map_renderer {
                                 // Upload map state on first frame or after each tick
-                                if self.needs_first_upload {
-                                    self.render_ctx.command_encoder.init_texture(mr.texture);
-                                    self.needs_first_upload = false;
+                                if self.gfx.needs_first_upload {
+                                    self.gfx.render_ctx.command_encoder.init_texture(mr.texture);
+                                    self.gfx.needs_first_upload = false;
                                     // Full buffer→texture copy so terrain is visible before any dirty tiles arrive
-                                    self.render_ctx.context.sync_buffer(mr.raw_buffer);
+                                    self.gfx.render_ctx.context.sync_buffer(mr.raw_buffer);
                                     let src_piece: blade_graphics::BufferPiece = mr.raw_buffer.into();
                                     let dst_piece: blade_graphics::TexturePiece = mr.texture.into();
-                                    let mut transfer = self.render_ctx.command_encoder.transfer("map_init_upload");
+                                    let mut transfer = self.gfx.render_ctx.command_encoder.transfer("map_init_upload");
                                     transfer.copy_buffer_to_texture(
                                         src_piece,
                                         mr.bytes_per_row,
@@ -72,9 +72,9 @@ impl SowApp {
                                 }
 
                                 // Perform CPU-side update of the map
-                                let dirty = self.current_snapshot.as_ref().map(|s| s.dirty_tiles.as_slice()).unwrap_or(&[]);
-                                mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, dirty);
-                                if let Some(snap) = &mut self.current_snapshot {
+                                let dirty = self.sim.current_snapshot.as_ref().map(|s| s.dirty_tiles.as_slice()).unwrap_or(&[]);
+                                mr.update(&mut self.gfx.render_ctx.command_encoder, &self.gfx.render_ctx.context, dirty);
+                                if let Some(snap) = &mut self.sim.current_snapshot {
                                     snap.dirty_tiles.clear();
                                 }
                                 let mut border_thickness = 0.4f32;
@@ -92,11 +92,11 @@ impl SowApp {
                                 });
 
                                 let globals = MapGlobals {
-                                    camera_pos: [self.camera_x, self.camera_y],
-                                    zoom: self.camera_zoom,
+                                    camera_pos: [self.input.camera_x, self.input.camera_y],
+                                    zoom: self.input.camera_zoom,
                                     time: self.start_time.elapsed().as_secs_f32(),
-                                    screen_size: [self.screen_w, self.screen_h],
-                                    map_size: [self.map_w as f32, self.map_h as f32],
+                                    screen_size: [self.input.screen_w, self.input.screen_h],
+                                    map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
                                     border_thickness,
                                     border_darkness,
                                     shore_thickness,
@@ -106,13 +106,13 @@ impl SowApp {
                                     _pad2: 0.0,
                                     _pad3: 0.0,
                                 };
-                                mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
+                                mr.draw(&mut self.gfx.render_ctx.command_encoder, frame.texture_view(), globals);
                             }
 
                             // ── UI UPDATE ───────────────────────────────────────
-                            let mut sf = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+                            let mut sf = self.gfx.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
                             if cfg!(any(target_os = "android", target_os = "ios")) {
-                                if sf < 1.5 && self.screen_h > 800.0 {
+                                if sf < 1.5 && self.input.screen_h > 800.0 {
                                     sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
                                 } else if sf > 2.0 {
                                     sf = 2.0; // Don't let the GUI get too huge on iOS devices that report 3.0
@@ -122,7 +122,7 @@ impl SowApp {
                             self.egui_ctx.set_pixels_per_point(sf);
                             self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
                                 egui::Pos2::ZERO,
-                                egui::Vec2::new(self.screen_w / sf, self.screen_h / sf)
+                                egui::Vec2::new(self.input.screen_w / sf, self.input.screen_h / sf)
                             ));
 
                             if cfg!(target_os = "android") {
@@ -242,9 +242,9 @@ impl SowApp {
                             });
 
                             for intent in local_cancel_intents {
-                                if self.is_offline {
+                                if self.net.is_offline {
                                     self.offline_intents.push(intent);
-                                } else if let Some(c) = self.net_client.as_ref() {
+                                } else if let Some(c) = self.net.client.as_ref() {
                                     let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
                                     if let Ok(json) = bincode::serialize(&msg) {
                                         c.send(json);
@@ -253,7 +253,7 @@ impl SowApp {
                             }
 
                             // ── OFFLINE TICK GENERATOR ────────────────────────
-                            if self.is_offline && self.app.phase == ClientPhase::Playing {
+                            if self.net.is_offline && self.app.phase == ClientPhase::Playing {
                                 let mut dt = self.raw_input.predicted_dt;
                                 if dt > 0.1 { dt = 0.05; } // Clamp to prevent tick burst
                                 self.offline_tick_timer += dt;
@@ -265,7 +265,7 @@ impl SowApp {
                                     let mut stamped_intents = Vec::with_capacity(raw_intents.len());
                                     for intent in raw_intents {
                                         stamped_intents.push(sow_core::protocol::StampedIntent {
-                                            player_id: self.my_player_id.unwrap_or(1),
+                                            player_id: self.sim.my_player_id.unwrap_or(1),
                                             intent,
                                         });
                                     }
@@ -274,12 +274,12 @@ impl SowApp {
                                         turn_number: 0, // Ignored by client simulation
                                         intents: stamped_intents,
                                     };
-                                    self.bridge.send_command(sow_core::protocol::SimCommand::Turn(turn));
+                                    self.sim.bridge.send_command(sow_core::protocol::SimCommand::Turn(turn));
                                 }
                             }
 
                             #[cfg(not(target_arch = "wasm32"))]
-                            if let Some(win) = self.window.as_ref() {
+                            if let Some(win) = self.gfx.window.as_ref() {
                                 let ime_opt = egui_output.platform_output.ime;
                                 let allow_ime = ime_opt.is_some();
                                 
@@ -328,19 +328,19 @@ impl SowApp {
                             self.raw_input.events.clear();
 
                             // ── DRAWING UI ──────────────────────────────────────────
-                            if let Some(ref mut gp) = self.gui_painter {
+                            if let Some(ref mut gp) = self.gfx.gui_painter {
                                 let screen_desc = blade_egui::ScreenDescriptor {
-                                    physical_size: (self.screen_w as u32, self.screen_h as u32),
+                                    physical_size: (self.input.screen_w as u32, self.input.screen_h as u32),
                                     scale_factor: sf,
                                 };
                                 let paint_jobs = self.egui_ctx.tessellate(egui_output.shapes, sf);
                                 gp.update_textures(
-                                    &mut self.render_ctx.command_encoder,
+                                    &mut self.gfx.render_ctx.command_encoder,
                                     &egui_output.textures_delta,
-                                    &self.render_ctx.context,
+                                    &self.gfx.render_ctx.context,
                                 );
 
-                                let mut pass = self.render_ctx.command_encoder.render("ui_pass", gpu::RenderTargetSet {
+                                let mut pass = self.gfx.render_ctx.command_encoder.render("ui_pass", gpu::RenderTargetSet {
                                     colors: &[gpu::RenderTarget {
                                         view: frame.texture_view(),
                                         init_op: gpu::InitOp::Load,
@@ -349,20 +349,20 @@ impl SowApp {
                                     depth_stencil: None,
                                 });
 
-                                gp.paint(&mut pass, &paint_jobs, &screen_desc, &self.render_ctx.context);
+                                gp.paint(&mut pass, &paint_jobs, &screen_desc, &self.gfx.render_ctx.context);
                                 drop(pass);
                             }
-                            if let Some(ref mut gp) = self.gui_painter {
-                                gp.sync(&self.render_ctx.context);
+                            if let Some(ref mut gp) = self.gfx.gui_painter {
+                                gp.sync(&self.gfx.render_ctx.context);
                             }
-                            self.render_ctx.command_encoder.present(frame);
-                            let sync_point = self.render_ctx.context.submit(&mut self.render_ctx.command_encoder);
+                            self.gfx.render_ctx.command_encoder.present(frame);
+                            let sync_point = self.gfx.render_ctx.context.submit(&mut self.gfx.render_ctx.command_encoder);
                             
-                            if let Some(ref mut gp) = self.gui_painter {
+                            if let Some(ref mut gp) = self.gfx.gui_painter {
                                 gp.after_submit(&sync_point);
                             }
                             
-                            self.prev_sync_point = Some(sync_point);
+                            self.gfx.prev_sync_point = Some(sync_point);
                         }
 
     }

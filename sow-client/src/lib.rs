@@ -131,7 +131,7 @@ impl ApplicationHandler for SowApp {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        if self.window.is_none() || self.window.as_ref().unwrap().id() != window_id {
+        if self.gfx.window.is_none() || self.gfx.window.as_ref().unwrap().id() != window_id {
             return;
         }
         if let winit::event::WindowEvent::RedrawRequested = event {
@@ -143,7 +143,7 @@ impl ApplicationHandler for SowApp {
 
     fn about_to_wait(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         self.update();
-        if let Some(win) = self.window.as_ref() {
+        if let Some(win) = self.gfx.window.as_ref() {
             win.request_redraw();
         }
     }

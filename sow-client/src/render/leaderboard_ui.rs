@@ -8,7 +8,7 @@ impl SowApp {
         if self.leaderboard_timer <= 0.0 {
             self.leaderboard_timer = 1.0; // Reset timer
             
-            if let Some(snap) = &self.current_snapshot {
+            if let Some(snap) = &self.sim.current_snapshot {
                 let mut new_board = Vec::new();
                 for p in &snap.players {
                     if p.alive {
@@ -54,7 +54,7 @@ impl SowApp {
                             ui.end_row();
 
                             // Get total land tiles from snapshot
-                            let total_land_tiles = self.current_snapshot
+                            let total_land_tiles = self.sim.current_snapshot
                                 .as_ref()
                                 .map(|s| s.total_land_tiles)
                                 .unwrap_or(1)
@@ -63,7 +63,7 @@ impl SowApp {
                             // Data rows
                             for (i, (id, name, tiles, troops)) in self.cached_leaderboard.iter().enumerate() {
                                 // Highlight the player's own row
-                                let is_me = Some(*id) == self.my_player_id;
+                                let is_me = Some(*id) == self.sim.my_player_id;
                                 let color = if is_me { Color32::YELLOW } else { Color32::WHITE };
                                 
                                 let control_pct = (*tiles as f32 / total_land_tiles as f32) * 100.0;

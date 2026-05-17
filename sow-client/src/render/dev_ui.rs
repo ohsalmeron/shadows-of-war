@@ -16,8 +16,8 @@ impl SowApp {
                                     self.last_fps_time = Instant::now();
                                 }
 
-                                if self.last_ping_time.elapsed().as_secs_f64() >= 1.0 {
-                                    if let Some(c) = self.net_client.as_ref() {
+                                if self.net.last_ping_time.elapsed().as_secs_f64() >= 1.0 {
+                                    if let Some(c) = self.net.client.as_ref() {
                                         let ping_msg = sow_core::protocol::ClientMessage::Ping {
                                             client_time: self.start_time.elapsed().as_secs_f64(),
                                         };
@@ -25,7 +25,7 @@ impl SowApp {
                                             c.send(json);
                                         }
                                     }
-                                    self.last_ping_time = Instant::now();
+                                    self.net.last_ping_time = Instant::now();
                                 }
 
     }
@@ -41,7 +41,7 @@ impl SowApp {
                                             ui.vertical(|ui| {
                                                 // 1. Stats Row
                                                 ui.horizontal(|ui| {
-                                                    if let Some(ping) = self.current_ping_ms {
+                                                    if let Some(ping) = self.net.current_ping_ms {
                                                         ui.label(
                                                             egui::RichText::new(format!("Ping: {}ms", ping))
                                                                 .color(egui::Color32::WHITE)
@@ -54,7 +54,7 @@ impl SowApp {
                                                             .strong()
                                                     );
                                                     ui.label(
-                                                        egui::RichText::new(format!("Zoom: {:.2}", self.camera_zoom))
+                                                        egui::RichText::new(format!("Zoom: {:.2}", self.input.camera_zoom))
                                                             .color(egui::Color32::LIGHT_BLUE)
                                                             .strong()
                                                     );
@@ -106,8 +106,8 @@ impl SowApp {
                                         });
 
                                 if self.app.phase == ClientPhase::Playing {
-                                    if let Some(snap) = &self.current_snapshot {
-                                        let my_pid = self.my_player_id.unwrap_or(0);
+                                    if let Some(snap) = &self.sim.current_snapshot {
+                                        let my_pid = self.sim.my_player_id.unwrap_or(0);
                                         if my_pid > 0 && (!snap.attacks.is_empty() || !snap.fleets.is_empty()) {
                                             egui::Window::new("Attacks")
                                                 .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -140.0))

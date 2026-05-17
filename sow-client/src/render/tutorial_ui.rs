@@ -16,8 +16,8 @@ impl SowApp {
         }
 
         // Auto-advance tutorial logic based on snapshot
-        if let Some(snap) = &self.current_snapshot {
-            let my_id = self.my_player_id.unwrap_or(0);
+        if let Some(snap) = &self.sim.current_snapshot {
+            let my_id = self.sim.my_player_id.unwrap_or(0);
             if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
                 if self.tutorial_step == TutorialStep::Expansion && me.tile_count > 1 {
                     self.tutorial_step = TutorialStep::Combat;

@@ -18,47 +18,42 @@ use crate::{MapDownloadEvent, EngineInitEvent};
 
 
 
-pub struct SowApp {
-
-    pub map_w: u32,
-    pub map_h: u32,
-    pub bridge: crate::sim::PlatformSimBridge,
-    pub current_snapshot: Option<sow_core::protocol::SimSnapshot>,
-    pub render_ctx: sow_render::RenderContext,
+pub struct GraphicsState {
+    pub window: Option<Box<dyn winit::window::Window>>,
     pub surface: Option<blade_graphics::Surface>,
+    pub render_ctx: sow_render::RenderContext,
     pub map_renderer: Option<sow_render::MapRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
-    pub window: Option<Box<dyn winit::window::Window>>,
-    pub app: sow_ui::ClientApp,
-    pub egui_ctx: egui::Context,
-    pub raw_input: egui::RawInput,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub tokio_rt: tokio::runtime::Runtime,
-    pub net_client: Option<sow_net::client::SowClient>,
-    pub turn_queue: std::collections::VecDeque<sow_core::protocol::Turn>,
-    pub my_player_id: Option<u16>,
-    pub my_lobby_id: Option<u64>,
-    pub map_tx: crossbeam_channel::Sender<crate::MapDownloadEvent>,
-    pub map_rx: crossbeam_channel::Receiver<crate::MapDownloadEvent>,
-    pub engine_init_tx: crossbeam_channel::Sender<crate::EngineInitEvent>,
-    pub engine_init_rx: crossbeam_channel::Receiver<crate::EngineInitEvent>,
-    pub pending_engine_init_data: Option<(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage)>,
-    pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
-    pub nameplate_cache: std::collections::HashMap<u16, crate::nameplate::CachedNameplate>,
-    pub troop_label_throttle: crate::nameplate::TroopLabelThrottle,
+    pub prev_sync_point: Option<blade_graphics::SyncPoint>,
+    pub needs_first_upload: bool,
+}
 
+pub struct NetState {
+    pub client: Option<sow_net::client::SowClient>,
     pub connect_tx: crossbeam_channel::Sender<Result<sow_net::client::SowClient, String>>,
     pub connect_rx: crossbeam_channel::Receiver<Result<sow_net::client::SowClient, String>>,
-    pub last_debug_print: Option<web_time::Instant>,
+    pub ws_url: String,
+    pub orchestrator_url: String,
+    pub is_offline: bool,
     pub ws_connect_fail_backoff_ms: u64,
     pub ws_connect_not_before: web_time::Instant,
     pub ws_reconnect_after_resume: bool,
-    #[cfg(target_arch = "wasm32")]
-    pub wasm_doc_was_visible: bool,
-    #[cfg(target_arch = "wasm32")]
-    pub(crate) ime_bridge: crate::ime::WasmImeBridge,
-    pub orchestrator_url: String,
-    pub ws_url: String,
+    pub pending_lobby_rejoin: bool,
+    pub current_ping_ms: Option<u32>,
+    pub last_ping_time: web_time::Instant,
+}
+
+pub struct SimState {
+    pub bridge: crate::sim::PlatformSimBridge,
+    pub current_snapshot: Option<sow_core::protocol::SimSnapshot>,
+    pub turn_queue: std::collections::VecDeque<sow_core::protocol::Turn>,
+    pub my_player_id: Option<u16>,
+    pub my_lobby_id: Option<u64>,
+    pub map_w: u32,
+    pub map_h: u32,
+}
+
+pub struct InputState {
     pub camera_x: f32,
     pub camera_y: f32,
     pub camera_zoom: f32,
@@ -67,29 +62,49 @@ pub struct SowApp {
     pub dragging: bool,
     pub last_mouse_x: f64,
     pub last_mouse_y: f64,
-    pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub active_touches: std::collections::HashMap<u64, (f64, f64)>,
     pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
     pub map_context_menu: Option<(f32, f32, u32)>,
     pub last_pinch_distance: Option<f64>,
+}
+
+pub struct SowApp {
+    pub gfx: GraphicsState,
+    pub net: NetState,
+    pub sim: SimState,
+    pub input: InputState,
+
+    pub app: sow_ui::ClientApp,
+    pub egui_ctx: egui::Context,
+    pub raw_input: egui::RawInput,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub tokio_rt: tokio::runtime::Runtime,
+    pub map_tx: crossbeam_channel::Sender<crate::MapDownloadEvent>,
+    pub map_rx: crossbeam_channel::Receiver<crate::MapDownloadEvent>,
+    pub engine_init_tx: crossbeam_channel::Sender<crate::EngineInitEvent>,
+    pub engine_init_rx: crossbeam_channel::Receiver<crate::EngineInitEvent>,
+    pub pending_engine_init_data: Option<(sow_core::game::GameState, sow_core::water_components::WaterComponents, sow_core::protocol::ServerStartMessage)>,
+    pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
+    pub nameplate_cache: std::collections::HashMap<u16, crate::nameplate::CachedNameplate>,
+    pub troop_label_throttle: crate::nameplate::TroopLabelThrottle,
+    pub last_debug_print: Option<web_time::Instant>,
+    #[cfg(target_arch = "wasm32")]
+    pub wasm_doc_was_visible: bool,
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) ime_bridge: crate::ime::WasmImeBridge,
+    pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,
-    pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub last_tick: web_time::Instant,
     pub start_time: web_time::Instant,
     pub tick_interval: web_time::Duration,
-    pub needs_first_upload: bool,
     pub frame_count: u32,
     pub last_fps_time: web_time::Instant,
     pub current_fps: u32,
-    pub current_ping_ms: Option<u32>,
-    pub last_ping_time: web_time::Instant,
     pub last_frame_time: web_time::Instant,
-    pub pending_lobby_rejoin: bool,
     pub tutorial_completed: bool,
     pub tutorial_step: crate::render::tutorial_ui::TutorialStep,
     pub update_available: bool,
-    pub is_offline: bool,
     pub offline_tick_timer: f32,
     pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
     pub show_leaderboard: bool,
@@ -248,29 +263,34 @@ impl SowApp {
     }
 
         Self {
-            map_w, map_h, bridge, current_snapshot,
-            render_ctx, surface, map_renderer, gui_painter, window,
+            gfx: GraphicsState {
+                window, surface, render_ctx, map_renderer, gui_painter, prev_sync_point, needs_first_upload
+            },
+            net: NetState {
+                client: net_client, connect_tx, connect_rx, ws_url, orchestrator_url, is_offline: false,
+                ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
+                pending_lobby_rejoin: false, current_ping_ms, last_ping_time
+            },
+            sim: SimState {
+                bridge, current_snapshot, turn_queue, my_player_id, my_lobby_id, map_w, map_h
+            },
+            input: InputState {
+                camera_x, camera_y, camera_zoom, screen_w, screen_h, dragging,
+                last_mouse_x, last_mouse_y, active_touches, map_touch_start, map_context_menu, last_pinch_distance
+            },
             app, egui_ctx, raw_input,
             #[cfg(not(target_arch = "wasm32"))] tokio_rt,
-            net_client, turn_queue, my_player_id, my_lobby_id,
             map_tx, map_rx, engine_init_tx, engine_init_rx,
             pending_engine_init_data, engine_init_queued_msg, nameplate_cache, troop_label_throttle,
-            connect_tx, connect_rx, last_debug_print: None, ws_connect_fail_backoff_ms, ws_connect_not_before, ws_reconnect_after_resume,
+            last_debug_print: None,
             #[cfg(target_arch = "wasm32")] wasm_doc_was_visible,
             #[cfg(target_arch = "wasm32")] ime_bridge,
-            orchestrator_url, ws_url, camera_x, camera_y, camera_zoom, screen_w, screen_h,
-            dragging, last_mouse_x, last_mouse_y, label_positions: HashMap::new(),
-            active_touches,
-            map_touch_start,
-            map_context_menu,
-            last_pinch_distance,
-            ime_allowed_state, ime_cursor_rect_px, prev_sync_point, last_tick, start_time, tick_interval,
-            needs_first_upload, frame_count, last_fps_time, current_fps, current_ping_ms, last_ping_time, last_frame_time,
-            pending_lobby_rejoin: false,
+            label_positions: std::collections::HashMap::new(),
+            ime_allowed_state, ime_cursor_rect_px, last_tick, start_time, tick_interval,
+            frame_count, last_fps_time, current_fps, last_frame_time,
             tutorial_completed,
             tutorial_step: crate::render::tutorial_ui::TutorialStep::Welcome,
             update_available: false,
-            is_offline: false,
             offline_tick_timer: 0.0,
             offline_intents: Vec::new(),
             show_leaderboard: false,
@@ -281,15 +301,15 @@ impl SowApp {
     
     /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
     pub(crate) fn begin_exit_to_main_menu(&mut self) {
-        self.is_offline = false;
-        self.ws_url = self.orchestrator_url.clone();
-        self.app.main_menu_state.server_address = self.ws_url.clone();
+        self.net.is_offline = false;
+        self.net.ws_url = self.net.orchestrator_url.clone();
+        self.app.main_menu_state.server_address = self.net.ws_url.clone();
         self.app.main_menu_state.is_waiting = false;
         self.app.main_menu_state.pending_join_lobby_id = None;
         self.app.main_menu_state.joined_lobby_id = None;
         self.app.hud_state.sync_state = None;
-        self.my_lobby_id = None;
-        self.my_player_id = None;
+        self.sim.my_lobby_id = None;
+        self.sim.my_player_id = None;
         self.app.phase = ClientPhase::Splash;
         self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
         self.app.splash_state.gpu_load_step = 0;
@@ -298,29 +318,29 @@ impl SowApp {
 
     #[inline]
     pub(crate) fn ws_on_relay(&self) -> bool {
-        self.ws_url.contains("/relay/") || self.ws_url.contains("2557")
+        self.net.ws_url.contains("/relay/") || self.net.ws_url.contains("2557")
     }
 
     pub fn handle_suspended(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-                if let Some(sp) = self.prev_sync_point.take() {
-                    let _ = self.render_ctx.context.wait_for(&sp, !0);
+                if let Some(sp) = self.gfx.prev_sync_point.take() {
+                    let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                 }
-                if let Some(mut s) = self.surface.take() {
-                    if let Some(mut gp) = self.gui_painter.take() {
-                        gp.destroy(&self.render_ctx.context);
+                if let Some(mut s) = self.gfx.surface.take() {
+                    if let Some(mut gp) = self.gfx.gui_painter.take() {
+                        gp.destroy(&self.gfx.render_ctx.context);
                     }
-                    if let Some(mut mr) = self.map_renderer.take() {
-                        mr.destroy(&self.render_ctx);
+                    if let Some(mut mr) = self.gfx.map_renderer.take() {
+                        mr.destroy(&self.gfx.render_ctx);
                     }
-                    self.render_ctx.context.destroy_surface(&mut s);
+                    self.gfx.render_ctx.context.destroy_surface(&mut s);
                 }
 
     }
     
     pub fn handle_resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
                 // App or tab foregrounded — retry WS soon if the socket died in the background.
-                self.ws_reconnect_after_resume = true;
-                if self.window.is_none() {
+                self.net.ws_reconnect_after_resume = true;
+                if self.gfx.window.is_none() {
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     let mut attributes = winit::window::WindowAttributes::default()
                         .with_title("Shadows of War");
@@ -374,42 +394,42 @@ impl SowApp {
                     };
 
                     match event_loop.create_window(attributes) {
-                        Ok(win) => self.window = Some(win),
+                        Ok(win) => self.gfx.window = Some(win),
                         Err(e) => {
                             log::warn!("Window creation failed: {:?}", e);
                             return;
                         }
                     }
                 }
-                let win = self.window.as_ref().unwrap();
+                let win = self.gfx.window.as_ref().unwrap();
                 
-                if self.surface.is_none() {
+                if self.gfx.surface.is_none() {
                     let sz = win.as_ref().surface_size();
-                    match self.render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
+                    match self.gfx.render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
                         Ok(s) => {
-                            self.screen_w = sz.width as f32;
-                            self.screen_h = sz.height as f32;
-                            let zmax = camera_zoom_upper_bound(self.screen_w, self.screen_h);
-                            self.camera_zoom = self.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                            self.input.screen_w = sz.width as f32;
+                            self.input.screen_h = sz.height as f32;
+                            let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+                            self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
                             self.raw_input.screen_rect = Some(Rect::from_min_size(
                                 Pos2::ZERO,
-                                Vec2::new(self.screen_w, self.screen_h)
+                                Vec2::new(self.input.screen_w, self.input.screen_h)
                             ));
                             let format = s.info().format;
                             
-                            if let Some(sp) = self.prev_sync_point.take() {
-                                let _ = self.render_ctx.context.wait_for(&sp, !0);
+                            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                             }
-                            let mut old_terrain = vec![128; (self.map_w * self.map_h) as usize];
-                            if let Some(mut old_mr) = self.map_renderer.take() {
+                            let mut old_terrain = vec![128; (self.sim.map_w * self.sim.map_h) as usize];
+                            if let Some(mut old_mr) = self.gfx.map_renderer.take() {
                                 old_terrain = old_mr.terrain.clone();
-                                old_mr.destroy(&self.render_ctx);
+                                old_mr.destroy(&self.gfx.render_ctx);
                             }
-                            self.map_renderer = Some(MapRenderer::new(&self.render_ctx.context, self.map_w, self.map_h, format, &old_terrain));
-                            self.needs_first_upload = true;
+                            self.gfx.map_renderer = Some(MapRenderer::new(&self.gfx.render_ctx.context, self.sim.map_w, self.sim.map_h, format, &old_terrain));
+                            self.gfx.needs_first_upload = true;
                             
-                            self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
-                            self.surface = Some(s);
+                            self.gfx.gui_painter = Some(GuiPainter::new(s.info(), &self.gfx.render_ctx.context));
+                            self.gfx.surface = Some(s);
                             
                             // Re-create egui context to force it to re-upload its font texture!
                             self.egui_ctx = Context::default();
@@ -426,14 +446,14 @@ impl SowApp {
 
 impl Drop for SowApp {
     fn drop(&mut self) {
-        if let Some(sp) = self.prev_sync_point.take() {
-            let _ = self.render_ctx.context.wait_for(&sp, !0);
+        if let Some(sp) = self.gfx.prev_sync_point.take() {
+            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
         }
-        if let Some(mut mr) = self.map_renderer.take() {
-            mr.destroy(&self.render_ctx);
+        if let Some(mut mr) = self.gfx.map_renderer.take() {
+            mr.destroy(&self.gfx.render_ctx);
         }
-        if let Some(mut gui) = self.gui_painter.take() {
-            gui.destroy(&self.render_ctx.context);
+        if let Some(mut gui) = self.gfx.gui_painter.take() {
+            gui.destroy(&self.gfx.render_ctx.context);
         }
     }
 }

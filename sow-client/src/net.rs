@@ -12,63 +12,63 @@ impl SowApp {
                         .map(|d| d.visibility_state() == web_sys::VisibilityState::Visible)
                         .unwrap_or(true);
                     if doc_visible && !self.wasm_doc_was_visible {
-                        self.ws_reconnect_after_resume = true;
+                        self.net.ws_reconnect_after_resume = true;
                     }
                     self.wasm_doc_was_visible = doc_visible;
                 }
 
-                if self.ws_reconnect_after_resume {
-                    self.ws_reconnect_after_resume = false;
-                    self.ws_connect_not_before = self.ws_connect_not_before.min(now);
+                if self.net.ws_reconnect_after_resume {
+                    self.net.ws_reconnect_after_resume = false;
+                    self.net.ws_connect_not_before = self.net.ws_connect_not_before.min(now);
                 }
                 // No fake map download simulation! Progress is real!
 
-                while let Ok(res) = self.connect_rx.try_recv() {
+                while let Ok(res) = self.net.connect_rx.try_recv() {
                     match res {
                         Ok(client) => {
                             log::warn!("[CLIENT NET] ✅ Received successfully connected WebSocket client from channel!");
                             self.app.main_menu_state.is_connected = true;
                             self.app.main_menu_state.is_connecting = false;
-                            self.ws_connect_fail_backoff_ms = 400;
+                            self.net.ws_connect_fail_backoff_ms = 400;
 
                             if self.app.phase == sow_ui::app::ClientPhase::Playing {
-                                if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
+                                if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
                                     log::info!("Sent Ready to Relay server on reconnect/playing!");
                                     client.send(bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
                                         lobby_id: lid,
                                         player_id: pid,
                                     }).unwrap());
                                 }
-                            } else if self.pending_lobby_rejoin {
+                            } else if self.net.pending_lobby_rejoin {
                                 log::info!("Re-sending Join to lobby after hop");
                                 let join_msg = sow_core::protocol::ClientMessage::Join {
                                     name: self.app.main_menu_state.player_name.clone(),
                                     is_observer: false,
-                                    target_lobby_id: self.my_lobby_id.or(self.app.main_menu_state.pending_join_lobby_id),
+                                    target_lobby_id: self.sim.my_lobby_id.or(self.app.main_menu_state.pending_join_lobby_id),
                                     build_version: get_build_version(),
                                 };
                                 if let Ok(json) = bincode::serialize(&join_msg) {
                                     client.send(json);
                                 }
-                                self.pending_lobby_rejoin = false;
+                                self.net.pending_lobby_rejoin = false;
                             }
-                            self.net_client = Some(client);
+                            self.net.client = Some(client);
                         }
                         Err(e) => {
                             log::debug!("Failed to connect: {}", e);
                             self.app.main_menu_state.is_connected = false;
                             self.app.main_menu_state.is_connecting = false;
-                            self.ws_connect_fail_backoff_ms =
-                                (self.ws_connect_fail_backoff_ms.saturating_mul(2)).min(30_000);
-                            self.ws_connect_not_before =
-                                now + Duration::from_millis(self.ws_connect_fail_backoff_ms);
+                            self.net.ws_connect_fail_backoff_ms =
+                                (self.net.ws_connect_fail_backoff_ms.saturating_mul(2)).min(30_000);
+                            self.net.ws_connect_not_before =
+                                now + Duration::from_millis(self.net.ws_connect_fail_backoff_ms);
                         }
                     }
                 }
 
                 let mut ws_disconnected = false;
                 #[cfg(target_arch = "wasm32")]
-                if let Some(c) = self.net_client.as_ref() {
+                if let Some(c) = self.net.client.as_ref() {
                     if c.is_socket_closed() {
                         ws_disconnected = true;
                     }
@@ -79,7 +79,7 @@ impl SowApp {
                 let mut exit_to_menu_after_net = false;
 
                 // Process network messages
-                if let Some(c) = self.net_client.as_ref() {
+                if let Some(c) = self.net.client.as_ref() {
                     if !ws_disconnected {
                         loop {
                             let msg = match c.rx.try_recv() {
@@ -110,7 +110,7 @@ impl SowApp {
                                 self.app.main_menu_state.pending_join_lobby_id = None;
                                 self.app.main_menu_state.joined_lobby_id = None;
                                 self.app.hud_state.sync_state = None; // REMOVE the modal overlay
-                                self.my_player_id = start_msg.my_player_id;
+                                self.sim.my_player_id = start_msg.my_player_id;
 
                                 if let Some(relay_port) = start_msg.relay_port {
                                     switch_to_relay = Some(relay_port);
@@ -122,7 +122,7 @@ impl SowApp {
                                 }
                             }
                             ServerMessage::Turn(turn_msg) => {
-                                self.turn_queue.push_back(turn_msg.turn);
+                                self.sim.turn_queue.push_back(turn_msg.turn);
                                 self.app.hud_state.sync_state = None;
                             }
                             ServerMessage::SyncState(sync_msg) => {
@@ -139,7 +139,7 @@ impl SowApp {
                                         self.app.main_menu_state.is_waiting = false;
                                     } else {
                                         // Update lobby player list in UI
-                                        let key = self.my_lobby_id
+                                        let key = self.sim.my_lobby_id
                                             .or(self.app.main_menu_state.joined_lobby_id)
                                             .or(self.app.main_menu_state.pending_join_lobby_id);
                                         if let Some(id) = key {
@@ -166,7 +166,7 @@ impl SowApp {
                             }
                             ServerMessage::Pong { client_time } => {
                                 let rtt = self.start_time.elapsed().as_secs_f64() - client_time;
-                                self.current_ping_ms = Some((rtt * 1000.0) as u32);
+                                self.net.current_ping_ms = Some((rtt * 1000.0) as u32);
                             }
                             ServerMessage::LobbiesBroadcast(broadcast) => {
                                 // Don't clobber the lobby list once we've started loading into a game
@@ -221,7 +221,7 @@ impl SowApp {
                                 }
 
                                 if self.app.main_menu_state.is_waiting {
-                                    let key = self.my_lobby_id
+                                    let key = self.sim.my_lobby_id
                                         .or(self.app.main_menu_state.joined_lobby_id)
                                         .or(self.app.main_menu_state.pending_join_lobby_id);
                                     if let Some(l_id) = key {
@@ -240,8 +240,8 @@ impl SowApp {
                             ServerMessage::LobbyClosed(closed) => {
                                 log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
                                 self.app.hud_state.sync_state = None;
-                                self.my_lobby_id = None;
-                                self.my_player_id = None;
+                                self.sim.my_lobby_id = None;
+                                self.sim.my_player_id = None;
 
                                 if closed.reason.contains("Requeueing") {
                                     log::info!("Auto-requeueing to a new lobby...");
@@ -270,8 +270,8 @@ impl SowApp {
                             }
                             ServerMessage::JoinAck(ack) => {
                                 log::info!("[LOBBY] Joined lobby {} as player {} (map: {})", ack.lobby_id, ack.player_id, ack.map_name);
-                                self.my_lobby_id = Some(ack.lobby_id);
-                                self.my_player_id = Some(ack.player_id);
+                                self.sim.my_lobby_id = Some(ack.lobby_id);
+                                self.sim.my_player_id = Some(ack.player_id);
                                 self.app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
                                 
                                 let map_name = ack.map_name.clone();
@@ -381,39 +381,39 @@ impl SowApp {
 
                 if let Some(relay_port) = switch_to_relay {
                     log::info!("[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {}", relay_port);
-                    if let Ok(mut url) = url::Url::parse(&self.ws_url) {
-                        if url.scheme() == "wss" || self.ws_url.contains("shadowsofwar.io") {
+                    if let Ok(mut url) = url::Url::parse(&self.net.ws_url) {
+                        if url.scheme() == "wss" || self.net.ws_url.contains("shadowsofwar.io") {
                             let new_path = format!("/relay/{}/ws/", relay_port);
                             url.set_path(&new_path);
                         } else {
                             let _ = url.set_port(Some(relay_port));
                         }
-                        self.ws_url = url.to_string();
-                        self.net_client = None; // Drop orchestrator connection
-                        self.app.main_menu_state.server_address = self.ws_url.clone();
+                        self.net.ws_url = url.to_string();
+                        self.net.client = None; // Drop orchestrator connection
+                        self.app.main_menu_state.server_address = self.net.ws_url.clone();
                         self.app.main_menu_state.is_connecting = true; // PREVENT DUPLICATE CONNECTIONS
                         ws_disconnected = false;
                         
                         // Clear stale connections
-                        while let Ok(_) = self.connect_rx.try_recv() {
+                        while let Ok(_) = self.net.connect_rx.try_recv() {
                             log::warn!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!");
                         } 
                         
-                        log::warn!("[CLIENT NET] 🚀 Spawning WS connection task to RELAY: {}", self.ws_url);
+                        log::warn!("[CLIENT NET] 🚀 Spawning WS connection task to RELAY: {}", self.net.ws_url);
                         #[cfg(target_arch = "wasm32")]
-                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx);
+                        crate::spawn_sow_client_connect(self.net.ws_url.clone(), &self.net.connect_tx);
                         #[cfg(not(target_arch = "wasm32"))]
-                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx, &self.tokio_rt);
+                        crate::spawn_sow_client_connect(self.net.ws_url.clone(), &self.net.connect_tx, &self.tokio_rt);
                     }
                 }
 
                 if ws_disconnected {
-                    self.net_client = None;
+                    self.net.client = None;
                     self.app.main_menu_state.is_connected = false;
                     self.app.main_menu_state.is_connecting = false;
-                    self.ws_connect_not_before = now + Duration::from_millis(2000);
+                    self.net.ws_connect_not_before = now + Duration::from_millis(2000);
 
-                    if self.is_offline {
+                    if self.net.is_offline {
                         log::debug!("[CLIENT NET] Offline match; ignoring disconnect recovery");
                     } else if self.app.phase == ClientPhase::Playing {
                         // Relay can replay turns after ClientMessage::Ready (see sow-relay), but we do not
@@ -427,8 +427,8 @@ impl SowApp {
                         self.begin_exit_to_main_menu();
                     } else if self.app.phase != ClientPhase::Splash {
                         log::warn!("[CLIENT NET] Disconnected outside match; reconnecting to orchestrator");
-                        self.ws_url = self.orchestrator_url.clone();
-                        self.app.main_menu_state.server_address = self.ws_url.clone();
+                        self.net.ws_url = self.net.orchestrator_url.clone();
+                        self.app.main_menu_state.server_address = self.net.ws_url.clone();
                     }
                 }
 
@@ -438,18 +438,18 @@ impl SowApp {
                 let allow_ws_spawn = true;
 
                 if allow_ws_spawn
-                    && self.net_client.is_none()
+                    && self.net.client.is_none()
                     && !self.app.main_menu_state.is_connecting
-                    && now >= self.ws_connect_not_before
-                    && !(self.is_offline && self.app.phase == ClientPhase::Playing)
+                    && now >= self.net.ws_connect_not_before
+                    && !(self.net.is_offline && self.app.phase == ClientPhase::Playing)
                 {
                     self.app.main_menu_state.is_connecting = true;
                     let url = self.app.main_menu_state.server_address.clone();
                     log::warn!("[CLIENT NET] 🔄 Auto-reconnect triggered: Spawning WS connection task to {}", url);
                     #[cfg(target_arch = "wasm32")]
-                    spawn_sow_client_connect(url, &self.connect_tx);
+                    spawn_sow_client_connect(url, &self.net.connect_tx);
                     #[cfg(not(target_arch = "wasm32"))]
-                    spawn_sow_client_connect(url, &self.connect_tx, &self.tokio_rt);
+                    spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
                 }
 
     }

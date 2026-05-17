@@ -82,11 +82,11 @@ impl SowApp {
                         #[cfg(not(target_arch = "wasm32"))]
                         std::thread::spawn(init_logic);
 
-                        self.turn_queue.clear();
+                        self.sim.turn_queue.clear();
                         self.nameplate_cache.clear();
                         self.troop_label_throttle.clear();
-                        self.current_snapshot = None;
-                        self.needs_first_upload = true;
+                        self.sim.current_snapshot = None;
+                        self.gfx.needs_first_upload = true;
                     }
                 }
                 // Poll engine init channel
@@ -108,7 +108,7 @@ impl SowApp {
                                 self.app.splash_state.frames_drawn = 0;
                             } else if step == 1 {
                                 // Wait for connection to orchestrator or timeout (3 seconds @ 60fps = 180 frames)
-                                if self.net_client.is_some() || self.app.splash_state.frames_drawn > 180 {
+                                if self.net.client.is_some() || self.app.splash_state.frames_drawn > 180 {
                                     self.app.splash_state.status_text = "Cleaning up Game Session...".to_string();
                                     self.app.splash_state.progress = 0.5;
                                     self.app.splash_state.gpu_load_step = 2;
@@ -121,25 +121,25 @@ impl SowApp {
                                 config.map_height = 1;
                                 config.nation_count = 0;
                                 config.bot_count = 0;
-                                self.bridge.send_command(SimCommand::Init {
+                                self.sim.bridge.send_command(SimCommand::Init {
                                     config,
                                     seed: 0,
                                     map_bytes: vec![0b10000000], // 1 land tile
                                     players: vec![],
                                 });
-                                self.turn_queue.clear();
+                                self.sim.turn_queue.clear();
                                 self.label_positions.clear();
                                 self.nameplate_cache.clear();
                                 self.troop_label_throttle.clear();
-                                self.current_snapshot = None;
-                                self.needs_first_upload = true;
+                                self.sim.current_snapshot = None;
+                                self.gfx.needs_first_upload = true;
 
                                 // Free GPU memory
-                                if let Some(sp) = self.prev_sync_point.take() {
-                                    let _ = self.render_ctx.context.wait_for(&sp, !0);
+                                if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                    let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                                 }
-                                if let Some(mut mr) = self.map_renderer.take() {
-                                    mr.destroy(&self.render_ctx);
+                                if let Some(mut mr) = self.gfx.map_renderer.take() {
+                                    mr.destroy(&self.gfx.render_ctx);
                                 }
                                 
                                 self.app.phase = ClientPhase::MainMenu;
@@ -174,9 +174,9 @@ impl SowApp {
                             let (state, water, start_msg) = self.pending_engine_init_data.take().unwrap();
                             let map_bytes: Vec<u8> = state.map.terrain.iter().map(|t| t.as_byte()).collect();
                             
-                            self.current_snapshot = None; // MANDATORY: Clear old snapshot so Step 3 waits for the new one!
+                            self.sim.current_snapshot = None; // MANDATORY: Clear old snapshot so Step 3 waits for the new one!
                             
-                            self.bridge.send_command(SimCommand::Init {
+                            self.sim.bridge.send_command(SimCommand::Init {
                                 config: start_msg.config.clone(),
                                 seed: start_msg.seed,
                                 map_bytes: map_bytes.clone(),
@@ -184,20 +184,20 @@ impl SowApp {
                             });
                             
                             for turn in &start_msg.missed_turns {
-                                self.bridge.send_command(SimCommand::Turn(turn.clone()));
+                                self.sim.bridge.send_command(SimCommand::Turn(turn.clone()));
                             }
 
-                            self.map_w = start_msg.config.map_width;
-                            self.map_h = start_msg.config.map_height;
-                            if let Some(sp) = self.prev_sync_point.take() {
-                                let _ = self.render_ctx.context.wait_for(&sp, !0);
+                            self.sim.map_w = start_msg.config.map_width;
+                            self.sim.map_h = start_msg.config.map_height;
+                            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                             }
-                            if let Some(mut mr) = self.map_renderer.take() {
-                                mr.destroy(&self.render_ctx); // MANDATORY MEMORY LEAK FIX
+                            if let Some(mut mr) = self.gfx.map_renderer.take() {
+                                mr.destroy(&self.gfx.render_ctx); // MANDATORY MEMORY LEAK FIX
                             }
-                            if let Some(ref s) = self.surface {
-                                self.map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&self.render_ctx.context, self.map_w, self.map_h, s.info().format, &map_bytes));
-                                self.needs_first_upload = true;
+                            if let Some(ref s) = self.gfx.surface {
+                                self.gfx.map_renderer = Some(sow_render::map_renderer::MapRenderer::new(&self.gfx.render_ctx.context, self.sim.map_w, self.sim.map_h, s.info().format, &map_bytes));
+                                self.gfx.needs_first_upload = true;
                             }
                             
                             // Move to step 2: Texture uploading happens automatically next frame
@@ -208,7 +208,7 @@ impl SowApp {
                             
                             // Re-insert pending data so we stay in this block until Step 4
                             self.pending_engine_init_data = Some((state, water, start_msg));
-                        } else if step == 2 && !self.needs_first_upload {
+                        } else if step == 2 && !self.gfx.needs_first_upload {
                             // Step 2 Finished: GPU Texture is uploaded!
                             self.app.splash_state.gpu_load_step = 3;
                             self.app.splash_state.progress = 0.99;

@@ -231,8 +231,8 @@ use web_time::Instant;
 
 impl SowApp {
     pub fn update_sim(&mut self, now: Instant) {
-                self.app.hud_state.is_mobile = self.screen_w < 900.0;
-                if let Some(snap) = &self.current_snapshot {
+                self.app.hud_state.is_mobile = self.input.screen_w < 900.0;
+                if let Some(snap) = &self.sim.current_snapshot {
                     if let Some(target_secs) = snap.spawn_timer_secs {
                         if let Some(ref mut current) = self.app.hud_state.spawn_timer_secs {
                             if (*current - target_secs).abs() > 0.3 {
@@ -248,14 +248,14 @@ impl SowApp {
                     self.app.hud_state.spawn_timer_secs = None;
                 }
                 if self.app.phase == sow_ui::app::ClientPhase::Playing {
-                    if self.net_client.is_some() {
+                    if self.net.client.is_some() {
                         // Multiplayer: lockstep execution dictated by server
                         let mut ticks_processed = 0;
-                        while let Some(turn) = self.turn_queue.pop_front() {
-                            self.bridge.send_command(SimCommand::Turn(turn));
+                        while let Some(turn) = self.sim.turn_queue.pop_front() {
+                            self.sim.bridge.send_command(SimCommand::Turn(turn));
                             
                             // Update UI HUD State from my player id
-                            if let Some(player) = self.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.my_player_id.unwrap_or(1))) {
+                            if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
                                 self.app.hud_state.gold = player.gold;
                                 self.app.hud_state.troops = player.troops;
                                 let owned_tiles = player.tile_count as f64;
@@ -273,7 +273,7 @@ impl SowApp {
                         if now.duration_since(self.last_tick) >= self.tick_interval {
                             self.last_tick = now;
                             
-                            if let Some(player) = self.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.my_player_id.unwrap_or(1))) {
+                            if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
                                 self.app.hud_state.gold = player.gold;
                                 self.app.hud_state.troops = player.troops;
                                 let owned_tiles = player.tile_count as f64;
@@ -284,9 +284,9 @@ impl SowApp {
                 } else {
                     self.last_tick = now;
                 }
-                if let Some(mut snap) = self.bridge.try_recv_snapshot() {
+                if let Some(mut snap) = self.sim.bridge.try_recv_snapshot() {
 
-                    if let Some(mut existing) = self.current_snapshot.take() {
+                    if let Some(mut existing) = self.sim.current_snapshot.take() {
                         if !existing.dirty_tiles.is_empty() {
                             existing.dirty_tiles.append(&mut snap.dirty_tiles);
                             snap.dirty_tiles = existing.dirty_tiles;
@@ -294,10 +294,10 @@ impl SowApp {
                     }
                     
                     
-                    self.current_snapshot = Some(snap);
+                    self.sim.current_snapshot = Some(snap);
                 }
                     
-                if self.app.splash_state.gpu_load_step == 3 && self.current_snapshot.is_some() {
+                if self.app.splash_state.gpu_load_step == 3 && self.sim.current_snapshot.is_some() {
                     self.app.splash_state.gpu_load_step = 4;
                     self.app.phase = sow_ui::app::ClientPhase::Playing;
                     
@@ -305,22 +305,22 @@ impl SowApp {
                     self.pending_engine_init_data = None;
                     log::info!("First snapshot received, releasing loader!");
                     
-                    if let Some(pid) = self.my_player_id {
-                        if let Some(snap) = &self.current_snapshot {
+                    if let Some(pid) = self.sim.my_player_id {
+                        if let Some(snap) = &self.sim.current_snapshot {
                             if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
                                 if player.tile_count > 0 && player.alive {
                                     let cx = player.centroid_x;
                                     let cy = player.centroid_y;
-                                    self.camera_zoom = 1.5;
-                                    self.camera_x = self.screen_w * 0.5 - cx * self.camera_zoom;
-                                    self.camera_y = self.screen_h * 0.5 - cy * self.camera_zoom;
+                                    self.input.camera_zoom = 1.5;
+                                    self.input.camera_x = self.input.screen_w * 0.5 - cx * self.input.camera_zoom;
+                                    self.input.camera_y = self.input.screen_h * 0.5 - cy * self.input.camera_zoom;
                                 }
                             }
                         }
                     }
 
-                    if let Some(c) = self.net_client.as_ref() {
-                        if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
+                    if let Some(c) = self.net.client.as_ref() {
+                        if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
                             let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
                             let json = bincode::serialize(&ready_msg).unwrap();
                             c.send(json);
@@ -328,7 +328,7 @@ impl SowApp {
                     }
                 }
                 
-                if let Some(win) = self.window.as_ref() {
+                if let Some(win) = self.gfx.window.as_ref() {
                     win.request_redraw();
                 }
 
@@ -336,8 +336,8 @@ impl SowApp {
                 let now = web_time::Instant::now();
                 if self.last_debug_print.is_none_or(|t| now.duration_since(t).as_secs() >= 5) {
                     self.last_debug_print = Some(now);
-                    if let Some(snap) = &self.current_snapshot {
-                        log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.sim.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);
                     }
                 }
 

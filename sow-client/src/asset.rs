@@ -10,8 +10,8 @@ impl SowApp {
                         MapDownloadEvent::Progress(downloaded_map_name, progress) => {
                             if Some(downloaded_map_name.clone()) == self.app.main_menu_state.downloading_map_name {
                                 self.app.main_menu_state.map_download_progress = progress;
-                                if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
-                                    if let Some(c) = self.net_client.as_ref() {
+                                if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
+                                    if let Some(c) = self.net.client.as_ref() {
                                         c.send(bincode::serialize(&sow_core::protocol::ClientMessage::MapDownloadProgress {
                                             lobby_id: lid,
                                             player_id: pid,
@@ -61,8 +61,8 @@ impl SowApp {
                                 self.app.main_menu_state.is_downloading_map = false;
                                 self.app.main_menu_state.map_download_progress = 100;
                                 
-                                if let (Some(lid), Some(pid)) = (self.my_lobby_id, self.my_player_id) {
-                                    if let Some(c) = self.net_client.as_ref() {
+                                if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
+                                    if let Some(c) = self.net.client.as_ref() {
                                         c.send(bincode::serialize(&sow_core::protocol::ClientMessage::MapDownloadProgress {
                                             lobby_id: lid,
                                             player_id: pid,
