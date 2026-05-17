@@ -15,7 +15,6 @@ pub struct HudState {
     pub is_mobile: bool,
     pub spawn_timer_secs: Option<f32>,
     pub sync_state: Option<sow_core::protocol::ServerSyncStateMessage>,
-    pub connection_lost: bool,
     pub(crate) last_troops_ui_refresh: Option<Instant>,
 }
 
@@ -42,33 +41,6 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
     let mut action = None;
 
     state.refresh_troop_display_if_due();
-
-    if state.connection_lost {
-        // Draw a dark full-screen overlay
-        let screen_rect = ctx.screen_rect();
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("connection_lost_overlay")))
-            .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(200));
-
-        egui::Window::new("CONNECTION LOST")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("CONNECTION LOST").size(32.0).strong().color(Color32::RED));
-                    ui.add_space(10.0);
-                    ui.label(RichText::new("You have been disconnected from the server.").size(18.0).color(Color32::LIGHT_GRAY));
-                    ui.add_space(30.0);
-                    
-                    if ui.add_sized([200.0, 40.0], egui::Button::new(RichText::new("Main Menu").size(20.0))).clicked() {
-                        action = Some(UiAction::LeaveLobby);
-                    }
-                });
-            });
-
-        return action; // Do not draw the rest of the HUD
-    }
 
     // Top panel removed as requested.
 

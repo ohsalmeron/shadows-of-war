@@ -77,7 +77,7 @@ pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
         "Default".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(sow_core::ui_font::UI_FONT_TTF)),
+        std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_TTF)),
     );
     fonts.families
         .get_mut(&egui::FontFamily::Proportional)

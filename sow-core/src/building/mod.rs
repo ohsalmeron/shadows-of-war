@@ -255,14 +255,14 @@ mod tests {
             ticks_until_complete: 0,
         };
         let bonus = defense_post_priority_bonus(&[b], 10, 10, w);
-        assert_eq!(bonus, 2 * crate::config::DEFENSE_POST_PRIORITY_PER_LEVEL);
+        assert_eq!(bonus, 2 * crate::building::core::DEFENSE_POST_PRIORITY_PER_LEVEL);
         let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w);
         assert_eq!(bonus_far, 0);
     }
 
     #[test]
     fn openfront_cost_scaling_city_and_port_factory_shared_counter() {
-        let s = crate::config::OPENFRONT_GOLD_SCALE;
+        let s = crate::building::cost::OPENFRONT_GOLD_SCALE;
         let owner = 1u16;
         let city0 = structure_build_cost_gold(BuildingKind::City, owner, &[]);
         assert_eq!(city0, 125_000.0 / s);

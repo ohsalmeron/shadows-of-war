@@ -67,10 +67,6 @@ impl SowEngine {
             income *= 0.5;
         }
 
-        income *= config.global_speed_multiplier;
-        let pace = config.troop_income_pace;
-        let pace = if pace.is_finite() && pace >= 0.0 { pace } else { 1.0 };
-        income *= pace;
         player.troops = (safe_troops + income).min(player.max_troops);
 
         let safe_gold = player.gold.max(0.0);
@@ -80,9 +76,8 @@ impl SowEngine {
             gold_base *= 0.5; // Tribes generate 50% less gold than Nations/Humans
         }
 
-        let mut gold_income = gold_base
+        let gold_income = gold_base
             + agg.city_levels as f64 * config.gold_income_per_city_level;
-        gold_income *= config.global_speed_multiplier;
         player.gold = safe_gold + gold_income;
         }
     }
@@ -183,7 +178,7 @@ mod tests {
         engine.execute_income();
         let p = engine.state.player(1).unwrap();
         let delta = p.gold - 100.0;
-        let g = engine.state.config.gold_base_income * engine.state.config.global_speed_multiplier;
+        let g = engine.state.config.gold_base_income;
         assert!(
             (delta - g).abs() < 0.001,
             "gold delta {} expected {}",
@@ -208,50 +203,7 @@ mod tests {
         let p = engine.state.player(1).unwrap();
         let cfg = &engine.state.config;
         let expected =
-            (cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level) * cfg.global_speed_multiplier;
+            cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level;
         assert!((p.gold - expected).abs() < 0.001, "gold={}", p.gold);
-    }
-
-    #[test]
-    fn troop_income_pace_doubles_troop_gain_not_gold() {
-        let mut engine_base = engine_one_player(46, 100, 50.0, 200.0);
-        engine_base.execute_income();
-        let p_base = engine_base.state.player(1).unwrap();
-        let gain_base = p_base.troops - 50.0;
-        let gold_base = p_base.gold;
-
-        let mut cfg = crate::game_config::GameConfig::default();
-        cfg.troop_income_pace = 2.0;
-        let mut game = GameState::new(46, 8, 8, cfg.clone());
-        game.phase = GamePhase::Playing;
-        game.players.push(Player::new_human(
-            1,
-            "p".into(),
-            [1.0, 0.0, 0.0],
-            &cfg,
-        ));
-        game.player_lookup = vec![None, Some(0)];
-        if let Some(p) = game.player_mut(1) {
-            p.tile_count = 100;
-            p.troops = 50.0;
-            p.gold = 200.0;
-        }
-        let mut engine_fast = SowEngine::new(game, WaterComponents::default());
-        engine_fast.execute_income();
-        let p_fast = engine_fast.state.player(1).unwrap();
-        let gain_fast = p_fast.troops - 50.0;
-
-        assert!(
-            (gain_fast - 2.0 * gain_base).abs() < 0.02,
-            "gain_fast={} gain_base={}",
-            gain_fast,
-            gain_base
-        );
-        assert!(
-            (p_fast.gold - gold_base).abs() < 0.001,
-            "gold should ignore troop_income_pace: {} vs {}",
-            p_fast.gold,
-            gold_base
-        );
     }
 }

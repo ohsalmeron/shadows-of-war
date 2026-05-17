@@ -102,13 +102,7 @@ pub mod native {
                         if processed_commands {
                             if let Some(e) = &mut engine {
                                 let snapshot = e.build_snapshot();
-                                // Drop old snapshots if we are falling behind.
-                                // It's a jitter buffer.
-                                while snap_tx.len() > 1 {
-                                    // we can't easily drain from tx, but we can just let it queue and let the receiver drain.
-                                    // But wait, the Receiver is draining in `try_recv_snapshot` anyway!
-                                    // Let's just let it be.
-                                }
+
                                 let _ = snap_tx.send(snapshot);
                             }
                         } else {

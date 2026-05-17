@@ -1,3 +1,4 @@
+#![warn(dead_code, unused_variables, unused_imports)]
 use sow_net::client::SowClient;
 
 
@@ -18,7 +19,7 @@ fn get_build_version() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        std::fs::read_to_string(".version").unwrap_or_else(|_| "unknown".to_string()).trim().to_string()
+        include_str!("../../.version").trim().to_string()
     }
 }
 

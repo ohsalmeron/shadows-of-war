@@ -1,6 +1,13 @@
 use crate::game::BuildingKind;
-use crate::config;
 use super::core::Building;
+
+/// OpenFront parity uses much larger gold magnitudes (125_000, 1_000_000, ...).
+/// Keep those ratios by scaling into Shadows of War's lighter economy.
+pub const OPENFRONT_GOLD_SCALE: f64 = 1_000.0;
+
+/// Feature gate for incomplete missile gameplay (Silo + SAM interception loop).
+pub const ENABLE_MISSILE_STRUCTURES: bool = false;
+
 /// Count buildings owned by `owner` of exact `kind` (for City-only scaling).
 pub fn count_kind(buildings: &[Building], owner_id: u16, kind: BuildingKind) -> u32 {
     buildings
@@ -36,7 +43,7 @@ pub fn scaled_pow2_cost(count: u32, base: u64, cap: u64, scale: f64) -> f64 {
 
 /// Gold price for a new structure or one upgrade level (OpenFront-style scaling). Tunable.
 pub fn structure_build_cost_gold(kind: BuildingKind, owner_id: u16, buildings: &[Building]) -> f64 {
-    let s = config::OPENFRONT_GOLD_SCALE.max(1.0);
+    let s = OPENFRONT_GOLD_SCALE.max(1.0);
     match kind {
         BuildingKind::City => {
             let n = count_kind(buildings, owner_id, BuildingKind::City);
@@ -61,7 +68,7 @@ pub fn structure_build_cost_gold(kind: BuildingKind, owner_id: u16, buildings: &
 #[inline]
 pub fn structure_kind_enabled(kind: BuildingKind) -> bool {
     match kind {
-        BuildingKind::SamLauncher | BuildingKind::MissileSilo => config::ENABLE_MISSILE_STRUCTURES,
+        BuildingKind::SamLauncher | BuildingKind::MissileSilo => ENABLE_MISSILE_STRUCTURES,
         _ => true,
     }
 }

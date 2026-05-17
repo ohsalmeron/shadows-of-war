@@ -1,26 +1,16 @@
-#![allow(unused_imports)]
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use crate::sim_bridge::{SimBridge, PlatformSimBridge};
-use sow_core::protocol::{SimCommand, SimSnapshot};
+use crate::sim_bridge::SimBridge;
+use sow_core::protocol::SimCommand;
 
 use sow_core::game_config::GameConfig;
 
-use blade_graphics as gpu;
-use blade_egui::GuiPainter;
-use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use sow_ui::{ClientApp, app::ClientPhase, UiAction};
+use sow_ui::app::ClientPhase;
 use web_time::{Instant, Duration};
-use sow_net::client::SowClient;
-use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
-use crate::nameplates::*;
-use crate::client_config::ClientVisualConfig;
 use crate::{MapDownloadEvent, EngineInitEvent};
-use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
 
 use crate::app_state::SowApp;
-use std::io::Read;
+
 
 
 
@@ -139,8 +129,7 @@ impl SowApp {
                 }
 
                 let mut switch_to_relay = None;
-                let mut should_reconnect_orchestrator = false;
-                let switch_to_lobby: Option<u16> = None;
+                let mut exit_to_menu_after_net = false;
 
                 // Process network messages
                 if let Some(c) = self.net_client.as_ref() {
@@ -319,14 +308,7 @@ impl SowApp {
                                     };
                                     c.send(bincode::serialize(&join_msg).unwrap());
                                 } else {
-                                    should_reconnect_orchestrator = true;
-                                    self.app.phase = ClientPhase::Splash;
-                                    self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
-                                    self.app.splash_state.gpu_load_step = 0;
-                                    self.app.splash_state.frames_drawn = 0;
-                                    self.app.main_menu_state.is_waiting = false;
-                                    self.app.main_menu_state.pending_join_lobby_id = None;
-                                    self.app.main_menu_state.joined_lobby_id = None;
+                                    exit_to_menu_after_net = true;
                                 }
                             }
                             ServerMessage::JoinFailed(fail) => {
@@ -446,6 +428,10 @@ impl SowApp {
                     } // end if !ws_disconnected
                 } // end if let Some(c)
 
+                if exit_to_menu_after_net {
+                    self.begin_exit_to_main_menu();
+                }
+
                 if let Some(relay_port) = switch_to_relay {
                     log::info!("[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {}", relay_port);
                     if let Ok(mut url) = url::Url::parse(&self.ws_url) {
@@ -472,75 +458,30 @@ impl SowApp {
                         #[cfg(not(target_arch = "wasm32"))]
                         crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx, &self.tokio_rt);
                     }
-                } else if let Some(lobby_port) = switch_to_lobby {
-                    log::info!("[CLIENT NET] Handoff from Game Relay -> Master Orchestrator on port {}", lobby_port);
-                    if let Ok(mut url) = url::Url::parse(&self.ws_url) {
-                        if url.scheme() == "wss" || self.ws_url.contains("shadowsofwar.io") {
-                            let new_path = format!("/lobby/{}/ws/", lobby_port);
-                            url.set_path(&new_path);
-                        } else {
-                            let _ = url.set_port(Some(lobby_port));
-                        }
-                        self.ws_url = url.to_string();
-                        self.net_client = None;
-                        self.pending_lobby_rejoin = true;
-                        self.app.main_menu_state.is_connecting = true; // PREVENT DUPLICATE CONNECTIONS
-                        ws_disconnected = false;
-                        
-                        // Clear stale connections
-                        while let Ok(_) = self.connect_rx.try_recv() {
-                            log::warn!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff back to orchestrator!");
-                        } 
-                        
-                        log::warn!("[CLIENT NET] 🚀 Spawning WS connection task to ORCHESTRATOR: {}", self.ws_url);
-                        #[cfg(target_arch = "wasm32")]
-                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx);
-                        #[cfg(not(target_arch = "wasm32"))]
-                        crate::spawn_sow_client_connect(self.ws_url.clone(), &self.connect_tx, &self.tokio_rt);
-                    }
                 }
-                
-                if should_reconnect_orchestrator {
-                    log::info!("[CLIENT NET] Reconnecting to Master Orchestrator at {}", self.orchestrator_url);
-                    self.ws_url = self.orchestrator_url.clone();
-                    self.app.main_menu_state.server_address = self.ws_url.clone();
-                    self.net_client = None;
-                    ws_disconnected = false; // Prevent the disconnected popup
-                }
-                
+
                 if ws_disconnected {
-                    if self.ws_url.contains("/relay/") || self.ws_url.contains("2557") {
-                        log::warn!("[CLIENT NET] Relay connection lost! Game over or relay crashed. Will attempt reconnect.");
-                    } else {
-                        log::warn!("[CLIENT NET] Orchestrator WebSocket disconnected; will reconnect.");
-                    }
                     self.net_client = None;
                     self.app.main_menu_state.is_connected = false;
                     self.app.main_menu_state.is_connecting = false;
                     self.ws_connect_not_before = now + Duration::from_millis(2000);
-                        
-                    // Recover: Send the user back to the loader
-                    if self.app.phase == sow_ui::app::ClientPhase::Playing || self.app.phase != sow_ui::app::ClientPhase::Splash {
-                        // Aggressively exit back to Orchestrator to prevent singleplayer leak
+
+                    if self.is_offline {
+                        log::debug!("[CLIENT NET] Offline match; ignoring disconnect recovery");
+                    } else if self.app.phase == ClientPhase::Playing {
+                        // Relay can replay turns after ClientMessage::Ready (see sow-relay), but we do not
+                        // resume in-place: the socket drop may mean the relay died, and catch-up without a
+                        // full snapshot risks desync. Use the existing ExitGame loader → MainMenu.
+                        if self.ws_on_relay() {
+                            log::warn!("[CLIENT NET] Relay lost during match — returning to main menu");
+                        } else {
+                            log::warn!("[CLIENT NET] Connection lost during match — returning to main menu");
+                        }
+                        self.begin_exit_to_main_menu();
+                    } else if self.app.phase != ClientPhase::Splash {
+                        log::warn!("[CLIENT NET] Disconnected outside match; reconnecting to orchestrator");
                         self.ws_url = self.orchestrator_url.clone();
                         self.app.main_menu_state.server_address = self.ws_url.clone();
-                        
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            if let Some(window) = web_sys::window() {
-                                let _ = window.location().reload();
-                            }
-                        }
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
-                            self.app.splash_state.gpu_load_step = 0;
-                            self.app.splash_state.frames_drawn = 0;
-                            self.app.main_menu_state.is_waiting = false;
-                            self.app.main_menu_state.pending_join_lobby_id = None;
-                            self.app.main_menu_state.joined_lobby_id = None;
-                            self.app.phase = sow_ui::app::ClientPhase::Splash;
-                        }
                     }
                 }
 
@@ -553,6 +494,7 @@ impl SowApp {
                     && self.net_client.is_none()
                     && !self.app.main_menu_state.is_connecting
                     && now >= self.ws_connect_not_before
+                    && !(self.is_offline && self.app.phase == ClientPhase::Playing)
                 {
                     self.app.main_menu_state.is_connecting = true;
                     let url = self.app.main_menu_state.server_address.clone();
@@ -733,7 +675,7 @@ impl SowApp {
                 // Poll engine init channel
                 if self.app.phase == sow_ui::app::ClientPhase::Splash {
                     match self.app.splash_state.job {
-                        sow_ui::ui::loading_screen::SplashJob::Boot | sow_ui::ui::loading_screen::SplashJob::Reconnect => {
+                        sow_ui::ui::loading_screen::SplashJob::Boot => {
                             if self.app.main_menu_state.is_connected {
                                 self.app.phase = ClientPhase::MainMenu;
                             } else {
@@ -912,7 +854,7 @@ impl SowApp {
                     self.last_tick = now;
                 }
                 if let Some(mut snap) = self.bridge.try_recv_snapshot() {
-                    println!("Received snapshot! phase: {:?}", snap.phase);
+
                     if let Some(mut existing) = self.current_snapshot.take() {
                         if !existing.dirty_tiles.is_empty() {
                             existing.dirty_tiles.append(&mut snap.dirty_tiles);
@@ -961,7 +903,7 @@ impl SowApp {
 
                 // Periodic memory profiler print
                 let now = web_time::Instant::now();
-                if self.last_debug_print.map_or(true, |t| now.duration_since(t).as_secs() >= 5) {
+                if self.last_debug_print.is_none_or(|t| now.duration_since(t).as_secs() >= 5) {
                     self.last_debug_print = Some(now);
                     if let Some(snap) = &self.current_snapshot {
                         log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);

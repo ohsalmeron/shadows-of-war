@@ -1,24 +1,21 @@
-#![allow(unused_imports)]
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use crate::sim_bridge::{SimBridge, PlatformSimBridge};
+use sow_render::{RenderContext, MapRenderer};
+use crate::sim_bridge::PlatformSimBridge;
 use sow_core::protocol::SimSnapshot;
 
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
 use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use sow_ui::{ClientApp, app::ClientPhase, UiAction};
+use sow_ui::{ClientApp, app::ClientPhase};
 use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
-use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
+use crate::spawn_sow_client_connect;
 use crate::nameplates::*;
-use crate::client_config::ClientVisualConfig;
 use crate::{MapDownloadEvent, EngineInitEvent};
-use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
 
 
-use std::io::Read;
+
 
 
 pub struct SowApp {
@@ -95,6 +92,15 @@ pub struct SowApp {
     pub is_offline: bool,
     pub offline_tick_timer: f32,
     pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
+    pub show_leaderboard: bool,
+    pub leaderboard_timer: f32,
+    pub cached_leaderboard: Vec<(u16, String, u32, f64)>,
+}
+
+impl Default for SowApp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SowApp {
@@ -267,9 +273,34 @@ impl SowApp {
             is_offline: false,
             offline_tick_timer: 0.0,
             offline_intents: Vec::new(),
+            show_leaderboard: false,
+            leaderboard_timer: 0.0,
+            cached_leaderboard: Vec::new(),
         }
     }
     
+    /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
+    pub(crate) fn begin_exit_to_main_menu(&mut self) {
+        self.is_offline = false;
+        self.ws_url = self.orchestrator_url.clone();
+        self.app.main_menu_state.server_address = self.ws_url.clone();
+        self.app.main_menu_state.is_waiting = false;
+        self.app.main_menu_state.pending_join_lobby_id = None;
+        self.app.main_menu_state.joined_lobby_id = None;
+        self.app.hud_state.sync_state = None;
+        self.my_lobby_id = None;
+        self.my_player_id = None;
+        self.app.phase = ClientPhase::Splash;
+        self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
+        self.app.splash_state.gpu_load_step = 0;
+        self.app.splash_state.frames_drawn = 0;
+    }
+
+    #[inline]
+    pub(crate) fn ws_on_relay(&self) -> bool {
+        self.ws_url.contains("/relay/") || self.ws_url.contains("2557")
+    }
+
     pub fn handle_suspended(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
                 if let Some(sp) = self.prev_sync_point.take() {
                     let _ = self.render_ctx.context.wait_for(&sp, !0);

@@ -1,26 +1,13 @@
-#![allow(unused_imports)]
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use crate::sim_bridge::{SimBridge, PlatformSimBridge};
-use sow_core::protocol::{SimCommand, SimSnapshot};
+use sow_render::MapGlobals;
+use crate::sim_bridge::SimBridge;
 
-use sow_core::game_config::GameConfig;
 
-use blade_egui::GuiPainter;
-use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use sow_ui::{ClientApp, app::ClientPhase, UiAction};
-use web_time::{Instant, Duration};
-use sow_net::client::SowClient;
-use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
-use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
-use crate::nameplates::*;
-use crate::client_config::ClientVisualConfig;
-use crate::{MapDownloadEvent, EngineInitEvent};
-use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
+use sow_ui::app::ClientPhase;
+use web_time::Instant;
 
 use blade_graphics as gpu;
 use crate::app_state::SowApp;
-use std::io::Read;
+
 
 
 pub mod world_overlays;
@@ -28,6 +15,7 @@ pub mod dev_ui;
 pub mod interactions;
 pub mod endgame_ui;
 pub mod tutorial_ui;
+pub mod leaderboard_ui;
 
 
 
@@ -137,8 +125,7 @@ impl SowApp {
                                 egui::Vec2::new(self.screen_w / sf, self.screen_h / sf)
                             ));
 
-                            #[cfg(target_os = "android")]
-                            {
+                            if cfg!(target_os = "android") {
                                 if self.app.phase == sow_ui::app::ClientPhase::MainMenu {
                                     let config = crate::client_config::ClientVisualConfig::default();
                                     self.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
@@ -192,26 +179,26 @@ impl SowApp {
 
                             let egui_ctx = self.egui_ctx.clone();
                             let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ctx| {
-                                #[cfg(target_os = "android")]
-                                if self.app.phase == sow_ui::app::ClientPhase::MainMenu {
-                                    let config = crate::client_config::ClientVisualConfig::default();
-                                    let screen_rect = ctx.screen_rect();
-                                    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("safe_area_bars")));
-                                    
-                                    let top_c = config.top_bar_color;
-                                    painter.rect_filled(
-                                        egui::Rect::from_min_max(screen_rect.min, egui::pos2(screen_rect.max.x, screen_rect.min.y + config.safe_area_top)),
-                                        0.0,
-                                        egui::Color32::from_rgba_premultiplied(top_c[0], top_c[1], top_c[2], top_c[3]),
-                                    );
-                                    
-                                    let bot_c = config.bottom_bar_color;
-                                    painter.rect_filled(
-                                        egui::Rect::from_min_max(egui::pos2(screen_rect.min.x, screen_rect.max.y - config.safe_area_bottom), screen_rect.max),
-                                        0.0,
-                                        egui::Color32::from_rgba_premultiplied(bot_c[0], bot_c[1], bot_c[2], bot_c[3]),
-                                    );
-                                }
+                                if cfg!(target_os = "android")
+                                    && self.app.phase == sow_ui::app::ClientPhase::MainMenu {
+                                        let config = crate::client_config::ClientVisualConfig::default();
+                                        let screen_rect = ctx.content_rect();
+                                        let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("safe_area_bars")));
+                                        
+                                        let top_c = config.top_bar_color;
+                                        painter.rect_filled(
+                                            egui::Rect::from_min_max(screen_rect.min, egui::pos2(screen_rect.max.x, screen_rect.min.y + config.safe_area_top)),
+                                            0.0,
+                                            egui::Color32::from_rgba_premultiplied(top_c[0], top_c[1], top_c[2], top_c[3]),
+                                        );
+                                        
+                                        let bot_c = config.bottom_bar_color;
+                                        painter.rect_filled(
+                                            egui::Rect::from_min_max(egui::pos2(screen_rect.min.x, screen_rect.max.y - config.safe_area_bottom), screen_rect.max),
+                                            0.0,
+                                            egui::Color32::from_rgba_premultiplied(bot_c[0], bot_c[1], bot_c[2], bot_c[3]),
+                                        );
+                                    }
 
                                 if self.app.phase == sow_ui::app::ClientPhase::Playing {
                                     self.render_world_overlays(ctx, sf);
@@ -223,6 +210,7 @@ impl SowApp {
                                 if self.app.phase == ClientPhase::Playing {
                                     self.handle_map_interactions(ctx);
                                     self.render_endgame_ui(ctx);
+                                    self.render_leaderboard(ctx);
                                 }
                                 
                                 self.render_dev_panels(ctx, &mut local_cancel_intents);
@@ -250,7 +238,7 @@ impl SowApp {
                                         });
                                 }
                                 
-                                self.process_ui_actions(ctx, sf, &mut local_cancel_intents);
+                                self.process_ui_actions(ctx);
                             });
 
                             for intent in local_cancel_intents {
@@ -273,7 +261,7 @@ impl SowApp {
                                     self.offline_tick_timer -= 0.05;
                                     
                                     let raw_intents = std::mem::take(&mut self.offline_intents);
-                                    println!("Offline tick generator sending Turn. dt: {}, timer: {}", dt, self.offline_tick_timer);
+                                    log::debug!("Offline tick generator sending Turn. dt: {}, timer: {}", dt, self.offline_tick_timer);
                                     let mut stamped_intents = Vec::with_capacity(raw_intents.len());
                                     for intent in raw_intents {
                                         stamped_intents.push(sow_core::protocol::StampedIntent {

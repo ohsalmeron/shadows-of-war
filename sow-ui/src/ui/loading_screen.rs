@@ -5,7 +5,6 @@ pub enum SplashJob {
     Boot,
     EnterGame,
     ExitGame,
-    Reconnect,
 }
 
 pub struct SplashState {

@@ -144,9 +144,9 @@ impl Default for GameConfig {
     fn default() -> Self {
         Self {
             // Lobby & Match Setup
-            max_players: 120,
-            bot_count: 500,      // Tribes (Simple, static filler AI)
-            nation_count: 120,   // Nations (Dynamic expanding AI)
+            max_players: 120,    // Kept large for new server
+            bot_count: 1000,     // Tribes (Bots)
+            nation_count: 50,    // Nations (Complex AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
@@ -157,34 +157,33 @@ impl Default for GameConfig {
             map_control_win_percentage: 0.10,
 
             // Core Simulation Pacing
-            tick_rate_ms: 100.0, // Server clock ticks every 50ms (20 ticks per second)
-            // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
-            global_speed_multiplier: 0.85, // 0.85 = Slightly slower, more tactical pace
+            tick_rate_ms: 50.0, 
+            global_speed_multiplier: 0.85, 
             
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 1.0,   // Balanced: harder to melt through enemy territory
-            attack_cost_neutral: 0.5, // Standard neutral cost
+            attack_cost_enemy: 1.0,
+            attack_cost_neutral: 0.5,
             terrain_multiplier_highland: 1.5,
             terrain_multiplier_mountain: 3.0,
-            bot_attack_interval_ticks: 16,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
-            max_tiles_per_tick: 64.0, // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
+            bot_attack_interval_ticks: 16,
+            max_tiles_per_tick: 64.0,
             max_tiles_per_tick_reference_troops: 1000.0,
             max_tiles_per_tick_at_reference: 4.0,
-            momentum_divisor: 2500.0,          // Troops needed for 1x momentum
+            momentum_divisor: 2500.0,
 
             // Economy & Income Rates
-            starting_troops: 100.0,  // Initial burst to allow early expansion
+            starting_troops: 100.0,
             starting_gold: 10.0,
             gold_base_income: 4.0,
-            troop_base_income: 2.0, // Smooth baseline troop recovery
-            troop_per_tile: 2.0,     // Rewards map control, but doesn't instantly snowball
+            troop_base_income: 2.0,
+            troop_per_tile: 2.0,
             max_troops_base: 100.0,
             max_troops_scale: 50.0,
             city_max_troops_per_level: 2000.0,
-            factory_income_bonus_per_level: 0.15, // 15% income boost per factory level
-            factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
-            gold_income_per_city_level: 1.0,      // +1 flat gold per city level
-            troop_income_pace: 1.0, // Designer-only troop refill multiplier (see field doc)
+            factory_income_bonus_per_level: 0.15,
+            factory_income_bonus_cap: 2.00,
+            gold_income_per_city_level: 1.0,
+            troop_income_pace: 1.0,
         }
     }
 }

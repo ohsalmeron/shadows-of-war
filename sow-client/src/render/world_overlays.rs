@@ -1,26 +1,10 @@
-#![allow(unused_imports)]
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use crate::sim_bridge::{SimBridge, PlatformSimBridge};
-use sow_core::protocol::{SimCommand, SimSnapshot};
 
-use sow_core::game_config::GameConfig;
 
-use blade_egui::GuiPainter;
-use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use sow_ui::{ClientApp, app::ClientPhase, UiAction};
-use web_time::{Instant, Duration};
-use sow_net::client::SowClient;
-use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
-use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
+use crate::NAMEPLATE_REFERENCE_ZOOM;
 use crate::nameplates::*;
 use crate::client_config::ClientVisualConfig;
-use crate::{MapDownloadEvent, EngineInitEvent};
-use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
 
-use blade_graphics as gpu;
 use crate::app_state::SowApp;
-use std::io::Read;
 
 
 
@@ -258,7 +242,7 @@ impl SowApp {
                                             
                                             painter.rect(rect, 2.0, color, egui::Stroke::new(1.5_f32, egui::Color32::from_black_alpha(200)), egui::StrokeKind::Middle);
 
-                                            if fleet.retreating && (self.start_time.elapsed().as_millis() / 500) % 2 == 0 {
+                                            if fleet.retreating && (self.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
                                                 let center = rect.center();
                                                 painter.line_segment([egui::pos2(center.x - margin, center.y - margin), egui::pos2(center.x + margin, center.y + margin)], egui::Stroke::new(2.0_f32, egui::Color32::BLACK));
                                                 painter.line_segment([egui::pos2(center.x + margin, center.y - margin), egui::pos2(center.x - margin, center.y + margin)], egui::Stroke::new(2.0_f32, egui::Color32::BLACK));
@@ -296,7 +280,7 @@ impl SowApp {
                                             painter.line_segment([start_pos, end_pos], egui::Stroke::new(3.0_f32, egui::Color32::from_black_alpha(150)));
                                             painter.line_segment([start_pos, end_pos], egui::Stroke::new(1.5_f32, color));
                                             
-                                            if attack.retreating && (self.start_time.elapsed().as_millis() / 500) % 2 == 0 {
+                                            if attack.retreating && (self.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
                                                 let center = start_pos.lerp(end_pos, 0.5);
                                                 painter.text(center, egui::Align2::CENTER_CENTER, "[X]", egui::FontId::proportional(20.0), egui::Color32::RED);
                                             }

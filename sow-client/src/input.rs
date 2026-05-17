@@ -1,25 +1,14 @@
-#![allow(unused_imports)]
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use crate::sim_bridge::{SimBridge, PlatformSimBridge};
-use sow_core::protocol::{SimCommand, SimSnapshot};
+use crate::sim_bridge::SimBridge;
+use sow_core::protocol::SimCommand;
 
-use sow_core::game_config::GameConfig;
 
 use blade_graphics as gpu;
-use blade_egui::GuiPainter;
-use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use sow_ui::{ClientApp, app::ClientPhase, UiAction};
-use web_time::{Instant, Duration};
-use sow_net::client::SowClient;
-use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
-use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
-use crate::nameplates::*;
-use crate::client_config::ClientVisualConfig;
-use crate::{MapDownloadEvent, EngineInitEvent};
+use egui::{Pos2, Rect, Vec2};
+use sow_ui::app::ClientPhase;
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
 use crate::app_state::SowApp;
-use std::io::Read;
+
 
 impl SowApp {
     pub fn handle_window_event(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop, event: WindowEvent) {
@@ -89,7 +78,7 @@ impl SowApp {
                                             c.send(json);
                                         }
                                     } else {
-                                        println!("Sending spawn intent offline to bridge at x: {}, y: {}", col, row);
+
                                                 let stamped = sow_core::protocol::StampedIntent { player_id: self.my_player_id.unwrap_or(1), intent };
                                         self.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                     }
@@ -178,7 +167,7 @@ impl SowApp {
                                 let dx = position.x - sx;
                                 let dy = position.y - sy;
                                 let dist = dx*dx + dy*dy;
-                                println!("Clicked map. wants_pointer: {}, phase: {:?}, is_primary: {}, dist: {}", wants_pointer, self.app.phase, is_primary, dist);
+
                                 if dist <= 400.0 {
                                     let world_x = (sx as f32 - self.camera_x) / self.camera_zoom;
                                     let world_y = (sy as f32 - self.camera_y) / self.camera_zoom;
@@ -188,7 +177,7 @@ impl SowApp {
 
                                     if col >= 0 && row >= 0 && col < self.map_w as i32 && row < self.map_h as i32 {
                                         let phase = self.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
-                                        println!("Actual snapshot phase: {:?}", phase);
+
                                         let mut intent_opt = None;
 
                                         if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
@@ -207,15 +196,14 @@ impl SowApp {
                                                     target_tile: idx as u32,
                                                     troops,
                                                 });
-                                            } else if is_primary {
-                                                if is_land && owner != self.my_player_id.unwrap_or(0) {
+                                            } else if is_primary
+                                                && is_land && owner != self.my_player_id.unwrap_or(0) {
                                                     let attack = sow_core::protocol::AttackIntent {
                                                         target_owner: owner,
                                                         troops: Some(self.app.hud_state.troops * (self.app.hud_state.attack_ratio as f64)),
                                                     };
                                                     intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
                                                 }
-                                            }
                                         }
                                         
                                         if let Some(intent) = intent_opt {
@@ -227,7 +215,7 @@ impl SowApp {
                                                     c.send(json);
                                                 }
                                             } else {
-                                                println!("Sending spawn intent offline to bridge at x: {}, y: {}", col, row);
+
                                                 let stamped = sow_core::protocol::StampedIntent {
                                                     player_id: self.my_player_id.unwrap_or(1),
                                                     intent,

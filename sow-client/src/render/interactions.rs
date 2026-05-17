@@ -1,36 +1,20 @@
-#![allow(unused_imports)]
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use crate::sim_bridge::{SimBridge, PlatformSimBridge};
-use sow_core::protocol::{SimCommand, SimSnapshot};
+use crate::sim_bridge::SimBridge;
 
-use sow_core::game_config::GameConfig;
 
-use blade_egui::GuiPainter;
-use egui::{Context, RawInput, Pos2, Rect, Vec2};
-use sow_ui::{ClientApp, app::ClientPhase, UiAction};
-use web_time::{Instant, Duration};
-use sow_net::client::SowClient;
-use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound, NAMEPLATE_REFERENCE_ZOOM};
-use crate::{spawn_sow_client_connect, get_build_version, get_maps_url};
-use crate::nameplates::*;
-use crate::client_config::ClientVisualConfig;
-use crate::{MapDownloadEvent, EngineInitEvent};
-use winit::event::{WindowEvent, MouseButton, ElementState, MouseScrollDelta};
+use sow_ui::{app::ClientPhase, UiAction};
+use crate::{spawn_sow_client_connect, get_build_version};
 
-use blade_graphics as gpu;
 use crate::app_state::SowApp;
-use std::io::Read;
 
 
 
 impl SowApp {
     pub(crate) fn handle_map_interactions(&mut self, ctx: &egui::Context) {
-        if self.current_snapshot.as_ref().map_or(false, |s| s.winner.is_some()) {
+        if self.current_snapshot.as_ref().is_some_and(|s| s.winner.is_some()) {
             return;
         }
 
-        let _sf = self.egui_ctx.pixels_per_point();
+
         if self.app.main_menu_state.is_waiting {
             return;
         }
@@ -92,7 +76,7 @@ impl SowApp {
 
     }
 
-    pub(crate) fn process_ui_actions(&mut self, ctx: &egui::Context, _sf: f32, _local_cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) {
+    pub(crate) fn process_ui_actions(&mut self, ctx: &egui::Context) {
                                 if let Some(action) = self.app.draw(ctx) {
                                     match action {
                                         UiAction::StartSinglePlayer => {
@@ -226,22 +210,11 @@ impl SowApp {
                                                     c.send(json);
                                                 }
                                             }
-                                            self.app.hud_state.connection_lost = false;
-                                            self.app.main_menu_state.is_waiting = false;
-                                            self.app.main_menu_state.pending_join_lobby_id = None;
-                                            self.app.main_menu_state.joined_lobby_id = None;
-                                            self.my_lobby_id = None;
-                                            self.my_player_id = None;
                                             self.camera_x = 0.0;
                                             self.camera_y = 0.0;
                                             self.camera_zoom = 2.0;
-                                            self.ws_url = self.orchestrator_url.clone();
-                                            self.app.main_menu_state.server_address = self.ws_url.clone();
                                             self.net_client = None;
-                                            self.app.phase = ClientPhase::Splash;
-                                            self.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
-                                            self.app.splash_state.gpu_load_step = 0;
-                                            self.app.splash_state.frames_drawn = 0;
+                                            self.begin_exit_to_main_menu();
                                         }
                                         UiAction::SetAttackRatio(r) => {
                                             self.app.hud_state.attack_ratio = r;
