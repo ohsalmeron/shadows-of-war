@@ -68,9 +68,12 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
-[profile.wasm-release]
+[profile.deploy]
 inherits = "release"
-opt-level = 3
-lto = true
-codegen-units = 1
+lto = false
+codegen-units = 16
+strip = true
+
+[profile.wasm-release]
+inherits = "deploy"
 panic = "abort"

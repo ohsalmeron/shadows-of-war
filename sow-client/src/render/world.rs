@@ -111,9 +111,9 @@ impl SowApp {
 
                                         // Small nations require zooming in to appear.
                                         let threshold = if player.id >= 200 {
-                                            24.0 // Tribes need to be much closer/bigger to show text
+                                            16.0 // Tribes need to be much closer/bigger to show text
                                         } else {
-                                            8.0 // Nations can show text further away
+                                            4.0 // Nations can show text further away
                                         };
                                         let show_full = lod_presence >= threshold && full_labels_drawn < 100;
 
@@ -137,7 +137,7 @@ impl SowApp {
                                             let target_font_size = raw_font_size * ui_text_scale;
                                             
                                             // --- Change this value to control how small text can get (e.g. during spawning) ---
-                                            let min_font_size = 8; 
+                                            let min_font_size = 12; 
                                             // -----------------------------------------------------------------------------------
                                             
                                             // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
