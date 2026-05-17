@@ -1,6 +1,5 @@
 use crate::app::SowApp;
 use egui::{Align2, Color32, FontId, RichText};
-use sow_ui::app::ClientPhase;
 
 impl SowApp {
     #[allow(deprecated)]
@@ -65,10 +64,7 @@ impl SowApp {
                         if ui.add_sized([200.0, 50.0], egui::Button::new(RichText::new("Return to Lobby").color(Color32::WHITE).font(FontId::proportional(20.0))).fill(btn_color)).clicked() {
                             // Disconnect and return to main menu
                             self.net.client = None;
-                            self.sim.current_snapshot = None;
-                            self.sim.my_lobby_id = None;
-                            self.ui.app.phase = ClientPhase::MainMenu;
-                            self.ui.app.main_menu_state.is_waiting = false;
+                            self.begin_exit_to_main_menu();
                         }
                     });
                 });

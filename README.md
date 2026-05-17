@@ -77,6 +77,11 @@ The engine strictly separates the UI state (`ClientPhase`) from the deterministi
 4. **Game Starts (`GamePhase::Playing`)**: Once the spawn timer ends, the engine swaps to `GamePhase::Playing`. 
 * **Important Rule**: **Never tie player-specific logic (like camera snapping to their base)** to the end of the Loading Screen. It must execute only after the player has actually deployed (detected by checking their `tile_count > 0` and observing the transition into `GamePhase::Playing`), ensuring it works flawlessly for both multiplayer and single-player.
 
+### Offline Network Integrity (Single-Player Mode)
+* **Design Choice**: In Single-Player mode, the local deterministic simulation is run directly on the client, completely bypassing the network.
+* **Input Routing Trap**: During the Map Loading `Splash` phase, background reconnection routines can accidentally re-establish a WebSocket connection to the multiplayer orchestrator. If this occurs, local `GameplayIntent`s (such as Spawning) are inadvertently routed to the remote server instead of the offline engine, causing severe visual and mechanical desyncs.
+* **Solution**: The engine strictly enforces a `!is_offline` constraint on the core reconnection loop. This guarantees that `self.net.client` remains completely `None` during offline matches, ensuring all user clicks are immediately captured by `offline_intents` and processed instantly by the local simulation tick.
+
 ### Custom GPU Pipeline (`blade-graphics`)
 * The map state is efficiently bit-packed into `u32` arrays by the CPU (16 bits for Owner ID, 8 bits for Terrain).
 * Uploaded to the GPU via Shared Memory buffers perfectly synchronized with `wait_for` lifecycle barriers to prevent use-after-free `invalid size` driver panics.
