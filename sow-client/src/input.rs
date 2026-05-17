@@ -1,4 +1,4 @@
-use crate::sim::SimBridge;
+
 use sow_core::protocol::SimCommand;
 
 
@@ -80,7 +80,7 @@ impl SowApp {
                                     } else {
 
                                                 let stamped = sow_core::protocol::StampedIntent { player_id: self.sim.my_player_id.unwrap_or(1), intent };
-                                        self.sim.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                        self.dispatch_sim_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                     }
                                 }
                             }
@@ -220,7 +220,7 @@ impl SowApp {
                                                     player_id: self.sim.my_player_id.unwrap_or(1),
                                                     intent,
                                                 };
-                                                self.sim.bridge.send_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
+                                                self.dispatch_sim_command(SimCommand::Turn(sow_core::protocol::Turn { turn_number: 0, intents: vec![stamped] }));
                                             }
                                         }
                                     }

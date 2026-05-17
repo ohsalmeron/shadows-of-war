@@ -37,8 +37,6 @@ echo "✅ Version bumped to ${CLEAN_VERSION}"
 # 2. Build Backend and Frontend
 echo "==> Compiling Backend and Frontend..."
 RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown
-cargo build --release --bin sow-client
-CLIENT_BIN="${CARGO_TARGET_DIR}/release/sow-client"
 # Try MUSL, fallback to GNU
 if cargo build --release -p sow-server --target x86_64-unknown-linux-musl && cargo build --release -p sow-relay --target x86_64-unknown-linux-musl; then
     SERVER_BIN="target/x86_64-unknown-linux-musl/release/sow-server"
@@ -157,6 +155,3 @@ echo "========================================================="
 echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"
 echo "🕹️  Play live: https://shadowsofwar.io"
 echo "========================================================="
-
-echo "==> Launching native client (${CLIENT_BIN})..."
-exec "${CLIENT_BIN}"

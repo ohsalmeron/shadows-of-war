@@ -69,7 +69,12 @@ impl SowApp {
                                             // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
                                             // invalidated every scroll step (fixes garbled glyphs). Font size is rounded
                                             // to whole points for fewer distinct `FontId`s.
-                                            let importance = (player.tile_count as f32).sqrt().max(1.0);
+                                            // Normalize tile count so text size is consistent regardless of total map size.
+                                            // 40_000 is a reference 200x200 map.
+                                            let map_area = (self.sim.map_w * self.sim.map_h).max(1) as f32;
+                                            let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
+                                            let importance = normalized_tiles.sqrt().max(1.0);
+                                            
                                             let lod_presence = importance * (self.input.camera_zoom / sf);
                                             let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
 
@@ -130,8 +135,13 @@ impl SowApp {
 
                                             // 4. Integer pt sizes → stable galley cache, stable atlas entries
                                             let target_font_size = raw_font_size * ui_text_scale;
+                                            
+                                            // --- Change this value to control how small text can get (e.g. during spawning) ---
+                                            let min_font_size = 8; 
+                                            // -----------------------------------------------------------------------------------
+                                            
                                             // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
-                                            let font_size = (((target_font_size.round() as i32).clamp(14, 64) + 1) / 2 * 2) as f32;
+                                            let font_size = (((target_font_size.round() as i32).clamp(min_font_size, 64) + 1) / 2 * 2) as f32;
 
                                             let is_human = player.player_type == sow_core::player::PlayerType::Human;
                                             let troops_for_label = self.ui.troop_label_throttle
@@ -209,7 +219,12 @@ impl SowApp {
                                         for fleet in &snap.fleets {
                                             let mut r = 0.5; let mut g = 0.5; let mut b = 0.5;
                                             if let Some(owner) = snap.players.iter().find(|p| p.id == fleet.owner_id) {
-                                                r = owner.color[0]; g = owner.color[1]; b = owner.color[2];
+                                                let rgb = if owner.player_type == sow_core::player::PlayerType::Human {
+                                                    sow_core::player::human_shader_territory_rgb(owner.id)
+                                                } else {
+                                                    owner.color
+                                                };
+                                                r = rgb[0]; g = rgb[1]; b = rgb[2];
                                             }
                                             let color = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
                                             let trail_color = egui::Color32::from_rgba_premultiplied((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 150);
@@ -262,7 +277,12 @@ impl SowApp {
                                             if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
                                                 rx = attacker.centroid_x + 0.5;
                                                 ry = attacker.centroid_y + 0.5;
-                                                r = attacker.color[0]; g = attacker.color[1]; b = attacker.color[2];
+                                                let rgb = if attacker.player_type == sow_core::player::PlayerType::Human {
+                                                    sow_core::player::human_shader_territory_rgb(attacker.id)
+                                                } else {
+                                                    attacker.color
+                                                };
+                                                r = rgb[0]; g = rgb[1]; b = rgb[2];
                                             }
                                             if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
                                                 tx = target.centroid_x + 0.5;

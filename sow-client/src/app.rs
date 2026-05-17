@@ -1,5 +1,5 @@
 use sow_render::{RenderContext, MapRenderer};
-use crate::sim::PlatformSimBridge;
+
 use sow_core::protocol::SimSnapshot;
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
@@ -39,7 +39,7 @@ pub struct NetState {
 }
 
 pub struct SimState {
-    pub bridge: crate::sim::PlatformSimBridge,
+    pub engine: Option<sow_core::engine::SowEngine>,
     pub current_snapshot: Option<sow_core::protocol::SimSnapshot>,
     pub turn_queue: std::collections::VecDeque<sow_core::protocol::Turn>,
     pub my_player_id: Option<u16>,
@@ -146,7 +146,7 @@ impl SowApp {
     let map_w: u32 = 800;
     let map_h: u32 = 600;
 
-    let bridge = PlatformSimBridge::spawn();
+    let engine: Option<sow_core::engine::SowEngine> = None;
     // Sim stays idle until a real `SimCommand::Init` (EnterGame or ExitGame cleanup).
     // Eager Init here duplicated the whole map sim at startup and doubled worker snapshots.
 
@@ -279,7 +279,7 @@ impl SowApp {
                 pending_lobby_rejoin: false, current_ping_ms, last_ping_time
             },
             sim: SimState {
-                bridge, current_snapshot, turn_queue, my_player_id, my_lobby_id, map_w, map_h,
+                engine, current_snapshot, turn_queue, my_player_id, my_lobby_id, map_w, map_h,
                 offline_tick_timer: 0.0, offline_intents: Vec::new()
             },
             input: InputState {
@@ -465,5 +465,59 @@ impl SowApp {
         self.update_assets();
         self.update_loader();
         self.update_sim(now);
+    }
+
+    pub fn dispatch_sim_command(&mut self, cmd: sow_core::protocol::SimCommand) {
+        match cmd {
+            sow_core::protocol::SimCommand::Init { config, seed, map_bytes, players } => {
+                let map_w = config.map_width;
+                let map_h = config.map_height;
+                let mut state = sow_core::game::GameState::new(seed, map_w, map_h, config);
+                
+                if map_bytes.len() == state.map.terrain.len() {
+                    let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                    unsafe { std::ptr::copy_nonoverlapping(map_bytes.as_ptr(), dest_ptr, map_bytes.len()); }
+                } else {
+                    for (i, &b) in map_bytes.iter().enumerate() {
+                        if i < state.map.terrain.len() {
+                            state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
+                        }
+                    }
+                }
+
+                let water = sow_core::water_components::WaterComponents::compute(&state.map, |_| {});
+                let mut new_engine = sow_core::engine::SowEngine::new(state, water);
+
+                for p in players {
+                    if p.player_type == sow_core::player::PlayerType::Human {
+                        new_engine.spawn_human(p.id, p.name, p.color);
+                    }
+                }
+                
+                new_engine.spawn_ai(new_engine.state.config.nation_count, new_engine.state.config.bot_count);
+                let snap = new_engine.build_snapshot();
+                self.sim.current_snapshot = Some(snap);
+                self.sim.engine = Some(new_engine);
+            }
+            sow_core::protocol::SimCommand::Turn(turn) => {
+                if let Some(e) = &mut self.sim.engine {
+                    e.apply_intents(&turn.intents);
+                    e.tick();
+                    
+                    let mut snap = e.build_snapshot();
+                    if let Some(mut existing) = self.sim.current_snapshot.take() {
+                        if !existing.dirty_tiles.is_empty() {
+                            existing.dirty_tiles.append(&mut snap.dirty_tiles);
+                            snap.dirty_tiles = existing.dirty_tiles;
+                        }
+                    }
+                    self.sim.current_snapshot = Some(snap);
+                }
+            }
+            sow_core::protocol::SimCommand::Shutdown => {
+                self.sim.engine = None;
+                self.sim.current_snapshot = None;
+            }
+        }
     }
 }

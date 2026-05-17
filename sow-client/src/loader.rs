@@ -1,4 +1,4 @@
-use crate::sim::SimBridge;
+
 use crate::app::SowApp;
 use crate::EngineInitEvent;
 use sow_ui::app::ClientPhase;
@@ -121,7 +121,7 @@ impl SowApp {
                                 config.map_height = 1;
                                 config.nation_count = 0;
                                 config.bot_count = 0;
-                                self.sim.bridge.send_command(SimCommand::Init {
+                                self.dispatch_sim_command(SimCommand::Init {
                                     config,
                                     seed: 0,
                                     map_bytes: vec![0b10000000], // 1 land tile
@@ -176,7 +176,7 @@ impl SowApp {
                             
                             self.sim.current_snapshot = None; // MANDATORY: Clear old snapshot so Step 3 waits for the new one!
                             
-                            self.sim.bridge.send_command(SimCommand::Init {
+                            self.dispatch_sim_command(SimCommand::Init {
                                 config: start_msg.config.clone(),
                                 seed: start_msg.seed,
                                 map_bytes: map_bytes.clone(),
@@ -184,7 +184,7 @@ impl SowApp {
                             });
                             
                             for turn in &start_msg.missed_turns {
-                                self.sim.bridge.send_command(SimCommand::Turn(turn.clone()));
+                                self.dispatch_sim_command(SimCommand::Turn(turn.clone()));
                             }
 
                             self.sim.map_w = start_msg.config.map_width;

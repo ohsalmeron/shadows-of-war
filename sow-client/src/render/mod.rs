@@ -1,6 +1,6 @@
 use sow_render::MapGlobals;
 use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
-use crate::sim::SimBridge;
+
 
 
 use sow_ui::app::ClientPhase;
@@ -271,7 +271,7 @@ impl SowApp {
                                         turn_number: 0, // Ignored by client simulation
                                         intents: stamped_intents,
                                     };
-                                    self.sim.bridge.send_command(sow_core::protocol::SimCommand::Turn(turn));
+                                    self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
                                 }
                             }
 
