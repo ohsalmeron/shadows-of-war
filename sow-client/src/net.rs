@@ -441,7 +441,7 @@ impl SowApp {
                     && self.net.client.is_none()
                     && !self.ui.app.main_menu_state.is_connecting
                     && now >= self.net.ws_connect_not_before
-                    && !(self.net.is_offline && self.ui.app.phase == ClientPhase::Playing)
+                    && !self.net.is_offline
                 {
                     self.ui.app.main_menu_state.is_connecting = true;
                     let url = self.ui.app.main_menu_state.server_address.clone();
