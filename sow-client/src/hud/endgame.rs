@@ -5,15 +5,38 @@ use sow_ui::app::ClientPhase;
 impl SowApp {
     #[allow(deprecated)]
     pub(crate) fn render_endgame_ui(&mut self, ctx: &egui::Context) {
-        let winner_id = match &self.sim.current_snapshot {
-            Some(snap) => snap.winner,
-            None => None,
-        };
+        let mut show_endgame = false;
+        let mut is_victory = false;
+        let mut text_title = "";
+        let mut text_subtitle = String::new();
+        let my_id = self.sim.my_player_id.unwrap_or(0);
 
-        if let Some(winner) = winner_id {
-            let my_id = self.sim.my_player_id.unwrap_or(0);
-            let is_victory = winner == my_id;
-            
+        if let Some(snap) = &self.sim.current_snapshot {
+            if let Some(winner) = snap.winner {
+                show_endgame = true;
+                if winner == my_id {
+                    is_victory = true;
+                    text_title = "VICTORY";
+                    text_subtitle = "You have conquered the world.".to_string();
+                } else {
+                    is_victory = false;
+                    text_title = "DEFEAT";
+                    let winner_name = snap.players.iter().find(|p| p.id == winner).map(|p| p.name.clone()).unwrap_or_else(|| "Unknown".to_string());
+                    text_subtitle = format!("{} emerged victorious.", winner_name);
+                }
+            } else {
+                if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
+                    if !me.alive && me.has_spawned {
+                        show_endgame = true;
+                        is_victory = false;
+                        text_title = "DEFEAT";
+                        text_subtitle = "Your empire has fallen.".to_string();
+                    }
+                }
+            }
+        }
+
+        if show_endgame {
             // Dim background
             egui::Area::new(egui::Id::new("endgame_dimmer"))
                 .order(egui::Order::Background)
@@ -31,16 +54,10 @@ impl SowApp {
                 .frame(egui::Frame::window(&ctx.global_style()).fill(Color32::from_rgb(20, 20, 25)).inner_margin(30.0))
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        if is_victory {
-                            ui.label(RichText::new("VICTORY").color(Color32::GOLD).font(FontId::proportional(64.0)).strong());
-                            ui.add_space(10.0);
-                            ui.label(RichText::new("You have conquered the world.").color(Color32::LIGHT_GRAY).font(FontId::proportional(24.0)));
-                        } else {
-                            ui.label(RichText::new("DEFEAT").color(Color32::RED).font(FontId::proportional(64.0)).strong());
-                            ui.add_space(10.0);
-                            let winner_name = self.sim.current_snapshot.as_ref().unwrap().players.iter().find(|p| p.id == winner).map(|p| p.name.clone()).unwrap_or_else(|| "Unknown".to_string());
-                            ui.label(RichText::new(format!("{} emerged victorious.", winner_name)).color(Color32::LIGHT_GRAY).font(FontId::proportional(24.0)));
-                        }
+                        let title_color = if is_victory { Color32::GOLD } else { Color32::RED };
+                        ui.label(RichText::new(text_title).color(title_color).font(FontId::proportional(64.0)).strong());
+                        ui.add_space(10.0);
+                        ui.label(RichText::new(&text_subtitle).color(Color32::LIGHT_GRAY).font(FontId::proportional(24.0)));
                         
                         ui.add_space(30.0);
                         
