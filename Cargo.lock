@@ -3585,7 +3585,6 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "bytemuck",
- "libm",
  "log",
  "serde",
  "serde_json",

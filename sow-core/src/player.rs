@@ -8,7 +8,7 @@ pub type PlayerId = u16;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlayerType { Human, Bot, Nation }
 
-fn default_player_gold() -> f64 { crate::game_config::GameConfig::default().starting_gold }
+fn default_player_gold() -> f64 { crate::config::STARTING_GOLD }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Player {

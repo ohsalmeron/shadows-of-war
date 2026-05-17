@@ -1,13 +1,6 @@
 use crate::game::BuildingKind;
+use crate::config;
 use super::placement::{idx_xy, manhattan};
-
-/// Manhattan range from a tile for defense post priority bonus.
-pub const DEFENSE_POST_RANGE: i32 = 8;
-
-/// Extra attack frontier priority per combined DefensePost level near the defender tile
-/// (higher `PrioritizedTile::priority` ⇒ later conquest).
-pub const DEFENSE_POST_PRIORITY_PER_LEVEL: i64 = 4;
-
 /// Build and upgrade costs use **gold**; see `structure_build_cost_gold`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,8 +102,8 @@ pub fn defense_post_priority_bonus(
     for b in buildings {
         let (bx, by) = idx_xy(b.tile_idx, map_width);
         let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
-        if d <= DEFENSE_POST_RANGE {
-            bonus += b.level as i64 * DEFENSE_POST_PRIORITY_PER_LEVEL;
+        if d <= config::DEFENSE_POST_RANGE {
+            bonus += b.level as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
         }
     }
     bonus
@@ -163,7 +156,7 @@ impl DefenseGrid {
     #[inline]
     pub fn priority_bonus(&self, tile_x: u32, tile_y: u32, map_width: u32, target_owner: u16) -> i64 {
         let mut bonus: i64 = 0;
-        let range = DEFENSE_POST_RANGE as u32;
+        let range = config::DEFENSE_POST_RANGE as u32;
         
         let cx_min = tile_x.saturating_sub(range) / self.cell_size;
         let cx_max = (tile_x + range) / self.cell_size;
@@ -181,8 +174,8 @@ impl DefenseGrid {
                     let bx = b.tile_idx % map_width;
                     let by = b.tile_idx / map_width;
                     let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
-                    if d <= DEFENSE_POST_RANGE {
-                        bonus += b.level as i64 * DEFENSE_POST_PRIORITY_PER_LEVEL;
+                    if d <= config::DEFENSE_POST_RANGE {
+                        bonus += b.level as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
                     }
                 }
             }

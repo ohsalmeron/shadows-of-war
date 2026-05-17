@@ -1,4 +1,4 @@
-
+use crate::game_config::max_tiles_cap_for_troops;
 use crate::game::{GameEvent, GamePhase};
 use crate::map::TerrainType;
 use crate::warp_fleet::best_shore_spawn_for_transport;
@@ -56,39 +56,28 @@ impl SowEngine {
         // Fast approximation of active frontier size without scanning the entire empire border
         let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 
-        let max_tiles_f64 = if execution.target_owner == 0 {
-            // Neutral expansion speed: OpenFront Parity (Budget / Cost)
-            let budget = adjacent * 2.0;
-            // Base cost for Land (speed 16.5). Terrain modifiers naturally average out.
-            // tilesPerTickUsed = clamp( (2000 * 16.5) / troops, 5.0, 100.0 )
-            let cost = (33000.0 / execution.troops.max(1.0)).clamp(5.0, 100.0);
-            
-            // OpenFront always processes at least 1 loop iteration if budget > 0, effectively ceil().
-            // We approximate the continuous rate and scale by tick rate (sow-core 20 TPS vs OF 10 TPS).
-            let base_tiles = (budget / cost).max(1.0); 
-            base_tiles * ((self.state.config.tick_rate_ms as f64) / 100.0)
+        let max_cap = max_tiles_cap_for_troops(execution.troops, &self.state.config);
+
+        let mut max_tiles_f64 = if execution.target_owner == 0 {
+            // Neutral expansion speed: proportional to true border size
+            (adjacent * 2.0).max(5.0).min(max_cap)
         } else {
-            // PvP expansion speed: OpenFront Parity
             let defender_troops = self.state
                 .player(execution.target_owner)
                 .map(|p| p.troops.max(0.0))
                 .unwrap_or(1.0)
                 .max(1.0);
-            
-            // attackTilesPerTick (budget)
-            // OF: within(((5 * attackTroops) / defender.troops()) * 2, 0.01, 0.5) * adjacent * 3
-            let ratio = (10.0 * execution.troops) / defender_troops;
-            let budget = ratio.clamp(0.01, 0.5) * adjacent * 3.0;
-            
-            // cost (tilesPerTickUsed)
-            // OF: clamp( defender.troops() / (5 * attackTroops), 0.2, 1.5 ) * speed
-            let cost_ratio = (defender_troops / (5.0 * execution.troops.max(1.0))).clamp(0.2, 1.5);
-            let speed = 16.5; // Base Land speed
-            let cost = cost_ratio * speed;
-            
-            let base_tiles = (budget / cost).max(1.0);
-            base_tiles * ((self.state.config.tick_rate_ms as f64) / 100.0)
+            let ratio = execution.troops / defender_troops;
+            let power = (ratio * 2.0).clamp(0.02, 0.5); 
+            (power * adjacent * 3.0).max(1.0).min(max_cap)
         };
+
+        // Speed scales with remaining troops. Higher momentum_divisor = slower ramp.
+        let momentum = (execution.troops / self.state.config.momentum_divisor).clamp(1.0, 5.0);
+        max_tiles_f64 *= momentum;
+
+        // Apply global speed pacing multiplier
+        max_tiles_f64 *= self.state.config.global_speed_multiplier;
 
         // Determine actual integer number of tiles to process this tick (Fractional determinism)
         let mut tiles_to_conquer = max_tiles_f64.floor() as u32;
@@ -130,52 +119,39 @@ impl SowEngine {
                     continue; // Skip, edge was severed
                 }
 
+                let terrain_multiplier = match terrain_type {
+                    TerrainType::Land => 1.0,
+                    TerrainType::Highland => self.state.config.terrain_multiplier_highland,
+                    TerrainType::Mountain => self.state.config.terrain_multiplier_mountain,
+                    _ => 1.0,
+                };
+
                 if execution.target_owner == 0 {
-                    // Neutral: OpenFront troop loss
-                    // mag = 80 for plains, 100 for highland, 120 for mountain
-                    let mag = match terrain_type {
-                        TerrainType::Land => 80.0,
-                        TerrainType::Highland => 100.0,
-                        TerrainType::Mountain => 120.0,
-                        _ => 80.0,
-                    };
-                    execution.troops -= mag / 5.0;
+                    // Neutral: attacker pays constant base cost scaled by terrain multiplier
+                    execution.troops -= self.state.config.attack_cost_neutral * terrain_multiplier;
                 } else {
                     // PvP: Combat resolution (OpenFront Parity)
-                    let mag = match terrain_type {
-                        TerrainType::Land => 80.0,
-                        TerrainType::Highland => 100.0,
-                        TerrainType::Mountain => 120.0,
-                        _ => 80.0,
-                    };
-
                     let mut def_loss = 0.0;
-                    let mut target_troops = 1.0;
-                    
                     if let Some(target_player) = self.state.player(execution.target_owner) {
-                        target_troops = target_player.troops.max(1.0);
                         if target_player.tile_count > 0 {
+                            // Defender loses proportional to their troop density.
+                            // Clamp to 0: if troops went negative from multi-attack drain,
+                            // a negative def_loss would ADD troops to the defender on
+                            // subtract, compounding per tick and diverging across clients.
                             def_loss = target_player.troops.max(0.0) / target_player.tile_count as f64;
                         }
                     }
 
-                    // OpenFront Attacker Loss logic:
-                    let ratio_for_atk_loss = (target_troops / execution.troops.max(1.0)).clamp(0.6, 2.0);
-                    let current_attacker_loss = ratio_for_atk_loss * mag * 0.8; 
-                    let alt_attacker_loss = 1.3 * def_loss * (mag / 100.0);
-                    
-                    let mut atk_loss = 0.6 * current_attacker_loss + 0.4 * alt_attacker_loss;
-
-                    // Defense posts increase attacker losses (Approximation of OpenFront 5x flat bonus)
+                    // Defense posts increase attacker losses slightly
                     let dp_bonus = self.defense_grid.priority_bonus(
                         target_tile.x,
                         target_tile.y,
                         map_w,
                         execution.target_owner,
                     );
-                    
-                    let dp_multiplier = 1.0 + (dp_bonus as f64 / 10.0);
-                    atk_loss *= dp_multiplier;
+                    let dp_multiplier = 1.0 + (dp_bonus as f64 / 10.0); // Approximation of defense buff
+
+                    let atk_loss = self.state.config.attack_cost_enemy * terrain_multiplier * dp_multiplier;
 
                     execution.troops -= atk_loss;
 

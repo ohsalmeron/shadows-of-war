@@ -35,7 +35,7 @@ fn bot_structure_target_count(
 /// clearly cannot afford any building of this type.
 #[inline]
 fn cheapest_gold_cost(kind: BuildingKind) -> f64 {
-    let s = crate::building::cost::OPENFRONT_GOLD_SCALE.max(1.0);
+    let s = crate::config::OPENFRONT_GOLD_SCALE.max(1.0);
     match kind {
         BuildingKind::City | BuildingKind::Factory | BuildingKind::Port => 125_000.0 / s,
         BuildingKind::DefensePost => 50_000.0 / s,

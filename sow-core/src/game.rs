@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
+use crate::config;
 use crate::map::GameMap;
 use crate::player::{Player, PlayerId};
-
-/// Radius of the initial spawn cluster (in tiles from center).
-pub const SPAWN_RADIUS: u32 = 3;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum GamePhase { Lobby, Spawning { end_tick: u64 }, Playing, GameOver }
@@ -64,7 +62,7 @@ impl GameState {
     }
     
     pub fn place_spawn(&mut self, pid: u16, cx: u32, cy: u32) {
-        let r = SPAWN_RADIUS as i32;
+        let r = config::SPAWN_RADIUS as i32;
         for dy in -r..=r { for dx in -r..=r {
             if dx*dx + dy*dy > r*r { continue; }
             let nx = cx as i32 + dx; let ny = cy as i32 + dy;
