@@ -249,31 +249,7 @@ impl SowApp {
                                 }
                             }
 
-                            // ── OFFLINE TICK GENERATOR ────────────────────────
-                            if self.net.is_offline && self.ui.app.phase == ClientPhase::Playing {
-                                let mut dt = self.ui.raw_input.predicted_dt;
-                                if dt > 0.1 { dt = 0.05; } // Clamp to prevent tick burst
-                                self.sim.offline_tick_timer += dt;
-                                while self.sim.offline_tick_timer >= 0.05 { // 20 TPS (50ms)
-                                    self.sim.offline_tick_timer -= 0.05;
-                                    
-                                    let raw_intents = std::mem::take(&mut self.sim.offline_intents);
-                                    log::debug!("Offline tick generator sending Turn. dt: {}, timer: {}", dt, self.sim.offline_tick_timer);
-                                    let mut stamped_intents = Vec::with_capacity(raw_intents.len());
-                                    for intent in raw_intents {
-                                        stamped_intents.push(sow_core::protocol::StampedIntent {
-                                            player_id: self.sim.my_player_id.unwrap_or(1),
-                                            intent,
-                                        });
-                                    }
-                                    
-                                    let turn = sow_core::protocol::Turn {
-                                        turn_number: 0, // Ignored by client simulation
-                                        intents: stamped_intents,
-                                    };
-                                    self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
-                                }
-                            }
+                            // Offline tick generation moved to sim.rs
 
                             #[cfg(not(target_arch = "wasm32"))]
                             if let Some(win) = self.gfx.window.as_ref() {

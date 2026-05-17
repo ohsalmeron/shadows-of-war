@@ -3,12 +3,11 @@ use sow_render::{RenderContext, MapRenderer};
 use sow_core::protocol::SimSnapshot;
 use blade_graphics as gpu;
 use blade_egui::GuiPainter;
-use egui::{Context, RawInput, Pos2, Rect, Vec2};
+use egui::{Context, RawInput, Rect};
 use sow_ui::{ClientApp, app::ClientPhase};
 use web_time::{Instant, Duration};
 use sow_net::client::SowClient;
 use std::collections::HashMap;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use crate::spawn_sow_client_connect;
 use crate::hud::nameplate::*;
 use crate::{MapDownloadEvent, EngineInitEvent};
@@ -80,6 +79,7 @@ pub struct UiState {
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
     pub cached_leaderboard: Vec<(u16, String, u32, f64)>,
+    pub show_dev_sidebar: bool,
     pub update_available: bool,
 }
 
@@ -294,6 +294,7 @@ impl SowApp {
                 label_positions: std::collections::HashMap::new(),
                 tutorial_completed, tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
                 show_leaderboard: false, leaderboard_timer: 0.0, cached_leaderboard: Vec::new(),
+                show_dev_sidebar: true,
                 update_available: false
             },
             time: TimeState {
@@ -313,6 +314,14 @@ impl SowApp {
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
         self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
+
+        // Drop relay connection and force orchestrator reconnect
+        self.net.client = None;
+        self.ui.app.main_menu_state.is_connected = false;
+        self.ui.app.main_menu_state.is_connecting = false;
+        while let Ok(_) = self.net.connect_rx.try_recv() {}
+        self.net.ws_connect_not_before = web_time::Instant::now();
+
         self.ui.app.main_menu_state.is_waiting = false;
         self.ui.app.main_menu_state.pending_join_lobby_id = None;
         self.ui.app.main_menu_state.joined_lobby_id = None;
@@ -380,7 +389,9 @@ impl SowApp {
                             .unwrap()
                             .dyn_into::<web_sys::HtmlCanvasElement>()
                             .unwrap();
-                        let web_attrs = winit::platform::web::WindowAttributesWeb::default().with_canvas(Some(canvas));
+                        let web_attrs = winit::platform::web::WindowAttributesWeb::default()
+                            .with_canvas(Some(canvas))
+                            .with_prevent_default(false);
                         attributes = attributes.with_platform_attributes(Box::new(web_attrs));
                         crate::ime::ensure_canvas_tabindex();
                     }
@@ -401,46 +412,7 @@ impl SowApp {
                         }
                     }
                 }
-                let win = self.gfx.window.as_ref().unwrap();
-                
-                if self.gfx.surface.is_none() {
-                    let sz = win.as_ref().surface_size();
-                    match self.gfx.render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
-                        Ok(s) => {
-                            self.input.screen_w = sz.width as f32;
-                            self.input.screen_h = sz.height as f32;
-                            let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                            self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                            self.ui.raw_input.screen_rect = Some(Rect::from_min_size(
-                                Pos2::ZERO,
-                                Vec2::new(self.input.screen_w, self.input.screen_h)
-                            ));
-                            let format = s.info().format;
-                            
-                            if let Some(sp) = self.gfx.prev_sync_point.take() {
-                                let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
-                            }
-                            let mut old_terrain = vec![128; (self.sim.map_w * self.sim.map_h) as usize];
-                            if let Some(mut old_mr) = self.gfx.map_renderer.take() {
-                                old_terrain = old_mr.terrain.clone();
-                                old_mr.destroy(&self.gfx.render_ctx);
-                            }
-                            self.gfx.map_renderer = Some(MapRenderer::new(&self.gfx.render_ctx.context, self.sim.map_w, self.sim.map_h, format, &old_terrain));
-                            self.gfx.needs_first_upload = true;
-                            
-                            self.gfx.gui_painter = Some(GuiPainter::new(s.info(), &self.gfx.render_ctx.context));
-                            self.gfx.surface = Some(s);
-                            
-                            // Re-create egui context to force it to re-upload its font texture!
-                            self.ui.egui_ctx = Context::default();
-                            sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
-                        }
-                        Err(e) => {
-                            log::warn!("Surface creation failed/unavailable, will retry later: {:?}", e);
-                        }
-                    }
-                }
-
+                self.check_surface();
     }
 }
 

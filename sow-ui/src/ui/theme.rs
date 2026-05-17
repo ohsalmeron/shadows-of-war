@@ -5,72 +5,72 @@ use egui::{
 /// Dark Rift palette — see `dark-rift/crates/client/src/ui/theme.rs`.
 #[inline]
 pub fn menu_backdrop() -> Color32 {
-    Color32::from_rgb(10, 20, 29)
+    Color32::from_rgb(21, 28, 21) // Dark forest
 }
 
 #[inline]
 pub fn panel_bg() -> Color32 {
-    Color32::from_rgb(25, 28, 36)
+    Color32::from_rgb(34, 45, 34) // Moss panel
 }
 
 #[inline]
 pub fn menu_panel_border_glow() -> Color32 {
-    Color32::from_rgba_unmultiplied(0, 211, 255, 140)
+    Color32::from_rgba_unmultiplied(61, 92, 61, 140) // Soft green glow
 }
 
 #[inline]
 pub fn accent_solo_cyan() -> Color32 {
-    Color32::from_rgb(0, 211, 255)
+    Color32::from_rgb(78, 127, 78) // Mossy accent
 }
 
 #[inline]
 pub fn accent_solo_cyan_hover() -> Color32 {
-    Color32::from_rgb(51, 235, 255)
+    Color32::from_rgb(105, 165, 105) // Lighter moss
 }
 
 #[inline]
 pub fn accent_ranked_gold() -> Color32 {
-    Color32::from_rgb(191, 148, 64)
+    Color32::from_rgb(112, 90, 49) // Dark wood
 }
 
 #[inline]
 pub fn accent_ranked_gold_hover() -> Color32 {
-    Color32::from_rgb(224, 184, 89)
+    Color32::from_rgb(152, 123, 68) // Lighter wood
 }
 
 #[inline]
 pub fn menu_secondary_button() -> Color32 {
-    Color32::from_rgba_unmultiplied(36, 41, 51, 242)
+    Color32::from_rgb(45, 59, 45) // Lighter panel
 }
 
 #[inline]
 pub fn menu_secondary_button_hover() -> Color32 {
-    Color32::from_rgba_unmultiplied(56, 66, 82, 250)
+    Color32::from_rgb(61, 78, 61)
 }
 
 #[inline]
 pub fn nickname_field_bg() -> Color32 {
-    Color32::from_rgba_unmultiplied(15, 23, 31, 242)
+    Color32::from_rgb(16, 21, 16) // Very dark input
 }
 
 #[inline]
 pub fn nickname_field_border() -> Color32 {
-    Color32::from_rgba_unmultiplied(0, 166, 230, 115)
+    Color32::from_rgb(58, 76, 58)
 }
 
 #[inline]
 pub fn accent_danger() -> Color32 {
-    Color32::from_rgba_unmultiplied(133, 51, 46, 224)
+    Color32::from_rgb(110, 59, 59) // Organic red
 }
 
 #[inline]
 pub fn accent_danger_border() -> Color32 {
-    Color32::from_rgba_unmultiplied(242, 128, 115, 217)
+    Color32::from_rgb(140, 74, 74)
 }
 
 #[inline]
 pub fn text_secondary() -> Color32 {
-    Color32::from_rgba_unmultiplied(184, 209, 240, 242)
+    Color32::from_rgb(136, 162, 136) // Sage text
 }
 
 pub fn apply_theme(ctx: &Context) {
@@ -97,9 +97,9 @@ pub fn apply_theme(ctx: &Context) {
         ..Default::default()
     };
 
-    style.spacing.item_spacing = egui::vec2(10.0, 10.0);
-    style.spacing.button_padding = egui::vec2(16.0, 8.0);
-    style.spacing.window_margin = Margin::same(12);
+    style.spacing.item_spacing = egui::vec2(12.0, 12.0);
+    style.spacing.button_padding = egui::vec2(18.0, 10.0);
+    style.spacing.window_margin = Margin::same(14);
 
     ctx.set_global_style(style);
 
@@ -108,31 +108,31 @@ pub fn apply_theme(ctx: &Context) {
     visuals.panel_fill = panel_bg();
     visuals.faint_bg_color = menu_secondary_button();
 
-    visuals.override_text_color = Some(Color32::from_rgba_unmultiplied(235, 240, 250, 255));
+    visuals.override_text_color = Some(Color32::from_rgb(220, 230, 220)); 
 
     let neon_cyan = accent_solo_cyan();
     let neon_cyan_hover = accent_solo_cyan_hover();
-    let panel_border = Color32::from_rgba_unmultiplied(82, 87, 102, 242);
+    let panel_border = nickname_field_border();
 
     visuals.widgets.noninteractive.bg_fill = nickname_field_bg();
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, nickname_field_border());
-    visuals.widgets.noninteractive.corner_radius = CornerRadius::same(6);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, panel_border);
+    visuals.widgets.noninteractive.corner_radius = CornerRadius::same(12);
 
     visuals.widgets.inactive.bg_fill = menu_secondary_button();
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, panel_border);
     visuals.widgets.inactive.fg_stroke =
-        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(235, 240, 250, 255));
-    visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
+        Stroke::new(1.0_f32, Color32::from_rgb(220, 230, 220));
+    visuals.widgets.inactive.corner_radius = CornerRadius::same(12);
 
     visuals.widgets.hovered.bg_fill = menu_secondary_button_hover();
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, neon_cyan_hover);
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-    visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
+    visuals.widgets.hovered.corner_radius = CornerRadius::same(12);
 
     visuals.widgets.active.bg_fill = neon_cyan;
     visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, neon_cyan);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::BLACK);
-    visuals.widgets.active.corner_radius = CornerRadius::same(6);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+    visuals.widgets.active.corner_radius = CornerRadius::same(12);
 
     ctx.set_visuals(visuals);
 }

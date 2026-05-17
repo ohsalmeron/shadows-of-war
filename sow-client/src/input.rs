@@ -83,6 +83,24 @@ impl SowApp {
 
                         if pressed {
                             if let winit::keyboard::Key::Character(text) = &event.logical_key {
+                                let key_str = text.as_str();
+                                let egui_key = match key_str {
+                                    "c" | "C" => Some(egui::Key::C),
+                                    "v" | "V" => Some(egui::Key::V),
+                                    "x" | "X" => Some(egui::Key::X),
+                                    "a" | "A" => Some(egui::Key::A),
+                                    "z" | "Z" => Some(egui::Key::Z),
+                                    _ => None,
+                                };
+                                if let Some(key) = egui_key {
+                                    self.ui.raw_input.events.push(egui::Event::Key {
+                                        key,
+                                        physical_key: None,
+                                        pressed: true,
+                                        repeat: false,
+                                        modifiers: self.ui.raw_input.modifiers,
+                                    });
+                                }
                                 self.ui.raw_input.events.push(egui::Event::Text(text.to_string()));
                             } else if let winit::keyboard::Key::Named(named) = &event.logical_key {
                                 if *named == winit::keyboard::NamedKey::Backspace {
@@ -91,11 +109,18 @@ impl SowApp {
                                         physical_key: None,
                                         pressed: true,
                                         repeat: false,
-                                        modifiers: Default::default(),
+                                        modifiers: self.ui.raw_input.modifiers,
                                     });
                                 }
                             }
                         }
+                    }
+                    WindowEvent::ModifiersChanged(modifiers) => {
+                        self.ui.raw_input.modifiers.alt = modifiers.state().alt_key();
+                        self.ui.raw_input.modifiers.ctrl = modifiers.state().control_key();
+                        self.ui.raw_input.modifiers.shift = modifiers.state().shift_key();
+                        self.ui.raw_input.modifiers.mac_cmd = modifiers.state().meta_key();
+                        self.ui.raw_input.modifiers.command = self.ui.raw_input.modifiers.ctrl || self.ui.raw_input.modifiers.mac_cmd;
                     }
                     WindowEvent::Ime(ime) => {
                         use winit::event::Ime;
@@ -157,66 +182,7 @@ impl SowApp {
                         }
 
                         if !pressed && !wants_pointer && self.ui.app.phase == ClientPhase::Playing && self.ui.app.hud_state.sync_state.is_none() {
-                            if let Some((_, sx, sy)) = self.input.map_touch_start {
-                                // Distance check just in case (though movement clears it too)
-                                let dx = position.x - sx;
-                                let dy = position.y - sy;
-                                let dist = dx*dx + dy*dy;
-
-                                if dist <= 400.0 {
-                                    let world_x = (sx as f32 - self.input.camera_x) / self.input.camera_zoom;
-                                    let world_y = (sy as f32 - self.input.camera_y) / self.input.camera_zoom;
-                                    
-                                    let col = world_x.floor() as i32;
-                                    let row = world_y.floor() as i32;
-
-                                    if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
-                                        let phase = self.sim.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
-
-                                        let mut intent_opt = None;
-
-                                        if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
-                                            if is_primary {
-                                                intent_opt = Some(sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 });
-                                            }
-                                        } else {
-                                            let idx = (row * self.sim.map_w as i32 + col) as usize;
-                                            let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
-                                            let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
-                                            let is_land = (terrain_byte & 0x80) != 0;
-
-                                            if is_secondary {
-                                                let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
-                                                intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
-                                                    target_tile: idx as u32,
-                                                    troops,
-                                                });
-                                            } else if is_primary
-                                                && is_land && owner != self.sim.my_player_id.unwrap_or(0) {
-                                                    let attack = sow_core::protocol::AttackIntent {
-                                                        target_owner: owner,
-                                                        troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
-                                                    };
-                                                    intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
-                                                }
-                                        }
-                                        
-                                        if let Some(intent) = intent_opt {
-                                            if let Some(c) = self.net.client.as_ref() {
-                                                let msg = sow_core::protocol::ClientMessage::Gameplay {
-                                                    intent: intent.clone(),
-                                                };
-                                                if let Ok(json) = bincode::serialize(&msg) {
-                                                    c.send(json);
-                                                }
-                                            } else {
-                                                self.sim.offline_intents.push(intent);
-                                            }
-                                        }
-                                    }
-                                }
-                                self.input.map_touch_start = None;
-                            }
+                            self.handle_map_click(position.x, position.y, is_primary, is_secondary);
                         }
 
                         self.ui.raw_input.events.push(egui::Event::PointerButton {
@@ -258,17 +224,9 @@ impl SowApp {
 
                             if let Some(last_dist) = self.input.last_pinch_distance {
                                 let delta = distance - last_dist;
-                                let old_zoom = self.input.camera_zoom;
-                                self.input.camera_zoom *= 1.0 + (delta as f32 * 0.005);
-                                let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                                self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-
                                 let pinch_cx = (p1.0 + p2.0) / 2.0;
                                 let pinch_cy = (p1.1 + p2.1) / 2.0;
-                                let map_x = (pinch_cx as f32 - self.input.camera_x) / old_zoom;
-                                let map_y = (pinch_cy as f32 - self.input.camera_y) / old_zoom;
-                                self.input.camera_x = pinch_cx as f32 - map_x * self.input.camera_zoom;
-                                self.input.camera_y = pinch_cy as f32 - map_y * self.input.camera_zoom;
+                                self.process_camera_zoom(1.0 + (delta as f32 * 0.005), pinch_cx as f32, pinch_cy as f32);
                             }
                             self.input.last_pinch_distance = Some(distance);
                         } else {
@@ -302,17 +260,85 @@ impl SowApp {
                                 }
                             }
                         };
-                        let old_zoom = self.input.camera_zoom;
-                        self.input.camera_zoom *= 1.0 + scroll * 0.15;
-                        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                        self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-
-                        let factor = self.input.camera_zoom / old_zoom;
-                        self.input.camera_x = self.input.last_mouse_x as f32 - factor * (self.input.last_mouse_x as f32 - self.input.camera_x);
-                        self.input.camera_y = self.input.last_mouse_y as f32 - factor * (self.input.last_mouse_y as f32 - self.input.camera_y);
+                        self.process_camera_zoom(1.0 + scroll * 0.15, self.input.last_mouse_x as f32, self.input.last_mouse_y as f32);
                     }
 
             _ => {}
         }
+    }
+
+    fn handle_map_click(&mut self, x: f64, y: f64, is_primary: bool, is_secondary: bool) {
+        if let Some((_, sx, sy)) = self.input.map_touch_start {
+            // Distance check just in case (though movement clears it too)
+            let dx = x - sx;
+            let dy = y - sy;
+            let dist = dx*dx + dy*dy;
+
+            if dist <= 400.0 {
+                let world_x = (sx as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let world_y = (sy as f32 - self.input.camera_y) / self.input.camera_zoom;
+                
+                let col = world_x.floor() as i32;
+                let row = world_y.floor() as i32;
+
+                if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                    let phase = self.sim.current_snapshot.as_ref().map(|s| &s.phase).unwrap_or(&sow_core::game::GamePhase::Lobby);
+
+                    let mut intent_opt = None;
+
+                    if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+                        if is_primary {
+                            intent_opt = Some(sow_core::protocol::GameplayIntent::Spawn { x: col as u32, y: row as u32 });
+                        }
+                    } else {
+                        let idx = (row * self.sim.map_w as i32 + col) as usize;
+                        let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+                        let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[idx]).unwrap_or(0);
+                        let is_land = (terrain_byte & 0x80) != 0;
+
+                        if is_secondary {
+                            let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
+                            intent_opt = Some(sow_core::protocol::GameplayIntent::LaunchFleet {
+                                target_tile: idx as u32,
+                                troops,
+                            });
+                        } else if is_primary
+                            && is_land && owner != self.sim.my_player_id.unwrap_or(0) {
+                                let attack = sow_core::protocol::AttackIntent {
+                                    target_owner: owner,
+                                    troops: Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64)),
+                                };
+                                intent_opt = Some(sow_core::protocol::GameplayIntent::Attack(attack));
+                            }
+                    }
+                    
+                    if let Some(intent) = intent_opt {
+                        if let Some(c) = self.net.client.as_ref() {
+                            let msg = sow_core::protocol::ClientMessage::Gameplay {
+                                intent: intent.clone(),
+                            };
+                            if let Ok(json) = bincode::serialize(&msg) {
+                                c.send(json);
+                            }
+                        } else {
+                            self.sim.offline_intents.push(intent);
+                        }
+                    }
+                }
+            }
+            self.input.map_touch_start = None;
+        }
+    }
+
+    fn process_camera_zoom(&mut self, zoom_factor: f32, cx: f32, cy: f32) {
+        let old_zoom = self.input.camera_zoom;
+        self.input.camera_zoom *= zoom_factor;
+        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+        self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+
+        let map_x = (cx - self.input.camera_x) / old_zoom;
+        let map_y = (cy - self.input.camera_y) / old_zoom;
+        self.input.camera_x = cx - map_x * self.input.camera_zoom;
+        self.input.camera_y = cy - map_y * self.input.camera_zoom;
     }
 }

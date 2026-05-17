@@ -41,16 +41,38 @@ impl SowApp {
                         }
                         self.time.last_tick = now;
                     } else {
-                        // Singleplayer: HUD updates based on local timer (ticks are handled by mod.rs)
-                        if now.duration_since(self.time.last_tick) >= self.time.tick_interval {
-                            self.time.last_tick = now;
+                        // Singleplayer: offline tick generation and HUD updates
+                        let dt = now.duration_since(self.time.last_tick).as_secs_f32();
+                        self.time.last_tick = now;
+                        
+                        let mut safe_dt = dt;
+                        if safe_dt > 0.1 { safe_dt = 0.05; } // Clamp to prevent tick burst
+                        self.sim.offline_tick_timer += safe_dt;
+                        
+                        while self.sim.offline_tick_timer >= 0.05 { // 20 TPS (50ms)
+                            self.sim.offline_tick_timer -= 0.05;
                             
-                            if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
-                                self.ui.app.hud_state.gold = player.gold;
-                                self.ui.app.hud_state.troops = player.troops;
-                                let owned_tiles = player.tile_count as f64;
-                                self.ui.app.hud_state.max_troops = owned_tiles * 50.0;
+                            let raw_intents = std::mem::take(&mut self.sim.offline_intents);
+                            let mut stamped_intents = Vec::with_capacity(raw_intents.len());
+                            for intent in raw_intents {
+                                stamped_intents.push(sow_core::protocol::StampedIntent {
+                                    player_id: self.sim.my_player_id.unwrap_or(1),
+                                    intent,
+                                });
                             }
+                            
+                            let turn = sow_core::protocol::Turn {
+                                turn_number: 0, // Ignored by client simulation
+                                intents: stamped_intents,
+                            };
+                            self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
+                        }
+
+                        if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
+                            self.ui.app.hud_state.gold = player.gold;
+                            self.ui.app.hud_state.troops = player.troops;
+                            let owned_tiles = player.tile_count as f64;
+                            self.ui.app.hud_state.max_troops = owned_tiles * 50.0;
                         }
                     }
                 } else {

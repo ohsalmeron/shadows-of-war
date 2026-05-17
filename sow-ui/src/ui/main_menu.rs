@@ -255,7 +255,7 @@ fn draw_queue_overlay(
                         for p in &lobby.players {
                             Frame::new()
                                 .fill(menu_secondary_button())
-                                .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 200)))
+                                .stroke(Stroke::new(1.0_f32, nickname_field_border()))
                                 .corner_radius(CornerRadius::same(6))
                                 .inner_margin(Margin::same(10))
                                 .show(ui, |ui| {
@@ -373,7 +373,7 @@ fn lobby_card(
     let stroke = if lobby.is_counting_down {
         Stroke::new(1.5_f32, accent_solo_cyan())
     } else {
-        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 200))
+        Stroke::new(1.0_f32, nickname_field_border())
     };
 
     Frame::new()
@@ -472,8 +472,8 @@ fn draw_right_column(
             .size(if compact { 16.0 } else { 18.0 })
             .color(text_secondary()),
     )
-    .fill(Color32::from_rgba_unmultiplied(20, 24, 32, 240))
-    .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 180, 220, 100)))
+    .fill(menu_secondary_button())
+    .stroke(Stroke::new(1.0_f32, nickname_field_border()))
     .min_size(egui::vec2(ui.available_width(), h));
 
     if ui.add(btn).clicked() {
@@ -485,7 +485,7 @@ fn stub_secondary(ui: &mut egui::Ui, label: &str, compact: bool) {
     let h = if compact { 60.0 } else { 68.0 };
     let btn = egui::Button::new(RichText::new(label).size(if compact { 17.0 } else { 19.0 }))
         .fill(menu_secondary_button())
-        .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(82, 87, 102, 242)))
+        .stroke(Stroke::new(1.0_f32, nickname_field_border()))
         .min_size(egui::vec2(ui.available_width(), h));
 
     let r = ui.add(btn);
