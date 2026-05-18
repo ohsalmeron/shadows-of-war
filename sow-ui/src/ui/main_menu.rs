@@ -1,16 +1,13 @@
 //! Lobby browser layout aligned with Shadows of War (`dark-rift/crates/client/src/ui/lobby_browser.rs`):
 //! header, two-column desktop / stacked compact, queue overlay, scrollable lobby cards.
 
-use crate::UiAction;
 use crate::ui::theme::{
     self, accent_danger, accent_danger_border, accent_ranked_gold, accent_ranked_gold_hover,
     accent_solo_cyan, accent_solo_cyan_hover, menu_backdrop, menu_panel_border_glow,
     menu_secondary_button, nickname_field_border, panel_bg, text_secondary,
 };
-use egui::{
-    Align, CentralPanel, Color32, CornerRadius, Frame, Layout, Margin, RichText,
-    Stroke,
-};
+use crate::UiAction;
+use egui::{Align, CentralPanel, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke};
 use sow_core::protocol::LobbyInfo;
 
 pub struct MainMenuState {
@@ -40,7 +37,10 @@ impl Default for MainMenuState {
                 .unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string()),
             lobbies: Vec::new(),
             player_name: {
-                let ms = web_time::SystemTime::now().duration_since(web_time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
+                let ms = web_time::SystemTime::now()
+                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
                 format!("ANON{:03}", ms % 1000)
             },
             pending_join_lobby_id: None,
@@ -73,12 +73,16 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
 }
 
 #[allow(deprecated)]
-pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate::ui::asset_loader::AssetLoader) -> Option<UiAction> {
+pub fn draw(
+    ctx: &egui::Context,
+    state: &mut MainMenuState,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(ctx);
     let outer_pad = if compact { 16.0 } else { 24.0 };
     let section_gap = if compact { 12.0 } else { 16.0 };
-    let title_fs = if compact { 40.0 } else { 56.0 };
+
     let status_large = if compact { 28.0 } else { 40.0 };
     let action_min_h = if compact { 64.0 } else { 72.0 };
 
@@ -129,7 +133,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
                         ui.add_space(8.0);
                         draw_user_profile_header(ui, state, compact);
                         ui.add_space(8.0);
-                        
+
                         ui.vertical(|ui| {
                             draw_left_column(
                                 ui,
@@ -141,13 +145,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
                                 asset_loader,
                             );
                             ui.add_space(section_gap);
-                            draw_right_column(
-                                ui,
-                                section_gap,
-                                action_min_h,
-                                compact,
-                                &mut action,
-                            );
+                            draw_right_column(ui, section_gap, action_min_h, compact, &mut action);
                         });
                     } else {
                         ui.horizontal_top(|ui| {
@@ -208,11 +206,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
     action
 }
 
-fn draw_user_profile_header(
-    ui: &mut egui::Ui,
-    state: &MainMenuState,
-    compact: bool,
-) {
+fn draw_user_profile_header(ui: &mut egui::Ui, state: &MainMenuState, compact: bool) {
     let desired_size = if compact {
         egui::vec2(ui.available_width(), 48.0)
     } else {
@@ -221,31 +215,49 @@ fn draw_user_profile_header(
 
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
     let is_hovered = response.hovered();
-    
+
     if is_hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    
-    let bg_color = if is_hovered { crate::ui::theme::menu_secondary_button_hover() } else { crate::ui::theme::menu_secondary_button() };
+
+    let bg_color = if is_hovered {
+        crate::ui::theme::menu_secondary_button_hover()
+    } else {
+        crate::ui::theme::menu_secondary_button()
+    };
     ui.painter().rect_filled(rect, 8.0, bg_color);
-    ui.painter().rect_stroke(rect, 8.0, Stroke::new(1.0, crate::ui::theme::nickname_field_border()), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(
+        rect,
+        8.0,
+        Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()),
+        egui::StrokeKind::Inside,
+    );
 
     // Mock wallet data
     let wallet_address = "0x4F92...3B1A";
-    let display_name = if state.player_name.is_empty() { "Anon" } else { &state.player_name };
+    let display_name = if state.player_name.is_empty() {
+        "Anon"
+    } else {
+        &state.player_name
+    };
 
     // Avatar Placeholder
     let avatar_size = 32.0;
     let avatar_rect = egui::Rect::from_min_size(
-        egui::pos2(rect.min.x + 8.0, rect.min.y + (rect.height() - avatar_size) / 2.0),
+        egui::pos2(
+            rect.min.x + 8.0,
+            rect.min.y + (rect.height() - avatar_size) / 2.0,
+        ),
         egui::vec2(avatar_size, avatar_size),
     );
-    ui.painter().rect_filled(avatar_rect, 4.0, crate::ui::theme::accent_solo_cyan()); // Placeholder themed block
-    
+    ui.painter()
+        .rect_filled(avatar_rect, 4.0, crate::ui::theme::accent_solo_cyan()); // Placeholder themed block
+
     // Connection Dot overlay on Avatar
     let dot_center = egui::pos2(avatar_rect.max.x - 2.0, avatar_rect.max.y - 2.0);
-    ui.painter().circle_filled(dot_center, 4.0, crate::ui::theme::accent_danger()); // Danger dot
-    
+    ui.painter()
+        .circle_filled(dot_center, 4.0, crate::ui::theme::accent_danger()); // Danger dot
+
     // Text Labels
     let name_galley = ui.painter().layout_no_wrap(
         display_name.to_string(),
@@ -257,7 +269,7 @@ fn draw_user_profile_header(
         egui::FontId::proportional(11.0),
         text_secondary(),
     );
-    
+
     ui.painter().galley(
         egui::pos2(avatar_rect.max.x + 10.0, rect.min.y + 8.0),
         name_galley,
@@ -268,7 +280,7 @@ fn draw_user_profile_header(
         wallet_galley,
         text_secondary(),
     );
-    
+
     // Dropdown Chevron
     let chevron_galley = ui.painter().layout_no_wrap(
         "▾".to_string(),
@@ -276,11 +288,14 @@ fn draw_user_profile_header(
         text_secondary(),
     );
     ui.painter().galley(
-        egui::pos2(rect.max.x - chevron_galley.size().x - 12.0, rect.min.y + (rect.height() - chevron_galley.size().y) / 2.0),
+        egui::pos2(
+            rect.max.x - chevron_galley.size().x - 12.0,
+            rect.min.y + (rect.height() - chevron_galley.size().y) / 2.0,
+        ),
         chevron_galley,
         text_secondary(),
     );
-    
+
     // TODO: Add dropdown popup menu on click
 }
 
@@ -311,10 +326,17 @@ fn draw_queue_overlay(
                         .color(Color32::from_rgb(255, 210, 120)),
                 );
                 ui.add_space(section_gap);
-                
+
                 if let Some(lobby_id) = state.joined_lobby_id.or(state.pending_join_lobby_id) {
                     if let Some(lobby) = state.lobbies.iter().find(|l| l.id == lobby_id) {
-                        ui.label(RichText::new(format!("Connected Players ({}/{})", lobby.num_players, lobby.max_players)).strong().color(text_secondary()));
+                        ui.label(
+                            RichText::new(format!(
+                                "Connected Players ({}/{})",
+                                lobby.num_players, lobby.max_players
+                            ))
+                            .strong()
+                            .color(text_secondary()),
+                        );
                         ui.add_space(8.0);
                         for p in &lobby.players {
                             Frame::new()
@@ -332,12 +354,24 @@ fn draw_queue_overlay(
                                             ui.add(egui::Spinner::new().size(12.0));
                                         }
                                         ui.add_space(8.0);
-                                        ui.label(RichText::new(&p.name).size(16.0).color(Color32::WHITE));
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            if !map_ready && p.download_progress > 0 {
-                                                ui.label(RichText::new(format!("{}%", p.download_progress)).size(12.0).color(text_secondary()));
-                                            }
-                                        });
+                                        ui.label(
+                                            RichText::new(&p.name).size(16.0).color(Color32::WHITE),
+                                        );
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if !map_ready && p.download_progress > 0 {
+                                                    ui.label(
+                                                        RichText::new(format!(
+                                                            "{}%",
+                                                            p.download_progress
+                                                        ))
+                                                        .size(12.0)
+                                                        .color(text_secondary()),
+                                                    );
+                                                }
+                                            },
+                                        );
                                     });
                                 });
                             ui.add_space(6.0);
@@ -375,7 +409,6 @@ fn draw_left_column(
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
-
     let total_lobbies = state.lobbies.len();
     let max_h = if total_lobbies > 0 {
         ((ui.available_height() - 40.0) / total_lobbies as f32).max(100.0)
@@ -384,13 +417,18 @@ fn draw_left_column(
     };
 
     if state.lobbies.is_empty() {
-        ui.label(
-            RichText::new("Waiting for lobby data from server…")
-                .color(text_secondary()),
-        );
+        ui.label(RichText::new("Waiting for lobby data from server…").color(text_secondary()));
     } else {
-        let ffa_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "FFA").collect();
-        let team_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "Teams").collect();
+        let ffa_lobbies: Vec<_> = state
+            .lobbies
+            .iter()
+            .filter(|l| l.game_mode == "FFA")
+            .collect();
+        let team_lobbies: Vec<_> = state
+            .lobbies
+            .iter()
+            .filter(|l| l.game_mode == "Teams")
+            .collect();
 
         if !ffa_lobbies.is_empty() {
             for lobby in ffa_lobbies {
@@ -417,13 +455,13 @@ fn lobby_card(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     let max_w = ui.available_width();
-    
+
     let (mut w, mut h) = (max_w, max_h);
     if let Some(texture) = asset_loader.thumbnail(&lobby.map_name) {
         let tex_size = texture.size();
         let tex_aspect = tex_size[0] as f32 / tex_size[1] as f32;
         let box_aspect = max_w / max_h;
-        
+
         if tex_aspect > box_aspect {
             w = max_w;
             h = max_w / tex_aspect;
@@ -432,24 +470,36 @@ fn lobby_card(
             w = max_h * tex_aspect;
         }
     }
-    
+
     let desired_size = egui::vec2(w, h);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-    
+
     let is_hovered = response.hovered();
     if is_hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
     let stroke_color = if lobby.is_counting_down {
-        if is_hovered { accent_solo_cyan_hover() } else { accent_solo_cyan() }
+        if is_hovered {
+            accent_solo_cyan_hover()
+        } else {
+            accent_solo_cyan()
+        }
     } else {
-        if is_hovered { text_secondary() } else { nickname_field_border() }
+        if is_hovered {
+            text_secondary()
+        } else {
+            nickname_field_border()
+        }
     };
 
     // 1. Draw Background Image
     if let Some(texture) = asset_loader.thumbnail(&lobby.map_name) {
-        let tint = if is_hovered { Color32::WHITE } else { Color32::from_gray(200) };
+        let tint = if is_hovered {
+            Color32::WHITE
+        } else {
+            Color32::from_gray(200)
+        };
         let image = egui::Image::new(texture)
             .fit_to_exact_size(rect.size())
             .corner_radius(CornerRadius::same(8))
@@ -459,21 +509,36 @@ fn lobby_card(
         ui.painter().rect_filled(rect, 8.0, menu_secondary_button());
     }
 
-    ui.painter().rect_stroke(rect, 8.0, Stroke::new(1.5_f32, stroke_color), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(
+        rect,
+        8.0,
+        Stroke::new(1.5_f32, stroke_color),
+        egui::StrokeKind::Inside,
+    );
 
     // 3. Top Row Overlay (Mode & Timer)
     let top_rect = rect.shrink(8.0);
-    let mode_text = if lobby.game_mode == "FFA" { "FFA" } else { "TEAMS" };
-    
+    let mode_text = if lobby.game_mode == "FFA" {
+        "FFA"
+    } else {
+        "TEAMS"
+    };
+
     // Draw Mode Badge
     let mode_galley = ui.painter().layout_no_wrap(
         mode_text.to_string(),
         egui::FontId::proportional(14.0),
         Color32::WHITE,
     );
-    let mode_badge_rect = egui::Rect::from_min_size(top_rect.min, mode_galley.size() + egui::vec2(12.0, 6.0));
-    ui.painter().rect_filled(mode_badge_rect, 4.0, accent_solo_cyan());
-    ui.painter().galley(mode_badge_rect.center() - mode_galley.size() / 2.0, mode_galley, Color32::WHITE);
+    let mode_badge_rect =
+        egui::Rect::from_min_size(top_rect.min, mode_galley.size() + egui::vec2(12.0, 6.0));
+    ui.painter()
+        .rect_filled(mode_badge_rect, 4.0, accent_solo_cyan());
+    ui.painter().galley(
+        mode_badge_rect.center() - mode_galley.size() / 2.0,
+        mode_galley,
+        Color32::WHITE,
+    );
 
     // Draw Timer
     let timer_text = if lobby.is_counting_down {
@@ -481,28 +546,41 @@ fn lobby_card(
     } else {
         "WAITING".to_string()
     };
-    let timer_color = if lobby.is_counting_down { Color32::from_rgb(255, 210, 120) } else { text_secondary() };
-    let timer_galley = ui.painter().layout_no_wrap(
-        timer_text,
-        egui::FontId::proportional(14.0),
-        timer_color,
-    );
+    let timer_color = if lobby.is_counting_down {
+        Color32::from_rgb(255, 210, 120)
+    } else {
+        text_secondary()
+    };
+    let timer_galley =
+        ui.painter()
+            .layout_no_wrap(timer_text, egui::FontId::proportional(14.0), timer_color);
     let timer_badge_rect = egui::Rect::from_min_size(
-        egui::pos2(top_rect.max.x - timer_galley.size().x - 12.0, top_rect.min.y),
+        egui::pos2(
+            top_rect.max.x - timer_galley.size().x - 12.0,
+            top_rect.min.y,
+        ),
         timer_galley.size() + egui::vec2(12.0, 6.0),
     );
-    ui.painter().rect_filled(timer_badge_rect, 4.0, Color32::from_black_alpha(180));
-    ui.painter().galley(timer_badge_rect.center() - timer_galley.size() / 2.0, timer_galley, timer_color);
+    ui.painter()
+        .rect_filled(timer_badge_rect, 4.0, Color32::from_black_alpha(180));
+    ui.painter().galley(
+        timer_badge_rect.center() - timer_galley.size() / 2.0,
+        timer_galley,
+        timer_color,
+    );
 
     // 4. Bottom Bar (Map Name & Players)
     let bottom_height = 44.0;
-    let bottom_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.min.x, rect.max.y - bottom_height),
-        rect.max,
-    );
+    let bottom_rect =
+        egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.max.y - bottom_height), rect.max);
     ui.painter().rect_filled(
         bottom_rect,
-        CornerRadius { nw: 0, ne: 0, sw: 8, se: 8 },
+        CornerRadius {
+            nw: 0,
+            ne: 0,
+            sw: 8,
+            se: 8,
+        },
         Color32::from_black_alpha(200),
     );
 
@@ -513,7 +591,10 @@ fn lobby_card(
         Color32::WHITE,
     );
     ui.painter().galley(
-        egui::pos2(bottom_rect.min.x + 12.0, bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0),
+        egui::pos2(
+            bottom_rect.min.x + 12.0,
+            bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0,
+        ),
         map_galley,
         Color32::WHITE,
     );
@@ -526,11 +607,19 @@ fn lobby_card(
         Color32::WHITE,
     );
     let players_badge_rect = egui::Rect::from_min_size(
-        egui::pos2(bottom_rect.max.x - players_galley.size().x - 16.0, bottom_rect.min.y - 12.0),
+        egui::pos2(
+            bottom_rect.max.x - players_galley.size().x - 16.0,
+            bottom_rect.min.y - 12.0,
+        ),
         players_galley.size() + egui::vec2(12.0, 6.0),
     );
-    ui.painter().rect_filled(players_badge_rect, 4.0, Color32::from_black_alpha(220));
-    ui.painter().galley(players_badge_rect.center() - players_galley.size() / 2.0, players_galley, Color32::WHITE);
+    ui.painter()
+        .rect_filled(players_badge_rect, 4.0, Color32::from_black_alpha(220));
+    ui.painter().galley(
+        players_badge_rect.center() - players_galley.size() / 2.0,
+        players_galley,
+        Color32::WHITE,
+    );
 
     if response.clicked() {
         *action = Some(UiAction::JoinLobby(lobby.id));
@@ -546,10 +635,11 @@ fn draw_right_column(
 ) {
     let solo_primary = if compact { 24.0 } else { 28.0 };
 
-
-
     let tutorial_btn = egui::Button::new(
-        RichText::new("PLAY TUTORIAL").size(solo_primary).strong().color(Color32::WHITE),
+        RichText::new("PLAY TUTORIAL")
+            .size(solo_primary)
+            .strong()
+            .color(Color32::WHITE),
     )
     .fill(accent_solo_cyan())
     .stroke(Stroke::new(2.0_f32, accent_solo_cyan_hover()))
@@ -562,7 +652,10 @@ fn draw_right_column(
     ui.add_space(section_gap);
 
     let solo_btn = egui::Button::new(
-        RichText::new("SINGLE PLAYER").size(solo_primary).strong().color(Color32::WHITE),
+        RichText::new("SINGLE PLAYER")
+            .size(solo_primary)
+            .strong()
+            .color(Color32::WHITE),
     )
     .fill(menu_secondary_button())
     .stroke(Stroke::new(1.0_f32, nickname_field_border()))
@@ -582,19 +675,17 @@ fn draw_right_column(
     )
     .fill(accent_ranked_gold())
     .stroke(Stroke::new(1.0_f32, accent_ranked_gold_hover()))
-    .min_size(egui::vec2(ui.available_width(), (action_min_h - 10.0).max(60.0)));
+    .min_size(egui::vec2(
+        ui.available_width(),
+        (action_min_h - 10.0).max(60.0),
+    ));
 
     if ui.add(ranked).clicked() {
         log::info!("Ranked match (stub — not implemented)");
     }
 
-    ui.add_space(section_gap * 0.75);
+    ui.add_space(section_gap);
 
-    stub_secondary(ui, "CREATE LOBBY", compact);
-    ui.add_space(section_gap * 0.5);
-    stub_secondary(ui, "JOIN LOBBY", compact);
-    ui.add_space(section_gap * 0.5);
-    
     let h = if compact { 48.0 } else { 52.0 };
     let btn = egui::Button::new(
         RichText::new("⚙  Settings")
@@ -607,21 +698,5 @@ fn draw_right_column(
 
     if ui.add(btn).clicked() {
         *action = Some(UiAction::ToggleSettings);
-    }
-}
-
-fn stub_secondary(ui: &mut egui::Ui, label: &str, compact: bool) {
-    let h = if compact { 60.0 } else { 68.0 };
-    let btn = egui::Button::new(RichText::new(label).size(if compact { 17.0 } else { 19.0 }))
-        .fill(menu_secondary_button())
-        .stroke(Stroke::new(1.0_f32, nickname_field_border()))
-        .min_size(egui::vec2(ui.available_width(), h));
-
-    let r = ui.add(btn);
-    if r.clicked() {
-        log::info!("Menu stub: {}", label);
-    }
-    if r.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 }

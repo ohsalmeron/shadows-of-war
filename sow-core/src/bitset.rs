@@ -2,16 +2,14 @@ use serde::{Deserialize, Serialize};
 
 /// A highly-optimized, flat bitset for tracking boolean state across a large ID space (like map tiles).
 /// It stores bits sequentially in a flat `Vec<u64>` to eliminate pointer chasing and cache misses.
-/// 
+///
 /// For network efficiency via Serde, `serialize` and `deserialize` convert this dense
 /// array into a sparse `Vec<u32>` payload, sending only the active indices over the wire.
-#[derive(Clone, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenseBitSet {
     /// Each u64 holds 64 bits. Total length = (max_capacity + 63) / 64.
     pub blocks: Vec<u64>,
 }
-
 
 impl DenseBitSet {
     /// Creates an empty BitSet.
@@ -38,11 +36,11 @@ impl DenseBitSet {
         let idx = idx as usize;
         let block = idx / 64;
         let bit = idx % 64;
-        
+
         if block >= self.blocks.len() {
             self.blocks.resize(block + 1, 0);
         }
-        
+
         let old = self.blocks[block];
         let mask = 1 << bit;
         self.blocks[block] = old | mask;
@@ -55,7 +53,7 @@ impl DenseBitSet {
         let idx = idx as usize;
         let block = idx / 64;
         let bit = idx % 64;
-        
+
         if block < self.blocks.len() {
             let old = self.blocks[block];
             let mask = 1 << bit;
@@ -80,7 +78,7 @@ impl DenseBitSet {
         }
     }
 
-    /// Returns an iterator over all set indices. 
+    /// Returns an iterator over all set indices.
     /// Iteration is absolutely deterministic and spatially ordered (from index 0 to max).
     pub fn ones(&self) -> impl Iterator<Item = u32> + '_ {
         self.blocks.iter().enumerate().flat_map(|(b_idx, &block)| {
@@ -103,7 +101,7 @@ impl DenseBitSet {
     pub fn count_ones(&self) -> usize {
         self.blocks.iter().map(|b| b.count_ones() as usize).sum()
     }
-    
+
     /// Returns true if no bits are set.
     pub fn is_empty(&self) -> bool {
         self.blocks.iter().all(|&b| b == 0)

@@ -7,8 +7,6 @@
 
 use std::collections::VecDeque;
 
-
-
 use crate::map::GameMap;
 
 /// Component labels indexed by linear tile index (`y * width + x`).

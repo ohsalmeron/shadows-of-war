@@ -1,12 +1,14 @@
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use redis::Commands;
-use sow_core::protocol::{ClientMessage, GameplayIntent, ServerMessage, ServerTurnMessage, StampedIntent, Turn};
+use sow_core::protocol::{
+    ClientMessage, GameplayIntent, ServerMessage, ServerTurnMessage, StampedIntent, Turn,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, Mutex};
-use tokio::time::{interval, Duration};
+use tokio::sync::{Mutex, mpsc};
+use tokio::time::{Duration, interval};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -14,7 +16,9 @@ const REDIS_PORTS_KEY: &str = "sow:ports";
 
 fn redis_connect() -> Option<redis::Connection> {
     let url = std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
-    redis::Client::open(url).ok().and_then(|c| c.get_connection().ok())
+    redis::Client::open(url)
+        .ok()
+        .and_then(|c| c.get_connection().ok())
 }
 
 #[derive(serde::Deserialize)]
@@ -80,10 +84,15 @@ async fn main() {
     let mut tick_number = config.tick_number;
     let mut active_empty_secs = config.active_empty_secs;
     let mut pending_intents = Vec::new();
-    let valid_players: HashMap<u16, String> = config.players.into_iter().map(|p| (p.player_id, p.name)).collect();
-    
+    let valid_players: HashMap<u16, String> = config
+        .players
+        .into_iter()
+        .map(|p| (p.player_id, p.name))
+        .collect();
+
     // player_id -> Sender
-    let connected_clients: Arc<Mutex<HashMap<u16, mpsc::UnboundedSender<Vec<u8>>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let connected_clients: Arc<Mutex<HashMap<u16, mpsc::UnboundedSender<Vec<u8>>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let connected_clients_clone = connected_clients.clone();
 
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<RelayEvent>();
@@ -94,17 +103,22 @@ async fn main() {
     let match_history_clone = match_history.clone();
 
     let addr = format!("0.0.0.0:{}", port);
-    let listener = TcpListener::bind(&addr).await.expect("Failed to bind relay port");
+    let listener = TcpListener::bind(&addr)
+        .await
+        .expect("Failed to bind relay port");
     info!("Relay for lobby {} listening on ws://{}", lobby_id, addr);
 
     // Register in Redis
-    let redis_con: Arc<std::sync::Mutex<Option<redis::Connection>>> = Arc::new(std::sync::Mutex::new(redis_connect()));
+    let redis_con: Arc<std::sync::Mutex<Option<redis::Connection>>> =
+        Arc::new(std::sync::Mutex::new(redis_connect()));
     {
         let mut guard = redis_con.lock().unwrap();
         if let Some(ref mut con) = *guard {
             let _: () = con.sadd(REDIS_PORTS_KEY, port).unwrap_or_default();
             let key = format!("sow:relay:{}", port);
-            let _: () = con.set_ex(&key, lobby_id.to_string(), 60).unwrap_or_default();
+            let _: () = con
+                .set_ex(&key, lobby_id.to_string(), 60)
+                .unwrap_or_default();
             info!("Registered port {} in Redis", port);
         }
     }
@@ -115,7 +129,7 @@ async fn main() {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_millis(50)); // 20 ticks per second (Server config tick time = 0.05)
         let mut last_status = std::time::Instant::now();
-        
+
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
@@ -144,7 +158,7 @@ async fn main() {
                         intents,
                     };
                     tick_number += 1;
-                    
+
                     match_history_clone.lock().await.push(turn.clone());
 
                     let msg = ServerTurnMessage { turn };
@@ -153,7 +167,7 @@ async fn main() {
                     for tx in clients.values_mut() {
                         let _ = tx.send(json.clone());
                     }
-                    
+
                     if last_status.elapsed().as_secs() >= 10 {
                         println!("STATUS|{}|{}|{}|{}", lobby_id, std::process::id(), port, humans);
                         last_status = std::time::Instant::now();
@@ -201,7 +215,7 @@ async fn main() {
             };
             let (mut write, mut read) = ws_stream.split();
             let (direct_tx, mut direct_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-            
+
             let mut my_player_id: Option<u16> = None;
 
             loop {
@@ -217,7 +231,7 @@ async fn main() {
                                                     my_player_id = Some(player_id);
                                                     clients_map.lock().await.insert(player_id, direct_tx.clone());
                                                     info!("Player {} reconnected to relay", player_id);
-                                                    
+
                                                     // Send all missed turns so they can catch up!
                                                     let hist = history_arc.lock().await;
                                                     for past_turn in hist.iter() {

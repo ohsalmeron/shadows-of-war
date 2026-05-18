@@ -1,8 +1,8 @@
-use crate::map::GameMap;
-use crate::game::BuildingKind;
 use super::core::Building;
 use super::cost::*;
 use super::placement::*;
+use crate::game::BuildingKind;
+use crate::map::GameMap;
 /// Max sampled tiles per structure kind when estimating HUD `can_build` (full scan is O(map²)).
 pub const PLACEMENT_HUD_MAX_SAMPLES: usize = 4096;
 
@@ -69,9 +69,9 @@ pub fn player_can_upgrade_kind(
     if !kind.upgradable() {
         return false;
     }
-    let has_target = buildings.iter().any(|b| {
-        b.owner_id == owner_id && b.kind == kind && !b.under_construction
-    });
+    let has_target = buildings
+        .iter()
+        .any(|b| b.owner_id == owner_id && b.kind == kind && !b.under_construction);
     if !has_target {
         return false;
     }
@@ -102,8 +102,14 @@ pub fn compute_buildables_for_player(
         let cost = structure_build_cost_gold(kind, owner_id, buildings);
         let level_total = count_kind_levels(buildings, owner_id, kind);
         let count = count_kind(buildings, owner_id, kind);
-        let placement_feasible =
-            player_has_valid_placement_sampled(map, owner_id, kind, grid, scratch, PLACEMENT_HUD_MAX_SAMPLES);
+        let placement_feasible = player_has_valid_placement_sampled(
+            map,
+            owner_id,
+            kind,
+            grid,
+            scratch,
+            PLACEMENT_HUD_MAX_SAMPLES,
+        );
         let can_build = enabled && player_gold >= cost && cost.is_finite() && placement_feasible;
         let can_upgrade = player_can_upgrade_kind(buildings, owner_id, kind, player_gold);
         out[i] = BuildableEntry {

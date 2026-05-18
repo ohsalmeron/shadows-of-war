@@ -1,8 +1,8 @@
-use crate::game::GameState;
+use crate::building::{Building, BuildingAggregate, BuildingGrid, DefenseGrid};
 use crate::execution::AttackExecution;
-use crate::warp_fleet::WarpFleet;
-use crate::building::{Building, BuildingGrid, DefenseGrid, BuildingAggregate};
+use crate::game::GameState;
 use crate::pathfinding::WaterPathfinderScratch;
+use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
 
 #[derive(Default, Clone)]
@@ -113,11 +113,14 @@ impl SowEngine {
             if self.state.tick >= end_tick {
                 self.state.phase = crate::game::GamePhase::Playing;
                 // Auto-spawn players who missed the window
-                let unspawned: Vec<u16> = self.state.players.iter()
+                let unspawned: Vec<u16> = self
+                    .state
+                    .players
+                    .iter()
                     .filter(|p| !p.has_spawned)
                     .map(|p| p.id)
                     .collect();
-                
+
                 for pid in unspawned {
                     use wyrand::WyRand;
                     let mut rng = WyRand::new(self.state.seed.wrapping_add(pid as u64));
@@ -139,23 +142,32 @@ impl SowEngine {
         self.execute_fleets();
         self.check_winner();
     }
-    
+
     fn check_winner(&mut self) {
-        if self.state.winner.is_some() { return; }
-        
+        if self.state.winner.is_some() {
+            return;
+        }
+
         if self.state.total_land_tiles == 0 {
-            self.state.total_land_tiles = self.state.map.terrain.iter().filter(|t| t.is_land()).count() as u32;
+            self.state.total_land_tiles = self
+                .state
+                .map
+                .terrain
+                .iter()
+                .filter(|t| t.is_land())
+                .count() as u32;
             if self.state.total_land_tiles == 0 {
                 self.state.total_land_tiles = 1; // Prevent division by zero
             }
         }
-        
-        let win_threshold = (self.state.total_land_tiles as f32 * self.state.config.map_control_win_percentage) as u32;
+
+        let win_threshold = (self.state.total_land_tiles as f32
+            * self.state.config.map_control_win_percentage) as u32;
 
         let mut alive_players = 0;
         let mut last_alive_id = None;
         let mut map_control_winner = None;
-        
+
         for p in &self.state.players {
             if p.alive && p.tile_count > 0 {
                 alive_players += 1;
@@ -165,16 +177,20 @@ impl SowEngine {
                 }
             }
         }
-        
+
         if let Some(wid) = map_control_winner {
             self.state.winner = Some(wid);
             self.state.phase = crate::game::GamePhase::GameOver;
-            self.state.events.push(crate::game::GameEvent::GameOver { winner_id: wid });
+            self.state
+                .events
+                .push(crate::game::GameEvent::GameOver { winner_id: wid });
         } else if alive_players == 1 {
             self.state.winner = last_alive_id;
             self.state.phase = crate::game::GamePhase::GameOver;
             if let Some(wid) = last_alive_id {
-                self.state.events.push(crate::game::GameEvent::GameOver { winner_id: wid });
+                self.state
+                    .events
+                    .push(crate::game::GameEvent::GameOver { winner_id: wid });
             }
         } else if alive_players == 0 && !self.state.players.is_empty() {
             // Everyone died? Rare but possible.
@@ -184,12 +200,12 @@ impl SowEngine {
     pub fn spawn_ai(&mut self, nation_count: u32, tribe_count: u32) {
         let mut spawned_nations = 0;
         let mut spawned_tribes = 0;
-        use wyrand::WyRand;
         use crate::player::Player;
+        use wyrand::WyRand;
 
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
-        
+
         // Spawn Nations (IDs 104 to 199)
         for i in 0..nation_count {
             let bot_id = 104 + i as u16;
@@ -203,8 +219,9 @@ impl SowEngine {
                 } else {
                     (None, crate::player::human_shader_territory_rgb(bot_id))
                 };
-                
-                let mut player = Player::new_bot(bot_id, format!("Nation {}", i+1), color, &config);
+
+                let mut player =
+                    Player::new_bot(bot_id, format!("Nation {}", i + 1), color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_nations += 1;
@@ -230,23 +247,28 @@ impl SowEngine {
                     }
                 };
 
-                let mut player = Player::new_bot(bot_id, format!("Tribe {}", i+1), color, &config);
+                let mut player =
+                    Player::new_bot(bot_id, format!("Tribe {}", i + 1), color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_tribes += 1;
             }
         }
-        log::info!("Spawned {} nations and {} tribes successfully.", spawned_nations, spawned_tribes);
+        log::info!(
+            "Spawned {} nations and {} tribes successfully.",
+            spawned_nations,
+            spawned_tribes
+        );
     }
 
     pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3]) {
-        use wyrand::WyRand;
         use crate::player::Player;
+        use wyrand::WyRand;
 
         // Use a different seed offset for human to avoid clashing exactly with bots
         let mut rng = WyRand::new(self.state.seed.wrapping_add(player_id as u64));
         let config = self.state.config.clone();
-        
+
         if !config.random_spawn {
             let player = Player::new_human(player_id, name, color, &config);
             self.state.register_player(player);
@@ -268,7 +290,7 @@ impl SowEngine {
         while tries < 1000 {
             let sx = rng.next_int(0, self.state.map.width as i32) as u32;
             let sy = rng.next_int(0, self.state.map.height as i32) as u32;
-            
+
             if self.state.map.terrain[self.state.map.ref_id(sx, sy)].is_water() {
                 tries += 1;
                 continue;
@@ -280,14 +302,20 @@ impl SowEngine {
                 for dx in -15..=15 {
                     let nx = sx as i32 + dx;
                     let ny = sy as i32 + dy;
-                    if self.state.map.is_valid_coord(nx, ny) && self.state.map.owner_id(nx as u32, ny as u32) != 0 {
+                    if self.state.map.is_valid_coord(nx, ny)
+                        && self.state.map.owner_id(nx as u32, ny as u32) != 0
+                    {
                         valid = false;
                         break;
                     }
                 }
-                if !valid { break; }
+                if !valid {
+                    break;
+                }
             }
-            if valid { return Some((sx, sy)); }
+            if valid {
+                return Some((sx, sy));
+            }
             tries += 1;
         }
         None
@@ -296,7 +324,10 @@ impl SowEngine {
     /// Build a lightweight snapshot of the current state for the render thread.
     /// Drains `map.dirty_tiles` so each tile is reported exactly once.
     pub fn build_snapshot(&mut self) -> crate::protocol::SimSnapshot {
-        let dirty_tiles: Vec<crate::protocol::DirtyTile> = self.state.map.dirty_tiles
+        let dirty_tiles: Vec<crate::protocol::DirtyTile> = self
+            .state
+            .map
+            .dirty_tiles
             .drain(..)
             .map(|i| crate::protocol::DirtyTile {
                 index: i as u32,
@@ -304,57 +335,70 @@ impl SowEngine {
             })
             .collect();
 
-        let players = self.state.players.iter().map(|p| {
-            let (cx, cy) = if p.tile_count > 0 {
-                (
-                    (p.sum_x / p.tile_count as u64) as f32,
-                    (p.sum_y / p.tile_count as u64) as f32,
-                )
-            } else {
-                (0.0, 0.0)
-            };
-            
-            // Optimization: avoid string cloning and bincode serialization for 600+ bots every tick
-            let name = if p.player_type == crate::player::PlayerType::Human {
-                p.name.clone()
-            } else {
-                String::new()
-            };
+        let players = self
+            .state
+            .players
+            .iter()
+            .map(|p| {
+                let (cx, cy) = if p.tile_count > 0 {
+                    (
+                        (p.sum_x / p.tile_count as u64) as f32,
+                        (p.sum_y / p.tile_count as u64) as f32,
+                    )
+                } else {
+                    (0.0, 0.0)
+                };
 
-            crate::protocol::PlayerSnapshot {
-                id: p.id,
-                name,
-                troops: p.troops,
-                max_troops: p.max_troops,
-                gold: p.gold,
-                tile_count: p.tile_count,
-                centroid_x: cx,
-                centroid_y: cy,
-                player_type: p.player_type,
-                color: p.color,
-                team: p.team,
-                has_spawned: p.has_spawned,
-                alive: p.alive,
-            }
-        }).collect();
+                // Optimization: avoid string cloning and bincode serialization for 600+ bots every tick
+                let name = if p.player_type == crate::player::PlayerType::Human {
+                    p.name.clone()
+                } else {
+                    String::new()
+                };
 
-        let fleets = self.fleets.iter().map(|f| crate::protocol::FleetSnapshot {
-            id: f.id,
-            owner_id: f.owner_id,
-            troops: f.troops,
-            current_tile: f.current_tile,
-            path: f.path.clone(),
-            path_cursor: f.path_cursor,
-            retreating: f.retreating,
-        }).collect();
+                crate::protocol::PlayerSnapshot {
+                    id: p.id,
+                    name,
+                    troops: p.troops,
+                    max_troops: p.max_troops,
+                    gold: p.gold,
+                    tile_count: p.tile_count,
+                    centroid_x: cx,
+                    centroid_y: cy,
+                    player_type: p.player_type,
+                    color: p.color,
+                    team: p.team,
+                    has_spawned: p.has_spawned,
+                    alive: p.alive,
+                }
+            })
+            .collect();
 
-        let attacks = self.attacks.iter().map(|a| crate::protocol::AttackSnapshot {
-            id: a.id,
-            owner_id: a.owner_id,
-            target_owner: a.target_owner,
-            troops: a.troops,
-            retreating: a.retreating,
-        }).collect();
+        let fleets = self
+            .fleets
+            .iter()
+            .map(|f| crate::protocol::FleetSnapshot {
+                id: f.id,
+                owner_id: f.owner_id,
+                troops: f.troops,
+                current_tile: f.current_tile,
+                path: f.path.clone(),
+                path_cursor: f.path_cursor,
+                retreating: f.retreating,
+            })
+            .collect();
+
+        let attacks = self
+            .attacks
+            .iter()
+            .map(|a| crate::protocol::AttackSnapshot {
+                id: a.id,
+                owner_id: a.owner_id,
+                target_owner: a.target_owner,
+                troops: a.troops,
+                retreating: a.retreating,
+            })
+            .collect();
 
         let mut defense_posts = Vec::new();
         if self.render_defense_dirty {
@@ -367,11 +411,15 @@ impl SowEngine {
         let defense_dirty = self.render_defense_dirty;
         self.render_defense_dirty = false;
 
-        let spawn_timer_secs = if let crate::game::GamePhase::Spawning { end_tick } = &self.state.phase {
-            Some(end_tick.saturating_sub(self.state.tick) as f32 * (self.state.config.tick_rate_ms / 1000.0))
-        } else {
-            None
-        };
+        let spawn_timer_secs =
+            if let crate::game::GamePhase::Spawning { end_tick } = &self.state.phase {
+                Some(
+                    end_tick.saturating_sub(self.state.tick) as f32
+                        * (self.state.config.tick_rate_ms / 1000.0),
+                )
+            } else {
+                None
+            };
 
         crate::protocol::SimSnapshot {
             tick: self.state.tick,

@@ -1,23 +1,21 @@
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use crate::engine::SowEngine;
 use crate::game::GameState;
 use crate::map::TerrainType;
-use wyrand::WyRand;
 use crate::rng::NextIntExt;
-use crate::engine::SowEngine;
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+use wyrand::WyRand;
 
-pub mod income;
-pub mod combat;
 pub mod bots;
-
+pub mod combat;
+pub mod income;
 
 /// Fraction of refunded troops lost when retreating from an attack on another player (OpenFront parity).
 pub const RETREAT_PENALTY_VS_PLAYER: f64 = 0.25;
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PrioritizedTile {
-    pub priority: i64, // Lower is processed first
+    pub priority: i64,   // Lower is processed first
     pub insert_seq: u32, // Deterministic BFS tie-breaker
     pub x: u32,
     pub y: u32,
@@ -37,10 +35,10 @@ impl Ord for PrioritizedTile {
                             Ordering::Equal => other.x.cmp(&self.x),
                             ord => ord,
                         }
-                    },
+                    }
                     ord => ord,
                 }
-            },
+            }
             ord => ord,
         }
     }
@@ -75,10 +73,10 @@ impl AttackExecution {
             TerrainType::Mountain => 10, // Mountains heavily resist expansion
             TerrainType::Water | TerrainType::Lake => 3,
         };
-        
+
         // Increase RNG variance for a less perfectly circular, more "tendril-like" organic spread
-        let r = self.rng.next_int(0, 15) as i64; 
-        
+        let r = self.rng.next_int(0, 15) as i64;
+
         // Emphasize surrounding tiles to maintain a front line, but allow the RNG to occasionally punch through
         (r + 5) * (6 - (num_owned_by_me as i64 * 3) + mag_x2) + (tick as i64 * 4)
     }

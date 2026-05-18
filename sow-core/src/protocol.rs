@@ -2,8 +2,8 @@
 //!
 //! Pure data models for intents and messages.
 
-use serde::{Deserialize, Serialize};
 use crate::game::BuildingKind;
+use serde::{Deserialize, Serialize};
 
 // ─── Intents (Client → Server) ─────────────────────────────────────────────
 
@@ -18,21 +18,30 @@ pub struct AttackIntent {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum GameplayIntent {
     Attack(AttackIntent),
-    CancelAttack { attack_id: u64 },
-    Spawn { x: u32, y: u32 },
+    CancelAttack {
+        attack_id: u64,
+    },
+    Spawn {
+        x: u32,
+        y: u32,
+    },
     /// Water transport: raw clicked tile (`y * width + x`); sim snaps to nearest owned shoreline.
     LaunchFleet {
         target_tile: u32,
         troops: Option<f64>,
     },
-    RecallFleet { fleet_id: u64 },
+    RecallFleet {
+        fleet_id: u64,
+    },
     /// `target_tile` is the clicked tile index (`y * width + x`);
     BuildStructure {
         kind: BuildingKind,
         target_tile: u32,
     },
     /// pays gold cost again and increments `level`.
-    UpgradeStructure { building_id: u64 },
+    UpgradeStructure {
+        building_id: u64,
+    },
     /// Informs the engine that the player has disconnected or resigned.
     Resign,
 }
@@ -86,12 +95,8 @@ pub enum ServerMessage {
     Start(Box<ServerStartMessage>),
     Turn(ServerTurnMessage),
     SyncState(ServerSyncStateMessage),
-    Pong {
-        client_time: f64,
-    },
-    VersionUpdate {
-        version: String,
-    },
+    Pong { client_time: f64 },
+    VersionUpdate { version: String },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -180,7 +185,6 @@ pub struct PlayerInfo {
 pub struct ServerTurnMessage {
     pub turn: Turn,
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LobbyPlayerSyncState {

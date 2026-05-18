@@ -1,12 +1,9 @@
-use crate::UiAction;
 use crate::ui::theme::{
-    accent_solo_cyan, accent_solo_cyan_hover, menu_secondary_button,
-    panel_bg, text_secondary, menu_panel_border_glow,
+    accent_solo_cyan, accent_solo_cyan_hover, menu_panel_border_glow, menu_secondary_button,
+    panel_bg, text_secondary,
 };
-use egui::{
-    Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Slider,
-    Stroke,
-};
+use crate::UiAction;
+use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Slider, Stroke};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GraphicsQuality {
@@ -46,7 +43,11 @@ impl Default for SettingsState {
 pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> {
     let mut action = None;
     let compact = ctx.content_rect().width() < 900.0;
-    let panel_w = if compact { ctx.content_rect().width() - 64.0 } else { 520.0 };
+    let panel_w = if compact {
+        ctx.content_rect().width() - 64.0
+    } else {
+        520.0
+    };
 
     // Dark scrim behind the modal
     let screen_rect = ctx.content_rect();
@@ -87,9 +88,11 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
                         .add(
-                            egui::Button::new(RichText::new("✖").size(20.0).color(text_secondary()))
-                                .fill(Color32::TRANSPARENT)
-                                .stroke(Stroke::NONE),
+                            egui::Button::new(
+                                RichText::new("✖").size(20.0).color(text_secondary()),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE),
                         )
                         .clicked()
                     {
@@ -135,12 +138,10 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
                         Stroke::new(1.0_f32, Color32::from_gray(80))
                     };
 
-                    let btn = egui::Button::new(
-                        RichText::new(label).size(16.0).color(text_color),
-                    )
-                    .fill(btn_fill)
-                    .stroke(btn_stroke)
-                    .min_size(egui::vec2(if compact { 80.0 } else { 120.0 }, 40.0));
+                    let btn = egui::Button::new(RichText::new(label).size(16.0).color(text_color))
+                        .fill(btn_fill)
+                        .stroke(btn_stroke)
+                        .min_size(egui::vec2(if compact { 80.0 } else { 120.0 }, 40.0));
 
                     if ui.add(btn).clicked() {
                         state.graphics_quality = q;
@@ -177,9 +178,7 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
                             .color(text_secondary()),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add(
-                            Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(false),
-                        );
+                        ui.add(Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(false));
                     });
                 });
                 ui.add_space(12.0);
@@ -190,9 +189,7 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
                             .color(text_secondary()),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add(
-                            Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(false),
-                        );
+                        ui.add(Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(false));
                     });
                 });
             });
@@ -208,9 +205,7 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
             );
             ui.add_space(8.0);
             egui::ComboBox::from_id_salt("language_select")
-                .selected_text(
-                    RichText::new(format!("{:?}", state.language)).size(16.0),
-                )
+                .selected_text(RichText::new(format!("{:?}", state.language)).size(16.0))
                 .width(if compact { 200.0 } else { 300.0 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut state.language, Language::English, "English");
@@ -231,7 +226,10 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
                 )
                 .fill(menu_secondary_button())
                 .stroke(Stroke::new(1.0_f32, Color32::from_gray(100)))
-                .min_size(egui::vec2(if compact { panel_w - 32.0 } else { 200.0 }, 50.0));
+                .min_size(egui::vec2(
+                    if compact { panel_w - 32.0 } else { 200.0 },
+                    50.0,
+                ));
 
                 if ui.add(back_btn).clicked() {
                     action = Some(UiAction::ToggleSettings);

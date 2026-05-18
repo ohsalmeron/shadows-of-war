@@ -1,6 +1,6 @@
-use crate::game::BuildingKind;
-use crate::config;
 use super::placement::{idx_xy, manhattan};
+use crate::config;
+use crate::game::BuildingKind;
 /// Build and upgrade costs use **gold**; see `structure_build_cost_gold`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,14 +123,20 @@ impl DefenseGrid {
     /// Rebuild the grid with the specified player's defense posts.
     /// This is allocation-free after the first few calls because the `cells` array
     /// simply clears its internal `Vec`s without dropping capacity.
-    pub fn rebuild(&mut self, buildings: &[Building], map_width: u32, map_height: u32, cell_size: u32) {
+    pub fn rebuild(
+        &mut self,
+        buildings: &[Building],
+        map_width: u32,
+        map_height: u32,
+        cell_size: u32,
+    ) {
         let grid_w = map_width.div_ceil(cell_size);
         let grid_h = map_height.div_ceil(cell_size);
-        
+
         self.grid_w = grid_w;
         self.grid_h = grid_h;
         self.cell_size = cell_size;
-        
+
         let num_cells = (grid_w * grid_h) as usize;
         if self.cells.len() < num_cells {
             self.cells.resize(num_cells, Vec::new());
@@ -138,7 +144,7 @@ impl DefenseGrid {
         for cell in self.cells.iter_mut() {
             cell.clear();
         }
-        
+
         for &b in buildings {
             if b.kind == BuildingKind::DefensePost && !b.under_construction {
                 let bx = b.tile_idx % map_width;
@@ -151,18 +157,24 @@ impl DefenseGrid {
             }
         }
     }
-    
+
     /// Calculate priority bonus querying only cells within `DEFENSE_POST_RANGE`.
     #[inline]
-    pub fn priority_bonus(&self, tile_x: u32, tile_y: u32, map_width: u32, target_owner: u16) -> i64 {
+    pub fn priority_bonus(
+        &self,
+        tile_x: u32,
+        tile_y: u32,
+        map_width: u32,
+        target_owner: u16,
+    ) -> i64 {
         let mut bonus: i64 = 0;
         let range = config::DEFENSE_POST_RANGE as u32;
-        
+
         let cx_min = tile_x.saturating_sub(range) / self.cell_size;
         let cx_max = (tile_x + range) / self.cell_size;
         let cy_min = tile_y.saturating_sub(range) / self.cell_size;
         let cy_max = (tile_y + range) / self.cell_size;
-        
+
         let cx_max = cx_max.min(self.grid_w.saturating_sub(1));
         let cy_max = cy_max.min(self.grid_h.saturating_sub(1));
 
@@ -170,7 +182,9 @@ impl DefenseGrid {
             for cx in cx_min..=cx_max {
                 let idx = (cy * self.grid_w + cx) as usize;
                 for b in &self.cells[idx] {
-                    if b.owner_id != target_owner { continue; }
+                    if b.owner_id != target_owner {
+                        continue;
+                    }
                     let bx = b.tile_idx % map_width;
                     let by = b.tile_idx / map_width;
                     let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
@@ -224,7 +238,12 @@ impl BuildingGrid {
     }
 
     /// Fill grid from all buildings (including under construction), matching legacy `existing_structure_positions_with_width`.
-    pub fn rebuild<'a>(&mut self, buildings: impl Iterator<Item = &'a Building>, map_w: u32, map_h: u32) {
+    pub fn rebuild<'a>(
+        &mut self,
+        buildings: impl Iterator<Item = &'a Building>,
+        map_w: u32,
+        map_h: u32,
+    ) {
         let cell_size = BUILDING_GRID_CELL_SIZE;
         let grid_w = map_w.div_ceil(cell_size);
         let grid_h = map_h.div_ceil(cell_size);
@@ -300,4 +319,3 @@ impl BuildingGrid {
         })
     }
 }
-

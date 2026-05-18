@@ -1,7 +1,7 @@
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 pub struct SowClient {
     tx: mpsc::UnboundedSender<Vec<u8>>,
@@ -19,10 +19,10 @@ impl SowClient {
     pub async fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let (ws_stream, _) = connect_async(url).await?;
         let (mut write, mut read) = ws_stream.split();
-        
+
         let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (std_tx, std_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-        
+
         let task = tokio::spawn(async move {
             log::info!("[SOW-CLIENT] Background network task started!");
             loop {
@@ -66,7 +66,11 @@ impl SowClient {
             log::info!("[SOW-CLIENT] Background network task exited!");
         });
 
-        Ok(Self { tx, rx: std_rx, _task: task })
+        Ok(Self {
+            tx,
+            rx: std_rx,
+            _task: task,
+        })
     }
 
     pub fn send(&self, msg: Vec<u8>) {

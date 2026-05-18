@@ -1,6 +1,4 @@
-use egui::{
-    Context, Color32, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals,
-};
+use egui::{Color32, Context, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals};
 
 /// Dark Rift palette — see `dark-rift/crates/client/src/ui/theme.rs`.
 #[inline]
@@ -85,7 +83,8 @@ pub fn apply_theme(ctx: &Context) {
         std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_TTF)),
     );
 
-    fonts.families
+    fonts
+        .families
         .get_mut(&egui::FontFamily::Proportional)
         .unwrap()
         .insert(0, "Default".to_owned());
@@ -114,7 +113,7 @@ pub fn apply_theme(ctx: &Context) {
     visuals.panel_fill = panel_bg();
     visuals.faint_bg_color = menu_secondary_button();
 
-    visuals.override_text_color = Some(Color32::from_rgb(220, 230, 220)); 
+    visuals.override_text_color = Some(Color32::from_rgb(220, 230, 220));
 
     let neon_cyan = accent_solo_cyan();
     let neon_cyan_hover = accent_solo_cyan_hover();
@@ -126,8 +125,7 @@ pub fn apply_theme(ctx: &Context) {
 
     visuals.widgets.inactive.bg_fill = menu_secondary_button();
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, panel_border);
-    visuals.widgets.inactive.fg_stroke =
-        Stroke::new(1.0_f32, Color32::from_rgb(220, 230, 220));
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(220, 230, 220));
     visuals.widgets.inactive.corner_radius = CornerRadius::same(12);
 
     visuals.widgets.hovered.bg_fill = menu_secondary_button_hover();

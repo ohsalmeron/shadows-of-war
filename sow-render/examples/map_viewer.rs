@@ -50,7 +50,11 @@ fn main() {
     }
 
     render_ctx.command_encoder.start();
-    map_renderer.update(&mut render_ctx.command_encoder, &render_ctx.context, &game_map);
+    map_renderer.update(
+        &mut render_ctx.command_encoder,
+        &render_ctx.context,
+        &game_map,
+    );
     let sp_up = render_ctx.context.submit(&mut render_ctx.command_encoder);
     let _ = render_ctx.context.wait_for(&sp_up, !0);
 
@@ -74,8 +78,13 @@ fn main() {
                 ..
             } = &event
             {
-                if let Some((mut render_ctx, mut surface, mut map_renderer, mut prev_sync_point, _)) =
-                    state.take()
+                if let Some((
+                    mut render_ctx,
+                    mut surface,
+                    mut map_renderer,
+                    mut prev_sync_point,
+                    _,
+                )) = state.take()
                 {
                     if let Some(sp) = prev_sync_point.take() {
                         let _ = render_ctx.context.wait_for(&sp, !0);
@@ -90,8 +99,7 @@ fn main() {
                 return;
             }
 
-            if let Some((render_ctx, surface, map_renderer, prev_sync_point, globals)) =
-                &mut state
+            if let Some((render_ctx, surface, map_renderer, prev_sync_point, globals)) = &mut state
             {
                 match event {
                     Event::WindowEvent { event, .. } => match event {

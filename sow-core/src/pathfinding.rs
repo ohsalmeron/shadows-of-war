@@ -3,8 +3,6 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, VecDeque};
 
-
-
 use crate::map::GameMap;
 
 const LAND_BIT: u8 = 7;
@@ -120,12 +118,7 @@ impl WaterAStar {
     }
 
     /// Multi-source start (first start defines cross-tie line), single goal. Tile indices: `y * width + x`.
-    pub fn find_path(
-        &mut self,
-        map: &GameMap,
-        starts: &[u32],
-        goal: u32,
-    ) -> Option<Vec<u32>> {
+    pub fn find_path(&mut self, map: &GameMap, starts: &[u32], goal: u32) -> Option<Vec<u32>> {
         if starts.is_empty() {
             return None;
         }
@@ -241,7 +234,8 @@ impl WaterAStar {
                         .heuristic_weight
                         .saturating_mul(BASE_COST)
                         .saturating_mul(manhattan(nx, ny, goal_x, goal_y));
-                    let cross = cross_tie_breaker(nx, ny, goal_x, goal_y, start_x, start_y, cross_norm);
+                    let cross =
+                        cross_tie_breaker(nx, ny, goal_x, goal_y, start_x, start_y, cross_norm);
                     let f = tentative_g.saturating_add(h).saturating_add(cross);
                     self.push_seq = self.push_seq.wrapping_add(1);
                     self.heap.push(AStarNode {

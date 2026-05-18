@@ -1,5 +1,5 @@
-use crate::game::{BuildingKind, GameEvent, GamePhase};
 use crate::engine::SowEngine;
+use crate::game::{BuildingKind, GameEvent, GamePhase};
 /// Advance construction timers; emits [`GameEvent::StructureReady`].
 /// Split out for unit tests (`advance_building_construction_tick`).
 impl SowEngine {

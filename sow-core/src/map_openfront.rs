@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::map::{GameMap, MapTile};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MapSize {
@@ -33,7 +33,10 @@ pub fn game_map_from_openfront(manifest: &MapManifest, bin: &[u8]) -> Result<Gam
     if bin.len() != expected_len {
         return Err(format!(
             "Map bytes length mismatch. Expected {} ({}x{}), got {}",
-            expected_len, width, height, bin.len()
+            expected_len,
+            width,
+            height,
+            bin.len()
         ));
     }
 
@@ -41,6 +44,6 @@ pub fn game_map_from_openfront(manifest: &MapManifest, bin: &[u8]) -> Result<Gam
     for (i, &b) in bin.iter().enumerate() {
         map.terrain[i] = MapTile::from_byte(b);
     }
-    
+
     Ok(map)
 }

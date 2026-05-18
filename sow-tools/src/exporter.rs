@@ -1,6 +1,6 @@
 use crate::poi_extractor::POISpawn;
-use sow_core::map::MapTile;
 use serde_json::json;
+use sow_core::map::MapTile;
 use std::fs;
 use std::path::Path;
 
@@ -21,13 +21,16 @@ pub fn export_map(
     fs::write(&bin_path, bin_data)?;
 
     // 2. Write info.json / manifest.json
-    let nations: Vec<serde_json::Value> = spawns.iter().map(|spawn| {
-        json!({
-            "name": spawn.name,
-            "coordinates": [spawn.x, spawn.y],
-            "flag": "xx" // Placeholder flag for bots
+    let nations: Vec<serde_json::Value> = spawns
+        .iter()
+        .map(|spawn| {
+            json!({
+                "name": spawn.name,
+                "coordinates": [spawn.x, spawn.y],
+                "flag": "xx" // Placeholder flag for bots
+            })
         })
-    }).collect();
+        .collect();
 
     // Map the manifest format used by Openfront
     let manifest = json!({
@@ -49,7 +52,7 @@ pub fn export_map(
         let ron_path = "crates/client/assets/configs/default_single_player.ron";
         let bot_count = spawns.len();
         let ron_content = format!(
-r#"(
+            r#"(
     max_players: 1,
     bot_count: {bot_count},
     map_name: "{map_name}",
@@ -59,7 +62,10 @@ r#"(
 )"#
         );
         fs::write(ron_path, ron_content)?;
-        println!("📝 Wrote default_single_player.ron for {} with {} bots", map_name, bot_count);
+        println!(
+            "📝 Wrote default_single_player.ron for {} with {} bots",
+            map_name, bot_count
+        );
     }
 
     Ok(())

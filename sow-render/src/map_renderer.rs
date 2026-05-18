@@ -1,5 +1,5 @@
-use blade_graphics as gpu;
 use crate::context::RenderContext;
+use blade_graphics as gpu;
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
@@ -40,7 +40,13 @@ pub struct MapRenderer {
 }
 
 impl MapRenderer {
-    pub fn new(context: &gpu::Context, width: u32, height: u32, surface_format: gpu::TextureFormat, initial_terrain: &[u8]) -> Self {
+    pub fn new(
+        context: &gpu::Context,
+        width: u32,
+        height: u32,
+        surface_format: gpu::TextureFormat,
+        initial_terrain: &[u8],
+    ) -> Self {
         let bytes_per_row = (width * 4 + 255) & !255;
         let u32_per_row = bytes_per_row / 4;
         let total_u32 = (u32_per_row * height) as usize;
@@ -109,9 +115,7 @@ impl MapRenderer {
         });
 
         let dst_ptr = raw_buffer.data();
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
-        };
+        let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
         for y in 0..height {
             for x in 0..width {
                 let i = (y * width + x) as usize;
@@ -135,11 +139,16 @@ impl MapRenderer {
     }
 
     /// Pack the game map into the upload buffer and copy to the GPU texture.
-    pub fn update(&mut self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context, dirty_tiles: &[sow_core::protocol::DirtyTile]) {
+    pub fn update(
+        &mut self,
+        encoder: &mut gpu::CommandEncoder,
+        context: &gpu::Context,
+        dirty_tiles: &[sow_core::protocol::DirtyTile],
+    ) {
         let total = (self.width * self.height) as usize;
         let u32_per_row = self.bytes_per_row / 4;
         let total_u32 = (u32_per_row * self.height) as usize;
-        
+
         if dirty_tiles.is_empty() {
             return;
         }
@@ -149,31 +158,39 @@ impl MapRenderer {
         let mut max_y = 0;
 
         let dst_ptr = self.raw_buffer.data();
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32)
-        };
+        let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
 
         // Update dirty tiles and their neighbors to compute border bits.
         for dt in dirty_tiles {
             let i = dt.index as usize;
-            if i >= total { continue; }
+            if i >= total {
+                continue;
+            }
             self.owners[i] = dt.new_owner;
-            
+
             let center_x = dt.index % self.width;
             let center_y = dt.index / self.width;
-            
+
             // We need to update the tile itself and its 4 neighbors
             let mut tiles_to_update = vec![(center_x, center_y)];
-            if center_x > 0 { tiles_to_update.push((center_x - 1, center_y)); }
-            if center_x < self.width - 1 { tiles_to_update.push((center_x + 1, center_y)); }
-            if center_y > 0 { tiles_to_update.push((center_x, center_y - 1)); }
-            if center_y < self.height - 1 { tiles_to_update.push((center_x, center_y + 1)); }
+            if center_x > 0 {
+                tiles_to_update.push((center_x - 1, center_y));
+            }
+            if center_x < self.width - 1 {
+                tiles_to_update.push((center_x + 1, center_y));
+            }
+            if center_y > 0 {
+                tiles_to_update.push((center_x, center_y - 1));
+            }
+            if center_y < self.height - 1 {
+                tiles_to_update.push((center_x, center_y + 1));
+            }
 
             for (x, y) in tiles_to_update {
                 let idx = (y * self.width + x) as usize;
                 let owner_id = self.owners[idx] as u32;
                 let terrain_byte = self.terrain[idx] as u32;
-                
+
                 let mut is_border_up = false;
                 let mut is_border_down = false;
                 let mut is_border_left = false;
@@ -192,55 +209,93 @@ impl MapRenderer {
                         let up = self.owners[idx - self.width as usize] as u32;
                         if up != owner_id {
                             is_border_up = true;
-                            if up == 0 { is_shore_up = true; }
-                            else if is_tribe && up >= 200 { is_green_border = true; }
+                            if up == 0 {
+                                is_shore_up = true;
+                            } else if is_tribe && up >= 200 {
+                                is_green_border = true;
+                            }
                         }
                     }
                     if y < self.height - 1 {
                         let down = self.owners[idx + self.width as usize] as u32;
                         if down != owner_id {
                             is_border_down = true;
-                            if down == 0 { is_shore_down = true; }
-                            else if is_tribe && down >= 200 { is_green_border = true; }
+                            if down == 0 {
+                                is_shore_down = true;
+                            } else if is_tribe && down >= 200 {
+                                is_green_border = true;
+                            }
                         }
                     }
                     if x > 0 {
                         let left = self.owners[idx - 1] as u32;
                         if left != owner_id {
                             is_border_left = true;
-                            if left == 0 { is_shore_left = true; }
-                            else if is_tribe && left >= 200 { is_green_border = true; }
+                            if left == 0 {
+                                is_shore_left = true;
+                            } else if is_tribe && left >= 200 {
+                                is_green_border = true;
+                            }
                         }
                     }
                     if x < self.width - 1 {
                         let right = self.owners[idx + 1] as u32;
                         if right != owner_id {
                             is_border_right = true;
-                            if right == 0 { is_shore_right = true; }
-                            else if is_tribe && right >= 200 { is_green_border = true; }
+                            if right == 0 {
+                                is_shore_right = true;
+                            } else if is_tribe && right >= 200 {
+                                is_green_border = true;
+                            }
                         }
                     }
                 }
-                
-                let mut val = (owner_id & 0x7FFF) | (terrain_byte << 16);
-                if is_green_border { val |= 0x00008000; }
-                if is_border_up { val |= 0x80000000; }
-                if is_border_down { val |= 0x40000000; }
-                if is_border_left { val |= 0x20000000; }
-                if is_border_right { val |= 0x10000000; }
 
-                if is_shore_up { val |= 0x08000000; }
-                if is_shore_down { val |= 0x04000000; }
-                if is_shore_left { val |= 0x02000000; }
-                if is_shore_right { val |= 0x01000000; }
+                let mut val = (owner_id & 0x7FFF) | (terrain_byte << 16);
+                if is_green_border {
+                    val |= 0x00008000;
+                }
+                if is_border_up {
+                    val |= 0x80000000;
+                }
+                if is_border_down {
+                    val |= 0x40000000;
+                }
+                if is_border_left {
+                    val |= 0x20000000;
+                }
+                if is_border_right {
+                    val |= 0x10000000;
+                }
+
+                if is_shore_up {
+                    val |= 0x08000000;
+                }
+                if is_shore_down {
+                    val |= 0x04000000;
+                }
+                if is_shore_left {
+                    val |= 0x02000000;
+                }
+                if is_shore_right {
+                    val |= 0x01000000;
+                }
 
                 let dst_i = (y * u32_per_row + x) as usize;
                 slice[dst_i] = val;
 
-                if x < min_x { min_x = x; }
-                if y < min_y { min_y = y; }
-                if x > max_x { max_x = x; }
-                if y > max_y { max_y = y; }
+                if x < min_x {
+                    min_x = x;
+                }
+                if y < min_y {
+                    min_y = y;
+                }
+                if x > max_x {
+                    max_x = x;
+                }
+                if y > max_y {
+                    max_y = y;
+                }
             }
         }
 
@@ -251,7 +306,7 @@ impl MapRenderer {
             // to be `min_y * bytes_per_row`, which is a perfect multiple of 256.
             let aligned_min_x = 0;
             let aligned_max_x = self.width - 1;
-            
+
             let offset_bytes = (min_y * self.bytes_per_row + aligned_min_x * 4) as u64;
             let width_bytes = ((aligned_max_x - aligned_min_x + 1) * 4) as u64;
             let size_bytes = ((max_y - min_y) * self.bytes_per_row) as u64 + width_bytes;
@@ -259,7 +314,7 @@ impl MapRenderer {
             context.sync_buffer_range(self.raw_buffer, offset_bytes, size_bytes);
 
             let src_piece: gpu::BufferPiece = self.raw_buffer.at(offset_bytes);
-            
+
             let mut dst_piece: gpu::TexturePiece = self.texture.into();
             dst_piece.origin = [aligned_min_x, min_y, 0];
 
@@ -277,7 +332,12 @@ impl MapRenderer {
         }
     }
 
-    pub fn draw(&self, encoder: &mut gpu::CommandEncoder, target_view: gpu::TextureView, globals: MapGlobals) {
+    pub fn draw(
+        &self,
+        encoder: &mut gpu::CommandEncoder,
+        target_view: gpu::TextureView,
+        globals: MapGlobals,
+    ) {
         let mut pass = encoder.render(
             "map_pass",
             gpu::RenderTargetSet {
@@ -304,6 +364,8 @@ impl MapRenderer {
         render_ctx.context.destroy_texture_view(self.texture_view);
         render_ctx.context.destroy_texture(self.texture);
         render_ctx.context.destroy_buffer(self.raw_buffer);
-        render_ctx.context.destroy_render_pipeline(&mut self.pipeline);
+        render_ctx
+            .context
+            .destroy_render_pipeline(&mut self.pipeline);
     }
 }

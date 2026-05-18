@@ -9,7 +9,6 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-
 use crate::map::{GameMap, TerrainType};
 use crate::pathfinding::WaterPathfinderScratch;
 use crate::water_components::WaterComponents;
@@ -98,9 +97,7 @@ pub fn resolve_fleet_route(
     }
 
     let landing = if target_owner != 0 {
-        let tb = target_border.ok_or(FleetLaunchError::TargetPlayerNotFound {
-            target_owner,
-        })?;
+        let tb = target_border.ok_or(FleetLaunchError::TargetPlayerNotFound { target_owner })?;
         closest_target_shore_for_player(
             map,
             water_components,
@@ -211,7 +208,11 @@ pub fn player_has_water_access(
 /// 4-neighbor is owned by `target_owner`. This is the correct gate for a land `Attack`
 /// intent — a click on a far-away enemy interior still ground-attacks as long as we
 /// touch them somewhere on the map.
-pub fn shares_border_with(map: &GameMap, border_tiles: &crate::bitset::DenseBitSet, target_owner: u16) -> bool {
+pub fn shares_border_with(
+    map: &GameMap,
+    border_tiles: &crate::bitset::DenseBitSet,
+    target_owner: u16,
+) -> bool {
     let w = map.width;
     for idx in border_tiles.ones() {
         let x = idx % w;

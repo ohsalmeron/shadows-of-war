@@ -1,13 +1,14 @@
 #![warn(dead_code, unused_variables, unused_imports)]
 use sow_net::client::SowClient;
 
-
-
 fn get_build_version() -> String {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {
-            if let Ok(val) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_BUILD_VERSION")) {
+            if let Ok(val) = js_sys::Reflect::get(
+                &window,
+                &wasm_bindgen::JsValue::from_str("SOW_BUILD_VERSION"),
+            ) {
                 if let Some(s) = val.as_string() {
                     if s != "__BUILD_TS__" {
                         return s;
@@ -25,11 +26,14 @@ fn get_build_version() -> String {
 
 fn get_maps_url() -> String {
     #[allow(unused_mut)]
-    let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| "https://shadowsofwar.io/assets/maps".to_string());
+    let mut url = std::env::var("SOW_MAPS_URL")
+        .unwrap_or_else(|_| "https://shadowsofwar.io/assets/maps".to_string());
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {
-            if let Ok(val) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_MAPS_URL")) {
+            if let Ok(val) =
+                js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_MAPS_URL"))
+            {
                 if let Some(s) = val.as_string() {
                     url = s;
                 }
@@ -38,9 +42,6 @@ fn get_maps_url() -> String {
     }
     url
 }
-
-
-
 
 mod config;
 
@@ -59,8 +60,6 @@ fn camera_zoom_upper_bound(screen_w: f32, screen_h: f32) -> f32 {
 /// Zoom level used only for nameplate **font** sizing (not LOD). Matches default `camera_zoom` so
 /// first-frame text size matches the old formula, while zooming no longer churns egui glyph atlas sizes.
 const NAMEPLATE_REFERENCE_ZOOM: f32 = 2.0;
-
-
 
 fn spawn_sow_client_connect(
     url: String,
@@ -84,7 +83,6 @@ fn spawn_sow_client_connect(
     tokio_rt.spawn(fut);
 }
 
-
 pub enum MapDownloadEvent {
     MapReady(String, Vec<u8>),
     ThumbnailReady(String, Vec<u8>),
@@ -95,19 +93,22 @@ pub enum MapDownloadEvent {
 pub enum EngineInitEvent {
     Status(String),
     Progress(f32),
-    Complete(Box<sow_core::game::GameState>, sow_core::water_components::WaterComponents, Box<sow_core::protocol::ServerStartMessage>),
+    Complete(
+        Box<sow_core::game::GameState>,
+        sow_core::water_components::WaterComponents,
+        Box<sow_core::protocol::ServerStartMessage>,
+    ),
 }
 
-
 pub mod app;
-pub mod input;
-pub mod render;
-pub mod hud;
-pub mod net;
 pub mod asset;
-pub mod loader;
+pub mod hud;
 #[cfg(target_arch = "wasm32")]
 mod ime;
+pub mod input;
+pub mod loader;
+pub mod net;
+pub mod render;
 
 use app::SowApp;
 use winit::application::ApplicationHandler;
@@ -158,8 +159,8 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop) {
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
-    use winit::platform::android::EventLoopBuilderExtAndroid;
     use winit::event_loop::EventLoopBuilder;
+    use winit::platform::android::EventLoopBuilderExtAndroid;
 
     // Redirect all crashes and logs to a physical file so we can see what's failing without ADB!
     if let Some(ext_path) = app.external_data_path() {
@@ -176,11 +177,16 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     }
 
     // Now env_logger will write to the redirected stderr instead of logcat!
-    env_logger::builder().filter_level(log::LevelFilter::Info).init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .init();
 
     log::info!("SOW ENGINE STARTING...");
 
-    let event_loop = EventLoopBuilder::default().with_android_app(app).build().unwrap();
+    let event_loop = EventLoopBuilder::default()
+        .with_android_app(app)
+        .build()
+        .unwrap();
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
     run_game(event_loop);

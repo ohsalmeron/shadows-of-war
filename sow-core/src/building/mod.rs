@@ -1,15 +1,15 @@
+pub mod construction;
 pub mod core;
 pub mod cost;
+pub mod hud;
 pub mod placement;
 pub mod upgrade;
-pub mod construction;
-pub mod hud;
 
 pub use core::*;
 pub use cost::*;
+pub use hud::*;
 pub use placement::*;
 pub use upgrade::*;
-pub use hud::*;
 
 #[cfg(test)]
 mod tests {
@@ -116,7 +116,12 @@ mod tests {
         game.phase = GamePhase::Playing;
         let (map, owner) = tiny_owned_map();
         game.map = map;
-        game.players.push(Player::new_human(owner, "c".into(), [1.0, 0.0, 0.0], &crate::game_config::GameConfig::default()));
+        game.players.push(Player::new_human(
+            owner,
+            "c".into(),
+            [1.0, 0.0, 0.0],
+            &crate::game_config::GameConfig::default(),
+        ));
         game.player_lookup.resize(owner as usize + 1, None);
         game.player_lookup[owner as usize] = Some(0);
         let water = WaterComponents::compute(&game.map, |_| {});
@@ -149,7 +154,12 @@ mod tests {
         game.phase = GamePhase::Playing;
         let (map, owner) = tiny_owned_map();
         game.map = map;
-        game.players.push(Player::new_human(owner, "d".into(), [1.0, 0.0, 0.0], &crate::game_config::GameConfig::default()));
+        game.players.push(Player::new_human(
+            owner,
+            "d".into(),
+            [1.0, 0.0, 0.0],
+            &crate::game_config::GameConfig::default(),
+        ));
         game.player_lookup.resize(owner as usize + 1, None);
         game.player_lookup[owner as usize] = Some(0);
         let water = WaterComponents::compute(&game.map, |_| {});
@@ -308,7 +318,8 @@ mod tests {
         let (map, owner) = tiny_owned_map();
         let grid = BuildingGrid::rebuild_empty(map.width, map.height);
         let mut scratch = crate::engine::PlacementScratch::default();
-        let rows = compute_buildables_for_player(&map, owner, 1_000_000.0, &[], &grid, &mut scratch);
+        let rows =
+            compute_buildables_for_player(&map, owner, 1_000_000.0, &[], &grid, &mut scratch);
         let sam = rows
             .iter()
             .find(|e| e.kind == BuildingKind::SamLauncher)

@@ -1,6 +1,7 @@
 pub mod app;
 pub mod ui;
 pub mod ui_font;
+pub mod utils;
 
 pub use app::ClientApp;
 

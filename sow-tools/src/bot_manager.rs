@@ -1,30 +1,32 @@
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use rand::Rng;
-use sow_core::protocol::{ClientMessage, ServerMessage, GameplayIntent, AttackIntent};
+use sow_core::engine::SowEngine;
+use sow_core::protocol::{AttackIntent, ClientMessage, GameplayIntent, ServerMessage};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// Orchestrator URL
     #[arg(short, long, default_value = "wss://shadowsofwar.io/ws/")]
     pub url: String,
-
-    /// Number of bots to spawn
     #[arg(short, long, default_value_t = 30)]
     pub count: usize,
-
-    /// Optional target lobby ID to join
     #[arg(long)]
     pub lobby_id: Option<u64>,
-
-    /// Should bots send random intents to stress the engine?
     #[arg(long, default_value_t = true)]
     pub active: bool,
+}
+
+#[derive(Clone)]
+struct SharedState {
+    engine: Arc<RwLock<Option<SowEngine>>>,
+    map_bytes: Arc<RwLock<Option<Vec<u8>>>>,
+    map_downloaded: Arc<RwLock<bool>>,
 }
 
 #[tokio::main]
@@ -43,19 +45,25 @@ async fn main() {
     let active_bots = Arc::new(AtomicUsize::new(0));
     let mut handles = vec![];
 
+    let shared = SharedState {
+        engine: Arc::new(RwLock::new(None)),
+        map_bytes: Arc::new(RwLock::new(None)),
+        map_downloaded: Arc::new(RwLock::new(false)),
+    };
+
     for i in 0..args.count {
         let url = args.url.clone();
         let version = version.clone();
         let lobby_id = args.lobby_id;
         let active = args.active;
         let active_bots_ref = Arc::clone(&active_bots);
+        let shared = shared.clone();
 
         let delay_ms = rand::thread_rng().gen_range(10..2000);
 
         let handle = tokio::spawn(async move {
-            // Slight jitter so they don't all slam exactly on the same millisecond
             sleep(Duration::from_millis(delay_ms)).await;
-            match run_bot(i, url, version, lobby_id, active).await {
+            match run_bot(i, url, version, lobby_id, active, shared).await {
                 Ok(_) => {
                     println!("[Bot {}] Clean exit", i);
                 }
@@ -70,7 +78,6 @@ async fn main() {
         active_bots.fetch_add(1, Ordering::SeqCst);
     }
 
-    // Monitor
     loop {
         let count = active_bots.load(Ordering::SeqCst);
         println!("... {} bots active ...", count);
@@ -93,6 +100,7 @@ async fn run_bot(
     version: String,
     target_lobby_id: Option<u64>,
     active: bool,
+    shared: SharedState,
 ) -> Result<(), String> {
     let name = format!("StressBot_{}", bot_index);
 
@@ -101,7 +109,6 @@ async fn run_bot(
         .map_err(|e| format!("Connect failed: {}", e))?;
     let (mut write, mut read) = ws.split();
 
-    // 1. Join
     let join = ClientMessage::Join {
         name,
         is_observer: false,
@@ -115,6 +122,7 @@ async fn run_bot(
 
     let lobby_id: u64;
     let player_id: u16;
+    let map_name: String;
 
     loop {
         let msg = recv_msg(&mut read, 15).await?;
@@ -122,6 +130,11 @@ async fn run_bot(
             ServerMessage::JoinAck(ack) => {
                 lobby_id = ack.lobby_id;
                 player_id = ack.player_id;
+                map_name = ack.map_name;
+                println!(
+                    "[Bot {}] Joined lobby {} as player {}",
+                    bot_index, lobby_id, player_id
+                );
                 break;
             }
             ServerMessage::JoinFailed(f) => return Err(format!("Join failed: {}", f.reason)),
@@ -129,7 +142,56 @@ async fn run_bot(
         }
     }
 
-    // 2. Ready
+    let mut map_is_mine_to_download = false;
+    {
+        let mut map_lock = shared.map_downloaded.write().await;
+        if !*map_lock {
+            *map_lock = true;
+            map_is_mine_to_download = true;
+        }
+    }
+
+    if map_is_mine_to_download {
+        println!("[Bot {}] Downloading map {}...", bot_index, map_name);
+        let base_url = if url.contains("shadowsofwar.io") {
+            "https://shadowsofwar.io"
+        } else {
+            "http://127.0.0.1:8080"
+        };
+        let map_url = format!("{}/assets/maps/{}/map.bin", base_url, map_name);
+
+        let client = reqwest::Client::new();
+        if let Ok(resp) = client.get(&map_url).send().await {
+            if let Ok(compressed) = resp.bytes().await {
+                let compressed = compressed.to_vec();
+                let mut uncompressed = Vec::new();
+                let mut decompressor = brotli::Decompressor::new(compressed.as_slice(), 4096);
+                if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed).is_ok() {
+                    println!(
+                        "[Bot {}] Map decompressed ({} bytes)",
+                        bot_index,
+                        uncompressed.len()
+                    );
+                    *shared.map_bytes.write().await = Some(uncompressed);
+                } else {
+                    println!("[Bot {}] Map was not brotli compressed", bot_index);
+                    *shared.map_bytes.write().await = Some(compressed);
+                }
+            } else {
+                return Err("Failed to download map body".into());
+            }
+        } else {
+            return Err("Failed to request map".into());
+        }
+    } else {
+        loop {
+            if shared.map_bytes.read().await.is_some() {
+                break;
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
+    }
+
     write
         .send(Message::Binary(
             bincode::serialize(&ClientMessage::MapDownloadProgress {
@@ -153,7 +215,6 @@ async fn run_bot(
         .await
         .unwrap();
 
-    // 3. Wait for start
     let relay_port: u16;
     loop {
         let msg = recv_msg(&mut read, 60).await?;
@@ -163,17 +224,67 @@ async fn run_bot(
                 if relay_port == 0 {
                     return Err("Start message has no relay port".into());
                 }
+                println!(
+                    "[Bot {}] Received Start, relay port: {}",
+                    bot_index, relay_port
+                );
+
+                let mut eng = shared.engine.write().await;
+                if eng.is_none() {
+                    println!("[Bot {}] Initializing shared engine...", bot_index);
+                    let map_data = shared.map_bytes.read().await.clone().unwrap();
+                    let mut state = sow_core::game::GameState::new(
+                        start.seed,
+                        start.config.map_width,
+                        start.config.map_height,
+                        start.config.clone(),
+                    );
+
+                    if map_data.len() == state.map.terrain.len() {
+                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                map_data.as_ptr(),
+                                dest_ptr,
+                                map_data.len(),
+                            );
+                        }
+                    } else {
+                        eprintln!("[Bot {}] Warning: map length mismatch", bot_index);
+                    }
+
+                    for p in &start.players {
+                        let mut new_player = sow_core::player::Player::new_human(
+                            p.id,
+                            p.name.clone(),
+                            p.color,
+                            &start.config,
+                        );
+                        new_player.player_type = p.player_type.clone();
+                        new_player.team = p.team.clone();
+                        state.register_player(new_player);
+                    }
+
+                    let water =
+                        sow_core::water_components::WaterComponents::compute(&state.map, |_| {});
+                    let mut engine = SowEngine::new(state, water);
+
+                    for turn in &start.missed_turns {
+                        engine.apply_intents(&turn.intents);
+                        engine.tick();
+                    }
+                    *eng = Some(engine);
+                    println!("[Bot {}] Shared engine ready!", bot_index);
+                }
                 break;
             }
             _ => continue,
         }
     }
 
-    // Disconnect orchestrator
     drop(write);
     drop(read);
 
-    // 4. Connect to relay
     let relay_url = if url.contains("shadowsofwar.io") {
         format!("wss://shadowsofwar.io/relay/{}/ws/", relay_port)
     } else {
@@ -194,7 +305,6 @@ async fn run_bot(
     let relay_ws = relay_ws.ok_or_else(|| "Could not connect to relay".to_string())?;
     let (mut r_write, mut r_read) = relay_ws.split();
 
-    // 5. Send ready to relay
     let ready = ClientMessage::Ready {
         lobby_id,
         player_id,
@@ -204,40 +314,101 @@ async fn run_bot(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 6. Listen loop
     loop {
         let msg = match recv_msg(&mut r_read, 15).await {
             Ok(m) => m,
-            Err(_) => break, // Timeout or disconnected, end bot cleanly
+            Err(_) => break,
         };
 
-        if let ServerMessage::Turn(_t) = msg {
-            if active {
-                let intent = {
-                    let mut rng = rand::thread_rng();
-                    // 10% chance to send an intent per turn to be "playful"
-                    // without immediately crushing the server socket
-                    if rng.gen_bool(0.1) {
-                        if rng.gen_bool(0.5) {
-                            Some(GameplayIntent::Spawn { 
-                                x: rng.gen_range(0..256), 
-                                y: rng.gen_range(0..256) 
-                            })
-                        } else {
-                            Some(GameplayIntent::Attack(AttackIntent {
-                                target_owner: rng.gen_range(1..100),
-                                troops: None, // All troops
-                            }))
-                        }
-                    } else {
-                        None
-                    }
-                };
+        if let ServerMessage::Turn(turn) = msg {
+            let intent = if active {
+                let mut intent_to_send = None;
 
-                if let Some(intent) = intent {
-                    let gm = ClientMessage::Gameplay { intent };
-                    let _ = r_write.send(Message::Binary(bincode::serialize(&gm).unwrap())).await;
+                let mut eng_guard = shared.engine.write().await;
+                if let Some(engine) = eng_guard.as_mut() {
+                    if engine.state.tick < turn.turn.turn_number {
+                        engine.apply_intents(&turn.turn.intents);
+                        engine.tick();
+                    }
+
+                    let phase = engine.state.phase.clone();
+                    let mut rng = rand::thread_rng();
+
+                    if rng.gen_bool(0.15) {
+                        if let sow_core::game::GamePhase::Spawning { .. } = phase {
+                            let w = engine.state.map.width;
+                            let h = engine.state.map.height;
+                            let mut tries = 0;
+                            while tries < 100 {
+                                let x = rng.gen_range(0..w);
+                                let y = rng.gen_range(0..h);
+                                let tile = engine.state.map.terrain[engine.state.map.ref_id(x, y)];
+                                if tile.is_land() && engine.state.map.owner_id(x, y) == 0 {
+                                    intent_to_send = Some(GameplayIntent::Spawn { x, y });
+                                    break;
+                                }
+                                tries += 1;
+                            }
+                        } else if phase == sow_core::game::GamePhase::Playing {
+                            if let Some(player) =
+                                engine.state.players.iter().find(|p| p.id == player_id)
+                            {
+                                if player.alive && player.border_tiles.count_ones() > 0 {
+                                    let border_count = player.border_tiles.count_ones();
+                                    let mut target_owner = None;
+                                    let mut ones = player.border_tiles.ones();
+                                    let r_idx = rng.gen_range(0..border_count) as usize;
+                                    if let Some(chosen_idx) = ones.nth(r_idx) {
+                                        let bx = chosen_idx % engine.state.map.width;
+                                        let by = chosen_idx / engine.state.map.width;
+                                        let neighbors = engine.state.map.neighbors(bx, by);
+                                        let mut targets = Vec::new();
+                                        for (nx, ny) in neighbors {
+                                            let owner = engine.state.map.owner_id(nx, ny);
+                                            if owner != player_id {
+                                                let is_land = engine.state.map.terrain
+                                                    [engine.state.map.ref_id(nx, ny)]
+                                                .is_land();
+                                                if is_land {
+                                                    targets.push(owner);
+                                                }
+                                            }
+                                        }
+                                        if !targets.is_empty() {
+                                            target_owner =
+                                                Some(targets[rng.gen_range(0..targets.len())]);
+                                        }
+                                    }
+
+                                    if let Some(target) = target_owner {
+                                        let required_cost = if target == 0 {
+                                            engine.state.config.attack_cost_neutral
+                                        } else {
+                                            engine.state.config.attack_cost_enemy
+                                        };
+                                        if player.troops >= required_cost {
+                                            intent_to_send =
+                                                Some(GameplayIntent::Attack(AttackIntent {
+                                                    target_owner: target,
+                                                    troops: None,
+                                                }));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+                intent_to_send
+            } else {
+                None
+            };
+
+            if let Some(intent) = intent {
+                let gm = ClientMessage::Gameplay { intent };
+                let _ = r_write
+                    .send(Message::Binary(bincode::serialize(&gm).unwrap()))
+                    .await;
             }
         }
     }
@@ -258,23 +429,23 @@ async fn recv_msg(
     >,
     timeout_secs: u64,
 ) -> Result<ServerMessage, String> {
-    let deadline = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
-        loop {
-            match read.next().await {
-                Some(Ok(Message::Binary(data))) => {
-                    if let Ok(msg) = bincode::deserialize::<ServerMessage>(&data) {
-                        return Ok(msg);
-                    }
-                }
-                Some(Ok(_)) => continue,
-                Some(Err(e)) => return Err(format!("WS error: {}", e)),
-                None => return Err("Stream ended".to_string()),
-            }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(format!("Timeout waiting for {}s", timeout_secs));
         }
-    });
 
-    match deadline.await {
-        Ok(res) => res,
-        Err(_) => Err(format!("Timeout waiting for {}s", timeout_secs)),
+        match tokio::time::timeout(deadline - now, read.next()).await {
+            Ok(Some(Ok(Message::Binary(data)))) => {
+                if let Ok(msg) = bincode::deserialize::<ServerMessage>(&data) {
+                    return Ok(msg);
+                }
+            }
+            Ok(Some(Ok(_))) => continue,
+            Ok(Some(Err(e))) => return Err(format!("WS error: {}", e)),
+            Ok(None) => return Err("Stream ended".to_string()),
+            Err(_) => return Err(format!("Timeout waiting for {}s", timeout_secs)),
+        }
     }
 }

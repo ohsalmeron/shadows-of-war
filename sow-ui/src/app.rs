@@ -40,6 +40,10 @@ impl ClientApp {
                 spawn_timer_secs: None,
                 sync_state: None,
                 last_troops_ui_refresh: None,
+                my_player_id: 0,
+                attacks: Vec::new(),
+                fleets: Vec::new(),
+                players: Vec::new(),
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
@@ -48,7 +52,7 @@ impl ClientApp {
         }
     }
 
-    pub fn draw(&mut self, ctx: &Context) -> Option<UiAction> {
+    pub fn draw(&mut self, ctx: &Context, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) -> Option<UiAction> {
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
                 main_menu::draw(ctx, &mut self.main_menu_state, &self.asset_loader)
@@ -58,7 +62,7 @@ impl ClientApp {
                 None
             }
             ClientPhase::Playing => {
-                hud::draw(ctx, &mut self.hud_state)
+                hud::draw(ctx, &mut self.hud_state, cancel_intents)
             }
         };
 
@@ -69,9 +73,10 @@ impl ClientApp {
             }
         } else if let Some(UiAction::ToggleSettings) = action {
             self.is_settings_open = true;
-            action = None; // Consume the action
+            action = None;
         }
 
         action
     }
 }
+

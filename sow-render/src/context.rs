@@ -27,10 +27,15 @@ impl RenderContext {
             buffer_count: 2,
         });
 
-        Self { context, command_encoder }
+        Self {
+            context,
+            command_encoder,
+        }
     }
 
-    pub fn create_surface<I: raw_window_handle::HasWindowHandle + raw_window_handle::HasDisplayHandle>(
+    pub fn create_surface<
+        I: raw_window_handle::HasWindowHandle + raw_window_handle::HasDisplayHandle,
+    >(
         &self,
         window: &I,
         width: u32,

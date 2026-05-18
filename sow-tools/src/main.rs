@@ -1,10 +1,10 @@
 use clap::Parser;
 use std::error::Error;
 
-mod overpass;
-mod rasterizer;
-mod poi_extractor;
 mod exporter;
+mod overpass;
+mod poi_extractor;
+mod rasterizer;
 
 /// Shadows of War Automated Map Generator
 /// Fetches OpenStreetMap data for a bounding box and generates a playable map.
@@ -31,7 +31,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    
+
     // Parse bbox: "min_lon,min_lat,max_lon,max_lat"
     let parts: Vec<&str> = args.bbox.split(',').collect();
     if parts.len() != 4 {
@@ -43,23 +43,48 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let max_lon: f64 = parts[2].parse()?;
     let max_lat: f64 = parts[3].parse()?;
 
-    println!("🌍 Generating map '{}' for bbox [{}, {}, {}, {}]", args.name, min_lon, min_lat, max_lon, max_lat);
-    
+    println!(
+        "🌍 Generating map '{}' for bbox [{}, {}, {}, {}]",
+        args.name, min_lon, min_lat, max_lon, max_lat
+    );
+
     // 1. Fetch from Overpass
     println!("📡 Fetching data from OpenStreetMap (Overpass API)...");
     let overpass_data = overpass::fetch_bbox(min_lon, min_lat, max_lon, max_lat).await?;
-    
+
     // 2. Rasterize Map
     println!("🗺️  Rasterizing terrain...");
-    let (map_width, map_height, terrain_grid) = rasterizer::rasterize_map(&overpass_data, min_lon, min_lat, max_lon, max_lat, args.scale);
-    
+    let (map_width, map_height, terrain_grid) = rasterizer::rasterize_map(
+        &overpass_data,
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+        args.scale,
+    );
+
     // 3. Extract POIs (Bots/Tribes)
     println!("🤖 Extracting points of interest for bots...");
-    let spawns = poi_extractor::extract_bots(&overpass_data, min_lon, min_lat, max_lon, max_lat, args.scale, map_height);
-    
+    let spawns = poi_extractor::extract_bots(
+        &overpass_data,
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+        args.scale,
+        map_height,
+    );
+
     // 4. Export
     println!("💾 Exporting files...");
-    exporter::export_map(&args.name, map_width, map_height, terrain_grid, spawns, args.single_player_config)?;
+    exporter::export_map(
+        &args.name,
+        map_width,
+        map_height,
+        terrain_grid,
+        spawns,
+        args.single_player_config,
+    )?;
 
     println!("✅ Generation complete! Saved to assets/maps/{}", args.name);
 

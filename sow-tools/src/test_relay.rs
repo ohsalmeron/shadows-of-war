@@ -30,34 +30,45 @@ fn fail(msg: &str) -> ! {
 }
 
 async fn ws_send(
-    ws: &mut futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Message>,
+    ws: &mut futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        Message,
+    >,
     msg: &ClientMessage,
 ) {
     let bytes = bincode::serialize(msg).unwrap();
     ws.send(Message::Binary(bytes)).await.unwrap();
 }
 
-async fn recv(read: &mut futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>, timeout_secs: u64) -> ServerMessage {
-    let deadline = tokio::time::timeout(
-        std::time::Duration::from_secs(timeout_secs),
-        async {
-            loop {
-                match read.next().await {
-                    Some(Ok(Message::Binary(data))) => {
-                        if let Ok(msg) = bincode::deserialize::<ServerMessage>(&data) {
-                            return msg;
-                        }
+async fn recv(
+    read: &mut futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+    timeout_secs: u64,
+) -> ServerMessage {
+    let deadline = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), async {
+        loop {
+            match read.next().await {
+                Some(Ok(Message::Binary(data))) => {
+                    if let Ok(msg) = bincode::deserialize::<ServerMessage>(&data) {
+                        return msg;
                     }
-                    Some(Ok(_)) => continue,
-                    Some(Err(e)) => fail(&format!("WS read error: {e}")),
-                    None => fail("WS stream ended unexpectedly"),
                 }
+                Some(Ok(_)) => continue,
+                Some(Err(e)) => fail(&format!("WS read error: {e}")),
+                None => fail("WS stream ended unexpectedly"),
             }
         }
-    );
+    });
     match deadline.await {
         Ok(msg) => msg,
-        Err(_) => fail(&format!("Timed out after {timeout_secs}s waiting for server message")),
+        Err(_) => fail(&format!(
+            "Timed out after {timeout_secs}s waiting for server message"
+        )),
     }
 }
 
@@ -79,7 +90,8 @@ async fn main() {
 
     // ── Step 1: Connect to orchestrator ─────────────────────────────────────
     step(1, "Connecting to orchestrator...");
-    let (ws, _) = tokio_tungstenite::connect_async(&url).await
+    let (ws, _) = tokio_tungstenite::connect_async(&url)
+        .await
         .unwrap_or_else(|e| fail(&format!("Connect failed: {e}")));
     let (mut write, mut read) = ws.split();
     pass("Connected to orchestrator");
@@ -104,11 +116,14 @@ async fn main() {
             ServerMessage::JoinAck(ack) => {
                 lobby_id = ack.lobby_id;
                 player_id = ack.player_id;
-                pass(&format!("JoinAck: lobby={lobby_id}, player={player_id}, map={}", ack.map_name));
+                pass(&format!(
+                    "JoinAck: lobby={lobby_id}, player={player_id}, map={}",
+                    ack.map_name
+                ));
                 break;
             }
             ServerMessage::JoinFailed(f) => fail(&format!("JoinFailed: {}", f.reason)),
-            ServerMessage::LobbiesBroadcast(_) => continue,  // ignore broadcasts
+            ServerMessage::LobbiesBroadcast(_) => continue, // ignore broadcasts
             other => {
                 eprintln!("  (ignoring {:?})", std::mem::discriminant(&other));
                 continue;
@@ -117,15 +132,34 @@ async fn main() {
     }
 
     // ── Step 3: Send Ready (skip map download) ──────────────────────────────
-    step(3, "Sending MapDownloadProgress(100) + Ready to orchestrator...");
-    ws_send(&mut write, &ClientMessage::MapDownloadProgress {
-        lobby_id, player_id, progress: 100,
-    }).await;
-    ws_send(&mut write, &ClientMessage::Ready { lobby_id, player_id }).await;
+    step(
+        3,
+        "Sending MapDownloadProgress(100) + Ready to orchestrator...",
+    );
+    ws_send(
+        &mut write,
+        &ClientMessage::MapDownloadProgress {
+            lobby_id,
+            player_id,
+            progress: 100,
+        },
+    )
+    .await;
+    ws_send(
+        &mut write,
+        &ClientMessage::Ready {
+            lobby_id,
+            player_id,
+        },
+    )
+    .await;
     pass("Sent Ready to orchestrator");
 
     // ── Step 4: Wait for Start ──────────────────────────────────────────────
-    step(4, "Waiting for ServerMessage::Start (up to 30s for countdown)...");
+    step(
+        4,
+        "Waiting for ServerMessage::Start (up to 30s for countdown)...",
+    );
     let relay_port: u16;
     let start_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
 
@@ -148,14 +182,18 @@ async fn main() {
                     None => fail("WS closed before Start"),
                 }
             }
-        }).await;
+        })
+        .await;
 
         match msg {
             Ok(ServerMessage::Start(start)) => {
                 relay_port = start.relay_port.unwrap_or(0);
                 pass(&format!(
                     "Start received! relay_port={}, my_id={:?}, players={}, seed={}",
-                    relay_port, start.my_player_id, start.players.len(), start.seed
+                    relay_port,
+                    start.my_player_id,
+                    start.players.len(),
+                    start.seed
                 ));
                 if relay_port == 0 {
                     fail("Start message has no relay_port!");
@@ -163,7 +201,10 @@ async fn main() {
                 break;
             }
             Ok(ServerMessage::SyncState(s)) => {
-                eprintln!("  ⏳ SyncState: time_remaining={:.1}s, is_starting={}", s.time_remaining, s.is_starting);
+                eprintln!(
+                    "  ⏳ SyncState: time_remaining={:.1}s, is_starting={}",
+                    s.time_remaining, s.is_starting
+                );
                 continue;
             }
             Ok(ServerMessage::LobbiesBroadcast(_)) => continue,
@@ -213,7 +254,10 @@ async fn main() {
 
     // ── Step 6: Send Ready to relay ─────────────────────────────────────────
     step(6, "Sending Ready to relay...");
-    let ready = ClientMessage::Ready { lobby_id, player_id };
+    let ready = ClientMessage::Ready {
+        lobby_id,
+        player_id,
+    };
     let bytes = bincode::serialize(&ready).unwrap();
     r_write.send(Message::Binary(bytes)).await.unwrap();
     pass("Sent Ready to relay");
@@ -225,20 +269,32 @@ async fn main() {
 
     loop {
         let remaining = turn_deadline.duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() { break; }
+        if remaining.is_zero() {
+            break;
+        }
 
         match tokio::time::timeout(remaining, r_read.next()).await {
             Ok(Some(Ok(Message::Binary(data)))) => {
                 if let Ok(ServerMessage::Turn(t)) = bincode::deserialize::<ServerMessage>(&data) {
                     turn_count += 1;
                     if turn_count <= 3 || turn_count % 20 == 0 {
-                        eprintln!("  📦 Turn #{} (intents: {})", t.turn.turn_number, t.turn.intents.len());
+                        eprintln!(
+                            "  📦 Turn #{} (intents: {})",
+                            t.turn.turn_number,
+                            t.turn.intents.len()
+                        );
                     }
                 }
             }
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(e))) => { eprintln!("  ⚠️  Read error: {e}"); break; }
-            Ok(None) => { eprintln!("  ⚠️  Relay stream ended"); break; }
+            Ok(Some(Err(e))) => {
+                eprintln!("  ⚠️  Read error: {e}");
+                break;
+            }
+            Ok(None) => {
+                eprintln!("  ⚠️  Relay stream ended");
+                break;
+            }
             Err(_) => break, // timeout, that's fine
         }
     }

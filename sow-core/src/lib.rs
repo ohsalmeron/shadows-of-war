@@ -7,22 +7,21 @@
 //! The single entry point is [`SowEngine::tick()`], which advances the
 //! simulation by exactly one deterministic step.
 
-pub mod map;
-pub mod player;
-pub mod game;
-pub mod engine;
-pub mod config;
-pub mod game_config;
-pub mod execution;
-pub mod warp_fleet;
-pub mod building;
-pub mod intent;
-pub mod pathfinding;
 pub mod bitset;
-pub mod rng;
+pub mod building;
 pub mod checksum;
+pub mod config;
+pub mod engine;
+pub mod execution;
+pub mod game;
+pub mod game_config;
+pub mod intent;
+pub mod map;
+pub mod pathfinding;
+pub mod player;
+pub mod rng;
+pub mod warp_fleet;
 
-pub mod water_components;
-pub mod protocol;
 pub mod map_openfront;
-
+pub mod protocol;
+pub mod water_components;

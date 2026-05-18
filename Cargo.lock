@@ -3669,12 +3669,14 @@ name = "sow-tools"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "brotli",
  "clap",
  "env_logger",
  "futures-util",
  "geo",
  "geo-types",
  "log",
+ "rand 0.8.6",
  "reqwest",
  "serde",
  "serde_json",

@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use egui::TextureHandle;
+use std::collections::{HashMap, HashSet};
 
 pub struct AssetLoader {
     /// Fully downloaded + cached map binary data (compressed .br bytes)
@@ -43,10 +43,13 @@ impl AssetLoader {
         self.thumbnails.get(map_name)
     }
 
-    pub fn get_assets_to_fetch(&mut self, lobbies: &[sow_core::protocol::LobbyInfo]) -> (Vec<String>, Vec<String>) {
+    pub fn get_assets_to_fetch(
+        &mut self,
+        lobbies: &[sow_core::protocol::LobbyInfo],
+    ) -> (Vec<String>, Vec<String>) {
         let mut thumbs_to_fetch = Vec::new();
         let mut maps_to_fetch = Vec::new();
-        
+
         let mut unique_maps = HashSet::new();
         for l in lobbies {
             unique_maps.insert(l.map_name.clone());
@@ -54,10 +57,12 @@ impl AssetLoader {
                 self.expected_md5s.insert(l.map_name.clone(), md5.clone());
             }
         }
-        
+
         // Thumbnails: fetch all missing ones at once (they are small)
         for map_name in &unique_maps {
-            if !self.thumbnails.contains_key(map_name) && !self.thumbnails_in_flight.contains(map_name) {
+            if !self.thumbnails.contains_key(map_name)
+                && !self.thumbnails_in_flight.contains(map_name)
+            {
                 self.thumbnails_in_flight.insert(map_name.clone());
                 thumbs_to_fetch.push(map_name.clone());
             }
@@ -86,7 +91,7 @@ impl AssetLoader {
                 maps_to_fetch.push(m);
             }
         }
-        
+
         (thumbs_to_fetch, maps_to_fetch)
     }
 

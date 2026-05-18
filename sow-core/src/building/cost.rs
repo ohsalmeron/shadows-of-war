@@ -1,6 +1,6 @@
-use crate::game::BuildingKind;
-use crate::config;
 use super::core::Building;
+use crate::config;
+use crate::game::BuildingKind;
 /// Count buildings owned by `owner` of exact `kind` (for City-only scaling).
 pub fn count_kind(buildings: &[Building], owner_id: u16, kind: BuildingKind) -> u32 {
     buildings
@@ -14,8 +14,7 @@ pub fn count_port_factory(buildings: &[Building], owner_id: u16) -> u32 {
     buildings
         .iter()
         .filter(|b| {
-            b.owner_id == owner_id
-                && matches!(b.kind, BuildingKind::Port | BuildingKind::Factory)
+            b.owner_id == owner_id && matches!(b.kind, BuildingKind::Port | BuildingKind::Factory)
         })
         .count() as u32
 }
@@ -78,7 +77,7 @@ pub fn count_kind_levels(buildings: &[Building], owner_id: u16, kind: BuildingKi
 /// At least one **ready** Port owned by `player_id` (fleet launches require this).
 #[inline]
 pub fn player_has_completed_port(buildings: &[Building], player_id: u16) -> bool {
-    buildings.iter().any(|b| {
-        b.owner_id == player_id && b.kind == BuildingKind::Port && !b.under_construction
-    })
+    buildings
+        .iter()
+        .any(|b| b.owner_id == player_id && b.kind == BuildingKind::Port && !b.under_construction)
 }

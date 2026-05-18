@@ -89,10 +89,11 @@ impl WasmImeBridge {
         {
             let pending = pending.clone();
             let beforeinput = Closure::wrap(Box::new(move |e: web_sys::Event| {
-                let input_type = js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("inputType"))
-                    .ok()
-                    .and_then(|v| v.as_string())
-                    .unwrap_or_default();
+                let input_type =
+                    js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("inputType"))
+                        .ok()
+                        .and_then(|v| v.as_string())
+                        .unwrap_or_default();
 
                 match input_type.as_str() {
                     "deleteContentBackward" | "deleteWordBackward" | "deleteSoftLineBackward" => {
@@ -104,9 +105,10 @@ impl WasmImeBridge {
                         let _ = e.prevent_default();
                     }
                     "insertText" | "insertLineBreak" | "insertReplacementText" => {
-                        if let Some(data) = js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("data"))
-                            .ok()
-                            .and_then(|v| v.as_string())
+                        if let Some(data) =
+                            js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("data"))
+                                .ok()
+                                .and_then(|v| v.as_string())
                         {
                             if !data.is_empty() {
                                 pending.borrow_mut().push(Event::Text(data));
@@ -119,7 +121,10 @@ impl WasmImeBridge {
                 }
             }) as Box<dyn FnMut(_)>);
             input
-                .add_event_listener_with_callback("beforeinput", beforeinput.as_ref().unchecked_ref())
+                .add_event_listener_with_callback(
+                    "beforeinput",
+                    beforeinput.as_ref().unchecked_ref(),
+                )
                 .expect("beforeinput listener");
             beforeinput.forget();
         }
@@ -127,17 +132,23 @@ impl WasmImeBridge {
         {
             let pending = pending.clone();
             let compositionend = Closure::wrap(Box::new(move |e: web_sys::Event| {
-                if let Some(data) = js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("data"))
-                    .ok()
-                    .and_then(|v| v.as_string())
+                if let Some(data) =
+                    js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("data"))
+                        .ok()
+                        .and_then(|v| v.as_string())
                 {
                     if !data.is_empty() {
-                        pending.borrow_mut().push(Event::Ime(ImeEvent::Commit(data)));
+                        pending
+                            .borrow_mut()
+                            .push(Event::Ime(ImeEvent::Commit(data)));
                     }
                 }
             }) as Box<dyn FnMut(_)>);
             input
-                .add_event_listener_with_callback("compositionend", compositionend.as_ref().unchecked_ref())
+                .add_event_listener_with_callback(
+                    "compositionend",
+                    compositionend.as_ref().unchecked_ref(),
+                )
                 .expect("compositionend listener");
             compositionend.forget();
         }

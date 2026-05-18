@@ -20,7 +20,12 @@ impl SowApp {
                 } else {
                     is_victory = false;
                     text_title = "DEFEAT";
-                    let winner_name = snap.players.iter().find(|p| p.id == winner).map(|p| p.name.clone()).unwrap_or_else(|| "Unknown".to_string());
+                    let winner_name = snap
+                        .players
+                        .iter()
+                        .find(|p| p.id == winner)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "Unknown".to_string());
                     text_subtitle = format!("{} emerged victorious.", winner_name);
                 }
             } else {
@@ -44,35 +49,90 @@ impl SowApp {
                 .fixed_pos(egui::Pos2::ZERO)
                 .show(ctx, |ui| {
                     let rect = ctx.screen_rect();
-                    ui.painter().rect_filled(rect, 0.0, Color32::from_black_alpha(150));
+                    ui.painter()
+                        .rect_filled(rect, 0.0, Color32::from_black_alpha(150));
                 });
-            
+
             egui::Window::new("Endgame")
                 .title_bar(false)
                 .collapsible(false)
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-                .frame(egui::Frame::window(&ctx.global_style()).fill(sow_ui::ui::theme::panel_bg()).stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border())).corner_radius(12.0).inner_margin(30.0))
+                .frame(
+                    egui::Frame::window(&ctx.global_style())
+                        .fill(sow_ui::ui::theme::panel_bg())
+                        .stroke(egui::Stroke::new(
+                            1.0_f32,
+                            sow_ui::ui::theme::nickname_field_border(),
+                        ))
+                        .corner_radius(12.0)
+                        .inner_margin(30.0),
+                )
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        let title_color = if is_victory { Color32::GOLD } else { Color32::RED };
-                        ui.label(RichText::new(text_title).color(title_color).font(FontId::proportional(64.0)).strong());
+                        let title_color = if is_victory {
+                            Color32::GOLD
+                        } else {
+                            Color32::RED
+                        };
+                        ui.label(
+                            RichText::new(text_title)
+                                .color(title_color)
+                                .font(FontId::proportional(64.0))
+                                .strong(),
+                        );
                         ui.add_space(10.0);
-                        ui.label(RichText::new(&text_subtitle).color(Color32::LIGHT_GRAY).font(FontId::proportional(24.0)));
-                        
+                        ui.label(
+                            RichText::new(&text_subtitle)
+                                .color(Color32::LIGHT_GRAY)
+                                .font(FontId::proportional(24.0)),
+                        );
+
                         ui.add_space(30.0);
-                        
-                        let btn_color = if is_victory { Color32::from_rgb(40, 140, 40) } else { Color32::from_rgb(140, 40, 40) };
-                        if ui.add_sized([200.0, 50.0], egui::Button::new(RichText::new("Return to Lobby").color(Color32::WHITE).font(FontId::proportional(20.0))).fill(btn_color)).clicked() {
+
+                        let btn_color = if is_victory {
+                            Color32::from_rgb(40, 140, 40)
+                        } else {
+                            Color32::from_rgb(140, 40, 40)
+                        };
+                        if ui
+                            .add_sized(
+                                [200.0, 50.0],
+                                egui::Button::new(
+                                    RichText::new("Return to Lobby")
+                                        .color(Color32::WHITE)
+                                        .font(FontId::proportional(20.0)),
+                                )
+                                .fill(btn_color),
+                            )
+                            .clicked()
+                        {
                             // Disconnect and return to main menu
                             self.net.client = None;
                             self.begin_exit_to_main_menu();
                         }
 
                         // Add SPECTATE button if defeated but the game has not officially ended
-                        if !is_victory && self.sim.current_snapshot.as_ref().map_or(false, |s| s.winner.is_none()) {
+                        if !is_victory
+                            && self
+                                .sim
+                                .current_snapshot
+                                .as_ref()
+                                .map_or(false, |s| s.winner.is_none())
+                        {
                             ui.add_space(15.0);
-                            if ui.add_sized([200.0, 50.0], egui::Button::new(RichText::new("SPECTATE").color(Color32::WHITE).font(FontId::proportional(20.0))).fill(Color32::from_rgb(60, 60, 60))).clicked() {
+                            if ui
+                                .add_sized(
+                                    [200.0, 50.0],
+                                    egui::Button::new(
+                                        RichText::new("SPECTATE")
+                                            .color(Color32::WHITE)
+                                            .font(FontId::proportional(20.0)),
+                                    )
+                                    .fill(Color32::from_rgb(60, 60, 60)),
+                                )
+                                .clicked()
+                            {
                                 self.ui.is_spectating = true;
                             }
                         }

@@ -73,7 +73,7 @@ pub struct GameConfig {
     pub random_spawn: bool,
     /// Percentage of the map's total land tiles needed to trigger an automatic win (e.g. 0.10 for 10%).
     pub map_control_win_percentage: f32,
-    
+
     // ==========================================
     // Core Simulation Pacing
     // ==========================================
@@ -84,7 +84,7 @@ pub struct GameConfig {
     /// Lowers expansion speed, income generation, and bot aggression proportionally.
     /// Example: 0.5 means attacks take twice as long to spread and income generates half as fast.
     pub global_speed_multiplier: f64,
-    
+
     // ==========================================
     // Combat & Expansion Mechanics
     // ==========================================
@@ -113,7 +113,7 @@ pub struct GameConfig {
     /// Troops needed to reach 1x momentum. At 2x this value you get 2x speed, etc.
     /// Higher = slower expansion for large armies. (default 2000 = half speed vs old 1000)
     pub momentum_divisor: f64,
-    
+
     // ==========================================
     // Economy & Income Rates
     // ==========================================
@@ -144,7 +144,6 @@ pub struct GameConfig {
     /// `1.0` matches prior behavior; values above 1 speed refill, below 1 slow it. Does not affect gold.
     #[serde(default = "default_troop_income_pace")]
     pub troop_income_pace: f64,
-    
 }
 
 impl Default for GameConfig {
@@ -152,8 +151,8 @@ impl Default for GameConfig {
         Self {
             // Lobby & Match Setup
             max_players: 120,
-            bot_count: 650,      // Tribes (Simple, static filler AI)
-            nation_count: 120,   // Nations (Dynamic expanding AI)
+            bot_count: 650,    // Tribes (Simple, static filler AI)
+            nation_count: 120, // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
@@ -168,26 +167,26 @@ impl Default for GameConfig {
             tick_rate_ms: 100.0, // Server clock ticks every 50ms (20 ticks per second)
             // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
             global_speed_multiplier: 0.45, // 0.85 = Slightly slower, more tactical pace
-            
+
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 1.0,   // Balanced: harder to melt through enemy territory
+            attack_cost_enemy: 1.0, // Balanced: harder to melt through enemy territory
             attack_cost_neutral: 0.1, // Standard neutral cost
             terrain_multiplier_highland: 3.5,
             terrain_multiplier_mountain: 7.0,
-            bot_attack_interval_ticks: 16,    // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
-            max_tiles_per_tick: 64.0, // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
+            bot_attack_interval_ticks: 16, // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
+            max_tiles_per_tick: 64.0,      // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
             max_tiles_per_tick_reference_troops: 1000.0,
             max_tiles_per_tick_at_reference: 4.0,
-            momentum_divisor: 1250.0,          // Troops needed for 1x momentum
+            momentum_divisor: 1250.0, // Troops needed for 1x momentum
 
             // Economy & Income Rates
-            starting_troops: 100.0,  // Initial burst to allow early expansion
+            starting_troops: 100.0, // Initial burst to allow early expansion
             starting_gold: 10.0,
             gold_base_income: 4.0,
             troop_base_income: 2.0, // Smooth baseline troop recovery
-            troop_per_tile: 2.0,     // Rewards map control, but doesn't instantly snowball
+            troop_per_tile: 2.0,    // Rewards map control, but doesn't instantly snowball
             max_troops_base: 100.0,
-            max_troops_scale: 50.0,
+            max_troops_scale: 1.0,
             city_max_troops_per_level: 2000.0,
             factory_income_bonus_per_level: 0.15, // 15% income boost per factory level
             factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
@@ -228,7 +227,11 @@ pub fn max_tiles_cap_for_troops(troops: f64, cfg: &GameConfig) -> f64 {
     let t_eff = troops.max(t0);
     let ratio = t_eff / t0;
     let curve = at_ref * libm::pow(2.0, libm::log10(ratio));
-    let curve = if curve.is_finite() { curve } else { sane_ceiling };
+    let curve = if curve.is_finite() {
+        curve
+    } else {
+        sane_ceiling
+    };
     curve.min(sane_ceiling).max(1.0)
 }
 

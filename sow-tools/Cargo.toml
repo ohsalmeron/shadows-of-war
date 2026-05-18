@@ -8,6 +8,10 @@ description = "Shadows of War — Map generator and tooling CLI"
 name = "test-relay"
 path = "src/test_relay.rs"
 
+[[bin]]
+name = "bot-manager"
+path = "src/bot_manager.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 serde = { workspace = true }
@@ -22,3 +26,5 @@ clap = { version = "4.4", features = ["derive"] }
 env_logger = { workspace = true }
 tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
+rand = "0.8"
+brotli = "8.0.2"

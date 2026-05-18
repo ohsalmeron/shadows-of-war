@@ -23,7 +23,7 @@ pub fn extract_bots(
                 let tags = element.get("tags");
                 let place = tags.and_then(|t| t.get("place")).and_then(|p| p.as_str());
                 let name = tags.and_then(|t| t.get("name")).and_then(|n| n.as_str());
-                
+
                 if let (Some(place_type), Some(poi_name)) = (place, name) {
                     if place_type == "city" || place_type == "suburb" {
                         if let (Some(lat), Some(lon)) = (

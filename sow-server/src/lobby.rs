@@ -53,17 +53,18 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
     let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let maps = ["europe", "world"];
     config.map_name = maps[map_idx % maps.len()].to_string();
-    
+
     let mut map_md5 = None;
     let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
     let map_dir = std::path::Path::new(&root).join(&config.map_name);
     let manifest_path = map_dir.join("manifest.json");
     if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
-        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data) {
+        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data)
+        {
             map_md5 = manifest.map_md5;
         }
     }
-    
+
     config.game_mode = game_mode.to_string();
 
     games.push(ServerLobby {
@@ -82,10 +83,20 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
 }
 
 fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
-    if games.iter().filter(|g| g.joinable() && g.game_mode == "FFA").count() < 1 {
+    if games
+        .iter()
+        .filter(|g| g.joinable() && g.game_mode == "FFA")
+        .count()
+        < 1
+    {
         spawn_waiting_lobby(games, next_id, "FFA");
     }
-    if games.iter().filter(|g| g.joinable() && g.game_mode == "Teams").count() < 1 {
+    if games
+        .iter()
+        .filter(|g| g.joinable() && g.game_mode == "Teams")
+        .count()
+        < 1
+    {
         spawn_waiting_lobby(games, next_id, "Teams");
     }
 }
@@ -97,12 +108,12 @@ fn promote_countdown(games: &mut [ServerLobby]) {
     if has_counting {
         return;
     }
-    
+
     // Pick the first waiting lobby
     let target = games
         .iter_mut()
         .find(|g| matches!(g.phase, LobbyPhase::Waiting));
-        
+
     if let Some(lobby) = target {
         lobby.phase = LobbyPhase::CountingDown;
         lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
@@ -114,7 +125,9 @@ fn promote_countdown(games: &mut [ServerLobby]) {
 pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     let mut counting: Vec<u64> = games
         .iter()
-        .filter(|g| g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::CountingDown))
+        .filter(|g| {
+            g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::CountingDown)
+        })
         .map(|g| g.id)
         .collect();
     if !counting.is_empty() {
@@ -123,7 +136,9 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     }
     let mut waiting: Vec<u64> = games
         .iter()
-        .filter(|g| g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::Waiting))
+        .filter(|g| {
+            g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::Waiting)
+        })
         .map(|g| g.id)
         .collect();
     if waiting.is_empty() {
@@ -212,20 +227,24 @@ fn start_match(lobby: &mut ServerLobby) {
     let manifest_path = map_dir.join("manifest.json");
 
     if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
-        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data) {
+        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data)
+        {
             lobby.config.map_width = manifest.map.width;
             lobby.config.map_height = manifest.map.height;
         } else {
             log::error!("Failed to parse map manifest at {:?}", manifest_path);
         }
     } else {
-        log::warn!("Could not load map manifest {:?}, falling back to defaults", map_dir);
+        log::warn!(
+            "Could not load map manifest {:?}, falling back to defaults",
+            map_dir
+        );
         lobby.config.map_width = 800;
         lobby.config.map_height = 600;
     }
 
     // We no longer build map state or SowEngine here. That is handled by sow-relay.
-    
+
     lobby.countdown_secs = 16.5; // 15s load + 1.5s stabilize
     lobby.phase = LobbyPhase::Loading;
 
@@ -237,9 +256,6 @@ fn start_match(lobby: &mut ServerLobby) {
         lobby.players.len()
     );
 }
-
-
-
 
 pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     ensure_queue_depth(games, next_id);
@@ -265,43 +281,53 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                 }
                 LobbyPhase::Loading => {
                     lobby.countdown_secs -= TICK_SECS;
-                    
-                    let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby.players.iter().map(|p| {
-                        sow_core::protocol::LobbyPlayerSyncState {
+
+                    let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby
+                        .players
+                        .iter()
+                        .map(|p| sow_core::protocol::LobbyPlayerSyncState {
                             name: p.name.clone(),
                             is_ready: lobby.ready_players.contains(&p.player_id),
                             download_progress: p.download_progress,
-                        }
-                    }).collect();
-                    
+                        })
+                        .collect();
+
                     let all_ready = players.iter().all(|p| p.is_ready) && !players.is_empty();
-                    
+
                     // If everyone is ready, we force the countdown to jump to 1.5s if it was higher,
                     // serving as the "Stabilizing..." delay.
                     if all_ready && lobby.countdown_secs > 1.5 {
                         lobby.countdown_secs = 1.5;
                     }
-                    
+
                     let is_starting = all_ready;
-                    
+
                     let sync_msg = sow_core::protocol::ServerSyncStateMessage {
                         time_remaining: lobby.countdown_secs.max(0.0),
                         players,
                         is_starting,
                     };
-                    let sync_json = bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg)).unwrap();
+                    let sync_json =
+                        bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg))
+                            .unwrap();
                     for p in &lobby.players {
                         let _ = p.tx.try_send(sync_json.clone());
                     }
 
                     if lobby.countdown_secs <= 0.0 {
                         if !all_ready {
-                            log::warn!("Lobby {} loading phase timed out! Removing slow clients.", lobby.id);
+                            log::warn!(
+                                "Lobby {} loading phase timed out! Removing slow clients.",
+                                lobby.id
+                            );
                             let closed_msg = sow_core::protocol::ServerLobbyClosedMessage {
                                 lobby_id: lobby.id,
                                 reason: "Sync timeout. Requeueing...".to_string(),
                             };
-                            let closed_json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(closed_msg)).unwrap();
+                            let closed_json = bincode::serialize(
+                                &sow_core::protocol::ServerMessage::LobbyClosed(closed_msg),
+                            )
+                            .unwrap();
                             lobby.players.retain(|p| {
                                 if lobby.ready_players.contains(&p.player_id) {
                                     true
@@ -311,7 +337,10 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                 }
                             });
                         } else {
-                            log::info!("Lobby {} all clients ready, starting active match!", lobby.id);
+                            log::info!(
+                                "Lobby {} all clients ready, starting active match!",
+                                lobby.id
+                            );
                         }
                         if lobby.players.is_empty() {
                             log::warn!("[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: No validated human players remaining (they disconnected or failed map sync).", lobby.id);
@@ -359,11 +388,15 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
             map_name: g.config.map_name.clone(),
             map_md5: g.map_md5.clone(),
             game_mode: g.game_mode.clone(),
-            players: g.players.iter().map(|p| sow_core::protocol::LobbyPlayerSyncState {
-                name: p.name.clone(),
-                is_ready: g.ready_players.contains(&p.player_id),
-                download_progress: p.download_progress,
-            }).collect(),
+            players: g
+                .players
+                .iter()
+                .map(|p| sow_core::protocol::LobbyPlayerSyncState {
+                    name: p.name.clone(),
+                    is_ready: g.ready_players.contains(&p.player_id),
+                    download_progress: p.download_progress,
+                })
+                .collect(),
         })
         .collect();
     infos.sort_by_key(|l| l.id);

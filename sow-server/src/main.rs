@@ -1,11 +1,10 @@
 mod lobby;
 
 use futures_util::{SinkExt, StreamExt};
-use lobby::{master_tick, ServerLobby, build_lobby_broadcast, join_player, leave_player};
+use lobby::{build_lobby_broadcast, join_player, leave_player, master_tick, ServerLobby};
 use redis::Commands;
 use sow_core::protocol::{
-    ServerJoinAckMessage,
-    ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
+    ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,11 +18,12 @@ const RELAY_PORT_MIN: u16 = 25570;
 const RELAY_PORT_MAX: u16 = 25600;
 
 fn find_free_port(redis_con: &mut redis::Connection) -> Option<u16> {
-    let occupied: std::collections::HashSet<u16> = redis_con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
+    let occupied: std::collections::HashSet<u16> =
+        redis_con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
     (RELAY_PORT_MIN..=RELAY_PORT_MAX).find(|p| !occupied.contains(p))
 }
 
-/// All server events, comming from client 
+/// All server events, comming from client
 enum ServerEvent {
     Join {
         client_tx: mpsc::Sender<Vec<u8>>,
@@ -51,14 +51,18 @@ enum ServerEvent {
 async fn main() {
     env_logger::init();
 
-    let redis_url = std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let redis_url =
+        std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
     let redis_client = redis::Client::open(redis_url).expect("Failed to connect to Redis");
     let redis_con = Arc::new(std::sync::Mutex::new(
-        redis_client.get_connection().expect("Failed to get Redis connection"),
+        redis_client
+            .get_connection()
+            .expect("Failed to get Redis connection"),
     ));
     {
         let mut con = redis_con.lock().unwrap();
-        let occupied: std::collections::HashSet<u16> = con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
+        let occupied: std::collections::HashSet<u16> =
+            con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
         log::info!("Redis connected. Occupied relay ports: {:?}", occupied);
     }
 
@@ -85,7 +89,7 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     master_tick(&mut games, &mut nid);
-                    
+
                     for lobby in &mut *games {
                         if lobby.phase == lobby::LobbyPhase::Loading && lobby.countdown_secs <= 3.0 && lobby.relay_port.is_none() {
                             let mut rcon = redis_clone.lock().unwrap();
@@ -98,7 +102,7 @@ async fn main() {
                             };
                             let _: () = rcon.sadd(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
                             drop(rcon);
-                            
+
                             let mut players_json = Vec::new();
                             for p in &lobby.players {
                                 players_json.push(serde_json::json!({
@@ -106,14 +110,14 @@ async fn main() {
                                     "name": p.name,
                                 }));
                             }
-                            
+
                             let relay_config = serde_json::json!({
                                 "lobby_id": lobby.id,
                                 "tick_number": 0,
                                 "active_empty_secs": lobby.active_empty_secs,
                                 "players": players_json
                             });
-                            
+
                             let log_file = std::fs::File::create(format!("relay_{}.log", relay_port)).unwrap();
                             let mut cmd = tokio::process::Command::new("./sow-relay");
                             cmd.arg("--port").arg(relay_port.to_string())
@@ -121,7 +125,7 @@ async fn main() {
                                .stdin(std::process::Stdio::null())
                                .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
                                .stderr(std::process::Stdio::from(log_file));
-                            
+
                             match cmd.spawn() {
                                 Ok(_) => {
                                     log::info!("Spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
@@ -135,7 +139,7 @@ async fn main() {
                             }
                         }
                     }
-                    
+
                     // Extract lobbies ready for relay
                     let mut ready_lobbies = Vec::new();
                     let mut i = 0;
@@ -146,18 +150,18 @@ async fn main() {
                             i += 1;
                         }
                     }
-                    
+
                     let lobbies_info = build_lobby_broadcast(&games);
-                    
+
                     let mut broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
                     // Hard cap to 1 lobby for the UI
                     if broadcast_msg.lobbies.len() > 1 {
                         broadcast_msg.lobbies.truncate(1);
                     }
-                    
+
                     let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)).unwrap();
                     let _ = global_tx_clone.send(json);
-                    
+
                     for lobby in ready_lobbies {
                         if let Some(relay_port) = lobby.relay_port {
                             let mut player_infos = Vec::new();
@@ -182,7 +186,7 @@ async fn main() {
                                     spawn_y: 0,
                                 });
                             }
-                            
+
                             let start_msg = sow_core::protocol::ServerStartMessage {
                                 config: lobby.config.clone(),
                                 my_player_id: None,
@@ -192,7 +196,7 @@ async fn main() {
                                 map_data: None,
                                 relay_port: Some(relay_port),
                             };
-                            
+
                             for p in &lobby.players {
                                 let mut player_start = start_msg.clone();
                                 player_start.my_player_id = Some(p.player_id);
@@ -255,22 +259,25 @@ async fn main() {
     });
 
     let addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
-    
+
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
     // HTTP Static File Server for maps
-        tokio::spawn(async move {
-            let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-            let app = axum::Router::new()
-                .nest_service("/maps", tower_http::services::ServeDir::new(root).precompressed_br())
-                .layer(tower_http::cors::CorsLayer::permissive());
-            let http_addr = std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
-            log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
-            let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
-            axum::serve(listener, app).await.unwrap();
-        });
-
+    tokio::spawn(async move {
+        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
+        let app = axum::Router::new()
+            .nest_service(
+                "/maps",
+                tower_http::services::ServeDir::new(root).precompressed_br(),
+            )
+            .layer(tower_http::cors::CorsLayer::permissive());
+        let http_addr =
+            std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
+        log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
+        let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
 
     while let Ok((stream, _)) = listener.accept().await {
         let mut global_rx = global_tx.subscribe();
@@ -304,7 +311,7 @@ async fn main() {
                                             sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, build_version } => {
                                                 let server_version = std::env::var("SOW_BUILD_VERSION")
                                                     .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
-                                                
+
                                                 if !server_version.is_empty() && build_version != server_version {
                                                     log::warn!("Client version mismatch: expected {}, got {}", server_version, build_version);
                                                     let fail = sow_core::protocol::ServerJoinFailedMessage { reason: "VERSION_MISMATCH".to_string() };
@@ -312,7 +319,7 @@ async fn main() {
                                                     let _ = direct_tx.try_send(json);
                                                     continue;
                                                 }
-                                                
+
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
                                                     client_tx: direct_tx.clone(),
@@ -398,10 +405,12 @@ async fn main() {
             }
 
             if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                let _ = ev_tx.send(ServerEvent::Leave {
-                    lobby_id: l_id,
-                    player_id: p_id,
-                }).await;
+                let _ = ev_tx
+                    .send(ServerEvent::Leave {
+                        lobby_id: l_id,
+                        player_id: p_id,
+                    })
+                    .await;
             }
         });
     }

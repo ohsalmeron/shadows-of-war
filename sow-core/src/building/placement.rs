@@ -1,6 +1,6 @@
-use crate::map::{GameMap, TerrainType};
-use crate::game::BuildingKind;
 use super::core::BuildingGrid;
+use crate::game::BuildingKind;
+use crate::map::{GameMap, TerrainType};
 /// OpenFront `structureMinDist()` / search radius for land valid tiles.
 pub const STRUCTURE_MIN_DIST: i32 = 15;
 const STRUCTURE_MIN_DIST_SQ: i64 = (STRUCTURE_MIN_DIST as i64) * (STRUCTURE_MIN_DIST as i64);
@@ -75,7 +75,7 @@ pub fn valid_land_structure_indices(
         scratch.stamp = 1;
     }
     let stamp = scratch.stamp;
-    
+
     scratch.queue.clear();
     scratch.visited_stamp[click_idx as usize] = stamp;
     scratch.queue.push(click_idx);

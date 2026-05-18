@@ -1,6 +1,6 @@
+use egui::text::{LayoutJob, TextFormat};
 use std::collections::HashMap;
 use std::sync::Arc;
-use egui::text::{LayoutJob, TextFormat};
 
 pub struct CachedNameplate {
     pub name_galley: Arc<egui::Galley>,
@@ -40,8 +40,6 @@ impl TroopLabelThrottle {
     }
 }
 
-
-
 /// Paper-map label ink (off-white, not pure white).
 pub const NAMEPLATE_FILL: egui::Color32 = egui::Color32::BLACK;
 
@@ -58,11 +56,7 @@ pub fn nameplate_matte_player_rgb(rgb: [f32; 3]) -> egui::Color32 {
 }
 
 /// Draw the text galley directly with high performance (no outline).
-pub fn paint_nameplate_galley(
-    painter: &egui::Painter,
-    pos: egui::Pos2,
-    galley: Arc<egui::Galley>,
-) {
+pub fn paint_nameplate_galley(painter: &egui::Painter, pos: egui::Pos2, galley: Arc<egui::Galley>) {
     if !galley.is_empty() {
         painter.galley(pos, galley, NAMEPLATE_FILL);
     }
@@ -76,12 +70,11 @@ pub fn layout_nameplate_name_galley(
     player_color: egui::Color32,
 ) -> Arc<egui::Galley> {
     if is_human {
-        let mut job = LayoutJob { break_on_newline: false, ..Default::default() };
-        job.append(
-            "★ ",
-            0.0,
-            TextFormat::simple(font_id.clone(), player_color),
-        );
+        let mut job = LayoutJob {
+            break_on_newline: false,
+            ..Default::default()
+        };
+        job.append("★ ", 0.0, TextFormat::simple(font_id.clone(), player_color));
         job.append(name, 0.0, TextFormat::simple(font_id, NAMEPLATE_FILL));
         painter.layout_job(job)
     } else {
@@ -94,7 +87,10 @@ pub fn layout_nameplate_troops_galley(
     font_id: egui::FontId,
     troops_str: &str,
 ) -> Arc<egui::Galley> {
-    let mut job = LayoutJob { break_on_newline: false, ..Default::default() };
+    let mut job = LayoutJob {
+        break_on_newline: false,
+        ..Default::default()
+    };
     job.append(
         "⚔ ",
         0.0,
@@ -102,25 +98,4 @@ pub fn layout_nameplate_troops_galley(
     );
     job.append(troops_str, 0.0, TextFormat::simple(font_id, NAMEPLATE_FILL));
     painter.layout_job(job)
-}
-
-pub fn render_troops(mut num: f64) -> String {
-    num = num.max(0.0);
-    if num >= 10_000_000.0 {
-        let value = (num / 100_000.0).floor() / 10.0;
-        format!("{:.1}M", value)
-    } else if num >= 1_000_000.0 {
-        let value = (num / 10_000.0).floor() / 100.0;
-        format!("{:.2}M", value)
-    } else if num >= 100_000.0 {
-        format!("{}K", (num / 1000.0).floor())
-    } else if num >= 10_000.0 {
-        let value = (num / 100.0).floor() / 10.0;
-        format!("{:.1}K", value)
-    } else if num >= 1_000.0 {
-        let value = (num / 10.0).floor() / 100.0;
-        format!("{:.2}K", value)
-    } else {
-        format!("{:.0}", num.floor())
-    }
 }

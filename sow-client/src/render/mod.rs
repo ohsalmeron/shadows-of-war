@@ -176,7 +176,10 @@ impl SowApp {
                             if let Some(ref mut sync) = self.ui.app.hud_state.sync_state {
                                 sync.time_remaining = (sync.time_remaining - self.ui.raw_input.predicted_dt).max(0.0);
                             }
-                            let mut local_cancel_intents = Vec::new();
+                            let mut local_cancel_intents: Vec<sow_core::protocol::GameplayIntent> = Vec::new();
+                            if self.ui.app.phase == ClientPhase::Playing {
+                                self.sync_hud_combat_state();
+                            }
                             
 
 
@@ -220,7 +223,8 @@ impl SowApp {
                                     self.render_leaderboard(ctx);
                                 }
                                 
-                                self.render_dev_panels(ctx, &mut local_cancel_intents);
+                                self.render_dev_panels(ctx);
+                                let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
                                 if self.ui.update_available {
                                     egui::Window::new("Update Available")
@@ -245,7 +249,7 @@ impl SowApp {
                                         });
                                 }
                                 
-                                self.process_ui_actions(ctx);
+                                self.process_ui_actions(ctx, ui_action);
                             });
 
                             for intent in local_cancel_intents {

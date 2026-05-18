@@ -1,8 +1,8 @@
-use crate::engine::SowEngine;
-use crate::game::GameState;
 use crate::building::Building;
-use crate::warp_fleet::WarpFleet;
+use crate::engine::SowEngine;
 use crate::execution::AttackExecution;
+use crate::game::GameState;
+use crate::warp_fleet::WarpFleet;
 
 impl SowEngine {
     pub fn checksum(&self) -> u64 {
@@ -24,7 +24,9 @@ pub fn compute_state_hash<'a>(
     let mut hash: u64 = 0;
 
     for (i, p) in game.players.iter().enumerate() {
-        if !p.alive { continue; }
+        if !p.alive {
+            continue;
+        }
         hash = hash.wrapping_add((i as u64).wrapping_mul(1000));
         hash = hash.wrapping_add(p.troops.to_bits());
         hash = hash.wrapping_add(p.gold.to_bits());

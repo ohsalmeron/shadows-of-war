@@ -18,10 +18,13 @@ impl SowClient {
     }
 
     pub async fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let ws = WebSocket::new(url).map_err(|e| e.as_string().unwrap_or_else(|| "WebSocket creation failed".to_string()))?;
-        
+        let ws = WebSocket::new(url).map_err(|e| {
+            e.as_string()
+                .unwrap_or_else(|| "WebSocket creation failed".to_string())
+        })?;
+
         ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-        
+
         let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         let socket_closed = Arc::new(AtomicBool::new(false));
 
@@ -44,7 +47,7 @@ impl SowClient {
         });
         ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
         onclose_callback.forget();
-        
+
         let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: Event| {
             log::error!("WASM WebSocket error occurred on connection: {}", e.type_());
         });
@@ -64,7 +67,11 @@ impl SowClient {
         // Wait for the open event before returning
         let _ = open_rx.await;
 
-        Ok(Self { ws, rx, socket_closed })
+        Ok(Self {
+            ws,
+            rx,
+            socket_closed,
+        })
     }
 
     pub fn send(&self, msg: Vec<u8>) {
@@ -72,7 +79,10 @@ impl SowClient {
             let array = js_sys::Uint8Array::from(msg.as_slice());
             let _ = self.ws.send_with_array_buffer(&array.buffer());
         } else {
-            log::warn!("Attempted to send on non-open WebSocket (state: {})", self.ws.ready_state());
+            log::warn!(
+                "Attempted to send on non-open WebSocket (state: {})",
+                self.ws.ready_state()
+            );
         }
     }
 }

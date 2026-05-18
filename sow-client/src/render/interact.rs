@@ -130,8 +130,8 @@ impl SowApp {
 
     }
 
-    pub(crate) fn process_ui_actions(&mut self, ctx: &egui::Context) {
-                                if let Some(action) = self.ui.app.draw(ctx) {
+    pub(crate) fn process_ui_actions(&mut self, _ctx: &egui::Context, action: Option<sow_ui::UiAction>) {
+                                if let Some(action) = action {
                                     match action {
                                         UiAction::StartTutorial | UiAction::StartSinglePlayer => {
                                             self.net.is_offline = true;

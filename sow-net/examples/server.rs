@@ -1,11 +1,11 @@
+use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
-use futures_util::{StreamExt, SinkExt};
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    
+
     let addr = "127.0.0.1:8080";
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("Echo Server listening on: ws://{}", addr);
@@ -16,7 +16,9 @@ async fn main() {
 }
 
 async fn handle_connection(stream: tokio::net::TcpStream) {
-    let ws_stream = accept_async(stream).await.expect("Error during the websocket handshake");
+    let ws_stream = accept_async(stream)
+        .await
+        .expect("Error during the websocket handshake");
     log::info!("New WebSocket connection");
 
     let (mut write, mut read) = ws_stream.split();

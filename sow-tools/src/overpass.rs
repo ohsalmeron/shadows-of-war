@@ -3,7 +3,12 @@ use serde_json::Value;
 use std::error::Error;
 
 /// Fetches OSM data within the bounding box
-pub async fn fetch_bbox(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) -> Result<Value, Box<dyn Error>> {
+pub async fn fetch_bbox(
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+) -> Result<Value, Box<dyn Error>> {
     let query = format!(
         r#"[out:json][timeout:25];
         (
@@ -20,7 +25,8 @@ pub async fn fetch_bbox(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) 
 
     let query_single_line = query.replace("\n", " ");
     let client = Client::new();
-    let res = client.post("https://overpass-api.de/api/interpreter")
+    let res = client
+        .post("https://overpass-api.de/api/interpreter")
         .header("User-Agent", "curl/8.9.1")
         .form(&[("data", &query_single_line)])
         .send()
