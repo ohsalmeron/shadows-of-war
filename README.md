@@ -102,6 +102,10 @@ Achieving seamless performance on "shitty" low-end hardware (like older Androids
 * **Fragment Shader FP16 Precision Trap**: Android GLES hardware (specifically Adreno/Mali) aggressively downgrades fragment shader integer math (`i32`) to `mediump` (16-bit Float hardware) to save battery. This caused our map coordinate bounds math (e.g., `pixel_x + 1`) to hit the 11-bit mantissa ceiling and silently truncate on large maps (e.g., `2500 + 1 = 2500`), totally breaking neighbor-checking for territory borders.
 * **CPU-Side Directional Bit-Packing for Thin Borders**: To permanently bypass Android GPU optimizer bugs while maintaining the ability to draw razor-thin territory outlines, we use a hybrid directional bit-packing approach. The CPU evaluates the 4 adjacent neighbors during the lockstep `dirty_tiles` loop in `O(1)` time, and explicitly packs the 4 directional borders into the top 4 unused bits of the 32-bit texture payload (Bit 31: Up, 30: Down, 29: Left, 28: Right). The fragment shader simply reads these 4 bits and applies precise mathematical clipping (`fract`) to draw the borders exactly on the outer edge, allowing customizable thickness without any heavy GPU-side neighbor checking. This ensures 100% compatibility across legacy Android devices with perfect performance.
 
+### Egui Font Fallback Crashes
+* **The Trap**: When overriding `egui`'s `FontDefinitions` to register custom `.ttf` weights (e.g., `Bold` or `Thin`), manually defining the fallback lists (like `vec!["Bold", "Default"]`) implicitly drops `egui`'s internal emoji fonts. The moment the UI attempts to render an emoji (like ⚔ or ★), `epaint` immediately panics with `No font data found for "emoji"` because the fallback chain was severed.
+* **The Fix**: Instead of hardcoding the fallback lists and trying to guess `egui`'s internal font keys, we dynamically clone the fallback vector directly from `egui::FontFamily::Proportional` (which is guaranteed to contain the correctly configured emoji fallbacks) and securely prepend our custom font names to it (`bold_family.insert(0, "Bold".to_owned())`).
+
 ---
 
 ## 📝 Development Notes & Rules

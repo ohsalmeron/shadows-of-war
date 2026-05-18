@@ -103,6 +103,7 @@ pub struct LobbyInfo {
     pub timer_secs: f32,
     pub map_name: String,
     pub map_md5: Option<String>,
+    pub game_mode: String,
     pub players: Vec<LobbyPlayerSyncState>,
 }
 
@@ -158,12 +159,19 @@ pub struct ReplayFile {
     pub turns: Vec<Turn>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Copy)]
+pub enum Team {
+    Red,
+    Blue,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PlayerInfo {
     pub id: u16,
     pub name: String,
     pub player_type: crate::player::PlayerType,
     pub color: [f32; 3],
+    pub team: Option<Team>,
     pub spawn_x: u32,
     pub spawn_y: u32,
 }
@@ -219,6 +227,7 @@ pub struct PlayerSnapshot {
     pub centroid_y: f32,
     pub player_type: crate::player::PlayerType,
     pub color: [f32; 3],
+    pub team: Option<Team>,
     pub has_spawned: bool,
     pub alive: bool,
 }

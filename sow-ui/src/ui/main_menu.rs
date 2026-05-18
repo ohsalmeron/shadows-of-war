@@ -113,7 +113,7 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
                         ui.vertical(|ui| {
                             ui.label(
                                 RichText::new("SHADOWS OF WAR")
-                                    .font(egui::FontId::new(title_fs, egui::FontFamily::Name("Bold".into())))
+                                    .font(egui::FontId::proportional(title_fs))
                                     .color(Color32::WHITE),
                             );
                         });
@@ -301,7 +301,7 @@ fn draw_left_column(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     ui.label(
-        RichText::new("Open lobbies")
+        RichText::new("Lobby Browser")
             .size(if compact { 14.0 } else { 16.0 })
             .color(text_secondary()),
     );
@@ -318,9 +318,26 @@ fn draw_left_column(
                         .color(text_secondary()),
                 );
             } else {
-                for lobby in &state.lobbies {
-                    lobby_card(ui, lobby, action_min_h, action, asset_loader);
+                let ffa_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "FFA").collect();
+                let team_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "Teams").collect();
+
+                if !ffa_lobbies.is_empty() {
+                    ui.label(RichText::new("Free For All").strong().color(Color32::WHITE));
+                    ui.add_space(4.0);
+                    for lobby in ffa_lobbies {
+                        lobby_card(ui, lobby, action_min_h, action, asset_loader);
+                        ui.add_space(8.0);
+                    }
+                }
+
+                if !team_lobbies.is_empty() {
                     ui.add_space(8.0);
+                    ui.label(RichText::new("Team Matches").strong().color(Color32::WHITE));
+                    ui.add_space(4.0);
+                    for lobby in team_lobbies {
+                        lobby_card(ui, lobby, action_min_h, action, asset_loader);
+                        ui.add_space(8.0);
+                    }
                 }
             }
         });
@@ -329,59 +346,112 @@ fn draw_left_column(
 fn lobby_card(
     ui: &mut egui::Ui,
     lobby: &LobbyInfo,
-    action_min_h: f32,
+    _action_min_h: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
-    let stroke = if lobby.is_counting_down {
-        Stroke::new(1.5_f32, accent_solo_cyan())
+    let desired_size = egui::vec2(ui.available_width(), 160.0);
+    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    
+    let is_hovered = response.hovered();
+    if is_hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
+    let stroke_color = if lobby.is_counting_down {
+        if is_hovered { accent_solo_cyan_hover() } else { accent_solo_cyan() }
     } else {
-        Stroke::new(1.0_f32, nickname_field_border())
+        if is_hovered { text_secondary() } else { nickname_field_border() }
     };
 
-    Frame::new()
-        .fill(menu_secondary_button())
-        .stroke(stroke)
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::same(12))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if let Some(texture) = asset_loader.thumbnail(&lobby.map_name) {
-                    ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(60.0, 45.0)).corner_radius(CornerRadius::same(4)));
-                    ui.add_space(8.0);
-                }
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(&lobby.map_name).font(egui::FontId::new(18.0, egui::FontFamily::Name("Bold".into()))));
-                    ui.label(
-                        RichText::new(format!(
-                            "Players: {}/{}",
-                            lobby.num_players, lobby.max_players
-                        ))
-                        .color(text_secondary()),
-                    );
-                    if lobby.is_counting_down {
-                        ui.label(
-                            RichText::new(format!("Starts in {:.0}s", lobby.timer_secs.max(0.0)))
-                                .color(Color32::from_rgb(255, 210, 120)),
-                        );
-                    } else {
-                        ui.label(
-                            RichText::new("Waiting for players...")
-                                .color(text_secondary()),
-                        );
-                    }
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let btn = egui::Button::new(RichText::new("JOIN LOBBY").strong())
-                        .fill(accent_solo_cyan())
-                        .stroke(Stroke::new(2.0_f32, accent_solo_cyan_hover()))
-                        .min_size(egui::vec2(120.0, action_min_h - 8.0));
-                    if ui.add(btn).clicked() {
-                        *action = Some(UiAction::JoinLobby(lobby.id));
-                    }
-                });
-            });
-        });
+    // 1. Draw Background Image
+    if let Some(texture) = asset_loader.thumbnail(&lobby.map_name) {
+        let tint = if is_hovered { Color32::WHITE } else { Color32::from_gray(200) };
+        let image = egui::Image::new(texture)
+            .fit_to_exact_size(rect.size())
+            .corner_radius(CornerRadius::same(8))
+            .tint(tint);
+        ui.put(rect, image);
+    } else {
+        ui.painter().rect_filled(rect, 8.0, menu_secondary_button());
+    }
+
+    ui.painter().rect_stroke(rect, 8.0, Stroke::new(1.5_f32, stroke_color), egui::StrokeKind::Inside);
+
+    // 3. Top Row Overlay (Mode & Timer)
+    let top_rect = rect.shrink(8.0);
+    let mode_text = if lobby.game_mode == "FFA" { "FFA" } else { "TEAMS" };
+    
+    // Draw Mode Badge
+    let mode_galley = ui.painter().layout_no_wrap(
+        mode_text.to_string(),
+        egui::FontId::proportional(14.0),
+        Color32::WHITE,
+    );
+    let mode_badge_rect = egui::Rect::from_min_size(top_rect.min, mode_galley.size() + egui::vec2(12.0, 6.0));
+    ui.painter().rect_filled(mode_badge_rect, 4.0, accent_solo_cyan());
+    ui.painter().galley(mode_badge_rect.center() - mode_galley.size() / 2.0, mode_galley, Color32::WHITE);
+
+    // Draw Timer
+    let timer_text = if lobby.is_counting_down {
+        format!("Starts in {:.0}s", lobby.timer_secs.max(0.0))
+    } else {
+        "WAITING".to_string()
+    };
+    let timer_color = if lobby.is_counting_down { Color32::from_rgb(255, 210, 120) } else { text_secondary() };
+    let timer_galley = ui.painter().layout_no_wrap(
+        timer_text,
+        egui::FontId::proportional(14.0),
+        timer_color,
+    );
+    let timer_badge_rect = egui::Rect::from_min_size(
+        egui::pos2(top_rect.max.x - timer_galley.size().x - 12.0, top_rect.min.y),
+        timer_galley.size() + egui::vec2(12.0, 6.0),
+    );
+    ui.painter().rect_filled(timer_badge_rect, 4.0, Color32::from_black_alpha(180));
+    ui.painter().galley(timer_badge_rect.center() - timer_galley.size() / 2.0, timer_galley, timer_color);
+
+    // 4. Bottom Bar (Map Name & Players)
+    let bottom_height = 44.0;
+    let bottom_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.min.x, rect.max.y - bottom_height),
+        rect.max,
+    );
+    ui.painter().rect_filled(
+        bottom_rect,
+        CornerRadius { nw: 0, ne: 0, sw: 8, se: 8 },
+        Color32::from_black_alpha(200),
+    );
+
+    // Map Name
+    let map_galley = ui.painter().layout_no_wrap(
+        lobby.map_name.to_uppercase(),
+        egui::FontId::proportional(18.0),
+        Color32::WHITE,
+    );
+    ui.painter().galley(
+        egui::pos2(bottom_rect.min.x + 12.0, bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0),
+        map_galley,
+        Color32::WHITE,
+    );
+
+    // Players
+    let players_text = format!("{}/{}", lobby.num_players, lobby.max_players);
+    let players_galley = ui.painter().layout_no_wrap(
+        players_text,
+        egui::FontId::proportional(14.0),
+        Color32::WHITE,
+    );
+    let players_badge_rect = egui::Rect::from_min_size(
+        egui::pos2(bottom_rect.max.x - players_galley.size().x - 16.0, bottom_rect.min.y - 12.0),
+        players_galley.size() + egui::vec2(12.0, 6.0),
+    );
+    ui.painter().rect_filled(players_badge_rect, 4.0, Color32::from_black_alpha(220));
+    ui.painter().galley(players_badge_rect.center() - players_galley.size() / 2.0, players_galley, Color32::WHITE);
+
+    if response.clicked() {
+        *action = Some(UiAction::JoinLobby(lobby.id));
+    }
 }
 
 fn draw_right_column(

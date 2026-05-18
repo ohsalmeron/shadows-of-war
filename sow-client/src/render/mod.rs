@@ -74,19 +74,28 @@ impl SowApp {
                                 if let Some(snap) = &mut self.sim.current_snapshot {
                                     snap.dirty_tiles.clear();
                                 }
-                                let mut border_thickness = 0.4f32;
-                                let mut border_darkness = 0.15f32;
-                                let mut shore_thickness = 0.4f32;
-                                let mut shore_darkness = 0.15f32;
-                                let mut border_roundness = 0.5f32;
+                                let mut border_thickness = 0.65f32;
+                                let mut border_darkness = 0.40f32;
+                                let mut shore_thickness = 0.0f32;
+                                let mut shore_darkness = 0.47f32;
+                                let mut border_roundness = 1.0f32;
 
                                 self.ui.egui_ctx.data_mut(|d| {
-                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.4f32);
-                                    border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.15f32);
-                                    shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.4f32);
-                                    shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.15f32);
-                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 0.5f32);
+                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.65f32);
+                                    border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.40f32);
+                                    shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.0f32);
+                                    shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.47f32);
+                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 1.0f32);
                                 });
+
+                                let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
+                                if let Some(snap) = &self.sim.current_snapshot {
+                                    for p in &snap.players {
+                                        if (p.id as usize) < 256 {
+                                            player_colors[p.id as usize] = [p.color[0], p.color[1], p.color[2], 1.0];
+                                        }
+                                    }
+                                }
 
                                 let globals = MapGlobals {
                                     camera_pos: [self.input.camera_x, self.input.camera_y],
@@ -102,6 +111,7 @@ impl SowApp {
                                     _pad1: 0.0,
                                     _pad2: 0.0,
                                     _pad3: 0.0,
+                                    player_colors,
                                 };
                                 mr.draw(&mut self.gfx.render_ctx.command_encoder, frame.texture_view(), globals);
                             }

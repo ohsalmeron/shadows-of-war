@@ -194,8 +194,18 @@ impl SowEngine {
         for i in 0..nation_count {
             let bot_id = 104 + i as u16;
             if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
-                // Nations have a starting advantage? Or just distinct colors for now.
-                let player = Player::new_bot(bot_id, format!("Nation {}", i+1), [0.8, 0.8, 0.8], &config);
+                let (team, color) = if config.game_mode == "Teams" {
+                    if i % 2 == 0 {
+                        (Some(crate::protocol::Team::Red), [1.0, 0.2, 0.2])
+                    } else {
+                        (Some(crate::protocol::Team::Blue), [0.2, 0.5, 1.0])
+                    }
+                } else {
+                    (None, [0.8, 0.8, 0.8])
+                };
+                
+                let mut player = Player::new_bot(bot_id, format!("Nation {}", i+1), color, &config);
+                player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_nations += 1;
             }
@@ -205,7 +215,18 @@ impl SowEngine {
         for i in 0..tribe_count {
             let bot_id = 200 + i as u16;
             if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
-                let player = Player::new_bot(bot_id, format!("Tribe {}", i+1), [0.4, 0.4, 0.4], &config);
+                let (team, color) = if config.game_mode == "Teams" {
+                    if i % 2 == 0 {
+                        (Some(crate::protocol::Team::Blue), [0.2, 0.5, 1.0]) // Opposite stagger
+                    } else {
+                        (Some(crate::protocol::Team::Red), [1.0, 0.2, 0.2])
+                    }
+                } else {
+                    (None, [0.4, 0.4, 0.4])
+                };
+
+                let mut player = Player::new_bot(bot_id, format!("Tribe {}", i+1), color, &config);
+                player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_tribes += 1;
             }
@@ -306,6 +327,7 @@ impl SowEngine {
                 centroid_y: cy,
                 player_type: p.player_type,
                 color: p.color,
+                team: p.team,
                 has_spawned: p.has_spawned,
                 alive: p.alive,
             }

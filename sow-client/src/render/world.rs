@@ -141,11 +141,11 @@ impl SowApp {
                                             
                                             // --- Dynamic minimum font sizes based on player type ---
                                             let min_font_size = if Some(player.id) == self.sim.my_player_id {
-                                                10 // My own player (stays most visible)
+                                                14 // My own player (stays most visible)
                                             } else if player.id < 200 {
-                                                9 // AI Nations (medium visibility)
+                                                12 // AI Nations (medium visibility)
                                             } else {
-                                                8 // Tribes (fades into the background when zooming out)
+                                                10 // Tribes (fades into the background when zooming out)
                                             };
                                             // -----------------------------------------------------------------------------------
                                             

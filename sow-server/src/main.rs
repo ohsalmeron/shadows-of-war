@@ -161,12 +161,23 @@ async fn main() {
                     for lobby in ready_lobbies {
                         if let Some(relay_port) = lobby.relay_port {
                             let mut player_infos = Vec::new();
-                            for p in &lobby.players {
+                            for (i, p) in lobby.players.iter().enumerate() {
+                                let (team, color) = if lobby.game_mode == "Teams" {
+                                    if i % 2 == 0 {
+                                        (Some(sow_core::protocol::Team::Red), [1.0, 0.2, 0.2])
+                                    } else {
+                                        (Some(sow_core::protocol::Team::Blue), [0.2, 0.5, 1.0])
+                                    }
+                                } else {
+                                    (None, sow_core::player::human_shader_territory_rgb(p.player_id))
+                                };
+
                                 player_infos.push(sow_core::protocol::PlayerInfo {
                                     id: p.player_id,
                                     name: p.name.clone(),
                                     player_type: sow_core::player::PlayerType::Human,
-                                    color: [1.0, 0.0, 0.0],
+                                    color,
+                                    team,
                                     spawn_x: 0,
                                     spawn_y: 0,
                                 });

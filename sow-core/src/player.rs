@@ -21,6 +21,7 @@ pub struct Player {
     pub border_tiles: DenseBitSet,
     #[serde(skip, default = "default_wyrand")] pub bot_rng: WyRand,
     pub factories: u32, pub cities: u32,
+    pub team: Option<crate::protocol::Team>,
 }
 
 fn default_wyrand() -> WyRand { WyRand::new(0) }
@@ -32,7 +33,7 @@ impl Player {
             gold: config.starting_gold, has_spawned: false,
             sum_x: 0, sum_y: 0, tile_count: 0,
             border_tiles: DenseBitSet::new(), bot_rng: WyRand::new(id as u64),
-            factories: 0, cities: 0,
+            factories: 0, cities: 0, team: None,
         }
     }
     pub fn new_bot(id: u16, name: String, color: [f32; 3], config: &crate::game_config::GameConfig) -> Self {
@@ -41,7 +42,7 @@ impl Player {
             gold: 0.0, has_spawned: false,
             sum_x: 0, sum_y: 0, tile_count: 0,
             border_tiles: DenseBitSet::new(), bot_rng: WyRand::new(id as u64),
-            factories: 0, cities: 0,
+            factories: 0, cities: 0, team: None,
         }
     }
     pub fn new_nation(id: u16, name: String, color: [f32; 3], config: &crate::game_config::GameConfig) -> Self {
@@ -50,7 +51,7 @@ impl Player {
             gold: config.starting_gold, has_spawned: false,
             sum_x: 0, sum_y: 0, tile_count: 0,
             border_tiles: DenseBitSet::new(), bot_rng: WyRand::new(id as u64),
-            factories: 0, cities: 0,
+            factories: 0, cities: 0, team: None,
         }
     }
     pub fn is_human(&self) -> bool { self.player_type == PlayerType::Human }

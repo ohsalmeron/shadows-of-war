@@ -35,6 +35,7 @@ pub struct ServerLobby {
     pub seed: u64,
     pub config: GameConfig,
     pub map_md5: Option<String>,
+    pub game_mode: String,
     pub relay_port: Option<u16>,
 }
 
@@ -44,7 +45,7 @@ impl ServerLobby {
     }
 }
 
-fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
+fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mode: &str) {
     let id = *next_id;
     *next_id += 1;
     let mut config = GameConfig::default();
@@ -62,6 +63,8 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
             map_md5 = manifest.map_md5;
         }
     }
+    
+    config.game_mode = game_mode.to_string();
 
     games.push(ServerLobby {
         id,
@@ -73,13 +76,17 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         seed: 0,
         config,
         map_md5,
+        game_mode: game_mode.to_string(),
         relay_port: None,
     });
 }
 
 fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
-    while games.iter().filter(|g| g.joinable()).count() < 1 {
-        spawn_waiting_lobby(games, next_id);
+    if games.iter().filter(|g| g.joinable() && g.game_mode == "FFA").count() < 1 {
+        spawn_waiting_lobby(games, next_id, "FFA");
+    }
+    if games.iter().filter(|g| g.joinable() && g.game_mode == "Teams").count() < 1 {
+        spawn_waiting_lobby(games, next_id, "Teams");
     }
 }
 
@@ -104,10 +111,10 @@ fn promote_countdown(games: &mut [ServerLobby]) {
 }
 
 /// Prefer counting-down lobby with lowest id, else lowest waiting id (matches DR client `primary_lobby_for_browser`).
-pub fn primary_lobby_id(games: &[ServerLobby]) -> Option<u64> {
+pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     let mut counting: Vec<u64> = games
         .iter()
-        .filter(|g| g.joinable() && matches!(g.phase, LobbyPhase::CountingDown))
+        .filter(|g| g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::CountingDown))
         .map(|g| g.id)
         .collect();
     if !counting.is_empty() {
@@ -116,7 +123,7 @@ pub fn primary_lobby_id(games: &[ServerLobby]) -> Option<u64> {
     }
     let mut waiting: Vec<u64> = games
         .iter()
-        .filter(|g| g.joinable() && matches!(g.phase, LobbyPhase::Waiting))
+        .filter(|g| g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::Waiting))
         .map(|g| g.id)
         .collect();
     if waiting.is_empty() {
@@ -132,7 +139,7 @@ fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<
             return Some(g.id);
         }
     }
-    primary_lobby_id(games)
+    primary_lobby_id(games, "FFA") // Default to FFA for play button
 }
 
 pub fn join_player(
@@ -145,7 +152,7 @@ pub fn join_player(
     let lobby_id = match resolve_join_target(target_lobby_id, games) {
         Some(id) => id,
         None => {
-            spawn_waiting_lobby(games, next_id);
+            spawn_waiting_lobby(games, next_id, "FFA");
             games.last().unwrap().id
         }
     };
@@ -351,6 +358,7 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
             },
             map_name: g.config.map_name.clone(),
             map_md5: g.map_md5.clone(),
+            game_mode: g.game_mode.clone(),
             players: g.players.iter().map(|p| sow_core::protocol::LobbyPlayerSyncState {
                 name: p.name.clone(),
                 is_ready: g.ready_players.contains(&p.player_id),

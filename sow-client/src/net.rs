@@ -157,6 +157,7 @@ impl SowApp {
                                                     timer_secs: sync_msg.time_remaining,
                                                     map_name: "Loading...".to_string(),
                                                     map_md5: None,
+                                                    game_mode: "FFA".to_string(),
                                                     players: sync_msg.players.clone(),
                                                 });
                                             }

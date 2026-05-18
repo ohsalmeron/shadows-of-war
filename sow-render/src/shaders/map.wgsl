@@ -12,6 +12,7 @@ struct Globals {
     _pad1: f32,
     _pad2: f32,
     _pad3: f32,
+    player_colors: array<vec4<f32>, 256>,
 }
 
 var<uniform> globals: Globals;
@@ -33,33 +34,10 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
 }
 
 fn owner_albedo(owner_id: u32) -> vec3<f32> {
-    if owner_id <= 16u {
-        let hue = f32(owner_id) * 0.618033988749895;
-        let r = abs(fract(hue) * 2.0 - 1.0);
-        let g = abs(fract(hue + 0.333) * 2.0 - 1.0);
-        let b = abs(fract(hue + 0.666) * 2.0 - 1.0);
-        return clamp(vec3<f32>(r, g, b) * 0.52 + vec3<f32>(0.32, 0.32, 0.32), vec3<f32>(0.42), vec3<f32>(1.0));
-    } else if owner_id <= 116u {
-        let id = f32(owner_id);
-        let r = fract(id * 0.123);
-        let g = fract(id * 0.456);
-        let b = fract(id * 0.789);
-        return clamp(
-            vec3<f32>(0.22 + r * 0.58, 0.2 + g * 0.55, 0.22 + b * 0.58),
-            vec3<f32>(0.4),
-            vec3<f32>(1.0)
-        );
-    } else {
-        let id = f32(owner_id);
-        let r = fract(id * 0.123);
-        let g = fract(id * 0.456);
-        let b = fract(id * 0.789);
-        return clamp(
-            vec3<f32>(0.24 + r * 0.56, 0.2 + g * 0.56, 0.22 + b * 0.54),
-            vec3<f32>(0.4),
-            vec3<f32>(1.0)
-        );
+    if owner_id < 256u {
+        return globals.player_colors[owner_id].rgb;
     }
+    return vec3<f32>(0.5, 0.5, 0.5); // Fallback if out of bounds
 }
 
 
@@ -160,7 +138,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if is_shore && draw_line {
             base_color = base_color * s_darkness;
         } else if is_border && draw_line {
-            base_color = base_color * border_darkness;
+            let border_albedo = owner_albedo(owner_id) * border_darkness;
+            base_color = border_albedo;
         }
     }
 

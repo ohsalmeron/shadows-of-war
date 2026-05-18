@@ -169,6 +169,7 @@ impl SowApp {
                                                         name: self.ui.app.main_menu_state.player_name.clone(),
                                                         color: [0.0, 1.0, 0.0],
                                                         player_type: sow_core::player::PlayerType::Human,
+                                                        team: None,
                                                         spawn_x: 0,
                                                         spawn_y: 0,
                                                     }

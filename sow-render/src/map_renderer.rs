@@ -18,6 +18,7 @@ pub struct MapGlobals {
     pub _pad1: f32,
     pub _pad2: f32,
     pub _pad3: f32,
+    pub player_colors: [[f32; 4]; 256],
 }
 
 #[derive(blade_macros::ShaderData)]

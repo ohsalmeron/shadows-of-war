@@ -4,6 +4,10 @@ fn default_troop_income_pace() -> f64 {
     1.0
 }
 
+fn default_game_mode() -> String {
+    "FFA".to_string()
+}
+
 fn default_max_tiles_per_tick_reference_troops() -> f64 {
     1000.0
 }
@@ -58,6 +62,9 @@ pub struct GameConfig {
     // ==========================================
     /// The directory name of the map to load (e.g., "europe").
     pub map_name: String,
+    /// Whether this is "FFA", "Teams", etc.
+    #[serde(default = "default_game_mode")]
+    pub game_mode: String,
     /// Physical width of the map grid in tiles.
     pub map_width: u32,
     /// Physical height of the map grid in tiles.
@@ -151,6 +158,7 @@ impl Default for GameConfig {
 
             // Map Generation & Spawning
             map_name: "europe".to_string(),
+            game_mode: "FFA".to_string(),
             map_width: 2904,
             map_height: 1672,
             random_spawn: false,
