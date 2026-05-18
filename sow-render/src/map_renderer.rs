@@ -184,12 +184,16 @@ impl MapRenderer {
                 let mut is_shore_left = false;
                 let mut is_shore_right = false;
 
+                let mut is_green_border = false;
+                let is_tribe = owner_id >= 200;
+
                 if owner_id > 0 {
                     if y > 0 {
                         let up = self.owners[idx - self.width as usize] as u32;
                         if up != owner_id {
                             is_border_up = true;
                             if up == 0 { is_shore_up = true; }
+                            else if is_tribe && up >= 200 { is_green_border = true; }
                         }
                     }
                     if y < self.height - 1 {
@@ -197,6 +201,7 @@ impl MapRenderer {
                         if down != owner_id {
                             is_border_down = true;
                             if down == 0 { is_shore_down = true; }
+                            else if is_tribe && down >= 200 { is_green_border = true; }
                         }
                     }
                     if x > 0 {
@@ -204,6 +209,7 @@ impl MapRenderer {
                         if left != owner_id {
                             is_border_left = true;
                             if left == 0 { is_shore_left = true; }
+                            else if is_tribe && left >= 200 { is_green_border = true; }
                         }
                     }
                     if x < self.width - 1 {
@@ -211,11 +217,13 @@ impl MapRenderer {
                         if right != owner_id {
                             is_border_right = true;
                             if right == 0 { is_shore_right = true; }
+                            else if is_tribe && right >= 200 { is_green_border = true; }
                         }
                     }
                 }
                 
-                let mut val = (owner_id & 0xFFFF) | (terrain_byte << 16);
+                let mut val = (owner_id & 0x7FFF) | (terrain_byte << 16);
+                if is_green_border { val |= 0x00008000; }
                 if is_border_up { val |= 0x80000000; }
                 if is_border_down { val |= 0x40000000; }
                 if is_border_left { val |= 0x20000000; }
@@ -237,8 +245,15 @@ impl MapRenderer {
         }
 
         if min_x <= max_x && min_y <= max_y {
-            let offset_bytes = (min_y * self.bytes_per_row + min_x * 4) as u64;
-            let width_bytes = ((max_x - min_x + 1) * 4) as u64;
+            // To satisfy Vulkan/WebGPU strict alignment rules, buffer offsets for texture copies
+            // must often be multiples of 256. Our `bytes_per_row` is aligned to 256.
+            // By expanding the dirty rect to full rows (`min_x = 0`), `offset_bytes` is guaranteed
+            // to be `min_y * bytes_per_row`, which is a perfect multiple of 256.
+            let aligned_min_x = 0;
+            let aligned_max_x = self.width - 1;
+            
+            let offset_bytes = (min_y * self.bytes_per_row + aligned_min_x * 4) as u64;
+            let width_bytes = ((aligned_max_x - aligned_min_x + 1) * 4) as u64;
             let size_bytes = ((max_y - min_y) * self.bytes_per_row) as u64 + width_bytes;
 
             context.sync_buffer_range(self.raw_buffer, offset_bytes, size_bytes);
@@ -246,7 +261,7 @@ impl MapRenderer {
             let src_piece: gpu::BufferPiece = self.raw_buffer.at(offset_bytes);
             
             let mut dst_piece: gpu::TexturePiece = self.texture.into();
-            dst_piece.origin = [min_x, min_y, 0];
+            dst_piece.origin = [aligned_min_x, min_y, 0];
 
             let mut transfer = encoder.transfer("map_upload");
             transfer.copy_buffer_to_texture(
@@ -254,7 +269,7 @@ impl MapRenderer {
                 self.bytes_per_row,
                 dst_piece,
                 gpu::Extent {
-                    width: max_x - min_x + 1,
+                    width: aligned_max_x - aligned_min_x + 1,
                     height: max_y - min_y + 1,
                     depth: 1,
                 },

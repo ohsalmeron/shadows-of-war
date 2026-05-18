@@ -58,7 +58,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_coords = vec2<i32>(cell_x, cell_y);
     let val = textureLoad(territory_texture, pixel_coords, 0).x;
     
-    let owner_id = val & 0xFFFFu;
+    let owner_id = val & 0x7FFFu;
+    let is_green_border = (val & 0x00008000u) != 0u;
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
@@ -138,8 +139,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if is_shore && draw_line {
             base_color = base_color * s_darkness;
         } else if is_border && draw_line {
-            let border_albedo = owner_albedo(owner_id) * border_darkness;
-            base_color = border_albedo;
+            if is_green_border {
+                base_color = vec3<f32>(0.2, 0.8, 0.2) * border_darkness;
+            } else {
+                let border_albedo = owner_albedo(owner_id) * border_darkness;
+                base_color = border_albedo;
+            }
         }
     }
 

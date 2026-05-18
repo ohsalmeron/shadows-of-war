@@ -307,50 +307,68 @@ fn draw_left_column(
     );
     ui.add_space(6.0);
 
-    let scroll_h = if compact { 260.0 } else { 320.0 };
-    ScrollArea::vertical()
-        .max_height(scroll_h)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            if state.lobbies.is_empty() {
-                ui.label(
-                    RichText::new("Waiting for lobby data from server…")
-                        .color(text_secondary()),
-                );
-            } else {
-                let ffa_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "FFA").collect();
-                let team_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "Teams").collect();
+    let total_lobbies = state.lobbies.len();
+    let max_h = if total_lobbies > 0 {
+        ((ui.available_height() - 40.0) / total_lobbies as f32).max(100.0)
+    } else {
+        160.0
+    };
 
-                if !ffa_lobbies.is_empty() {
-                    ui.label(RichText::new("Free For All").strong().color(Color32::WHITE));
-                    ui.add_space(4.0);
-                    for lobby in ffa_lobbies {
-                        lobby_card(ui, lobby, action_min_h, action, asset_loader);
-                        ui.add_space(8.0);
-                    }
-                }
+    if state.lobbies.is_empty() {
+        ui.label(
+            RichText::new("Waiting for lobby data from server…")
+                .color(text_secondary()),
+        );
+    } else {
+        let ffa_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "FFA").collect();
+        let team_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "Teams").collect();
 
-                if !team_lobbies.is_empty() {
-                    ui.add_space(8.0);
-                    ui.label(RichText::new("Team Matches").strong().color(Color32::WHITE));
-                    ui.add_space(4.0);
-                    for lobby in team_lobbies {
-                        lobby_card(ui, lobby, action_min_h, action, asset_loader);
-                        ui.add_space(8.0);
-                    }
-                }
+        if !ffa_lobbies.is_empty() {
+            ui.label(RichText::new("Free For All").strong().color(Color32::WHITE));
+            ui.add_space(4.0);
+            for lobby in ffa_lobbies {
+                lobby_card(ui, lobby, max_h, action, asset_loader);
+                ui.add_space(8.0);
             }
-        });
+        }
+
+        if !team_lobbies.is_empty() {
+            ui.add_space(8.0);
+            ui.label(RichText::new("Team Matches").strong().color(Color32::WHITE));
+            ui.add_space(4.0);
+            for lobby in team_lobbies {
+                lobby_card(ui, lobby, max_h, action, asset_loader);
+                ui.add_space(8.0);
+            }
+        }
+    }
 }
 
 fn lobby_card(
     ui: &mut egui::Ui,
     lobby: &LobbyInfo,
-    _action_min_h: f32,
+    max_h: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
-    let desired_size = egui::vec2(ui.available_width(), 160.0);
+    let max_w = ui.available_width();
+    
+    let (mut w, mut h) = (max_w, max_h);
+    if let Some(texture) = asset_loader.thumbnail(&lobby.map_name) {
+        let tex_size = texture.size();
+        let tex_aspect = tex_size[0] as f32 / tex_size[1] as f32;
+        let box_aspect = max_w / max_h;
+        
+        if tex_aspect > box_aspect {
+            w = max_w;
+            h = max_w / tex_aspect;
+        } else {
+            h = max_h;
+            w = max_h * tex_aspect;
+        }
+    }
+    
+    let desired_size = egui::vec2(w, h);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
     
     let is_hovered = response.hovered();
