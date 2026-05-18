@@ -10,6 +10,7 @@ pub enum UiAction {
     JoinLobby(u64),
     LeaveLobby,
     StartSinglePlayer,
+    StartTutorial,
     SetAttackRatio(f32),
     CenterCamera,
     ToggleSettings,

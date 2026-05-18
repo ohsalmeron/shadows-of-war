@@ -152,8 +152,8 @@ impl Default for GameConfig {
         Self {
             // Lobby & Match Setup
             max_players: 120,
-            bot_count: 1250,      // Tribes (Simple, static filler AI)
-            nation_count: 220,   // Nations (Dynamic expanding AI)
+            bot_count: 650,      // Tribes (Simple, static filler AI)
+            nation_count: 120,   // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
@@ -162,7 +162,7 @@ impl Default for GameConfig {
             map_width: 2904,
             map_height: 1672,
             random_spawn: false,
-            map_control_win_percentage: 0.10,
+            map_control_win_percentage: 0.60,
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 50ms (20 ticks per second)

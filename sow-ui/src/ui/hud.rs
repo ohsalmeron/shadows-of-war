@@ -44,25 +44,7 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
 
     // Top panel removed as requested.
 
-    if let Some(secs) = state.spawn_timer_secs {
-        egui::Window::new("deployment_phase")
-            .title_bar(false)
-            .resizable(false)
-            .collapsible(false)
-            .anchor(Align2::CENTER_TOP, [0.0, 50.0])
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.heading(RichText::new("DEPLOYMENT PHASE").color(Color32::GOLD).size(32.0));
-                    ui.allocate_ui_with_layout(egui::vec2(250.0, 30.0), egui::Layout::top_down(egui::Align::Center), |ui| {
-                        ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(24.0));
-                    });
-                    ui.add_space(10.0);
-                    ui.label("Click anywhere on the map to place your capital!");
-                });
-            });
-    }
-
-    // Bottom Panel: Economy & Attack Controls (Modern Floating Layout)
+    // Bottom Panel: Economy & Attack Controls / Deployment Phase (Modern Floating Layout)
     egui::Area::new(egui::Id::new("hud_bottom_panel"))
         .anchor(Align2::CENTER_BOTTOM, egui::vec2(0.0, -20.0))
         .show(ctx, |ui| {
@@ -73,58 +55,69 @@ pub fn draw(ctx: &Context, state: &mut HudState) -> Option<UiAction> {
                 .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()));
             
             frame.show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    // Troops display with progress bar
-                    ui.vertical(|ui| {
-                        let fraction = if state.max_troops_display > 0.0 {
-                            (state.troops_display / state.max_troops_display) as f32
-                        } else {
-                            0.0
-                        };
-                        
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Troops").strong().size(16.0).color(Color32::WHITE));
-                            ui.label(RichText::new(format!("{:.0} / {:.0}", state.troops_display, state.max_troops_display)).color(Color32::LIGHT_GRAY));
+                if let Some(secs) = state.spawn_timer_secs {
+                    ui.vertical_centered(|ui| {
+                        ui.heading(RichText::new("DEPLOYMENT PHASE").color(Color32::GOLD).size(32.0));
+                        ui.allocate_ui_with_layout(egui::vec2(250.0, 30.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+                            ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(24.0));
+                        });
+                        ui.add_space(10.0);
+                        ui.label("Click anywhere on the map to place your capital!");
+                    });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        // Troops display with progress bar
+                        ui.vertical(|ui| {
+                            let fraction = if state.max_troops_display > 0.0 {
+                                (state.troops_display / state.max_troops_display) as f32
+                            } else {
+                                0.0
+                            };
+                            
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Troops").strong().size(16.0).color(Color32::WHITE));
+                                ui.label(RichText::new(format!("{:.0} / {:.0}", state.troops_display, state.max_troops_display)).color(Color32::LIGHT_GRAY));
+                            });
+                            
+                            ui.add(
+                                egui::ProgressBar::new(fraction)
+                                    .desired_width(180.0)
+                                    .desired_height(14.0)
+                                    .fill(Color32::from_rgb(40, 150, 255))
+                            );
                         });
                         
-                        ui.add(
-                            egui::ProgressBar::new(fraction)
-                                .desired_width(180.0)
-                                .desired_height(14.0)
-                                .fill(Color32::from_rgb(40, 150, 255))
-                        );
-                    });
-                    
-                    ui.add_space(20.0);
-                    
-                    // Gold display
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Gold").strong().size(16.0).color(Color32::GOLD));
-                        ui.label(RichText::new(format!("{:.0}", state.gold)).size(20.0).strong().color(Color32::GOLD));
-                    });
-                    
-                    ui.add_space(20.0);
-                    
-                    // Attack Controls
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Attack Strength").strong().size(16.0).color(Color32::WHITE));
-                        ui.horizontal(|ui| {
-                            let mut ratio = state.attack_ratio;
-                            if ui
-                                .add(Slider::new(&mut ratio, 0.01..=0.5).show_value(false).text(format!("{:.0}%", state.attack_ratio * 100.0)))
-                                .changed()
-                            {
-                                action = Some(UiAction::SetAttackRatio(ratio));
-                            }
-                            if ui.button("1%").clicked() {
-                                action = Some(UiAction::SetAttackRatio(0.01));
-                            }
-                            if ui.button("Max").clicked() {
-                                action = Some(UiAction::SetAttackRatio(0.5));
-                            }
+                        ui.add_space(20.0);
+                        
+                        // Gold display
+                        ui.vertical(|ui| {
+                            ui.label(RichText::new("Gold").strong().size(16.0).color(Color32::GOLD));
+                            ui.label(RichText::new(format!("{:.0}", state.gold)).size(20.0).strong().color(Color32::GOLD));
+                        });
+                        
+                        ui.add_space(20.0);
+                        
+                        // Attack Controls
+                        ui.vertical(|ui| {
+                            ui.label(RichText::new("Attack Strength").strong().size(16.0).color(Color32::WHITE));
+                            ui.horizontal(|ui| {
+                                let mut ratio = state.attack_ratio;
+                                if ui
+                                    .add(Slider::new(&mut ratio, 0.01..=0.5).show_value(false).text(format!("{:.0}%", state.attack_ratio * 100.0)))
+                                    .changed()
+                                {
+                                    action = Some(UiAction::SetAttackRatio(ratio));
+                                }
+                                if ui.button("1%").clicked() {
+                                    action = Some(UiAction::SetAttackRatio(0.01));
+                                }
+                                if ui.button("Max").clicked() {
+                                    action = Some(UiAction::SetAttackRatio(0.5));
+                                }
+                            });
                         });
                     });
-                });
+                }
             });
         });
 

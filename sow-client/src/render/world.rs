@@ -109,7 +109,7 @@ impl SowApp {
                                         let player = vp.player;
                                         let center = vp.center;
                                         let pc = vp.pc;
-                                        let _sizing_presence = vp.sizing_presence;
+                                        let sizing_presence = vp.sizing_presence;
                                         let lod_presence = vp.lod_presence;
 
                                         // Small nations require zooming in to appear.
@@ -124,9 +124,9 @@ impl SowApp {
                                             full_labels_drawn += 1;
                                             let ui_text_scale = ClientVisualConfig::default().ui_text_scale;
 
-                                            // 1. Bounding box for font fitting (uses current zoom so text scales!)
-                                            let empire_width_px = lod_presence * 1.0; // Hexagons spread out
-                                            let empire_height_px = lod_presence * 1.0;
+                                            // 1. Bounding box for font fitting (uses reference zoom so text doesn't dynamically scale with zoom and bloat font atlas)
+                                            let empire_width_px = sizing_presence * 1.0; // Hexagons spread out
+                                            let empire_height_px = sizing_presence * 1.0;
 
                                             // 2. Constrain font size so the text fits INSIDE those pixels
                                             let name_len = player.name.len().max(1) as f32;

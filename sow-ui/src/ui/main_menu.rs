@@ -8,7 +8,7 @@ use crate::ui::theme::{
     menu_secondary_button, nickname_field_border, panel_bg, text_secondary,
 };
 use egui::{
-    Align, CentralPanel, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea,
+    Align, CentralPanel, Color32, CornerRadius, Frame, Layout, Margin, RichText,
     Stroke,
 };
 use sow_core::protocol::LobbyInfo;
@@ -111,11 +111,9 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new("SHADOWS OF WAR")
-                                    .font(egui::FontId::proportional(title_fs))
-                                    .color(Color32::WHITE),
-                            );
+                            if !compact {
+                                draw_user_profile_header(ui, state, compact);
+                            }
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if !state.is_connected {
@@ -127,11 +125,12 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
                         });
                     });
 
-                    ui.add_space(section_gap);
-
                     if compact {
+                        ui.add_space(8.0);
+                        draw_user_profile_header(ui, state, compact);
+                        ui.add_space(8.0);
+                        
                         ui.vertical(|ui| {
-                            ui.add_space(4.0);
                             draw_left_column(
                                 ui,
                                 state,
@@ -207,6 +206,82 @@ pub fn draw(ctx: &egui::Context, state: &mut MainMenuState, asset_loader: &crate
         });
 
     action
+}
+
+fn draw_user_profile_header(
+    ui: &mut egui::Ui,
+    state: &MainMenuState,
+    compact: bool,
+) {
+    let desired_size = if compact {
+        egui::vec2(ui.available_width(), 48.0)
+    } else {
+        egui::vec2(200.0, 48.0)
+    };
+
+    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    let is_hovered = response.hovered();
+    
+    if is_hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    
+    let bg_color = if is_hovered { crate::ui::theme::menu_secondary_button_hover() } else { crate::ui::theme::menu_secondary_button() };
+    ui.painter().rect_filled(rect, 8.0, bg_color);
+    ui.painter().rect_stroke(rect, 8.0, Stroke::new(1.0, crate::ui::theme::nickname_field_border()), egui::StrokeKind::Inside);
+
+    // Mock wallet data
+    let wallet_address = "0x4F92...3B1A";
+    let display_name = if state.player_name.is_empty() { "Anon" } else { &state.player_name };
+
+    // Avatar Placeholder
+    let avatar_size = 32.0;
+    let avatar_rect = egui::Rect::from_min_size(
+        egui::pos2(rect.min.x + 8.0, rect.min.y + (rect.height() - avatar_size) / 2.0),
+        egui::vec2(avatar_size, avatar_size),
+    );
+    ui.painter().rect_filled(avatar_rect, 4.0, crate::ui::theme::accent_solo_cyan()); // Placeholder themed block
+    
+    // Connection Dot overlay on Avatar
+    let dot_center = egui::pos2(avatar_rect.max.x - 2.0, avatar_rect.max.y - 2.0);
+    ui.painter().circle_filled(dot_center, 4.0, crate::ui::theme::accent_danger()); // Danger dot
+    
+    // Text Labels
+    let name_galley = ui.painter().layout_no_wrap(
+        display_name.to_string(),
+        egui::FontId::proportional(14.0),
+        Color32::WHITE,
+    );
+    let wallet_galley = ui.painter().layout_no_wrap(
+        wallet_address.to_string(),
+        egui::FontId::proportional(11.0),
+        text_secondary(),
+    );
+    
+    ui.painter().galley(
+        egui::pos2(avatar_rect.max.x + 10.0, rect.min.y + 8.0),
+        name_galley,
+        Color32::WHITE,
+    );
+    ui.painter().galley(
+        egui::pos2(avatar_rect.max.x + 10.0, rect.min.y + 24.0),
+        wallet_galley,
+        text_secondary(),
+    );
+    
+    // Dropdown Chevron
+    let chevron_galley = ui.painter().layout_no_wrap(
+        "▾".to_string(),
+        egui::FontId::proportional(16.0),
+        text_secondary(),
+    );
+    ui.painter().galley(
+        egui::pos2(rect.max.x - chevron_galley.size().x - 12.0, rect.min.y + (rect.height() - chevron_galley.size().y) / 2.0),
+        chevron_galley,
+        text_secondary(),
+    );
+    
+    // TODO: Add dropdown popup menu on click
 }
 
 fn draw_queue_overlay(
@@ -295,17 +370,11 @@ fn draw_left_column(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
     _section_gap: f32,
-    action_min_h: f32,
-    compact: bool,
+    _action_min_h: f32,
+    _compact: bool,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
-    ui.label(
-        RichText::new("Lobby Browser")
-            .size(if compact { 14.0 } else { 16.0 })
-            .color(text_secondary()),
-    );
-    ui.add_space(6.0);
 
     let total_lobbies = state.lobbies.len();
     let max_h = if total_lobbies > 0 {
@@ -324,8 +393,6 @@ fn draw_left_column(
         let team_lobbies: Vec<_> = state.lobbies.iter().filter(|l| l.game_mode == "Teams").collect();
 
         if !ffa_lobbies.is_empty() {
-            ui.label(RichText::new("Free For All").strong().color(Color32::WHITE));
-            ui.add_space(4.0);
             for lobby in ffa_lobbies {
                 lobby_card(ui, lobby, max_h, action, asset_loader);
                 ui.add_space(8.0);
@@ -334,8 +401,6 @@ fn draw_left_column(
 
         if !team_lobbies.is_empty() {
             ui.add_space(8.0);
-            ui.label(RichText::new("Team Matches").strong().color(Color32::WHITE));
-            ui.add_space(4.0);
             for lobby in team_lobbies {
                 lobby_card(ui, lobby, max_h, action, asset_loader);
                 ui.add_space(8.0);
@@ -483,11 +548,24 @@ fn draw_right_column(
 
 
 
-    let solo_btn = egui::Button::new(
-        RichText::new("SINGLE PLAYER").size(solo_primary).strong().color(Color32::BLACK),
+    let tutorial_btn = egui::Button::new(
+        RichText::new("PLAY TUTORIAL").size(solo_primary).strong().color(Color32::WHITE),
     )
     .fill(accent_solo_cyan())
     .stroke(Stroke::new(2.0_f32, accent_solo_cyan_hover()))
+    .min_size(egui::vec2(ui.available_width(), action_min_h));
+
+    if ui.add(tutorial_btn).clicked() {
+        *action = Some(UiAction::StartTutorial);
+    }
+
+    ui.add_space(section_gap);
+
+    let solo_btn = egui::Button::new(
+        RichText::new("SINGLE PLAYER").size(solo_primary).strong().color(Color32::WHITE),
+    )
+    .fill(menu_secondary_button())
+    .stroke(Stroke::new(1.0_f32, nickname_field_border()))
     .min_size(egui::vec2(ui.available_width(), action_min_h));
 
     if ui.add(solo_btn).clicked() {

@@ -84,6 +84,7 @@ pub struct UiState {
     pub cached_leaderboard: Vec<(u16, String, u32, f64)>,
     pub show_dev_sidebar: bool,
     pub update_available: bool,
+    pub is_spectating: bool,
 }
 
 pub struct TimeState {
@@ -299,7 +300,8 @@ impl SowApp {
                 tutorial_completed, tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
                 show_leaderboard: false, leaderboard_timer: 0.0, cached_leaderboard: Vec::new(),
                 show_dev_sidebar: false,
-                update_available: false
+                update_available: false,
+                is_spectating: false,
             },
             time: TimeState {
                 last_tick, start_time, tick_interval, frame_count, last_fps_time, current_fps, last_frame_time, last_debug_print: None
@@ -336,6 +338,7 @@ impl SowApp {
         self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
         self.ui.app.splash_state.gpu_load_step = 0;
         self.ui.app.splash_state.frames_drawn = 0;
+        self.ui.is_spectating = false;
     }
 
     #[inline]
@@ -481,6 +484,7 @@ impl SowApp {
                 self.input.camera_x = self.input.screen_w * 0.5 - (map_w as f32 * 0.5) * self.input.camera_zoom;
                 self.input.camera_y = self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
                 self.input.has_snapped_camera_to_spawn = false;
+                self.ui.is_spectating = false;
             }
             sow_core::protocol::SimCommand::Turn(turn) => {
                 if let Some(e) = &mut self.sim.engine {

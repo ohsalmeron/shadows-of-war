@@ -133,7 +133,7 @@ impl SowApp {
     pub(crate) fn process_ui_actions(&mut self, ctx: &egui::Context) {
                                 if let Some(action) = self.ui.app.draw(ctx) {
                                     match action {
-                                        UiAction::StartSinglePlayer => {
+                                        UiAction::StartTutorial | UiAction::StartSinglePlayer => {
                                             self.net.is_offline = true;
                                             self.sim.offline_tick_timer = 0.0;
                                             self.net.client = None;
@@ -143,6 +143,19 @@ impl SowApp {
                                             self.ui.app.splash_state.gpu_load_step = 0;
                                             self.sim.my_player_id = Some(1);
                                             self.sim.my_lobby_id = Some(0);
+
+                                            if matches!(action, UiAction::StartTutorial) {
+                                                self.ui.tutorial_completed = false;
+                                                self.ui.tutorial_step = crate::hud::tutorial::TutorialStep::Welcome;
+                                                #[cfg(target_arch = "wasm32")]
+                                                if let Some(window) = web_sys::window() {
+                                                    if let Ok(Some(storage)) = window.local_storage() {
+                                                        let _ = storage.remove_item("sow_tutorial_completed");
+                                                    }
+                                                }
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                let _ = std::fs::remove_file("sow_tutorial_completed.txt");
+                                            }
 
                                             let map_name = "world".to_string();
                                             self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());

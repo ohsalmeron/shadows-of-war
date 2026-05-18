@@ -26,7 +26,9 @@ impl SowApp {
             } else {
                 if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
                     if !me.alive && me.has_spawned {
-                        show_endgame = true;
+                        if !self.ui.is_spectating {
+                            show_endgame = true;
+                        }
                         is_victory = false;
                         text_title = "DEFEAT";
                         text_subtitle = "Your empire has fallen.".to_string();
@@ -65,6 +67,14 @@ impl SowApp {
                             // Disconnect and return to main menu
                             self.net.client = None;
                             self.begin_exit_to_main_menu();
+                        }
+
+                        // Add SPECTATE button if defeated but the game has not officially ended
+                        if !is_victory && self.sim.current_snapshot.as_ref().map_or(false, |s| s.winner.is_none()) {
+                            ui.add_space(15.0);
+                            if ui.add_sized([200.0, 50.0], egui::Button::new(RichText::new("SPECTATE").color(Color32::WHITE).font(FontId::proportional(20.0))).fill(Color32::from_rgb(60, 60, 60))).clicked() {
+                                self.ui.is_spectating = true;
+                            }
                         }
                     });
                 });

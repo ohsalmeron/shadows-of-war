@@ -60,6 +60,28 @@ impl SowApp {
                             ui.add_space(4.0);
                             ui.separator();
                             ui.add_space(4.0);
+                            
+                            let win_pct = self.sim.engine.as_ref()
+                                .map(|e| e.state.config.map_control_win_percentage)
+                                .unwrap_or(0.60);
+                                
+                            ui.vertical_centered(|ui| {
+                                egui::Frame::new()
+                                    .fill(sow_ui::ui::theme::nickname_field_bg())
+                                    .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::accent_ranked_gold()))
+                                    .corner_radius(8.0)
+                                    .inner_margin(egui::Margin::symmetric(16.0, 8.0))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            RichText::new(format!("👑 Domination Victory: Control {:.0}% of Map", win_pct * 100.0))
+                                                .color(sow_ui::ui::theme::accent_ranked_gold())
+                                                .size(14.0)
+                                                .strong()
+                                        );
+                                    });
+                            });
+                                
+                            ui.add_space(4.0);
                             ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
                             
                             egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {

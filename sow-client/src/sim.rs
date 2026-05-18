@@ -102,22 +102,45 @@ impl SowApp {
                             if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
                                 let is_playing = matches!(snap.phase, sow_core::game::GamePhase::Playing);
                                 if player.tile_count > 0 && player.alive && is_playing {
-                                    let world_cx = player.centroid_x + 0.5;
-                                    let world_cy = player.centroid_y + 0.5;
-                                    self.input.camera_zoom = 20.0;
-                                    self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
-                                    self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
-                                    self.input.has_snapped_camera_to_spawn = true;
-                                    log::info!("Game started! Camera snapped to player spawn at ({}, {}), zoom={}", world_cx, world_cy, self.input.camera_zoom);
+                                    // If user is panning/zooming during the animation, abort the animation
+                                    if self.input.dragging || self.input.last_pinch_distance.is_some() || !self.input.active_touches.is_empty() {
+                                        self.input.has_snapped_camera_to_spawn = true;
+                                    } else {
+                                        let target_world_cx = player.centroid_x + 0.5;
+                                        let target_world_cy = player.centroid_y + 0.5;
+                                        let target_zoom = 20.0;
+                                        
+                                        let current_world_cx = (self.input.screen_w * 0.5 - self.input.camera_x) / self.input.camera_zoom;
+                                        let current_world_cy = (self.input.screen_h * 0.5 - self.input.camera_y) / self.input.camera_zoom;
+
+                                        let speed = 0.01;
+                                        let next_world_cx = current_world_cx + (target_world_cx - current_world_cx) * speed;
+                                        let next_world_cy = current_world_cy + (target_world_cy - current_world_cy) * speed;
+                                        let next_zoom = self.input.camera_zoom + (target_zoom - self.input.camera_zoom) * speed;
+
+                                        self.input.camera_zoom = next_zoom;
+                                        self.input.camera_x = self.input.screen_w * 0.5 - next_world_cx * next_zoom;
+                                        self.input.camera_y = self.input.screen_h * 0.5 - next_world_cy * next_zoom;
+
+                                        if (target_zoom - next_zoom).abs() < 0.2 && (target_world_cx - next_world_cx).abs() < 0.1 && (target_world_cy - next_world_cy).abs() < 0.1 {
+                                            self.input.camera_zoom = target_zoom;
+                                            self.input.camera_x = self.input.screen_w * 0.5 - target_world_cx * target_zoom;
+                                            self.input.camera_y = self.input.screen_h * 0.5 - target_world_cy * target_zoom;
+                                            self.input.has_snapped_camera_to_spawn = true;
+                                            log::info!("Game started! Camera smoothly arrived at player spawn at ({}, {}), zoom={}", target_world_cx, target_world_cy, self.input.camera_zoom);
+                                        }
+                                        
+                                        // Request redraw while animating
+                                        if let Some(win) = self.gfx.window.as_ref() {
+                                            win.request_redraw();
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                
-                if let Some(win) = self.gfx.window.as_ref() {
-                    win.request_redraw();
-                }
+
 
                 // Periodic memory profiler print
                 let now = web_time::Instant::now();
