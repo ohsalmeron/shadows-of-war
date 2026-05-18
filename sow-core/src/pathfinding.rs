@@ -1,4 +1,4 @@
-//! Deterministic water A* (OpenFront `AStar.Water.ts` port). No HashMap iteration; integer costs only.
+//! Deterministic water A* (LegacyEngine `AStar.Water.ts` port). No HashMap iteration; integer costs only.
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, VecDeque};
@@ -66,7 +66,7 @@ impl PartialOrd for AStarNode {
     }
 }
 
-/// Reusable buffers for water-only 4-neighbor A* (matches OpenFront defaults).
+/// Reusable buffers for water-only 4-neighbor A* (matches LegacyEngine defaults).
 #[derive(Debug, Clone)]
 pub struct WaterAStar {
     width: u32,

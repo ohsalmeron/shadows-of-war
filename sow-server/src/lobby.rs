@@ -1,4 +1,4 @@
-//! OpenFront / Dark Rift style master lobby: dynamic queue, single countdown promotion,
+//! LegacyEngine / Dark Rift style master lobby: dynamic queue, single countdown promotion,
 //! broadcasts only joinable lobbies, Active GC when no humans remain.
 
 use sow_core::game_config::GameConfig;
@@ -59,7 +59,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
     let map_dir = std::path::Path::new(&root).join(&config.map_name);
     let manifest_path = map_dir.join("manifest.json");
     if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
-        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data)
+        if let Ok(manifest) = serde_json::from_str::<sow_core::map_legacy::MapManifest>(&m_data)
         {
             map_md5 = manifest.map_md5;
         }
@@ -227,7 +227,7 @@ fn start_match(lobby: &mut ServerLobby) {
     let manifest_path = map_dir.join("manifest.json");
 
     if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
-        if let Ok(manifest) = serde_json::from_str::<sow_core::map_openfront::MapManifest>(&m_data)
+        if let Ok(manifest) = serde_json::from_str::<sow_core::map_legacy::MapManifest>(&m_data)
         {
             lobby.config.map_width = manifest.map.width;
             lobby.config.map_height = manifest.map.height;

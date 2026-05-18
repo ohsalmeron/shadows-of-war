@@ -110,7 +110,7 @@ if [[ ! -f "${KEYSTORE}" ]]; then
     -alias shadows \
     -keyalg RSA -keysize 2048 -validity 10000 \
     -storepass shadowswar -keypass shadowswar \
-    -dname "CN=Shadows Of War, OU=Self, O=OpenFront, L=Local, S=NA, C=US" \
+    -dname "CN=Shadows Of War, OU=Self, O=LegacyEngine, L=Local, S=NA, C=US" \
     >/dev/null
   green "==> Keystore generated."
 fi

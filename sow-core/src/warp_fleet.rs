@@ -1,8 +1,8 @@
-//! OpenFront-style transport ship as `WarpFleet` (water path + landing).
+//! LegacyEngine-style transport ship as `WarpFleet` (water path + landing).
 //!
 //! The launch decision is gated by [`WaterComponents`]: a boat is only viable when
 //! the sender owns a shoreline tile on the **same connected water body** as the
-//! target's shoreline. This mirrors OpenFront's `SpatialQuery.closestShoreByWater`
+//! target's shoreline. This mirrors LegacyEngine's `SpatialQuery.closestShoreByWater`
 //! and `WaterManager.getWaterComponent` pair; it correctly handles lakes, rivers,
 //!   and disjoint oceans instead of relying on an arbitrary Manhattan radius.
 
@@ -38,7 +38,7 @@ pub enum FleetLaunchError {
     NoLaunchShore { component: u32 },
     /// Water A* found no path between `src_tile` and `landing_tile`.
     NoWaterPath,
-    /// No **ready** Port — OpenFront requires a port before transport launches.
+    /// No **ready** Port — LegacyEngine requires a port before transport launches.
     NoPort,
 }
 
@@ -146,7 +146,7 @@ pub fn resolve_fleet_route(
 
 /// Collect the set of water components this player can launch from (deduplicated,
 /// sorted ascending for determinism). Empty iff the player owns no shore adjacent
-/// to any water tile — the OpenFront "cannot build TransportShip" condition.
+/// to any water tile — the LegacyEngine "cannot build TransportShip" condition.
 pub fn player_water_components(
     map: &GameMap,
     components: &WaterComponents,
@@ -177,7 +177,7 @@ pub fn player_water_components(
     out
 }
 
-/// OpenFront `canBuildTransportShip` gate: does this player have any shoreline
+/// LegacyEngine `canBuildTransportShip` gate: does this player have any shoreline
 /// on at least one water component? Kept as a convenience wrapper around
 /// [`player_water_components`] for callers that only need a boolean.
 pub fn player_has_water_access(
@@ -204,7 +204,7 @@ pub fn player_has_water_access(
     false
 }
 
-/// OpenFront `Player.sharesBorderWith(other)`: scan my border tiles; return true if **any**
+/// LegacyEngine `Player.sharesBorderWith(other)`: scan my border tiles; return true if **any**
 /// 4-neighbor is owned by `target_owner`. This is the correct gate for a land `Attack`
 /// intent — a click on a far-away enemy interior still ground-attacks as long as we
 /// touch them somewhere on the map.
@@ -230,7 +230,7 @@ pub fn shares_border_with(
     false
 }
 
-/// OpenFront `canAttack` neutral branch (`PlayerImpl.canAttack`, TerraNullius case):
+/// LegacyEngine `canAttack` neutral branch (`PlayerImpl.canAttack`, TerraNullius case):
 /// BFS from `click_tile` through contiguous neutral-land tiles (Manhattan ≤ 200).
 /// Returns `true` if any visited tile has a 4-neighbor owned by `player_id` —
 /// i.e. the clicked patch of no-man's-land is walk-adjacent to my territory.
@@ -332,7 +332,7 @@ fn components_match(my_comps: &[u32], c: u32) -> bool {
     my_comps.binary_search(&c).is_ok()
 }
 
-/// Resolve the landing tile for a player-owned target (OpenFront parity with
+/// Resolve the landing tile for a player-owned target (LegacyEngine parity with
 /// `closestShore(owner, click, 50)` + `closestShoreByWater` component check, but
 /// with no arbitrary Manhattan radius — connectivity is the gate).
 ///
@@ -379,12 +379,12 @@ pub fn closest_target_shore_for_player(
     best.map(|(_, i)| i)
 }
 
-/// Resolve the landing tile for a neutral-owned target (OpenFront `TerraNullius`
+/// Resolve the landing tile for a neutral-owned target (LegacyEngine `TerraNullius`
 /// path). We cannot iterate a player's perimeter so we BFS outward from the
 /// click over 4-connected tiles, bounded by `max_dist` Manhattan, accepting any
 /// neutral shoreline whose water component matches ours.
 ///
-/// `max_dist = 200` mirrors OpenFront's `canAttack` Manhattan cap for neutral
+/// `max_dist = 200` mirrors LegacyEngine's `canAttack` Manhattan cap for neutral
 /// (see `PlayerImpl.canAttack`); scratch buffers are reused across calls.
 #[allow(clippy::too_many_arguments)]
 pub fn closest_neutral_shore_on_components(
@@ -474,12 +474,12 @@ pub fn closest_neutral_shore_on_components(
     best.map(|(_, i)| i)
 }
 
-/// Troop loss fraction when a fleet returns to own shore (OpenFront `malusForRetreat = 25`).
+/// Troop loss fraction when a fleet returns to own shore (LegacyEngine `malusForRetreat = 25`).
 pub const FLEET_RETREAT_SHORE_MALUS: f64 = 0.25;
 
 /// Best owned shoreline tile, closest (Manhattan) to `reference_idx`, **and**
 /// restricted to the same water component as `reference_idx` when
-/// `components` is provided. This mirrors OpenFront
+/// `components` is provided. This mirrors LegacyEngine
 /// `SpatialQuery.closestShoreByWater`: a TransportShip can only launch from one
 /// of my shores that actually touches the same water body as the landing.
 ///
@@ -544,7 +544,7 @@ pub fn best_shore_spawn_for_transport(
     best.map(|(_, i)| i)
 }
 
-/// Moving fleet over water (1 tile / tick). Mirrors OpenFront `TransportShip` execution state.
+/// Moving fleet over water (1 tile / tick). Mirrors LegacyEngine `TransportShip` execution state.
 #[derive(Debug, Clone)]
 pub struct WarpFleet {
     pub id: u64,

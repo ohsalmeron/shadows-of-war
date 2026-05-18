@@ -9,7 +9,7 @@ pub struct CachedNameplate {
     pub last_font_size: f32,
 }
 
-/// Nameplate troop text: snap to sim at most ~2/s per player (OpenFront-style).
+/// Nameplate troop text: snap to sim at most ~2/s per player (LegacyEngine-style).
 #[derive(Default)]
 pub struct TroopLabelThrottle {
     last_refresh_wall_secs: HashMap<u16, f64>,

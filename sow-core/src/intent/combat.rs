@@ -51,7 +51,7 @@ pub fn build_attack_frontier(
                 TerrainType::Water | TerrainType::Lake => 3, // Fallback, won't happen normally
             };
             let r = rng.next_int(0, 7) as i64;
-            // Formula scaled by 4 to maintain OpenFront quartiles in integer space
+            // Formula scaled by 4 to maintain LegacyEngine quartiles in integer space
             let prio =
                 (r + 10) * (4 - (num_owned_by_me as i64 * 2) + mag_x2) + (game.tick as i64 * 4);
 
@@ -140,7 +140,6 @@ pub fn spawn_or_merge_attack_for_fleet_arrival_pure(
         insert_seq_counter: initial_seq,
         rng,
         retreating: false,
-        tick_overflow: 0.0,
     });
 }
 
@@ -291,7 +290,6 @@ impl SowEngine {
             insert_seq_counter: initial_seq,
             rng,
             retreating: false,
-            tick_overflow: 0.0,
         });
     }
 }

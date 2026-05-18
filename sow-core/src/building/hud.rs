@@ -79,7 +79,7 @@ pub fn player_can_upgrade_kind(
     player_gold >= cost && cost.is_finite()
 }
 
-/// One HUD row per structure kind (OpenFront `buildableUnits` subset).
+/// One HUD row per structure kind (LegacyEngine `buildableUnits` subset).
 pub fn compute_buildables_for_player(
     map: &GameMap,
     owner_id: u16,

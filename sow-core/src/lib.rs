@@ -22,6 +22,6 @@ pub mod player;
 pub mod rng;
 pub mod warp_fleet;
 
-pub mod map_openfront;
+pub mod map_legacy;
 pub mod protocol;
 pub mod water_components;

@@ -1,4 +1,3 @@
-use crate::config;
 use crate::engine::SowEngine;
 use crate::warp_fleet::WarpFleet;
 use crate::warp_fleet::{resolve_fleet_route, FleetRoute};
@@ -88,7 +87,7 @@ impl SowEngine {
 
         let pool_cap = player.troops;
         let launch = troops.unwrap_or(pool_cap).max(0.0).min(pool_cap);
-        if launch < config::EXPAND_COST {
+        if launch < self.state.config.attack_cost_neutral {
             return;
         }
 

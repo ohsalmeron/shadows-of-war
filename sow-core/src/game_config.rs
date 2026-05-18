@@ -16,6 +16,10 @@ fn default_max_tiles_per_tick_at_reference() -> f64 {
     4.0
 }
 
+fn default_troop_base_income() -> f64 {
+    2.0
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum BotDifficulty {
     BrainDead,
@@ -123,6 +127,9 @@ pub struct GameConfig {
     pub starting_gold: f64,
     /// Flat gold income added per second. Halving this doubles the time it takes to afford structures.
     pub gold_base_income: f64,
+    /// Base troop income added per tick (dark-rift: flat base + curve).
+    #[serde(default = "default_troop_base_income")]
+    pub troop_base_income: f64,
     /// Base maximum troop capacity cap before territory size is accounted for.
     pub max_troops_base: f64,
     /// How much extra troop capacity is gained based on total territory owned.
@@ -158,32 +165,32 @@ impl Default for GameConfig {
             map_control_win_percentage: 0.60,
 
             // Core Simulation Pacing
-            tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)
-            // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
-            global_speed_multiplier: 0.45, // 0.85 = Slightly slower, more tactical pace
+            tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
+            global_speed_multiplier: 1.0, // No global throttle
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 0.1, // Balanced: harder to melt through enemy territory
-            attack_cost_neutral: 0.01, // Standard neutral cost
-            terrain_multiplier_highland: 0.25,
-            terrain_multiplier_mountain: 0.5,
-            bot_attack_interval_ticks: 16, // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
-            max_tiles_per_tick: 1024.0,      // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
+            attack_cost_enemy: 2.0,
+            attack_cost_neutral: 1.0,
+            terrain_multiplier_highland: 1.25,
+            terrain_multiplier_mountain: 1.5,
+            bot_attack_interval_ticks: 32,
+            max_tiles_per_tick: 1024.0,
             max_tiles_per_tick_reference_troops: 1000.0,
             max_tiles_per_tick_at_reference: 4.0,
-            momentum_divisor: 1000.0, // Troops needed for 1x momentum
+            momentum_divisor: 1000.0,
 
             // Economy & Income Rates
-            starting_troops: 25000.0, // OpenFront Human default
-            starting_gold: 10.0,
-            gold_base_income: 4.0,
-            max_troops_base: 100000.0, // OpenFront 2 * 50000
-            max_troops_scale: 2000.0, // OpenFront 2 * 1000
-            city_max_troops_per_level: 250000.0, // OpenFront CityTroopIncrease
-            factory_income_bonus_per_level: 0.15, // 15% income boost per factory level
-            factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
-            gold_income_per_city_level: 1.0,      // +1 flat gold per city level
-            troop_fill_time_seconds: 40.0,        // Exactly how many seconds to fill the cap from 0 to 100%
+            starting_troops: 1000.0,
+            starting_gold: 50.0,
+            gold_base_income: 1.5,
+            troop_base_income: 2.0,
+            max_troops_base: 100.0,
+            max_troops_scale: 50.0,
+            city_max_troops_per_level: 2000.0,
+            factory_income_bonus_per_level: 0.10,
+            factory_income_bonus_cap: 1.50,
+            gold_income_per_city_level: 0.5,
+            troop_fill_time_seconds: 40.0,
         }
     }
 }

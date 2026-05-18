@@ -13,7 +13,7 @@ pub enum PlayerType {
 }
 
 fn default_player_gold() -> f64 {
-    crate::config::STARTING_GOLD
+    crate::game_config::GameConfig::default().starting_gold
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

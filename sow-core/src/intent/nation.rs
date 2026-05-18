@@ -38,7 +38,7 @@ fn bot_structure_target_count(
 /// clearly cannot afford any building of this type.
 #[inline]
 fn cheapest_gold_cost(kind: BuildingKind) -> f64 {
-    let s = crate::config::OPENFRONT_GOLD_SCALE.max(1.0);
+    let s = crate::config::GOLD_SCALE.max(1.0);
     match kind {
         BuildingKind::City | BuildingKind::Factory | BuildingKind::Port => 125_000.0 / s,
         BuildingKind::DefensePost => 50_000.0 / s,
@@ -411,7 +411,7 @@ mod bot_ratio_tests {
     use crate::game_config::BotDifficulty;
 
     #[test]
-    fn bot_structure_ratio_targets_follow_openfront_like_values() {
+    fn bot_structure_ratio_targets_follow_LegacyEngine_like_values() {
         let city_equivalent = 10;
         let sam_vanilla = bot_structure_target_count(
             BuildingKind::SamLauncher,

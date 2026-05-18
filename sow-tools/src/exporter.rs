@@ -32,7 +32,7 @@ pub fn export_map(
         })
         .collect();
 
-    // Map the manifest format used by Openfront
+    // Map the manifest format used by LegacyEngine
     let manifest = json!({
         "name": map_name,
         "map": {

@@ -40,44 +40,38 @@ impl SowEngine {
             // the calculation mathematically breaks and introduces desyncing NaN generations universally. We clamp to safely avoid this!
             let safe_troops = player.troops.max(0.0);
 
+            // Use strictly deterministic IEEE-754 sqrt instead of libm powf!
+            // tiles_owned^0.625 = tiles_owned^(1/2) * tiles_owned^(1/8)
             let t_f64 = tiles_owned as f64;
-            // OpenFront uses tiles^0.6 for max troops: 2 * (tiles^0.6 * 1000 + 50000)
-            // Which is tiles^0.6 * 2000 + 100000. We map config variables to it.
-            let max_troops_bonus = libm::pow(t_f64, 0.6);
+            let t_half = t_f64.sqrt();
+            let t_quarter = t_half.sqrt();
+            let t_eighth = t_quarter.sqrt();
+            let max_troops_bonus = t_half * t_eighth;
 
             player.max_troops = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
                 + agg.city_levels as f64 * config.city_max_troops_per_level;
-            
             if player.player_type == crate::player::PlayerType::Bot {
                 player.max_troops /= 3.0;
             } else if player.player_type == crate::player::PlayerType::Nation {
                 player.max_troops *= 0.75; // Medium difficulty
             }
 
-            // OpenFront 1:1 Income Rate
-            // toAdd = 10 + Math.pow(troops, 0.73) / 4
-            let mut to_add = 10.0 + libm::pow(safe_troops, 0.73) / 4.0;
-            
-            // ratio = 1 - troops / max
-            let ratio = (1.0 - safe_troops / player.max_troops).max(0.0);
-            to_add *= ratio;
+            // safe_troops^0.75 = safe_troops^(1/2) * safe_troops^(1/4)
+            let s_half = safe_troops.sqrt();
+            let s_quarter = s_half.sqrt();
+            let s_75 = s_half * s_quarter;
 
-            if player.player_type == crate::player::PlayerType::Bot {
-                to_add *= 0.5;
-            }
-
-            // OpenFront runs at 10 TPS (100ms per tick)
-            // Scale the per-tick addition by the actual tick rate to maintain real-time parity.
-            let of_tick_ratio = config.tick_rate_ms as f64 / 100.0;
-            let raw_income = to_add * of_tick_ratio;
-
+            let raw_income = config.troop_base_income + (s_75 / 4.0);
+            let ratio = 1.0 - (safe_troops / player.max_troops).min(1.0);
             let factory_extra = (agg.factory_levels as f64 * config.factory_income_bonus_per_level)
                 .min(config.factory_income_bonus_cap - 1.0);
             let factory_mult = 1.0 + factory_extra;
-            
-            // Note: OpenFront does not have global_speed_multiplier, but we keep it here to allow engine scaling.
-            let income = raw_income * factory_mult * config.global_speed_multiplier;
+            let mut income = raw_income * ratio * factory_mult;
+
+            if player.player_type == crate::player::PlayerType::Bot {
+                income *= 0.5;
+            }
 
             player.troops = (safe_troops + income).min(player.max_troops);
 
@@ -88,9 +82,8 @@ impl SowEngine {
                 gold_base *= 0.5; // Tribes generate 50% less gold than Nations/Humans
             }
 
-            let mut gold_income =
+            let gold_income =
                 gold_base + agg.city_levels as f64 * config.gold_income_per_city_level;
-            gold_income *= config.global_speed_multiplier;
             player.gold = safe_gold + gold_income;
         }
     }
@@ -164,17 +157,21 @@ mod tests {
         let p = engine.state.player(1).unwrap();
         let cfg = &engine.state.config;
         let low = 5.0_f64;
-        let ticks_per_second = 1000.0_f64 / cfg.tick_rate_ms as f64;
-        let base_income_per_tick = p.max_troops / (cfg.troop_fill_time_seconds.max(0.1) * ticks_per_second);
-        
-        let uncapped = base_income_per_tick * (1.0 + 20.0 * cfg.factory_income_bonus_per_level);
+        let s_half = low.sqrt();
+        let s_quarter = s_half.sqrt();
+        let s_75 = s_half * s_quarter;
+        let raw_income = cfg.troop_base_income + (s_75 / 4.0);
+        let ratio = 1.0 - (low / p.max_troops).min(1.0);
+        let uncapped = raw_income
+            * ratio
+            * (1.0 + 20.0 * cfg.factory_income_bonus_per_level);
         let actual_gain = p.troops - low;
         assert!(
             actual_gain <= uncapped + 0.001,
             "income should be capped by FACTORY_INCOME_BONUS_CAP"
         );
         assert!(
-            actual_gain <= base_income_per_tick * cfg.factory_income_bonus_cap + 0.02,
+            actual_gain <= raw_income * ratio * cfg.factory_income_bonus_cap + 0.02,
             "gain {} exceeds cap-scaled income",
             actual_gain
         );
@@ -186,7 +183,7 @@ mod tests {
         engine.execute_income();
         let p = engine.state.player(1).unwrap();
         let delta = p.gold - 100.0;
-        let g = engine.state.config.gold_base_income * engine.state.config.global_speed_multiplier;
+        let g = engine.state.config.gold_base_income;
         assert!(
             (delta - g).abs() < 0.001,
             "gold delta {} expected {}",
@@ -210,47 +207,8 @@ mod tests {
         engine.execute_income();
         let p = engine.state.player(1).unwrap();
         let cfg = &engine.state.config;
-        let expected = (cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level)
-            * cfg.global_speed_multiplier;
+        let expected =
+            cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level;
         assert!((p.gold - expected).abs() < 0.001, "gold={}", p.gold);
-    }
-
-    #[test]
-    fn troop_fill_time_seconds_doubles_troop_gain_not_gold() {
-        let mut engine_base = engine_one_player(46, 100, 50.0, 200.0);
-        engine_base.execute_income();
-        let p_base = engine_base.state.player(1).unwrap();
-        let gain_base = p_base.troops - 50.0;
-        let gold_base = p_base.gold;
-
-        let mut cfg = crate::game_config::GameConfig::default();
-        cfg.troop_fill_time_seconds /= 2.0; // Halving the fill time should double the income
-        let mut game = GameState::new(46, 8, 8, cfg.clone());
-        game.phase = GamePhase::Playing;
-        game.players
-            .push(Player::new_human(1, "p".into(), [1.0, 0.0, 0.0], &cfg));
-        game.player_lookup = vec![None, Some(0)];
-        if let Some(p) = game.player_mut(1) {
-            p.tile_count = 100;
-            p.troops = 50.0;
-            p.gold = 200.0;
-        }
-        let mut engine_fast = SowEngine::new(game, WaterComponents::default());
-        engine_fast.execute_income();
-        let p_fast = engine_fast.state.player(1).unwrap();
-        let gain_fast = p_fast.troops - 50.0;
-
-        assert!(
-            (gain_fast - 2.0 * gain_base).abs() < 0.02,
-            "gain_fast={} gain_base={}",
-            gain_fast,
-            gain_base
-        );
-        assert!(
-            (p_fast.gold - gold_base).abs() < 0.001,
-            "gold should ignore troop_fill_time_seconds: {} vs {}",
-            p_fast.gold,
-            gold_base
-        );
     }
 }

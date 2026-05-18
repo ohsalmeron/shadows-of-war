@@ -12,7 +12,7 @@ pub fn rasterize_map(
     let width = ((max_lon - min_lon) * scale).ceil() as u32;
     let height = ((max_lat - min_lat) * scale).ceil() as u32;
 
-    // Ensure dimensions are multiples of 4 (as Openfront requests in their docs)
+    // Ensure dimensions are multiples of 4 (as LegacyEngine requests in their docs)
     let width = width - (width % 4);
     let height = height - (height % 4);
 

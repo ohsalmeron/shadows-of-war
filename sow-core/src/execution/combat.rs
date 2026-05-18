@@ -1,15 +1,14 @@
 use super::{
-    refund_fleet_troops_to_player, PrioritizedTile,
+    fractional_extra_tiles_milli, refund_fleet_troops_to_player, PrioritizedTile,
     RETREAT_PENALTY_VS_PLAYER,
 };
 use crate::engine::SowEngine;
 use crate::game::{GameEvent, GamePhase};
-// Removed max_tiles_cap_for_troops
 use crate::map::TerrainType;
 use crate::rng::NextIntExt;
 use crate::warp_fleet::best_shore_spawn_for_transport;
 
-// System analogous to AttackExecution.tick() in OpenFront
+// System analogous to AttackExecution.tick() in LegacyEngine
 impl SowEngine {
     pub fn execute_combat(&mut self) {
         if self.state.phase != GamePhase::Playing {
@@ -33,8 +32,6 @@ impl SowEngine {
         let mut to_remove = Vec::new();
 
         for i in 0..self.attacks.len() {
-            // Need to borrow state and buildings mutably but not the entire self array
-            // Actually, we can borrow state and defense grid and attacks[i] simultaneously
             let execution = &mut self.attacks[i];
 
             if execution.retreating {
@@ -54,41 +51,38 @@ impl SowEngine {
                 continue;
             }
 
-            let attack_troops = execution.troops;
-            let adjacent = (execution.to_conquer.len() as f64).max(1.0);
-            
-            // Add slight RNG to adjacent like OpenFront: borderSize + rand(0, 5)
-            let rand_adj = execution.rng.next_int(0, 5) as f64;
-            let num_adjacent = adjacent + rand_adj;
-
-            let mut num_tiles_per_tick = if execution.target_owner == 0 {
-                num_adjacent * 2.0
+            let max_tiles_f64 = if execution.target_owner == 0 {
+                // Neutral expansion speed: LegacyEngine parity (proportional to border size)
+                let adjacent = execution.to_conquer.len() as f64;
+                (adjacent * 0.4).max(1.0).min(50.0) // Bounded organic growth
             } else {
+                // PvP expansion speed: ratio based
                 let defender_troops = self
                     .state
                     .player(execution.target_owner)
                     .map(|p| p.troops.max(0.0))
                     .unwrap_or(1.0)
                     .max(1.0);
-                
-                let ratio = (5.0 * attack_troops) / defender_troops;
-                let clamped_ratio = (ratio * 2.0).clamp(0.01, 0.5);
-                clamped_ratio * num_adjacent * 3.0
+                let ratio = execution.troops / defender_troops;
+                let adjacent = execution.to_conquer.len() as f64;
+
+                // LegacyEngine parity speed curve
+                let power = (ratio * 0.5).clamp(0.05, 0.4);
+                (power * adjacent).max(0.1).min(100.0)
             };
 
-            // Scale num_tiles_per_tick by tick rate ratio (OpenFront is 10 TPS, we are config.tick_rate_ms)
-            let of_tick_ratio = self.state.config.tick_rate_ms as f64 / 100.0;
-            num_tiles_per_tick *= of_tick_ratio * self.state.config.global_speed_multiplier;
-            
-            // Allow negatives to carry over so we strictly respect OpenFront's low-speed throttling across arbitrary tick rates
-            num_tiles_per_tick += execution.tick_overflow;
+            // Determine actual integer number of tiles to process this tick (Fractional determinism)
+            let mut tiles_to_conquer = max_tiles_f64.floor() as u32;
+            // Unconditional RNG advancement preserves deterministic PRNG consumption order.
+            let roll_milli = execution.rng.next_int(0, 1000) as u32; // 0..=999
+            tiles_to_conquer += fractional_extra_tiles_milli(max_tiles_f64, roll_milli);
 
+            let mut expanded_this_tick = 0u32;
             let mut stale_pops = 0u32;
-            let max_stale_pops = 64;
+            let max_stale_pops = (tiles_to_conquer * 4).max(64);
 
             loop {
-                if num_tiles_per_tick <= 0.0 || stale_pops > max_stale_pops {
-                    execution.tick_overflow = num_tiles_per_tick;
+                if expanded_this_tick >= tiles_to_conquer || stale_pops > max_stale_pops {
                     break;
                 }
 
@@ -108,7 +102,7 @@ impl SowEngine {
                         continue; // Skip, no longer controlled by target
                     }
 
-                    // Terrain Check: Water and Mountains are impassable for basic ground attacks
+                    // Terrain Check: Water is impassable for basic ground attacks
                     let terrain_type = self.state.map.terrain_type(target_tile.x, target_tile.y);
                     if terrain_type == TerrainType::Water {
                         stale_pops += 1;
@@ -125,66 +119,54 @@ impl SowEngine {
                         continue; // Skip, edge was severed
                     }
 
-                    // Compute Speed and Mag based on OpenFront formulas
-                    let (speed, mag): (f64, f64) = match terrain_type {
-                        TerrainType::Land => (16.5, 80.0),
-                        TerrainType::Highland => (20.0, 100.0),
-                        TerrainType::Mountain => (25.0, 120.0),
-                        _ => (16.5, 80.0),
-                    };
-
-                    let mut tiles_per_tick_used = 1.0;
-
                     if execution.target_owner == 0 {
-                        let is_bot = self.state.player(execution.owner_id).map(|p| p.player_type == crate::player::PlayerType::Bot).unwrap_or(false);
-                        let cost = if is_bot { mag / 10.0 } else { mag / 5.0 };
-                        execution.troops -= cost;
-                        tiles_per_tick_used = ((2000.0 * speed.max(10.0)) / attack_troops).clamp(5.0, 100.0);
+                        // Neutral: attacker pays constant base cost
+                        execution.troops -= self.state.config.attack_cost_neutral;
                     } else {
-                        // PvP: Combat resolution (OpenFront Parity)
+                        // PvP: Combat resolution (LegacyEngine Parity)
                         let mut def_loss = 0.0;
-                        let mut defender_troops = 1.0;
-                        let mut defender_tiles = 1.0;
-                        
                         if let Some(target_player) = self.state.player(execution.target_owner) {
                             if target_player.tile_count > 0 {
-                                defender_troops = target_player.troops.max(1.0);
-                                defender_tiles = target_player.tile_count as f64;
-                                def_loss = defender_troops / defender_tiles;
+                                // Defender loses proportional to their troop density.
+                                // Clamp to 0: if troops went negative from multi-attack drain,
+                                // a negative def_loss would ADD troops to the defender on
+                                // subtract, compounding per tick and diverging across clients.
+                                def_loss =
+                                    target_player.troops.max(0.0) / target_player.tile_count as f64;
                             }
                         }
 
-                        // Apply defense post bonuses
+                        // Attacker pays base attack cost, scaled by terrain
+                        let terrain_multiplier = match terrain_type {
+                            TerrainType::Land => 1.0,
+                            TerrainType::Highland => 1.25,
+                            TerrainType::Mountain => 1.5,
+                            _ => 1.0,
+                        };
+
+                        // Defense posts increase attacker losses slightly
                         let dp_bonus = self.defense_grid.priority_bonus(
                             target_tile.x,
                             target_tile.y,
                             map_w,
                             execution.target_owner,
                         );
-                        // In OpenFront: DefensePostDefenseBonus() = 5, SpeedBonus() = 3
-                        let (final_mag, final_speed) = if dp_bonus > 0 {
-                            (mag * 5.0, speed * 3.0)
-                        } else {
-                            (mag, speed)
-                        };
+                        let dp_multiplier = 1.0 + (dp_bonus as f64 / 10.0);
 
-                        // Attacker troop loss formula
-                        let current_attacker_loss = (defender_troops / attack_troops).clamp(0.6, 2.0)
-                            * final_mag * 0.8;
-                        let alt_attacker_loss = 1.3 * def_loss * (final_mag / 100.0);
-                        let atk_loss = 0.6 * current_attacker_loss + 0.4 * alt_attacker_loss;
+                        let atk_loss = self.state.config.attack_cost_enemy
+                            * terrain_multiplier
+                            * dp_multiplier;
 
                         execution.troops -= atk_loss;
 
+                        // Deduct from defender
                         if let Some(target_player) = self.state.player_mut(execution.target_owner) {
                             target_player.troops = (target_player.troops - def_loss).max(0.0);
                         }
-
-                        tiles_per_tick_used = (defender_troops / (5.0 * attack_troops)).clamp(0.2, 1.5) * final_speed;
                     }
 
-                    num_tiles_per_tick -= tiles_per_tick_used;
                     execution.troops = execution.troops.max(0.0);
+                    expanded_this_tick += 1;
 
                     // Enqueue new neutral/enemy neighbors that touch our newly acquired tile
                     self.state
@@ -225,7 +207,7 @@ impl SowEngine {
                         });
 
                     // VALID CONQUEST
-                    // Apply change AFTER enqueuing neighbors, mimicking OpenFront's `this._owner.conquer`
+                    // Apply change AFTER enqueuing neighbors, mimicking LegacyEngine's `this._owner.conquer`
                     // This ensures new neighbors don't artificially lower their priority by counting this tile as friendly yet!
                     // Guaranteed BFS spread without DFS spikes!
                     self.state
@@ -293,7 +275,7 @@ impl SowEngine {
         }
     }
 
-    /// OpenFront `TransportShipExecution`: 1 tile/tick over water, retreat, landing → conquer + `AttackExecution`.
+    /// LegacyEngine `TransportShipExecution`: 1 tile/tick over water, retreat, landing → conquer + `AttackExecution`.
     pub fn execute_fleets(&mut self) {
         if self.state.phase != GamePhase::Playing {
             return;

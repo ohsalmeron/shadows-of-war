@@ -25,7 +25,7 @@ pub struct MapManifest {
     pub map_md5: Option<String>,
 }
 
-pub fn game_map_from_openfront(manifest: &MapManifest, bin: &[u8]) -> Result<GameMap, String> {
+pub fn game_map_from_legacy_engine(manifest: &MapManifest, bin: &[u8]) -> Result<GameMap, String> {
     let width = manifest.map.width;
     let height = manifest.map.height;
     let expected_len = (width * height) as usize;

@@ -9,7 +9,7 @@ pub fn count_kind(buildings: &[Building], owner_id: u16, kind: BuildingKind) -> 
         .count() as u32
 }
 
-/// Count Port + Factory for shared exponential scaling (OpenFront `costWrapper` for Port/Factory).
+/// Count Port + Factory for shared exponential scaling (LegacyEngine `costWrapper` for Port/Factory).
 pub fn count_port_factory(buildings: &[Building], owner_id: u16) -> u32 {
     buildings
         .iter()
@@ -33,9 +33,9 @@ pub fn scaled_pow2_cost(count: u32, base: u64, cap: u64, scale: f64) -> f64 {
     (val.min(cap)) as f64 / scale
 }
 
-/// Gold price for a new structure or one upgrade level (OpenFront-style scaling). Tunable.
+/// Gold price for a new structure or one upgrade level (LegacyEngine-style scaling). Tunable.
 pub fn structure_build_cost_gold(kind: BuildingKind, owner_id: u16, buildings: &[Building]) -> f64 {
-    let s = config::OPENFRONT_GOLD_SCALE.max(1.0);
+    let s = config::GOLD_SCALE.max(1.0);
     match kind {
         BuildingKind::City => {
             let n = count_kind(buildings, owner_id, BuildingKind::City);

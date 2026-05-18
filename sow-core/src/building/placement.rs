@@ -1,12 +1,12 @@
 use super::core::BuildingGrid;
 use crate::game::BuildingKind;
 use crate::map::{GameMap, TerrainType};
-/// OpenFront `structureMinDist()` / search radius for land valid tiles.
+/// LegacyEngine `structureMinDist()` / search radius for land valid tiles.
 pub const STRUCTURE_MIN_DIST: i32 = 15;
 const STRUCTURE_MIN_DIST_SQ: i64 = (STRUCTURE_MIN_DIST as i64) * (STRUCTURE_MIN_DIST as i64);
 const STRUCTURE_SEARCH_RADIUS_SQ: i64 = STRUCTURE_MIN_DIST_SQ;
 
-/// OpenFront `radiusPortSpawn()`.
+/// LegacyEngine `radiusPortSpawn()`.
 pub const PORT_SPAWN_MANHATTAN: i32 = 20;
 
 #[inline]
@@ -45,7 +45,7 @@ fn is_land_structure_tile(map: &GameMap, x: u32, y: u32) -> bool {
 }
 
 /// Tiles within Euclidean 15 of `click_idx`, 4-connected, owned by `owner_id`, excluding tiles
-/// within Euclidean 15 of any existing structure (OpenFront `validStructureSpawnTiles`).
+/// within Euclidean 15 of any existing structure (LegacyEngine `validStructureSpawnTiles`).
 pub fn valid_land_structure_indices(
     map: &GameMap,
     owner_id: u16,
@@ -138,7 +138,7 @@ pub fn valid_land_structure_indices(
     out
 }
 
-/// OpenFront `portSpawn`: closest owned shore (Manhattan) within `PORT_SPAWN_MANHATTAN` of click
+/// LegacyEngine `portSpawn`: closest owned shore (Manhattan) within `PORT_SPAWN_MANHATTAN` of click
 /// that lies in `valid_land` (as tile indices).
 pub fn resolve_port_spawn_tile(
     map: &GameMap,
