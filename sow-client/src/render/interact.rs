@@ -167,7 +167,7 @@ impl SowApp {
                                                     sow_core::protocol::PlayerInfo {
                                                         id: 1,
                                                         name: self.ui.app.main_menu_state.player_name.clone(),
-                                                        color: [0.0, 1.0, 0.0],
+                                                        color: sow_core::player::human_shader_territory_rgb(1),
                                                         player_type: sow_core::player::PlayerType::Human,
                                                         team: None,
                                                         spawn_x: 0,

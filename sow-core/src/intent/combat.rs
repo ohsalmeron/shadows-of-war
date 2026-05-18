@@ -165,6 +165,14 @@ pub(super) fn apply_attack_intent(
         return;
     }
 
+    if target_owner != 0 {
+        if let Some(target) = self.state.player(target_owner) {
+            if player.team.is_some() && player.team == target.team {
+                return;
+            }
+        }
+    }
+
     let pool_cap = player.troops;
     let requested = attack
         .troops

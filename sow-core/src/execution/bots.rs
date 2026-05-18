@@ -11,52 +11,52 @@ impl SowEngine {
         }
 
         let _tick_now = self.state.tick;
-        let map_width = self.state.map.width;
         let mut intents_to_apply = Vec::new();
 
         // 1. Evaluate intents
         for i in 0..self.state.players.len() {
-            let player = &mut self.state.players[i];
+            let map_width = self.state.map.width;
             
-            if player.is_human() || !player.alive {
-                continue;
-            }
+            let (bx, by, my_team, my_id) = {
+                let player = &mut self.state.players[i];
 
-            // Enforce bot_attack_interval_ticks using a modulo offset by player ID
-            // This guarantees bots wait exactly the required ticks between attacks,
-            // while staggering their checks so they don't all process on the exact same frame.
-            if _tick_now % self.state.config.bot_attack_interval_ticks != (player.id as u64 % self.state.config.bot_attack_interval_ticks) {
-                continue;
-            }
+                if player.is_human() || !player.alive {
+                    continue;
+                }
+                
+                let border_count = player.border_tiles.count_ones();
+                if border_count == 0 {
+                    continue;
+                }
 
-            // Bots shouldn't spend if they don't have base expansion cost
-            if player.troops < self.state.config.attack_cost_neutral {
-                continue;
-            }
+                if _tick_now % self.state.config.bot_attack_interval_ticks != (player.id as u64 % self.state.config.bot_attack_interval_ticks) {
+                    continue;
+                }
 
-            let border_count = player.border_tiles.count_ones();
-            if border_count == 0 {
-                continue;
-            }
+                let r_idx = player.bot_rng.next_int(0, border_count as i32) as usize;
+                let chosen_border_idx = player.border_tiles.ones().nth(r_idx).unwrap();
+                
+                (chosen_border_idx % map_width, chosen_border_idx / map_width, player.team, player.id)
+            };
 
-            // Pick a random border tile
-            let r_idx = player.bot_rng.next_int(0, border_count as i32) as usize;
-            let chosen_border_idx = player.border_tiles.ones().nth(r_idx).unwrap();
-            
-            let bx = chosen_border_idx % map_width;
-            let by = chosen_border_idx / map_width;
-
-            // Find neighbors not owned by the bot
             let neighbors = self.state.map.neighbors(bx, by);
             let mut targets = Vec::new();
             for (nx, ny) in neighbors {
                 let owner = self.state.map.owner_id(nx, ny);
-                if owner != player.id {
+                if owner != my_id {
                     let is_land = self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land();
                     if !is_land { continue; }
+                    
+                    if owner != 0 {
+                        if let Some(target_player) = self.state.players.iter().find(|p| p.id == owner) {
+                            if my_team.is_some() && my_team == target_player.team {
+                                continue;
+                            }
+                        }
+                    }
+
                     targets.push(owner);
                     if owner == 0 {
-                        // Double priority for expanding into neutral territory
                         targets.push(0);
                         targets.push(0);
                     }
@@ -67,20 +67,23 @@ impl SowEngine {
                 continue;
             }
 
-            // Pick random target
-            let target_owner = targets[player.bot_rng.next_int(0, targets.len() as i32) as usize];
+            let target_owner = {
+                let player = &mut self.state.players[i];
+                targets[player.bot_rng.next_int(0, targets.len() as i32) as usize]
+            };
+            
             let required_cost = if target_owner == 0 {
                 self.state.config.attack_cost_neutral
             } else {
                 self.state.config.attack_cost_enemy
             };
 
-            if player.troops < required_cost {
+            if self.state.players[i].troops < required_cost {
                 continue;
             }
 
             intents_to_apply.push(StampedIntent {
-                player_id: player.id,
+                player_id: my_id,
                 intent: crate::protocol::GameplayIntent::Attack(AttackIntent { target_owner, troops: None }),
             });
         }

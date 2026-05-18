@@ -32,6 +32,14 @@ pub(super) fn apply_launch_fleet_intent(
         return;
     }
 
+    if target_owner != 0 {
+        if let Some(target) = self.state.player(target_owner) {
+            if player.team.is_some() && player.team == target.team {
+                return;
+            }
+        }
+    }
+
     let border_tiles = match self.state.player(player_id) {
         Some(p) => &p.border_tiles,
         None => return,

@@ -201,7 +201,7 @@ impl SowEngine {
                         (Some(crate::protocol::Team::Blue), [0.2, 0.5, 1.0])
                     }
                 } else {
-                    (None, [0.8, 0.8, 0.8])
+                    (None, crate::player::human_shader_territory_rgb(bot_id))
                 };
                 
                 let mut player = Player::new_bot(bot_id, format!("Nation {}", i+1), color, &config);
@@ -222,7 +222,12 @@ impl SowEngine {
                         (Some(crate::protocol::Team::Red), [1.0, 0.2, 0.2])
                     }
                 } else {
-                    (None, [0.4, 0.4, 0.4])
+                    // User requested Tribes in FFA to use the Team colors
+                    if i % 2 == 0 {
+                        (None, [0.2, 0.5, 1.0])
+                    } else {
+                        (None, [1.0, 0.2, 0.2])
+                    }
                 };
 
                 let mut player = Player::new_bot(bot_id, format!("Tribe {}", i+1), color, &config);
