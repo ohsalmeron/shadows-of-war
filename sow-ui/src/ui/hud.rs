@@ -56,7 +56,7 @@ pub fn draw(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_co
                 draw_attacks_display(ui, state, panel_w, compact, cancel_intents, &mut action);
                 
                 // 2. Control Panel (bottom in vertical stack)
-                let panel_bg = Color32::from_rgba_premultiplied(31, 41, 55, 235); // bg-gray-800/92
+                let panel_bg = crate::ui::theme::panel_bg_transparent();
                 let frame = egui::Frame::NONE
                     .fill(panel_bg)
                     .corner_radius(if compact {
@@ -85,7 +85,7 @@ pub fn draw(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_co
             egui::Frame::NONE
                 .fill(Color32::from_black_alpha(150))
                 .corner_radius(8)
-                .stroke(Stroke::new(1.0_f32, Color32::from_gray(100)))
+                .stroke(Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
                 .inner_margin(egui::Margin::symmetric(8, 4))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -118,93 +118,109 @@ fn draw_attacks_display(
     let my_pid = state.my_player_id;
     if my_pid == 0 { return; }
 
-    let attack_bg = Color32::from_rgba_premultiplied(31, 41, 55, 235);
-    let text_size = 13.0;
+    let attack_bg = crate::ui::theme::panel_bg_transparent();
 
-    egui::ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
+    enum AttackDisplayItem {
+        Incoming { troops: f64, attacker_name: String, retreating: bool },
+        Outgoing { troops: f64, target_name: String, retreating: bool, attack_id: u64 },
+        Fleet { troops: f64, retreating: bool, fleet_id: u64 },
+    }
+
+    let mut items = Vec::new();
+
+    for attack in state.attacks.iter().filter(|a| a.target_owner == my_pid) {
+        let attacker = state.players.iter().find(|p| p.id == attack.owner_id);
+        let attacker_name = attacker.map(|p| p.name.as_str()).unwrap_or("Unknown").to_string();
+        items.push(AttackDisplayItem::Incoming { troops: attack.troops, attacker_name, retreating: attack.retreating });
+    }
+    for attack in state.attacks.iter().filter(|a| a.owner_id == my_pid) {
+        let target_name = state.players.iter().find(|p| p.id == attack.target_owner).map(|p| p.name.as_str()).unwrap_or("Wilderness").to_string();
+        items.push(AttackDisplayItem::Outgoing { troops: attack.troops, target_name, retreating: attack.retreating, attack_id: attack.id });
+    }
+    for fleet in state.fleets.iter().filter(|f| f.owner_id == my_pid) {
+        items.push(AttackDisplayItem::Fleet { troops: fleet.troops, retreating: fleet.retreating, fleet_id: fleet.id });
+    }
+
+    if items.is_empty() {
+        return;
+    }
+
+    // A 2-column grid format with max 4 items visible without scrolling (~2 rows)
+    egui::ScrollArea::vertical().max_height(60.0).show(ui, |ui| {
         ui.set_width(width);
         
-        // Incoming attacks
-        for attack in state.attacks.iter().filter(|a| a.target_owner == my_pid) {
-            let attacker = state.players.iter().find(|p| p.id == attack.owner_id);
-            let attacker_name = attacker.map(|p| p.name.as_str()).unwrap_or("Unknown");
-            
-            egui::Frame::NONE
-                .fill(attack_bg)
-                .corner_radius(6)
-                .inner_margin(egui::Margin::symmetric(6, 4))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("★↓ {} {}", crate::utils::format_number(attack.troops), attacker_name))
-                            .size(text_size)
-                            .color(Color32::from_rgb(248, 113, 113))); // red-400
-                            
-                        if attack.retreating {
-                            ui.label(RichText::new("(retreating...)").size(text_size).color(Color32::GRAY));
-                        } else {
+        let cols = 2;
+        let cell_w = (width - (cols as f32 - 1.0) * 4.0) / cols as f32;
+
+        for chunk in items.chunks(cols) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                for item in chunk {
+                    egui::Frame::NONE
+                        .fill(attack_bg)
+                        .corner_radius(6)
+                        .inner_margin(egui::Margin::symmetric(4, 2))
+                        .show(ui, |ui| {
+                            ui.set_width(cell_w);
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                let retaliate = egui::Button::new(RichText::new("⚔").size(text_size))
-                                    .fill(Color32::from_rgb(127, 29, 29)) // bg-red-900/50
-                                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(185, 28, 28))); // border-red-700
-                                if ui.add(retaliate).on_hover_text("Retaliate").clicked() {
-                                    // Custom retaliation intent can be injected here or handled by interaction
+                                // Draw button on the right first to prevent wrapping
+                                match item {
+                                    AttackDisplayItem::Incoming { retreating, .. } => {
+                                        if *retreating {
+                                            ui.label(RichText::new("(retreating...)").size(10.0).color(Color32::GRAY));
+                                        } else {
+                                            let retaliate = egui::Button::new(RichText::new("⚔").size(12.0))
+                                                .fill(crate::ui::theme::accent_danger())
+                                                .stroke(Stroke::new(1.0_f32, crate::ui::theme::accent_danger_border()))
+                                                .min_size(vec2(20.0, 20.0));
+                                            let _ = ui.add(retaliate).on_hover_text("Retaliate");
+                                        }
+                                    }
+                                    AttackDisplayItem::Outgoing { retreating, attack_id, .. } => {
+                                        if *retreating {
+                                            ui.label(RichText::new("(retreating...)").size(10.0).color(crate::ui::theme::accent_solo_cyan()));
+                                        } else {
+                                            let cancel_btn = egui::Button::new(RichText::new("❌").size(10.0))
+                                                .min_size(vec2(20.0, 20.0));
+                                            if ui.add(cancel_btn).clicked() {
+                                                cancel_intents.push(sow_core::protocol::GameplayIntent::CancelAttack { attack_id: *attack_id });
+                                            }
+                                        }
+                                    }
+                                    AttackDisplayItem::Fleet { retreating, fleet_id, .. } => {
+                                        if *retreating {
+                                            ui.label(RichText::new("(retreating...)").size(10.0).color(crate::ui::theme::accent_solo_cyan()));
+                                        } else {
+                                            let cancel_btn = egui::Button::new(RichText::new("❌").size(10.0))
+                                                .min_size(vec2(20.0, 20.0));
+                                            if ui.add(cancel_btn).clicked() {
+                                                cancel_intents.push(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id: *fleet_id });
+                                            }
+                                        }
+                                    }
                                 }
+
+                                // Then draw the left-aligned text
+                                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                    match item {
+                                        AttackDisplayItem::Incoming { troops, attacker_name, .. } => {
+                                            let txt = format!("★↓ {} {}", crate::utils::format_number(*troops), attacker_name);
+                                            ui.label(RichText::new(txt).size(12.0).color(crate::ui::theme::accent_danger_border()).strong());
+                                        }
+                                        AttackDisplayItem::Outgoing { troops, target_name, .. } => {
+                                            let txt = format!("★↑ {} {}", crate::utils::format_number(*troops), target_name);
+                                            ui.label(RichText::new(txt).size(12.0).color(crate::ui::theme::accent_solo_cyan()).strong());
+                                        }
+                                        AttackDisplayItem::Fleet { troops, .. } => {
+                                            let txt = format!("★↑ {} Naval Invasion", crate::utils::format_number(*troops));
+                                            ui.label(RichText::new(txt).size(12.0).color(crate::ui::theme::accent_solo_cyan()).strong());
+                                        }
+                                    }
+                                });
                             });
-                        }
-                    });
-                });
-        }
-
-        // Outgoing attacks
-        for attack in state.attacks.iter().filter(|a| a.owner_id == my_pid) {
-            let target_name = state.players.iter().find(|p| p.id == attack.target_owner).map(|p| p.name.as_str()).unwrap_or("Wilderness");
-            
-            egui::Frame::NONE
-                .fill(attack_bg)
-                .corner_radius(6)
-                .inner_margin(egui::Margin::symmetric(6, 4))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("★↑ {} {}", crate::utils::format_number(attack.troops), target_name))
-                            .size(text_size)
-                            .color(Color32::from_rgb(80, 200, 255))); // aquarius
-                            
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if attack.retreating {
-                                ui.label(RichText::new("(retreating...)").size(text_size).color(Color32::from_rgb(80, 200, 255)));
-                            } else {
-                                if ui.button(RichText::new("❌").size(text_size)).clicked() {
-                                    cancel_intents.push(sow_core::protocol::GameplayIntent::CancelAttack { attack_id: attack.id });
-                                }
-                            }
                         });
-                    });
-                });
-        }
-
-        // Outgoing fleets
-        for fleet in state.fleets.iter().filter(|f| f.owner_id == my_pid) {
-            egui::Frame::NONE
-                .fill(attack_bg)
-                .corner_radius(6)
-                .inner_margin(egui::Margin::symmetric(6, 4))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("★↑ {} Naval Invasion", crate::utils::format_number(fleet.troops)))
-                            .size(text_size)
-                            .color(Color32::from_rgb(80, 200, 255)));
-                            
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if fleet.retreating {
-                                ui.label(RichText::new("(retreating...)").size(text_size).color(Color32::from_rgb(80, 200, 255)));
-                            } else {
-                                if ui.button(RichText::new("❌").size(text_size)).clicked() {
-                                    cancel_intents.push(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id: fleet.id });
-                                }
-                            }
-                        });
-                    });
-                });
+                }
+            });
         }
     });
 }
@@ -224,11 +240,11 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
 
             // Gold
             egui::Frame::NONE
-                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(250, 204, 21))) // border-yellow-400
+                .stroke(Stroke::new(1.0_f32, crate::ui::theme::accent_ranked_gold_hover()))
                 .corner_radius(6)
                 .inner_margin(egui::Margin::symmetric(4, 4))
                 .show(ui, |ui| {
-                    ui.label(RichText::new(format!("💰 {}", crate::utils::format_number(state.gold))).strong().size(12.0).color(Color32::from_rgb(250, 204, 21)));
+                    ui.label(RichText::new(format!("💰 {}", crate::utils::format_number(state.gold))).strong().size(12.0).color(crate::ui::theme::accent_ranked_gold_hover()));
                 });
 
             // Troop Bar (Takes ~40%)
@@ -239,7 +255,7 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
             // Attack Ratio + Slider
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("⚔ {:.0}%", state.attack_ratio * 100.0)).strong().size(12.0).color(Color32::WHITE));
+                    ui.label(RichText::new(format!("⚔ {:.0}%", state.attack_ratio * 100.0)).strong().size(12.0).color(Color32::from_rgb(220, 230, 220)));
                     let mut ratio = state.attack_ratio;
                     if ui.add_sized(vec2(ui.available_width(), 16.0), Slider::new(&mut ratio, 0.01..=1.0).show_value(false)).changed() {
                         *action = Some(UiAction::SetAttackRatio(ratio));
@@ -258,7 +274,7 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
                 ui.spacing_mut().item_spacing.x = 6.0;
 
                 // Rate
-                let rate_color = if is_increasing { Color32::from_rgb(74, 222, 128) } else { Color32::from_rgb(251, 146, 60) };
+                let rate_color = if is_increasing { crate::ui::theme::accent_solo_cyan_hover() } else { crate::ui::theme::accent_danger() };
                 egui::Frame::NONE
                     .stroke(Stroke::new(1.0_f32, rate_color))
                     .corner_radius(6)
@@ -274,11 +290,11 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
 
                 // Gold
                 egui::Frame::NONE
-                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(250, 204, 21)))
+                    .stroke(Stroke::new(1.0_f32, crate::ui::theme::accent_ranked_gold_hover()))
                     .corner_radius(6)
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
-                        ui.label(RichText::new(format!("💰 {}", crate::utils::format_number(state.gold))).strong().size(14.0).color(Color32::from_rgb(250, 204, 21)));
+                        ui.label(RichText::new(format!("💰 {}", crate::utils::format_number(state.gold))).strong().size(14.0).color(crate::ui::theme::accent_ranked_gold_hover()));
                     });
             });
 
@@ -287,12 +303,12 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
                 
                 // Attack Ratio Box
                 egui::Frame::NONE
-                    .stroke(Stroke::new(1.0_f32, Color32::from_gray(100)))
+                    .stroke(Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
                     .corner_radius(6)
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
                         let ratio_troops = (state.troops * (state.attack_ratio as f64)).max(0.0);
-                        ui.label(RichText::new(format!("⚔ {:.0}% ({})", state.attack_ratio * 100.0, crate::utils::format_number(ratio_troops))).strong().size(14.0).color(Color32::WHITE));
+                        ui.label(RichText::new(format!("⚔ {:.0}% ({})", state.attack_ratio * 100.0, crate::utils::format_number(ratio_troops))).strong().size(14.0).color(Color32::from_rgb(220, 230, 220)));
                     });
 
                 let mut ratio = state.attack_ratio;
@@ -312,16 +328,16 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, attacking_tr
     let green_pct_f32 = green_pct as f32;
     let orange_pct_f32 = orange_pct as f32;
 
-    let bg_color = Color32::from_rgba_premultiplied(17, 24, 39, 150); // bg-gray-900/60
-    let green_color = Color32::from_rgb(0, 200, 255); // malibu-blue
-    let orange_color = Color32::from_rgb(80, 200, 255); // aquarius
+    let bg_color = crate::ui::theme::nickname_field_bg();
+    let green_color = crate::ui::theme::accent_solo_cyan_hover();
+    let orange_color = crate::ui::theme::accent_solo_cyan();
 
     // Draw background
     ui.painter().rect(
         rect,
         6,
         bg_color,
-        Stroke::new(1.0_f32, Color32::from_gray(75)),
+        Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()),
         egui::StrokeKind::Inside,
     );
 
@@ -346,16 +362,16 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, attacking_tr
             Align2::LEFT_CENTER,
             crate::utils::format_number(troops),
             egui::FontId::proportional(12.0),
-            Color32::WHITE,
+            Color32::from_rgb(220, 230, 220),
         );
         ui.painter().text(
             pos2(rect.right() - 4.0, rect.center().y),
             Align2::RIGHT_CENTER,
             crate::utils::format_number(max_troops),
             egui::FontId::proportional(12.0),
-            Color32::WHITE,
+            Color32::from_rgb(220, 230, 220),
         );
-        let rate_color = if is_increasing { Color32::from_rgb(74, 222, 128) } else { Color32::from_rgb(251, 146, 60) };
+        let rate_color = if is_increasing { crate::ui::theme::accent_solo_cyan_hover() } else { crate::ui::theme::accent_danger() };
         ui.painter().text(
             rect.center(),
             Align2::CENTER_CENTER,
@@ -371,16 +387,15 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, attacking_tr
             Align2::CENTER_CENTER,
             text,
             egui::FontId::proportional(14.0),
-            Color32::WHITE,
+            Color32::from_rgb(220, 230, 220),
         );
     }
 }
 
 fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool) {
     ui.vertical_centered(|ui| {
-        ui.label(RichText::new("DEPLOYMENT PHASE").strong().size(if compact { 16.0 } else { 20.0 }).color(Color32::GOLD));
-        ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(14.0).color(Color32::WHITE));
-        ui.label(RichText::new("Click anywhere on the map to place your capital!").size(12.0).color(Color32::LIGHT_GRAY));
+        ui.label(RichText::new("CHOOSE A STARTING LOCATION").strong().size(if compact { 16.0 } else { 20.0 }).color(crate::ui::theme::accent_ranked_gold_hover()));
+        ui.label(RichText::new(format!("{:.1}s remaining", secs)).size(14.0).color(Color32::from_rgb(220, 230, 220)));
     });
 }
 

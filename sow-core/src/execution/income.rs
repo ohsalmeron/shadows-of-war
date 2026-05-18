@@ -57,17 +57,17 @@ impl SowEngine {
                 player.max_troops *= 0.75; // Medium difficulty
             }
 
-            // safe_troops^0.75 = safe_troops^(1/2) * safe_troops^(1/4)
-            let s_half = safe_troops.sqrt();
-            let s_quarter = s_half.sqrt();
-            let s_75 = s_half * s_quarter;
-
-            let raw_income = config.troop_base_income + (s_75 / 4.0);
-            let ratio = 1.0 - (safe_troops / player.max_troops).min(1.0);
+            // Fill the entire cap in exactly 10 seconds (ignoring factory bonuses)
+            let fill_time_seconds = 20.0_f64;
+            let ticks_per_second = 1000.0_f64 / config.tick_rate_ms as f64;
+            let base_income_per_tick = player.max_troops / (fill_time_seconds * ticks_per_second);
+            
+            // Allow troops to accumulate even when near the cap by removing the ratio multiplier
+            let raw_income = base_income_per_tick;
             let factory_extra = (agg.factory_levels as f64 * config.factory_income_bonus_per_level)
                 .min(config.factory_income_bonus_cap - 1.0);
             let factory_mult = 1.0 + factory_extra;
-            let mut income = raw_income * ratio * factory_mult;
+            let mut income = raw_income * factory_mult;
 
             if player.player_type == crate::player::PlayerType::Bot {
                 income *= 0.5;

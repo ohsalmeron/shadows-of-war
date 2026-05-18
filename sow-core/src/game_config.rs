@@ -125,8 +125,6 @@ pub struct GameConfig {
     pub gold_base_income: f64,
     /// Flat troop income added per second. Halving this doubles the time to build an army.
     pub troop_base_income: f64,
-    /// Troops generated per second for every tile owned by the player.
-    pub troop_per_tile: f64,
     /// Base maximum troop capacity cap before territory size is accounted for.
     pub max_troops_base: f64,
     /// How much extra troop capacity is gained based on total territory owned.
@@ -169,25 +167,24 @@ impl Default for GameConfig {
             global_speed_multiplier: 0.45, // 0.85 = Slightly slower, more tactical pace
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 1.0, // Balanced: harder to melt through enemy territory
-            attack_cost_neutral: 0.1, // Standard neutral cost
-            terrain_multiplier_highland: 3.5,
-            terrain_multiplier_mountain: 7.0,
+            attack_cost_enemy: 0.1, // Balanced: harder to melt through enemy territory
+            attack_cost_neutral: 0.01, // Standard neutral cost
+            terrain_multiplier_highland: 0.25,
+            terrain_multiplier_mountain: 0.5,
             bot_attack_interval_ticks: 16, // Strategic waves: bots wait ~6 seconds (120 ticks) between decisions
-            max_tiles_per_tick: 64.0,      // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
+            max_tiles_per_tick: 1024.0,      // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
             max_tiles_per_tick_reference_troops: 1000.0,
             max_tiles_per_tick_at_reference: 4.0,
-            momentum_divisor: 1250.0, // Troops needed for 1x momentum
+            momentum_divisor: 10.0, // Troops needed for 1x momentum
 
             // Economy & Income Rates
-            starting_troops: 100.0, // Initial burst to allow early expansion
+            starting_troops: 10.0, // Initial burst to allow early expansion
             starting_gold: 10.0,
             gold_base_income: 4.0,
             troop_base_income: 2.0, // Smooth baseline troop recovery
-            troop_per_tile: 2.0,    // Rewards map control, but doesn't instantly snowball
             max_troops_base: 100.0,
             max_troops_scale: 1.0,
-            city_max_troops_per_level: 2000.0,
+            city_max_troops_per_level: 50.0,
             factory_income_bonus_per_level: 0.15, // 15% income boost per factory level
             factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
             gold_income_per_city_level: 1.0,      // +1 flat gold per city level
@@ -280,7 +277,7 @@ mod max_tiles_cap_tests {
 
     #[test]
     fn serde_omitted_new_fields_use_defaults() {
-        let json = r#"{"max_players":2,"bot_count":0,"nation_count":0,"bot_difficulty":"Vanilla","map_name":"m","map_width":8,"map_height":8,"random_spawn":false,"tick_rate_ms":50.0,"global_speed_multiplier":1.0,"attack_cost_enemy":1.0,"attack_cost_neutral":1.0,"terrain_multiplier_highland":1.0,"terrain_multiplier_mountain":1.0,"bot_attack_interval_ticks":1,"max_tiles_per_tick":8.0,"momentum_divisor":1.0,"starting_troops":1.0,"starting_gold":0.0,"gold_base_income":0.0,"troop_base_income":0.0,"troop_per_tile":0.0,"max_troops_base":1.0,"max_troops_scale":0.0,"city_max_troops_per_level":0.0,"factory_income_bonus_per_level":0.0,"factory_income_bonus_cap":0.0,"gold_income_per_city_level":0.0}"#;
+        let json = r#"{"max_players":2,"bot_count":0,"nation_count":0,"bot_difficulty":"Vanilla","map_name":"m","map_width":8,"map_height":8,"random_spawn":false,"map_control_win_percentage":0.60,"tick_rate_ms":50.0,"global_speed_multiplier":1.0,"attack_cost_enemy":1.0,"attack_cost_neutral":1.0,"terrain_multiplier_highland":1.0,"terrain_multiplier_mountain":1.0,"bot_attack_interval_ticks":1,"max_tiles_per_tick":8.0,"momentum_divisor":1.0,"starting_troops":1.0,"starting_gold":0.0,"gold_base_income":0.0,"troop_base_income":0.0,"max_troops_base":1.0,"max_troops_scale":0.0,"city_max_troops_per_level":0.0,"factory_income_bonus_per_level":0.0,"factory_income_bonus_cap":0.0,"gold_income_per_city_level":0.0}"#;
         let cfg: GameConfig = serde_json::from_str(json).expect("deserialize");
         assert_close(cfg.max_tiles_per_tick_reference_troops, 1000.0);
         assert_close(cfg.max_tiles_per_tick_at_reference, 4.0);

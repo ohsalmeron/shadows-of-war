@@ -30,8 +30,7 @@ impl SowApp {
                             if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
                                 self.ui.app.hud_state.gold = player.gold;
                                 self.ui.app.hud_state.troops = player.troops;
-                                let owned_tiles = player.tile_count as f64;
-                                self.ui.app.hud_state.max_troops = owned_tiles * 50.0;
+                                self.ui.app.hud_state.max_troops = player.max_troops;
                             }
 
                             ticks_processed += 1;
@@ -71,8 +70,7 @@ impl SowApp {
                         if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == self.sim.my_player_id.unwrap_or(1))) {
                             self.ui.app.hud_state.gold = player.gold;
                             self.ui.app.hud_state.troops = player.troops;
-                            let owned_tiles = player.tile_count as f64;
-                            self.ui.app.hud_state.max_troops = owned_tiles * 50.0;
+                            self.ui.app.hud_state.max_troops = player.max_troops;
                         }
                     }
                 } else {
