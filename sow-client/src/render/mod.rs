@@ -180,8 +180,6 @@ impl SowApp {
                             if self.ui.app.phase == ClientPhase::Playing {
                                 self.sync_hud_combat_state();
                             }
-                            
-
 
                             #[cfg(target_arch = "wasm32")]
                             self.ime_bridge

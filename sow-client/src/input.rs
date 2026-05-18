@@ -177,15 +177,18 @@ impl SowApp {
                 state: btn_state,
                 button,
                 position,
+                primary,
                 ..
             } => {
                 let pressed = btn_state == ElementState::Pressed;
-                self.input.last_mouse_x = position.x;
-                self.input.last_mouse_y = position.y;
+                if primary {
+                    self.input.last_mouse_x = position.x;
+                    self.input.last_mouse_y = position.y;
+                }
 
-                let is_primary = match button {
+                let is_primary_action = match button {
                     winit::event::ButtonSource::Mouse(b) => b == MouseButton::Left,
-                    winit::event::ButtonSource::Touch { .. } => true,
+                    winit::event::ButtonSource::Touch { .. } => primary,
                     _ => false,
                 };
                 let is_secondary = match button {
@@ -203,7 +206,7 @@ impl SowApp {
                     } else {
                         self.input.active_touches.remove(&id);
                         if self.input.active_touches.len() < 2 {
-                            self.input.last_pinch_distance = None;
+                            self.input.last_pinch_state = None;
                         }
                     }
                 }
@@ -212,7 +215,7 @@ impl SowApp {
                 let in_game = self.ui.app.phase == ClientPhase::Playing
                     && self.ui.app.hud_state.sync_state.is_none();
 
-                if is_primary {
+                if is_primary_action {
                     if pressed {
                         if !wants_pointer {
                             self.input.dragging = true;
@@ -279,26 +282,28 @@ impl SowApp {
                     self.open_context_menu_at(position.x, position.y);
                 }
 
-                self.ui.raw_input.events.push(egui::Event::PointerButton {
-                    pos: Pos2::new(
-                        self.input.last_mouse_x as f32,
-                        self.input.last_mouse_y as f32,
-                    ),
-                    button: match button {
-                        winit::event::ButtonSource::Mouse(MouseButton::Right) => {
-                            egui::PointerButton::Secondary
-                        }
-                        winit::event::ButtonSource::Mouse(MouseButton::Middle) => {
-                            egui::PointerButton::Middle
-                        }
-                        _ => egui::PointerButton::Primary,
-                    },
-                    pressed,
-                    modifiers: Default::default(),
-                });
+                if primary {
+                    self.ui.raw_input.events.push(egui::Event::PointerButton {
+                        pos: Pos2::new(
+                            self.input.last_mouse_x as f32,
+                            self.input.last_mouse_y as f32,
+                        ),
+                        button: match button {
+                            winit::event::ButtonSource::Mouse(MouseButton::Right) => {
+                                egui::PointerButton::Secondary
+                            }
+                            winit::event::ButtonSource::Mouse(MouseButton::Middle) => {
+                                egui::PointerButton::Middle
+                            }
+                            _ => egui::PointerButton::Primary,
+                        },
+                        pressed,
+                        modifiers: Default::default(),
+                    });
+                }
             }
             WindowEvent::PointerMoved {
-                source, position, ..
+                source, position, primary, ..
             } => {
                 let is_touch = matches!(source, winit::event::PointerSource::Touch { .. });
                 if let winit::event::PointerSource::Touch { finger_id, .. } = source {
@@ -328,19 +333,25 @@ impl SowApp {
                     let dx = p1.0 - p2.0;
                     let dy = p1.1 - p2.1;
                     let distance = (dx * dx + dy * dy).sqrt();
+                    let pinch_cx = (p1.0 + p2.0) / 2.0;
+                    let pinch_cy = (p1.1 + p2.1) / 2.0;
 
-                    if let Some(last_dist) = self.input.last_pinch_distance {
-                        let delta = distance - last_dist;
-                        let pinch_cx = (p1.0 + p2.0) / 2.0;
-                        let pinch_cy = (p1.1 + p2.1) / 2.0;
+                    if let Some((last_dist, last_cx, last_cy)) = self.input.last_pinch_state {
+                        let delta_dist = distance - last_dist;
+                        let delta_x = pinch_cx - last_cx;
+                        let delta_y = pinch_cy - last_cy;
+                        
+                        self.input.camera_x += delta_x as f32;
+                        self.input.camera_y += delta_y as f32;
+
                         self.process_camera_zoom(
-                            1.0 + (delta as f32 * 0.005),
+                            1.0 + (delta_dist as f32 * 0.005),
                             pinch_cx as f32,
                             pinch_cy as f32,
                         );
                     }
-                    self.input.last_pinch_distance = Some(distance);
-                } else {
+                    self.input.last_pinch_state = Some((distance, pinch_cx, pinch_cy));
+                } else if primary {
                     if self.input.dragging
                         && (!is_touch || !self.ui.egui_ctx.egui_wants_pointer_input())
                     {
@@ -350,17 +361,23 @@ impl SowApp {
                         self.input.camera_y += dy as f32;
                     }
                 }
-                self.input.last_mouse_x = position.x;
-                self.input.last_mouse_y = position.y;
-                self.ui
-                    .raw_input
-                    .events
-                    .push(egui::Event::PointerMoved(Pos2::new(
-                        self.input.last_mouse_x as f32,
-                        self.input.last_mouse_y as f32,
-                    )));
+                
+                if primary {
+                    self.input.last_mouse_x = position.x;
+                    self.input.last_mouse_y = position.y;
+                    self.ui
+                        .raw_input
+                        .events
+                        .push(egui::Event::PointerMoved(Pos2::new(
+                            self.input.last_mouse_x as f32,
+                            self.input.last_mouse_y as f32,
+                        )));
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                if !self.input.active_touches.is_empty() {
+                    return;
+                }
                 let scroll = match delta {
                     MouseScrollDelta::LineDelta(x, y) => {
                         if y.abs() >= x.abs() {

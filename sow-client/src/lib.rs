@@ -31,11 +31,18 @@ fn get_maps_url() -> String {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {
+            let mut found_in_js = false;
             if let Ok(val) =
                 js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_MAPS_URL"))
             {
                 if let Some(s) = val.as_string() {
                     url = s;
+                    found_in_js = true;
+                }
+            }
+            if !found_in_js {
+                if let Ok(origin) = window.location().origin() {
+                    url = format!("{}/assets/maps", origin);
                 }
             }
         }
@@ -57,9 +64,7 @@ fn camera_zoom_upper_bound(screen_w: f32, screen_h: f32) -> f32 {
     (longest * 3.0).clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM_CAP.max(CAMERA_MIN_ZOOM))
 }
 
-/// Zoom level used only for nameplate **font** sizing (not LOD). Matches default `camera_zoom` so
-/// first-frame text size matches the old formula, while zooming no longer churns egui glyph atlas sizes.
-const NAMEPLATE_REFERENCE_ZOOM: f32 = 2.0;
+
 
 fn spawn_sow_client_connect(
     url: String,

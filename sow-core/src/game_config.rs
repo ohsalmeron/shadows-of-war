@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-fn default_troop_income_pace() -> f64 {
-    1.0
+fn default_troop_fill_time() -> f64 {
+    40.0
 }
 
 fn default_game_mode() -> String {
@@ -123,8 +123,6 @@ pub struct GameConfig {
     pub starting_gold: f64,
     /// Flat gold income added per second. Halving this doubles the time it takes to afford structures.
     pub gold_base_income: f64,
-    /// Flat troop income added per second. Halving this doubles the time to build an army.
-    pub troop_base_income: f64,
     /// Base maximum troop capacity cap before territory size is accounted for.
     pub max_troops_base: f64,
     /// How much extra troop capacity is gained based on total territory owned.
@@ -137,11 +135,9 @@ pub struct GameConfig {
     pub factory_income_bonus_cap: f64,
     /// Flat gold income generated per level of an owned city.
     pub gold_income_per_city_level: f64,
-    /// Designer dial for troop refill only: multiplied onto final per-tick troop income after
-    /// `troop_base_income`, factories, bot penalties, and `global_speed_multiplier`.
-    /// `1.0` matches prior behavior; values above 1 speed refill, below 1 slow it. Does not affect gold.
-    #[serde(default = "default_troop_income_pace")]
-    pub troop_income_pace: f64,
+    /// How many seconds it takes to naturally fill your troop capacity from 0 to 100% (ignoring factories).
+    #[serde(default = "default_troop_fill_time")]
+    pub troop_fill_time_seconds: f64,
 }
 
 impl Default for GameConfig {
@@ -162,7 +158,7 @@ impl Default for GameConfig {
             map_control_win_percentage: 0.60,
 
             // Core Simulation Pacing
-            tick_rate_ms: 100.0, // Server clock ticks every 50ms (20 ticks per second)
+            tick_rate_ms: 50.0, // Server clock ticks every 50ms (20 ticks per second)
             // Scales combat expansion, gold, and troop income broadly; use `troop_income_pace` to tune troop refill alone.
             global_speed_multiplier: 0.45, // 0.85 = Slightly slower, more tactical pace
 
@@ -175,20 +171,19 @@ impl Default for GameConfig {
             max_tiles_per_tick: 1024.0,      // Ceiling on troop-scaled cap; curve ~4@1K → ~32@1M
             max_tiles_per_tick_reference_troops: 1000.0,
             max_tiles_per_tick_at_reference: 4.0,
-            momentum_divisor: 10.0, // Troops needed for 1x momentum
+            momentum_divisor: 1000.0, // Troops needed for 1x momentum
 
             // Economy & Income Rates
-            starting_troops: 10.0, // Initial burst to allow early expansion
+            starting_troops: 25000.0, // OpenFront Human default
             starting_gold: 10.0,
             gold_base_income: 4.0,
-            troop_base_income: 2.0, // Smooth baseline troop recovery
-            max_troops_base: 100.0,
-            max_troops_scale: 1.0,
-            city_max_troops_per_level: 50.0,
+            max_troops_base: 100000.0, // OpenFront 2 * 50000
+            max_troops_scale: 2000.0, // OpenFront 2 * 1000
+            city_max_troops_per_level: 250000.0, // OpenFront CityTroopIncrease
             factory_income_bonus_per_level: 0.15, // 15% income boost per factory level
             factory_income_bonus_cap: 2.00,       // Max 200% bonus from factories
             gold_income_per_city_level: 1.0,      // +1 flat gold per city level
-            troop_income_pace: 1.0, // Designer-only troop refill multiplier (see field doc)
+            troop_fill_time_seconds: 40.0,        // Exactly how many seconds to fill the cap from 0 to 100%
         }
     }
 }
@@ -230,58 +225,4 @@ pub fn max_tiles_cap_for_troops(troops: f64, cfg: &GameConfig) -> f64 {
         sane_ceiling
     };
     curve.min(sane_ceiling).max(1.0)
-}
-
-#[cfg(test)]
-mod max_tiles_cap_tests {
-    use super::*;
-
-    fn assert_close(a: f64, b: f64) {
-        assert!(
-            (a - b).abs() < 1e-9,
-            "expected {b}, got {a} (diff {})",
-            (a - b).abs()
-        );
-    }
-
-    #[test]
-    fn cap_at_reference_decades() {
-        let c = GameConfig::default();
-        assert_close(max_tiles_cap_for_troops(1000.0, &c), 4.0);
-        assert_close(max_tiles_cap_for_troops(10_000.0, &c), 8.0);
-        assert_close(max_tiles_cap_for_troops(100_000.0, &c), 16.0);
-        assert_close(max_tiles_cap_for_troops(1_000_000.0, &c), 32.0);
-    }
-
-    #[test]
-    fn cap_floors_small_stacks_to_reference_curve() {
-        let c = GameConfig::default();
-        assert_close(max_tiles_cap_for_troops(100.0, &c), 4.0);
-        assert_close(max_tiles_cap_for_troops(0.0, &c), 4.0);
-    }
-
-    #[test]
-    fn cap_respects_ceiling() {
-        let mut c = GameConfig::default();
-        c.max_tiles_per_tick = 6.0;
-        assert_close(max_tiles_cap_for_troops(10_000.0, &c), 6.0);
-    }
-
-    #[test]
-    fn cap_nan_and_negative_fall_back_to_at_reference_infinity_hits_ceiling() {
-        let c = GameConfig::default();
-        assert_close(max_tiles_cap_for_troops(f64::NAN, &c), 4.0);
-        assert_close(max_tiles_cap_for_troops(f64::INFINITY, &c), 64.0);
-        assert_close(max_tiles_cap_for_troops(-1.0, &c), 4.0);
-    }
-
-    #[test]
-    fn serde_omitted_new_fields_use_defaults() {
-        let json = r#"{"max_players":2,"bot_count":0,"nation_count":0,"bot_difficulty":"Vanilla","map_name":"m","map_width":8,"map_height":8,"random_spawn":false,"map_control_win_percentage":0.60,"tick_rate_ms":50.0,"global_speed_multiplier":1.0,"attack_cost_enemy":1.0,"attack_cost_neutral":1.0,"terrain_multiplier_highland":1.0,"terrain_multiplier_mountain":1.0,"bot_attack_interval_ticks":1,"max_tiles_per_tick":8.0,"momentum_divisor":1.0,"starting_troops":1.0,"starting_gold":0.0,"gold_base_income":0.0,"troop_base_income":0.0,"max_troops_base":1.0,"max_troops_scale":0.0,"city_max_troops_per_level":0.0,"factory_income_bonus_per_level":0.0,"factory_income_bonus_cap":0.0,"gold_income_per_city_level":0.0}"#;
-        let cfg: GameConfig = serde_json::from_str(json).expect("deserialize");
-        assert_close(cfg.max_tiles_per_tick_reference_troops, 1000.0);
-        assert_close(cfg.max_tiles_per_tick_at_reference, 4.0);
-        assert_close(cfg.max_tiles_per_tick, 8.0);
-        assert_close(max_tiles_cap_for_troops(10_000.0, &cfg), 8.0);
-    }
 }

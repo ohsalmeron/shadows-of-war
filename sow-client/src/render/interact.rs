@@ -133,7 +133,7 @@ impl SowApp {
     pub(crate) fn process_ui_actions(&mut self, _ctx: &egui::Context, action: Option<sow_ui::UiAction>) {
                                 if let Some(action) = action {
                                     match action {
-                                        UiAction::StartTutorial | UiAction::StartSinglePlayer => {
+                                        UiAction::StartTutorial => {
                                             self.net.is_offline = true;
                                             self.sim.offline_tick_timer = 0.0;
                                             self.net.client = None;
@@ -144,33 +144,126 @@ impl SowApp {
                                             self.sim.my_player_id = Some(1);
                                             self.sim.my_lobby_id = Some(0);
 
-                                            if matches!(action, UiAction::StartTutorial) {
-                                                self.ui.tutorial_completed = false;
-                                                self.ui.tutorial_step = crate::hud::tutorial::TutorialStep::Welcome;
-                                                #[cfg(target_arch = "wasm32")]
-                                                if let Some(window) = web_sys::window() {
-                                                    if let Ok(Some(storage)) = window.local_storage() {
-                                                        let _ = storage.remove_item("sow_tutorial_completed");
-                                                    }
+                                            self.ui.tutorial_completed = false;
+                                            self.ui.tutorial_step = crate::hud::tutorial::TutorialStep::Welcome;
+                                            #[cfg(target_arch = "wasm32")]
+                                            if let Some(window) = web_sys::window() {
+                                                if let Ok(Some(storage)) = window.local_storage() {
+                                                    let _ = storage.remove_item("sow_tutorial_completed");
                                                 }
-                                                #[cfg(not(target_arch = "wasm32"))]
-                                                let _ = std::fs::remove_file("sow_tutorial_completed.txt");
                                             }
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            let _ = std::fs::remove_file("sow_tutorial_completed.txt");
 
                                             let map_name = "world".to_string();
                                             self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
 
                                             let mut config = sow_core::game_config::GameConfig::default();
                                             config.map_name = map_name.clone();
-                                            if map_name == "world" {
+                                            config.map_width = 2000;
+                                            config.map_height = 1000;
+                                            config.bot_count = 20;
+                                            config.nation_count = 5;
+
+                                            let start_msg = sow_core::protocol::ServerStartMessage {
+                                                config,
+                                                my_player_id: Some(1),
+                                                seed: 42,
+                                                players: vec![
+                                                    sow_core::protocol::PlayerInfo {
+                                                        id: 1,
+                                                        name: self.ui.app.main_menu_state.player_name.clone(),
+                                                        color: sow_core::player::human_shader_territory_rgb(1),
+                                                        player_type: sow_core::player::PlayerType::Human,
+                                                        team: None,
+                                                        spawn_x: 0,
+                                                        spawn_y: 0,
+                                                    }
+                                                ],
+                                                missed_turns: vec![],
+                                                map_data: None,
+                                                relay_port: None,
+                                            };
+                                            self.tasks.engine_init_queued_msg = Some(start_msg);
+
+                                            if self.ui.app.asset_loader.has_map(&map_name) {
+                                                self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_name);
+                                                self.ui.app.main_menu_state.is_downloading_map = false;
+                                            } else {
+                                                self.ui.app.main_menu_state.is_downloading_map = true;
+                                                self.ui.app.main_menu_state.cached_map = None;
+                                                let maps_base = crate::get_maps_url();
+                                                let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                                                let tx = self.tasks.map_tx.clone();
+                                                
+                                                let request = ehttp::Request::get(&url);
+                                                let map_name_for_closure = map_name.clone();
+                                                let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                                                let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+                                                
+                                                ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
+                                                    match result {
+                                                        Ok(ehttp::streaming::Part::Response(res)) => {
+                                                            if !res.ok {
+                                                                let _ = tx.send(crate::MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
+                                                                return std::ops::ControlFlow::Break(());
+                                                            }
+                                                            let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
+                                                            if let Some(cl_str) = cl {
+                                                                if let Ok(b) = cl_str.parse::<usize>() {
+                                                                    *total_bytes.lock().unwrap() = b;
+                                                                }
+                                                            }
+                                                            std::ops::ControlFlow::Continue(())
+                                                        }
+                                                        Ok(ehttp::streaming::Part::Chunk(chunk)) => {
+                                                            if chunk.is_empty() {
+                                                                let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
+                                                                let _ = tx.send(crate::MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                                                return std::ops::ControlFlow::Break(());
+                                                            }
+                                                            let mut acc = accumulated.lock().unwrap();
+                                                            acc.extend_from_slice(&chunk);
+                                                            let total = *total_bytes.lock().unwrap();
+                                                            let pct = if total > 0 {
+                                                                ((acc.len() as f64 / total as f64) * 100.0) as u8
+                                                            } else {
+                                                                0
+                                                            };
+                                                            let _ = tx.send(crate::MapDownloadEvent::Progress(map_name_for_closure.clone(), pct));
+                                                            std::ops::ControlFlow::Continue(())
+                                                        }
+                                                        Err(e) => {
+                                                            let _ = tx.send(crate::MapDownloadEvent::Error(e.to_string()));
+                                                            std::ops::ControlFlow::Break(())
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        UiAction::StartSinglePlayer(config) => {
+                                            self.net.is_offline = true;
+                                            self.sim.offline_tick_timer = 0.0;
+                                            self.net.client = None;
+                                            self.ui.app.phase = ClientPhase::Splash;
+                                            self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
+                                            self.ui.app.splash_state.frames_drawn = 0;
+                                            self.ui.app.splash_state.gpu_load_step = 0;
+                                            self.sim.my_player_id = Some(1);
+                                            self.sim.my_lobby_id = Some(0);
+
+                                            let map_name = config.map_name.clone();
+                                            self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
+
+                                            // TODO: dynamically parse width/height if we had map metadata
+                                            let mut config = *config;
+                                            if config.map_name == "world" {
                                                 config.map_width = 2000;
                                                 config.map_height = 1000;
                                             } else {
                                                 config.map_width = 800;
                                                 config.map_height = 400;
                                             }
-                                            config.bot_count = 20;
-                                            config.nation_count = 5;
 
                                             let start_msg = sow_core::protocol::ServerStartMessage {
                                                 config,

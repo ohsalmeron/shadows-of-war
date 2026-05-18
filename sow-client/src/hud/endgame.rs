@@ -48,7 +48,7 @@ impl SowApp {
                 .order(egui::Order::Background)
                 .fixed_pos(egui::Pos2::ZERO)
                 .show(ctx, |ui| {
-                    let rect = ctx.screen_rect();
+                    let rect = ctx.content_rect();
                     ui.painter()
                         .rect_filled(rect, 0.0, Color32::from_black_alpha(150));
                 });

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Shadows of War - Cloud Deployment
+# Shadows of War - PTR (Darkrift.ai) Deployment
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
-VPS_IP="35.239.160.167"
+VPS_IP="darkrift.ai"
 VPS_USER="bizkit"
-WEB_DEST_DIR="/var/www/shadowsofwar.io/html"
+WEB_DEST_DIR="/var/www/darkrift.ai/html"
 BACKEND_DEST_DIR="/home/bizkit/shadowsofwar"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
 WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
 echo "========================================================="
-echo "🚀 Starting Production Deployment (Shadows of War -> VPS)"
+echo "🚀 Starting PTR Deployment (Shadows of War -> darkrift.ai)"
 echo "========================================================="
 
 # 1. Bump Version
@@ -60,7 +60,6 @@ LAST_HASH_FILE="${ROOT}/.wasm_hash"
 
 if [[ -f "${LAST_HASH_FILE}" ]] && [[ "$(cat "${LAST_HASH_FILE}")" == "${WASM_HASH}" ]]; then
     echo "⚡ WASM hasn't changed. Skipping wasm-bindgen and brotli compression!"
-    # Update assets just in case they changed
     rsync -a assets/ dist/assets/
     cp web/sow.svg dist/sow.svg
 else
@@ -148,10 +147,32 @@ wait $RSYNC_ASSETS_PID || { echo "❌ Error subiendo Assets del servidor"; exit 
 echo "✅ VPS sync complete."
 
 # 5. Restart Services
-echo "==> Ensuring Redis is running and restarting Orchestrator..."
-ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq redis-server; sudo systemctl enable --now sow-redis; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+echo "==> Setting up systemd for sow-server on PTR if not exists..."
+ssh ${VPS_USER}@${VPS_IP} "cat << 'SYSTEMD' | sudo tee /etc/systemd/system/sow-server.service > /dev/null
+[Unit]
+Description=Shadows of War Server
+After=network.target
+
+[Service]
+KillMode=process
+Type=simple
+User=bizkit
+WorkingDirectory=/home/bizkit/shadowsofwar
+ExecStart=/home/bizkit/shadowsofwar/sow-server
+Restart=always
+RestartSec=3
+Environment=\"RUST_LOG=info\"
+Environment=\"SOW_WS_LISTEN=0.0.0.0:25565\"
+Environment=\"SOW_MAPS_HTTP_LISTEN=0.0.0.0:25566\"
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD"
+
+echo "==> Disabling old darkrift-server and enabling new sow-server..."
+ssh -t ${VPS_USER}@${VPS_IP} "sudo systemctl stop darkrift-server.service || true; sudo systemctl disable darkrift-server.service || true; which redis-server >/dev/null 2>&1 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq redis-server; sudo systemctl daemon-reload; sudo systemctl enable --now sow-server.service; sudo systemctl restart sow-server.service" || { echo "❌ Error reiniciando el servicio"; exit 1; }
 
 echo "========================================================="
-echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"
-echo "🕹️  Play live: https://shadowsofwar.io"
+echo "🎉 PTR Deployment Completed Successfully (v${CLEAN_VERSION})!"
+echo "🕹️  Play live: https://darkrift.ai"
 echo "========================================================="

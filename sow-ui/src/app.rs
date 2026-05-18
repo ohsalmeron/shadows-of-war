@@ -1,4 +1,4 @@
-use egui::Context;
+
 use crate::{UiAction, ui::{main_menu, hud, loading_screen, asset_loader}};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,22 +52,23 @@ impl ClientApp {
         }
     }
 
-    pub fn draw(&mut self, ctx: &Context, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) -> Option<UiAction> {
+    pub fn draw(&mut self, ui: &mut egui::Ui, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) -> Option<UiAction> {
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
-                main_menu::draw(ctx, &mut self.main_menu_state, &self.asset_loader)
+                self.asset_loader.ensure_avatars_loaded(ui.ctx());
+                main_menu::draw(ui, &mut self.main_menu_state, &self.asset_loader)
             }
             ClientPhase::Splash => {
-                loading_screen::draw(ctx, &mut self.splash_state);
+                loading_screen::draw(ui, &mut self.splash_state);
                 None
             }
             ClientPhase::Playing => {
-                hud::draw(ctx, &mut self.hud_state, cancel_intents)
+                hud::draw(ui, &mut self.hud_state, cancel_intents)
             }
         };
 
         if self.is_settings_open {
-            let settings_action = crate::ui::settings::draw(ctx, &mut self.settings_state);
+            let settings_action = crate::ui::settings::draw(ui, &mut self.settings_state);
             if let Some(UiAction::ToggleSettings) = settings_action {
                 self.is_settings_open = false;
             }

@@ -9,7 +9,7 @@ members = [
     "sow-tools",
     "sow-relay",
 ]
-exclude = ["blade", "winit"]
+exclude = ["blade", "winit", "egui"]
 resolver = "2"
 
 [workspace.package]
@@ -77,3 +77,6 @@ strip = true
 [profile.wasm-release]
 inherits = "deploy"
 panic = "abort"
+
+[patch.crates-io]
+egui = { path = "egui/crates/egui" }

@@ -1,6 +1,5 @@
 use crate::config::ClientVisualConfig;
 use crate::hud::nameplate::*;
-use crate::NAMEPLATE_REFERENCE_ZOOM;
 
 use crate::app::SowApp;
 
@@ -19,7 +18,6 @@ impl SowApp {
             player: &'a sow_core::protocol::PlayerSnapshot,
             center: egui::Pos2,
             pc: egui::Color32,
-            sizing_presence: f32,
             lod_presence: f32,
         }
         let mut visible_players = Vec::new();
@@ -89,13 +87,11 @@ impl SowApp {
                 let importance = (normalized_tiles * 0.35).max(0.15);
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
-                let sizing_presence = importance * (NAMEPLATE_REFERENCE_ZOOM / sf);
 
                 visible_players.push(VisPlayer {
                     player,
                     center,
                     pc,
-                    sizing_presence,
                     lod_presence,
                 });
             }
@@ -125,7 +121,6 @@ impl SowApp {
             let player = vp.player;
             let center = vp.center;
             let pc = vp.pc;
-            let sizing_presence = vp.sizing_presence;
             let lod_presence = vp.lod_presence;
 
             // Small nations require zooming in to appear.
@@ -140,35 +135,15 @@ impl SowApp {
                 full_labels_drawn += 1;
                 let ui_text_scale = ClientVisualConfig::default().ui_text_scale;
 
-                // 1. Bounding box for font fitting (uses reference zoom so text doesn't dynamically scale with zoom and bloat font atlas)
-                let empire_width_px = sizing_presence * 1.0; // Hexagons spread out
-                let empire_height_px = sizing_presence * 1.0;
-
-                // 2. Constrain font size so the text fits INSIDE those pixels
-                let name_len = player.name.len().max(1) as f32;
-                let max_by_width = empire_width_px / (name_len * 0.25); // Avg char width is ~60% of height
-                let max_by_height = empire_height_px / 2.0; // Need space for 2 lines of text (name + troops)
-
-                // 3. Raw font size that inscribes the territory at reference zoom
-                let raw_font_size = max_by_width.min(max_by_height);
-
-                // 4. Integer pt sizes → stable galley cache, stable atlas entries
-                let target_font_size = raw_font_size * ui_text_scale;
-
-                // --- Dynamic minimum font sizes based on player type ---
-                let min_font_size = if Some(player.id) == self.sim.my_player_id {
-                    14 // My own player (stays most visible)
+                let base_font_size = if Some(player.id) == self.sim.my_player_id {
+                    12.0 // My own player (stays most visible)
                 } else if player.id < 200 {
-                    12 // AI Nations (medium visibility)
+                    11.0 // AI Nations (medium visibility)
                 } else {
-                    10 // Tribes (fades into the background when zooming out)
+                    9.0 // Tribes (fades into the background when zooming out)
                 };
-                // -----------------------------------------------------------------------------------
-
-                // Quantize to 2pt steps so float jitter does not rebuild galleys every frame.
-                let font_size = (((target_font_size.round() as i32).clamp(min_font_size, 100) + 1)
-                    / 2
-                    * 2) as f32;
+                
+                let font_size = base_font_size * ui_text_scale;
 
                 let is_human = player.player_type == sow_core::player::PlayerType::Human;
                 let troops_for_label = self.ui.troop_label_throttle.displayed_troops(

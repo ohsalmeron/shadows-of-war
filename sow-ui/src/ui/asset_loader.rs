@@ -12,6 +12,9 @@ pub struct AssetLoader {
     pub thumbnails_in_flight: HashSet<String>,
     /// Expected MD5 hashes for maps
     pub expected_md5s: HashMap<String, String>,
+    /// Pre-loaded avatar textures
+    pub avatars: Vec<TextureHandle>,
+    pub avatar_fallback: Option<TextureHandle>,
 }
 
 impl Default for AssetLoader {
@@ -28,6 +31,8 @@ impl AssetLoader {
             thumbnails: HashMap::new(),
             thumbnails_in_flight: HashSet::new(),
             expected_md5s: HashMap::new(),
+            avatars: Vec::new(),
+            avatar_fallback: None,
         }
     }
 
@@ -98,5 +103,30 @@ impl AssetLoader {
     pub fn flush_except(&mut self, keep: &[String]) {
         let keep_set: HashSet<&String> = keep.iter().collect();
         self.maps.retain(|k, _| keep_set.contains(k));
+    }
+
+    pub fn ensure_avatars_loaded(&mut self, ctx: &egui::Context) {
+        if !self.avatars.is_empty() {
+            return;
+        }
+
+        let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
+            let image = image::load_from_memory(bytes).expect("Failed to load avatar").to_rgba8();
+            let size = [image.width() as _, image.height() as _];
+            let pixels = image.as_flat_samples();
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
+        };
+
+        self.avatars.push(load_image("avatar_0", include_bytes!("../../assets/avatars/0.webp")));
+        self.avatars.push(load_image("avatar_1", include_bytes!("../../assets/avatars/1.webp")));
+        self.avatars.push(load_image("avatar_2", include_bytes!("../../assets/avatars/2.webp")));
+        self.avatars.push(load_image("avatar_3", include_bytes!("../../assets/avatars/3.webp")));
+        self.avatars.push(load_image("avatar_4", include_bytes!("../../assets/avatars/4.webp")));
+        self.avatars.push(load_image("avatar_5", include_bytes!("../../assets/avatars/5.webp")));
+        self.avatars.push(load_image("avatar_6", include_bytes!("../../assets/avatars/6.webp")));
+        self.avatars.push(load_image("avatar_7", include_bytes!("../../assets/avatars/7.webp")));
+
+        self.avatar_fallback = Some(load_image("avatar_null", include_bytes!("../../assets/avatars/null.webp")));
     }
 }

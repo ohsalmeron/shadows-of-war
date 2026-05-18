@@ -2,6 +2,7 @@ pub mod app;
 pub mod ui;
 pub mod ui_font;
 pub mod utils;
+pub mod widgets;
 
 pub use app::ClientApp;
 
@@ -10,7 +11,7 @@ pub enum UiAction {
     ConnectToServer(String),
     JoinLobby(u64),
     LeaveLobby,
-    StartSinglePlayer,
+    StartSinglePlayer(Box<sow_core::game_config::GameConfig>),
     StartTutorial,
     SetAttackRatio(f32),
     CenterCamera,

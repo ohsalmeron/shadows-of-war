@@ -101,7 +101,7 @@ impl SowApp {
                                 let is_playing = matches!(snap.phase, sow_core::game::GamePhase::Playing);
                                 if player.tile_count > 0 && player.alive && is_playing {
                                     // If user is panning/zooming during the animation, abort the animation
-                                    if self.input.dragging || self.input.last_pinch_distance.is_some() || !self.input.active_touches.is_empty() {
+                                    if self.input.dragging || self.input.last_pinch_state.is_some() || !self.input.active_touches.is_empty() {
                                         self.input.has_snapped_camera_to_spawn = true;
                                     } else {
                                         let target_world_cx = player.centroid_x + 0.5;

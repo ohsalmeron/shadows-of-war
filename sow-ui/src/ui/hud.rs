@@ -37,25 +37,30 @@ impl HudState {
     }
 }
 
-pub fn draw(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) -> Option<UiAction> {
+pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) -> Option<UiAction> {
     let mut action = None;
     state.refresh_troop_display_if_due();
-    let compact = ctx.content_rect().width() < 768.0;
+    let compact = ui.ctx().content_rect().width() < 768.0;
 
-    let panel_w = if compact { ctx.content_rect().width() } else { 500.0 };
+    let panel_w = if compact { ui.ctx().content_rect().width() } else { 500.0 };
 
-    egui::Area::new(egui::Id::new("hud_bottom_panel"))
-        .anchor(Align2::CENTER_BOTTOM, if compact { vec2(0.0, 0.0) } else { vec2(0.0, -8.0) })
-        .show(ctx, |ui| {
-            ui.set_width(panel_w);
-            
-            ui.vertical(|ui| {
+    egui::Panel::bottom("hud_bottom_panel")
+        .frame(egui::Frame::NONE.inner_margin(if compact { egui::Margin::ZERO } else { egui::Margin::symmetric(0, 8) }))
+        .show_separator_line(false)
+        .show_inside(ui, |ui| {
+            // Center the content horizontally and register the space properly
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(panel_w);
+                
                 ui.spacing_mut().item_spacing.y = 4.0;
-                
-                // 1. Attacks Display (top in vertical stack)
+            
+            // 1. Attacks Display (top in vertical stack)
+            ui.push_id("attacks_display", |ui| {
                 draw_attacks_display(ui, state, panel_w, compact, cancel_intents, &mut action);
-                
-                // 2. Control Panel (bottom in vertical stack)
+            });
+
+            // 2. Control Panel (bottom in vertical stack)
+            ui.push_id("control_panel_frame", |ui| {
                 let panel_bg = crate::ui::theme::panel_bg_transparent();
                 let frame = egui::Frame::NONE
                     .fill(panel_bg)
@@ -75,13 +80,14 @@ pub fn draw(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_co
                     }
                 });
             });
+            });
         });
 
     // ── Top-right HUD buttons (Keep original logic) ───────────────────────────
     egui::Area::new(egui::Id::new("hud_exit_button"))
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0))
         .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
+        .show(ui.ctx(), |ui| {
             egui::Frame::NONE
                 .fill(Color32::from_black_alpha(150))
                 .corner_radius(8)
@@ -102,9 +108,23 @@ pub fn draw(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_co
                 });
         });
 
-    draw_sync_overlay(ctx, state);
+    draw_sync_overlay(ui.ctx(), state);
 
     action
+}
+
+fn get_player_display_name(players: &[PlayerSnapshot], id: u16, default: &str) -> String {
+    players.iter().find(|p| p.id == id).map(|p| {
+        if p.name.is_empty() {
+            if p.id >= 200 {
+                format!("Tribe {}", p.id - 199)
+            } else {
+                format!("Nation {}", p.id - 103)
+            }
+        } else {
+            p.name.clone()
+        }
+    }).unwrap_or_else(|| default.to_string())
 }
 
 fn draw_attacks_display(
@@ -129,12 +149,11 @@ fn draw_attacks_display(
     let mut items = Vec::new();
 
     for attack in state.attacks.iter().filter(|a| a.target_owner == my_pid) {
-        let attacker = state.players.iter().find(|p| p.id == attack.owner_id);
-        let attacker_name = attacker.map(|p| p.name.as_str()).unwrap_or("Unknown").to_string();
+        let attacker_name = get_player_display_name(&state.players, attack.owner_id, "Unknown");
         items.push(AttackDisplayItem::Incoming { troops: attack.troops, attacker_name, retreating: attack.retreating });
     }
     for attack in state.attacks.iter().filter(|a| a.owner_id == my_pid) {
-        let target_name = state.players.iter().find(|p| p.id == attack.target_owner).map(|p| p.name.as_str()).unwrap_or("Wilderness").to_string();
+        let target_name = get_player_display_name(&state.players, attack.target_owner, "Wilderness");
         items.push(AttackDisplayItem::Outgoing { troops: attack.troops, target_name, retreating: attack.retreating, attack_id: attack.id });
     }
     for fleet in state.fleets.iter().filter(|f| f.owner_id == my_pid) {
@@ -145,8 +164,8 @@ fn draw_attacks_display(
         return;
     }
 
-    // A 2-column grid format with max 4 items visible without scrolling (~2 rows)
-    egui::ScrollArea::vertical().max_height(60.0).show(ui, |ui| {
+    // A 2-column grid format with max 8 items visible without scrolling (~4 rows)
+    egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
         ui.set_width(width);
         
         let cols = 2;
@@ -172,8 +191,8 @@ fn draw_attacks_display(
                                             let retaliate = egui::Button::new(RichText::new("⚔").size(12.0))
                                                 .fill(crate::ui::theme::accent_danger())
                                                 .stroke(Stroke::new(1.0_f32, crate::ui::theme::accent_danger_border()))
-                                                .min_size(vec2(20.0, 20.0));
-                                            let _ = ui.add(retaliate).on_hover_text("Retaliate");
+                                                .corner_radius(6);
+                                            let _ = ui.add_sized(vec2(24.0, 24.0), retaliate).on_hover_text("Retaliate");
                                         }
                                     }
                                     AttackDisplayItem::Outgoing { retreating, attack_id, .. } => {
@@ -181,8 +200,8 @@ fn draw_attacks_display(
                                             ui.label(RichText::new("(retreating...)").size(10.0).color(crate::ui::theme::accent_solo_cyan()));
                                         } else {
                                             let cancel_btn = egui::Button::new(RichText::new("❌").size(10.0))
-                                                .min_size(vec2(20.0, 20.0));
-                                            if ui.add(cancel_btn).clicked() {
+                                                .corner_radius(6);
+                                            if ui.add_sized(vec2(24.0, 24.0), cancel_btn).clicked() {
                                                 cancel_intents.push(sow_core::protocol::GameplayIntent::CancelAttack { attack_id: *attack_id });
                                             }
                                         }
@@ -192,8 +211,8 @@ fn draw_attacks_display(
                                             ui.label(RichText::new("(retreating...)").size(10.0).color(crate::ui::theme::accent_solo_cyan()));
                                         } else {
                                             let cancel_btn = egui::Button::new(RichText::new("❌").size(10.0))
-                                                .min_size(vec2(20.0, 20.0));
-                                            if ui.add(cancel_btn).clicked() {
+                                                .corner_radius(6);
+                                            if ui.add_sized(vec2(24.0, 24.0), cancel_btn).clicked() {
                                                 cancel_intents.push(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id: *fleet_id });
                                             }
                                         }
@@ -226,9 +245,6 @@ fn draw_attacks_display(
 }
 
 fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action: &mut Option<UiAction>) {
-    let my_pid = state.my_player_id;
-    let attacking_troops: f64 = state.attacks.iter().filter(|a| a.owner_id == my_pid).map(|a| a.troops).sum::<f64>() 
-                              + state.fleets.iter().filter(|f| f.owner_id == my_pid).map(|f| f.troops).sum::<f64>();
 
     let troop_rate = (state.max_troops * 0.1).max(0.0); // Approximation
     let is_increasing = true; // Simplified
@@ -250,7 +266,7 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
             // Troop Bar (Takes ~40%)
             let bar_w = ui.available_width() * 0.5;
             let (rect, _resp) = ui.allocate_exact_size(vec2(bar_w, 24.0), egui::Sense::hover());
-            draw_troop_bar(ui, rect, state.troops_display, attacking_troops, state.max_troops_display, troop_rate, true, is_increasing);
+            draw_troop_bar(ui, rect, state.troops_display, state.max_troops_display, troop_rate, true, is_increasing);
 
             // Attack Ratio + Slider
             ui.vertical(|ui| {
@@ -286,7 +302,7 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
                 // Troop Bar (Flex-1)
                 let bar_w = ui.available_width() - 80.0; // Reserve space for gold
                 let (rect, _resp) = ui.allocate_exact_size(vec2(bar_w.max(100.0), 24.0), egui::Sense::hover());
-                draw_troop_bar(ui, rect, state.troops_display, attacking_troops, state.max_troops_display, troop_rate, false, is_increasing);
+                draw_troop_bar(ui, rect, state.troops_display, state.max_troops_display, troop_rate, false, is_increasing);
 
                 // Gold
                 egui::Frame::NONE
@@ -320,13 +336,20 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
     }
 }
 
-fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, attacking_troops: f64, max_troops: f64, troop_rate: f64, compact: bool, is_increasing: bool) {
+fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, max_troops: f64, troop_rate: f64, compact: bool, is_increasing: bool) {
     let base = max_troops.max(1.0);
-    let green_pct = (troops / base).clamp(0.0, 1.0);
-    let orange_pct = (attacking_troops / base).clamp(0.0, 1.0 - green_pct);
+    let green_pct = (troops / base).clamp(0.0, 1.0) as f32;
+    
+    // Animate the backfiller so it smoothly catches up to the current troop level
+    let catchup_pct = ui.ctx().animate_value_with_time(
+        ui.id().with("troop_bar_catchup"),
+        green_pct,
+        2.0, // Two seconds to drain
+    );
 
-    let green_pct_f32 = green_pct as f32;
-    let orange_pct_f32 = orange_pct as f32;
+    let green_pct_f32 = green_pct;
+    // The orange bar (dark green visually) is the gap between the actual troops and the animated catchup
+    let orange_pct_f32 = (catchup_pct - green_pct).max(0.0);
 
     let bg_color = crate::ui::theme::nickname_field_bg();
     let green_color = crate::ui::theme::accent_solo_cyan_hover();
@@ -344,14 +367,23 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, attacking_tr
     // Draw green fill
     if green_pct_f32 > 0.0 {
         let green_rect = egui::Rect::from_min_size(rect.min, vec2(rect.width() * green_pct_f32, rect.height()));
-        ui.painter().rect_filled(green_rect, 6, green_color);
+        let green_radius = if orange_pct_f32 > 0.0 {
+            egui::CornerRadius { nw: 6, ne: 0, sw: 6, se: 0 }
+        } else {
+            egui::CornerRadius::same(6)
+        };
+        ui.painter().rect_filled(green_rect, green_radius, green_color);
     }
     
-    // Draw orange fill
+    // Draw orange fill (backfiller)
     if orange_pct_f32 > 0.0 {
         let orange_start = rect.min.x + rect.width() * green_pct_f32;
         let orange_rect = egui::Rect::from_min_size(pos2(orange_start, rect.min.y), vec2(rect.width() * orange_pct_f32, rect.height()));
-        ui.painter().rect_filled(orange_rect, 6, orange_color);
+        ui.painter().rect_filled(
+            orange_rect, 
+            egui::CornerRadius { nw: 0, ne: 6, sw: 0, se: 6 }, 
+            orange_color
+        );
     }
 
     // Overlay text

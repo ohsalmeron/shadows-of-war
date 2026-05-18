@@ -1,4 +1,4 @@
-use egui::{Color32, Context, Frame, RichText};
+use egui::{Color32, Frame, RichText};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SplashJob {
@@ -31,12 +31,11 @@ impl Default for SplashState {
     }
 }
 
-pub fn draw(ctx: &Context, state: &mut SplashState) {
+pub fn draw(root_ui: &mut egui::Ui, state: &mut SplashState) {
     state.frames_drawn += 1;
-    #[allow(deprecated)]
     egui::CentralPanel::default()
         .frame(Frame::default().fill(crate::ui::theme::menu_backdrop()))
-        .show(ctx, |ui| {
+        .show_inside(root_ui, |ui| {
             if let Some(texture) = &state.thumbnail {
                 ui.painter().image(
                     texture.id(),
@@ -50,8 +49,8 @@ pub fn draw(ctx: &Context, state: &mut SplashState) {
             let bar_width = if is_mobile { screen_w * 0.8 } else { 400.0 };
 
             // Bottom UI (Loading Bar)
-            egui::TopBottomPanel::bottom("loading_bottom_panel")
-                .frame(Frame::none().inner_margin(egui::Margin::same(40)))
+            egui::Panel::bottom("loading_bottom_panel")
+                .frame(Frame::NONE.inner_margin(egui::Margin::same(40)))
                 .show_inside(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         if state.progress == 0.0 {

@@ -61,7 +61,7 @@ pub struct InputState {
     pub active_touches: std::collections::HashMap<u64, (f64, f64)>,
     pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
     pub map_context_menu: Option<(f32, f32, u32)>,
-    pub last_pinch_distance: Option<f64>,
+    pub last_pinch_state: Option<(f64, f64, f64)>,
     /// Hold-to-attack: (target_owner, press_start_time, screen_x, screen_y, has_fired_initial)
     pub hold_attack_target: Option<(u16, web_time::Instant, f64, f64, bool)>,
     pub hold_attack_accum: f32,
@@ -213,11 +213,19 @@ impl SowApp {
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(window) = web_sys::window() {
+                let mut found_in_js = false;
                 if let Ok(val) =
                     js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_WS_URL"))
                 {
                     if let Some(s) = val.as_string() {
                         ws_url = s;
+                        found_in_js = true;
+                    }
+                }
+                if !found_in_js {
+                    if let Ok(host) = window.location().host() {
+                        let protocol = if window.location().protocol().unwrap_or_default() == "https:" { "wss" } else { "ws" };
+                        ws_url = format!("{}://{}/ws/", protocol, host);
                     }
                 }
             }
@@ -248,7 +256,7 @@ impl SowApp {
         let active_touches: HashMap<u64, (f64, f64)> = HashMap::new();
         let map_touch_start: Option<(Instant, f64, f64)> = None;
         let map_context_menu: Option<(f32, f32, u32)> = None;
-        let last_pinch_distance: Option<f64> = None;
+        let last_pinch_state: Option<(f64, f64, f64)> = None;
 
         // Tracks last `Window::set_ime_allowed` value (mirrors egui-winit debounce).
         let ime_allowed_state = false;
@@ -336,7 +344,7 @@ impl SowApp {
                 active_touches,
                 map_touch_start,
                 map_context_menu,
-                last_pinch_distance,
+                last_pinch_state,
                 hold_attack_target: None,
                 hold_attack_accum: 0.0,
                 ime_allowed_state,

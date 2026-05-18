@@ -140,6 +140,7 @@ pub fn spawn_or_merge_attack_for_fleet_arrival_pure(
         insert_seq_counter: initial_seq,
         rng,
         retreating: false,
+        tick_overflow: 0.0,
     });
 }
 
@@ -290,6 +291,7 @@ impl SowEngine {
             insert_seq_counter: initial_seq,
             rng,
             retreating: false,
+            tick_overflow: 0.0,
         });
     }
 }

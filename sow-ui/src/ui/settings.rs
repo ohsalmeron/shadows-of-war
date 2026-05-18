@@ -40,18 +40,18 @@ impl Default for SettingsState {
     }
 }
 
-pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> {
+pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiAction> {
     let mut action = None;
-    let compact = ctx.content_rect().width() < 900.0;
+    let compact = root_ui.ctx().content_rect().width() < 900.0;
     let panel_w = if compact {
-        ctx.content_rect().width() - 64.0
+        root_ui.ctx().content_rect().width() - 64.0
     } else {
         520.0
     };
 
     // Dark scrim behind the modal
-    let screen_rect = ctx.content_rect();
-    ctx.layer_painter(egui::LayerId::new(
+    let screen_rect = root_ui.ctx().content_rect();
+    root_ui.ctx().layer_painter(egui::LayerId::new(
         egui::Order::Background,
         egui::Id::new("settings_scrim"),
     ))
@@ -76,7 +76,7 @@ pub fn draw(ctx: &egui::Context, state: &mut SettingsState) -> Option<UiAction> 
                     color: Color32::from_black_alpha(160),
                 }),
         )
-        .show(ctx, |ui| {
+        .show(root_ui.ctx(), |ui| {
             // Header
             ui.horizontal(|ui| {
                 ui.label(

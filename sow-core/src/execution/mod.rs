@@ -62,6 +62,8 @@ pub struct AttackExecution {
     pub rng: WyRand,
     /// Player cancelled via HUD; next tick refunds remaining troops (with penalty vs players).
     pub retreating: bool,
+    /// Accumulates leftover movement budget across ticks for sub-tick accuracy.
+    pub tick_overflow: f64,
 }
 
 impl AttackExecution {
