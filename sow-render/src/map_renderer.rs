@@ -37,6 +37,8 @@ pub struct MapRenderer {
     pub terrain: Vec<u8>,
     pub owners: Vec<u16>,
     pub bytes_per_row: u32,
+    pub chunk_h: u32,
+    pub dirty_chunks: Vec<bool>,
 }
 
 impl MapRenderer {
@@ -125,6 +127,9 @@ impl MapRenderer {
         }
         context.sync_buffer(raw_buffer);
 
+        let chunk_h = 64;
+        let num_chunks = (height + chunk_h - 1) / chunk_h;
+
         Self {
             texture,
             texture_view,
@@ -135,6 +140,8 @@ impl MapRenderer {
             terrain: initial_terrain.to_vec(),
             owners: vec![0; (width * height) as usize],
             bytes_per_row,
+            chunk_h,
+            dirty_chunks: vec![false; num_chunks as usize],
         }
     }
 
@@ -152,13 +159,11 @@ impl MapRenderer {
         if dirty_tiles.is_empty() {
             return;
         }
-        let mut min_x = self.width;
-        let mut min_y = self.height;
-        let mut max_x = 0;
-        let mut max_y = 0;
 
         let dst_ptr = self.raw_buffer.data();
         let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
+
+        self.dirty_chunks.fill(false);
 
         // Update dirty tiles and their neighbors to compute border bits.
         for dt in dirty_tiles {
@@ -172,21 +177,31 @@ impl MapRenderer {
             let center_y = dt.index / self.width;
 
             // We need to update the tile itself and its 4 neighbors
-            let mut tiles_to_update = vec![(center_x, center_y)];
+            let mut tiles_to_update = [(0, 0); 5];
+            let mut num_tiles = 0;
+            
+            tiles_to_update[num_tiles] = (center_x, center_y);
+            num_tiles += 1;
+            
             if center_x > 0 {
-                tiles_to_update.push((center_x - 1, center_y));
+                tiles_to_update[num_tiles] = (center_x - 1, center_y);
+                num_tiles += 1;
             }
             if center_x < self.width - 1 {
-                tiles_to_update.push((center_x + 1, center_y));
+                tiles_to_update[num_tiles] = (center_x + 1, center_y);
+                num_tiles += 1;
             }
             if center_y > 0 {
-                tiles_to_update.push((center_x, center_y - 1));
+                tiles_to_update[num_tiles] = (center_x, center_y - 1);
+                num_tiles += 1;
             }
             if center_y < self.height - 1 {
-                tiles_to_update.push((center_x, center_y + 1));
+                tiles_to_update[num_tiles] = (center_x, center_y + 1);
+                num_tiles += 1;
             }
 
-            for (x, y) in tiles_to_update {
+            for i in 0..num_tiles {
+                let (x, y) = tiles_to_update[i];
                 let idx = (y * self.width + x) as usize;
                 let owner_id = self.owners[idx] as u32;
                 let terrain_byte = self.terrain[idx] as u32;
@@ -284,23 +299,19 @@ impl MapRenderer {
                 let dst_i = (y * u32_per_row + x) as usize;
                 slice[dst_i] = val;
 
-                if x < min_x {
-                    min_x = x;
-                }
-                if y < min_y {
-                    min_y = y;
-                }
-                if x > max_x {
-                    max_x = x;
-                }
-                if y > max_y {
-                    max_y = y;
-                }
+                self.dirty_chunks[(y / self.chunk_h) as usize] = true;
             }
         }
 
-        if min_x <= max_x && min_y <= max_y {
-            // To satisfy Vulkan/WebGPU strict alignment rules, buffer offsets for texture copies
+        let num_chunks = self.dirty_chunks.len();
+        let mut start_chunk = None;
+
+        let mut upload_range = |start: usize, end: usize| {
+            let min_y = (start as u32) * self.chunk_h;
+            let mut max_y = ((end as u32) + 1) * self.chunk_h - 1;
+            if max_y >= self.height {
+                max_y = self.height - 1;
+            }
             // must often be multiples of 256. Our `bytes_per_row` is aligned to 256.
             // By expanding the dirty rect to full rows (`min_x = 0`), `offset_bytes` is guaranteed
             // to be `min_y * bytes_per_row`, which is a perfect multiple of 256.
@@ -329,6 +340,20 @@ impl MapRenderer {
                     depth: 1,
                 },
             );
+        };
+
+        for i in 0..num_chunks {
+            if self.dirty_chunks[i] {
+                if start_chunk.is_none() {
+                    start_chunk = Some(i);
+                }
+            } else if let Some(start) = start_chunk {
+                upload_range(start, i - 1);
+                start_chunk = None;
+            }
+        }
+        if let Some(start) = start_chunk {
+            upload_range(start, num_chunks - 1);
         }
     }
 

@@ -132,23 +132,26 @@ impl SowApp {
                                 egui::Vec2::new(self.input.screen_w / sf, self.input.screen_h / sf)
                             ));
 
-                            if cfg!(target_os = "android") {
-                                if self.ui.app.phase == sow_ui::app::ClientPhase::MainMenu {
-                                    let config = crate::config::ClientVisualConfig::default();
-                                    self.ui.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
-                                        top: config.safe_area_top as i8,
-                                        bottom: config.safe_area_bottom as i8,
-                                        left: 0,
-                                        right: 0,
-                                    }.into()));
-                                } else {
-                                    self.ui.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
-                                        top: 0,
-                                        bottom: 0,
-                                        left: 0,
-                                        right: 0,
-                                    }.into()));
+                            let mut safe_area_top = 0.0;
+                            let mut safe_area_bottom = 0.0;
+                            let mut safe_area_left = 0.0;
+                            let mut safe_area_right = 0.0;
+
+                            if cfg!(target_os = "android") || cfg!(target_os = "ios") {
+                                if let Some(win) = self.gfx.window.as_ref() {
+                                    let insets = win.safe_area();
+                                    safe_area_top = (insets.top as f32 / sf).round();
+                                    safe_area_bottom = (insets.bottom as f32 / sf).round();
+                                    safe_area_left = (insets.left as f32 / sf).round();
+                                    safe_area_right = (insets.right as f32 / sf).round();
                                 }
+                                
+                                self.ui.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(egui::Margin {
+                                    top: safe_area_top.min(127.0) as i8,
+                                    bottom: safe_area_bottom.min(127.0) as i8,
+                                    left: safe_area_left.min(127.0) as i8,
+                                    right: safe_area_right.min(127.0) as i8,
+                                }.into()));
                             }
 
                             
@@ -187,7 +190,7 @@ impl SowApp {
 
                             let egui_ctx = self.ui.egui_ctx.clone();
                             let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {
-                                if cfg!(target_os = "android")
+                                if (cfg!(target_os = "android") || cfg!(target_os = "ios"))
                                     && self.ui.app.phase == sow_ui::app::ClientPhase::MainMenu {
                                         let config = crate::config::ClientVisualConfig::default();
                                         let screen_rect = ctx.content_rect();
@@ -195,14 +198,14 @@ impl SowApp {
                                         
                                         let top_c = config.top_bar_color;
                                         painter.rect_filled(
-                                            egui::Rect::from_min_max(screen_rect.min, egui::pos2(screen_rect.max.x, screen_rect.min.y + config.safe_area_top)),
+                                            egui::Rect::from_min_max(screen_rect.min, egui::pos2(screen_rect.max.x, screen_rect.min.y + safe_area_top)),
                                             0.0,
                                             egui::Color32::from_rgba_premultiplied(top_c[0], top_c[1], top_c[2], top_c[3]),
                                         );
                                         
                                         let bot_c = config.bottom_bar_color;
                                         painter.rect_filled(
-                                            egui::Rect::from_min_max(egui::pos2(screen_rect.min.x, screen_rect.max.y - config.safe_area_bottom), screen_rect.max),
+                                            egui::Rect::from_min_max(egui::pos2(screen_rect.min.x, screen_rect.max.y - safe_area_bottom), screen_rect.max),
                                             0.0,
                                             egui::Color32::from_rgba_premultiplied(bot_c[0], bot_c[1], bot_c[2], bot_c[3]),
                                         );

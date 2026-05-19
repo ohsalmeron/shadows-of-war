@@ -50,6 +50,14 @@ Open [`ios/sow_ios.xcodeproj`](ios/sow_ios.xcodeproj), set your **Team** on the 
 
 ## 🧠 Technical Highlights & Recent Design Choices
 
+### Manifest-Driven Spawning & Historical AI Names
+* **The Problem**: In previous engine iterations, when maps defined a specific set of historically accurate nations in `manifest.json` (e.g., 52 nations for Europe), any bots spawned beyond this count (e.g. up to 120 Nations and 650 Tribes) were assigned generic procedural names like `Nation 73` and `Tribe 17`. Furthermore, a legacy engine optimization in `build_snapshot` explicitly stripped string names for bots to reduce serialization payloads, forcing the UI to permanently fall back to these generic names.
+* **The Fix**: 
+    1. Removed the aggressive string-stripping in `build_snapshot` as modern hardware handles 700+ short string clones instantaneously.
+    2. Implemented a deterministic `FALLBACK_TRIBES` pool inside `sow-core/src/tribes.rs` containing over 670 real-world historical tribes and nations (e.g., Picts, Xhosa, Comanches, Purépecha). 
+    3. Fixed bot ID assignment overlapping by calculating the starting index of Tribes dynamically from the `nation_count` rather than a hardcoded `200`.
+    4. The `spawn_ai` orchestrator now pulls uniquely from a randomly shuffled, deterministic array of these fallback names once the `manifest.json` coordinate-locked names are exhausted. This completely eliminates generic procedural bot names from the game and maintains flawless lockstep consistency across all multiplayer clients.
+
 ### Binary Synchronization (Bincode vs JSON)
 To support massive scale RTS combat, `sow-core` uses a strict lockstep model. All clients and the server share the exact identical `GameConfig` (such as `bot_count = 1000`). Only player *inputs* are sent over the network.
 * **Design Choice**: The network layer was migrated from JSON to strict binary serialization using `bincode` over persistent WebSockets.
