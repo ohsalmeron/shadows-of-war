@@ -197,7 +197,7 @@ impl SowEngine {
             self.state.phase = crate::game::GamePhase::GameOver;
         }
     }
-    pub fn spawn_ai(&mut self, nation_count: u32, tribe_count: u32) {
+    pub fn spawn_ai(&mut self, nation_count: u32, tribe_count: u32, manifest_nations: Option<Vec<crate::map_legacy::Nation>>) {
         let mut spawned_nations = 0;
         let mut spawned_tribes = 0;
         use crate::player::Player;
@@ -205,11 +205,52 @@ impl SowEngine {
 
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
+        
+        let mut n_queue = manifest_nations.unwrap_or_default();
+        log::info!("spawn_ai: n_queue len is {}", n_queue.len());
+        let mut n_iter = n_queue.into_iter();
+
+        let fallback_pool = crate::tribes::FALLBACK_TRIBES;
+        let mut fallback_indices: Vec<usize> = (0..fallback_pool.len()).collect();
 
         // Spawn Nations (IDs 104 to 199)
         for i in 0..nation_count {
             let bot_id = 104 + i as u16;
-            if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+            
+            let manifest_nation = n_iter.next();
+            let mut spawn_point = None;
+            
+            let mut name = if fallback_indices.is_empty() {
+                fallback_indices = (0..fallback_pool.len()).collect();
+                let idx = (rng.rand() as usize) % fallback_indices.len();
+                let pool_idx = fallback_indices.swap_remove(idx);
+                fallback_pool[pool_idx].to_string()
+            } else {
+                let idx = (rng.rand() as usize) % fallback_indices.len();
+                let pool_idx = fallback_indices.swap_remove(idx);
+                fallback_pool[pool_idx].to_string()
+            };
+
+            if let Some(n) = &manifest_nation {
+                let nx = n.coordinates[0];
+                let ny = n.coordinates[1];
+                if self.state.map.is_valid_coord(nx as i32, ny as i32) && 
+                   self.state.map.owner_id(nx, ny) == 0 && 
+                   self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
+                    spawn_point = Some((nx, ny));
+                }
+                name = n.name.clone();
+            }
+
+            if i < 5 {
+                log::info!("spawn_ai Nation[{}]: name='{}' manifest={}", i, name, manifest_nation.is_some());
+            }
+
+            if spawn_point.is_none() {
+                spawn_point = self.find_valid_spawn(&mut rng);
+            }
+
+            if let Some((sx, sy)) = spawn_point {
                 let (team, color) = if config.game_mode == "Teams" {
                     if i % 2 == 0 {
                         (Some(crate::protocol::Team::Red), [1.0, 0.2, 0.2])
@@ -221,17 +262,48 @@ impl SowEngine {
                 };
 
                 let mut player =
-                    Player::new_bot(bot_id, format!("Nation {}", i + 1), color, &config);
+                    Player::new_bot(bot_id, name, color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_nations += 1;
             }
         }
 
-        // Spawn Tribes (IDs 200+)
+        // Spawn Tribes (IDs above nations)
+        let tribe_start_id = 104 + nation_count as u16;
         for i in 0..tribe_count {
-            let bot_id = 200 + i as u16;
-            if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+            let bot_id = tribe_start_id + i as u16;
+            
+            let manifest_nation = n_iter.next();
+            let mut spawn_point = None;
+            
+            let mut name = if fallback_indices.is_empty() {
+                fallback_indices = (0..fallback_pool.len()).collect();
+                let idx = (rng.rand() as usize) % fallback_indices.len();
+                let pool_idx = fallback_indices.swap_remove(idx);
+                fallback_pool[pool_idx].to_string()
+            } else {
+                let idx = (rng.rand() as usize) % fallback_indices.len();
+                let pool_idx = fallback_indices.swap_remove(idx);
+                fallback_pool[pool_idx].to_string()
+            };
+
+            if let Some(n) = &manifest_nation {
+                let nx = n.coordinates[0];
+                let ny = n.coordinates[1];
+                if self.state.map.is_valid_coord(nx as i32, ny as i32) && 
+                   self.state.map.owner_id(nx, ny) == 0 && 
+                   self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
+                    spawn_point = Some((nx, ny));
+                }
+                name = n.name.clone();
+            }
+
+            if spawn_point.is_none() {
+                spawn_point = self.find_valid_spawn(&mut rng);
+            }
+
+            if let Some((sx, sy)) = spawn_point {
                 let (team, color) = if config.game_mode == "Teams" {
                     if i % 2 == 0 {
                         (Some(crate::protocol::Team::Blue), [0.2, 0.5, 1.0]) // Opposite stagger
@@ -248,7 +320,7 @@ impl SowEngine {
                 };
 
                 let mut player =
-                    Player::new_bot(bot_id, format!("Tribe {}", i + 1), color, &config);
+                    Player::new_bot(bot_id, name, color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_tribes += 1;
@@ -349,12 +421,7 @@ impl SowEngine {
                     (0.0, 0.0)
                 };
 
-                // Optimization: avoid string cloning and bincode serialization for 600+ bots every tick
-                let name = if p.player_type == crate::player::PlayerType::Human {
-                    p.name.clone()
-                } else {
-                    String::new()
-                };
+                let name = p.name.clone();
 
                 crate::protocol::PlayerSnapshot {
                     id: p.id,

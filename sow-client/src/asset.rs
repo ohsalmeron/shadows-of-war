@@ -120,6 +120,11 @@ impl SowApp {
                         }
                     }
                 }
+                MapDownloadEvent::ManifestReady(map_name, manifest) => {
+                    if Some(map_name) == self.ui.app.main_menu_state.downloading_map_name {
+                        self.ui.app.main_menu_state.cached_manifest = Some(manifest);
+                    }
+                }
                 MapDownloadEvent::Error(e) => {
                     log::error!("Map download aborted: {}", e);
                     self.ui.app.main_menu_state.is_downloading_map = false;

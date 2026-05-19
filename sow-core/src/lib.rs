@@ -25,3 +25,4 @@ pub mod warp_fleet;
 pub mod map_legacy;
 pub mod protocol;
 pub mod water_components;
+pub mod tribes;

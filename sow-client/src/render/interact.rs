@@ -183,6 +183,7 @@ impl SowApp {
                                                 missed_turns: vec![],
                                                 map_data: None,
                                                 relay_port: None,
+                                                nations: None,
                                             };
                                             self.tasks.engine_init_queued_msg = Some(start_msg);
 
@@ -283,6 +284,7 @@ impl SowApp {
                                                 missed_turns: vec![],
                                                 map_data: None,
                                                 relay_port: None,
+                                                nations: None,
                                             };
                                             self.tasks.engine_init_queued_msg = Some(start_msg);
 
@@ -293,9 +295,25 @@ impl SowApp {
                                                 self.ui.app.main_menu_state.is_downloading_map = true;
                                                 self.ui.app.main_menu_state.cached_map = None;
                                                 let maps_base = crate::get_maps_url();
+                                                let map_name_clone = map_name.clone();
+                                                let tx_man = self.tasks.map_tx.clone();
+                                                
+                                                // 1. Fetch manifest.json
+                                                let manifest_url = format!("{}/{}/manifest.json", maps_base.trim_end_matches('/'), map_name);
+                                                let request_man = ehttp::Request::get(&manifest_url);
+                                                ehttp::fetch(request_man, move |result| {
+                                                    if let Ok(res) = result {
+                                                        if res.ok {
+                                                            if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(&res.bytes) {
+                                                                let _ = tx_man.send(crate::MapDownloadEvent::ManifestReady(map_name_clone, manifest));
+                                                            }
+                                                        }
+                                                    }
+                                                });
+
+                                                // 2. Fetch map.bin.br
                                                 let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
                                                 let tx = self.tasks.map_tx.clone();
-                                                
                                                 let request = ehttp::Request::get(&url);
                                                 let map_name_for_closure = map_name.clone();
                                                 let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));

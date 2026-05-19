@@ -17,7 +17,14 @@ impl SowApp {
                 self.ui.app.splash_state.progress = 0.1;
 
                 let cached_map = self.ui.app.main_menu_state.cached_map.take();
-                let start_msg_clone = start_msg.clone();
+                let cached_manifest = self.ui.app.main_menu_state.cached_manifest.take();
+                let mut start_msg_clone = start_msg.clone();
+                if let Some(man) = cached_manifest {
+                    start_msg_clone.nations = man.nations;
+                    start_msg_clone.config.map_width = man.map.width;
+                    start_msg_clone.config.map_height = man.map.height;
+                }
+                
                 let tx = self.tasks.engine_init_tx.clone();
 
                 let init_logic = move || {
@@ -150,6 +157,7 @@ impl SowApp {
                             seed: 0,
                             map_bytes: vec![0b10000000], // 1 land tile
                             players: vec![],
+                            nations: None,
                         });
                         self.sim.turn_queue.clear();
                         self.ui.label_positions.clear();
@@ -211,6 +219,7 @@ impl SowApp {
                         seed: start_msg.seed,
                         map_bytes: map_bytes.clone(),
                         players: start_msg.players.clone(),
+                        nations: start_msg.nations.clone(),
                     });
 
                     for turn in &start_msg.missed_turns {

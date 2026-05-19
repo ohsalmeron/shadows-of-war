@@ -536,6 +536,7 @@ impl SowApp {
                 seed,
                 map_bytes,
                 players,
+                nations,
             } => {
                 let map_w = config.map_width;
                 let map_h = config.map_height;
@@ -571,6 +572,7 @@ impl SowApp {
                 new_engine.spawn_ai(
                     new_engine.state.config.nation_count,
                     new_engine.state.config.bot_count,
+                    nations,
                 );
                 let snap = new_engine.build_snapshot();
                 self.sim.current_snapshot = Some(snap);

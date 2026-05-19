@@ -195,6 +195,7 @@ async fn main() {
                                 missed_turns: vec![],
                                 map_data: None,
                                 relay_port: Some(relay_port),
+                                nations: lobby.map_nations.clone(),
                             };
 
                             for p in &lobby.players {

@@ -37,6 +37,7 @@ pub struct ServerLobby {
     pub map_md5: Option<String>,
     pub game_mode: String,
     pub relay_port: Option<u16>,
+    pub map_nations: Option<Vec<sow_core::map_legacy::Nation>>,
 }
 
 impl ServerLobby {
@@ -55,6 +56,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
     config.map_name = maps[map_idx % maps.len()].to_string();
 
     let mut map_md5 = None;
+    let mut map_nations = None;
     let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
     let map_dir = std::path::Path::new(&root).join(&config.map_name);
     let manifest_path = map_dir.join("manifest.json");
@@ -62,6 +64,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
         if let Ok(manifest) = serde_json::from_str::<sow_core::map_legacy::MapManifest>(&m_data)
         {
             map_md5 = manifest.map_md5;
+            map_nations = manifest.nations;
         }
     }
 
@@ -79,6 +82,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
         map_md5,
         game_mode: game_mode.to_string(),
         relay_port: None,
+        map_nations,
     });
 }
 
@@ -231,6 +235,7 @@ fn start_match(lobby: &mut ServerLobby) {
         {
             lobby.config.map_width = manifest.map.width;
             lobby.config.map_height = manifest.map.height;
+            lobby.map_nations = manifest.nations;
         } else {
             log::error!("Failed to parse map manifest at {:?}", manifest_path);
         }

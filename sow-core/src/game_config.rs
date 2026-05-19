@@ -166,11 +166,11 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 1.0, // No global throttle
+            global_speed_multiplier: 0.25, // No global throttle
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 2.0,
-            attack_cost_neutral: 1.0,
+            attack_cost_enemy: 20.0,
+            attack_cost_neutral: 10.0,
             terrain_multiplier_highland: 1.25,
             terrain_multiplier_mountain: 1.5,
             bot_attack_interval_ticks: 32,

@@ -1,3 +1,4 @@
+mod names;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use rand::Rng;
@@ -102,7 +103,10 @@ async fn run_bot(
     active: bool,
     shared: SharedState,
 ) -> Result<(), String> {
-    let name = format!("StressBot_{}", bot_index);
+    let name = {
+        let mut rng = rand::thread_rng();
+        names::BOT_NAMES[rng.gen_range(0..names::BOT_NAMES.len())].to_string()
+    };
 
     let (ws, _) = tokio_tungstenite::connect_async(&url)
         .await
@@ -110,7 +114,7 @@ async fn run_bot(
     let (mut write, mut read) = ws.split();
 
     let join = ClientMessage::Join {
-        name,
+        name: name.clone(),
         is_observer: false,
         target_lobby_id,
         build_version: version,
@@ -131,10 +135,7 @@ async fn run_bot(
                 lobby_id = ack.lobby_id;
                 player_id = ack.player_id;
                 map_name = ack.map_name;
-                println!(
-                    "[Bot {}] Joined lobby {} as player {}",
-                    bot_index, lobby_id, player_id
-                );
+                println!("[Bot {}] '{}' joined lobby {} as player {}", bot_index, name, lobby_id, player_id);
                 break;
             }
             ServerMessage::JoinFailed(f) => return Err(format!("Join failed: {}", f.reason)),
@@ -158,7 +159,7 @@ async fn run_bot(
         } else {
             "http://127.0.0.1:8080"
         };
-        let map_url = format!("{}/assets/maps/{}/map.bin", base_url, map_name);
+        let map_url = format!("{}/assets/maps/{}/map.bin.br", base_url, map_name);
 
         let client = reqwest::Client::new();
         if let Ok(resp) = client.get(&map_url).send().await {

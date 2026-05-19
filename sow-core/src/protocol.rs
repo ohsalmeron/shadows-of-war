@@ -148,6 +148,7 @@ pub struct ServerStartMessage {
     pub missed_turns: Vec<Turn>,
     pub map_data: Option<Vec<u8>>, // currently unused (maps fetched via HTTP)
     pub relay_port: Option<u16>,
+    pub nations: Option<Vec<crate::map_legacy::Nation>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -211,6 +212,7 @@ pub enum SimCommand {
         seed: u64,
         map_bytes: Vec<u8>,
         players: Vec<PlayerInfo>,
+        nations: Option<Vec<crate::map_legacy::Nation>>,
     },
     /// Apply a server turn (network intents + tick).
     Turn(Turn),
