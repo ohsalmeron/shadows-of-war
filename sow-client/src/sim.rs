@@ -3,7 +3,6 @@ use web_time::Instant;
 
 impl SowApp {
     pub fn update_sim(&mut self, now: Instant) {
-                self.ui.app.hud_state.is_mobile = self.input.screen_w < 900.0;
                 if let Some(snap) = &self.sim.current_snapshot {
                     if let Some(target_secs) = snap.spawn_timer_secs {
                         if let Some(ref mut current) = self.ui.app.hud_state.spawn_timer_secs {

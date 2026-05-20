@@ -1,90 +1,56 @@
-use egui::{Color32, Context, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals};
+use egui::{
+    Color32, Context, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals,
+    style::{WidgetVisuals, Widgets, Selection},
+};
 
 /// Cosmic Rush palette
-#[inline]
-pub fn menu_backdrop() -> Color32 {
-    Color32::from_rgb(10, 10, 15) // var(--cosmic-bg-darkest)
+pub mod palette {
+    use egui::Color32;
+
+    #[inline] pub fn backdrop() -> Color32 { Color32::from_black_alpha(150) } // Glassmorphism backdrop
+    #[inline] pub fn surface() -> Color32 { Color32::from_rgba_unmultiplied(15, 25, 45, 210) } // Translucent glass base
+    #[inline] pub fn surface_transparent() -> Color32 { Color32::from_rgba_unmultiplied(15, 25, 45, 160) }
+    
+    #[inline] pub fn neon_cyan() -> Color32 { Color32::from_rgb(6, 182, 212) } // var(--cosmic-cyan)
+    #[inline] pub fn neon_cyan_hover() -> Color32 { Color32::from_rgb(34, 211, 238) } // Brighter cyan
+    #[inline] pub fn neon_cyan_glow() -> Color32 { Color32::from_rgba_unmultiplied(0, 150, 255, 160) } // Electric blue glow
+    
+    #[inline] pub fn neon_gold() -> Color32 { Color32::from_rgb(234, 179, 8) } // var(--cosmic-yellow)
+    #[inline] pub fn neon_gold_hover() -> Color32 { Color32::from_rgb(250, 204, 21) } // Brighter yellow
+
+    #[inline] pub fn button_inactive() -> Color32 { Color32::from_rgba_unmultiplied(25, 40, 65, 190) }
+    #[inline] pub fn button_hovered() -> Color32 { Color32::from_rgba_unmultiplied(45, 70, 110, 230) }
+    
+    #[inline] pub fn field_bg() -> Color32 { Color32::from_rgba_unmultiplied(10, 15, 25, 200) } // Deep inset glass
+    #[inline] pub fn field_border() -> Color32 { Color32::from_rgb(55, 65, 81) } // Border subtle gray
+
+    #[inline] pub fn danger() -> Color32 { Color32::from_rgb(239, 68, 68) } // var(--cosmic-red)
+    #[inline] pub fn danger_border() -> Color32 { Color32::from_rgb(220, 38, 38) }
+
+    #[inline] pub fn pink() -> Color32 { Color32::from_rgb(236, 72, 153) } // var(--cosmic-pink)
+    
+    #[inline] pub fn text_normal() -> Color32 { Color32::from_rgb(243, 244, 246) }
+    #[inline] pub fn text_muted() -> Color32 { Color32::from_rgb(156, 163, 175) } // var(--cosmic-gray)
 }
 
-#[inline]
-pub fn panel_bg() -> Color32 {
-    Color32::from_rgb(17, 24, 39) // var(--cosmic-bg-darker)
-}
-
-#[inline]
-pub fn panel_bg_transparent() -> Color32 {
-    Color32::from_rgba_unmultiplied(17, 24, 39, 200)
-}
-
-#[inline]
-pub fn menu_panel_border_glow() -> Color32 {
-    Color32::from_rgba_unmultiplied(6, 182, 212, 140) // Cyan glow
-}
-
-#[inline]
-pub fn accent_solo_cyan() -> Color32 {
-    Color32::from_rgb(6, 182, 212) // var(--cosmic-cyan)
-}
-
-#[inline]
-pub fn accent_solo_cyan_hover() -> Color32 {
-    Color32::from_rgb(34, 211, 238) // Brighter cyan
-}
-
-#[inline]
-pub fn accent_ranked_gold() -> Color32 {
-    Color32::from_rgb(234, 179, 8) // var(--cosmic-yellow)
-}
-
-#[inline]
-pub fn accent_ranked_gold_hover() -> Color32 {
-    Color32::from_rgb(250, 204, 21) // Brighter yellow
-}
-
-#[inline]
-pub fn menu_secondary_button() -> Color32 {
-    Color32::from_rgb(31, 41, 55) // var(--cosmic-bg-dark)
-}
-
-#[inline]
-pub fn menu_secondary_button_hover() -> Color32 {
-    Color32::from_rgb(55, 65, 81) // Lighter cosmic gray
-}
-
-#[inline]
-pub fn nickname_field_bg() -> Color32 {
-    Color32::from_rgb(17, 24, 39) // var(--cosmic-bg-darker)
-}
-
-#[inline]
-pub fn nickname_field_border() -> Color32 {
-    Color32::from_rgb(55, 65, 81) // Border subtle gray
-}
-
-#[inline]
-pub fn accent_danger() -> Color32 {
-    Color32::from_rgb(239, 68, 68) // var(--cosmic-red)
-}
-
-#[inline]
-pub fn accent_danger_border() -> Color32 {
-    Color32::from_rgb(220, 38, 38)
-}
-
-#[inline]
-pub fn avatar_pink() -> Color32 {
-    Color32::from_rgb(236, 72, 153) // var(--cosmic-pink)
-}
-
-#[inline]
-pub fn avatar_cyan() -> Color32 {
-    Color32::from_rgb(34, 211, 238)
-}
-
-#[inline]
-pub fn text_secondary() -> Color32 {
-    Color32::from_rgb(156, 163, 175) // var(--cosmic-gray)
-}
+// Backward-compatible inline functions
+#[inline] pub fn menu_backdrop() -> Color32 { palette::backdrop() }
+#[inline] pub fn panel_bg() -> Color32 { palette::surface() }
+#[inline] pub fn panel_bg_transparent() -> Color32 { palette::surface_transparent() }
+#[inline] pub fn menu_panel_border_glow() -> Color32 { palette::neon_cyan_glow() }
+#[inline] pub fn accent_solo_cyan() -> Color32 { palette::neon_cyan() }
+#[inline] pub fn accent_solo_cyan_hover() -> Color32 { palette::neon_cyan_hover() }
+#[inline] pub fn accent_ranked_gold() -> Color32 { palette::neon_gold() }
+#[inline] pub fn accent_ranked_gold_hover() -> Color32 { palette::neon_gold_hover() }
+#[inline] pub fn menu_secondary_button() -> Color32 { palette::button_inactive() }
+#[inline] pub fn menu_secondary_button_hover() -> Color32 { palette::button_hovered() }
+#[inline] pub fn nickname_field_bg() -> Color32 { palette::field_bg() }
+#[inline] pub fn nickname_field_border() -> Color32 { palette::field_border() }
+#[inline] pub fn accent_danger() -> Color32 { palette::danger() }
+#[inline] pub fn accent_danger_border() -> Color32 { palette::danger_border() }
+#[inline] pub fn avatar_pink() -> Color32 { palette::pink() }
+#[inline] pub fn avatar_cyan() -> Color32 { palette::neon_cyan_hover() }
+#[inline] pub fn text_secondary() -> Color32 { palette::text_muted() }
 
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -112,16 +78,16 @@ pub fn apply_theme(ctx: &Context) {
         ..Default::default()
     };
 
+    // Refined Spacing inspired by egui best practices
     style.spacing.item_spacing = egui::vec2(16.0, 16.0); // More roomy
-    style.spacing.button_padding = egui::vec2(20.0, 12.0);
-    style.spacing.window_margin = Margin::same(16);
-
-    ctx.set_global_style(style);
+    style.spacing.button_padding = egui::vec2(24.0, 12.0); // Large touch targets
+    style.spacing.window_margin = Margin::same(20);
+    style.spacing.menu_margin = Margin::same(12);
 
     let mut visuals = Visuals::dark();
-    visuals.window_fill = menu_backdrop();
-    visuals.panel_fill = panel_bg();
-    visuals.faint_bg_color = menu_secondary_button();
+    visuals.window_fill = palette::backdrop();
+    visuals.panel_fill = palette::surface();
+    visuals.faint_bg_color = palette::button_inactive();
     
     // Cosmic Drop Shadows
     visuals.window_shadow = egui::Shadow {
@@ -133,34 +99,144 @@ pub fn apply_theme(ctx: &Context) {
     visuals.popup_shadow = egui::Shadow {
         blur: 24,
         spread: 0,
-        color: Color32::from_rgba_unmultiplied(6, 182, 212, 40),
+        color: palette::neon_cyan_glow(),
         offset: [0, 10],
     };
 
-    visuals.override_text_color = Some(Color32::from_rgb(243, 244, 246));
+    visuals.override_text_color = Some(palette::text_normal());
+    visuals.window_corner_radius = CornerRadius::same(12);
+    visuals.menu_corner_radius = CornerRadius::same(12);
 
-    let neon_cyan = accent_solo_cyan();
-    let neon_cyan_hover = accent_solo_cyan_hover();
-    let panel_border = nickname_field_border();
+    // Overhaul Widgets definitions
+    visuals.widgets = Widgets {
+        noninteractive: WidgetVisuals {
+            weak_bg_fill: palette::field_bg(),
+            bg_fill: palette::field_bg(),
+            bg_stroke: Stroke::new(1.0_f32, palette::field_border()),
+            fg_stroke: Stroke::new(1.0_f32, palette::text_muted()),
+            corner_radius: CornerRadius::same(12),
+            expansion: 0.0,
+        },
+        inactive: WidgetVisuals {
+            weak_bg_fill: palette::button_inactive(),
+            bg_fill: palette::button_inactive(),
+            bg_stroke: Stroke::new(1.0_f32, palette::field_border()),
+            fg_stroke: Stroke::new(1.0_f32, palette::text_normal()),
+            corner_radius: CornerRadius::same(12),
+            expansion: 0.0,
+        },
+        hovered: WidgetVisuals {
+            weak_bg_fill: palette::button_hovered(),
+            bg_fill: palette::button_hovered(),
+            bg_stroke: Stroke::new(1.5_f32, palette::neon_cyan_hover()),
+            fg_stroke: Stroke::new(1.5_f32, Color32::WHITE),
+            corner_radius: CornerRadius::same(12),
+            expansion: 1.0,
+        },
+        active: WidgetVisuals {
+            weak_bg_fill: palette::neon_cyan(),
+            bg_fill: palette::neon_cyan(),
+            bg_stroke: Stroke::new(2.0_f32, palette::neon_cyan_hover()),
+            fg_stroke: Stroke::new(2.0_f32, Color32::WHITE),
+            corner_radius: CornerRadius::same(12),
+            expansion: 2.0,
+        },
+        open: WidgetVisuals {
+            weak_bg_fill: palette::button_hovered(),
+            bg_fill: palette::button_hovered(),
+            bg_stroke: Stroke::new(1.0_f32, palette::field_border()),
+            fg_stroke: Stroke::new(1.0_f32, palette::text_normal()),
+            corner_radius: CornerRadius::same(12),
+            expansion: 0.0,
+        },
+    };
 
-    visuals.widgets.noninteractive.bg_fill = nickname_field_bg();
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, panel_border);
-    visuals.widgets.noninteractive.corner_radius = CornerRadius::same(12);
+    visuals.selection = Selection {
+        bg_fill: palette::neon_cyan_glow(),
+        stroke: Stroke::new(1.0_f32, palette::neon_cyan_hover()),
+    };
 
-    visuals.widgets.inactive.bg_fill = menu_secondary_button();
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, panel_border);
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(243, 244, 246));
-    visuals.widgets.inactive.corner_radius = CornerRadius::same(12);
+    style.visuals = visuals;
+    ctx.set_global_style(style);
 
-    visuals.widgets.hovered.bg_fill = menu_secondary_button_hover();
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, neon_cyan_hover);
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-    visuals.widgets.hovered.corner_radius = CornerRadius::same(12);
+}
 
-    visuals.widgets.active.bg_fill = neon_cyan;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, neon_cyan);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-    visuals.widgets.active.corner_radius = CornerRadius::same(12);
+#[inline]
+pub fn hud_panel_frame() -> egui::Frame {
+    let (margin_x, margin_y) = if cfg!(target_os = "android") {
+        (12, 6)
+    } else {
+        (8, 4)
+    };
+    
+    egui::Frame::NONE
+        .fill(Color32::from_black_alpha(150))
+        .corner_radius(8.0)
+        .stroke(egui::Stroke::new(1.0_f32, nickname_field_border()))
+        .inner_margin(egui::Margin::symmetric(margin_x, margin_y))
+}
 
-    ctx.set_visuals(visuals);
+#[inline]
+pub fn hud_button_text_size() -> f32 {
+    if cfg!(target_os = "android") {
+        32.0
+    } else {
+        18.0
+    }
+}
+
+/// Draw text with a crisp black outline and heavy bottom drop shadow.
+///
+/// Uses 5 shadow passes (L/R/T/B + extra bottom) for a bold, game-style look.
+/// Only use on important, low-count text (titles, overlays, loading status).
+/// For bulk text (hundreds of bot labels), use a simple 1-pass drop shadow instead.
+pub fn outlined_text(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    anchor: egui::Align2,
+    text: &str,
+    font_id: egui::FontId,
+    color: Color32,
+    shadow_color: Color32,
+) {
+    for &(dx, dy) in &[
+        (-1.0_f32, 0.0),
+        (1.0, 0.0),
+        (0.0, -1.0),
+        (0.0, 1.0),
+        (0.0, 2.0),
+        (0.0, 3.0),
+    ] {
+        painter.text(
+            egui::pos2(pos.x + dx, pos.y + dy),
+            anchor,
+            text,
+            font_id.clone(),
+            shadow_color,
+        );
+    }
+    painter.text(pos, anchor, text, font_id, color);
+}
+
+/// A UI widget that draws text with an outline. Use this instead of `ui.label()` for important titles.
+pub fn outlined_label(
+    ui: &mut egui::Ui,
+    text: &str,
+    font_id: egui::FontId,
+    color: Color32,
+) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font_id.clone(), color);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        outlined_text(
+            ui.painter(),
+            rect.left_top(),
+            egui::Align2::LEFT_TOP,
+            text,
+            font_id,
+            color,
+            Color32::BLACK,
+        );
+    }
+    response
 }

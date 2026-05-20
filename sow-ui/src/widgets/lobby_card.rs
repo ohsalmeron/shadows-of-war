@@ -114,13 +114,22 @@ impl<'a> Widget for LobbyCard<'a> {
         } else {
             crate::ui::theme::text_secondary()
         };
+        let timer_text_str = timer_text.clone();
         let timer_galley = ui.painter().layout_no_wrap(timer_text, egui::FontId::proportional(14.0), timer_color);
         let timer_badge_rect = egui::Rect::from_min_size(
             egui::pos2(top_rect.max.x - timer_galley.size().x - 12.0, top_rect.min.y),
             timer_galley.size() + egui::vec2(12.0, 6.0),
         );
         ui.painter().rect_filled(timer_badge_rect, 4.0, Color32::from_black_alpha(180));
-        ui.painter().galley(timer_badge_rect.center() - timer_galley.size() / 2.0, timer_galley, timer_color);
+        crate::ui::theme::outlined_text(
+            ui.painter(),
+            timer_badge_rect.center() - timer_galley.size() / 2.0,
+            egui::Align2::LEFT_TOP,
+            &timer_text_str,
+            egui::FontId::proportional(14.0),
+            timer_color,
+            Color32::BLACK,
+        );
 
         let bottom_height = 44.0;
         let bottom_rect = egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.max.y - bottom_height), rect.max);
@@ -130,18 +139,24 @@ impl<'a> Widget for LobbyCard<'a> {
             Color32::from_black_alpha(200),
         );
 
+        let map_text = self.lobby.map_name.to_uppercase();
         let map_galley = ui.painter().layout_no_wrap(
-            self.lobby.map_name.to_uppercase(),
+            map_text.clone(),
             egui::FontId::proportional(18.0),
             Color32::WHITE,
         );
-        ui.painter().galley(
+        crate::ui::theme::outlined_text(
+            ui.painter(),
             egui::pos2(bottom_rect.min.x + 12.0, bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0),
-            map_galley,
+            egui::Align2::LEFT_TOP,
+            &map_text,
+            egui::FontId::proportional(18.0),
             Color32::WHITE,
+            Color32::BLACK,
         );
 
         let players_text = format!("{}/{}", self.lobby.num_players, self.lobby.max_players);
+        let players_text_str = players_text.clone();
         let players_galley = ui.painter().layout_no_wrap(
             players_text,
             egui::FontId::proportional(14.0),
@@ -152,7 +167,15 @@ impl<'a> Widget for LobbyCard<'a> {
             players_galley.size() + egui::vec2(12.0, 6.0),
         );
         ui.painter().rect_filled(players_badge_rect, 4.0, Color32::from_black_alpha(220));
-        ui.painter().galley(players_badge_rect.center() - players_galley.size() / 2.0, players_galley, Color32::WHITE);
+        crate::ui::theme::outlined_text(
+            ui.painter(),
+            players_badge_rect.center() - players_galley.size() / 2.0,
+            egui::Align2::LEFT_TOP,
+            &players_text_str,
+            egui::FontId::proportional(14.0),
+            Color32::WHITE,
+            Color32::BLACK,
+        );
 
         response
     }

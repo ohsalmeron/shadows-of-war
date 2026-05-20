@@ -36,7 +36,6 @@ impl ClientApp {
                 max_troops: 0.0,
                 max_troops_display: 0.0,
                 attack_ratio: 0.25,
-                is_mobile: false,
                 spawn_timer_secs: None,
                 sync_state: None,
                 last_troops_ui_refresh: None,
@@ -44,6 +43,9 @@ impl ClientApp {
                 attacks: Vec::new(),
                 fleets: Vec::new(),
                 players: Vec::new(),
+                safe_area_top: 0.0,
+                safe_area_bottom: 0.0,
+                selected_tile: None,
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
@@ -56,14 +58,18 @@ impl ClientApp {
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
                 self.asset_loader.ensure_avatars_loaded(ui.ctx());
-                main_menu::draw(ui, &mut self.main_menu_state, &self.asset_loader)
+                self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                main_menu::draw(ui, &mut self.main_menu_state, &self.asset_loader, self.settings_state.language)
             }
             ClientPhase::Splash => {
-                loading_screen::draw(ui, &mut self.splash_state);
+                self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                if let Some(new_phase) = loading_screen::draw(ui, &mut self.splash_state, &self.asset_loader, self.settings_state.language) {
+                    self.phase = new_phase;
+                }
                 None
             }
             ClientPhase::Playing => {
-                hud::draw(ui, &mut self.hud_state, cancel_intents)
+                hud::draw(ui, &mut self.hud_state, cancel_intents, self.settings_state.language)
             }
         };
 

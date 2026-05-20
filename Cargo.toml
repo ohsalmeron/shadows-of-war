@@ -8,6 +8,7 @@ members = [
     "sow-ui",
     "sow-tools",
     "sow-relay",
+    "sow-lang",
 ]
 exclude = ["blade", "winit", "egui"]
 resolver = "2"
@@ -28,6 +29,9 @@ raw-window-handle = "0.6"
 serde_json = "1"
 web-time = "1.1"
 wyrand = "0.2"
+egui = "0.34"
+image = { version = "0.25.10", default-features = false, features = ["webp"] }
+sow-lang = { path = "sow-lang" }
 
 [workspace.dependencies.blade-egui]
 path = "blade/blade-egui"

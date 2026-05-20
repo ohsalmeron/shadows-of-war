@@ -9,10 +9,12 @@ pub fn draw_right_column(
     action_min_h: f32,
     compact: bool,
     action: &mut Option<UiAction>,
+    lang: sow_lang::Language,
 ) {
+    let strings = &sow_lang::get(lang).main_menu;
     let solo_primary = if compact { 24.0 } else { 28.0 };
 
-    let tutorial_btn = NeonButton::new("PLAY TUTORIAL")
+    let tutorial_btn = NeonButton::new(&strings.play_tutorial)
         .style(NeonButtonStyle::Primary)
         .min_size(egui::vec2(ui.available_width(), action_min_h))
         .text_size(solo_primary);
@@ -23,7 +25,7 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
-    let solo_btn = NeonButton::new("SINGLE PLAYER")
+    let solo_btn = NeonButton::new(&strings.single_player)
         .style(NeonButtonStyle::Outline)
         .min_size(egui::vec2(ui.available_width(), action_min_h))
         .text_size(solo_primary);
@@ -34,7 +36,7 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
-    let ranked = NeonButton::new("RANKED MATCH")
+    let ranked = NeonButton::new(&strings.ranked_match)
         .style(NeonButtonStyle::Secondary)
         .min_size(egui::vec2(
             ui.available_width(),
@@ -48,8 +50,22 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
+    let editor_btn = NeonButton::new(&strings.map_editor)
+        .style(NeonButtonStyle::Outline)
+        .min_size(egui::vec2(
+            ui.available_width(),
+            (action_min_h - 10.0).max(60.0),
+        ))
+        .text_size(if compact { 16.0 } else { 18.0 });
+
+    if ui.add(editor_btn).clicked() {
+        *action = Some(UiAction::OpenMapEditor);
+    }
+
+    ui.add_space(section_gap);
+
     let h = if compact { 48.0 } else { 52.0 };
-    let btn = NeonButton::new("⚙  Settings")
+    let btn = NeonButton::new(&strings.settings)
         .style(NeonButtonStyle::Outline)
         .min_size(egui::vec2(ui.available_width(), h))
         .text_size(if compact { 16.0 } else { 18.0 });
@@ -58,3 +74,4 @@ pub fn draw_right_column(
         *action = Some(UiAction::ToggleSettings);
     }
 }
+

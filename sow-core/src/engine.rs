@@ -5,12 +5,23 @@ use crate::pathfinding::WaterPathfinderScratch;
 use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct PlacementScratch {
-    pub visited_stamp: Vec<u32>,
+    pub visited_stamp: [u32; 1024],
     pub stamp: u32,
     pub queue: Vec<u32>,
     pub border_scratch: Vec<(u32, u32)>,
+}
+
+impl Default for PlacementScratch {
+    fn default() -> Self {
+        Self {
+            visited_stamp: [0; 1024],
+            stamp: 0,
+            queue: Vec::new(),
+            border_scratch: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -31,25 +42,41 @@ pub struct SowEngine {
     /// Round-robin cursor for the unified AI pipeline.
     /// Ensures fair distribution of bot/nation think work across ticks.
     pub ai_round_robin: usize,
+    pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
 }
 
 impl SowEngine {
     pub fn new(state: GameState, water: WaterComponents) -> Self {
+        let w = state.map.width;
+        let h = state.map.height;
+        let area = (w * h) as usize;
+
+        let mut path_scratch = WaterPathfinderScratch::default();
+        if w > 0 && h > 0 {
+            path_scratch.astar.ensure_capacity(&state.map);
+            path_scratch.bfs_visited.resize(area, 0);
+        }
+
+        let mut placement_scratch = PlacementScratch::default();
+        placement_scratch.queue.reserve(1024);
+        placement_scratch.border_scratch.reserve(1024);
+
         Self {
             state,
-            attacks: Vec::new(),
-            fleets: Vec::new(),
-            buildings: Vec::new(),
+            attacks: Vec::with_capacity(1024),
+            fleets: Vec::with_capacity(256),
+            buildings: Vec::with_capacity(4096),
             water,
-            path_scratch: WaterPathfinderScratch::default(),
-            placement_scratch: PlacementScratch::default(),
+            path_scratch,
+            placement_scratch,
             defense_grid: DefenseGrid::default(),
             defense_grid_dirty: true,
             render_defense_dirty: true,
             building_grid: BuildingGrid::default(),
-            building_aggregates: Vec::new(),
+            building_aggregates: Vec::with_capacity(256),
             building_aggregates_dirty: true,
             ai_round_robin: 0,
+            alliances_proposed: Vec::new(),
         }
     }
 
@@ -206,8 +233,10 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
         
-        let mut n_queue = manifest_nations.unwrap_or_default();
-        log::info!("spawn_ai: n_queue len is {}", n_queue.len());
+        let n_queue = manifest_nations.unwrap_or_default();
+        if nation_count > 0 || tribe_count > 0 {
+            log::info!("spawn_ai: n_queue len is {}", n_queue.len());
+        }
         let mut n_iter = n_queue.into_iter();
 
         let fallback_pool = crate::tribes::FALLBACK_TRIBES;
@@ -262,7 +291,7 @@ impl SowEngine {
                 };
 
                 let mut player =
-                    Player::new_bot(bot_id, name, color, &config);
+                    Player::new_nation(bot_id, name, color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_nations += 1;
@@ -304,36 +333,22 @@ impl SowEngine {
             }
 
             if let Some((sx, sy)) = spawn_point {
-                let (team, color) = if config.game_mode == "Teams" {
-                    if i % 2 == 0 {
-                        (Some(crate::protocol::Team::Blue), [0.2, 0.5, 1.0]) // Opposite stagger
-                    } else {
-                        (Some(crate::protocol::Team::Red), [1.0, 0.2, 0.2])
-                    }
-                } else {
-                    // User requested Tribes in FFA to use the Team colors
-                    if i % 2 == 0 {
-                        (None, [0.2, 0.5, 1.0])
-                    } else {
-                        (None, [1.0, 0.2, 0.2])
-                    }
-                };
-
-                let mut player =
-                    Player::new_bot(bot_id, name, color, &config);
-                player.team = team;
+                let color = crate::player::bot_territory_color(self.state.seed, bot_id);
+                let player = Player::new_bot(bot_id, name, color, &config);
                 self.state.spawn_player(player, sx, sy);
                 spawned_tribes += 1;
             }
         }
-        log::info!(
-            "Spawned {} nations and {} tribes successfully.",
-            spawned_nations,
-            spawned_tribes
-        );
+        if nation_count > 0 || tribe_count > 0 {
+            log::info!(
+                "Spawned {} nations and {} tribes successfully.",
+                spawned_nations,
+                spawned_tribes
+            );
+        }
     }
 
-    pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3]) {
+    pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3], team: Option<crate::protocol::Team>) {
         use crate::player::Player;
         use wyrand::WyRand;
 
@@ -342,13 +357,15 @@ impl SowEngine {
         let config = self.state.config.clone();
 
         if !config.random_spawn {
-            let player = Player::new_human(player_id, name, color, &config);
+            let mut player = Player::new_human(player_id, name, color, &config);
+            player.team = team;
             self.state.register_player(player);
             return;
         }
 
         if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
-            let player = Player::new_human(player_id, name, color, &config);
+            let mut player = Player::new_human(player_id, name, color, &config);
+            player.team = team;
             self.state.spawn_player(player, sx, sy);
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);
@@ -437,6 +454,8 @@ impl SowEngine {
                     team: p.team,
                     has_spawned: p.has_spawned,
                     alive: p.alive,
+                    iq: p.iq,
+                    alliances: p.alliances.clone(),
                 }
             })
             .collect();
@@ -458,12 +477,17 @@ impl SowEngine {
         let attacks = self
             .attacks
             .iter()
-            .map(|a| crate::protocol::AttackSnapshot {
-                id: a.id,
-                owner_id: a.owner_id,
-                target_owner: a.target_owner,
-                troops: a.troops,
-                retreating: a.retreating,
+            .map(|a| {
+                let (fcx, fcy) = a.frontier_centroid();
+                crate::protocol::AttackSnapshot {
+                    id: a.id,
+                    owner_id: a.owner_id,
+                    target_owner: a.target_owner,
+                    troops: a.troops,
+                    retreating: a.retreating,
+                    front_cx: fcx,
+                    front_cy: fcy,
+                }
             })
             .collect();
 
@@ -500,7 +524,22 @@ impl SowEngine {
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
             defense_dirty,
-            debug_mem_info: format!("Engine [Attacks: {}, Fleets: {}, Buildings: {}, Events: {}, Players: {}, DirtyTiles: {}]", self.attacks.len(), self.fleets.len(), self.buildings.len(), self.state.events.len(), self.state.players.len(), self.state.map.dirty_tiles.capacity()),
+            debug_mem_info: format!(
+                "Engine [Attacks: {}/{} | Fleets: {}/{} | Buildings: {}/{} | Events: {}/{} | Players: {}/{} | DirtyTilesCap: {}] Pathfinder [AStarHeapCap: {} | AStarCameCap: {} | BFSQueueCap: {} | BFSVisitedCap: {}] Placement [VisitedCap: {} | QueueCap: {} | BorderCap: {}]",
+                self.attacks.len(), self.attacks.capacity(),
+                self.fleets.len(), self.fleets.capacity(),
+                self.buildings.len(), self.buildings.capacity(),
+                self.state.events.len(), self.state.events.capacity(),
+                self.state.players.len(), self.state.players.capacity(),
+                self.state.map.dirty_tiles.capacity(),
+                self.path_scratch.astar.heap.capacity(),
+                self.path_scratch.astar.came_from.capacity(),
+                self.path_scratch.bfs_queue.capacity(),
+                self.path_scratch.bfs_visited.capacity(),
+                self.placement_scratch.visited_stamp.len(),
+                self.placement_scratch.queue.capacity(),
+                self.placement_scratch.border_scratch.capacity(),
+            ),
         }
     }
 }

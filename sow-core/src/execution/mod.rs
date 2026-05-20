@@ -65,6 +65,24 @@ pub struct AttackExecution {
 }
 
 impl AttackExecution {
+    /// Centroid of the queued frontier tiles (the attack's leading edge).
+    /// Iterates the heap's backing slice — no pop, no alloc.
+    pub fn frontier_centroid(&self) -> (f32, f32) {
+        let slice = self.to_conquer.iter();
+        let mut sx: u64 = 0;
+        let mut sy: u64 = 0;
+        let mut n: u32 = 0;
+        for t in slice {
+            sx += t.x as u64;
+            sy += t.y as u64;
+            n += 1;
+        }
+        if n == 0 {
+            return (0.0, 0.0);
+        }
+        (sx as f32 / n as f32, sy as f32 / n as f32)
+    }
+
     pub fn calc_priority(&mut self, num_owned_by_me: u32, terrain: TerrainType, tick: u64) -> i64 {
         let mag_x2 = match terrain {
             TerrainType::Land => 2,

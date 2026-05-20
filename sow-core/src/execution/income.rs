@@ -51,40 +51,33 @@ impl SowEngine {
             player.max_troops = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
                 + agg.city_levels as f64 * config.city_max_troops_per_level;
-            if player.player_type == crate::player::PlayerType::Bot {
-                player.max_troops /= 3.0;
-            } else if player.player_type == crate::player::PlayerType::Nation {
-                player.max_troops *= 0.75; // Medium difficulty
-            }
 
-            // safe_troops^0.75 = safe_troops^(1/2) * safe_troops^(1/4)
-            let s_half = safe_troops.sqrt();
-            let s_quarter = s_half.sqrt();
-            let s_75 = s_half * s_quarter;
+            let ticks_per_second = 1000.0 / config.tick_rate_ms as f64;
+            let total_fill_ticks = config.troop_fill_time_seconds * ticks_per_second;
+            
+            let raw_income = if total_fill_ticks > 0.0 {
+                player.max_troops / total_fill_ticks
+            } else {
+                player.max_troops
+            };
 
-            let raw_income = config.troop_base_income + (s_75 / 4.0);
-            let ratio = 1.0 - (safe_troops / player.max_troops).min(1.0);
             let factory_extra = (agg.factory_levels as f64 * config.factory_income_bonus_per_level)
                 .min(config.factory_income_bonus_cap - 1.0);
             let factory_mult = 1.0 + factory_extra;
-            let mut income = raw_income * ratio * factory_mult;
-
-            if player.player_type == crate::player::PlayerType::Bot {
-                income *= 0.5;
-            }
+            let income = raw_income * factory_mult;
 
             player.troops = (safe_troops + income).min(player.max_troops);
 
             let safe_gold = player.gold.max(0.0);
 
-            let mut gold_base = config.gold_base_income;
-            if player.player_type == crate::player::PlayerType::Bot {
-                gold_base *= 0.5; // Tribes generate 50% less gold than Nations/Humans
-            }
+            let gold_base = config.gold_base_income;
 
             let gold_income =
                 gold_base + agg.city_levels as f64 * config.gold_income_per_city_level;
             player.gold = safe_gold + gold_income;
+
+            let iq_gain = player.iq as f64 / 100.0;
+            player.iq_points = (player.iq_points + iq_gain).min(500.0);
         }
     }
 }
@@ -157,13 +150,11 @@ mod tests {
         let p = engine.state.player(1).unwrap();
         let cfg = &engine.state.config;
         let low = 5.0_f64;
-        let s_half = low.sqrt();
-        let s_quarter = s_half.sqrt();
-        let s_75 = s_half * s_quarter;
-        let raw_income = cfg.troop_base_income + (s_75 / 4.0);
-        let ratio = 1.0 - (low / p.max_troops).min(1.0);
+        let ticks_per_second = 1000.0 / cfg.tick_rate_ms as f64;
+        let total_fill_ticks = cfg.troop_fill_time_seconds * ticks_per_second;
+        let raw_income = p.max_troops / total_fill_ticks;
+        
         let uncapped = raw_income
-            * ratio
             * (1.0 + 20.0 * cfg.factory_income_bonus_per_level);
         let actual_gain = p.troops - low;
         assert!(
@@ -171,7 +162,7 @@ mod tests {
             "income should be capped by FACTORY_INCOME_BONUS_CAP"
         );
         assert!(
-            actual_gain <= raw_income * ratio * cfg.factory_income_bonus_cap + 0.02,
+            actual_gain <= raw_income * cfg.factory_income_bonus_cap + 0.02,
             "gain {} exceeds cap-scaled income",
             actual_gain
         );

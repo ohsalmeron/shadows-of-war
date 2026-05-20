@@ -509,7 +509,7 @@ impl SowApp {
         }
     }
 
-    fn process_camera_zoom(&mut self, zoom_factor: f32, cx: f32, cy: f32) {
+    pub(crate) fn process_camera_zoom(&mut self, zoom_factor: f32, cx: f32, cy: f32) {
         let old_zoom = self.input.camera_zoom;
         self.input.camera_zoom *= zoom_factor;
         let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);

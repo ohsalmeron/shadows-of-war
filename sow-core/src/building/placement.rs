@@ -64,20 +64,18 @@ pub fn valid_land_structure_indices(
 
     let cx_i = cx as i64;
     let cy_i = cy as i64;
-    let h = map.height;
-    let area = (w * h) as usize;
-    if scratch.visited_stamp.len() < area {
-        scratch.visited_stamp.resize(area, 0);
-    }
-    scratch.stamp = scratch.stamp.wrapping_add(1);
-    if scratch.stamp == 0 {
+
+    let stamp = scratch.stamp.wrapping_add(1);
+    scratch.stamp = if stamp == 0 {
         scratch.visited_stamp.fill(0);
-        scratch.stamp = 1;
-    }
+        1
+    } else {
+        stamp
+    };
     let stamp = scratch.stamp;
 
     scratch.queue.clear();
-    scratch.visited_stamp[click_idx as usize] = stamp;
+    scratch.visited_stamp[480] = stamp;
     scratch.queue.push(click_idx);
 
     let mut out: Vec<u32> = Vec::new();
@@ -111,10 +109,6 @@ pub fn valid_land_structure_indices(
         }
 
         map.for_each_neighbor(x, y, |nx, ny| {
-            let nidx = xy_idx(nx, ny, w) as usize;
-            if scratch.visited_stamp[nidx] == stamp {
-                return;
-            }
             let nxi = nx as i64;
             let nyi = ny as i64;
             if euclid_sq(nxi, nyi, cx_i, cy_i) >= STRUCTURE_SEARCH_RADIUS_SQ {
@@ -123,8 +117,14 @@ pub fn valid_land_structure_indices(
             if map.owner_id(nx, ny) != owner_id {
                 return;
             }
-            scratch.visited_stamp[nidx] = stamp;
-            scratch.queue.push(nidx as u32);
+            let lx = (nx as i32 - cx as i32 + 15) as usize;
+            let ly = (ny as i32 - cy as i32 + 15) as usize;
+            let lidx = ly * 31 + lx;
+            if scratch.visited_stamp[lidx] == stamp {
+                return;
+            }
+            scratch.visited_stamp[lidx] = stamp;
+            scratch.queue.push(xy_idx(nx, ny, w));
         });
     }
 

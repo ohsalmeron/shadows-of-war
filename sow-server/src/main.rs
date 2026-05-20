@@ -190,6 +190,7 @@ async fn main() {
                             let start_msg = sow_core::protocol::ServerStartMessage {
                                 config: lobby.config.clone(),
                                 my_player_id: None,
+                                lobby_id: Some(lobby.id),
                                 seed: lobby.seed,
                                 players: player_infos,
                                 missed_turns: vec![],

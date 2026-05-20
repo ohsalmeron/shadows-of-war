@@ -4,20 +4,13 @@ use crate::ui::theme::{
 };
 use crate::UiAction;
 use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Slider, Stroke};
+pub use sow_lang::Language;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GraphicsQuality {
     Low,
     Medium,
     High,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Language {
-    English,
-    Spanish,
-    French,
-    German,
 }
 
 pub struct SettingsState {
@@ -49,6 +42,8 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
         520.0
     };
 
+    let strings = &sow_lang::get(state.language).settings;
+
     // Dark scrim behind the modal
     let screen_rect = root_ui.ctx().content_rect();
     root_ui.ctx().layer_painter(egui::LayerId::new(
@@ -79,11 +74,11 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
         .show(root_ui.ctx(), |ui| {
             // Header
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("⚙  SETTINGS")
-                        .size(if compact { 26.0 } else { 32.0 })
-                        .strong()
-                        .color(Color32::WHITE),
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &strings.title,
+                    egui::FontId::proportional(if compact { 26.0 } else { 32.0 }),
+                    Color32::WHITE,
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
@@ -106,18 +101,18 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
             ui.add_space(16.0);
 
             // --- Graphics ---
-            ui.label(
-                RichText::new("Graphics Quality")
-                    .strong()
-                    .size(18.0)
-                    .color(Color32::WHITE),
+            crate::ui::theme::outlined_label(
+                ui,
+                &strings.graphics_quality,
+                egui::FontId::proportional(18.0),
+                Color32::WHITE,
             );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 let qualities = [
-                    (GraphicsQuality::Low, "Low"),
-                    (GraphicsQuality::Medium, "Medium"),
-                    (GraphicsQuality::High, "High"),
+                    (GraphicsQuality::Low, &strings.quality_low),
+                    (GraphicsQuality::Medium, &strings.quality_medium),
+                    (GraphicsQuality::High, &strings.quality_high),
                 ];
 
                 for (q, label) in qualities {
@@ -152,18 +147,18 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
             ui.add_space(24.0);
 
             // --- Audio ---
-            ui.label(
-                RichText::new("Audio")
-                    .strong()
-                    .size(18.0)
-                    .color(Color32::WHITE),
+            crate::ui::theme::outlined_label(
+                ui,
+                &strings.audio,
+                egui::FontId::proportional(18.0),
+                Color32::WHITE,
             );
             ui.add_space(8.0);
 
             ui.horizontal(|ui| {
                 ui.checkbox(
                     &mut state.mute_all,
-                    RichText::new("Mute All Audio")
+                    RichText::new(&strings.mute_all)
                         .size(16.0)
                         .color(text_secondary()),
                 );
@@ -173,7 +168,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
             ui.add_enabled_ui(!state.mute_all, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new("Music Volume")
+                        RichText::new(&strings.music_volume)
                             .size(16.0)
                             .color(text_secondary()),
                     );
@@ -184,7 +179,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new("SFX Volume")
+                        RichText::new(&strings.sfx_volume)
                             .size(16.0)
                             .color(text_secondary()),
                     );
@@ -197,11 +192,11 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
             ui.add_space(24.0);
 
             // --- Language ---
-            ui.label(
-                RichText::new("Language")
-                    .strong()
-                    .size(18.0)
-                    .color(Color32::WHITE),
+            crate::ui::theme::outlined_label(
+                ui,
+                &strings.language,
+                egui::FontId::proportional(18.0),
+                Color32::WHITE,
             );
             ui.add_space(8.0);
             egui::ComboBox::from_id_salt("language_select")
@@ -218,18 +213,12 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
 
             // --- Back Button ---
             ui.vertical_centered(|ui| {
-                let back_btn = egui::Button::new(
-                    RichText::new("BACK")
-                        .strong()
-                        .size(18.0)
-                        .color(Color32::WHITE),
-                )
-                .fill(menu_secondary_button())
-                .stroke(Stroke::new(1.0_f32, Color32::from_gray(100)))
-                .min_size(egui::vec2(
-                    if compact { panel_w - 32.0 } else { 200.0 },
-                    50.0,
-                ));
+                let back_btn = crate::widgets::NeonButton::new(&strings.back_button)
+                    .style(crate::widgets::NeonButtonStyle::Outline)
+                    .min_size(egui::vec2(
+                        if compact { panel_w - 32.0 } else { 200.0 },
+                        50.0,
+                    ));
 
                 if ui.add(back_btn).clicked() {
                     action = Some(UiAction::ToggleSettings);
@@ -239,3 +228,4 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
 
     action
 }
+

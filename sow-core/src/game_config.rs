@@ -22,7 +22,6 @@ fn default_troop_base_income() -> f64 {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum BotDifficulty {
-    BrainDead,
     #[default]
     Vanilla,
     Terminator,
@@ -153,7 +152,7 @@ impl Default for GameConfig {
             // Lobby & Match Setup
             max_players: 120,
             bot_count: 650,    // Tribes (Simple, static filler AI)
-            nation_count: 120, // Nations (Dynamic expanding AI)
+            nation_count: 80, // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
@@ -166,22 +165,23 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.25, // No global throttle
+            // Scales combat expansion, gold, and troop income broadly
+            global_speed_multiplier: 0.1, 
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 20.0,
-            attack_cost_neutral: 10.0,
-            terrain_multiplier_highland: 1.25,
-            terrain_multiplier_mountain: 1.5,
-            bot_attack_interval_ticks: 32,
+            attack_cost_enemy: 3.0,
+            attack_cost_neutral: 0.05,
+            terrain_multiplier_highland: 3.0,
+            terrain_multiplier_mountain: 6.0,
+            bot_attack_interval_ticks: 240,
             max_tiles_per_tick: 1024.0,
             max_tiles_per_tick_reference_troops: 1000.0,
-            max_tiles_per_tick_at_reference: 4.0,
-            momentum_divisor: 1000.0,
+            max_tiles_per_tick_at_reference: 12.0,
+            momentum_divisor: 125.0,
 
             // Economy & Income Rates
-            starting_troops: 1000.0,
-            starting_gold: 50.0,
+            starting_troops: 100.0,
+            starting_gold: 25.0,
             gold_base_income: 1.5,
             troop_base_income: 2.0,
             max_troops_base: 100.0,

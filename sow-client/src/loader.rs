@@ -153,7 +153,7 @@ impl SowApp {
                         config.nation_count = 0;
                         config.bot_count = 0;
                         self.dispatch_sim_command(SimCommand::Init {
-                            config,
+                            config: Box::new(config),
                             seed: 0,
                             map_bytes: vec![0b10000000], // 1 land tile
                             players: vec![],
@@ -215,7 +215,7 @@ impl SowApp {
                     self.sim.current_snapshot = None; // MANDATORY: Clear old snapshot so Step 3 waits for the new one!
 
                     self.dispatch_sim_command(SimCommand::Init {
-                        config: start_msg.config.clone(),
+                        config: Box::new(start_msg.config.clone()),
                         seed: start_msg.seed,
                         map_bytes: map_bytes.clone(),
                         players: start_msg.players.clone(),

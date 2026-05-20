@@ -540,7 +540,7 @@ impl SowApp {
             } => {
                 let map_w = config.map_width;
                 let map_h = config.map_height;
-                let mut state = sow_core::game::GameState::new(seed, map_w, map_h, config);
+                let mut state = sow_core::game::GameState::new(seed, map_w, map_h, *config);
 
                 if map_bytes.len() == state.map.terrain.len() {
                     let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
@@ -565,7 +565,7 @@ impl SowApp {
 
                 for p in players {
                     if p.player_type == sow_core::player::PlayerType::Human {
-                        new_engine.spawn_human(p.id, p.name, p.color);
+                        new_engine.spawn_human(p.id, p.name, p.color, p.team);
                     }
                 }
 

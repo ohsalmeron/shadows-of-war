@@ -100,6 +100,82 @@ impl SowEngine {
             GameplayIntent::Resign => {
                 self.kill_player(stamped.player_id);
             }
+            GameplayIntent::ProposeAlliance { target_player } => {
+                let proposer = stamped.player_id;
+                let target = *target_player;
+                if proposer != target {
+                    let proposer_alive = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
+                    let target_alive = self.state.player(target).map(|p| p.alive).unwrap_or(false);
+                    if proposer_alive && target_alive {
+                        let is_allied = self.state.player(proposer)
+                            .map(|p| p.alliances.contains(&target))
+                            .unwrap_or(false);
+                        if !is_allied && !self.alliances_proposed.contains(&(proposer, target)) {
+                            self.alliances_proposed.push((proposer, target));
+                        }
+                    }
+                }
+            }
+            GameplayIntent::AcceptAlliance { target_player } => {
+                let acceptor = stamped.player_id;
+                let target = *target_player;
+                let prop_idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == acceptor);
+                if let Some(idx) = prop_idx {
+                    self.alliances_proposed.remove(idx);
+                    if let Some(rev_idx) = self.alliances_proposed.iter().position(|&(p, t)| p == acceptor && t == target) {
+                        self.alliances_proposed.remove(rev_idx);
+                    }
+                    if let Some(p1) = self.state.player_mut(acceptor) {
+                        if !p1.alliances.contains(&target) {
+                            p1.alliances.push(target);
+                        }
+                    }
+                    if let Some(p2) = self.state.player_mut(target) {
+                        if !p2.alliances.contains(&acceptor) {
+                            p2.alliances.push(acceptor);
+                        }
+                    }
+                }
+            }
+            GameplayIntent::BreakAlliance { target_player } => {
+                let breaker = stamped.player_id;
+                let target = *target_player;
+                if let Some(p1) = self.state.player_mut(breaker) {
+                    p1.alliances.retain(|&id| id != target);
+                }
+                if let Some(p2) = self.state.player_mut(target) {
+                    p2.alliances.retain(|&id| id != breaker);
+                }
+            }
+            GameplayIntent::SendResources { target_player, gold, troops } => {
+                let sender = stamped.player_id;
+                let target = *target_player;
+                let g = *gold;
+                let t = *troops;
+                if sender != target && g > 0.0 && t > 0.0 && !g.is_nan() && !t.is_nan() {
+                    let mut actual_g = 0.0;
+                    let mut actual_t = 0.0;
+                    let mut sender_ok = false;
+                    if let Some(s_player) = self.state.player_mut(sender) {
+                        if s_player.alive {
+                            actual_g = g.min(s_player.gold);
+                            let max_t_to_send = (s_player.troops - 1.0).max(0.0);
+                            actual_t = t.min(max_t_to_send);
+                            s_player.gold -= actual_g;
+                            s_player.troops -= actual_t;
+                            sender_ok = true;
+                        }
+                    }
+                    if sender_ok && (actual_g > 0.0 || actual_t > 0.0) {
+                        if let Some(t_player) = self.state.player_mut(target) {
+                            if t_player.alive {
+                                t_player.gold += actual_g;
+                                t_player.troops = (t_player.troops + actual_t).min(t_player.max_troops);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

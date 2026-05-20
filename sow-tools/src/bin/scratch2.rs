@@ -1,7 +1,6 @@
 use sow_core::engine::SowEngine;
 use sow_core::game::{GameState, GamePhase};
 use sow_core::game_config::GameConfig;
-use sow_core::player::{Player, PlayerType};
 use sow_core::water_components::WaterComponents;
 
 fn main() {
@@ -20,7 +19,7 @@ fn main() {
     }
     
     // Spawn human
-    engine.spawn_human(1, "Bizkit".to_string(), [1.0, 0.0, 0.0]);
+    engine.spawn_human(1, "Bizkit".to_string(), [1.0, 0.0, 0.0], None);
     
     // If it's spawning phase, let's fast forward so they actually spawn
     if let GamePhase::Spawning { end_tick } = engine.state.phase {

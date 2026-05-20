@@ -6,7 +6,9 @@ pub fn draw_user_profile_header(
     state: &mut MainMenuState,
     compact: bool,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_lang::Language,
 ) {
+    let strings = &sow_lang::get(lang).main_menu;
     let desired_width = if compact { ui.available_width() } else { 200.0 };
     let desired_height = 48.0;
 
@@ -74,7 +76,7 @@ pub fn draw_user_profile_header(
             ui.add(
                 egui::TextEdit::singleline(&mut state.player_name)
                     .id(egui::Id::new("main_menu_nickname"))
-                    .hint_text("Your nickname")
+                    .hint_text(&strings.nickname_hint)
                     .char_limit(48)
                     .desired_width(ui.available_width())
                     .frame(egui::Frame::NONE)
@@ -84,3 +86,4 @@ pub fn draw_user_profile_header(
         });
     });
 }
+

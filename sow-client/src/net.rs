@@ -208,7 +208,7 @@ impl SowApp {
                             }
 
                             let maps_base = get_maps_url();
-                            let (thumbs_to_fetch, maps_to_fetch) = self
+                            let (thumbs_to_fetch, manifests_to_fetch, maps_to_fetch) = self
                                 .ui
                                 .app
                                 .asset_loader
@@ -232,6 +232,32 @@ impl SowApp {
                                                     map_name_for_closure,
                                                     res.bytes,
                                                 ));
+                                            }
+                                        }
+                                    },
+                                );
+                            }
+
+                            for map_name in manifests_to_fetch {
+                                let url = format!(
+                                    "{}/{}/manifest.json",
+                                    maps_base.trim_end_matches('/'),
+                                    map_name
+                                );
+                                let tx = self.tasks.map_tx.clone();
+                                let map_name_for_closure = map_name.clone();
+                                let request = ehttp::Request::get(&url);
+                                ehttp::fetch(
+                                    request,
+                                    move |result: ehttp::Result<ehttp::Response>| {
+                                        if let Ok(res) = result {
+                                            if res.ok {
+                                                if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(&res.bytes) {
+                                                    let _ = tx.send(MapDownloadEvent::ManifestReady(
+                                                        map_name_for_closure,
+                                                        manifest,
+                                                    ));
+                                                }
                                             }
                                         }
                                     },

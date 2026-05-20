@@ -44,6 +44,20 @@ pub enum GameplayIntent {
     },
     /// Informs the engine that the player has disconnected or resigned.
     Resign,
+    ProposeAlliance {
+        target_player: crate::player::PlayerId,
+    },
+    AcceptAlliance {
+        target_player: crate::player::PlayerId,
+    },
+    BreakAlliance {
+        target_player: crate::player::PlayerId,
+    },
+    SendResources {
+        target_player: crate::player::PlayerId,
+        gold: f64,
+        troops: f64,
+    },
 }
 
 /// Stamped intent bundled into a turn (attack or cancel).
@@ -143,6 +157,7 @@ pub struct ServerLobbyClosedMessage {
 pub struct ServerStartMessage {
     pub config: crate::game_config::GameConfig,
     pub my_player_id: Option<u16>,
+    pub lobby_id: Option<u64>,
     pub seed: u64,
     pub players: Vec<PlayerInfo>,
     pub missed_turns: Vec<Turn>,
@@ -208,7 +223,7 @@ pub struct ServerSyncStateMessage {
 pub enum SimCommand {
     /// Initialize the engine with map data and start config.
     Init {
-        config: crate::game_config::GameConfig,
+        config: Box<crate::game_config::GameConfig>,
         seed: u64,
         map_bytes: Vec<u8>,
         players: Vec<PlayerInfo>,
@@ -236,6 +251,8 @@ pub struct PlayerSnapshot {
     pub team: Option<Team>,
     pub has_spawned: bool,
     pub alive: bool,
+    pub iq: u32,
+    pub alliances: Vec<crate::player::PlayerId>,
 }
 
 /// A single tile whose owner changed during a tick.
@@ -263,6 +280,9 @@ pub struct AttackSnapshot {
     pub target_owner: u16,
     pub troops: f64,
     pub retreating: bool,
+    /// Front-line centroid (world-space tile coords).
+    pub front_cx: f32,
+    pub front_cy: f32,
 }
 
 /// Snapshot sent from the simulation thread to the main thread every tick.

@@ -15,6 +15,9 @@ pub enum UiAction {
     StartTutorial,
     SetAttackRatio(f32),
     CenterCamera,
+    ZoomIn,
+    ZoomOut,
     ToggleSettings,
     ToggleDevSidebar,
+    OpenMapEditor,
 }

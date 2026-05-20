@@ -16,6 +16,14 @@ fn default_player_gold() -> f64 {
     crate::game_config::GameConfig::default().starting_gold
 }
 
+fn default_iq() -> u32 {
+    100
+}
+
+fn default_iq_points() -> f64 {
+    0.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Player {
     pub id: PlayerId,
@@ -37,6 +45,12 @@ pub struct Player {
     pub factories: u32,
     pub cities: u32,
     pub team: Option<crate::protocol::Team>,
+    #[serde(default = "default_iq")]
+    pub iq: u32,
+    #[serde(default = "default_iq_points")]
+    pub iq_points: f64,
+    #[serde(default)]
+    pub alliances: Vec<PlayerId>,
 }
 
 fn default_wyrand() -> WyRand {
@@ -68,6 +82,9 @@ impl Player {
             factories: 0,
             cities: 0,
             team: None,
+            iq: 100,
+            iq_points: 0.0,
+            alliances: Vec::new(),
         }
     }
     pub fn new_bot(
@@ -76,6 +93,8 @@ impl Player {
         color: [f32; 3],
         config: &crate::game_config::GameConfig,
     ) -> Self {
+        let mut rng = WyRand::new(id as u64);
+        let iq = rng.next_int(80, 131) as u32;
         Self {
             id,
             alive: true,
@@ -83,33 +102,7 @@ impl Player {
             name,
             color,
             troops: config.starting_troops,
-            max_troops: config.max_troops_base / 3.0,
-            gold: 0.0,
-            has_spawned: false,
-            sum_x: 0,
-            sum_y: 0,
-            tile_count: 0,
-            border_tiles: DenseBitSet::new(),
-            bot_rng: WyRand::new(id as u64),
-            factories: 0,
-            cities: 0,
-            team: None,
-        }
-    }
-    pub fn new_nation(
-        id: u16,
-        name: String,
-        color: [f32; 3],
-        config: &crate::game_config::GameConfig,
-    ) -> Self {
-        Self {
-            id,
-            alive: true,
-            player_type: PlayerType::Nation,
-            name,
-            color,
-            troops: config.starting_troops,
-            max_troops: config.max_troops_base * 0.75,
+            max_troops: config.max_troops_base,
             gold: config.starting_gold,
             has_spawned: false,
             sum_x: 0,
@@ -120,6 +113,40 @@ impl Player {
             factories: 0,
             cities: 0,
             team: None,
+            iq,
+            iq_points: 0.0,
+            alliances: Vec::new(),
+        }
+    }
+    pub fn new_nation(
+        id: u16,
+        name: String,
+        color: [f32; 3],
+        config: &crate::game_config::GameConfig,
+    ) -> Self {
+        let mut rng = WyRand::new(id as u64);
+        let iq = rng.next_int(110, 161) as u32;
+        Self {
+            id,
+            alive: true,
+            player_type: PlayerType::Nation,
+            name,
+            color,
+            troops: config.starting_troops,
+            max_troops: config.max_troops_base,
+            gold: config.starting_gold,
+            has_spawned: false,
+            sum_x: 0,
+            sum_y: 0,
+            tile_count: 0,
+            border_tiles: DenseBitSet::new(),
+            bot_rng: WyRand::new(id as u64),
+            factories: 0,
+            cities: 0,
+            team: None,
+            iq,
+            iq_points: 0.0,
+            alliances: Vec::new(),
         }
     }
     pub fn is_human(&self) -> bool {

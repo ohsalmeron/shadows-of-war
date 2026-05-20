@@ -279,8 +279,7 @@ impl GameState {
                 }
             }
 
-            for i in 0..capture_count {
-                let (cx, cy) = to_capture[i];
+            for &(cx, cy) in to_capture.iter().take(capture_count) {
                 self.set_tile_owner(cx, cy, new_owner);
             }
         }

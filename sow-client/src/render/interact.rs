@@ -166,6 +166,7 @@ impl SowApp {
                                             config.nation_count = 5;
 
                                             let start_msg = sow_core::protocol::ServerStartMessage {
+                                                lobby_id: None,
                                                 config,
                                                 my_player_id: Some(1),
                                                 seed: 42,
@@ -267,6 +268,7 @@ impl SowApp {
                                             }
 
                                             let start_msg = sow_core::protocol::ServerStartMessage {
+                                                lobby_id: None,
                                                 config,
                                                 my_player_id: Some(1),
                                                 seed: 42,
@@ -420,6 +422,15 @@ impl SowApp {
                                         }
                                         UiAction::ToggleSettings => {
                                             // Handle settings toggle if it's there
+                                        }
+                                        UiAction::ZoomIn => {
+                                            self.process_camera_zoom(1.25, self.input.screen_w * 0.5, self.input.screen_h * 0.5);
+                                        }
+                                        UiAction::ZoomOut => {
+                                            self.process_camera_zoom(0.8, self.input.screen_w * 0.5, self.input.screen_h * 0.5);
+                                        }
+                                        UiAction::OpenMapEditor => {
+                                            // Map editor is not available in the stable version
                                         }
                                     }
                                 }

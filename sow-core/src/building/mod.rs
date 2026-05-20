@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn LegacyEngine_cost_scaling_city_and_port_factory_shared_counter() {
+    fn legacy_engine_cost_scaling_city_and_port_factory_shared_counter() {
         let s = crate::config::GOLD_SCALE;
         let owner = 1u16;
         let city0 = structure_build_cost_gold(BuildingKind::City, owner, &[]);

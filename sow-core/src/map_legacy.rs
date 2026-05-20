@@ -17,6 +17,7 @@ pub struct Nation {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MapManifest {
+    pub map_id: Option<String>,
     pub name: String,
     pub map: MapSize,
     pub map4x: Option<MapSize>,

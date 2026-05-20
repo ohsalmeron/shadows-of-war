@@ -1,0 +1,22 @@
+victory_title = "VICTORIA"
+defeat_title = "DERROTA"
+victory_subtitle = "Has conquistado el mundo entero."
+defeat_subtitle = "Tu imperio ha caído."
+return_to_lobby = "Regresar a la Sala"
+spectate = "ESPECTAR"
+
+victory_flavors = [
+    "El mundo es tuyo. ¿Y ahora qué?",
+    "Una clase magistral absoluta de dominación.",
+    "Los bots se inclinan ante su nuevo líder.",
+    "La historia recordará tu impecable campaña.",
+    "Una victoria total. ¡Los aplastaste a todos!"
+]
+
+defeat_flavors = [
+    "¡Auch! ¡Hora de aplastarlos de vuelta!",
+    "Tu imperio se desmoronó como papel mojado.",
+    "Cero territorios restantes. Una clase magistral sobre cómo ser aplastado.",
+    "Un contratiempo táctico menor. Una retirada temporal.",
+    "Los hámsters se quedaron sin energía. Cúlpales a ellos."
+]
