@@ -363,6 +363,98 @@ impl SowApp {
                 }
             }
 
+            // --- Render Buildings ---
+            let zoom_scaled = self.input.camera_zoom / sf;
+            
+            // Build O(1) player color lookup map to avoid O(N * M) nested linear scans
+            let max_pid = snap.players.iter().map(|p| p.id).max().unwrap_or(0) as usize;
+            let mut player_colors = vec![egui::Color32::GRAY; max_pid + 1];
+            for p in &snap.players {
+                let id = p.id as usize;
+                let rgb = if p.player_type == sow_core::player::PlayerType::Human {
+                    sow_core::player::human_shader_territory_rgb(p.id)
+                } else {
+                    p.color
+                };
+                player_colors[id] = egui::Color32::from_rgb(
+                    (rgb[0] * 255.0) as u8,
+                    (rgb[1] * 255.0) as u8,
+                    (rgb[2] * 255.0) as u8,
+                );
+            }
+
+            for b in &snap.buildings {
+                if zoom_scaled < 0.25 {
+                    // Zoomed out too far - don't render buildings at all for maximum FPS
+                    continue;
+                }
+
+                let bx = (b.tile_idx % self.sim.map_w) as f32;
+                let by = (b.tile_idx / self.sim.map_w) as f32;
+                let screen_x = (self.input.camera_x + (bx + 0.5) * self.input.camera_zoom) / sf;
+                let screen_y = (self.input.camera_y + (by + 0.5) * self.input.camera_zoom) / sf;
+
+                // Frustum cull
+                let margin = zoom_scaled * 2.0;
+                if screen_x < -margin
+                    || screen_x > self.input.screen_w / sf + margin
+                    || screen_y < -margin
+                    || screen_y > self.input.screen_h / sf + margin
+                {
+                    continue;
+                }
+
+                let center = egui::pos2(screen_x, screen_y);
+
+                // O(1) Owner color lookup
+                let color = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::GRAY);
+
+                let emoji = match b.kind {
+                    sow_core::game::BuildingKind::City => "🏙",
+                    sow_core::game::BuildingKind::Factory => "🏭",
+                    sow_core::game::BuildingKind::Port => "⚓",
+                    sow_core::game::BuildingKind::DefensePost => "🛡",
+                    sow_core::game::BuildingKind::SamLauncher => "🚀",
+                    sow_core::game::BuildingKind::MissileSilo => "☢",
+                };
+
+                if zoom_scaled < 1.0 {
+                    // Tier 1: tiny square dot (ultra-fast tessellation, 2 triangles instead of circle polygon)
+                    let dot_r = (zoom_scaled * 1.5).max(1.5);
+                    painter.rect_filled(
+                        egui::Rect::from_center_size(center, egui::vec2(dot_r * 2.0, dot_r * 2.0)),
+                        0.0,
+                        color,
+                    );
+                } else if zoom_scaled < 10.0 {
+                    // Tier 2: emoji icon
+                    let font_size = (zoom_scaled * 1.2).clamp(8.0, 16.0);
+                    let label = if b.under_construction { "🔨" } else { emoji };
+                    painter.text(
+                        center,
+                        egui::Align2::CENTER_CENTER,
+                        label,
+                        egui::FontId::proportional(font_size),
+                        egui::Color32::BLACK,
+                    );
+                } else {
+                    // Tier 3: emoji + level
+                    let font_size = (zoom_scaled * 0.8).clamp(10.0, 20.0);
+                    let label = if b.under_construction {
+                        format!("🔨{}", emoji)
+                    } else {
+                        format!("{} {}", emoji, b.level)
+                    };
+                    painter.text(
+                        center,
+                        egui::Align2::CENTER_CENTER,
+                        &label,
+                        egui::FontId::proportional(font_size),
+                        egui::Color32::BLACK,
+                    );
+                }
+            }
+
             for attack in &snap.attacks {
                 if attack.target_owner == 0 {
                     continue;

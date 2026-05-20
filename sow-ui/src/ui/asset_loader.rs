@@ -42,12 +42,6 @@ impl AssetLoader {
         if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/world/manifest.json")) {
             manifests.insert("world".to_string(), manifest.clone());
 
-            let mut tutorial_manifest = manifest.clone();
-            tutorial_manifest.name = "Tutorial".to_string();
-            tutorial_manifest.map.width = 800;
-            tutorial_manifest.map.height = 600;
-            manifests.insert("tutorial".to_string(), tutorial_manifest);
-
             let mut custom_manifest = manifest.clone();
             custom_manifest.name = "Custom".to_string();
             custom_manifest.map.width = 800;
@@ -55,6 +49,10 @@ impl AssetLoader {
             manifests.insert("custom".to_string(), custom_manifest);
 
             map_catalog = Some(vec![manifest]);
+        }
+
+        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/tutorial/manifest.json")) {
+            manifests.insert("tutorial".to_string(), manifest);
         }
 
         Self {
@@ -85,7 +83,7 @@ impl AssetLoader {
             self.maps.insert("world".to_string(), include_bytes!("../../../assets/maps/world/map.bin.br").to_vec());
         }
         if map_name == "tutorial" {
-            Some(include_bytes!("../../../assets/maps/world/map.bin.br").to_vec())
+            Some(include_bytes!("../../../assets/maps/tutorial/map.bin.br").to_vec())
         } else {
             self.maps.remove(map_name)
         }
@@ -223,6 +221,23 @@ impl AssetLoader {
                     egui::TextureOptions::LINEAR,
                 );
                 self.thumbnails.insert("world".to_string(), texture);
+            }
+        }
+
+        // Load the embedded tutorial map thumbnail
+        if !self.thumbnails.contains_key("tutorial") {
+            let bytes = include_bytes!("../../../assets/maps/tutorial/thumbnail.webp");
+            if let Ok(img) = image::load_from_memory(bytes) {
+                let size = [img.width() as _, img.height() as _];
+                let image_buffer = img.to_rgba8();
+                let pixels = image_buffer.as_flat_samples();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                let texture = ctx.load_texture(
+                    "tutorial",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.thumbnails.insert("tutorial".to_string(), texture);
             }
         }
     }

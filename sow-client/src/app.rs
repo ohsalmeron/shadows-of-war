@@ -492,7 +492,7 @@ impl SowApp {
             let attributes = {
                 let attrs = winit::window::WindowAttributes::default()
                     .with_title("Shadows of War — Native")
-                    .with_surface_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+                    .with_surface_size(winit::dpi::LogicalSize::new(800.0, 800.0));
                 attrs
             };
 

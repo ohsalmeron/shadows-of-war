@@ -53,16 +53,12 @@ impl SowEngine {
                 + agg.city_levels as f64 * config.city_max_troops_per_level;
 
             let ticks_per_second = 1000.0 / config.tick_rate_ms as f64;
-            let total_fill_ticks = config.troop_fill_time_seconds * ticks_per_second;
             
-            let raw_income = if total_fill_ticks > 0.0 {
-                player.max_troops / total_fill_ticks
-            } else {
-                player.max_troops
-            };
+            let raw_income = (config.troop_base_income / ticks_per_second) * config.global_speed_multiplier;
 
+            let cap_extra = (config.factory_income_bonus_cap - 1.0).max(0.0);
             let factory_extra = (agg.factory_levels as f64 * config.factory_income_bonus_per_level)
-                .min(config.factory_income_bonus_cap - 1.0);
+                .min(cap_extra);
             let factory_mult = 1.0 + factory_extra;
             let income = raw_income * factory_mult;
 
@@ -71,12 +67,12 @@ impl SowEngine {
             let safe_gold = player.gold.max(0.0);
 
             let gold_base = config.gold_base_income;
-
             let gold_income =
-                gold_base + agg.city_levels as f64 * config.gold_income_per_city_level;
+                (gold_base + agg.city_levels as f64 * config.gold_income_per_city_level)
+                * config.global_speed_multiplier;
             player.gold = safe_gold + gold_income;
 
-            let iq_gain = player.iq as f64 / 100.0;
+            let iq_gain = (player.iq as f64 / 100.0) * config.global_speed_multiplier;
             player.iq_points = (player.iq_points + iq_gain).min(500.0);
         }
     }
@@ -135,6 +131,9 @@ mod tests {
     #[test]
     fn factory_income_multiplier_respects_cap() {
         let mut engine = engine_one_player(43, 50, 5.0, 0.0);
+        engine.state.config.factory_income_bonus_cap = 1.5;
+        engine.state.config.troop_base_income = 100.0;
+        engine.state.config.global_speed_multiplier = 1.0;
         for i in 0u32..20 {
             engine.buildings.push(Building {
                 id: u64::from(i + 1),
@@ -151,8 +150,7 @@ mod tests {
         let cfg = &engine.state.config;
         let low = 5.0_f64;
         let ticks_per_second = 1000.0 / cfg.tick_rate_ms as f64;
-        let total_fill_ticks = cfg.troop_fill_time_seconds * ticks_per_second;
-        let raw_income = p.max_troops / total_fill_ticks;
+        let raw_income = cfg.troop_base_income / ticks_per_second;
         
         let uncapped = raw_income
             * (1.0 + 20.0 * cfg.factory_income_bonus_per_level);
@@ -201,5 +199,22 @@ mod tests {
         let expected =
             cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level;
         assert!((p.gold - expected).abs() < 0.001, "gold={}", p.gold);
+    }
+
+    #[test]
+    fn troop_base_income_generates_correctly() {
+        let mut engine = engine_one_player(46, 1, 0.0, 0.0);
+        engine.state.config.troop_base_income = 100.0;
+        engine.state.config.global_speed_multiplier = 4.0;
+        engine.state.config.tick_rate_ms = 100.0;
+        engine.state.config.max_troops_base = 100.0;
+        engine.state.config.max_troops_scale = 100.0;
+        
+        engine.execute_income();
+        let p = engine.state.player(1).unwrap();
+        
+        // ticks_per_second = 1000.0 / 100.0 = 10.0
+        // raw_income = (100.0 / 10.0) * 4.0 = 40.0
+        assert_eq!(p.troops, 40.0);
     }
 }

@@ -12,6 +12,10 @@ path = "src/test_relay.rs"
 name = "bot-manager"
 path = "src/bot_manager.rs"
 
+[[bin]]
+name = "generate-tutorial"
+path = "src/bin/generate_tutorial.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 serde = { workspace = true }

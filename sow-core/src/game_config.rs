@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-fn default_troop_fill_time() -> f64 {
-    40.0
-}
-
 fn default_game_mode() -> String {
     "FFA".to_string()
 }
@@ -141,9 +137,6 @@ pub struct GameConfig {
     pub factory_income_bonus_cap: f64,
     /// Flat gold income generated per level of an owned city.
     pub gold_income_per_city_level: f64,
-    /// How many seconds it takes to naturally fill your troop capacity from 0 to 100% (ignoring factories).
-    #[serde(default = "default_troop_fill_time")]
-    pub troop_fill_time_seconds: f64,
 }
 
 impl Default for GameConfig {
@@ -151,8 +144,8 @@ impl Default for GameConfig {
         Self {
             // Lobby & Match Setup
             max_players: 120,
-            bot_count: 650,    // Tribes (Simple, static filler AI)
-            nation_count: 80, // Nations (Dynamic expanding AI)
+            bot_count: 400,    // Tribes (Simple, static filler AI)
+            nation_count: 120, // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
@@ -166,13 +159,13 @@ impl Default for GameConfig {
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
             // Scales combat expansion, gold, and troop income broadly
-            global_speed_multiplier: 0.1, 
+            global_speed_multiplier: 0.25, 
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 3.0,
-            attack_cost_neutral: 0.001,
-            terrain_multiplier_highland: 3.0,
-            terrain_multiplier_mountain: 6.0,
+            attack_cost_enemy: 1.0,
+            attack_cost_neutral: 0.25,
+            terrain_multiplier_highland: 1.5,
+            terrain_multiplier_mountain: 3.0,
             bot_attack_interval_ticks: 240,
             max_tiles_per_tick: 1024.0,
             max_tiles_per_tick_reference_troops: 1000.0,
@@ -180,17 +173,16 @@ impl Default for GameConfig {
             momentum_divisor: 125.0,
 
             // Economy & Income Rates
-            starting_troops: 100.0,
-            starting_gold: 25.0,
-            gold_base_income: 1.5,
-            troop_base_income: 2.0,
+            starting_troops: 1000.0,
+            starting_gold: 0.0,
+            gold_base_income: 0.0,
+            troop_base_income: 100.0,
             max_troops_base: 100.0,
-            max_troops_scale: 50.0,
-            city_max_troops_per_level: 2000.0,
-            factory_income_bonus_per_level: 0.10,
-            factory_income_bonus_cap: 1.50,
-            gold_income_per_city_level: 0.5,
-            troop_fill_time_seconds: 40.0,
+            max_troops_scale: 100.0,
+            city_max_troops_per_level: 0.0,
+            factory_income_bonus_per_level: 0.0,
+            factory_income_bonus_cap: 0.0,
+            gold_income_per_city_level: 0.0,
         }
     }
 }

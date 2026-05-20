@@ -800,6 +800,7 @@ mod bot_iq_alliance_tests {
     #[test]
     fn test_execute_income_iq_points_accumulation() {
         let mut engine = test_engine_two_players(42);
+        engine.state.config.global_speed_multiplier = 1.0;
         
         // Prior to income
         assert_eq!(engine.state.player(1).unwrap().iq_points, 50.0);
@@ -808,9 +809,9 @@ mod bot_iq_alliance_tests {
         // Tick income
         engine.execute_income();
 
-        // High IQ (135) should gain 1.35 points
+        // High IQ (135) should gain 1.35 points * multiplier
         assert_eq!(engine.state.player(1).unwrap().iq_points, 51.35);
-        // Low IQ (85) should gain 0.85 points
+        // Low IQ (85) should gain 0.85 points * multiplier
         assert_eq!(engine.state.player(2).unwrap().iq_points, 50.85);
     }
 

@@ -155,15 +155,15 @@ impl SowApp {
                                             #[cfg(not(target_arch = "wasm32"))]
                                             let _ = std::fs::remove_file("sow_tutorial_completed.txt");
 
-                                            let map_name = "world".to_string();
+                                            let map_name = "tutorial".to_string();
                                             self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
 
                                             let mut config = sow_core::game_config::GameConfig::default();
                                             config.map_name = map_name.clone();
-                                            config.map_width = 2000;
-                                            config.map_height = 1000;
-                                            config.bot_count = 20;
-                                            config.nation_count = 5;
+                                            config.map_width = 800;
+                                            config.map_height = 600;
+                                            config.bot_count = 2;
+                                            config.nation_count = 1;
 
                                             let start_msg = sow_core::protocol::ServerStartMessage {
                                                 lobby_id: None,

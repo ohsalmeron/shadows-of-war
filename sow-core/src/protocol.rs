@@ -262,6 +262,15 @@ pub struct DirtyTile {
     pub new_owner: u16,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct BuildingSnapshot {
+    pub tile_idx: u32,
+    pub owner_id: u16,
+    pub kind: crate::game::BuildingKind,
+    pub level: u8,
+    pub under_construction: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FleetSnapshot {
     pub id: u64,
@@ -295,6 +304,7 @@ pub struct SimSnapshot {
     pub dirty_tiles: Vec<DirtyTile>,
     pub fleets: Vec<FleetSnapshot>,
     pub attacks: Vec<AttackSnapshot>,
+    pub buildings: Vec<BuildingSnapshot>,
     pub winner: Option<u16>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,

@@ -512,6 +512,18 @@ impl SowEngine {
                 None
             };
 
+        let buildings: Vec<crate::protocol::BuildingSnapshot> = self
+            .buildings
+            .iter()
+            .map(|b| crate::protocol::BuildingSnapshot {
+                tile_idx: b.tile_idx,
+                owner_id: b.owner_id,
+                kind: b.kind,
+                level: b.level,
+                under_construction: b.under_construction,
+            })
+            .collect();
+
         crate::protocol::SimSnapshot {
             tick: self.state.tick,
             phase: self.state.phase.clone(),
@@ -520,6 +532,7 @@ impl SowEngine {
             dirty_tiles,
             fleets,
             attacks,
+            buildings,
             winner: self.state.winner,
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
