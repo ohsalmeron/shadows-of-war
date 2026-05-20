@@ -1,8 +1,6 @@
 // Client-only visual configuration.
 // Tweak these values and `cargo run --bin sow-client` to see changes without recompiling the server.
 
-pub const EXPRESSION_EMOJIS: &[&str] = &["😀", "😭", "😮", "😠", "👑", "💪", "⚔️", "💀", "❤️", "🔥", "👀", "🏳️"];
-
 pub struct ClientVisualConfig {
     pub ui_lod_dot_radius: f32,
 

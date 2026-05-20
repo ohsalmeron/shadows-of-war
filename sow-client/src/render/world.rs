@@ -168,18 +168,39 @@ impl SowApp {
                     let font_id = egui::FontId::proportional(font_size);
                     let troops_str = new_troops_str.clone();
                     let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
-                    let disc_galley = match (player.disconnected, &active_emoji) {
-                        (true, _) => Some(painter.layout_no_wrap(
+                    
+                    let mut extra_emoji = None;
+                    if !player.disconnected {
+                        if let Some(my_id) = self.sim.my_player_id {
+                            if my_id != player.id {
+                                let my_snapshot = self.sim.current_snapshot.as_ref()
+                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id));
+                                if let Some(me) = my_snapshot {
+                                    if me.alliance_requests.contains(&player.id) {
+                                        extra_emoji = Some("🤝?");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let disc_galley = match (player.disconnected, &active_emoji, extra_emoji) {
+                        (true, _, _) => Some(painter.layout_no_wrap(
                             "🔌".to_owned(),
                             disc_font_id,
                             NAMEPLATE_FILL,
                         )),
-                        (false, Some(emoji)) => Some(painter.layout_no_wrap(
+                        (false, Some(emoji), _) => Some(painter.layout_no_wrap(
                             emoji.to_owned(),
                             disc_font_id,
                             NAMEPLATE_FILL,
                         )),
-                        (false, None) => None,
+                        (false, None, Some(ext)) => Some(painter.layout_no_wrap(
+                            ext.to_owned(),
+                            disc_font_id,
+                            NAMEPLATE_FILL,
+                        )),
+                        (false, None, None) => None,
                     };
 
                     CachedNameplate {
@@ -207,18 +228,39 @@ impl SowApp {
                 {
                     let font_id = egui::FontId::proportional(font_size);
                     let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
-                    let disc_galley = match (player.disconnected, &active_emoji) {
-                        (true, _) => Some(painter.layout_no_wrap(
+                    
+                    let mut extra_emoji = None;
+                    if !player.disconnected {
+                        if let Some(my_id) = self.sim.my_player_id {
+                            if my_id != player.id {
+                                let my_snapshot = self.sim.current_snapshot.as_ref()
+                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id));
+                                if let Some(me) = my_snapshot {
+                                    if me.alliance_requests.contains(&player.id) {
+                                        extra_emoji = Some("🤝?");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let disc_galley = match (player.disconnected, &active_emoji, extra_emoji) {
+                        (true, _, _) => Some(painter.layout_no_wrap(
                             "🔌".to_owned(),
                             disc_font_id,
                             NAMEPLATE_FILL,
                         )),
-                        (false, Some(emoji)) => Some(painter.layout_no_wrap(
+                        (false, Some(emoji), _) => Some(painter.layout_no_wrap(
                             emoji.to_owned(),
                             disc_font_id,
                             NAMEPLATE_FILL,
                         )),
-                        (false, None) => None,
+                        (false, None, Some(ext)) => Some(painter.layout_no_wrap(
+                            ext.to_owned(),
+                            disc_font_id,
+                            NAMEPLATE_FILL,
+                        )),
+                        (false, None, None) => None,
                     };
 
                     cache_entry.name_galley = layout_nameplate_name_galley(

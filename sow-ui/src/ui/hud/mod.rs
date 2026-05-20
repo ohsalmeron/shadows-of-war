@@ -32,6 +32,7 @@ pub struct HudState {
     pub safe_area_bottom: f32,
     pub selected_tile: Option<SelectedTileInfo>,
     pub show_emoji_panel: bool,
+    pub show_alliance_inbox: bool,
 }
 
 impl HudState {
@@ -114,6 +115,9 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
         .show(ui.ctx(), |ui| {
             crate::ui::theme::hud_panel_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    if ui.add(crate::widgets::HudButton::new("📩")).on_hover_text(&sow_lang::get(lang).hud.inbox_title).clicked() {
+                        state.show_alliance_inbox = !state.show_alliance_inbox;
+                    }
                     if ui.add(crate::widgets::HudButton::new("⚙")).on_hover_text(&sow_lang::get(lang).hud.hover_settings).clicked() {
                         action = Some(UiAction::ToggleSettings);
                     }
@@ -123,6 +127,107 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                 });
             });
         });
+
+    // ── Floating Alliance Inbox Panel ─────────────────────────────────────────
+    if state.show_alliance_inbox {
+        egui::Area::new(egui::Id::new("floating_alliance_inbox"))
+            .anchor(Align2::RIGHT_TOP, vec2(-12.0, 56.0 + state.safe_area_top))
+            .order(egui::Order::Foreground)
+            .show(ui.ctx(), |ui| {
+                let panel_bg = crate::ui::theme::panel_bg();
+                let glow_color = crate::ui::theme::accent_solo_cyan();
+                
+                egui::Frame::menu(&ui.ctx().global_style())
+                    .fill(panel_bg)
+                    .stroke(egui::Stroke::new(1.5_f32, glow_color))
+                    .corner_radius(12)
+                    .inner_margin(16)
+                    .show(ui, |ui| {
+                        ui.set_max_width(300.0);
+                        ui.vertical(|ui| {
+                            ui.label(
+                                RichText::new(&sow_lang::get(lang).hud.inbox_title)
+                                    .strong()
+                                    .color(crate::ui::theme::accent_solo_cyan())
+                                    .size(13.0)
+                            );
+                            ui.add_space(8.0);
+                            
+                            let my_snapshot = state.players.iter().find(|p| p.id == state.my_player_id);
+                            let requests = my_snapshot.map(|p| p.alliance_requests.clone()).unwrap_or_default();
+                            
+                            if requests.is_empty() {
+                                ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_empty).color(Color32::GRAY));
+                            } else {
+                                for requester_id in requests {
+                                    if let Some(requester) = state.players.iter().find(|p| p.id == requester_id) {
+                                        let rgb = if requester.player_type == sow_core::player::PlayerType::Human {
+                                            sow_core::player::human_shader_territory_rgb(requester.id)
+                                        } else {
+                                            requester.color
+                                        };
+                                        let pc = Color32::from_rgb(
+                                            (rgb[0] * 255.0) as u8,
+                                            (rgb[1] * 255.0) as u8,
+                                            (rgb[2] * 255.0) as u8,
+                                        );
+                                        
+                                        ui.horizontal(|ui| {
+                                            let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
+                                            let name = if requester.name.is_empty() {
+                                                if requester.id >= 200 {
+                                                    format!("Tribe {}", requester.id - 199)
+                                                } else {
+                                                    format!("Nation {}", requester.id - 103)
+                                                }
+                                            } else {
+                                                requester.name.clone()
+                                            };
+                                            
+                                            ui.label(RichText::new(icon).color(pc).size(16.0));
+                                            ui.vertical(|ui| {
+                                                ui.label(RichText::new(name).strong().color(pc));
+                                                ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_wants_ally).size(12.0).color(Color32::LIGHT_GRAY));
+                                            });
+                                        });
+                                        
+                                        ui.add_space(4.0);
+                                        ui.horizontal(|ui| {
+                                            let btn_accept = egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_accept).color(Color32::from_rgb(74, 222, 128)))
+                                                .fill(crate::ui::theme::menu_secondary_button())
+                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3)));
+                                            if ui.add(btn_accept).clicked() {
+                                                cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
+                                                state.show_alliance_inbox = false;
+                                            }
+                                            
+                                            let btn_reject = egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_reject).color(Color32::from_rgb(239, 68, 68)))
+                                                .fill(crate::ui::theme::menu_secondary_button())
+                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3)));
+                                            if ui.add(btn_reject).clicked() {
+                                                cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
+                                                // Don't close inbox on reject so they can reject multiple
+                                            }
+                                        });
+                                        ui.add_space(8.0);
+                                    }
+                                }
+                            }
+                        });
+                    });
+            });
+
+        // Click outside the inbox panel closes it
+        if ui.ctx().input(|i| i.pointer.any_pressed()) {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
+                let screen_size = ui.ctx().content_rect();
+                let panel_center = pos2(screen_size.right() - 150.0, 150.0 + state.safe_area_top);
+                if pos.distance(panel_center) > 250.0 {
+                    state.show_alliance_inbox = false;
+                }
+            }
+        }
+    }
 
     // ── Bottom-right Map Controls ──────────────────────────────────────────────
     egui::Area::new(egui::Id::new("hud_map_controls"))
@@ -163,7 +268,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     .fill(panel_bg)
                     .stroke(egui::Stroke::new(1.5_f32, glow_color))
                     .corner_radius(12)
-                    .inner_margin(10)
+                    .inner_margin(12)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
                             ui.label(
@@ -172,18 +277,17 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                     .color(crate::ui::theme::accent_solo_cyan())
                                     .size(11.0)
                             );
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
                             
                             egui::Grid::new("emoji_grid")
-                                .spacing(vec2(6.0, 6.0))
+                                .spacing(vec2(8.0, 8.0))
                                 .show(ui, |ui| {
                                     for (i, &emoji) in emojis.iter().enumerate() {
-                                        let btn = egui::Button::new(RichText::new(emoji).size(20.0))
-                                            .fill(crate::ui::theme::menu_secondary_button())
-                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
-                                            .corner_radius(6);
+                                        // Leverage the global theme for rich animations, glows, and hover scaling
+                                        let btn = egui::Button::new(RichText::new(emoji).size(22.0))
+                                            .corner_radius(8);
                                         
-                                        if ui.add_sized(vec2(36.0, 36.0), btn).clicked() {
+                                        if ui.add_sized(vec2(40.0, 40.0), btn).clicked() {
                                             let intent = sow_core::protocol::GameplayIntent::ExpressEmoji {
                                                 emoji: emoji.to_owned(),
                                             };
@@ -200,14 +304,24 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     });
             });
 
-        // Click outside the emoji panel closes it
+        // Robust Rect-based click-outside dismiss (replaces flaky circular radius check)
         if ui.ctx().input(|i| i.pointer.any_pressed()) {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
-                // If it's not hovering inside the grid/panel area, dismiss it
-                // Estimated size of the panel is roughly 180x180 around its anchor
                 let screen_size = ui.ctx().content_rect();
-                let panel_center = pos2(screen_size.right() - 150.0, screen_size.bottom() - 180.0 - state.safe_area_bottom);
-                if pos.distance(panel_center) > 130.0 {
+                
+                // Exact rectangular bounds of the emoji panel
+                let panel_rect = egui::Rect::from_min_max(
+                    pos2(screen_size.right() - 260.0, screen_size.bottom() - 280.0 - state.safe_area_bottom),
+                    pos2(screen_size.right() - 50.0, screen_size.bottom() - 90.0 - state.safe_area_bottom),
+                );
+                
+                // Allow clicking the HUD bottom bar controls without dismissing
+                let hud_rect = egui::Rect::from_min_max(
+                    pos2(screen_size.right() - 510.0, screen_size.bottom() - 90.0 - state.safe_area_bottom),
+                    pos2(screen_size.right(), screen_size.bottom()),
+                );
+
+                if !panel_rect.contains(pos) && !hud_rect.contains(pos) {
                     state.show_emoji_panel = false;
                 }
             }

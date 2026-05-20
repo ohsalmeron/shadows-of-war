@@ -433,6 +433,7 @@ impl SowEngine {
             })
             .collect();
 
+        let proposed = &self.alliances_proposed;
         let players = self
             .state
             .players
@@ -448,6 +449,11 @@ impl SowEngine {
                 };
 
                 let name = p.name.clone();
+
+                let alliance_requests = proposed.iter()
+                    .filter(|pair| pair.1 == p.id)
+                    .map(|pair| pair.0)
+                    .collect();
 
                 crate::protocol::PlayerSnapshot {
                     id: p.id,
@@ -465,6 +471,7 @@ impl SowEngine {
                     alive: p.alive,
                     iq: p.iq,
                     alliances: p.alliances.clone(),
+                    alliance_requests,
                     disconnected: p.disconnected,
                     active_emoji: p.active_emoji.clone(),
                 }

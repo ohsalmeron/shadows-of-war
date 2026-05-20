@@ -56,6 +56,9 @@ pub enum GameplayIntent {
     AcceptAlliance {
         target_player: crate::player::PlayerId,
     },
+    RejectAlliance {
+        target_player: crate::player::PlayerId,
+    },
     BreakAlliance {
         target_player: crate::player::PlayerId,
     },
@@ -259,6 +262,7 @@ pub struct PlayerSnapshot {
     pub alive: bool,
     pub iq: u32,
     pub alliances: Vec<crate::player::PlayerId>,
+    pub alliance_requests: Vec<crate::player::PlayerId>,
     pub disconnected: bool,
     pub active_emoji: Option<String>,
 }

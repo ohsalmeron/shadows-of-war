@@ -148,6 +148,14 @@ impl SowEngine {
                     }
                 }
             }
+            GameplayIntent::RejectAlliance { target_player } => {
+                let rejector = stamped.player_id;
+                let target = *target_player;
+                let prop_idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == rejector);
+                if let Some(idx) = prop_idx {
+                    self.alliances_proposed.remove(idx);
+                }
+            }
             GameplayIntent::BreakAlliance { target_player } => {
                 let breaker = stamped.player_id;
                 let target = *target_player;

@@ -473,6 +473,8 @@ impl SowApp {
             self.input.map_context_menu = None;
             self.input.map_context_menu_active = None;
             self.input.context_menu_timer = 0.0;
+            self.input.context_menu_open_time = Some(web_time::Instant::now());
+            self.input.map_context_menu_session += 1;
             
             self.input.map_context_menu = Some((x as f32, y as f32, idx));
         }

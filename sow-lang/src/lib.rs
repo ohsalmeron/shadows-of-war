@@ -120,6 +120,11 @@ pub struct HudStrings {
     pub btn_ally: String,
     pub btn_build: String,
     pub btn_attack: String,
+    pub inbox_title: String,
+    pub inbox_empty: String,
+    pub inbox_wants_ally: String,
+    pub btn_accept: String,
+    pub btn_reject: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
