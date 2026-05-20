@@ -12,7 +12,7 @@ pub struct TroopLabelThrottle {
 }
 
 impl TroopLabelThrottle {
-    pub const INTERVAL: f64 = 0.5;
+    pub const INTERVAL: f64 = 2.0;
 
     pub fn displayed_troops(&mut self, wall_secs: f64, player_id: u16, sim_troops: f64) -> f64 {
         let refresh = match self.last_refresh_wall_secs.get(&player_id) {

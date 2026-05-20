@@ -54,7 +54,7 @@ impl RenderContext {
                 depth: 1,
             },
             usage: gpu::TextureUsage::TARGET,
-            display_sync: gpu::DisplaySync::Tear,
+            display_sync: gpu::DisplaySync::Block,
             color_space: gpu::ColorSpace::Srgb,
             ..Default::default()
         };

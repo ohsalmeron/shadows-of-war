@@ -74,9 +74,10 @@ impl SowApp {
             let scale = spring_scale.clamp(0.0, 1.25);
 
             let screen = ctx.content_rect();
+            let sf = ctx.pixels_per_point();
             let r_padding = 110.0 * scale;
-            let clamped_x = (mx as f32).clamp(r_padding, screen.width() - r_padding);
-            let clamped_y = (my as f32).clamp(r_padding, screen.height() - r_padding);
+            let clamped_x = (mx / sf).clamp(r_padding, screen.width() - r_padding);
+            let clamped_y = (my / sf).clamp(r_padding, screen.height() - r_padding);
             let center = egui::pos2(clamped_x, clamped_y);
             let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
 
