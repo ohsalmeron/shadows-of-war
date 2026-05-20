@@ -16,9 +16,13 @@ impl SowApp {
                         self.input.hold_attack_accum = 0.0;
                         
                         let my_id = self.sim.my_player_id.unwrap_or(0);
+                        let is_betrayer = self.sim.current_snapshot.as_ref()
+                            .and_then(|s| s.players.iter().find(|p| p.id == target_owner))
+                            .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                            .unwrap_or(false);
                         let is_allied = self.sim.current_snapshot.as_ref()
                             .and_then(|s| s.players.iter().find(|p| p.id == my_id))
-                            .map(|p| p.alliances.contains(&target_owner))
+                            .map(|p| p.alliances.contains(&target_owner) && !is_betrayer)
                             .unwrap_or(false);
 
                         let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);

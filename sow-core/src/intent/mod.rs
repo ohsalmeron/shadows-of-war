@@ -63,6 +63,22 @@ impl SowEngine {
                 troops,
             } => {
                 let owner = self.state.map.state[*target_tile as usize];
+                let is_betrayer = self.state.player(owner).map(|p| p.active_emoji.as_deref() == Some("🗡️")).unwrap_or(false);
+                let is_allied_in_list = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
+                
+                if is_allied_in_list && is_betrayer {
+                    // Silently break the alliance without any penalty for the attacker
+                    let attacker = stamped.player_id;
+                    if let Some(p1) = self.state.player_mut(attacker) {
+                        p1.alliances.retain(|&id| id != owner);
+                        p1.alliance_timers.remove(&owner);
+                    }
+                    if let Some(p2) = self.state.player_mut(owner) {
+                        p2.alliances.retain(|&id| id != attacker);
+                        p2.alliance_timers.remove(&attacker);
+                    }
+                }
+
                 let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
                 if !is_allied {
                     self.apply_launch_fleet_intent(stamped.player_id, *target_tile, *troops);
@@ -82,7 +98,24 @@ impl SowEngine {
             );
             }
             GameplayIntent::Attack(attack) => {
-                let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&attack.target_owner)).unwrap_or(false);
+                let owner = attack.target_owner;
+                let is_betrayer = self.state.player(owner).map(|p| p.active_emoji.as_deref() == Some("🗡️")).unwrap_or(false);
+                let is_allied_in_list = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
+
+                if is_allied_in_list && is_betrayer {
+                    // Silently break the alliance without any penalty for the attacker
+                    let attacker = stamped.player_id;
+                    if let Some(p1) = self.state.player_mut(attacker) {
+                        p1.alliances.retain(|&id| id != owner);
+                        p1.alliance_timers.remove(&owner);
+                    }
+                    if let Some(p2) = self.state.player_mut(owner) {
+                        p2.alliances.retain(|&id| id != attacker);
+                        p2.alliance_timers.remove(&attacker);
+                    }
+                }
+
+                let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
                 if !is_allied {
                     self.apply_attack_intent(stamped.player_id, attack, intent_index);
                 }
@@ -128,10 +161,11 @@ impl SowEngine {
                     player.disconnected = *is_disconnected;
                 }
             }
-            GameplayIntent::ExpressEmoji { emoji } => {
+            GameplayIntent::ExpressEmoji { emoji, pinned } => {
                 if let Some(player) = self.state.player_mut(stamped.player_id) {
                     player.active_emoji = Some(emoji.clone());
-                    player.emoji_timer = 30; // 3 seconds at 10 ticks per second
+                    player.emoji_pinned = *pinned;
+                    player.emoji_timer = if *pinned { 0 } else { 30 };
                 }
             }
             GameplayIntent::ProposeAlliance { target_player } => {
@@ -141,19 +175,26 @@ impl SowEngine {
                     let proposer_alive = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
                     let target_alive = self.state.player(target).map(|p| p.alive).unwrap_or(false);
                     if proposer_alive && target_alive {
-                        let is_allied = self.state.player(proposer)
-                            .map(|p| p.alliances.contains(&target))
-                            .unwrap_or(false);
-                        if !is_allied {
+                        let (is_allied, can_renew) = self.state.player(proposer)
+                            .map(|p| {
+                                let allied = p.alliances.contains(&target);
+                                let timer = p.alliance_timers.get(&target).copied().unwrap_or(0);
+                                (allied, allied && timer <= 600) // 30 seconds expiration window
+                            })
+                            .unwrap_or((false, false));
+
+                        if !is_allied || can_renew {
                             if self.alliances_proposed.contains(&(target, proposer)) {
-                                // Mutual request! Accept it immediately.
+                                // Mutual request! Accept/Renew it immediately.
                                 let idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == proposer).unwrap();
                                 self.alliances_proposed.remove(idx);
                                 if let Some(p1) = self.state.player_mut(proposer) {
                                     if !p1.alliances.contains(&target) { p1.alliances.push(target); }
+                                    p1.alliance_timers.insert(target, 2400); // 120 seconds duration
                                 }
                                 if let Some(p2) = self.state.player_mut(target) {
                                     if !p2.alliances.contains(&proposer) { p2.alliances.push(proposer); }
+                                    p2.alliance_timers.insert(proposer, 2400); // 120 seconds duration
                                 }
                                 self.retreat_mutual_aggression(proposer, target);
                             } else if !self.alliances_proposed.contains(&(proposer, target)) {
@@ -176,11 +217,13 @@ impl SowEngine {
                         if !p1.alliances.contains(&target) {
                             p1.alliances.push(target);
                         }
+                        p1.alliance_timers.insert(target, 2400); // 120 seconds duration
                     }
                     if let Some(p2) = self.state.player_mut(target) {
                         if !p2.alliances.contains(&acceptor) {
                             p2.alliances.push(acceptor);
                         }
+                        p2.alliance_timers.insert(acceptor, 2400); // 120 seconds duration
                     }
                     self.retreat_mutual_aggression(acceptor, target);
                 }
@@ -198,11 +241,13 @@ impl SowEngine {
                 let target = *target_player;
                 if let Some(p1) = self.state.player_mut(breaker) {
                     p1.alliances.retain(|&id| id != target);
+                    p1.alliance_timers.remove(&target);
                     p1.active_emoji = Some("🗡️".to_string());
-                    p1.emoji_timer = 50; // 5 seconds of betrayal icon
+                    p1.emoji_timer = 300; // 30 seconds of betrayal icon
                 }
                 if let Some(p2) = self.state.player_mut(target) {
                     p2.alliances.retain(|&id| id != breaker);
+                    p2.alliance_timers.remove(&breaker);
                 }
             }
             GameplayIntent::SendResources { target_player, gold, troops } => {

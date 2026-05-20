@@ -49,6 +49,7 @@ pub enum GameplayIntent {
     },
     ExpressEmoji {
         emoji: String,
+        pinned: bool,
     },
     ProposeAlliance {
         target_player: crate::player::PlayerId,
@@ -262,6 +263,8 @@ pub struct PlayerSnapshot {
     pub alive: bool,
     pub iq: u32,
     pub alliances: Vec<crate::player::PlayerId>,
+    #[serde(default)]
+    pub alliance_timers: std::collections::HashMap<crate::player::PlayerId, u32>,
     pub alliance_requests: Vec<crate::player::PlayerId>,
     pub disconnected: bool,
     pub active_emoji: Option<String>,

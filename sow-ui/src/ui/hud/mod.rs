@@ -32,8 +32,10 @@ pub struct HudState {
     pub safe_area_bottom: f32,
     pub selected_tile: Option<SelectedTileInfo>,
     pub show_emoji_panel: bool,
+    pub pin_emoji: bool,
     pub show_alliance_inbox: bool,
     pub show_betrayal_warning: Option<(u16, sow_core::protocol::GameplayIntent)>,
+    pub show_error: Option<String>,
 }
 
 impl HudState {
@@ -272,12 +274,18 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     .inner_margin(12)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new("EXPRESS EMOJI")
-                                    .strong()
-                                    .color(crate::ui::theme::accent_solo_cyan())
-                                    .size(11.0)
-                            );
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new("EXPRESS EMOJI")
+                                        .strong()
+                                        .color(crate::ui::theme::accent_solo_cyan())
+                                        .size(11.0)
+                                );
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let pin_color = if state.pin_emoji { crate::ui::theme::accent_ranked_gold() } else { crate::ui::theme::text_secondary() };
+                                    ui.checkbox(&mut state.pin_emoji, RichText::new("PIN").size(10.0).strong().color(pin_color));
+                                });
+                            });
                             ui.add_space(8.0);
                             
                             egui::Grid::new("emoji_grid")
@@ -291,6 +299,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                         if ui.add_sized(vec2(40.0, 40.0), btn).clicked() {
                                             let intent = sow_core::protocol::GameplayIntent::ExpressEmoji {
                                                 emoji: emoji.to_owned(),
+                                                pinned: state.pin_emoji,
                                             };
                                             cancel_intents.push(intent);
                                             state.show_emoji_panel = false;
@@ -310,10 +319,10 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
             if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
                 let screen_size = ui.ctx().content_rect();
                 
-                // Exact rectangular bounds of the emoji panel
+                // Spacious rectangular bounds of the emoji panel to prevent accidental dismisses
                 let panel_rect = egui::Rect::from_min_max(
-                    pos2(screen_size.right() - 260.0, screen_size.bottom() - 280.0 - state.safe_area_bottom),
-                    pos2(screen_size.right() - 50.0, screen_size.bottom() - 90.0 - state.safe_area_bottom),
+                    pos2(screen_size.right() - 320.0, screen_size.bottom() - 360.0 - state.safe_area_bottom),
+                    pos2(screen_size.right() - 40.0, screen_size.bottom() - 80.0 - state.safe_area_bottom),
                 );
                 
                 // Allow clicking the HUD bottom bar controls without dismissing
@@ -331,6 +340,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
 
     draw_sync_overlay(ui.ctx(), state, lang);
     draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang);
+    draw_error_overlay(ui.ctx(), state);
 
     action
 }
@@ -919,5 +929,52 @@ fn draw_mobile_selection_bar(
             });
             ui.add_space(4.0);
         });
+    }
+}
+
+fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
+    if let Some(err_msg) = state.show_error.clone() {
+        let screen_rect = ctx.content_rect();
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("error_overlay_bg")))
+            .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+
+        egui::Window::new("error_warning_modal")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
+            .frame(egui::Frame::window(&ctx.global_style())
+                .fill(crate::ui::theme::panel_bg())
+                .stroke(egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()))
+                .inner_margin(24.0)
+                .corner_radius(12)
+            )
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        "ACTION FAILED",
+                        egui::FontId::proportional(26.0),
+                        crate::ui::theme::accent_danger()
+                    );
+                    
+                    ui.add_space(12.0);
+                    
+                    ui.label(RichText::new(err_msg)
+                        .size(16.0)
+                        .color(Color32::WHITE)
+                    );
+
+                    ui.add_space(24.0);
+
+                    let ok_btn = egui::Button::new(RichText::new("OK").size(16.0).strong())
+                        .fill(crate::ui::theme::menu_secondary_button())
+                        .corner_radius(8);
+                    
+                    if ui.add_sized(vec2(120.0, 40.0), ok_btn).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        state.show_error = None;
+                    }
+                });
+            });
     }
 }

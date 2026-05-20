@@ -178,6 +178,7 @@ impl SowApp {
         // ── UI State ────────────────────────────────────────────────────────────
         let mut app = ClientApp::new();
         let egui_ctx = Context::default();
+        egui_extras::install_image_loaders(&egui_ctx);
         sow_ui::ui::theme::apply_theme(&egui_ctx);
         let raw_input = RawInput::default();
 

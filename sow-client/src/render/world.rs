@@ -163,7 +163,6 @@ impl SowApp {
                     player.name.clone()
                 };
 
-                let active_emoji = player.active_emoji.clone();
                 let font_id = egui::FontId::proportional(font_size);
                 
                 let name_galley = layout_nameplate_name_galley(
@@ -180,54 +179,152 @@ impl SowApp {
 
                 let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
                 
-                let mut extra_emoji = None;
-                if !player.disconnected {
+                let mut status_list = Vec::new();
+                let mut express_emoji = None;
+                let mut betrayal_flash = false;
+
+                if player.disconnected {
+                    status_list.push("🔌");
+                } else {
+                    let has_betrayal = player.active_emoji.as_deref() == Some("🗡️");
+                    if has_betrayal {
+                        betrayal_flash = true;
+                    }
+
+                    // Check alliance status with the player
+                    let mut is_allied = false;
+                    let mut is_heart_flashing = false;
+                    let mut has_req = false;
                     if let Some(my_id) = self.sim.my_player_id {
                         if my_id != player.id {
-                            let my_snapshot = self.sim.current_snapshot.as_ref()
-                                .and_then(|s| s.players.iter().find(|p| p.id == my_id));
-                            if let Some(me) = my_snapshot {
-                                if me.alliance_requests.contains(&player.id) {
-                                    extra_emoji = Some("🤝?");
+                            if let Some(me) = self.sim.current_snapshot.as_ref()
+                                .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                            {
+                                if me.alliances.contains(&player.id) {
+                                    is_allied = true;
+                                    let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
+                                    if timer <= 600 {
+                                        is_heart_flashing = true;
+                                    }
+                                } else if me.alliance_requests.contains(&player.id) {
+                                    has_req = true;
                                 }
                             }
                         }
                     }
+
+                    if is_allied {
+                        if is_heart_flashing {
+                            let is_flash_red = (wall_secs * 2.0) as u64 % 2 == 0;
+                            if is_flash_red {
+                                status_list.push("❤️");
+                            } else {
+                                status_list.push("🤍"); // Sleek alternating white heart (0 horizontal layout shifts)
+                            }
+                        } else {
+                            status_list.push("❤️");
+                        }
+                    } else if has_req {
+                        status_list.push("💕");
+                    }
+
+                    // Express track: any expressed emoji other than betrayal
+                    if player.active_emoji.is_some() && player.active_emoji.as_deref() != Some("🗡️") {
+                        express_emoji = player.active_emoji.as_deref();
+                    }
                 }
 
-                let disc_galley = match (player.disconnected, &active_emoji, extra_emoji) {
-                    (true, _, _) => Some(painter.layout_no_wrap(
-                        "🔌".to_owned(),
-                        disc_font_id,
-                        NAMEPLATE_FILL,
-                    )),
-                    (false, Some(emoji), _) => Some(painter.layout_no_wrap(
-                        emoji.to_owned(),
-                        disc_font_id,
-                        NAMEPLATE_FILL,
-                    )),
-                    (false, None, Some(ext)) => Some(painter.layout_no_wrap(
-                        ext.to_owned(),
-                        disc_font_id,
-                        NAMEPLATE_FILL,
-                    )),
-                    (false, None, None) => None,
+                let mut job = egui::text::LayoutJob {
+                    break_on_newline: false,
+                    ..Default::default()
+                };
+
+                // Betrayal emoji with 1-second fade-in/out pulse
+                if betrayal_flash {
+                    let t = (wall_secs * std::f64::consts::TAU).sin() * 0.5 + 0.5; // 0..1 over 1 sec
+                    let alpha = (t * 200.0 + 55.0) as u8; // range 55..255
+                    let flash_color = egui::Color32::from_rgba_unmultiplied(220, 38, 38, alpha);
+                    let space = if status_list.is_empty() { "" } else { " " };
+                    job.append(
+                        &format!("{}🗡️", space),
+                        0.0,
+                        egui::text::TextFormat::simple(disc_font_id.clone(), flash_color),
+                    );
+                }
+
+                if !status_list.is_empty() {
+                    let space = if betrayal_flash { " " } else { "" };
+                    let status_str = format!("{}{}", space, status_list.join(" "));
+                    job.append(
+                        &status_str,
+                        0.0,
+                        egui::text::TextFormat::simple(disc_font_id.clone(), egui::Color32::from_rgb(239, 68, 68)),
+                    );
+                }
+
+                if let Some(e) = express_emoji {
+                    let space = if status_list.is_empty() { "" } else { " " };
+                    let express_str = format!("{}{}", space, e);
+                    job.append(
+                        &express_str,
+                        0.0,
+                        egui::text::TextFormat::simple(disc_font_id.clone(), egui::Color32::from_rgb(251, 191, 36)),
+                    );
+                }
+
+                // Log emoji changes using non-spammy thread-local state tracking
+                thread_local! {
+                    static LAST_EMOJI_STATES: std::cell::RefCell<std::collections::HashMap<u16, Option<String>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+                }
+                let emoji_changed = LAST_EMOJI_STATES.with(|states| {
+                    let mut states = states.borrow_mut();
+                    let prev = states.get(&player.id).cloned().flatten();
+                    if prev != player.active_emoji {
+                        states.insert(player.id, player.active_emoji.clone());
+                        true
+                    } else {
+                        false
+                    }
+                });
+                if emoji_changed {
+                    log::info!(
+                        "[EMOJI LOG] Player {} ({}) active_emoji updated in nameplate rendering: {:?}",
+                        player.id,
+                        display_name,
+                        player.active_emoji
+                    );
+                }
+
+                let disc_galley = if !status_list.is_empty() || express_emoji.is_some() || betrayal_flash {
+                    Some(painter.layout_job(job))
+                } else {
+                    None
                 };
 
                 let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
 
                 let mut current_y = center.y - h / 2.0;
 
+                let my_id = self.sim.my_player_id.unwrap_or(0);
+                let is_me = player.id == my_id;
+
+                let star_size = name_galley.rect.height() - 2.0;
+                let total_name_w = if is_me {
+                    name_galley.rect.width() + 4.0 + star_size
+                } else {
+                    name_galley.rect.width()
+                };
+
                 let name_pos = egui::pos2(
-                    center.x - name_galley.rect.width() / 2.0,
+                    center.x - total_name_w / 2.0,
                     current_y,
                 );
 
                 if let Some(dg) = &disc_galley {
-                    // Draw the emoji to the left of the nameplate
+                    // Draw the emoji ABOVE the nameplate, centered horizontally!
                     let disc_pos = egui::pos2(
-                        name_pos.x - dg.rect.width() - 4.0,
-                        current_y + (name_galley.rect.height() - dg.rect.height()) / 2.0,
+                        center.x - dg.rect.width() / 2.0,
+                        current_y - dg.rect.height() - 4.0,
                     );
                     crate::hud::nameplate::paint_nameplate_galley(
                         &painter,
@@ -241,6 +338,64 @@ impl SowApp {
                     name_pos,
                     name_galley.clone(),
                 );
+
+                if is_me {
+                    let star_pos = egui::pos2(
+                        name_pos.x + name_galley.rect.width() + 4.0,
+                        name_pos.y + 1.0,
+                    );
+                    let star_rect = egui::Rect::from_min_size(star_pos, egui::vec2(star_size, star_size));
+                    let star_uri = "bytes://star.svg";
+                    painter.ctx().include_bytes(star_uri, include_bytes!("../../assets/star.svg"));
+                    let size_hint = egui::load::SizeHint::Size {
+                        width: star_size.round() as u32,
+                        height: star_size.round() as u32,
+                        maintain_aspect_ratio: true,
+                    };
+                    
+                    let load_res = painter.ctx().try_load_texture(
+                        star_uri,
+                        egui::TextureOptions::default(),
+                        size_hint,
+                    );
+
+                    thread_local! {
+                        static LAST_SVG_STATE: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+                    }
+                    let svg_state_str = match &load_res {
+                        Ok(egui::load::TexturePoll::Ready { texture }) => {
+                            format!("Ready(size: {:?})", texture.size)
+                        }
+                        Ok(egui::load::TexturePoll::Pending { size }) => {
+                            format!("Pending(size: {:?})", size)
+                        }
+                        Err(e) => {
+                            format!("Err({:?})", e)
+                        }
+                    };
+                    let svg_changed = LAST_SVG_STATE.with(|s| {
+                        let mut s = s.borrow_mut();
+                        if s.as_ref() != Some(&svg_state_str) {
+                            *s = Some(svg_state_str.clone());
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                    if svg_changed {
+                        log::info!("[SVG LOG] try_load_texture for star.svg state changed: {}", svg_state_str);
+                    }
+
+                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                        painter.image(
+                            texture.id,
+                            star_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                }
+
                 current_y += name_galley.rect.height() + 2.0;
 
                 let troops_pos = egui::pos2(

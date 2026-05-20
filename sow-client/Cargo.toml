@@ -18,6 +18,7 @@ env_logger = { workspace = true }
 winit = { path = "../winit/winit", features = ["android-native-activity"] }
 sow-ui = { path = "../sow-ui" }
 egui = "0.34"
+egui_extras = { workspace = true }
 blade-egui = { workspace = true }
 serde_json.workspace = true
 bincode.workspace = true

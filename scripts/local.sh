@@ -13,16 +13,14 @@ echo "========================================================="
 echo "==> Cleaning up any stale game processes..."
 killall sow-server sow-client sow-relay 2>/dev/null || true
 
-# Reset Redis ports so relay allocation starts fresh
-if command -v redis-cli >/dev/null 2>&1; then
-    redis-cli DEL sow:ports >/dev/null 2>&1 || true
-elif command -v valkey-cli >/dev/null 2>&1; then
-    valkey-cli DEL sow:ports >/dev/null 2>&1 || true
-fi
-
 # Clean up function to kill child processes on exit
 cleanup() {
     echo "🧹 Cleaning up background processes..."
+    if command -v redis-cli >/dev/null 2>&1; then
+        redis-cli DEL sow:ports >/dev/null 2>&1 || true
+    elif command -v valkey-cli >/dev/null 2>&1; then
+        valkey-cli DEL sow:ports >/dev/null 2>&1 || true
+    fi
     kill $SERVER_PID $CLIENT1_PID $CLIENT2_PID 2>/dev/null || true
     if [ -n "${REDIS_PID:-}" ]; then
         kill $REDIS_PID 2>/dev/null || true
@@ -52,6 +50,13 @@ if ! command -v redis-cli >/dev/null 2>&1 || ! redis-cli ping >/dev/null 2>&1; t
         echo "❌ redis-server not found in PATH! Please install and start Redis if connection fails."
     fi
     sleep 1 # Give redis a moment to start
+fi
+
+# Reset Redis ports so relay allocation starts fresh now that Redis/Valkey is running
+if command -v redis-cli >/dev/null 2>&1; then
+    redis-cli DEL sow:ports >/dev/null 2>&1 || true
+elif command -v valkey-cli >/dev/null 2>&1; then
+    valkey-cli DEL sow:ports >/dev/null 2>&1 || true
 fi
 
 # 3. Start the Server

@@ -18,11 +18,23 @@ impl SowApp {
             let my_snapshot = self.sim.current_snapshot.as_ref()
                 .and_then(|s| s.players.iter().find(|p| p.id == my_id));
 
+            let is_betrayer = owner_snapshot
+                .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                .unwrap_or(false);
+
             let is_allied = if let Some(owner) = owner_snapshot {
-                owner.alliances.contains(&my_id)
+                owner.alliances.contains(&my_id) && !is_betrayer
             } else {
                 false
             };
+
+            let mut alliance_timer = 0;
+            if is_allied {
+                if let Some(my_snap) = my_snapshot {
+                    alliance_timer = my_snap.alliance_timers.get(&owner_id).copied().unwrap_or(2400);
+                }
+            }
+            let is_in_renewal_window = is_allied && alliance_timer <= 600;
 
             let has_alliance_request = my_snapshot
                 .map(|p| p.alliance_requests.contains(&owner_id))
@@ -61,7 +73,11 @@ impl SowApp {
             };
             let scale = spring_scale.clamp(0.0, 1.25);
 
-            let center = egui::pos2(mx, my);
+            let screen = ctx.content_rect();
+            let r_padding = 110.0 * scale;
+            let clamped_x = (mx as f32).clamp(r_padding, screen.width() - r_padding);
+            let clamped_y = (my as f32).clamp(r_padding, screen.height() - r_padding);
+            let center = egui::pos2(clamped_x, clamped_y);
             let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
 
             let r_center = 36.0 * scale;
@@ -146,7 +162,15 @@ impl SowApp {
                     // 2. Bottom Wedge (Alliances)
                     let b_start = pi / 4.0 + gap;
                     let b_end = 3.0 * pi / 4.0 - gap;
-                    let b_color = if is_allied { 
+                    let b_color = if is_in_renewal_window {
+                        if has_alliance_request {
+                            Color32::from_rgb(74, 222, 128)
+                        } else if has_proposed_alliance {
+                            Color32::from_rgb(251, 191, 36)
+                        } else {
+                            Color32::from_rgb(251, 146, 60)
+                        }
+                    } else if is_allied { 
                         Color32::from_rgb(239, 68, 68) 
                     } else if has_alliance_request { 
                         Color32::from_rgb(74, 222, 128) 
@@ -183,23 +207,47 @@ impl SowApp {
                     painter.add(egui::Shape::convex_polygon(l_pts, l_fill, l_stroke));
 
                     // Text & icons for wedges
-                    let draw_text = |angle: f32, icon: &str, label: &str| {
+                    let draw_text = |angle: f32, icon: &str, label: &str, disabled: bool| {
                         if scale > 0.05 {
                             let r_i = (inner_r + outer_r) / 2.0 - 5.0 * scale;
                             let r_t = (inner_r + outer_r) / 2.0 + 9.0 * scale;
                             let p_i = center + egui::vec2(angle.cos() * r_i, angle.sin() * r_i);
                             let p_t = center + egui::vec2(angle.cos() * r_t, angle.sin() * r_t);
                             let alpha = (255.0 * progress.clamp(0.0, 1.0)) as u8;
+                            let draw_alpha = if disabled { alpha / 2 } else { alpha };
+                            let label_color = if disabled {
+                                Color32::from_rgba_unmultiplied(120, 120, 120, alpha)
+                            } else {
+                                Color32::from_rgba_unmultiplied(230, 230, 230, alpha)
+                            };
 
-                            painter.text(p_i, egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional((20.0 * scale).max(1.0)), Color32::from_rgba_unmultiplied(255, 255, 255, alpha));
-                            painter.text(p_t, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional((8.5 * scale).max(1.0)), Color32::from_rgba_unmultiplied(230, 230, 230, alpha));
+                            painter.text(p_i, egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional((20.0 * scale).max(1.0)), Color32::from_rgba_unmultiplied(255, 255, 255, draw_alpha));
+                            painter.text(p_t, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional((8.5 * scale).max(1.0)), label_color);
                         }
                     };
 
-                    draw_text(-pi / 2.0, "😀", "EMOJIS");
-                    draw_text(0.0, "⛵", "BOAT");
-                    draw_text(pi / 2.0, "🤝", if is_allied { "BREAK ALLY" } else if has_alliance_request { "ACCEPT ALLY" } else if has_proposed_alliance { "PENDING..." } else { "ALLIANCE" });
-                    draw_text(pi, "🔧", if is_own_territory { "BUILD" } else { "LOCKED" });
+                    let ally_label = if is_in_renewal_window {
+                        if has_alliance_request {
+                            "ACCEPT RENEW"
+                        } else if has_proposed_alliance {
+                            "PENDING RENEW"
+                        } else {
+                            "RENEW ALLY"
+                        }
+                    } else if is_allied {
+                        "BREAK ALLY"
+                    } else if has_alliance_request {
+                        "ACCEPT ALLY"
+                    } else if has_proposed_alliance {
+                        "PENDING..."
+                    } else {
+                        "ALLIANCE"
+                    };
+
+                    draw_text(-pi / 2.0, "😀", "EMOJIS", false);
+                    draw_text(0.0, "⛵", "BOAT", false);
+                    draw_text(pi / 2.0, "🤝", ally_label, has_proposed_alliance);
+                    draw_text(pi, "🔧", if is_own_territory { "BUILD" } else { "LOCKED" }, !is_own_territory);
 
                     // Center Circle Button
                     let c_color = if hovered_center {
@@ -276,10 +324,20 @@ impl SowApp {
                                 } else if sector == 2 {
                                     // Bottom Wedge (Alliances)
                                     if is_friendly {
-                                        if is_allied {
+                                        if is_in_renewal_window {
+                                            if has_alliance_request {
+                                                self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
+                                            } else if has_proposed_alliance {
+                                                self.ui.app.hud_state.show_error = Some("An alliance renewal request is already pending with this player!".to_string());
+                                            } else {
+                                                self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
+                                            }
+                                        } else if is_allied {
                                             self.send_intent(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: owner_id });
                                         } else if has_alliance_request {
                                             self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
+                                        } else if has_proposed_alliance {
+                                            self.ui.app.hud_state.show_error = Some("An alliance request is already pending with this player!".to_string());
                                         } else {
                                             self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
                                         }

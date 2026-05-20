@@ -52,11 +52,15 @@ pub struct Player {
     #[serde(default)]
     pub alliances: Vec<PlayerId>,
     #[serde(default)]
+    pub alliance_timers: std::collections::HashMap<PlayerId, u32>,
+    #[serde(default)]
     pub disconnected: bool,
     #[serde(default)]
     pub active_emoji: Option<String>,
     #[serde(default)]
     pub emoji_timer: u32,
+    #[serde(default)]
+    pub emoji_pinned: bool,
 }
 
 fn default_wyrand() -> WyRand {
@@ -91,9 +95,11 @@ impl Player {
             iq: 100,
             iq_points: 0.0,
             alliances: Vec::new(),
+            alliance_timers: std::collections::HashMap::new(),
             disconnected: false,
             active_emoji: None,
             emoji_timer: 0,
+            emoji_pinned: false,
         }
     }
     pub fn new_bot(
@@ -125,9 +131,11 @@ impl Player {
             iq,
             iq_points: 0.0,
             alliances: Vec::new(),
+            alliance_timers: std::collections::HashMap::new(),
             disconnected: false,
             active_emoji: None,
             emoji_timer: 0,
+            emoji_pinned: false,
         }
     }
     pub fn new_nation(
@@ -159,9 +167,11 @@ impl Player {
             iq,
             iq_points: 0.0,
             alliances: Vec::new(),
+            alliance_timers: std::collections::HashMap::new(),
             disconnected: false,
             active_emoji: None,
             emoji_timer: 0,
+            emoji_pinned: false,
         }
     }
     pub fn is_human(&self) -> bool {

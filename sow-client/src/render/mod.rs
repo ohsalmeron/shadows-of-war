@@ -403,6 +403,7 @@ impl SowApp {
                     self.gfx.surface = Some(s);
                     
                     self.ui.egui_ctx = egui::Context::default();
+                    egui_extras::install_image_loaders(&self.ui.egui_ctx);
                     sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
                     log::info!("Successfully created surface on retry.");
                 }

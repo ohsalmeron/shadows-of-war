@@ -169,12 +169,38 @@ impl SowEngine {
         self.execute_fleets();
         self.check_winner();
 
+        let mut expired_alliances = Vec::new();
         for player in &mut self.state.players {
-            if player.emoji_timer > 0 {
+            let pid = player.id;
+            if player.emoji_timer > 0 && !player.emoji_pinned {
                 player.emoji_timer -= 1;
                 if player.emoji_timer == 0 {
                     player.active_emoji = None;
                 }
+            }
+
+            // Decay alliance timers
+            let mut expired_for_player = Vec::new();
+            for (&ally_id, timer) in &mut player.alliance_timers {
+                if *timer > 0 {
+                    *timer -= 1;
+                    if *timer == 0 {
+                        expired_for_player.push(ally_id);
+                    }
+                }
+            }
+            for ally_id in expired_for_player {
+                player.alliances.retain(|&id| id != ally_id);
+                player.alliance_timers.remove(&ally_id);
+                expired_alliances.push((pid, ally_id));
+            }
+        }
+
+        // Mutual expiration enforcement
+        for (a, b) in expired_alliances {
+            if let Some(p_b) = self.state.player_mut(b) {
+                p_b.alliances.retain(|&id| id != a);
+                p_b.alliance_timers.remove(&a);
             }
         }
     }
@@ -471,6 +497,7 @@ impl SowEngine {
                     alive: p.alive,
                     iq: p.iq,
                     alliances: p.alliances.clone(),
+                    alliance_timers: p.alliance_timers.clone(),
                     alliance_requests,
                     disconnected: p.disconnected,
                     active_emoji: p.active_emoji.clone(),
