@@ -113,7 +113,7 @@ impl SowApp {
                                     bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
                                         lobby_id: lid,
                                         player_id: pid,
-                                    })
+                                     })
                                     .unwrap(),
                                 );
                             }
@@ -121,9 +121,14 @@ impl SowApp {
                     }
                 }
                 MapDownloadEvent::ManifestReady(map_name, manifest) => {
+                    self.ui.app.asset_loader.manifests_in_flight.remove(&map_name);
+                    self.ui.app.asset_loader.manifests.insert(map_name.clone(), manifest.clone());
                     if Some(map_name) == self.ui.app.main_menu_state.downloading_map_name {
                         self.ui.app.main_menu_state.cached_manifest = Some(manifest);
                     }
+                }
+                MapDownloadEvent::CatalogReady(catalog) => {
+                    self.ui.app.asset_loader.map_catalog = Some(catalog);
                 }
                 MapDownloadEvent::Error(e) => {
                     log::error!("Map download aborted: {}", e);
@@ -133,6 +138,7 @@ impl SowApp {
                     self.ui.app.main_menu_state.is_waiting = false;
                     self.ui.app.main_menu_state.pending_join_lobby_id = None;
                     self.ui.app.main_menu_state.joined_lobby_id = None;
+                    self.tasks.engine_init_queued_msg = None;
                 }
             }
         }

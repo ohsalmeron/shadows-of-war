@@ -92,6 +92,7 @@ pub enum MapDownloadEvent {
     MapReady(String, Vec<u8>),
     ThumbnailReady(String, Vec<u8>),
     ManifestReady(String, sow_core::map_legacy::MapManifest),
+    CatalogReady(Vec<sow_core::map_legacy::MapManifest>),
     Progress(String, u8),
     Error(String),
 }

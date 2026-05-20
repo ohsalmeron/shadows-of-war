@@ -35,6 +35,8 @@ pub struct NetState {
     pub pending_lobby_rejoin: bool,
     pub current_ping_ms: Option<u32>,
     pub last_ping_time: web_time::Instant,
+    pub relay_connect_start: Option<web_time::Instant>,
+    pub relay_retry_count: u32,
 }
 
 pub struct SimState {
@@ -320,6 +322,8 @@ impl SowApp {
                 pending_lobby_rejoin: false,
                 current_ping_ms,
                 last_ping_time,
+                relay_connect_start: None,
+                relay_retry_count: 0,
             },
             sim: SimState {
                 engine,
@@ -414,9 +418,9 @@ impl SowApp {
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
         self.ui.app.phase = ClientPhase::Splash;
-        self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::ExitGame;
-        self.ui.app.splash_state.gpu_load_step = 0;
-        self.ui.app.splash_state.frames_drawn = 0;
+        let lang = self.ui.app.settings_state.language;
+        self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
+        self.ui.app.splash_state.select_voluntary_exit(lang);
         self.ui.is_spectating = false;
     }
 

@@ -51,73 +51,71 @@ impl SowApp {
                             self.gfx.render_ctx.command_encoder.init_texture(frame.texture());
 
                             let mut map_drawn = false;
-                            if self.ui.app.phase == ClientPhase::Playing {
-                                if let Some(ref mut mr) = self.gfx.map_renderer {
-                                    // Upload map state on first frame or after each tick
-                                    if self.gfx.needs_first_upload {
-                                        self.gfx.render_ctx.command_encoder.init_texture(mr.texture);
-                                        self.gfx.needs_first_upload = false;
-                                        // Full buffer→texture copy so terrain is visible before any dirty tiles arrive
-                                        self.gfx.render_ctx.context.sync_buffer(mr.raw_buffer);
-                                        let src_piece: blade_graphics::BufferPiece = mr.raw_buffer.into();
-                                        let dst_piece: blade_graphics::TexturePiece = mr.texture.into();
-                                        let mut transfer = self.gfx.render_ctx.command_encoder.transfer("map_init_upload");
-                                        transfer.copy_buffer_to_texture(
-                                            src_piece,
-                                            mr.bytes_per_row,
-                                            dst_piece,
-                                            blade_graphics::Extent { width: mr.width, height: mr.height, depth: 1 },
-                                        );
-                                    }
+                            if let Some(ref mut mr) = self.gfx.map_renderer {
+                                // Upload map state on first frame or after each tick
+                                if self.gfx.needs_first_upload {
+                                    self.gfx.render_ctx.command_encoder.init_texture(mr.texture);
+                                    self.gfx.needs_first_upload = false;
+                                    // Full buffer→texture copy so terrain is visible before any dirty tiles arrive
+                                    self.gfx.render_ctx.context.sync_buffer(mr.raw_buffer);
+                                    let src_piece: blade_graphics::BufferPiece = mr.raw_buffer.into();
+                                    let dst_piece: blade_graphics::TexturePiece = mr.texture.into();
+                                    let mut transfer = self.gfx.render_ctx.command_encoder.transfer("map_init_upload");
+                                    transfer.copy_buffer_to_texture(
+                                        src_piece,
+                                        mr.bytes_per_row,
+                                        dst_piece,
+                                        blade_graphics::Extent { width: mr.width, height: mr.height, depth: 1 },
+                                    );
+                                }
 
-                                    // Perform CPU-side update of the map
-                                    let dirty = self.sim.current_snapshot.as_ref().map(|s| s.dirty_tiles.as_slice()).unwrap_or(&[]);
-                                    mr.update(&mut self.gfx.render_ctx.command_encoder, &self.gfx.render_ctx.context, dirty);
-                                    if let Some(snap) = &mut self.sim.current_snapshot {
-                                        snap.dirty_tiles.clear();
-                                    }
-                                    let mut border_thickness = 0.65f32;
-                                    let mut border_darkness = 0.40f32;
-                                    let mut shore_thickness = 0.0f32;
-                                    let mut shore_darkness = 0.47f32;
-                                    let mut border_roundness = 1.0f32;
+                                // Perform CPU-side update of the map
+                                let dirty = self.sim.current_snapshot.as_ref().map(|s| s.dirty_tiles.as_slice()).unwrap_or(&[]);
+                                mr.update(&mut self.gfx.render_ctx.command_encoder, &self.gfx.render_ctx.context, dirty);
+                                if let Some(snap) = &mut self.sim.current_snapshot {
+                                    snap.dirty_tiles.clear();
+                                }
+                                let mut border_thickness = 0.65f32;
+                                let mut border_darkness = 0.40f32;
+                                let mut shore_thickness = 0.0f32;
+                                let mut shore_darkness = 0.47f32;
+                                let mut border_roundness = 1.0f32;
 
-                                    self.ui.egui_ctx.data_mut(|d| {
-                                        border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.65f32);
-                                        border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.40f32);
-                                        shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.0f32);
-                                        shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.47f32);
-                                        border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 1.0f32);
-                                    });
+                                self.ui.egui_ctx.data_mut(|d| {
+                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.65f32);
+                                    border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.40f32);
+                                    shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.0f32);
+                                    shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.47f32);
+                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 1.0f32);
+                                });
 
-                                    let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
-                                    if let Some(snap) = &self.sim.current_snapshot {
-                                        for p in &snap.players {
-                                            if (p.id as usize) < 256 {
-                                                player_colors[p.id as usize] = [p.color[0], p.color[1], p.color[2], 1.0];
-                                            }
+                                let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
+                                if let Some(snap) = &self.sim.current_snapshot {
+                                    for p in &snap.players {
+                                        if (p.id as usize) < 256 {
+                                            player_colors[p.id as usize] = [p.color[0], p.color[1], p.color[2], 1.0];
                                         }
                                     }
-
-                                    let globals = MapGlobals {
-                                        camera_pos: [self.input.camera_x, self.input.camera_y],
-                                        zoom: self.input.camera_zoom,
-                                        time: self.time.start_time.elapsed().as_secs_f32(),
-                                        screen_size: [self.input.screen_w, self.input.screen_h],
-                                        map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
-                                        border_thickness,
-                                        border_darkness,
-                                        shore_thickness,
-                                        shore_darkness,
-                                        border_roundness,
-                                        _pad1: 0.0,
-                                        _pad2: 0.0,
-                                        _pad3: 0.0,
-                                        player_colors,
-                                    };
-                                    mr.draw(&mut self.gfx.render_ctx.command_encoder, frame.texture_view(), globals);
-                                    map_drawn = true;
                                 }
+
+                                let globals = MapGlobals {
+                                    camera_pos: [self.input.camera_x, self.input.camera_y],
+                                    zoom: self.input.camera_zoom,
+                                    time: self.time.start_time.elapsed().as_secs_f32(),
+                                    screen_size: [self.input.screen_w, self.input.screen_h],
+                                    map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
+                                    border_thickness,
+                                    border_darkness,
+                                    shore_thickness,
+                                    shore_darkness,
+                                    border_roundness,
+                                    _pad1: 0.0,
+                                    _pad2: 0.0,
+                                    _pad3: 0.0,
+                                    player_colors,
+                                };
+                                mr.draw(&mut self.gfx.render_ctx.command_encoder, frame.texture_view(), globals);
+                                map_drawn = true;
                             }
 
                             if !map_drawn {

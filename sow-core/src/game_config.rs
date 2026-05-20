@@ -170,7 +170,7 @@ impl Default for GameConfig {
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 3.0,
-            attack_cost_neutral: 0.05,
+            attack_cost_neutral: 0.001,
             terrain_multiplier_highland: 3.0,
             terrain_multiplier_mountain: 6.0,
             bot_attack_interval_ticks: 240,
