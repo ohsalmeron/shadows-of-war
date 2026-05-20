@@ -194,7 +194,7 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
         .with_android_app(app)
         .build()
         .unwrap();
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
     run_game(event_loop);
 }
@@ -207,7 +207,7 @@ pub fn wasm_main() {
     log::info!("SOW ENGINE WASM STARTING...");
 
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
     run_game(event_loop);
 }
