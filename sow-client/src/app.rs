@@ -80,7 +80,6 @@ pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
     pub raw_input: egui::RawInput,
-    pub nameplate_cache: std::collections::HashMap<u16, crate::hud::nameplate::CachedNameplate>,
     pub troop_label_throttle: crate::hud::nameplate::TroopLabelThrottle,
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub tutorial_completed: bool,
@@ -199,7 +198,6 @@ impl SowApp {
         let pending_engine_init_data: Option<EngineInitData> = None;
         let engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
-        let nameplate_cache: HashMap<u16, CachedNameplate> = HashMap::new();
         let troop_label_throttle = TroopLabelThrottle::default();
 
         let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
@@ -367,7 +365,6 @@ impl SowApp {
                 app,
                 egui_ctx,
                 raw_input,
-                nameplate_cache,
                 troop_label_throttle,
                 label_positions: std::collections::HashMap::new(),
                 tutorial_completed,

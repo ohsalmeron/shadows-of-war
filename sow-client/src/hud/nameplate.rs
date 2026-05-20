@@ -2,15 +2,7 @@ use egui::text::{LayoutJob, TextFormat};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub struct CachedNameplate {
-    pub name_galley: Arc<egui::Galley>,
-    pub troops_galley: Arc<egui::Galley>,
-    pub disc_galley: Option<Arc<egui::Galley>>,
-    pub last_formatted_troops: String,
-    pub last_font_size: f32,
-    pub last_disconnected: bool,
-    pub last_active_emoji: Option<String>,
-}
+
 
 /// Nameplate troop text: snap to sim at most ~2/s per player (LegacyEngine-style).
 #[derive(Default)]

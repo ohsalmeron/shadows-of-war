@@ -164,159 +164,78 @@ impl SowApp {
                 };
 
                 let active_emoji = player.active_emoji.clone();
-                let cache_entry = self.ui.nameplate_cache.entry(player.id).or_insert_with(|| {
-                    let font_id = egui::FontId::proportional(font_size);
-                    let troops_str = new_troops_str.clone();
-                    let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
-                    
-                    let mut extra_emoji = None;
-                    if !player.disconnected {
-                        if let Some(my_id) = self.sim.my_player_id {
-                            if my_id != player.id {
-                                let my_snapshot = self.sim.current_snapshot.as_ref()
-                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id));
-                                if let Some(me) = my_snapshot {
-                                    if me.alliance_requests.contains(&player.id) {
-                                        extra_emoji = Some("🤝?");
-                                    }
+                let font_id = egui::FontId::proportional(font_size);
+                
+                let name_galley = layout_nameplate_name_galley(
+                    &painter,
+                    font_id.clone(),
+                    &display_name,
+                );
+                
+                let troops_galley = crate::hud::nameplate::layout_nameplate_troops_galley(
+                    &painter,
+                    font_id,
+                    &new_troops_str,
+                );
+
+                let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
+                
+                let mut extra_emoji = None;
+                if !player.disconnected {
+                    if let Some(my_id) = self.sim.my_player_id {
+                        if my_id != player.id {
+                            let my_snapshot = self.sim.current_snapshot.as_ref()
+                                .and_then(|s| s.players.iter().find(|p| p.id == my_id));
+                            if let Some(me) = my_snapshot {
+                                if me.alliance_requests.contains(&player.id) {
+                                    extra_emoji = Some("🤝?");
                                 }
                             }
                         }
                     }
-
-                    let disc_galley = match (player.disconnected, &active_emoji, extra_emoji) {
-                        (true, _, _) => Some(painter.layout_no_wrap(
-                            "🔌".to_owned(),
-                            disc_font_id,
-                            NAMEPLATE_FILL,
-                        )),
-                        (false, Some(emoji), _) => Some(painter.layout_no_wrap(
-                            emoji.to_owned(),
-                            disc_font_id,
-                            NAMEPLATE_FILL,
-                        )),
-                        (false, None, Some(ext)) => Some(painter.layout_no_wrap(
-                            ext.to_owned(),
-                            disc_font_id,
-                            NAMEPLATE_FILL,
-                        )),
-                        (false, None, None) => None,
-                    };
-
-                    CachedNameplate {
-                        name_galley: layout_nameplate_name_galley(
-                            &painter,
-                            font_id.clone(),
-                            &display_name,
-                        ),
-                        troops_galley: painter.layout_no_wrap(
-                            format!("⚔ {}", troops_str),
-                            font_id,
-                            NAMEPLATE_FILL,
-                        ),
-                        disc_galley,
-                        last_formatted_troops: troops_str,
-                        last_font_size: font_size,
-                        last_disconnected: player.disconnected,
-                        last_active_emoji: active_emoji.clone(),
-                    }
-                });
-
-                if cache_entry.last_font_size != font_size
-                    || cache_entry.last_disconnected != player.disconnected
-                    || cache_entry.last_active_emoji != active_emoji
-                {
-                    let font_id = egui::FontId::proportional(font_size);
-                    let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
-                    
-                    let mut extra_emoji = None;
-                    if !player.disconnected {
-                        if let Some(my_id) = self.sim.my_player_id {
-                            if my_id != player.id {
-                                let my_snapshot = self.sim.current_snapshot.as_ref()
-                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id));
-                                if let Some(me) = my_snapshot {
-                                    if me.alliance_requests.contains(&player.id) {
-                                        extra_emoji = Some("🤝?");
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    let disc_galley = match (player.disconnected, &active_emoji, extra_emoji) {
-                        (true, _, _) => Some(painter.layout_no_wrap(
-                            "🔌".to_owned(),
-                            disc_font_id,
-                            NAMEPLATE_FILL,
-                        )),
-                        (false, Some(emoji), _) => Some(painter.layout_no_wrap(
-                            emoji.to_owned(),
-                            disc_font_id,
-                            NAMEPLATE_FILL,
-                        )),
-                        (false, None, Some(ext)) => Some(painter.layout_no_wrap(
-                            ext.to_owned(),
-                            disc_font_id,
-                            NAMEPLATE_FILL,
-                        )),
-                        (false, None, None) => None,
-                    };
-
-                    cache_entry.name_galley = layout_nameplate_name_galley(
-                        &painter,
-                        font_id.clone(),
-                        &display_name,
-                    );
-                    cache_entry.troops_galley =
-                        crate::hud::nameplate::layout_nameplate_troops_galley(
-                            &painter,
-                            font_id,
-                            &new_troops_str,
-                        );
-                    cache_entry.disc_galley = disc_galley;
-                    cache_entry.last_formatted_troops = new_troops_str.clone();
-                    cache_entry.last_font_size = font_size;
-                    cache_entry.last_disconnected = player.disconnected;
-                    cache_entry.last_active_emoji = active_emoji;
-                } else if new_troops_str != cache_entry.last_formatted_troops {
-                    let font_id = egui::FontId::proportional(font_size);
-                    cache_entry.troops_galley =
-                        crate::hud::nameplate::layout_nameplate_troops_galley(
-                            &painter,
-                            font_id,
-                            &new_troops_str,
-                        );
-                    cache_entry.last_formatted_troops = new_troops_str;
                 }
 
-                let name_galley = &cache_entry.name_galley;
-                let troops_galley = &cache_entry.troops_galley;
+                let disc_galley = match (player.disconnected, &active_emoji, extra_emoji) {
+                    (true, _, _) => Some(painter.layout_no_wrap(
+                        "🔌".to_owned(),
+                        disc_font_id,
+                        NAMEPLATE_FILL,
+                    )),
+                    (false, Some(emoji), _) => Some(painter.layout_no_wrap(
+                        emoji.to_owned(),
+                        disc_font_id,
+                        NAMEPLATE_FILL,
+                    )),
+                    (false, None, Some(ext)) => Some(painter.layout_no_wrap(
+                        ext.to_owned(),
+                        disc_font_id,
+                        NAMEPLATE_FILL,
+                    )),
+                    (false, None, None) => None,
+                };
 
-                let mut h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
-                if let Some(dg) = &cache_entry.disc_galley {
-                    h += dg.rect.height() + 2.0;
-                }
+                let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
 
                 let mut current_y = center.y - h / 2.0;
 
-                if let Some(dg) = &cache_entry.disc_galley {
+                let name_pos = egui::pos2(
+                    center.x - name_galley.rect.width() / 2.0,
+                    current_y,
+                );
+
+                if let Some(dg) = &disc_galley {
+                    // Draw the emoji to the left of the nameplate
                     let disc_pos = egui::pos2(
-                        center.x - dg.rect.width() / 2.0,
-                        current_y,
+                        name_pos.x - dg.rect.width() - 4.0,
+                        current_y + (name_galley.rect.height() - dg.rect.height()) / 2.0,
                     );
                     crate::hud::nameplate::paint_nameplate_galley(
                         &painter,
                         disc_pos,
                         dg.clone(),
                     );
-                    current_y += dg.rect.height() + 2.0;
                 }
 
-                let name_pos = egui::pos2(
-                    center.x - name_galley.rect.width() / 2.0,
-                    current_y,
-                );
                 crate::hud::nameplate::paint_nameplate_galley(
                     &painter,
                     name_pos,
@@ -331,7 +250,7 @@ impl SowApp {
                 crate::hud::nameplate::paint_nameplate_galley(
                     &painter,
                     troops_pos,
-                    troops_galley.clone(),
+                    troops_galley,
                 );
             } else {
                 // Dot only — zero text layout, bare metal fast

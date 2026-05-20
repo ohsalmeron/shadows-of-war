@@ -24,6 +24,22 @@ impl SowEngine {
         }
     }
 
+    pub fn retreat_mutual_aggression(&mut self, p1: u16, p2: u16) {
+        for ex in &mut self.attacks {
+            if (ex.owner_id == p1 && ex.target_owner == p2) || (ex.owner_id == p2 && ex.target_owner == p1) {
+                ex.retreating = true;
+            }
+        }
+        for wf in &mut self.fleets {
+            if (wf.owner_id == p1 && wf.target_owner == p2) || (wf.owner_id == p2 && wf.target_owner == p1) {
+                wf.retreating = true;
+                wf.retreat_dst = None;
+                wf.path.clear();
+                wf.path_cursor = 0;
+            }
+        }
+    }
+
     pub fn apply_stamped_intent(&mut self, stamped: &StampedIntent, intent_index: u32) {
         match &stamped.intent {
             GameplayIntent::RecallFleet { fleet_id } => {
@@ -46,7 +62,11 @@ impl SowEngine {
                 target_tile,
                 troops,
             } => {
-                self.apply_launch_fleet_intent(stamped.player_id, *target_tile, *troops);
+                let owner = self.state.map.state[*target_tile as usize];
+                let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
+                if !is_allied {
+                    self.apply_launch_fleet_intent(stamped.player_id, *target_tile, *troops);
+                }
             }
             GameplayIntent::CancelAttack { attack_id } => {
                 let pid = stamped.player_id;
@@ -62,7 +82,10 @@ impl SowEngine {
             );
             }
             GameplayIntent::Attack(attack) => {
-                self.apply_attack_intent(stamped.player_id, attack, intent_index);
+                let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&attack.target_owner)).unwrap_or(false);
+                if !is_allied {
+                    self.apply_attack_intent(stamped.player_id, attack, intent_index);
+                }
             }
             GameplayIntent::BuildStructure { kind, target_tile } => {
                 self.apply_build_structure_intent(stamped.player_id, *kind, *target_tile);
@@ -121,8 +144,21 @@ impl SowEngine {
                         let is_allied = self.state.player(proposer)
                             .map(|p| p.alliances.contains(&target))
                             .unwrap_or(false);
-                        if !is_allied && !self.alliances_proposed.contains(&(proposer, target)) {
-                            self.alliances_proposed.push((proposer, target));
+                        if !is_allied {
+                            if self.alliances_proposed.contains(&(target, proposer)) {
+                                // Mutual request! Accept it immediately.
+                                let idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == proposer).unwrap();
+                                self.alliances_proposed.remove(idx);
+                                if let Some(p1) = self.state.player_mut(proposer) {
+                                    if !p1.alliances.contains(&target) { p1.alliances.push(target); }
+                                }
+                                if let Some(p2) = self.state.player_mut(target) {
+                                    if !p2.alliances.contains(&proposer) { p2.alliances.push(proposer); }
+                                }
+                                self.retreat_mutual_aggression(proposer, target);
+                            } else if !self.alliances_proposed.contains(&(proposer, target)) {
+                                self.alliances_proposed.push((proposer, target));
+                            }
                         }
                     }
                 }
@@ -146,6 +182,7 @@ impl SowEngine {
                             p2.alliances.push(acceptor);
                         }
                     }
+                    self.retreat_mutual_aggression(acceptor, target);
                 }
             }
             GameplayIntent::RejectAlliance { target_player } => {
@@ -161,6 +198,8 @@ impl SowEngine {
                 let target = *target_player;
                 if let Some(p1) = self.state.player_mut(breaker) {
                     p1.alliances.retain(|&id| id != target);
+                    p1.active_emoji = Some("🗡️".to_string());
+                    p1.emoji_timer = 50; // 5 seconds of betrayal icon
                 }
                 if let Some(p2) = self.state.player_mut(target) {
                     p2.alliances.retain(|&id| id != breaker);

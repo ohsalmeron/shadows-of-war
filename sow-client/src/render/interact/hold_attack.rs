@@ -15,6 +15,12 @@ impl SowApp {
                         self.input.hold_attack_target = Some((target_owner, press_start, sx, sy, true));
                         self.input.hold_attack_accum = 0.0;
                         
+                        let my_id = self.sim.my_player_id.unwrap_or(0);
+                        let is_allied = self.sim.current_snapshot.as_ref()
+                            .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                            .map(|p| p.alliances.contains(&target_owner))
+                            .unwrap_or(false);
+
                         let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
                         if troops > 0.0 {
                             let attack = sow_core::protocol::AttackIntent {
@@ -22,12 +28,19 @@ impl SowApp {
                                 troops: Some(troops),
                             };
                             let intent = sow_core::protocol::GameplayIntent::Attack(attack);
-                            if let Some(c) = self.net.client.as_ref() {
-                                if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
-                                    c.send(json);
-                                }
+                            
+                            if is_allied {
+                                self.open_context_menu_at(sx, sy);
+                                self.input.hold_attack_target = None;
+                                self.input.hold_attack_accum = 0.0;
                             } else {
-                                self.sim.offline_intents.push(intent);
+                                if let Some(c) = self.net.client.as_ref() {
+                                    if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
+                                        c.send(json);
+                                    }
+                                } else {
+                                    self.sim.offline_intents.push(intent);
+                                }
                             }
                         }
                     } else {

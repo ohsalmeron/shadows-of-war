@@ -246,15 +246,17 @@ impl SowApp {
                                 if is_spawning {
                                     self.send_intent(sow_core::protocol::GameplayIntent::Spawn { x: col, y: row });
                                 } else {
-                                    if is_allied {
-                                        self.send_intent(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: owner_id });
-                                    }
                                     let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
                                     if troops > 0.0 {
-                                        self.send_intent(sow_core::protocol::GameplayIntent::Attack(sow_core::protocol::AttackIntent {
+                                        let intent = sow_core::protocol::GameplayIntent::Attack(sow_core::protocol::AttackIntent {
                                             target_owner: owner_id,
                                             troops: Some(troops),
-                                        }));
+                                        });
+                                        if is_allied {
+                                            self.ui.app.hud_state.show_betrayal_warning = Some((owner_id, intent));
+                                        } else {
+                                            self.send_intent(intent);
+                                        }
                                     }
                                 }
                                 ctx.data_mut(|d| d.insert_temp(build_active_id, false));

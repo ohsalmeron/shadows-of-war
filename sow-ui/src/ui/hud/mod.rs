@@ -33,6 +33,7 @@ pub struct HudState {
     pub selected_tile: Option<SelectedTileInfo>,
     pub show_emoji_panel: bool,
     pub show_alliance_inbox: bool,
+    pub show_betrayal_warning: Option<(u16, sow_core::protocol::GameplayIntent)>,
 }
 
 impl HudState {
@@ -329,6 +330,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
     }
 
     draw_sync_overlay(ui.ctx(), state, lang);
+    draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang);
 
     action
 }
@@ -728,6 +730,82 @@ fn draw_sync_overlay(ctx: &Context, state: &HudState, lang: Language) {
                                 }
                                 ui.label(RichText::new(&p.name).color(Color32::WHITE));
                             });
+                        }
+                    });
+                });
+            });
+    }
+}
+
+fn draw_betrayal_overlay(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>, _lang: Language) {
+    if let Some((ally_id, intent)) = state.show_betrayal_warning.clone() {
+        let screen_rect = ctx.content_rect();
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("betrayal_overlay_bg")))
+            .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+
+        egui::Window::new("betrayal_warning_modal")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
+            .frame(egui::Frame::window(&ctx.global_style())
+                .fill(crate::ui::theme::panel_bg())
+                .stroke(egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()))
+                .inner_margin(24.0)
+                .corner_radius(12)
+            )
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
+                    
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        "BETRAYAL WARNING",
+                        egui::FontId::proportional(28.0),
+                        crate::ui::theme::accent_danger()
+                    );
+                    
+                    ui.add_space(12.0);
+                    
+                    ui.label(RichText::new(format!("If you attack {}, other allies could attack you.", ally_name))
+                        .size(16.0)
+                        .color(Color32::WHITE)
+                    );
+                    
+                    ui.label(RichText::new("Are you sure?")
+                        .size(18.0)
+                        .strong()
+                        .color(crate::ui::theme::accent_ranked_gold())
+                    );
+
+                    ui.add_space(24.0);
+
+                    ui.horizontal(|ui| {
+                        // NO button (safe)
+                        let no_btn = egui::Button::new(RichText::new("NO, KEEP ALLIANCE").size(16.0))
+                            .fill(crate::ui::theme::menu_secondary_button())
+                            .corner_radius(8);
+                        
+                        if ui.add_sized(vec2(160.0, 44.0), no_btn).clicked() {
+                            state.show_betrayal_warning = None;
+                        }
+
+                        ui.add_space(16.0);
+
+                        // YES button (danger)
+                        let yes_btn = egui::Button::new(RichText::new("YES, BETRAY").size(16.0).strong())
+                            .fill(crate::ui::theme::accent_danger().linear_multiply(0.3))
+                            .stroke(egui::Stroke::new(1.5f32, crate::ui::theme::accent_danger()))
+                            .corner_radius(8);
+                        
+                        if ui.add_sized(vec2(140.0, 44.0), yes_btn).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            // 1. Send BreakAlliance intent
+                            cancel_intents.push(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: ally_id });
+                            
+                            // 2. Send the original Attack intent right after
+                            cancel_intents.push(intent);
+                            
+                            state.show_betrayal_warning = None;
                         }
                     });
                 });

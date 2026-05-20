@@ -95,16 +95,30 @@ impl SowApp {
                                 target_tile: idx as u32,
                                 troops,
                             };
-                            if let Some(c) = self.net.client.as_ref() {
-                                if let Ok(json) = bincode::serialize(
-                                    &sow_core::protocol::ClientMessage::Gameplay {
-                                        intent: intent.clone(),
-                                    },
-                                ) {
-                                    c.send(json);
-                                }
+
+                            let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+                            let my_id = self.sim.my_player_id.unwrap_or(0);
+                            let is_allied = self.sim.current_snapshot.as_ref()
+                                .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                                .map(|p| p.alliances.contains(&owner))
+                                .unwrap_or(false);
+
+                            if owner != 0 && owner != my_id && is_allied {
+                                let mx = self.input.last_mouse_x;
+                                let my = self.input.last_mouse_y;
+                                self.open_context_menu_at(mx, my);
                             } else {
-                                self.sim.offline_intents.push(intent);
+                                if let Some(c) = self.net.client.as_ref() {
+                                    if let Ok(json) = bincode::serialize(
+                                        &sow_core::protocol::ClientMessage::Gameplay {
+                                            intent: intent.clone(),
+                                        },
+                                    ) {
+                                        c.send(json);
+                                    }
+                                } else {
+                                    self.sim.offline_intents.push(intent);
+                                }
                             }
                         }
                     }
@@ -442,26 +456,37 @@ impl SowApp {
         let my_id = self.sim.my_player_id.unwrap_or(0);
 
         if is_land && owner != my_id {
-            if !is_touch {
-                // Desktop: fire immediately
-                let attack = sow_core::protocol::AttackIntent {
-                    target_owner: owner,
-                    troops: Some(
-                        self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64),
-                    ),
-                };
-                self.send_intent(sow_core::protocol::GameplayIntent::Attack(attack));
-                self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y, true));
+            let is_allied = self.sim.current_snapshot.as_ref()
+                .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                .map(|p| p.alliances.contains(&owner))
+                .unwrap_or(false);
+
+            let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
+            let attack = sow_core::protocol::AttackIntent {
+                target_owner: owner,
+                troops: Some(troops),
+            };
+            let intent = sow_core::protocol::GameplayIntent::Attack(attack);
+
+            if is_allied {
+                // Intercept and open context menu instead
+                self.open_context_menu_at(x, y);
             } else {
-                // Mobile: wait for hold to distinguish from tap (context menu)
-                self.input.hold_attack_target =
-                    Some((owner, web_time::Instant::now(), x, y, false));
+                if !is_touch {
+                    // Desktop: fire immediately
+                    self.send_intent(intent);
+                    self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y, true));
+                } else {
+                    // Mobile: wait for hold to distinguish from tap (context menu)
+                    self.input.hold_attack_target =
+                        Some((owner, web_time::Instant::now(), x, y, false));
+                }
             }
             self.input.hold_attack_accum = 0.0;
         }
     }
 
-    fn open_context_menu_at(&mut self, x: f64, y: f64) {
+    pub(crate) fn open_context_menu_at(&mut self, x: f64, y: f64) {
         let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
         let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
         let col = world_x.floor() as i32;

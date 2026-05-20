@@ -48,6 +48,7 @@ impl ClientApp {
                 selected_tile: None,
                 show_emoji_panel: false,
                 show_alliance_inbox: false,
+                show_betrayal_warning: None,
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
