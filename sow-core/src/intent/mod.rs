@@ -100,6 +100,17 @@ impl SowEngine {
             GameplayIntent::Resign => {
                 self.kill_player(stamped.player_id);
             }
+            GameplayIntent::MarkDisconnected { is_disconnected } => {
+                if let Some(player) = self.state.player_mut(stamped.player_id) {
+                    player.disconnected = *is_disconnected;
+                }
+            }
+            GameplayIntent::ExpressEmoji { emoji } => {
+                if let Some(player) = self.state.player_mut(stamped.player_id) {
+                    player.active_emoji = Some(emoji.clone());
+                    player.emoji_timer = 30; // 3 seconds at 10 ticks per second
+                }
+            }
             GameplayIntent::ProposeAlliance { target_player } => {
                 let proposer = stamped.player_id;
                 let target = *target_player;

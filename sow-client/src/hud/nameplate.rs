@@ -5,8 +5,11 @@ use std::sync::Arc;
 pub struct CachedNameplate {
     pub name_galley: Arc<egui::Galley>,
     pub troops_galley: Arc<egui::Galley>,
+    pub disc_galley: Option<Arc<egui::Galley>>,
     pub last_formatted_troops: String,
     pub last_font_size: f32,
+    pub last_disconnected: bool,
+    pub last_active_emoji: Option<String>,
 }
 
 /// Nameplate troop text: snap to sim at most ~2/s per player (LegacyEngine-style).
@@ -66,20 +69,8 @@ pub fn layout_nameplate_name_galley(
     painter: &egui::Painter,
     font_id: egui::FontId,
     name: &str,
-    is_human: bool,
-    player_color: egui::Color32,
 ) -> Arc<egui::Galley> {
-    if is_human {
-        let mut job = LayoutJob {
-            break_on_newline: false,
-            ..Default::default()
-        };
-        job.append("★ ", 0.0, TextFormat::simple(font_id.clone(), player_color));
-        job.append(name, 0.0, TextFormat::simple(font_id, NAMEPLATE_FILL));
-        painter.layout_job(job)
-    } else {
-        painter.layout_no_wrap(name.to_owned(), font_id, NAMEPLATE_FILL)
-    }
+    painter.layout_no_wrap(name.to_owned(), font_id, NAMEPLATE_FILL)
 }
 
 pub fn layout_nameplate_troops_galley(

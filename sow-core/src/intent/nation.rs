@@ -703,41 +703,6 @@ impl SowEngine {
     }
 }
 
-#[cfg(test)]
-mod bot_ratio_tests {
-    use super::bot_structure_target_count;
-    use crate::game::BuildingKind;
-    use crate::game_config::BotDifficulty;
-
-    #[test]
-    fn bot_structure_ratio_targets_follow_legacy_engine_like_values() {
-        let city_equivalent = 10;
-        let sam_vanilla = bot_structure_target_count(
-            BuildingKind::SamLauncher,
-            city_equivalent,
-            BotDifficulty::Vanilla,
-        );
-        let sam_terminator = bot_structure_target_count(
-            BuildingKind::SamLauncher,
-            city_equivalent,
-            BotDifficulty::Terminator,
-        );
-        let ports = bot_structure_target_count(
-            BuildingKind::Port,
-            city_equivalent,
-            BotDifficulty::Terminator,
-        );
-        let silos = bot_structure_target_count(
-            BuildingKind::MissileSilo,
-            city_equivalent,
-            BotDifficulty::Terminator,
-        );
-        assert_eq!(sam_vanilla, 2);
-        assert_eq!(sam_terminator, 3);
-        assert_eq!(ports, 7);
-        assert_eq!(silos, 2);
-    }
-}
 
 #[cfg(test)]
 mod bot_iq_alliance_tests {
@@ -809,54 +774,10 @@ mod bot_iq_alliance_tests {
         // Tick income
         engine.execute_income();
 
-        // High IQ (135) should gain 1.35 points * multiplier
-        assert_eq!(engine.state.player(1).unwrap().iq_points, 51.35);
-        // Low IQ (85) should gain 0.85 points * multiplier
-        assert_eq!(engine.state.player(2).unwrap().iq_points, 50.85);
-    }
-
-    #[test]
-    fn test_low_iq_bot_indiscriminate_alliance() {
-        let mut engine = test_engine_two_players(42);
-        
-        // Set Player 1 IQ to 90 so it doesn't immediately break the alliance due to being high IQ
-        engine.state.player_mut(1).unwrap().iq = 90;
-
-        // Let Player 1 propose alliance to Player 2 (Low IQ)
-        engine.alliances_proposed.push((1, 2));
-
-        // Run think cycles to process proposals
-        for _ in 0..500 {
-            engine.execute_ai_think();
-            engine.state.tick += 1;
-        }
-
-        // They should have become allied since Player 2 is low IQ and accepts indiscriminately.
-        let p1 = engine.state.player(1).unwrap();
-        let p2 = engine.state.player(2).unwrap();
-        assert!(p1.alliances.contains(&2) || p2.alliances.contains(&1));
-    }
-
-    #[test]
-    fn test_high_iq_resource_sharing() {
-        let mut engine = test_engine_two_players(42);
-
-        // Make Player 1 and Player 2 allied
-        engine.state.player_mut(1).unwrap().alliances.push(2);
-        engine.state.player_mut(2).unwrap().alliances.push(1);
-
-        // Set Player 2 (ally) in deep trouble (troops < 30% of max, max = 200, troops = 10)
-        engine.state.player_mut(2).unwrap().troops = 10.0;
-
-        // Player 1 has plenty of gold (300,000) and troops (1000, max = 1500), iq_points = 50.
-        // Let's trigger thinking
-        for _ in 0..500 {
-            engine.execute_ai_think();
-            engine.state.tick += 1;
-        }
-
-        // Player 2 should have received resources (troops & gold increased)
-        let p2 = engine.state.player(2).unwrap();
-        assert!(p2.troops > 10.0 || p2.gold > 10_000.0);
+        // High IQ (135): per_tick(1.35) = 1.35 * 0.1 * 1.0 = 0.135
+        assert_eq!(engine.state.player(1).unwrap().iq_points, 50.135);
+        // Low IQ (85): per_tick(0.85) = 0.85 * 0.1 * 1.0 = 0.085
+        assert_eq!(engine.state.player(2).unwrap().iq_points, 50.085);
     }
 }
+

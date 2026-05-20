@@ -82,49 +82,133 @@ impl SowApp {
             }
         }
 
+        // Sync active context menu with request state
+        self.input.map_context_menu_active = self.input.map_context_menu;
+
         // ── Context menu (right-click on desktop, tap on mobile) ──
         if let Some((mx, my, tile_idx)) = self.input.map_context_menu {
+            use sow_ui::ui::theme::palette;
+            use sow_ui::widgets::{NeonButton, NeonButtonStyle};
+            use egui::{Color32, Stroke};
+
             let terrain_byte = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain[tile_idx as usize]).unwrap_or(0);
             let is_land = (terrain_byte & 0x80) != 0;
-            
+
+            let my_id = self.sim.my_player_id.unwrap_or(1);
+
+            let owner_id = self.gfx.map_renderer.as_ref()
+                .map(|mr| mr.owners[tile_idx as usize])
+                .unwrap_or(0);
+
+            let is_own_territory = owner_id == my_id;
+
+            let is_spawning = self.sim.current_snapshot.as_ref()
+                .map(|s| matches!(s.phase, sow_core::game::GamePhase::Spawning { .. }))
+                .unwrap_or(false);
+
+            let col = tile_idx % self.sim.map_w;
+            let row = tile_idx / self.sim.map_w;
+
             egui::Area::new(egui::Id::new("map_context_menu"))
-                .anchor(egui::Align2::LEFT_TOP, egui::vec2(mx, my))
+                .fixed_pos(egui::pos2(mx, my))
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
-                    egui::Frame::menu(&ctx.global_style())
-                        .fill(sow_ui::ui::theme::panel_bg())
-                        .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border()))
+                    egui::Frame::window(&ctx.global_style())
+                        .fill(sow_ui::ui::theme::panel_bg_transparent())
+                        .stroke(Stroke::new(1.5_f32, palette::neon_cyan()))
                         .corner_radius(12.0)
-                        .inner_margin(8.0)
+                        .inner_margin(12.0)
                         .show(ui, |ui| {
-                        if is_land {
-                            ui.label("Land Tile");
-                        } else {
-                            if ui.button("★ Send Fleet").clicked() {
-                                let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
-                                let intent = sow_core::protocol::GameplayIntent::LaunchFleet {
-                                    target_tile: tile_idx,
-                                    troops,
-                                };
-                                if let Some(c) = self.net.client.as_ref() {
-                                    if let Ok(json) = bincode::serialize(&sow_core::protocol::ClientMessage::Gameplay { intent: intent.clone() }) {
-                                        c.send(json);
+                            ui.vertical(|ui| {
+                                // 1. Title/Info Header
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("📍").color(palette::neon_cyan()).size(16.0));
+                                    let tile_type = if is_land { "Land Tile" } else { "Water Tile" };
+                                    ui.label(egui::RichText::new(format!("{} [{}, {}]", tile_type, col, row)).strong().color(palette::text_normal()));
+                                });
+                                ui.separator();
+
+                                // 2. Game Actions
+                                if is_spawning {
+                                    let btn = NeonButton::new("★ Spawn Here")
+                                        .style(NeonButtonStyle::Secondary)
+                                        .text_size(14.0);
+                                    if ui.add(btn).clicked() {
+                                        self.send_intent(sow_core::protocol::GameplayIntent::Spawn { x: col, y: row });
+                                        self.input.map_context_menu = None;
                                     }
-                                } else {
-                                    self.sim.offline_intents.push(intent);
+                                } else if !is_land {
+                                    // Water context actions
+                                    let btn = NeonButton::new("⛵ Send Fleet")
+                                        .style(NeonButtonStyle::Primary)
+                                        .text_size(14.0);
+                                    if ui.add(btn).clicked() {
+                                        let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
+                                        self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: tile_idx, troops });
+                                        self.input.map_context_menu = None;
+                                    }
+                                } else if !is_own_territory {
+                                    // Land context actions - hostile land
+                                    let btn = NeonButton::new("⚔ Attack")
+                                        .style(NeonButtonStyle::Danger)
+                                        .text_size(14.0);
+                                    if ui.add(btn).clicked() {
+                                        let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
+                                        if troops > 0.0 {
+                                            self.send_intent(sow_core::protocol::GameplayIntent::Attack(sow_core::protocol::AttackIntent { target_owner: owner_id, troops: Some(troops) }));
+                                        }
+                                        self.input.map_context_menu = None;
+                                    }
                                 }
-                                self.input.map_context_menu = None;
-                            }
-                        }
-                        if ui.button("[X] Cancel").clicked() {
-                            self.input.map_context_menu = None;
-                        }
-                    });
+
+                                // 3. Express Emoji Selector
+                                ui.add_space(4.0);
+                                ui.label(egui::RichText::new("💬 Express Emoji").color(palette::text_muted()).size(14.0));
+                                
+                                egui::Grid::new("emoji_grid")
+                                    .spacing(egui::vec2(8.0, 8.0))
+                                    .show(ui, |ui| {
+                                        for (i, &emoji) in crate::config::EXPRESSION_EMOJIS.iter().enumerate() {
+                                            let btn = egui::Button::new(egui::RichText::new(emoji).size(24.0))
+                                                .fill(Color32::TRANSPARENT);
+                                            if ui.add(btn).clicked() {
+                                                self.send_intent(sow_core::protocol::GameplayIntent::ExpressEmoji {
+                                                    emoji: emoji.to_string(),
+                                                });
+                                                self.input.map_context_menu = None;
+                                            }
+                                            if (i + 1) % 4 == 0 {
+                                                ui.end_row();
+                                            }
+                                        }
+                                    });
+
+                                ui.separator();
+
+                                // 4. Cancel/Close Button
+                                let cancel_btn = NeonButton::new("[X] Cancel")
+                                    .style(NeonButtonStyle::Outline)
+                                    .text_size(14.0);
+                                if ui.add(cancel_btn).clicked() {
+                                    self.input.map_context_menu = None;
+                                }
+                            });
+                        });
                 });
-                
+
             // Auto-close if clicked elsewhere
-            if ctx.input(|i| i.pointer.any_pressed()) && !ctx.egui_wants_pointer_input() {
+            if ctx.input(|i| i.pointer.any_pressed()) && !self.ui.egui_ctx.egui_wants_pointer_input() {
                 self.input.map_context_menu = None;
+            }
+
+            // 3-second inactivity auto-close
+            if self.ui.egui_ctx.egui_wants_pointer_input() {
+                self.input.context_menu_timer = 0.0;
+            } else {
+                self.input.context_menu_timer += ctx.input(|i| i.predicted_dt);
+                if self.input.context_menu_timer >= 3.0 {
+                    self.input.map_context_menu = None;
+                }
             }
         }
 
@@ -158,12 +242,14 @@ impl SowApp {
                                             let map_name = "tutorial".to_string();
                                             self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
 
-                                            let mut config = sow_core::game_config::GameConfig::default();
-                                            config.map_name = map_name.clone();
-                                            config.map_width = 800;
-                                            config.map_height = 600;
-                                            config.bot_count = 2;
-                                            config.nation_count = 1;
+                                            let config = sow_core::game_config::GameConfig {
+                                                map_name: map_name.clone(),
+                                                map_width: 1000,
+                                                map_height: 800,
+                                                bot_count: 2,
+                                                nation_count: 1,
+                                                ..Default::default()
+                                            };
 
                                             let start_msg = sow_core::protocol::ServerStartMessage {
                                                 lobby_id: None,

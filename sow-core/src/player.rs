@@ -51,6 +51,12 @@ pub struct Player {
     pub iq_points: f64,
     #[serde(default)]
     pub alliances: Vec<PlayerId>,
+    #[serde(default)]
+    pub disconnected: bool,
+    #[serde(default)]
+    pub active_emoji: Option<String>,
+    #[serde(default)]
+    pub emoji_timer: u32,
 }
 
 fn default_wyrand() -> WyRand {
@@ -85,6 +91,9 @@ impl Player {
             iq: 100,
             iq_points: 0.0,
             alliances: Vec::new(),
+            disconnected: false,
+            active_emoji: None,
+            emoji_timer: 0,
         }
     }
     pub fn new_bot(
@@ -116,6 +125,9 @@ impl Player {
             iq,
             iq_points: 0.0,
             alliances: Vec::new(),
+            disconnected: false,
+            active_emoji: None,
+            emoji_timer: 0,
         }
     }
     pub fn new_nation(
@@ -147,6 +159,9 @@ impl Player {
             iq,
             iq_points: 0.0,
             alliances: Vec::new(),
+            disconnected: false,
+            active_emoji: None,
+            emoji_timer: 0,
         }
     }
     pub fn is_human(&self) -> bool {

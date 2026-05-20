@@ -189,7 +189,7 @@ async fn main() {
                             info!("Player {} left relay {}", player_id, lobby_id);
                             pending_intents.push(StampedIntent {
                                 player_id,
-                                intent: GameplayIntent::Resign,
+                                intent: GameplayIntent::MarkDisconnected { is_disconnected: true },
                             });
                         }
                     }
@@ -231,6 +231,11 @@ async fn main() {
                                                     my_player_id = Some(player_id);
                                                     clients_map.lock().await.insert(player_id, direct_tx.clone());
                                                     info!("Player {} reconnected to relay", player_id);
+
+                                                    let _ = ev_tx.send(RelayEvent::Gameplay {
+                                                        player_id,
+                                                        intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
+                                                    });
 
                                                     // Send all missed turns so they can catch up!
                                                     let hist = history_arc.lock().await;

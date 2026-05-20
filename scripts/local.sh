@@ -9,6 +9,17 @@ echo "========================================================="
 echo "🚀 Starting Local Environment"
 echo "========================================================="
 
+# Clean up stale processes from previous runs to prevent Address In Use errors
+echo "==> Cleaning up any stale game processes..."
+killall sow-server sow-client sow-relay 2>/dev/null || true
+
+# Reset Redis ports so relay allocation starts fresh
+if command -v redis-cli >/dev/null 2>&1; then
+    redis-cli DEL sow:ports >/dev/null 2>&1 || true
+elif command -v valkey-cli >/dev/null 2>&1; then
+    valkey-cli DEL sow:ports >/dev/null 2>&1 || true
+fi
+
 # Clean up function to kill child processes on exit
 cleanup() {
     echo "🧹 Cleaning up background processes..."

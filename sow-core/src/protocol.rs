@@ -44,6 +44,12 @@ pub enum GameplayIntent {
     },
     /// Informs the engine that the player has disconnected or resigned.
     Resign,
+    MarkDisconnected {
+        is_disconnected: bool,
+    },
+    ExpressEmoji {
+        emoji: String,
+    },
     ProposeAlliance {
         target_player: crate::player::PlayerId,
     },
@@ -253,6 +259,8 @@ pub struct PlayerSnapshot {
     pub alive: bool,
     pub iq: u32,
     pub alliances: Vec<crate::player::PlayerId>,
+    pub disconnected: bool,
+    pub active_emoji: Option<String>,
 }
 
 /// A single tile whose owner changed during a tick.

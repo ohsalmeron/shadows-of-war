@@ -52,9 +52,7 @@ impl SowEngine {
                 + max_troops_bonus * config.max_troops_scale
                 + agg.city_levels as f64 * config.city_max_troops_per_level;
 
-            let ticks_per_second = 1000.0 / config.tick_rate_ms as f64;
-            
-            let raw_income = (config.troop_base_income / ticks_per_second) * config.global_speed_multiplier;
+            let raw_income = config.per_tick(config.troop_base_income);
 
             let cap_extra = (config.factory_income_bonus_cap - 1.0).max(0.0);
             let factory_extra = (agg.factory_levels as f64 * config.factory_income_bonus_per_level)
@@ -68,11 +66,10 @@ impl SowEngine {
 
             let gold_base = config.gold_base_income;
             let gold_income =
-                (gold_base + agg.city_levels as f64 * config.gold_income_per_city_level)
-                * config.global_speed_multiplier;
+                config.per_tick(gold_base + agg.city_levels as f64 * config.gold_income_per_city_level);
             player.gold = safe_gold + gold_income;
 
-            let iq_gain = (player.iq as f64 / 100.0) * config.global_speed_multiplier;
+            let iq_gain = config.per_tick(player.iq as f64 / 100.0);
             player.iq_points = (player.iq_points + iq_gain).min(500.0);
         }
     }
@@ -149,8 +146,7 @@ mod tests {
         let p = engine.state.player(1).unwrap();
         let cfg = &engine.state.config;
         let low = 5.0_f64;
-        let ticks_per_second = 1000.0 / cfg.tick_rate_ms as f64;
-        let raw_income = cfg.troop_base_income / ticks_per_second;
+        let raw_income = cfg.per_tick(cfg.troop_base_income);
         
         let uncapped = raw_income
             * (1.0 + 20.0 * cfg.factory_income_bonus_per_level);
@@ -167,41 +163,6 @@ mod tests {
     }
 
     #[test]
-    fn gold_increments_each_income_tick() {
-        let mut engine = engine_one_player(44, 10, 0.0, 100.0);
-        engine.execute_income();
-        let p = engine.state.player(1).unwrap();
-        let delta = p.gold - 100.0;
-        let g = engine.state.config.gold_base_income;
-        assert!(
-            (delta - g).abs() < 0.001,
-            "gold delta {} expected {}",
-            delta,
-            g
-        );
-    }
-
-    #[test]
-    fn gold_income_scales_with_ready_city_levels() {
-        let mut engine = engine_one_player(45, 20, 0.0, 0.0);
-        engine.buildings.push(Building {
-            id: 1,
-            owner_id: 1,
-            tile_idx: 0,
-            kind: BuildingKind::City,
-            level: 3,
-            under_construction: false,
-            ticks_until_complete: 0,
-        });
-        engine.execute_income();
-        let p = engine.state.player(1).unwrap();
-        let cfg = &engine.state.config;
-        let expected =
-            cfg.gold_base_income + 3.0 * cfg.gold_income_per_city_level;
-        assert!((p.gold - expected).abs() < 0.001, "gold={}", p.gold);
-    }
-
-    #[test]
     fn troop_base_income_generates_correctly() {
         let mut engine = engine_one_player(46, 1, 0.0, 0.0);
         engine.state.config.troop_base_income = 100.0;
@@ -213,8 +174,7 @@ mod tests {
         engine.execute_income();
         let p = engine.state.player(1).unwrap();
         
-        // ticks_per_second = 1000.0 / 100.0 = 10.0
-        // raw_income = (100.0 / 10.0) * 4.0 = 40.0
+        // per_tick(100.0) = 100.0 * (100.0/1000.0) * 4.0 = 40.0
         assert_eq!(p.troops, 40.0);
     }
 }

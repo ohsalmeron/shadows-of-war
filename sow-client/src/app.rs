@@ -63,6 +63,8 @@ pub struct InputState {
     pub active_touches: std::collections::HashMap<u64, (f64, f64)>,
     pub map_touch_start: Option<(web_time::Instant, f64, f64)>,
     pub map_context_menu: Option<(f32, f32, u32)>,
+    pub map_context_menu_active: Option<(f32, f32, u32)>,
+    pub context_menu_timer: f32,
     pub last_pinch_state: Option<(f64, f64, f64)>,
     /// Hold-to-attack: (target_owner, press_start_time, screen_x, screen_y, has_fired_initial)
     pub hold_attack_target: Option<(u16, web_time::Instant, f64, f64, bool)>,
@@ -348,6 +350,8 @@ impl SowApp {
                 active_touches,
                 map_touch_start,
                 map_context_menu,
+                map_context_menu_active: None,
+                context_menu_timer: 0.0,
                 last_pinch_state,
                 hold_attack_target: None,
                 hold_attack_accum: 0.0,

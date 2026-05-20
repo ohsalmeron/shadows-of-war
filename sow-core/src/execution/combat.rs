@@ -76,7 +76,8 @@ impl SowEngine {
         let momentum = (execution.troops / self.state.config.momentum_divisor).clamp(0.1, 5.0);
         max_tiles_f64 *= momentum;
 
-        // Apply global speed pacing multiplier
+        // Scale expansion rate to real time (per_tick semantics: tick_rate × speed multiplier)
+        max_tiles_f64 *= self.state.config.tick_rate_ms as f64 / 1000.0;
         max_tiles_f64 *= self.state.config.global_speed_multiplier;
 
         // Determine actual integer number of tiles to process this tick (Fractional determinism)

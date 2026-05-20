@@ -80,8 +80,8 @@ pub struct GameConfig {
     /// Increasing this slows down everything mechanically, including attack animations.
     pub tick_rate_ms: f32,
     /// Master speed dial for the entire game (1.0 = normal).
-    /// Lowers expansion speed, income generation, and bot aggression proportionally.
-    /// Example: 0.5 means attacks take twice as long to spread and income generates half as fast.
+    /// Scales all per-second rates (expansion, income, IQ) proportionally via `per_tick()`.
+    /// Example: 0.5 = half speed, 2.0 = double speed.
     pub global_speed_multiplier: f64,
 
     // ==========================================
@@ -97,9 +97,7 @@ pub struct GameConfig {
     pub terrain_multiplier_highland: f64,
     /// Defense modifier for mountain terrain tiles (multiplies attack cost).
     pub terrain_multiplier_mountain: f64,
-    /// Minimum ticks a bot must wait between launch attacks.
-    /// Higher values = slower, less aggressive AI expansion.
-    pub bot_attack_interval_ticks: u64,
+
     /// Absolute ceiling on the troop-scaled per-tick tile cap (applied before momentum).
     /// The effective cap is `min(curve(troops), this value)`; see `max_tiles_cap_for_troops`.
     pub max_tiles_per_tick: f64,
@@ -120,9 +118,9 @@ pub struct GameConfig {
     pub starting_troops: f64,
     /// Amount of gold given to players at spawn.
     pub starting_gold: f64,
-    /// Flat gold income added per second. Halving this doubles the time it takes to afford structures.
+    /// Gold earned per second at 1x speed (before city bonuses). Scaled by `per_tick()`.
     pub gold_base_income: f64,
-    /// Base troop income added per tick (dark-rift: flat base + curve).
+    /// Troops regenerated per second at 1x speed (before factory bonuses). Scaled by `per_tick()`.
     #[serde(default = "default_troop_base_income")]
     pub troop_base_income: f64,
     /// Base maximum troop capacity cap before territory size is accounted for.
@@ -137,6 +135,15 @@ pub struct GameConfig {
     pub factory_income_bonus_cap: f64,
     /// Flat gold income generated per level of an owned city.
     pub gold_income_per_city_level: f64,
+}
+
+impl GameConfig {
+    /// Convert a per-second rate to a per-tick rate, applying the global speed multiplier.
+    /// This is the **single source of truth** for time scaling. Every system uses this.
+    #[inline]
+    pub fn per_tick(&self, per_second: f64) -> f64 {
+        per_second * (self.tick_rate_ms as f64 / 1000.0) * self.global_speed_multiplier
+    }
 }
 
 impl Default for GameConfig {
@@ -158,15 +165,14 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            // Scales combat expansion, gold, and troop income broadly
-            global_speed_multiplier: 0.25, 
+            global_speed_multiplier: 1.0,
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 1.0,
+            attack_cost_enemy: 1.5,
             attack_cost_neutral: 0.25,
-            terrain_multiplier_highland: 1.5,
-            terrain_multiplier_mountain: 3.0,
-            bot_attack_interval_ticks: 240,
+            terrain_multiplier_highland: 2.5,
+            terrain_multiplier_mountain: 5.0,
+
             max_tiles_per_tick: 1024.0,
             max_tiles_per_tick_reference_troops: 1000.0,
             max_tiles_per_tick_at_reference: 12.0,

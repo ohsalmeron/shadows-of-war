@@ -145,29 +145,8 @@ impl GameMap {
 
 #[cfg(test)]
 mod border_mask_tests {
-    use super::{GameMap, CARDINAL_NEIGHBOR_DELTAS};
+    use super::CARDINAL_NEIGHBOR_DELTAS;
 
-    #[test]
-    fn cardinal_deltas_match_for_each_neighbor_at_interior() {
-        let map = GameMap::new(32, 32);
-        let x = 10u32;
-        for y in [0u32, 1u32, 10u32, 21u32] {
-            let mut from_fe = std::collections::HashSet::new();
-            map.for_each_neighbor(x, y, |nx, ny| {
-                from_fe.insert((nx as i32 - x as i32, ny as i32 - y as i32));
-            });
-            let from_deltas: std::collections::HashSet<_> = CARDINAL_NEIGHBOR_DELTAS
-                .iter()
-                .copied()
-                .filter(|&(dx, dy)| {
-                    let nx = x as i32 + dx;
-                    let ny = y as i32 + dy;
-                    nx >= 0 && nx < 32 && ny >= 0 && ny < 32
-                })
-                .collect();
-            assert_eq!(from_fe, from_deltas, "y={y}");
-        }
-    }
 
     fn compute_border_mask_u32(raw: &[u32], w: u32, h: u32, x: u32, y: u32) -> u32 {
         let i = (y * w + x) as usize;

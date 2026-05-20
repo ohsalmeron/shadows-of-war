@@ -168,6 +168,15 @@ impl SowEngine {
         self.execute_combat();
         self.execute_fleets();
         self.check_winner();
+
+        for player in &mut self.state.players {
+            if player.emoji_timer > 0 {
+                player.emoji_timer -= 1;
+                if player.emoji_timer == 0 {
+                    player.active_emoji = None;
+                }
+            }
+        }
     }
 
     fn check_winner(&mut self) {
@@ -456,6 +465,8 @@ impl SowEngine {
                     alive: p.alive,
                     iq: p.iq,
                     alliances: p.alliances.clone(),
+                    disconnected: p.disconnected,
+                    active_emoji: p.active_emoji.clone(),
                 }
             })
             .collect();

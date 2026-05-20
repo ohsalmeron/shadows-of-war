@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use wyrand::WyRand;
 
-pub mod bots;
 pub mod combat;
 pub mod income;
 

@@ -133,19 +133,19 @@ impl SowApp {
 
             if show_full {
                 full_labels_drawn += 1;
-                let ui_text_scale = ClientVisualConfig::default().ui_text_scale;
+                let visual_config = ClientVisualConfig::default();
+                let ui_text_scale = visual_config.ui_text_scale;
 
                 let base_font_size = if Some(player.id) == self.sim.my_player_id {
-                    12.0 // My own player (stays most visible)
+                    visual_config.nameplate_my_size
                 } else if player.id < 200 {
-                    11.0 // AI Nations (medium visibility)
+                    visual_config.nameplate_nation_size
                 } else {
-                    9.0 // Tribes (fades into the background when zooming out)
+                    visual_config.nameplate_tribe_size
                 };
                 
                 let font_size = base_font_size * ui_text_scale;
 
-                let is_human = player.player_type == sow_core::player::PlayerType::Human;
                 let troops_for_label = self.ui.troop_label_throttle.displayed_troops(
                     wall_secs,
                     player.id,
@@ -163,36 +163,68 @@ impl SowApp {
                     player.name.clone()
                 };
 
+                let active_emoji = player.active_emoji.clone();
                 let cache_entry = self.ui.nameplate_cache.entry(player.id).or_insert_with(|| {
                     let font_id = egui::FontId::proportional(font_size);
                     let troops_str = new_troops_str.clone();
+                    let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
+                    let disc_galley = match (player.disconnected, &active_emoji) {
+                        (true, _) => Some(painter.layout_no_wrap(
+                            "🔌".to_owned(),
+                            disc_font_id,
+                            NAMEPLATE_FILL,
+                        )),
+                        (false, Some(emoji)) => Some(painter.layout_no_wrap(
+                            emoji.to_owned(),
+                            disc_font_id,
+                            NAMEPLATE_FILL,
+                        )),
+                        (false, None) => None,
+                    };
 
                     CachedNameplate {
                         name_galley: layout_nameplate_name_galley(
                             &painter,
                             font_id.clone(),
                             &display_name,
-                            is_human,
-                            pc,
                         ),
                         troops_galley: painter.layout_no_wrap(
                             format!("⚔ {}", troops_str),
                             font_id,
                             NAMEPLATE_FILL,
                         ),
+                        disc_galley,
                         last_formatted_troops: troops_str,
                         last_font_size: font_size,
+                        last_disconnected: player.disconnected,
+                        last_active_emoji: active_emoji.clone(),
                     }
                 });
 
-                if cache_entry.last_font_size != font_size {
+                if cache_entry.last_font_size != font_size
+                    || cache_entry.last_disconnected != player.disconnected
+                    || cache_entry.last_active_emoji != active_emoji
+                {
                     let font_id = egui::FontId::proportional(font_size);
+                    let disc_font_id = egui::FontId::proportional(font_size * visual_config.nameplate_disconnected_emoji_scale);
+                    let disc_galley = match (player.disconnected, &active_emoji) {
+                        (true, _) => Some(painter.layout_no_wrap(
+                            "🔌".to_owned(),
+                            disc_font_id,
+                            NAMEPLATE_FILL,
+                        )),
+                        (false, Some(emoji)) => Some(painter.layout_no_wrap(
+                            emoji.to_owned(),
+                            disc_font_id,
+                            NAMEPLATE_FILL,
+                        )),
+                        (false, None) => None,
+                    };
+
                     cache_entry.name_galley = layout_nameplate_name_galley(
                         &painter,
                         font_id.clone(),
                         &display_name,
-                        is_human,
-                        pc,
                     );
                     cache_entry.troops_galley =
                         crate::hud::nameplate::layout_nameplate_troops_galley(
@@ -200,8 +232,11 @@ impl SowApp {
                             font_id,
                             &new_troops_str,
                         );
+                    cache_entry.disc_galley = disc_galley;
                     cache_entry.last_formatted_troops = new_troops_str.clone();
                     cache_entry.last_font_size = font_size;
+                    cache_entry.last_disconnected = player.disconnected;
+                    cache_entry.last_active_emoji = active_emoji;
                 } else if new_troops_str != cache_entry.last_formatted_troops {
                     let font_id = egui::FontId::proportional(font_size);
                     cache_entry.troops_galley =
@@ -216,20 +251,40 @@ impl SowApp {
                 let name_galley = &cache_entry.name_galley;
                 let troops_galley = &cache_entry.troops_galley;
 
-                let h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
+                let mut h = name_galley.rect.height() + troops_galley.rect.height() + 2.0;
+                if let Some(dg) = &cache_entry.disc_galley {
+                    h += dg.rect.height() + 2.0;
+                }
+
+                let mut current_y = center.y - h / 2.0;
+
+                if let Some(dg) = &cache_entry.disc_galley {
+                    let disc_pos = egui::pos2(
+                        center.x - dg.rect.width() / 2.0,
+                        current_y,
+                    );
+                    crate::hud::nameplate::paint_nameplate_galley(
+                        &painter,
+                        disc_pos,
+                        dg.clone(),
+                    );
+                    current_y += dg.rect.height() + 2.0;
+                }
 
                 let name_pos = egui::pos2(
                     center.x - name_galley.rect.width() / 2.0,
-                    center.y - h / 2.0,
-                );
-                let troops_pos = egui::pos2(
-                    center.x - troops_galley.rect.width() / 2.0,
-                    center.y - h / 2.0 + name_galley.rect.height() + 2.0,
+                    current_y,
                 );
                 crate::hud::nameplate::paint_nameplate_galley(
                     &painter,
                     name_pos,
                     name_galley.clone(),
+                );
+                current_y += name_galley.rect.height() + 2.0;
+
+                let troops_pos = egui::pos2(
+                    center.x - troops_galley.rect.width() / 2.0,
+                    current_y,
                 );
                 crate::hud::nameplate::paint_nameplate_galley(
                     &painter,

@@ -468,6 +468,12 @@ impl SowApp {
         let row = world_y.floor() as i32;
         if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
             let idx = (row * self.sim.map_w as i32 + col) as u32;
+            
+            // Clear any prior menu state first to avoid animation caching issues
+            self.input.map_context_menu = None;
+            self.input.map_context_menu_active = None;
+            self.input.context_menu_timer = 0.0;
+            
             self.input.map_context_menu = Some((x as f32, y as f32, idx));
         }
     }
@@ -496,7 +502,7 @@ impl SowApp {
         }
     }
 
-    fn send_intent(&mut self, intent: sow_core::protocol::GameplayIntent) {
+    pub(crate) fn send_intent(&mut self, intent: sow_core::protocol::GameplayIntent) {
         if let Some(c) = self.net.client.as_ref() {
             let msg = sow_core::protocol::ClientMessage::Gameplay {
                 intent: intent.clone(),

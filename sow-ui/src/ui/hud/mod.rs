@@ -31,6 +31,7 @@ pub struct HudState {
     pub safe_area_top: f32,
     pub safe_area_bottom: f32,
     pub selected_tile: Option<SelectedTileInfo>,
+    pub show_emoji_panel: bool,
 }
 
 impl HudState {
@@ -140,9 +141,78 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     if ui.add(crate::widgets::HudButton::new("⌖")).on_hover_text(&sow_lang::get(lang).hud.hover_center_camera).clicked() {
                         action = Some(UiAction::CenterCamera);
                     }
+                    ui.add_space(4.0);
+                    if ui.add(crate::widgets::HudButton::new("😀")).on_hover_text("Express Emoji").clicked() {
+                        state.show_emoji_panel = !state.show_emoji_panel;
+                    }
                 });
             });
         });
+
+    // ── Floating Emoji Panel ──────────────────────────────────────────────────
+    if state.show_emoji_panel {
+        let emojis = &["😀", "😭", "😮", "😠", "👑", "💪", "⚔️", "💀", "❤️", "🔥", "👀", "🏳️"];
+        egui::Area::new(egui::Id::new("floating_emoji_panel"))
+            .anchor(Align2::RIGHT_BOTTOM, vec2(-64.0, -100.0 - state.safe_area_bottom))
+            .order(egui::Order::Foreground)
+            .show(ui.ctx(), |ui| {
+                let panel_bg = crate::ui::theme::panel_bg();
+                let glow_color = crate::ui::theme::accent_solo_cyan();
+                
+                egui::Frame::menu(&ui.ctx().global_style())
+                    .fill(panel_bg)
+                    .stroke(egui::Stroke::new(1.5_f32, glow_color))
+                    .corner_radius(12)
+                    .inner_margin(10)
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                RichText::new("EXPRESS EMOJI")
+                                    .strong()
+                                    .color(crate::ui::theme::accent_solo_cyan())
+                                    .size(11.0)
+                            );
+                            ui.add_space(6.0);
+                            
+                            egui::Grid::new("emoji_grid")
+                                .spacing(vec2(6.0, 6.0))
+                                .show(ui, |ui| {
+                                    for (i, &emoji) in emojis.iter().enumerate() {
+                                        let btn = egui::Button::new(RichText::new(emoji).size(20.0))
+                                            .fill(crate::ui::theme::menu_secondary_button())
+                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
+                                            .corner_radius(6);
+                                        
+                                        if ui.add_sized(vec2(36.0, 36.0), btn).clicked() {
+                                            let intent = sow_core::protocol::GameplayIntent::ExpressEmoji {
+                                                emoji: emoji.to_owned(),
+                                            };
+                                            cancel_intents.push(intent);
+                                            state.show_emoji_panel = false;
+                                        }
+                                        
+                                        if (i + 1) % 4 == 0 {
+                                            ui.end_row();
+                                        }
+                                    }
+                                });
+                        });
+                    });
+            });
+
+        // Click outside the emoji panel closes it
+        if ui.ctx().input(|i| i.pointer.any_pressed()) {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
+                // If it's not hovering inside the grid/panel area, dismiss it
+                // Estimated size of the panel is roughly 180x180 around its anchor
+                let screen_size = ui.ctx().content_rect();
+                let panel_center = pos2(screen_size.right() - 150.0, screen_size.bottom() - 180.0 - state.safe_area_bottom);
+                if pos.distance(panel_center) > 130.0 {
+                    state.show_emoji_panel = false;
+                }
+            }
+        }
+    }
 
     draw_sync_overlay(ui.ctx(), state, lang);
 

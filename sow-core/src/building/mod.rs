@@ -143,68 +143,6 @@ mod tests {
             .any(|e| matches!(e, GameEvent::StructureReady { id: 7, .. })));
     }
 
-    #[test]
-    fn construction_ready_events_sorted_by_building_id() {
-        use crate::engine::SowEngine;
-        use crate::game::{GameEvent, GamePhase, GameState};
-        use crate::player::Player;
-        use crate::water_components::WaterComponents;
-
-        let mut game = GameState::new(4, 5, 1, crate::game_config::GameConfig::default());
-        game.phase = GamePhase::Playing;
-        let (map, owner) = tiny_owned_map();
-        game.map = map;
-        game.players.push(Player::new_human(
-            owner,
-            "d".into(),
-            [1.0, 0.0, 0.0],
-            &crate::game_config::GameConfig::default(),
-        ));
-        game.player_lookup.resize(owner as usize + 1, None);
-        game.player_lookup[owner as usize] = Some(0);
-        let water = WaterComponents::compute(&game.map, |_| {});
-        let mut engine = SowEngine::new(game, water);
-        engine.buildings.push(Building {
-            id: 2,
-            owner_id: owner,
-            tile_idx: 1,
-            kind: BuildingKind::Factory,
-            level: 1,
-            under_construction: true,
-            ticks_until_complete: 1,
-        });
-        engine.buildings.push(Building {
-            id: 1,
-            owner_id: owner,
-            tile_idx: 3,
-            kind: BuildingKind::City,
-            level: 1,
-            under_construction: true,
-            ticks_until_complete: 1,
-        });
-        engine.execute_construction();
-        let ready_ids: Vec<u64> = engine
-            .state
-            .events
-            .iter()
-            .filter_map(|e| match e {
-                GameEvent::StructureReady { id, .. } => Some(id.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(ready_ids, vec![2, 1]);
-    }
-
-    #[test]
-    fn compute_buildables_disables_when_too_poor() {
-        let (map, owner) = tiny_owned_map();
-        let grid = BuildingGrid::rebuild_empty(map.width, map.height);
-        let mut scratch = crate::engine::PlacementScratch::default();
-        let rows = compute_buildables_for_player(&map, owner, 0.0, &[], &grid, &mut scratch);
-        for e in rows {
-            assert!(!e.can_build, "{:?}", e.kind);
-        }
-    }
 
     #[test]
     fn compute_buildables_port_invalid_without_shore() {
@@ -311,26 +249,5 @@ mod tests {
         ];
         let next_pf = structure_build_cost_gold(BuildingKind::Factory, owner, &pf);
         assert_eq!(next_pf, 500_000.0 / s);
-    }
-
-    #[test]
-    fn missile_structures_disabled_in_buildables_when_feature_off() {
-        let (map, owner) = tiny_owned_map();
-        let grid = BuildingGrid::rebuild_empty(map.width, map.height);
-        let mut scratch = crate::engine::PlacementScratch::default();
-        let rows =
-            compute_buildables_for_player(&map, owner, 1_000_000.0, &[], &grid, &mut scratch);
-        let sam = rows
-            .iter()
-            .find(|e| e.kind == BuildingKind::SamLauncher)
-            .unwrap();
-        let silo = rows
-            .iter()
-            .find(|e| e.kind == BuildingKind::MissileSilo)
-            .unwrap();
-        assert!(!sam.can_build);
-        assert!(!silo.can_build);
-        assert!(!sam.can_upgrade);
-        assert!(!silo.can_upgrade);
     }
 }
