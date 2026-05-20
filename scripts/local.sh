@@ -22,7 +22,7 @@ trap cleanup EXIT INT TERM
 # 1. Fast Compilation (Debug mode)
 echo "==> Compiling server, relay, and client..."
 # We compile without --release to build as fast as possible
-cargo build -p sow-server -p sow-relay -p sow-client
+cargo build --features sow-core/mem_profiler -p sow-server -p sow-relay -p sow-client
 echo "✅ Compilation successful."
 
 # 2. Check for Redis

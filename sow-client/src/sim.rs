@@ -144,7 +144,9 @@ impl SowApp {
                 if self.time.last_debug_print.is_none_or(|t| now.duration_since(t).as_secs() >= 5) {
                     self.time.last_debug_print = Some(now);
                     if let Some(snap) = &self.sim.current_snapshot {
-                        log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.sim.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);
+                        if !snap.debug_mem_info.is_empty() {
+                            log::info!("[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}", self.sim.turn_queue.len(), snap.dirty_tiles.len(), snap.debug_mem_info);
+                        }
                     }
                 }
 

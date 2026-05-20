@@ -524,22 +524,26 @@ impl SowEngine {
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
             defense_dirty,
-            debug_mem_info: format!(
-                "Engine [Attacks: {}/{} | Fleets: {}/{} | Buildings: {}/{} | Events: {}/{} | Players: {}/{} | DirtyTilesCap: {}] Pathfinder [AStarHeapCap: {} | AStarCameCap: {} | BFSQueueCap: {} | BFSVisitedCap: {}] Placement [VisitedCap: {} | QueueCap: {} | BorderCap: {}]",
-                self.attacks.len(), self.attacks.capacity(),
-                self.fleets.len(), self.fleets.capacity(),
-                self.buildings.len(), self.buildings.capacity(),
-                self.state.events.len(), self.state.events.capacity(),
-                self.state.players.len(), self.state.players.capacity(),
-                self.state.map.dirty_tiles.capacity(),
-                self.path_scratch.astar.heap.capacity(),
-                self.path_scratch.astar.came_from.capacity(),
-                self.path_scratch.bfs_queue.capacity(),
-                self.path_scratch.bfs_visited.capacity(),
-                self.placement_scratch.visited_stamp.len(),
-                self.placement_scratch.queue.capacity(),
-                self.placement_scratch.border_scratch.capacity(),
-            ),
+            debug_mem_info: if cfg!(feature = "mem_profiler") {
+                format!(
+                    "Engine [Attacks: {}/{} | Fleets: {}/{} | Buildings: {}/{} | Events: {}/{} | Players: {}/{} | DirtyTilesCap: {}] Pathfinder [AStarHeapCap: {} | AStarCameCap: {} | BFSQueueCap: {} | BFSVisitedCap: {}] Placement [VisitedCap: {} | QueueCap: {} | BorderCap: {}]",
+                    self.attacks.len(), self.attacks.capacity(),
+                    self.fleets.len(), self.fleets.capacity(),
+                    self.buildings.len(), self.buildings.capacity(),
+                    self.state.events.len(), self.state.events.capacity(),
+                    self.state.players.len(), self.state.players.capacity(),
+                    self.state.map.dirty_tiles.capacity(),
+                    self.path_scratch.astar.heap.capacity(),
+                    self.path_scratch.astar.came_from.capacity(),
+                    self.path_scratch.bfs_queue.capacity(),
+                    self.path_scratch.bfs_visited.capacity(),
+                    self.placement_scratch.visited_stamp.len(),
+                    self.placement_scratch.queue.capacity(),
+                    self.placement_scratch.border_scratch.capacity(),
+                )
+            } else {
+                String::new()
+            },
         }
     }
 }

@@ -7,6 +7,7 @@ description = "Shadows of War — Pure deterministic simulation core"
 [features]
 default = ["std"]
 std = []
+mem_profiler = []
 
 [dependencies]
 serde = { workspace = true }
