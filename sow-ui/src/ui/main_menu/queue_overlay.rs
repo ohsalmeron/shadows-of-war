@@ -12,48 +12,7 @@ pub fn draw_queue_overlay(
     lang: sow_lang::Language,
 ) {
     let strings = &sow_lang::get(lang).main_menu;
-    let screen_rect = ui.ctx().content_rect();
-    let screen_w = screen_rect.width();
-    let screen_h = screen_rect.height();
-    let is_mobile = screen_w < 900.0;
-
-    // 1. Fullscreen Background Image
-    let background_tex = if is_mobile {
-        asset_loader.splash_mobile.as_ref()
-    } else {
-        asset_loader.splash_desktop.as_ref()
-    };
-
-    if let Some(texture) = background_tex {
-        let tex_aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
-        let screen_aspect = screen_w / screen_h;
-
-        let (mut u0, mut v0, mut u1, mut v1) = (0.0, 0.0, 1.0, 1.0);
-
-        if tex_aspect > screen_aspect {
-            let crop_w = screen_aspect / tex_aspect;
-            u0 = (1.0 - crop_w) / 2.0;
-            u1 = 1.0 - u0;
-        } else {
-            let crop_h = tex_aspect / screen_aspect;
-            v0 = (1.0 - crop_h) / 2.0;
-            v1 = 1.0 - v0;
-        }
-
-        ui.painter().image(
-            texture.id(),
-            screen_rect,
-            egui::Rect::from_min_max(egui::pos2(u0, v0), egui::pos2(u1, v1)),
-            Color32::WHITE,
-        );
-    }
-
-    // 2. Premium dark overlay for contrast
-    ui.painter().rect_filled(
-        screen_rect,
-        0.0,
-        Color32::from_rgba_unmultiplied(8, 12, 24, 215),
-    );
+    let compact = super::lobby_compact_layout(ui.ctx());
 
     // Get lobby information
     let mut lobby_info = None;
@@ -63,146 +22,142 @@ pub fn draw_queue_overlay(
         }
     }
 
-    // 3. Main Center Container Frame
-    let container_w = if is_mobile {
-        screen_w - 32.0
-    } else {
-        880.0f32.min(screen_w - 64.0)
-    };
-    let container_h = if is_mobile {
-        screen_h - 32.0
-    } else {
-        720.0f32.min(screen_h - 100.0)
-    };
+    // 1. Premium dark panel matching main menu
+    let panel_frame = Frame::new()
+        .fill(crate::ui::theme::panel_bg())
+        .stroke(Stroke::new(1.0_f32, crate::ui::theme::menu_panel_border_glow()))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(if compact { 18.0 } else { 24.0 })
+        .shadow(egui::Shadow {
+            blur: 24,
+            spread: 0,
+            color: crate::ui::theme::menu_panel_border_glow().linear_multiply(0.25),
+            offset: [0, 10],
+        });
 
-    let center_rect = egui::Rect::from_center_size(screen_rect.center(), egui::vec2(container_w, container_h));
-
-    ui.scope_builder(egui::UiBuilder::new().max_rect(center_rect), |ui| {
-        Frame::NONE
-            .fill(crate::ui::theme::panel_bg())
-            .stroke(Stroke::new(1.5_f32, crate::ui::theme::menu_panel_border_glow()))
-            .corner_radius(CornerRadius::same(20))
-            .inner_margin(if is_mobile { 16.0 } else { 28.0 })
-            .shadow(egui::Shadow {
-                blur: 32,
-                spread: 0,
-                color: crate::ui::theme::menu_panel_border_glow().linear_multiply(0.25),
-                offset: [0, 10],
-            })
-            .show(ui, |ui| {
-                ui.vertical(|ui| {
-                    let button_h = action_min_h + 16.0;
-                    let top_h = ui.available_height() - button_h;
-
-                    // 1. Top Area (All content except the leave button)
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), top_h),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            if let Some(lobby) = lobby_info {
-                                // Title / Status row
-                                ui.vertical_centered(|ui| {
-                                    crate::ui::theme::outlined_label(
-                                        ui,
-                                        &strings.matchmaking_established,
-                                        egui::FontId::proportional(if is_mobile { 24.0 } else { 32.0 }),
-                                        Color32::WHITE,
-                                    );
-
-                                    let timer_text = if lobby.is_counting_down {
-                                        format!("STARTING IN: {:.1}S", lobby.timer_secs)
-                                    } else if state.wait_timer_secs > 0.0 {
-                                        format!("STARTING IN: {:.1}S", state.wait_timer_secs)
-                                    } else {
-                                        strings.awaiting_combat_criteria.to_string()
-                                    };
-
-                                    let timer_color = if lobby.is_counting_down || state.wait_timer_secs > 0.0 {
-                                        Color32::from_rgb(255, 210, 120)
-                                    } else {
-                                        crate::ui::theme::text_secondary()
-                                    };
-
-                                    ui.add_space(4.0);
-                                    crate::ui::theme::outlined_label(
-                                        ui,
-                                        &timer_text,
-                                        egui::FontId::proportional(if is_mobile { 16.0 } else { 20.0 }),
-                                        timer_color,
-                                    );
-                                });
-
-                                ui.add_space(section_gap * 1.5_f32);
-
-                                // Dual Columns or Stack
-                                if is_mobile {
-                                    // On mobile, vertical non-scrolling layout
-                                    ui.vertical(|ui| {
-                                        draw_map_briefing(ui, lobby, asset_loader, is_mobile, lang);
-                                        ui.add_space(12.0);
-                                        ui.allocate_ui_with_layout(
-                                            egui::vec2(ui.available_width(), ui.available_height()),
-                                            egui::Layout::top_down(egui::Align::Min),
-                                            |ui| {
-                                                draw_ready_room(ui, lobby, asset_loader, lang);
-                                            },
-                                        );
-                                    });
-                                } else {
-                                    // Desktop side-by-side
-                                    ui.horizontal_top(|ui| {
-                                        let total_w = ui.available_width();
-                                        let col_w = (total_w - 24.0) * 0.5_f32;
-
-                                        ui.allocate_ui_with_layout(
-                                            egui::vec2(col_w, ui.available_height()),
-                                            egui::Layout::top_down(egui::Align::Min),
-                                            |ui| {
-                                                draw_map_briefing(ui, lobby, asset_loader, is_mobile, lang);
-                                            },
-                                        );
-
-                                        ui.add_space(24.0);
-
-                                        ui.allocate_ui_with_layout(
-                                            egui::vec2(col_w, ui.available_height()),
-                                            egui::Layout::top_down(egui::Align::Min),
-                                            |ui| {
-                                                draw_ready_room(ui, lobby, asset_loader, lang);
-                                            },
-                                        );
-                                    });
-                                }
-                            } else {
-                                // Lobby sync loading
-                                ui.vertical_centered(|ui| {
-                                    ui.add_space(80.0);
-                                    ui.add(egui::Spinner::new().size(40.0));
-                                    ui.add_space(16.0);
-                                    crate::ui::theme::outlined_label(
-                                        ui,
-                                        &strings.establishing_tactical_comm,
-                                        egui::FontId::proportional(20.0),
-                                        crate::ui::theme::text_secondary(),
-                                    );
-                                });
-                            }
-                        },
+    panel_frame.show(ui, |ui| {
+        ui.set_min_size(ui.available_size());
+        ui.vertical(|ui| {
+            if let Some(lobby) = lobby_info {
+                // Header (Status / Title / Timer)
+                ui.vertical_centered(|ui| {
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        &strings.matchmaking_established,
+                        egui::FontId::proportional(if compact { 20.0 } else { 28.0 }),
+                        Color32::WHITE,
                     );
 
-                    // 2. Bottom Area (Leave button)
-                    ui.add_space(8.0);
-                    ui.vertical_centered(|ui| {
-                        let cancel = crate::widgets::ThemeButton::new(&strings.leave_lobby)
-                            .style(crate::widgets::ThemeButtonStyle::Danger)
-                            .min_size(egui::vec2(220.0, action_min_h));
-                        if ui.add(cancel).clicked() {
-                            *action = Some(UiAction::LeaveLobby);
-                        }
-                    });
+                    let timer_text = if lobby.is_counting_down {
+                        format!("STARTING IN: {:.1}S", lobby.timer_secs)
+                    } else if state.wait_timer_secs > 0.0 {
+                        format!("STARTING IN: {:.1}S", state.wait_timer_secs)
+                    } else {
+                        strings.awaiting_combat_criteria.to_string()
+                    };
+
+                    let timer_color = if lobby.is_counting_down || state.wait_timer_secs > 0.0 {
+                        Color32::from_rgb(255, 210, 120)
+                    } else {
+                        crate::ui::theme::text_secondary()
+                    };
+
+                    ui.add_space(2.0);
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        &timer_text,
+                        egui::FontId::proportional(if compact { 14.0 } else { 18.0 }),
+                        timer_color,
+                    );
                 });
+
+                ui.add_space(section_gap);
+
+                // 2. Middle Flex Content Area
+                let button_h = action_min_h + 16.0;
+                let middle_h = ui.available_height() - button_h;
+
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), middle_h),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        if compact {
+                            ui.vertical(|ui| {
+                                // Draw map briefing (fixed height)
+                                draw_map_briefing(ui, lobby, asset_loader, true, lang);
+                                ui.add_space(8.0);
+                                // Draw ready room player list (takes remaining height)
+                                let ready_room_h = ui.available_height();
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(ui.available_width(), ready_room_h),
+                                    egui::Layout::top_down(egui::Align::Min),
+                                    |ui| {
+                                        draw_ready_room(ui, lobby, asset_loader, lang);
+                                    }
+                                );
+                            });
+                        } else {
+                            ui.horizontal_top(|ui| {
+                                let total_w = ui.available_width();
+                                let col_w = (total_w - 20.0) * 0.5_f32;
+                                let col_h = ui.available_height();
+
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(col_w, col_h),
+                                    egui::Layout::top_down(egui::Align::Min),
+                                    |ui| {
+                                        draw_map_briefing(ui, lobby, asset_loader, false, lang);
+                                    },
+                                );
+
+                                ui.add_space(20.0);
+
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(col_w, col_h),
+                                    egui::Layout::top_down(egui::Align::Min),
+                                    |ui| {
+                                        draw_ready_room(ui, lobby, asset_loader, lang);
+                                    },
+                                );
+                            });
+                        }
+                    }
+                );
+            } else {
+                // Connecting/Syncing state
+                let button_h = action_min_h + 16.0;
+                let middle_h = ui.available_height() - button_h;
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), middle_h),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(middle_h * 0.35);
+                            ui.add(egui::Spinner::new().size(36.0));
+                            ui.add_space(16.0);
+                            crate::ui::theme::outlined_label(
+                                ui,
+                                &strings.establishing_tactical_comm,
+                                egui::FontId::proportional(18.0),
+                                crate::ui::theme::text_secondary(),
+                            );
+                        });
+                    }
+                );
+            }
+
+            // 3. Bottom Button Area
+            ui.add_space(8.0);
+            ui.vertical_centered(|ui| {
+                let cancel = crate::widgets::ThemeButton::new(&strings.leave_lobby)
+                    .style(crate::widgets::ThemeButtonStyle::Danger)
+                    .min_size(egui::vec2(200.0, action_min_h));
+                if ui.add(cancel).clicked() {
+                    *action = Some(UiAction::LeaveLobby);
+                }
             });
         });
+    });
 }
 
 fn draw_map_briefing(
@@ -220,6 +175,9 @@ fn draw_map_briefing(
         .inner_margin(16.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
+            if !is_mobile {
+                ui.set_height(ui.available_height());
+            }
             ui.vertical(|ui| {
                 // Header
                 ui.label(RichText::new(&strings.tactical_briefing).size(14.0).strong().color(crate::ui::theme::text_secondary()));
