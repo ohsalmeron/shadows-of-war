@@ -165,7 +165,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 1.0,
+            global_speed_multiplier: 0.5,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
@@ -184,7 +184,7 @@ impl Default for GameConfig {
             gold_base_income: 0.0,
             troop_base_income: 250.0,
             max_troops_base: 10.0,
-            max_troops_scale: 10.0,
+            max_troops_scale: 100.0,
             city_max_troops_per_level: 0.0,
             factory_income_bonus_per_level: 0.0,
             factory_income_bonus_cap: 0.0,

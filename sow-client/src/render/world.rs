@@ -10,6 +10,7 @@ impl SowApp {
             egui::Id::new("world_overlays"),
         ));
         let wall_secs = self.time.start_time.elapsed().as_secs_f64();
+        let current_tick = self.sim.current_snapshot.as_ref().map(|s| s.tick).unwrap_or(0);
 
         // Configuration variables removed from GameConfig
         let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
@@ -119,7 +120,7 @@ impl SowApp {
 
         let visual_config = ClientVisualConfig::default();
         let ui_text_scale = visual_config.ui_text_scale;
-        let zoom_scale = (self.input.camera_zoom / sf).min(1.0).max(0.5);
+        let zoom_scale = (self.input.camera_zoom / sf).min(1.0).max(0.1);
 
         // Precompute scaled nameplate font sizes once per frame for 100% CPU/memory efficiency!
         // Round to whole point sizes to prevent egui glyph atlas invalidations.
@@ -153,7 +154,7 @@ impl SowApp {
                 };
 
                 let troops_for_label = self.ui.troop_label_throttle.displayed_troops(
-                    wall_secs,
+                    current_tick,
                     player.id,
                     player.troops,
                 );
@@ -321,10 +322,16 @@ impl SowApp {
                     name_galley.rect.width()
                 };
 
-                let name_pos = egui::pos2(
+                let name_pos_start = egui::pos2(
                     center.x - total_name_w / 2.0,
                     current_y,
                 );
+
+                let name_pos = if is_me {
+                    egui::pos2(name_pos_start.x + star_size + 4.0, current_y)
+                } else {
+                    name_pos_start
+                };
 
                 if let Some(dg) = &disc_galley {
                     // Draw the emoji ABOVE the nameplate, centered horizontally!
@@ -347,8 +354,8 @@ impl SowApp {
 
                 if is_me {
                     let star_pos = egui::pos2(
-                        name_pos.x + name_galley.rect.width() + 4.0,
-                        name_pos.y + 1.0,
+                        name_pos_start.x,
+                        name_pos_start.y + 1.0,
                     );
                     let star_rect = egui::Rect::from_min_size(star_pos, egui::vec2(star_size, star_size));
                     let star_uri = "bytes://star.svg";

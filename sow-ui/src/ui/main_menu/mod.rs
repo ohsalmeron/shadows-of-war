@@ -65,7 +65,7 @@ impl Default for MainMenuState {
 
 #[inline]
 pub fn lobby_compact_layout(ctx: &egui::Context) -> bool {
-    ctx.content_rect().width() < 900.0
+    ctx.content_rect().width() < 900.0 || ctx.content_rect().height() < 600.0
 }
 
 pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
@@ -90,7 +90,7 @@ pub fn draw(
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
-    let outer_pad = if compact { 16.0 } else { 24.0 };
+    let outer_pad = if compact { 12.0 } else { 16.0 };
     let section_gap = if compact { 12.0 } else { 16.0 };
 
     let action_min_h = if compact { 64.0 } else { 72.0 };
@@ -104,10 +104,10 @@ pub fn draw(
         )
         .show_inside(root_ui, |ui| {
             // Draw high-fidelity natural loader background texture
-            let screen_rect = ui.max_rect();
+            let screen_rect = ui.ctx().content_rect();
             let screen_w = screen_rect.width();
             let screen_h = screen_rect.height();
-            let is_mobile = screen_w < 600.0;
+            let is_mobile = compact;
 
             let background_tex = if is_mobile {
                 asset_loader.splash_mobile.as_ref()
@@ -177,6 +177,8 @@ pub fn draw(
                 });
 
             panel_frame.show(ui, |ui| {
+                ui.set_min_size(ui.available_size());
+                let show_footer = ui.available_height() > 430.0;
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
@@ -195,23 +197,25 @@ pub fn draw(
                     });
 
                     if compact {
-                        ui.add_space(8.0);
-                        profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
-                        ui.add_space(8.0);
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            ui.add_space(8.0);
+                            profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
+                            ui.add_space(8.0);
 
-                        ui.vertical(|ui| {
-                            browser::draw_left_column(
-                                ui,
-                                state,
-                                section_gap,
-                                action_min_h,
-                                compact,
-                                &mut action,
-                                asset_loader,
-                                lang,
-                            );
-                            ui.add_space(section_gap);
-                            actions::draw_right_column(ui, state, section_gap, action_min_h, compact, &mut action, lang);
+                            ui.vertical(|ui| {
+                                browser::draw_left_column(
+                                    ui,
+                                    state,
+                                    section_gap,
+                                    action_min_h,
+                                    compact,
+                                    &mut action,
+                                    asset_loader,
+                                    lang,
+                                );
+                                ui.add_space(section_gap);
+                                actions::draw_right_column(ui, state, section_gap, action_min_h, compact, &mut action, lang);
+                            });
                         });
                     } else {
                         ui.horizontal_top(|ui| {
@@ -219,9 +223,11 @@ pub fn draw(
                             let gap = section_gap;
                             let left_w = (total - gap) * 0.58;
                             let right_w = (total - gap) * 0.34;
+                            let footer_offset = if show_footer { section_gap + 22.0 } else { 0.0 };
+                            let content_h = ui.available_height() - footer_offset;
 
                             ui.allocate_ui_with_layout(
-                                egui::vec2(left_w, ui.available_height()),
+                                egui::vec2(left_w, content_h),
                                 Layout::top_down(Align::Min),
                                 |ui| {
                                     browser::draw_left_column(
@@ -238,7 +244,7 @@ pub fn draw(
                             );
 
                             ui.allocate_ui_with_layout(
-                                egui::vec2(right_w.clamp(280.0, 420.0), ui.available_height()),
+                                egui::vec2(right_w.clamp(280.0, 420.0), content_h),
                                 Layout::top_down(Align::Min),
                                 |ui| {
                                     actions::draw_right_column(
@@ -255,19 +261,20 @@ pub fn draw(
                         });
                     }
 
-                    ui.add_space(section_gap);
-                    ui.separator();
-                    ui.add_space(6.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "v{} — Shadows of War",
-                                env!("CARGO_PKG_VERSION")
-                            ))
-                            .small()
-                            .color(crate::ui::theme::text_secondary()),
-                        );
-                    });
+                    if show_footer {
+                        ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "v{}",
+                                    include_str!("../../../../.version").trim()
+                                ))
+                                .small()
+                                .color(Color32::TRANSPARENT),
+                            );
+                            ui.separator();
+                        });
+                    }
                 });
             });
         });

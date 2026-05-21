@@ -8,14 +8,16 @@ pub fn draw_left_column(
     state: &mut MainMenuState,
     _section_gap: f32,
     _action_min_h: f32,
-    _compact: bool,
+    compact: bool,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_lang::Language,
 ) {
     let strings = &sow_lang::get(lang).main_menu;
     let total_lobbies = state.lobbies.len();
-    let max_h = if total_lobbies > 0 {
+    let max_h = if compact {
+        180.0
+    } else if total_lobbies > 0 {
         ((ui.available_height() - 40.0) / total_lobbies as f32).max(100.0)
     } else {
         160.0

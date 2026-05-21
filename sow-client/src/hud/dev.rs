@@ -51,7 +51,7 @@ impl SowApp {
         let corner_radius = if compact { 8.0 } else { 10.0 };
 
         egui::Area::new(egui::Id::new("ping_fps_zoom_area"))
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0))
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 28.0))
             .show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(sow_ui::ui::theme::panel_bg_transparent())

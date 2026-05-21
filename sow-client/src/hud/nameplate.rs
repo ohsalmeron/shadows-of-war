@@ -4,33 +4,19 @@ use std::sync::Arc;
 
 
 
-/// Nameplate troop text: snap to sim at most ~2/s per player (LegacyEngine-style).
+/// Nameplate troop text: matches with each tick for 100% sync.
 #[derive(Default)]
 pub struct TroopLabelThrottle {
-    last_refresh_wall_secs: HashMap<u16, f64>,
     shown_troops: HashMap<u16, f64>,
 }
 
 impl TroopLabelThrottle {
-    pub const INTERVAL: f64 = 2.0;
-
-    pub fn displayed_troops(&mut self, wall_secs: f64, player_id: u16, sim_troops: f64) -> f64 {
-        let refresh = match self.last_refresh_wall_secs.get(&player_id) {
-            None => true,
-            Some(&t) if wall_secs - t >= Self::INTERVAL => true,
-            _ => false,
-        };
-        if refresh {
-            self.last_refresh_wall_secs.insert(player_id, wall_secs);
-            self.shown_troops.insert(player_id, sim_troops);
-            sim_troops
-        } else {
-            *self.shown_troops.get(&player_id).unwrap_or(&sim_troops)
-        }
+    pub fn displayed_troops(&mut self, _tick: u64, player_id: u16, sim_troops: f64) -> f64 {
+        self.shown_troops.insert(player_id, sim_troops);
+        sim_troops
     }
 
     pub fn clear(&mut self) {
-        self.last_refresh_wall_secs.clear();
         self.shown_troops.clear();
     }
 }

@@ -5,8 +5,26 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
+# 1. Bump Version
+VERSION_FILE="${ROOT}/.version"
+if [[ ! -f "${VERSION_FILE}" ]]; then
+  echo "0.1.0" > "${VERSION_FILE}"
+fi
+CURRENT_VERSION=$(cat "${VERSION_FILE}")
+
+if [[ "${CURRENT_VERSION}" == *.* ]]; then
+    PATCH=$(echo "${CURRENT_VERSION}" | rev | cut -d. -f1 | rev)
+else
+    PATCH="${CURRENT_VERSION}"
+fi
+
+NEW_PATCH=$((PATCH + 1))
+CLEAN_VERSION="0.1.${NEW_PATCH}"
+echo "${CLEAN_VERSION}" > "${VERSION_FILE}"
+echo "✅ Version bumped to ${CLEAN_VERSION}"
+
 echo "========================================================="
-echo "🚀 Starting Local Environment"
+echo "🚀 Starting Local Environment (v${CLEAN_VERSION})"
 echo "========================================================="
 
 # Clean up stale processes from previous runs to prevent Address In Use errors

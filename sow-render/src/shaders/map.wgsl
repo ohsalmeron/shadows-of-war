@@ -77,10 +77,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
+        
+        let px = floor(world_x * 8.0);
+        let py = floor(world_y * 8.0);
+        let t = globals.time * 1.5;
+        let wave = sin(px * 0.15 + py * 0.08 + t) + cos(py * 0.15 - px * 0.08 + t * 0.7);
+
+        var color_deep = vec3<f32>(0.05, 0.30, 0.50);
+        var color_mid  = vec3<f32>(0.08, 0.40, 0.60);
+        var color_foam = vec3<f32>(0.20, 0.60, 0.78);
+        
         if !is_ocean_water {
-            terrain_color = vec4<f32>(0.12, 0.38, 0.58, 1.0); // River/Lake
+            color_deep = vec3<f32>(0.10, 0.32, 0.48);
+            color_mid  = vec3<f32>(0.14, 0.44, 0.62);
+            color_foam = vec3<f32>(0.30, 0.65, 0.82);
+        }
+
+        if wave > 1.2 {
+            terrain_color = vec4<f32>(color_foam, 1.0);
+        } else if wave > 0.4 {
+            terrain_color = vec4<f32>(color_mid, 1.0);
         } else {
-            terrain_color = vec4<f32>(0.05, 0.45, 0.65, 1.0); // Plain Ocean
+            terrain_color = vec4<f32>(color_deep, 1.0);
         }
     }
 
