@@ -8,6 +8,8 @@ use wyrand::WyRand;
 
 pub mod combat;
 pub mod income;
+pub mod nukes;
+pub mod sam;
 
 /// Fraction of refunded troops lost when retreating from an attack on another player (LegacyEngine parity).
 pub const RETREAT_PENALTY_VS_PLAYER: f64 = 0.25;

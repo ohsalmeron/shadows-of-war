@@ -55,6 +55,129 @@ impl BuildingKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum UnitType {
+    TransportShip,
+    TradeShip,
+    Warship,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum NukeKind {
+    AtomBomb,
+    HydrogenBomb,
+    MIRV,
+}
+
+impl NukeKind {
+    pub fn gold_cost(self, prev_mirv_launches: u32) -> f64 {
+        match self {
+            NukeKind::AtomBomb => 750_000.0,
+            NukeKind::HydrogenBomb => 5_000_000.0,
+            NukeKind::MIRV => 25_000_000.0 + prev_mirv_launches as f64 * 15_000_000.0,
+        }
+    }
+    pub fn inner_radius(self) -> u32 {
+        match self {
+            NukeKind::AtomBomb => 12,
+            NukeKind::HydrogenBomb => 80,
+            NukeKind::MIRV => 12,
+        }
+    }
+    pub fn outer_radius(self) -> u32 {
+        match self {
+            NukeKind::AtomBomb => 30,
+            NukeKind::HydrogenBomb => 100,
+            NukeKind::MIRV => 18,
+        }
+    }
+    pub fn speed(self) -> f32 {
+        match self {
+            NukeKind::AtomBomb | NukeKind::HydrogenBomb => 8.0,
+            NukeKind::MIRV => 6.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum ProjectileKind {
+    Nuke(NukeKind),
+    MIRVWarhead,
+    SAMMissile,
+    Shell,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Projectile {
+    pub id: u64,
+    pub kind: ProjectileKind,
+    pub owner_id: u16,
+    pub src_x: f32,
+    pub src_y: f32,
+    pub dst_x: f32,
+    pub dst_y: f32,
+    pub progress: f32,
+    pub speed: f32,
+    pub active: bool,
+}
+
+impl UnitType {
+    pub const ALL: [UnitType; 3] = [
+        UnitType::TransportShip,
+        UnitType::TradeShip,
+        UnitType::Warship,
+    ];
+    #[inline]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UnitType::TransportShip => "Transport Ship",
+            UnitType::TradeShip => "Trade Ship",
+            UnitType::Warship => "Warship",
+        }
+    }
+    
+    pub fn gold_cost(self) -> f64 {
+        match self {
+            UnitType::TransportShip => 0.0, // Free, converted from land troops
+            UnitType::TradeShip => 10_000.0,
+            UnitType::Warship => 100_000.0,
+        }
+    }
+
+    pub fn build_duration_ticks(self) -> u32 {
+        match self {
+            UnitType::TransportShip => 0, // Instant conversion
+            UnitType::TradeShip => 50,
+            UnitType::Warship => 150,
+        }
+    }
+
+    pub fn max_health(self) -> f64 {
+        match self {
+            UnitType::TransportShip => 50.0,
+            UnitType::TradeShip => 100.0,
+            UnitType::Warship => 1000.0,
+        }
+    }
+
+    pub fn speed(self) -> f64 {
+        match self {
+            UnitType::TransportShip => 1.5,
+            UnitType::TradeShip => 2.0,
+            UnitType::Warship => 2.5,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ShipProduction {
+    pub kind: UnitType,
+    pub ticks_until_complete: u32,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum GameEvent {
     TileExpanded {
@@ -91,6 +214,13 @@ pub enum GameEvent {
         kind: BuildingKind,
         level: u8,
     },
+    NukeDetonated {
+        tile_x: u32,
+        tile_y: u32,
+        inner_radius: u32,
+        outer_radius: u32,
+        owner_id: u16,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -111,8 +241,12 @@ pub struct GameState {
     pub next_building_id: u64,
     #[serde(default = "default_one")]
     pub next_attack_id: u64,
+    #[serde(default = "default_one")]
+    pub next_projectile_id: u64,
     #[serde(default)]
     pub total_land_tiles: u32,
+    #[serde(default)]
+    pub railroads: Vec<crate::building::railroad::Railroad>,
 }
 fn default_one() -> u64 {
     1
@@ -139,7 +273,9 @@ impl GameState {
             next_fleet_id: 1,
             next_building_id: 1,
             next_attack_id: 1,
+            next_projectile_id: 1,
             total_land_tiles: 0,
+            railroads: Vec::new(),
         }
     }
     pub fn register_player(&mut self, player: Player) {

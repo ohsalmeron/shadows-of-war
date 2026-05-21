@@ -7,7 +7,7 @@ bitfield! {
     pub struct MapTile(u8);
     impl Debug;
     pub is_land, _: 7;
-    pub is_shoreline, _: 6;
+    pub is_shoreline, set_is_shoreline: 6;
     pub is_ocean, _: 5;
     pub u8, magnitude, _: 4, 0;
 }
@@ -140,6 +140,25 @@ impl GameMap {
             }
         });
         a
+    }
+    
+    pub fn compute_shorelines(&mut self) {
+        let mut new_terrain = self.terrain.clone();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let idx = self.ref_id(x, y);
+                let mut is_shore = false;
+                if new_terrain[idx].is_land() {
+                    self.for_each_neighbor(x, y, |nx, ny| {
+                        if !self.terrain[self.ref_id(nx, ny)].is_land() {
+                            is_shore = true;
+                        }
+                    });
+                }
+                new_terrain[idx].set_is_shoreline(is_shore);
+            }
+        }
+        self.terrain = new_terrain;
     }
 }
 

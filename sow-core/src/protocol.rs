@@ -38,6 +38,14 @@ pub enum GameplayIntent {
         kind: BuildingKind,
         target_tile: u32,
     },
+    BuildShip {
+        port_tile: u32,
+        kind: crate::game::UnitType,
+    },
+    MoveWarships {
+        unit_ids: Vec<u64>,
+        target_tile: u32,
+    },
     /// pays gold cost again and increments `level`.
     UpgradeStructure {
         building_id: u64,
@@ -67,6 +75,10 @@ pub enum GameplayIntent {
         target_player: crate::player::PlayerId,
         gold: f64,
         troops: f64,
+    },
+    LaunchNuke {
+        kind: crate::game::NukeKind,
+        target_tile: u32,
     },
 }
 
@@ -290,6 +302,7 @@ pub struct BuildingSnapshot {
 pub struct FleetSnapshot {
     pub id: u64,
     pub owner_id: u16,
+    pub unit_type: crate::game::UnitType,
     pub troops: f64,
     pub current_tile: u32,
     pub path: Vec<u32>,
@@ -309,6 +322,18 @@ pub struct AttackSnapshot {
     pub front_cy: f32,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct ProjectileSnapshot {
+    pub id: u64,
+    pub kind: crate::game::ProjectileKind,
+    pub owner_id: u16,
+    pub src_x: f32,
+    pub src_y: f32,
+    pub dst_x: f32,
+    pub dst_y: f32,
+    pub progress: f32,
+}
+
 /// Snapshot sent from the simulation thread to the main thread every tick.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimSnapshot {
@@ -320,9 +345,11 @@ pub struct SimSnapshot {
     pub fleets: Vec<FleetSnapshot>,
     pub attacks: Vec<AttackSnapshot>,
     pub buildings: Vec<BuildingSnapshot>,
+    pub projectiles: Vec<ProjectileSnapshot>,
     pub winner: Option<u16>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,
     pub total_land_tiles: u32,
+    pub railroads: Vec<crate::building::railroad::Railroad>,
     pub debug_mem_info: String,
 }

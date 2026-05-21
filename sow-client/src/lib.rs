@@ -143,6 +143,10 @@ impl ApplicationHandler for SowApp {
         if self.gfx.window.is_none() || self.gfx.window.as_ref().unwrap().id() != window_id {
             return;
         }
+        if let Some(ref mut editor) = self.map_editor {
+            editor.handle_window_event(event_loop, event);
+            return;
+        }
         if let winit::event::WindowEvent::RedrawRequested = event {
             self.render_frame(event_loop);
         } else {
@@ -150,8 +154,8 @@ impl ApplicationHandler for SowApp {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-        self.update();
+    fn about_to_wait(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        self.update(event_loop);
         if let Some(win) = self.gfx.window.as_ref() {
             win.request_redraw();
         }

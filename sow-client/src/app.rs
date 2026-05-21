@@ -74,6 +74,31 @@ pub struct InputState {
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,
     pub has_snapped_camera_to_spawn: bool,
+    pub selected_warships: Vec<u64>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ExplosionKind {
+    Atom,
+    Hydrogen,
+    MIRVWarhead,
+}
+
+#[derive(Clone, Debug)]
+pub struct ActiveExplosion {
+    pub x: f32,
+    pub y: f32,
+    pub start_time: web_time::Instant,
+    pub max_radius: f32,
+    pub kind: ExplosionKind,
+}
+
+#[derive(Clone, Debug)]
+pub struct FalloutZone {
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub start_time: web_time::Instant,
 }
 
 pub struct UiState {
@@ -90,6 +115,9 @@ pub struct UiState {
     pub show_dev_sidebar: bool,
     pub update_available: bool,
     pub is_spectating: bool,
+    pub active_explosions: Vec<ActiveExplosion>,
+    pub fallout_zones: Vec<FalloutZone>,
+    pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
 }
 
 pub struct TimeState {
@@ -131,6 +159,7 @@ pub struct SowApp {
     pub wasm_doc_was_visible: bool,
     #[cfg(target_arch = "wasm32")]
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
+    pub map_editor: Option<sow_map::MapEditorSession>,
 }
 
 impl Default for SowApp {
@@ -361,6 +390,7 @@ impl SowApp {
                 ime_allowed_state,
                 ime_cursor_rect_px,
                 has_snapped_camera_to_spawn,
+                selected_warships: Vec::new(),
             },
             ui: UiState {
                 app,
@@ -376,6 +406,9 @@ impl SowApp {
                 show_dev_sidebar: false,
                 update_available: false,
                 is_spectating: false,
+                active_explosions: Vec::new(),
+                fallout_zones: Vec::new(),
+                last_projectiles: std::collections::HashMap::new(),
             },
             time: TimeState {
                 last_tick,
@@ -401,6 +434,7 @@ impl SowApp {
             wasm_doc_was_visible,
             #[cfg(target_arch = "wasm32")]
             ime_bridge,
+            map_editor: None,
         }
     }
 
@@ -538,7 +572,18 @@ impl Drop for SowApp {
 }
 
 impl SowApp {
-    pub fn update(&mut self) {
+    pub fn update(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        if self.map_editor.is_some() {
+            if let Some(mut session) = self.map_editor.take() {
+                let action = session.update(event_loop);
+                self.map_editor = Some(session);
+                if let Some(sow_ui::UiAction::LeaveLobby) = action {
+                    self.teardown_map_editor_and_exit();
+                }
+            }
+            return;
+        }
+
         self.check_surface();
 
         let now = web_time::Instant::now();
@@ -546,6 +591,21 @@ impl SowApp {
         self.update_assets();
         self.update_loader();
         self.update_sim(now);
+    }
+
+    pub(crate) fn teardown_map_editor_and_exit(&mut self) {
+        if let Some(session) = self.map_editor.take() {
+            let (window, surface, render_ctx, gui_painter, client_app) = session.destroy_and_reclaim();
+            self.gfx.window = window;
+            self.gfx.surface = surface;
+            self.gfx.render_ctx = render_ctx;
+            self.gfx.gui_painter = gui_painter;
+            self.ui.app = client_app;
+            self.ui.app.phase = ClientPhase::MainMenu;
+            self.gfx.prev_sync_point = None;
+            self.gfx.needs_first_upload = true;
+            log::info!("Reclaimed graphics state from map editor session.");
+        }
     }
 
     pub fn dispatch_sim_command(&mut self, cmd: sow_core::protocol::SimCommand) {

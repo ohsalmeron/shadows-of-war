@@ -180,15 +180,15 @@ impl Default for GameConfig {
 
             // Economy & Income Rates
             starting_troops: 1000.0,
-            starting_gold: 0.0,
-            gold_base_income: 0.0,
+            starting_gold: 50_000_000.0, // TODO: revert to 1000.0 after testing
+            gold_base_income: 8.0,
             troop_base_income: 200.0,
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
-            city_max_troops_per_level: 0.0,
-            factory_income_bonus_per_level: 0.0,
-            factory_income_bonus_cap: 0.0,
-            gold_income_per_city_level: 0.0,
+            city_max_troops_per_level: 1000.0,
+            factory_income_bonus_per_level: 100.0,
+            factory_income_bonus_cap: 10000.0,
+            gold_income_per_city_level: 50.0,
         }
     }
 }

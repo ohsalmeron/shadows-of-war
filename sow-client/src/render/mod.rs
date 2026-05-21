@@ -21,6 +21,9 @@ pub mod interact;
 
 impl SowApp {
     pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        if self.map_editor.is_some() {
+            return;
+        }
                         #[cfg(target_arch = "wasm32")]
                         if let Some(win) = self.gfx.window.as_ref() {
                             let web_win = web_sys::window().unwrap();
@@ -98,6 +101,12 @@ impl SowApp {
                                     }
                                 }
 
+                                let graphics_q = match self.ui.app.settings_state.graphics_quality {
+                                    sow_ui::ui::settings::GraphicsQuality::Low => 0.0,
+                                    sow_ui::ui::settings::GraphicsQuality::Medium => 1.0,
+                                    sow_ui::ui::settings::GraphicsQuality::High => 2.0,
+                                };
+
                                 let globals = MapGlobals {
                                     camera_pos: [self.input.camera_x, self.input.camera_y],
                                     zoom: self.input.camera_zoom,
@@ -109,7 +118,7 @@ impl SowApp {
                                     shore_thickness,
                                     shore_darkness,
                                     border_roundness,
-                                    _pad1: 0.0,
+                                    graphics_quality: graphics_q,
                                     _pad2: 0.0,
                                     _pad3: 0.0,
                                     player_colors,

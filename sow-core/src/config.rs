@@ -15,4 +15,4 @@ pub const DEFENSE_POST_RANGE: i32 = 8;
 pub const DEFENSE_POST_PRIORITY_PER_LEVEL: i64 = 4;
 
 /// Feature gate for incomplete missile gameplay (Silo + SAM interception loop).
-pub const ENABLE_MISSILE_STRUCTURES: bool = false;
+pub const ENABLE_MISSILE_STRUCTURES: bool = true;

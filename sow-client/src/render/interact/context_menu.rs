@@ -314,6 +314,12 @@ impl SowApp {
                                 if sector == 0 {
                                     // Top Wedge (Emojis) - Toggle bottom right panel
                                     self.ui.app.hud_state.show_emoji_panel = !self.ui.app.hud_state.show_emoji_panel;
+                                    if self.ui.app.hud_state.show_emoji_panel {
+                                        self.ui.app.hud_state.emoji_panel_pos = Some(center);
+                                        self.ui.app.hud_state.emoji_panel_just_opened = true;
+                                    } else {
+                                        self.ui.app.hud_state.emoji_panel_pos = None;
+                                    }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));
                                     self.input.map_context_menu = None;
                                 } else if sector == 1 {

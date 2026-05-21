@@ -129,14 +129,20 @@ impl SowApp {
                     self.sim.my_player_id = Some(1);
                     self.sim.my_lobby_id = Some(0);
 
-                    let map_name = config.map_name.clone();
-                    self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
+                    let map_id = config.map_name.to_lowercase().replace("_", "");
+                    self.ui.app.main_menu_state.downloading_map_name = Some(map_id.clone());
 
-                    // TODO: dynamically parse width/height if we had map metadata
                     let mut config = *config;
-                    if config.map_name == "world" {
+                    config.map_name = map_id.clone();
+                    if let Some(man) = self.ui.app.asset_loader.manifests.get(&map_id) {
+                        config.map_width = man.map.width;
+                        config.map_height = man.map.height;
+                    } else if map_id == "world" {
                         config.map_width = 2000;
                         config.map_height = 1000;
+                    } else if map_id == "giantworldmap" {
+                        config.map_width = 4108;
+                        config.map_height = 1948;
                     } else {
                         config.map_width = 800;
                         config.map_height = 400;
@@ -165,18 +171,18 @@ impl SowApp {
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
 
-                    if self.ui.app.asset_loader.has_map(&map_name) {
-                        self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_name);
+                    if self.ui.app.asset_loader.has_map(&map_id) {
+                        self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_id);
                         self.ui.app.main_menu_state.is_downloading_map = false;
                     } else {
                         self.ui.app.main_menu_state.is_downloading_map = true;
                         self.ui.app.main_menu_state.cached_map = None;
                         let maps_base = crate::get_maps_url();
-                        let map_name_clone = map_name.clone();
+                        let map_name_clone = map_id.clone();
                         let tx_man = self.tasks.map_tx.clone();
                         
                         // 1. Fetch manifest.json
-                        let manifest_url = format!("{}/{}/manifest.json", maps_base.trim_end_matches('/'), map_name);
+                        let manifest_url = format!("{}/{}/manifest.json", maps_base.trim_end_matches('/'), map_id);
                         let request_man = ehttp::Request::get(&manifest_url);
                         ehttp::fetch(request_man, move |result| {
                             if let Ok(res) = result {
@@ -189,10 +195,10 @@ impl SowApp {
                         });
 
                         // 2. Fetch map.bin.br
-                        let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                        let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_id);
                         let tx = self.tasks.map_tx.clone();
                         let request = ehttp::Request::get(&url);
-                        let map_name_for_closure = map_name.clone();
+                        let map_name_for_closure = map_id.clone();
                         let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
                         let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
                         
@@ -305,7 +311,22 @@ impl SowApp {
                     self.process_camera_zoom(0.8, self.input.screen_w * 0.5, self.input.screen_h * 0.5);
                 }
                 UiAction::OpenMapEditor => {
-                    // Map editor is not available in the stable version
+                    let window = self.gfx.window.take().expect("No window to handoff to editor");
+                    let surface = self.gfx.surface.take().expect("No surface to handoff to editor");
+                    let render_ctx = std::mem::take(&mut self.gfx.render_ctx);
+                    let gui_painter = self.gfx.gui_painter.take().expect("No gui_painter to handoff to editor");
+                    let egui_ctx = self.ui.egui_ctx.clone();
+                    let client_app = std::mem::take(&mut self.ui.app);
+
+                    let session = sow_map::MapEditorSession::new(
+                        window,
+                        surface,
+                        render_ctx,
+                        gui_painter,
+                        egui_ctx,
+                        client_app,
+                    );
+                    self.map_editor = Some(session);
                 }
             }
         }

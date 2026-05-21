@@ -273,11 +273,39 @@ pub fn execute_fleets(&mut self) {
         return;
     }
 
+    // Simple Naval Combat: Warships damage enemy fleets on the same tile or adjacent tiles
+    let mut damages = Vec::new();
+    let w = self.state.map.width;
+    for i in 0..self.fleets.len() {
+        if self.fleets[i].unit_type == crate::game::UnitType::Warship && self.fleets[i].troops > 0.0 {
+            let fx = (self.fleets[i].current_tile % w) as i32;
+            let fy = (self.fleets[i].current_tile / w) as i32;
+            for j in 0..self.fleets.len() {
+                if i != j && self.fleets[j].owner_id != self.fleets[i].owner_id && self.fleets[j].troops > 0.0 {
+                    let ox = (self.fleets[j].current_tile % w) as i32;
+                    let oy = (self.fleets[j].current_tile / w) as i32;
+                    if (fx - ox).abs() + (fy - oy).abs() <= 1 {
+                        damages.push((j, 100.0));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    for (target_idx, dmg) in damages {
+        self.fleets[target_idx].troops -= dmg;
+    }
+
     // fleets are sorted on insertion
     let mut to_remove = Vec::new();
 
     for i in 0..self.fleets.len() {
         let fleet = &mut self.fleets[i];
+
+        if fleet.troops <= 0.0 {
+            to_remove.push(i);
+            continue;
+        }
 
         if fleet.retreating && fleet.retreat_dst.is_none() {
             if let Some(player) = self.state.player(fleet.owner_id) {
@@ -323,6 +351,27 @@ pub fn execute_fleets(&mut self) {
         if fleet.path_cursor < fleet.path.len() {
             fleet.current_tile = fleet.path[fleet.path_cursor];
             fleet.path_cursor += 1;
+        }
+
+        if fleet.unit_type == crate::game::UnitType::TradeShip {
+            if let Some(p) = self.state.player_mut(fleet.owner_id) {
+                p.gold += 15.0; // Passive gold generation
+            }
+            if fleet.path_cursor >= fleet.path.len() && !fleet.path.is_empty() {
+                // Loop back
+                fleet.path.reverse();
+                fleet.path_cursor = 0;
+            }
+            continue;
+        }
+
+        if fleet.unit_type == crate::game::UnitType::Warship {
+            // Stop at destination
+            if fleet.path_cursor >= fleet.path.len() {
+                fleet.path.clear();
+                fleet.path_cursor = 0;
+            }
+            continue;
         }
 
         if fleet.path_cursor < fleet.path.len() {

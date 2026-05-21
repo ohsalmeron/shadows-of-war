@@ -131,6 +131,42 @@ impl SowApp {
                             }
                         }
                     }
+
+                    // Building hotkeys 1-6, Nuke hotkeys 7-9 (OpenFrontIO-style)
+                    if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
+                        let building = match code {
+                            winit::keyboard::KeyCode::Digit1 | winit::keyboard::KeyCode::Numpad1 => Some(sow_core::game::BuildingKind::City),
+                            winit::keyboard::KeyCode::Digit2 | winit::keyboard::KeyCode::Numpad2 => Some(sow_core::game::BuildingKind::Factory),
+                            winit::keyboard::KeyCode::Digit3 | winit::keyboard::KeyCode::Numpad3 => Some(sow_core::game::BuildingKind::Port),
+                            winit::keyboard::KeyCode::Digit4 | winit::keyboard::KeyCode::Numpad4 => Some(sow_core::game::BuildingKind::DefensePost),
+                            winit::keyboard::KeyCode::Digit5 | winit::keyboard::KeyCode::Numpad5 => Some(sow_core::game::BuildingKind::SamLauncher),
+                            winit::keyboard::KeyCode::Digit6 | winit::keyboard::KeyCode::Numpad6 => Some(sow_core::game::BuildingKind::MissileSilo),
+                            _ => None,
+                        };
+                        if let Some(kind) = building {
+                            if self.ui.app.hud_state.selected_building_kind == Some(kind) {
+                                self.ui.app.hud_state.selected_building_kind = None;
+                            } else {
+                                self.ui.app.hud_state.selected_building_kind = Some(kind);
+                                self.ui.app.hud_state.selected_nuke_kind = None;
+                            }
+                        }
+
+                        let nuke = match code {
+                            winit::keyboard::KeyCode::Digit7 | winit::keyboard::KeyCode::Numpad7 => Some(sow_core::game::NukeKind::AtomBomb),
+                            winit::keyboard::KeyCode::Digit8 | winit::keyboard::KeyCode::Numpad8 => Some(sow_core::game::NukeKind::HydrogenBomb),
+                            winit::keyboard::KeyCode::Digit9 | winit::keyboard::KeyCode::Numpad9 => Some(sow_core::game::NukeKind::MIRV),
+                            _ => None,
+                        };
+                        if let Some(kind) = nuke {
+                            if self.ui.app.hud_state.selected_nuke_kind == Some(kind) {
+                                self.ui.app.hud_state.selected_nuke_kind = None;
+                            } else {
+                                self.ui.app.hud_state.selected_nuke_kind = Some(kind);
+                                self.ui.app.hud_state.selected_building_kind = None;
+                            }
+                        }
+                    }
                 }
 
                 if pressed {
@@ -161,6 +197,16 @@ impl SowApp {
                         if *named == winit::keyboard::NamedKey::Backspace {
                             self.ui.raw_input.events.push(egui::Event::Key {
                                 key: egui::Key::Backspace,
+                                physical_key: None,
+                                pressed: true,
+                                repeat: false,
+                                modifiers: self.ui.raw_input.modifiers,
+                            });
+                        } else if *named == winit::keyboard::NamedKey::Escape {
+                            self.ui.app.hud_state.selected_building_kind = None;
+                            self.ui.app.hud_state.selected_nuke_kind = None;
+                            self.ui.raw_input.events.push(egui::Event::Key {
+                                key: egui::Key::Escape,
                                 physical_key: None,
                                 pressed: true,
                                 repeat: false,
@@ -285,11 +331,12 @@ impl SowApp {
                                     .map_touch_start
                                     .map(|(_, x, y)| (x, y))
                                     .unwrap_or((position.x, position.y));
-                                if is_touch && !is_spawning {
+                                let is_building = self.ui.app.hud_state.selected_building_kind.is_some();
+                                if is_touch && !is_spawning && !is_building {
                                     // Tap on mobile → open context menu
                                     self.open_context_menu_at(sx, sy);
                                 } else {
-                                    // Quick click on desktop or tap during spawn → one-shot attack/spawn
+                                    // Quick click on desktop or tap during spawn/build → one-shot action
                                     self.handle_map_click(sx, sy);
                                 }
                             }
@@ -300,9 +347,28 @@ impl SowApp {
                     }
                 }
 
-                // Right-click on desktop → open context menu
+                // Right-click on desktop → cancel placement mode or move warships or open context menu
                 if is_secondary && !pressed && !wants_pointer && in_game {
-                    self.open_context_menu_at(position.x, position.y);
+                    if self.ui.app.hud_state.selected_building_kind.is_some() {
+                        self.ui.app.hud_state.selected_building_kind = None;
+                    } else if self.ui.app.hud_state.selected_nuke_kind.is_some() {
+                        self.ui.app.hud_state.selected_nuke_kind = None;
+                    } else if !self.input.selected_warships.is_empty() {
+                        let world_x = (position.x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                        let world_y = (position.y as f32 - self.input.camera_y) / self.input.camera_zoom;
+                        let col = world_x.floor() as i32;
+                        let row = world_y.floor() as i32;
+                        if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                            let target_tile = (row * self.sim.map_w as i32 + col) as u32;
+                            let intent = sow_core::protocol::GameplayIntent::MoveWarships {
+                                unit_ids: self.input.selected_warships.clone(),
+                                target_tile,
+                            };
+                            self.send_intent(intent);
+                        }
+                    } else {
+                        self.open_context_menu_at(position.x, position.y);
+                    }
                 }
 
                 if primary {
@@ -526,19 +592,101 @@ impl SowApp {
             .map(|s| &s.phase)
             .unwrap_or(&sow_core::game::GamePhase::Lobby);
 
+        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+        let col = world_x.floor() as i32;
+        let row = world_y.floor() as i32;
+        if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
+            return;
+        }
+
         if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
-            let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
-            let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
-            let col = world_x.floor() as i32;
-            let row = world_y.floor() as i32;
-            if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
-                return;
-            }
             let intent = sow_core::protocol::GameplayIntent::Spawn {
                 x: col as u32,
                 y: row as u32,
             };
             self.send_intent(intent);
+        } else if let Some(nuke_kind) = self.ui.app.hud_state.selected_nuke_kind {
+            let tile_idx = (row * self.sim.map_w as i32 + col) as u32;
+            let intent = sow_core::protocol::GameplayIntent::LaunchNuke {
+                kind: nuke_kind,
+                target_tile: tile_idx,
+            };
+            self.send_intent(intent);
+            self.ui.app.hud_state.selected_nuke_kind = None;
+        } else if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
+            let map_w = self.sim.map_w;
+            let map_h = self.sim.map_h;
+            let owners = self.gfx.map_renderer.as_ref().map(|mr| mr.owners.as_slice()).unwrap_or(&[]);
+            let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
+            let my_id = self.sim.my_player_id.unwrap_or(0);
+            let buildings = self.sim.current_snapshot.as_ref().map(|s| s.buildings.as_slice()).unwrap_or(&[]);
+
+            let snapped_idx = resolve_building_placement_tile(
+                kind,
+                col,
+                row,
+                map_w,
+                map_h,
+                owners,
+                terrain,
+                my_id,
+                buildings,
+            );
+
+            let cost = {
+                let i = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                self.ui.app.hud_state.building_costs[i]
+            };
+
+            let mut valid = true;
+            let mut err_msg = String::new();
+
+            if self.ui.app.hud_state.gold < cost {
+                valid = false;
+                err_msg = format!("Not enough Gold! You need {}.", cost);
+            } else if snapped_idx.is_none() {
+                valid = false;
+                if kind == sow_core::game::BuildingKind::Port {
+                    err_msg = "No valid coastal shoreline space within range!".to_string();
+                } else {
+                    err_msg = "No valid building space within range (too close to other buildings or outside owned land)!".to_string();
+                }
+            }
+
+            if !valid {
+                self.ui.app.hud_state.show_error = Some(err_msg);
+                self.ui.app.hud_state.selected_building_kind = None;
+                return;
+            }
+
+            let intent = sow_core::protocol::GameplayIntent::BuildStructure {
+                kind,
+                target_tile: snapped_idx.unwrap(),
+            };
+            self.send_intent(intent);
+            self.ui.app.hud_state.selected_building_kind = None;
+        } else {
+            // Check if we clicked on a Warship we own
+            let mut clicked_warships = Vec::new();
+            if let Some(snap) = &self.sim.current_snapshot {
+                let my_pid = self.sim.my_player_id.unwrap_or(0);
+                for f in &snap.fleets {
+                    if f.unit_type == sow_core::game::UnitType::Warship && f.owner_id == my_pid {
+                        let wx = (f.current_tile % self.sim.map_w) as f32;
+                        let wy = (f.current_tile / self.sim.map_w) as f32;
+                        // Click tolerance (half a tile)
+                        if (wx + 0.5 - world_x).abs() < 0.5 && (wy + 0.5 - world_y).abs() < 0.5 {
+                            clicked_warships.push(f.id);
+                        }
+                    }
+                }
+            }
+            if !clicked_warships.is_empty() {
+                self.input.selected_warships = clicked_warships;
+            } else {
+                self.input.selected_warships.clear();
+            }
         }
     }
 
@@ -567,3 +715,133 @@ impl SowApp {
         self.input.camera_y = cy - map_y * self.input.camera_zoom;
     }
 }
+
+pub fn resolve_building_placement_tile(
+    kind: sow_core::game::BuildingKind,
+    click_x: i32,
+    click_y: i32,
+    map_w: u32,
+    map_h: u32,
+    owners: &[u16],
+    terrain: &[u8],
+    my_id: u16,
+    buildings: &[sow_core::protocol::BuildingSnapshot],
+) -> Option<u32> {
+    // Filter buildings to those close to the click target to optimize distance checks
+    let nearby_buildings: Vec<_> = buildings
+        .iter()
+        .filter(|b| {
+            let bx = (b.tile_idx % map_w) as i32;
+            let by = (b.tile_idx / map_w) as i32;
+            let bdx = click_x - bx;
+            let bdy = click_y - by;
+            (bdx * bdx + bdy * bdy) < 900 // 30 * 30 = 900 (max search radius of 15 + 15)
+        })
+        .collect();
+
+    // 1. Gather valid land structure tiles within Euclidean 15 of click target
+    let mut valid_land_tiles = Vec::new();
+    for dy in -15..=15 {
+        for dx in -15..=15 {
+            let tx = click_x + dx;
+            let ty = click_y + dy;
+            if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
+                continue;
+            }
+            if (dx * dx + dy * dy) >= 225 { // Euclidean distance >= 15
+                continue;
+            }
+            let tile_idx = (ty * map_w as i32 + tx) as u32;
+            
+            // Check ownership
+            if owners.get(tile_idx as usize).copied().unwrap_or(0) != my_id {
+                continue;
+            }
+            
+            // Check land (bit 7: is_land)
+            let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
+            let is_land = (tile_terrain & 0x80) != 0;
+            if !is_land {
+                continue;
+            }
+            
+            // Check minimum distance from existing buildings (STRUCTURE_MIN_DIST = 15)
+            let mut too_close = false;
+            for b in &nearby_buildings {
+                let bx = (b.tile_idx % map_w) as i32;
+                let by = (b.tile_idx / map_w) as i32;
+                let bdx = tx - bx;
+                let bdy = ty - by;
+                if (bdx * bdx + bdy * bdy) < 225 {
+                    too_close = true;
+                    break;
+                }
+            }
+            if too_close {
+                continue;
+            }
+            
+            valid_land_tiles.push((tx, ty, tile_idx));
+        }
+    }
+    
+    if valid_land_tiles.is_empty() {
+        return None;
+    }
+    
+    match kind {
+        sow_core::game::BuildingKind::Port => {
+            // Ports can only be built directly on a shoreline (bit 6: is_shoreline).
+            // Search within Manhattan distance 20 of click target.
+            let mut candidates = Vec::new();
+            for dy in -20..=20 {
+                for dx in -20..=20 {
+                    let tx = click_x + dx;
+                    let ty = click_y + dy;
+                    if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
+                        continue;
+                    }
+                    let dist = dx.abs() + dy.abs();
+                    if dist > 20 {
+                        continue;
+                    }
+                    let tile_idx = (ty * map_w as i32 + tx) as u32;
+                    
+                    // Check ownership
+                    if owners.get(tile_idx as usize).copied().unwrap_or(0) != my_id {
+                        continue;
+                    }
+                    
+                    // Check shore & land
+                    let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
+                    let is_land = (tile_terrain & 0x80) != 0;
+                    let is_shoreline = (tile_terrain & 0x40) != 0;
+                    if !is_land || !is_shoreline {
+                        continue;
+                    }
+                    
+                    // Must be in valid_land_tiles (i.e. not too close to other buildings)
+                    if valid_land_tiles.iter().any(|&(_, _, idx)| idx == tile_idx) {
+                        candidates.push((tx, ty, tile_idx, dist));
+                    }
+                }
+            }
+            
+            // Sort candidates by Manhattan distance, then by tile index
+            candidates.sort_by(|a, b| {
+                a.3.cmp(&b.3).then_with(|| a.2.cmp(&b.2))
+            });
+            candidates.first().map(|&(_, _, idx, _)| idx)
+        }
+        _ => {
+            // For other structures, find the closest valid land tile to click target by Euclidean distance
+            valid_land_tiles.sort_by(|a, b| {
+                let da = (a.0 - click_x) * (a.0 - click_x) + (a.1 - click_y) * (a.1 - click_y);
+                let db = (b.0 - click_x) * (b.0 - click_x) + (b.1 - click_y) * (b.1 - click_y);
+                da.cmp(&db).then_with(|| a.2.cmp(&b.2))
+            });
+            valid_land_tiles.first().map(|&(_, _, idx)| idx)
+        }
+    }
+}
+

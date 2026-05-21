@@ -1,0 +1,42 @@
+[package]
+name = "sow-map"
+version = "0.1.0"
+edition = "2021"
+description = "Shadows of War Map Crate (Interactive Editor and Generator)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+sow-core = { workspace = true }
+sow-render = { workspace = true }
+sow-ui = { path = "../sow-ui" }
+sow-lang = { workspace = true }
+
+blade-graphics = { workspace = true }
+blade-egui = { workspace = true }
+egui = { workspace = true }
+
+log = { workspace = true }
+env_logger = { workspace = true }
+winit = { workspace = true }
+serde_json.workspace = true
+bincode.workspace = true
+crossbeam-channel = { workspace = true }
+web-time = { workspace = true }
+image = { workspace = true }
+url = { workspace = true }
+brotli = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = { workspace = true }
+wasm-bindgen = { workspace = true }
+getrandom = { workspace = true, features = ["js"] }
+console_error_panic_hook = { workspace = true }
+console_log = { workspace = true }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
+js-sys = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }

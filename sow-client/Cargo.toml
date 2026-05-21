@@ -11,11 +11,12 @@ path = "src/lib.rs"
 [dependencies]
 sow-core = { workspace = true }
 sow-render = { workspace = true }
+sow-map = { workspace = true }
 blade-graphics = { workspace = true }
 
 log = { workspace = true }
 env_logger = { workspace = true }
-winit = { path = "../winit/winit", features = ["android-native-activity"] }
+winit = { workspace = true }
 sow-ui = { path = "../sow-ui" }
 egui = "0.34"
 egui_extras = { workspace = true }
@@ -23,26 +24,26 @@ blade-egui = { workspace = true }
 serde_json.workspace = true
 bincode.workspace = true
 sow-net = { workspace = true }
-brotli = "8.0.2"
+brotli = { workspace = true }
 ehttp = { version = "0.5.0", features = ["streaming"] }
-crossbeam-channel = "0.5.15"
+crossbeam-channel = { workspace = true }
 android_logger = "0.14"
 web-time = { workspace = true }
-image = { version = "0.25.10", default-features = false, features = ["webp"] }
+image = { workspace = true }
 md5 = "0.8.0"
-url = "2.5.8"
+url = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-futures = "0.4.50"
-wasm-bindgen = "0.2.100"
-getrandom = { version = "0.2", features = ["js"] }
-console_error_panic_hook = "0.1.7"
-console_log = "1.0"
-web-sys = { version = "0.3.69", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
-js-sys = "0.3.69"
+wasm-bindgen-futures = { workspace = true }
+wasm-bindgen = { workspace = true }
+getrandom = { workspace = true, features = ["js"] }
+console_error_panic_hook = { workspace = true }
+console_log = { workspace = true }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
+js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.14"

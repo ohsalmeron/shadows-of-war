@@ -43,10 +43,15 @@ pub struct SowEngine {
     /// Ensures fair distribution of bot/nation think work across ticks.
     pub ai_round_robin: usize,
     pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
+    pub port_queues: std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
+    pub projectiles: Vec<crate::game::Projectile>,
+    pub silo_cooldowns: std::collections::HashMap<u64, u32>,
+    pub mirv_launches: std::collections::HashMap<u16, u32>,
 }
 
 impl SowEngine {
-    pub fn new(state: GameState, water: WaterComponents) -> Self {
+    pub fn new(mut state: GameState, water: WaterComponents) -> Self {
+        state.map.compute_shorelines();
         let w = state.map.width;
         let h = state.map.height;
         let area = (w * h) as usize;
@@ -77,6 +82,10 @@ impl SowEngine {
             building_aggregates_dirty: true,
             ai_round_robin: 0,
             alliances_proposed: Vec::new(),
+            port_queues: std::collections::HashMap::new(),
+            projectiles: Vec::new(),
+            silo_cooldowns: std::collections::HashMap::new(),
+            mirv_launches: std::collections::HashMap::new(),
         }
     }
 
@@ -165,6 +174,9 @@ impl SowEngine {
         self.execute_income();
         self.execute_ai_think();
         self.execute_construction();
+        self.execute_ship_production();
+        self.execute_projectiles();
+        self.execute_sam();
         self.execute_combat();
         self.execute_fleets();
         self.check_winner();
@@ -511,6 +523,7 @@ impl SowEngine {
             .map(|f| crate::protocol::FleetSnapshot {
                 id: f.id,
                 owner_id: f.owner_id,
+                unit_type: f.unit_type,
                 troops: f.troops,
                 current_tile: f.current_tile,
                 path: f.path.clone(),
@@ -578,10 +591,23 @@ impl SowEngine {
             fleets,
             attacks,
             buildings,
+            projectiles: self.projectiles.iter().filter(|p| p.active).map(|p| {
+                crate::protocol::ProjectileSnapshot {
+                    id: p.id,
+                    kind: p.kind,
+                    owner_id: p.owner_id,
+                    src_x: p.src_x,
+                    src_y: p.src_y,
+                    dst_x: p.dst_x,
+                    dst_y: p.dst_y,
+                    progress: p.progress,
+                }
+            }).collect(),
             winner: self.state.winner,
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
             defense_dirty,
+            railroads: self.state.railroads.clone(),
             debug_mem_info: if cfg!(feature = "mem_profiler") {
                 format!(
                     "Engine [Attacks: {}/{} | Fleets: {}/{} | Buildings: {}/{} | Events: {}/{} | Players: {}/{} | DirtyTilesCap: {}] Pathfinder [AStarHeapCap: {} | AStarCameCap: {} | BFSQueueCap: {} | BFSVisitedCap: {}] Placement [VisitedCap: {} | QueueCap: {} | BorderCap: {}]",

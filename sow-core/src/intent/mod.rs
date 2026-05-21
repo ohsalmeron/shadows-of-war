@@ -3,6 +3,7 @@ pub mod buildings;
 pub mod combat;
 pub mod fleet;
 pub mod nation;
+pub mod nukes;
 
 pub use combat::*;
 
@@ -125,6 +126,47 @@ impl SowEngine {
             }
             GameplayIntent::UpgradeStructure { building_id } => {
                 self.apply_upgrade_structure_intent(stamped.player_id, *building_id);
+            }
+            GameplayIntent::BuildShip { port_tile, kind } => {
+                let pid = stamped.player_id;
+                let cost = kind.gold_cost();
+                let port_id = self.buildings.iter()
+                    .find(|b| b.tile_idx == *port_tile && b.kind == crate::game::BuildingKind::Port && b.owner_id == pid && !b.under_construction)
+                    .map(|b| b.id);
+                
+                if let Some(port_id) = port_id {
+                    if let Some(player) = self.state.player_mut(pid) {
+                        if player.gold >= cost {
+                            player.gold -= cost;
+                            let queue = self.port_queues.entry(port_id).or_insert_with(std::collections::VecDeque::new);
+                            queue.push_back(crate::game::ShipProduction {
+                                kind: *kind,
+                                ticks_until_complete: kind.build_duration_ticks(),
+                            });
+                        }
+                    }
+                }
+            }
+            GameplayIntent::MoveWarships { unit_ids, target_tile } => {
+                let pid = stamped.player_id;
+                let target = *target_tile;
+                let w = self.state.map.width;
+                let area = w.saturating_mul(self.state.map.height);
+                if target >= area {
+                    return;
+                }
+                for uid in unit_ids {
+                    if let Some(fleet) = self.fleets.iter_mut().find(|f| f.id == *uid && f.owner_id == pid && f.unit_type == crate::game::UnitType::Warship) {
+                        if let Some(path) = self.path_scratch.astar.find_path(&self.state.map, &[fleet.current_tile], target) {
+                            fleet.path = path;
+                            fleet.path_cursor = 0;
+                            fleet.retreating = false;
+                        }
+                    }
+                }
+            }
+            GameplayIntent::LaunchNuke { kind, target_tile } => {
+                self.apply_launch_nuke_intent(stamped.player_id, *kind, *target_tile);
             }
             GameplayIntent::Spawn { x, y } => {
                 if let crate::game::GamePhase::Spawning { .. } = self.state.phase {
@@ -279,6 +321,7 @@ impl SowEngine {
                     }
                 }
             }
+
         }
     }
 }

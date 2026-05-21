@@ -39,20 +39,31 @@ impl AssetLoader {
         let mut manifests = HashMap::new();
         let mut map_catalog = None;
 
+        let mut catalog = Vec::new();
+
         if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/world/manifest.json")) {
             manifests.insert("world".to_string(), manifest.clone());
+            catalog.push(manifest.clone());
 
             let mut custom_manifest = manifest.clone();
             custom_manifest.name = "Custom".to_string();
             custom_manifest.map.width = 800;
             custom_manifest.map.height = 600;
             manifests.insert("custom".to_string(), custom_manifest);
+        }
 
-            map_catalog = Some(vec![manifest]);
+        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/giantworldmap/manifest.json")) {
+            manifests.insert("giantworldmap".to_string(), manifest.clone());
+            catalog.push(manifest);
         }
 
         if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/tutorial/manifest.json")) {
-            manifests.insert("tutorial".to_string(), manifest);
+            manifests.insert("tutorial".to_string(), manifest.clone());
+            catalog.push(manifest);
+        }
+
+        if !catalog.is_empty() {
+            map_catalog = Some(catalog);
         }
 
         Self {
@@ -75,12 +86,15 @@ impl AssetLoader {
     }
 
     pub fn has_map(&self, map_name: &str) -> bool {
-        map_name == "world" || map_name == "tutorial" || self.maps.contains_key(map_name)
+        map_name == "world" || map_name == "giantworldmap" || map_name == "tutorial" || self.maps.contains_key(map_name)
     }
 
     pub fn take_map(&mut self, map_name: &str) -> Option<Vec<u8>> {
         if map_name == "world" && !self.maps.contains_key("world") {
             self.maps.insert("world".to_string(), include_bytes!("../../../assets/maps/world/map.bin.br").to_vec());
+        }
+        if map_name == "giantworldmap" && !self.maps.contains_key("giantworldmap") {
+            self.maps.insert("giantworldmap".to_string(), include_bytes!("../../../assets/maps/giantworldmap/map.bin.br").to_vec());
         }
         if map_name == "tutorial" {
             Some(include_bytes!("../../../assets/maps/tutorial/map.bin.br").to_vec())
@@ -224,6 +238,23 @@ impl AssetLoader {
             }
         }
 
+        // Load the embedded giantworldmap thumbnail
+        if !self.thumbnails.contains_key("giantworldmap") {
+            let bytes = include_bytes!("../../../assets/maps/giantworldmap/thumbnail.webp");
+            if let Ok(img) = image::load_from_memory(bytes) {
+                let size = [img.width() as _, img.height() as _];
+                let image_buffer = img.to_rgba8();
+                let pixels = image_buffer.as_flat_samples();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                let texture = ctx.load_texture(
+                    "giantworldmap",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.thumbnails.insert("giantworldmap".to_string(), texture);
+            }
+        }
+
         // Load the embedded tutorial map thumbnail
         if !self.thumbnails.contains_key("tutorial") {
             let bytes = include_bytes!("../../../assets/maps/tutorial/thumbnail.webp");
@@ -255,6 +286,7 @@ mod tests {
         
         let loader = AssetLoader::new();
         assert!(loader.manifests.contains_key("world"));
+        assert!(loader.manifests.contains_key("giantworldmap"));
         assert!(loader.manifests.contains_key("tutorial"));
         assert!(loader.manifests.contains_key("custom"));
     }

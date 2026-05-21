@@ -15,7 +15,7 @@ pub struct MapGlobals {
     pub shore_thickness: f32,
     pub shore_darkness: f32,
     pub border_roundness: f32,
-    pub _pad1: f32,
+    pub graphics_quality: f32,
     pub _pad2: f32,
     pub _pad3: f32,
     pub player_colors: [[f32; 4]; 256],

@@ -110,6 +110,7 @@ impl SowEngine {
             fid,
             player_id,
             target_owner,
+            crate::game::UnitType::TransportShip,
             launch,
             src,
             landing,

@@ -518,13 +518,37 @@ impl SowApp {
                     ),
                 );
 
-                painter.rect(
+                let uri = match fleet.unit_type {
+                    sow_core::game::UnitType::TransportShip => "bytes://transport_ship.svg",
+                    sow_core::game::UnitType::TradeShip => "bytes://trade_ship.svg",
+                    sow_core::game::UnitType::Warship => "bytes://battleship.svg",
+                };
+
+                let tex_id = match painter.ctx().try_load_texture(
+                    uri,
+                    egui::TextureOptions::LINEAR,
+                    egui::SizeHint::Scale(2.0.into()),
+                ) {
+                    Ok(egui::load::TexturePoll::Ready { texture }) => texture.id,
+                    _ => egui::TextureId::default(),
+                };
+
+                let mut mesh = egui::Mesh::with_texture(tex_id);
+                mesh.add_rect_with_uv(
                     rect,
-                    2.0,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     color,
-                    egui::Stroke::new(1.5_f32, egui::Color32::from_black_alpha(200)),
-                    egui::StrokeKind::Middle,
                 );
+                painter.add(mesh);
+
+                if self.input.selected_warships.contains(&fleet.id) {
+                    painter.rect_stroke(
+                        rect.expand(2.0),
+                        0.0,
+                        egui::Stroke::new(2.0_f32, egui::Color32::YELLOW),
+                        egui::StrokeKind::Middle,
+                    );
+                }
 
                 if fleet.retreating
                     && (self.time.start_time.elapsed().as_millis() / 500).is_multiple_of(2)
@@ -593,48 +617,436 @@ impl SowApp {
                 // O(1) Owner color lookup
                 let color = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::GRAY);
 
-                let emoji = match b.kind {
-                    sow_core::game::BuildingKind::City => "🏙",
-                    sow_core::game::BuildingKind::Factory => "🏭",
-                    sow_core::game::BuildingKind::Port => "⚓",
-                    sow_core::game::BuildingKind::DefensePost => "🛡",
-                    sow_core::game::BuildingKind::SamLauncher => "🚀",
-                    sow_core::game::BuildingKind::MissileSilo => "☢",
+                let uri = match b.kind {
+                    sow_core::game::BuildingKind::City => "bytes://city.svg",
+                    sow_core::game::BuildingKind::Factory => "bytes://factory.svg",
+                    sow_core::game::BuildingKind::Port => "bytes://port.svg",
+                    sow_core::game::BuildingKind::DefensePost => "bytes://defense_post.svg",
+                    sow_core::game::BuildingKind::SamLauncher => "bytes://sam_launcher.svg",
+                    sow_core::game::BuildingKind::MissileSilo => "bytes://missile_silo.svg",
                 };
 
                 if zoom_scaled < 1.0 {
-                    // Tier 1: tiny square dot (ultra-fast tessellation, 2 triangles instead of circle polygon)
+                    // Tier 1: tiny square dot
                     let dot_r = (zoom_scaled * 1.5).max(1.5);
                     painter.rect_filled(
                         egui::Rect::from_center_size(center, egui::vec2(dot_r * 2.0, dot_r * 2.0)),
                         0.0,
                         color,
                     );
-                } else if zoom_scaled < 10.0 {
-                    // Tier 2: emoji icon
-                    let font_size = (zoom_scaled * 1.2).clamp(8.0, 16.0);
-                    let label = if b.under_construction { "🔨" } else { emoji };
-                    painter.text(
-                        center,
-                        egui::Align2::CENTER_CENTER,
-                        label,
-                        egui::FontId::proportional(font_size),
-                        egui::Color32::BLACK,
-                    );
                 } else {
-                    // Tier 3: emoji + level
-                    let font_size = (zoom_scaled * 0.8).clamp(10.0, 20.0);
-                    let label = if b.under_construction {
-                        format!("🔨{}", emoji)
-                    } else {
-                        format!("{} {}", emoji, b.level)
+                    let base_size = if zoom_scaled < 10.0 { zoom_scaled * 2.0 } else { zoom_scaled * 1.5 }.clamp(12.0, 64.0);
+                    let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
+                    
+                    let size_hint = egui::load::SizeHint::Size {
+                        width: 64, // Fixed rasterization size for caching performance
+                        height: 64,
+                        maintain_aspect_ratio: true,
                     };
-                    painter.text(
-                        center,
-                        egui::Align2::CENTER_CENTER,
-                        &label,
-                        egui::FontId::proportional(font_size),
-                        egui::Color32::BLACK,
+                    
+                    let load_res = painter.ctx().try_load_texture(
+                        uri,
+                        egui::TextureOptions::LINEAR,
+                        size_hint,
+                    );
+
+                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                        let tint = if b.under_construction {
+                            egui::Color32::from_black_alpha(128) // Semi-transparent black if under construction
+                        } else {
+                            egui::Color32::BLACK
+                        };
+                        painter.image(
+                            texture.id,
+                            rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            tint,
+                        );
+                    }
+                    
+                    // Render level circle if zoomed in enough
+                    if zoom_scaled >= 10.0 {
+                        let is_constructing = b.under_construction;
+                        let text_val = if is_constructing { "🔨".to_string() } else { b.level.to_string() };
+                        let font_size = (zoom_scaled * 0.4).clamp(8.0, 12.0);
+                        let bg_radius = font_size * 0.8;
+                        
+                        // Place circle at top right of the building
+                        let bg_center = egui::pos2(center.x + base_size * 0.35, center.y - base_size * 0.35);
+                        
+                        painter.circle_filled(
+                            bg_center,
+                            bg_radius,
+                            egui::Color32::WHITE,
+                        );
+                        painter.circle_stroke(
+                            bg_center,
+                            bg_radius,
+                            egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
+                        );
+                        painter.text(
+                            bg_center,
+                            egui::Align2::CENTER_CENTER,
+                            text_val,
+                            egui::FontId::proportional(font_size),
+                            egui::Color32::BLACK,
+                        );
+                    }
+                }
+            }
+
+            // --- Track and Spawn Detonations ---
+            let mut new_detonations = Vec::new();
+            for (id, prev_proj) in &self.ui.last_projectiles {
+                if !snap.projectiles.iter().any(|p| p.id == *id) {
+                    if prev_proj.progress >= 0.9 {
+                        new_detonations.push((prev_proj.dst_x, prev_proj.dst_y, prev_proj.kind));
+                    }
+                }
+            }
+
+            // Sync last_projectiles
+            self.ui.last_projectiles.clear();
+            for proj in &snap.projectiles {
+                self.ui.last_projectiles.insert(proj.id, proj.clone());
+            }
+
+            // Spawn active explosions and fallout zones for new detonations
+            let current_time = web_time::Instant::now();
+            for (dx, dy, kind) in new_detonations {
+                match kind {
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::AtomBomb) => {
+                        self.ui.active_explosions.push(crate::app::ActiveExplosion {
+                            x: dx,
+                            y: dy,
+                            start_time: current_time,
+                            max_radius: 45.0,
+                            kind: crate::app::ExplosionKind::Atom,
+                        });
+                        self.ui.fallout_zones.push(crate::app::FalloutZone {
+                            x: dx,
+                            y: dy,
+                            radius: 30.0,
+                            start_time: current_time,
+                        });
+                    }
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => {
+                        self.ui.active_explosions.push(crate::app::ActiveExplosion {
+                            x: dx,
+                            y: dy,
+                            start_time: current_time,
+                            max_radius: 120.0,
+                            kind: crate::app::ExplosionKind::Hydrogen,
+                        });
+                        self.ui.fallout_zones.push(crate::app::FalloutZone {
+                            x: dx,
+                            y: dy,
+                            radius: 100.0,
+                            start_time: current_time,
+                        });
+                    }
+                    sow_core::game::ProjectileKind::MIRVWarhead => {
+                        self.ui.active_explosions.push(crate::app::ActiveExplosion {
+                            x: dx,
+                            y: dy,
+                            start_time: current_time,
+                            max_radius: 20.0,
+                            kind: crate::app::ExplosionKind::MIRVWarhead,
+                        });
+                        self.ui.fallout_zones.push(crate::app::FalloutZone {
+                            x: dx,
+                            y: dy,
+                            radius: 18.0,
+                            start_time: current_time,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+
+            // --- Render Fallout Zones (glowing pulsing green contaminated terrain, dashed borders, rising dust particles) ---
+            self.ui.fallout_zones.retain(|fz| {
+                let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
+                let duration = 15.0; // Contamination duration
+                if elapsed >= duration {
+                    return false;
+                }
+
+                let p = elapsed / duration;
+                let alpha_p = (1.0 - p).max(0.0);
+
+                let pulse = (wall_secs * 3.0).sin() as f32 * 0.15 + 0.85;
+                let base_alpha = 45.0 * alpha_p * pulse;
+
+                let screen_x = (self.input.camera_x + (fz.x + 0.5) * self.input.camera_zoom) / sf;
+                let screen_y = (self.input.camera_y + (fz.y + 0.5) * self.input.camera_zoom) / sf;
+                let center = egui::pos2(screen_x, screen_y);
+                let zoom = self.input.camera_zoom / sf;
+                let radius = fz.radius * zoom;
+
+                // Glowing green contaminated aura
+                painter.circle_filled(
+                    center,
+                    radius,
+                    egui::Color32::from_rgba_unmultiplied(60, 220, 90, base_alpha as u8),
+                );
+
+                // CRISP high-contrast radioactive outer border
+                let border_color = egui::Color32::from_rgba_unmultiplied(100, 255, 140, (base_alpha * 2.0) as u8);
+                painter.circle_stroke(
+                    center,
+                    radius,
+                    egui::Stroke::new(1.0f32, border_color),
+                );
+
+                // Deterministic floating glowing radioactive green dust particles!
+                let seed = (fz.x * 123.45 + fz.y * 678.9) as i32;
+                let particle_count = (fz.radius * 0.5) as i32;
+                for i in 0..particle_count {
+                    let angle = ((seed + i * 37) as f32).sin() * std::f32::consts::TAU;
+                    let dist_ratio = (((seed + i * 19) as f32).cos() * 0.5 + 0.5).sqrt();
+                    let dist = dist_ratio * fz.radius;
+
+                    let px = fz.x + angle.cos() * dist;
+                    let py = fz.y + angle.sin() * dist;
+
+                    let speed = 0.4 + ((seed + i * 13) as f32).sin().abs() * 0.8;
+                    let drift_y = (wall_secs as f32 * speed) % 6.0;
+                    let py_drifted = py - drift_y;
+
+                    let p_screen_x = (self.input.camera_x + (px + 0.5) * self.input.camera_zoom) / sf;
+                    let p_screen_y = (self.input.camera_y + (py_drifted + 0.5) * self.input.camera_zoom) / sf;
+
+                    let particle_alpha = (base_alpha * (1.0 - drift_y / 6.0)).max(0.0) as u8;
+
+                    painter.circle_filled(
+                        egui::pos2(p_screen_x, p_screen_y),
+                        (1.2 * zoom).max(1.0),
+                        egui::Color32::from_rgba_unmultiplied(120, 255, 150, particle_alpha),
+                    );
+                }
+
+                true
+            });
+
+            // --- Render Active Explosions (rising mushroom clouds, shockwaves) ---
+            self.ui.active_explosions.retain(|exp| {
+                let elapsed = current_time.duration_since(exp.start_time).as_secs_f32();
+                let duration = match exp.kind {
+                    crate::app::ExplosionKind::Hydrogen => 3.5,
+                    crate::app::ExplosionKind::Atom => 2.2,
+                    crate::app::ExplosionKind::MIRVWarhead => 1.2,
+                };
+                if elapsed >= duration {
+                    return false;
+                }
+
+                let p = elapsed / duration;
+
+                let screen_x = (self.input.camera_x + (exp.x + 0.5) * self.input.camera_zoom) / sf;
+                let screen_y = (self.input.camera_y + (exp.y + 0.5) * self.input.camera_zoom) / sf;
+                let center = egui::pos2(screen_x, screen_y);
+                let zoom = self.input.camera_zoom / sf;
+
+                // 1. Expanding Shockwave Circle
+                let shockwave_max = exp.max_radius * 1.6;
+                let shockwave_radius = p * shockwave_max * zoom;
+                let shockwave_alpha = (1.0 - p).max(0.0);
+                let shockwave_color = egui::Color32::from_rgba_unmultiplied(
+                    255, 255, 255,
+                    (shockwave_alpha * 190.0) as u8,
+                );
+                painter.circle_stroke(
+                    center,
+                    shockwave_radius,
+                    egui::Stroke::new(1.5f32, shockwave_color),
+                );
+
+                // 2. Rising Mushroom Cloud / Fireball caps
+                let cloud_scale = match exp.kind {
+                    crate::app::ExplosionKind::Hydrogen => 1.0,
+                    crate::app::ExplosionKind::Atom => 0.45,
+                    crate::app::ExplosionKind::MIRVWarhead => 0.18,
+                };
+
+                let cap_rise = p * 45.0 * cloud_scale * zoom;
+                let cap_center = egui::pos2(center.x, center.y - cap_rise);
+                let cap_radius = (p * 2.0).min(1.0) * exp.max_radius * zoom;
+
+                let smoke_alpha = ((1.0 - p) * 195.0) as u8;
+                let fire_alpha = ((1.0 - p) * 240.0) as u8;
+                let core_alpha = (((1.0 - p).powi(2)) * 255.0) as u8;
+
+                // Cap layers:
+                // Outer dark fire-smoke
+                painter.circle_filled(
+                    cap_center,
+                    cap_radius,
+                    egui::Color32::from_rgba_unmultiplied(225, 50, 0, smoke_alpha),
+                );
+                // Middle glowing orange
+                painter.circle_filled(
+                    cap_center,
+                    cap_radius * 0.75,
+                    egui::Color32::from_rgba_unmultiplied(255, 130, 0, fire_alpha),
+                );
+                // Inner white-hot blast core
+                painter.circle_filled(
+                    cap_center,
+                    cap_radius * 0.45,
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 190, core_alpha),
+                );
+
+                // Mushroom Stem
+                let stem_w = cap_radius * 0.22;
+                let stem_rect = egui::Rect::from_min_max(
+                    egui::pos2(center.x - stem_w, cap_center.y),
+                    egui::pos2(center.x + stem_w, center.y),
+                );
+                painter.rect_filled(
+                    stem_rect,
+                    2.0,
+                    egui::Color32::from_rgba_unmultiplied(255, 90, 0, (smoke_alpha as f32 * 0.75) as u8),
+                );
+
+                true
+            });
+
+            // --- Render Projectiles (Nukes, SAM Missiles) ---
+            for proj in &snap.projectiles {
+                let cur_x = proj.src_x + (proj.dst_x - proj.src_x) * proj.progress;
+                let cur_y = proj.src_y + (proj.dst_y - proj.src_y) * proj.progress;
+
+                // Parabolic height for nukes (peak at progress=0.5)
+                let height = 4.0 * proj.progress * (1.0 - proj.progress);
+
+                let screen_x = (self.input.camera_x + (cur_x + 0.5) * self.input.camera_zoom) / sf;
+                let screen_y = (self.input.camera_y + (cur_y + 0.5 - height * 20.0) * self.input.camera_zoom) / sf;
+
+                // Frustum cull
+                if screen_x < -50.0 || screen_x > self.input.screen_w / sf + 50.0
+                    || screen_y < -50.0 || screen_y > self.input.screen_h / sf + 50.0 {
+                    continue;
+                }
+
+                let is_nuke = matches!(
+                    proj.kind,
+                    sow_core::game::ProjectileKind::Nuke(_)
+                        | sow_core::game::ProjectileKind::MIRVWarhead
+                );
+
+                let center = egui::pos2(screen_x, screen_y);
+
+                // 1. Draw glowing flight trajectory trail curve for Flying Nukes & MIRV Warheads!
+                if is_nuke {
+                    let steps = 15;
+                    let mut curve_points = Vec::with_capacity(steps + 1);
+                    for i in 0..=steps {
+                        let p = (i as f32 / steps as f32) * proj.progress;
+                        let t_x = proj.src_x + (proj.dst_x - proj.src_x) * p;
+                        let t_y = proj.src_y + (proj.dst_y - proj.src_y) * p;
+                        let t_h = 4.0 * p * (1.0 - p);
+
+                        let sc_x = (self.input.camera_x + (t_x + 0.5) * self.input.camera_zoom) / sf;
+                        let sc_y = (self.input.camera_y + (t_y + 0.5 - t_h * 20.0) * self.input.camera_zoom) / sf;
+                        curve_points.push(egui::pos2(sc_x, sc_y));
+                    }
+
+                    let trail_color = match proj.kind {
+                        sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => {
+                            egui::Color32::from_rgba_unmultiplied(255, 50, 0, 150)
+                        }
+                        sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::MIRV) => {
+                            egui::Color32::from_rgba_unmultiplied(255, 170, 0, 150)
+                        }
+                        sow_core::game::ProjectileKind::MIRVWarhead => {
+                            egui::Color32::from_rgba_unmultiplied(255, 140, 0, 110)
+                        }
+                        _ => {
+                            egui::Color32::from_rgba_unmultiplied(255, 90, 0, 140)
+                        }
+                    };
+
+                    for win in curve_points.windows(2) {
+                        painter.line_segment(
+                            [win[0], win[1]],
+                            egui::Stroke::new(1.8f32, trail_color),
+                        );
+                    }
+
+                    // 2. Draw glowing rocket exhaust engine flame tail at the back of the missile!
+                    if curve_points.len() >= 2 {
+                        let tip = curve_points[curve_points.len() - 1];
+                        let prev = curve_points[curve_points.len() - 2];
+                        let dir = tip - prev;
+                        let dir_len = (dir.x * dir.x + dir.y * dir.y).sqrt().max(0.1);
+                        let dir_norm = dir / dir_len;
+
+                        let flame_len = match proj.kind {
+                            sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => 14.0,
+                            sow_core::game::ProjectileKind::MIRVWarhead => 6.0,
+                            _ => 10.0,
+                        };
+                        let flame_back = tip - dir_norm * flame_len;
+                        let perp = egui::vec2(-dir_norm.y, dir_norm.x) * (flame_len * 0.28);
+
+                        let flame_left = flame_back - perp;
+                        let flame_right = flame_back + perp;
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![tip, flame_left, flame_right],
+                            egui::Color32::from_rgb(255, 140, 0),
+                            egui::Stroke::NONE,
+                        ));
+
+                        let core_back = tip - dir_norm * (flame_len * 0.45);
+                        let core_perp = perp * 0.45;
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![tip, core_back - core_perp, core_back + core_perp],
+                            egui::Color32::from_rgb(255, 255, 200),
+                            egui::Stroke::NONE,
+                        ));
+                    }
+                }
+
+                let uri = match proj.kind {
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::AtomBomb) => "bytes://atombomb.png",
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => "bytes://hydrogenbomb.png",
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::MIRV) => "bytes://mirv.png",
+                    sow_core::game::ProjectileKind::MIRVWarhead => "bytes://atombomb.png",
+                    sow_core::game::ProjectileKind::SAMMissile => "bytes://sam_missile.png",
+                    sow_core::game::ProjectileKind::Shell => continue,
+                };
+
+                let base_size = match proj.kind {
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => 24.0,
+                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::MIRV) => 20.0,
+                    sow_core::game::ProjectileKind::Nuke(_) => 16.0,
+                    sow_core::game::ProjectileKind::MIRVWarhead => 8.0,
+                    sow_core::game::ProjectileKind::SAMMissile => 10.0,
+                    _ => 12.0,
+                };
+
+                let scale = (1.0 + height * 0.5).min(2.0);
+                let size = base_size * scale;
+                let rect = egui::Rect::from_center_size(center, egui::vec2(size, size));
+
+                let size_hint = egui::load::SizeHint::Size { width: 64, height: 64, maintain_aspect_ratio: true };
+                if let Ok(egui::load::TexturePoll::Ready { texture }) = painter.ctx().try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint) {
+                    painter.image(
+                        texture.id,
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
+                }
+
+                // SAM missile trail
+                if matches!(proj.kind, sow_core::game::ProjectileKind::SAMMissile) {
+                    let trail_x = (self.input.camera_x + (proj.src_x + 0.5) * self.input.camera_zoom) / sf;
+                    let trail_y = (self.input.camera_y + (proj.src_y + 0.5) * self.input.camera_zoom) / sf;
+                    painter.line_segment(
+                        [egui::pos2(trail_x, trail_y), center],
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_rgba_unmultiplied(100, 200, 255, 100)),
                     );
                 }
             }
@@ -703,6 +1115,94 @@ impl SowApp {
                         egui::FontId::proportional(20.0),
                         egui::Color32::RED,
                     );
+                }
+            }
+
+            // --- Building Placement Preview ---
+            if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
+                let mx = self.input.last_mouse_x as f32;
+                let my = self.input.last_mouse_y as f32;
+                
+                let world_x = (mx - self.input.camera_x) / self.input.camera_zoom;
+                let world_y = (my - self.input.camera_y) / self.input.camera_zoom;
+                
+                let col = world_x.floor() as i32;
+                let row = world_y.floor() as i32;
+                
+                if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                    let map_w = self.sim.map_w;
+                    let map_h = self.sim.map_h;
+                    let owners = self.gfx.map_renderer.as_ref().map(|mr| mr.owners.as_slice()).unwrap_or(&[]);
+                    let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
+                    let my_id = self.sim.my_player_id.unwrap_or(0);
+                    let buildings = self.sim.current_snapshot.as_ref().map(|s| s.buildings.as_slice()).unwrap_or(&[]);
+
+                    let snapped_idx = crate::input::resolve_building_placement_tile(
+                        kind,
+                        col,
+                        row,
+                        map_w,
+                        map_h,
+                        owners,
+                        terrain,
+                        my_id,
+                        buildings,
+                    );
+
+                    let can_afford = {
+                        let i = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                        self.ui.app.hud_state.gold >= self.ui.app.hud_state.building_costs[i]
+                    };
+
+                    let (draw_col, draw_row, is_valid) = if let Some(idx) = snapped_idx {
+                        ((idx % map_w) as i32, (idx / map_w) as i32, can_afford)
+                    } else {
+                        (col, row, false)
+                    };
+                    
+                    let tile_screen_x = (self.input.camera_x + (draw_col as f32 + 0.5) * self.input.camera_zoom) / sf;
+                    let tile_screen_y = (self.input.camera_y + (draw_row as f32 + 0.5) * self.input.camera_zoom) / sf;
+                    
+                    let fill_color = if is_valid {
+                        egui::Color32::from_rgba_unmultiplied(74, 222, 128, 80) // Green
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(239, 68, 68, 80) // Red
+                    };
+                    let stroke_color = if is_valid {
+                        egui::Color32::from_rgb(74, 222, 128)
+                    } else {
+                        egui::Color32::from_rgb(239, 68, 68)
+                    };
+                    
+                    // Draw highlight rect
+                    let tile_size = self.input.camera_zoom / sf;
+                    let tile_rect = egui::Rect::from_center_size(
+                        egui::pos2(tile_screen_x, tile_screen_y),
+                        egui::vec2(tile_size, tile_size)
+                    );
+                    painter.rect(tile_rect, 0.0, fill_color, egui::Stroke::new(1.0_f32, stroke_color), egui::StrokeKind::Inside);
+                    
+                    // Draw ghost SVG
+                    if tile_size > 12.0 {
+                        let uri = match kind {
+                            sow_core::game::BuildingKind::City => "bytes://city.svg",
+                            sow_core::game::BuildingKind::Factory => "bytes://factory.svg",
+                            sow_core::game::BuildingKind::Port => "bytes://port.svg",
+                            sow_core::game::BuildingKind::DefensePost => "bytes://defense_post.svg",
+                            sow_core::game::BuildingKind::SamLauncher => "bytes://sam_launcher.svg",
+                            sow_core::game::BuildingKind::MissileSilo => "bytes://missile_silo.svg",
+                        };
+                        let base_size = if tile_size < 10.0 { tile_size * 2.0 } else { tile_size * 1.5 }.clamp(12.0, 64.0);
+                        let size_hint = egui::load::SizeHint::Size { width: 64, height: 64, maintain_aspect_ratio: true };
+                        if let Ok(egui::load::TexturePoll::Ready { texture }) = painter.ctx().try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint) {
+                            painter.image(
+                                texture.id,
+                                egui::Rect::from_center_size(egui::pos2(tile_screen_x, tile_screen_y), egui::vec2(base_size, base_size)),
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                stroke_color,
+                            );
+                        }
+                    }
                 }
             }
         }

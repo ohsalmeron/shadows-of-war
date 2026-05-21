@@ -32,10 +32,17 @@ pub struct HudState {
     pub safe_area_bottom: f32,
     pub selected_tile: Option<SelectedTileInfo>,
     pub show_emoji_panel: bool,
+    pub emoji_panel_pos: Option<egui::Pos2>,
+    pub emoji_panel_just_opened: bool,
     pub pin_emoji: bool,
     pub show_alliance_inbox: bool,
     pub show_betrayal_warning: Option<(u16, sow_core::protocol::GameplayIntent)>,
     pub show_error: Option<String>,
+    pub(crate) last_error_message: Option<String>,
+    pub(crate) error_display_timer: Option<Instant>,
+    pub selected_building_kind: Option<sow_core::game::BuildingKind>,
+    pub building_costs: [f64; 6],
+    pub selected_nuke_kind: Option<sow_core::game::NukeKind>,
 }
 
 impl HudState {
@@ -55,7 +62,257 @@ impl HudState {
     }
 }
 
+fn draw_buildings_dock(
+    ui: &mut egui::Ui,
+    state: &mut HudState,
+    width: f32,
+    compact: bool,
+) {
+    let bg = crate::ui::theme::panel_bg_transparent();
+    let border_stroke = if state.selected_building_kind.is_some() {
+        egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan())
+    } else {
+        egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border())
+    };
+
+    egui::Frame::NONE
+        .fill(bg)
+        .stroke(border_stroke)
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.set_width(width);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = if compact { 4.0 } else { 12.0 };
+                
+                let col_w = (width - 16.0 - 5.0 * (if compact { 4.0 } else { 12.0 })) / 6.0;
+                
+                for (i, &kind) in sow_core::game::BuildingKind::ALL.iter().enumerate() {
+                    let cost = state.building_costs[i];
+                    let is_selected = state.selected_building_kind == Some(kind);
+                    let can_afford = state.gold >= cost;
+                    
+                    let tint = if is_selected {
+                        crate::ui::theme::accent_solo_cyan()
+                    } else if !can_afford {
+                        egui::Color32::from_rgb(180, 50, 50)
+                    } else {
+                        egui::Color32::WHITE
+                    };
+                    
+                    let bg_color = if is_selected {
+                        crate::ui::theme::accent_solo_cyan().linear_multiply(0.15)
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    
+                    let stroke = if is_selected {
+                        egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan())
+                    } else if !can_afford {
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(180, 50, 50))
+                    } else {
+                        egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
+                    };
+                    
+                    let (rect, resp) = ui.allocate_exact_size(
+                        egui::vec2(col_w, if compact { 36.0 } else { 44.0 }),
+                        egui::Sense::click(),
+                    );
+                    
+                    let is_hovered = resp.hovered();
+                    let final_bg = if is_hovered && !is_selected {
+                        crate::ui::theme::nickname_field_bg().linear_multiply(0.3)
+                    } else {
+                        bg_color
+                    };
+                    
+                    ui.painter().rect(rect, 6, final_bg, stroke, egui::StrokeKind::Inside);
+                    
+                    // Hotkey badge (top-left corner)
+                    if !compact {
+                        let hotkey_color = if is_selected {
+                            crate::ui::theme::accent_solo_cyan()
+                        } else {
+                            egui::Color32::from_white_alpha(120)
+                        };
+                        ui.painter().text(
+                            egui::pos2(rect.left() + 5.0, rect.top() + 5.0),
+                            egui::Align2::LEFT_TOP,
+                            format!("{}", i + 1),
+                            egui::FontId::proportional(7.0),
+                            hotkey_color,
+                        );
+                    }
+                    
+                    let icon_size = if compact { 16.0 } else { 22.0 };
+                    let icon_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
+                        egui::vec2(icon_size, icon_size),
+                    );
+                    
+                    let uri = match kind {
+                        sow_core::game::BuildingKind::City => "bytes://city.svg",
+                        sow_core::game::BuildingKind::Factory => "bytes://factory.svg",
+                        sow_core::game::BuildingKind::Port => "bytes://port.svg",
+                        sow_core::game::BuildingKind::DefensePost => "bytes://defense_post.svg",
+                        sow_core::game::BuildingKind::SamLauncher => "bytes://sam_launcher.svg",
+                        sow_core::game::BuildingKind::MissileSilo => "bytes://missile_silo.svg",
+                    };
+                    
+                    let image = egui::Image::new(uri).tint(tint);
+                    image.paint_at(ui, icon_rect);
+                    
+                    let cost_text = if cost.is_infinite() {
+                        "N/A".to_string()
+                    } else {
+                        crate::utils::format_number(cost)
+                    };
+                    
+                    let text_color = if !can_afford {
+                        egui::Color32::from_rgb(239, 68, 68)
+                    } else if is_selected {
+                        crate::ui::theme::accent_solo_cyan()
+                    } else {
+                        egui::Color32::GRAY
+                    };
+                    
+                    let label_text = if compact {
+                        cost_text
+                    } else {
+                        format!("{} - {}", kind.as_str(), cost_text)
+                    };
+                    
+                    let font_size = if compact { 8.0 } else { 9.0 };
+                    ui.painter().text(
+                        egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
+                        egui::Align2::CENTER_CENTER,
+                        label_text,
+                        egui::FontId::proportional(font_size),
+                        text_color,
+                    );
+                    
+                    if resp.clicked() {
+                        if is_selected {
+                            state.selected_building_kind = None;
+                        } else {
+                            state.selected_building_kind = Some(kind);
+                        }
+                    }
+                }
+                
+                // Nuke launch buttons (separator + icons)
+                if sow_core::config::ENABLE_MISSILE_STRUCTURES {
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+                    
+                    let nukes: [(sow_core::game::NukeKind, &str, &str); 3] = [
+                        (sow_core::game::NukeKind::AtomBomb, "bytes://atombomb.png", "Atom"),
+                        (sow_core::game::NukeKind::HydrogenBomb, "bytes://hydrogenbomb.png", "H-Bomb"),
+                        (sow_core::game::NukeKind::MIRV, "bytes://mirv.png", "MIRV"),
+                    ];
+                    
+                    for (ni, (nuke_kind, uri, label)) in nukes.iter().enumerate() {
+                        let is_selected = state.selected_nuke_kind == Some(*nuke_kind);
+                        let nk_col_w = if compact { 28.0 } else { 36.0 };
+                        
+                        let tint = if is_selected {
+                            egui::Color32::from_rgb(239, 68, 68)
+                        } else {
+                            egui::Color32::WHITE
+                        };
+                        
+                        let bg_color = if is_selected {
+                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30)
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        };
+                        
+                        let stroke = if is_selected {
+                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(239, 68, 68))
+                        } else {
+                            egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
+                        };
+                        
+                        let (rect, resp) = ui.allocate_exact_size(
+                            egui::vec2(nk_col_w, if compact { 36.0 } else { 44.0 }),
+                            egui::Sense::click(),
+                        );
+                        
+                        let final_bg = if resp.hovered() && !is_selected {
+                            crate::ui::theme::nickname_field_bg().linear_multiply(0.3)
+                        } else {
+                            bg_color
+                        };
+                        
+                        ui.painter().rect(rect, 6, final_bg, stroke, egui::StrokeKind::Inside);
+                        
+                        // Hotkey badge (top-left corner)
+                        if !compact {
+                            let hotkey_color = if is_selected {
+                                egui::Color32::from_rgb(239, 68, 68)
+                            } else {
+                                egui::Color32::from_white_alpha(120)
+                            };
+                            ui.painter().text(
+                                egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
+                                egui::Align2::LEFT_TOP,
+                                format!("{}", ni + 7),
+                                egui::FontId::proportional(7.0),
+                                hotkey_color,
+                            );
+                        }
+                        
+                        let icon_size = if compact { 16.0 } else { 20.0 };
+                        let icon_rect = egui::Rect::from_center_size(
+                            egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
+                            egui::vec2(icon_size, icon_size),
+                        );
+                        let image = egui::Image::new(*uri).tint(tint);
+                        image.paint_at(ui, icon_rect);
+                        
+                        let font_size = if compact { 7.0 } else { 8.0 };
+                        ui.painter().text(
+                            egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
+                            egui::Align2::CENTER_CENTER,
+                            *label,
+                            egui::FontId::proportional(font_size),
+                            if is_selected { egui::Color32::from_rgb(239, 68, 68) } else { egui::Color32::GRAY },
+                        );
+                        
+                        if resp.clicked() {
+                            if is_selected {
+                                state.selected_nuke_kind = None;
+                            } else {
+                                state.selected_nuke_kind = Some(*nuke_kind);
+                                state.selected_building_kind = None;
+                            }
+                        }
+                    }
+                }
+            });
+        });
+}
+
 pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>, lang: Language) -> Option<UiAction> {
+    static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
+    REGISTER_ONCE.call_once(|| {
+        ui.ctx().include_bytes("bytes://city.svg", include_bytes!("../../../../sow-client/assets/city.svg").as_slice());
+        ui.ctx().include_bytes("bytes://factory.svg", include_bytes!("../../../../sow-client/assets/factory.svg").as_slice());
+        ui.ctx().include_bytes("bytes://port.svg", include_bytes!("../../../../sow-client/assets/port.svg").as_slice());
+        ui.ctx().include_bytes("bytes://defense_post.svg", include_bytes!("../../../../sow-client/assets/defense_post.svg").as_slice());
+        ui.ctx().include_bytes("bytes://sam_launcher.svg", include_bytes!("../../../../sow-client/assets/sam_launcher.svg").as_slice());
+        ui.ctx().include_bytes("bytes://missile_silo.svg", include_bytes!("../../../../sow-client/assets/missile_silo.svg").as_slice());
+        ui.ctx().include_bytes("bytes://trade_ship.svg", include_bytes!("../../../../sow-client/assets/trade_ship.svg").as_slice());
+        ui.ctx().include_bytes("bytes://transport_ship.svg", include_bytes!("../../../../sow-client/assets/transport_ship.svg").as_slice());
+        ui.ctx().include_bytes("bytes://battleship.svg", include_bytes!("../../../../sow-client/assets/battleship.svg").as_slice());
+        ui.ctx().include_bytes("bytes://atombomb.png", include_bytes!("../../../../sow-client/assets/atombomb.png").as_slice());
+        ui.ctx().include_bytes("bytes://hydrogenbomb.png", include_bytes!("../../../../sow-client/assets/hydrogenbomb.png").as_slice());
+        ui.ctx().include_bytes("bytes://mirv.png", include_bytes!("../../../../sow-client/assets/mirv.png").as_slice());
+        ui.ctx().include_bytes("bytes://sam_missile.png", include_bytes!("../../../../sow-client/assets/sam_missile.png").as_slice());
+        ui.ctx().include_bytes("bytes://nuke_explosion.png", include_bytes!("../../../../sow-client/assets/nuke_explosion.png").as_slice());
+    });
+
     let mut action = None;
     state.refresh_troop_display_if_due();
     let compact = ui.ctx().content_rect().width() < 768.0;
@@ -76,6 +333,13 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                 ui.push_id("attacks_display", |ui| {
                     draw_attacks_display(ui, state, panel_w, compact, cancel_intents, &mut action, lang);
                 });
+
+                // 1.5 Building Dock (middle in vertical stack)
+                if state.spawn_timer_secs.is_none() {
+                    ui.push_id("building_dock", |ui| {
+                        draw_buildings_dock(ui, state, panel_w, compact);
+                    });
+                }
 
                 // 2. Control Panel (bottom in vertical stack)
                 ui.push_id("control_panel_frame", |ui| {
@@ -252,90 +516,202 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     ui.add_space(4.0);
                     if ui.add(crate::widgets::HudButton::new("😀")).on_hover_text("Express Emoji").clicked() {
                         state.show_emoji_panel = !state.show_emoji_panel;
+                        if state.show_emoji_panel {
+                            state.emoji_panel_pos = None;
+                            state.emoji_panel_just_opened = true;
+                        }
                     }
                 });
             });
         });
 
-    // ── Floating Emoji Panel ──────────────────────────────────────────────────
     if state.show_emoji_panel {
-        let emojis = &["😀", "😭", "😮", "😠", "👑", "💪", "⚔️", "💀", "❤️", "🔥", "👀", "🏳️"];
-        egui::Area::new(egui::Id::new("floating_emoji_panel"))
-            .anchor(Align2::RIGHT_BOTTOM, vec2(-64.0, -100.0 - state.safe_area_bottom))
-            .order(egui::Order::Foreground)
-            .show(ui.ctx(), |ui| {
-                let panel_bg = crate::ui::theme::panel_bg();
-                let glow_color = crate::ui::theme::accent_solo_cyan();
-                
-                egui::Frame::menu(&ui.ctx().global_style())
-                    .fill(panel_bg)
-                    .stroke(egui::Stroke::new(1.5_f32, glow_color))
-                    .corner_radius(12)
-                    .inner_margin(12)
-                    .show(ui, |ui| {
-                        ui.vertical(|ui| {
+        let emojis = &[
+            // Row 1: Happy / Expressive
+            "😀", "😎", "😏", "😂", "🤣", "😋", "😉", "😜",
+            // Row 2: Wholesome / Love
+            "😍", "🥰", "🥳", "🥺", "😇", "🤩", "👍", "❤️",
+            // Row 3: Surprised / Confused
+            "😮", "🤔", "🧐", "🙄", "🤯", "🤡", "💩", "🤫",
+            // Row 4: Anger / Battle-ready
+            "😠", "😡", "🤬", "😤", "🥵", "🥶", "🤢", "🤮",
+            // Row 5: Action / Combat
+            "⚔️", "🛡️", "🏹", "💣", "💥", "💀", "👑", "💪",
+            // Row 6: Strategy / Status
+            "🔥", "👀", "🏳️", "🤝", "💔", "🔌", "⭐", "🐺"
+        ];
+        
+        let mut area = egui::Area::new(egui::Id::new("floating_emoji_panel"))
+            .order(egui::Order::Foreground);
+            
+        if let Some(pos) = state.emoji_panel_pos {
+            area = area.pivot(Align2::CENTER_CENTER).fixed_pos(pos);
+        } else {
+            area = area.anchor(Align2::RIGHT_BOTTOM, vec2(-64.0, -100.0 - state.safe_area_bottom));
+        }
+
+        let response = area.show(ui.ctx(), |ui| {
+            crate::ui::theme::premium_panel_frame(compact)
+                .inner_margin(egui::Margin::same(6))
+                .show(ui, |ui| {
+                    let cols = 8;
+                    let btn_size = 42.0;
+                    let emoji_size = 36.0;
+                    let spacing = 2.0;
+                    let grid_width = cols as f32 * btn_size + (cols as f32 - 1.0) * spacing;
+
+                    ui.vertical(|ui| {
+                        ui.set_width(grid_width);
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        
+                        for chunk in emojis.chunks(cols) {
                             ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new("EXPRESS EMOJI")
-                                        .strong()
-                                        .color(crate::ui::theme::accent_solo_cyan())
-                                        .size(11.0)
-                                );
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    let pin_color = if state.pin_emoji { crate::ui::theme::accent_ranked_gold() } else { crate::ui::theme::text_secondary() };
-                                    ui.checkbox(&mut state.pin_emoji, RichText::new("PIN").size(10.0).strong().color(pin_color));
-                                });
-                            });
-                            ui.add_space(8.0);
-                            
-                            egui::Grid::new("emoji_grid")
-                                .spacing(vec2(8.0, 8.0))
-                                .show(ui, |ui| {
-                                    for (i, &emoji) in emojis.iter().enumerate() {
-                                        // Leverage the global theme for rich animations, glows, and hover scaling
-                                        let btn = egui::Button::new(RichText::new(emoji).size(22.0))
-                                            .corner_radius(8);
-                                        
-                                        if ui.add_sized(vec2(40.0, 40.0), btn).clicked() {
-                                            let intent = sow_core::protocol::GameplayIntent::ExpressEmoji {
-                                                emoji: emoji.to_owned(),
-                                                pinned: state.pin_emoji,
-                                            };
-                                            cancel_intents.push(intent);
+                                ui.spacing_mut().item_spacing.x = spacing;
+                                for &emoji in chunk {
+                                    let (rect, resp) = ui.allocate_exact_size(vec2(btn_size, btn_size), egui::Sense::click());
+                                    
+                                    let is_hovered = resp.hovered();
+                                    
+                                    if is_hovered {
+                                        let bg_color = crate::ui::theme::menu_secondary_button_hover().linear_multiply(0.6);
+                                        let stroke_color = crate::ui::theme::accent_solo_cyan().linear_multiply(0.8);
+                                        ui.painter().rect(
+                                            rect,
+                                            btn_size / 2.0,
+                                            bg_color,
+                                            egui::Stroke::new(1.0_f32, stroke_color),
+                                            egui::StrokeKind::Inside,
+                                        );
+                                    }
+                                    
+                                    ui.painter().text(
+                                        rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        emoji,
+                                        egui::FontId::proportional(emoji_size),
+                                        Color32::WHITE,
+                                    );
+                                    
+                                    if resp.clicked() {
+                                        let intent = sow_core::protocol::GameplayIntent::ExpressEmoji {
+                                            emoji: emoji.to_owned(),
+                                            pinned: state.pin_emoji,
+                                        };
+                                        cancel_intents.push(intent);
+                                        if !state.pin_emoji {
                                             state.show_emoji_panel = false;
                                         }
-                                        
-                                        if (i + 1) % 4 == 0 {
-                                            ui.end_row();
-                                        }
+                                    }
+                                }
+                            });
+                            ui.add_space(spacing);
+                        }
+                        
+                        ui.add_space(8.0);
+                        
+                        ui.horizontal(|ui| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    
+                                    let text_color = if state.pin_emoji {
+                                        crate::ui::theme::accent_ranked_gold()
+                                    } else {
+                                        crate::ui::theme::text_secondary()
+                                    };
+                                    
+                                    let label_resp = ui.label(
+                                        RichText::new("PIN")
+                                            .size(13.0)
+                                            .strong()
+                                            .color(text_color)
+                                    );
+                                    
+                                    let label_click = ui.interact(
+                                        label_resp.rect,
+                                        ui.make_persistent_id("pin_label_click"),
+                                        egui::Sense::click(),
+                                    );
+                                    if label_click.clicked() {
+                                        state.pin_emoji = !state.pin_emoji;
+                                    }
+                                    
+                                    let box_size = 28.0;
+                                    let (rect, resp) = ui.allocate_exact_size(vec2(box_size, box_size), egui::Sense::click());
+                                    
+                                    let is_hovered = resp.hovered();
+                                    if resp.clicked() {
+                                        state.pin_emoji = !state.pin_emoji;
+                                    }
+                                    
+                                    let bg_color = if state.pin_emoji {
+                                        crate::ui::theme::accent_ranked_gold().linear_multiply(0.2)
+                                    } else {
+                                        crate::ui::theme::nickname_field_bg()
+                                    };
+                                    
+                                    let stroke_color = if state.pin_emoji {
+                                        crate::ui::theme::accent_ranked_gold()
+                                    } else if is_hovered {
+                                        crate::ui::theme::accent_solo_cyan()
+                                    } else {
+                                        crate::ui::theme::nickname_field_border()
+                                    };
+                                    
+                                    ui.painter().rect(
+                                        rect,
+                                        4.0,
+                                        bg_color,
+                                        egui::Stroke::new(2.0_f32, stroke_color),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    
+                                    if state.pin_emoji {
+                                        ui.painter().text(
+                                            rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            "✓",
+                                            egui::FontId::proportional(22.0),
+                                            crate::ui::theme::accent_ranked_gold(),
+                                        );
                                     }
                                 });
+                            });
                         });
                     });
+                }).response.rect
             });
 
-        // Robust Rect-based click-outside dismiss (replaces flaky circular radius check)
-        if ui.ctx().input(|i| i.pointer.any_pressed()) {
-            if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
-                let screen_size = ui.ctx().content_rect();
-                
-                // Spacious rectangular bounds of the emoji panel to prevent accidental dismisses
-                let panel_rect = egui::Rect::from_min_max(
-                    pos2(screen_size.right() - 320.0, screen_size.bottom() - 360.0 - state.safe_area_bottom),
-                    pos2(screen_size.right() - 40.0, screen_size.bottom() - 80.0 - state.safe_area_bottom),
-                );
-                
-                // Allow clicking the HUD bottom bar controls without dismissing
-                let hud_rect = egui::Rect::from_min_max(
-                    pos2(screen_size.right() - 510.0, screen_size.bottom() - 90.0 - state.safe_area_bottom),
-                    pos2(screen_size.right(), screen_size.bottom()),
-                );
+        let emoji_panel_rect = response.inner;
 
-                if !panel_rect.contains(pos) && !hud_rect.contains(pos) {
+        // Robust dynamic Rect-based click-outside dismiss
+        if !state.emoji_panel_just_opened && ui.ctx().input(|i| i.pointer.any_pressed()) {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
+                let mut is_outside = true;
+                
+                if emoji_panel_rect.contains(pos) {
+                    is_outside = false;
+                }
+                
+                // Allow clicking the HUD bottom bar controls without dismissing if we are in default mode
+                if state.emoji_panel_pos.is_none() {
+                    let screen_size = ui.ctx().content_rect();
+                    let hud_rect = egui::Rect::from_min_max(
+                        pos2(screen_size.right() - 510.0, screen_size.bottom() - 90.0 - state.safe_area_bottom),
+                        pos2(screen_size.right(), screen_size.bottom()),
+                    );
+                    if hud_rect.contains(pos) {
+                        is_outside = false;
+                    }
+                }
+                
+                if is_outside && !state.pin_emoji {
                     state.show_emoji_panel = false;
                 }
             }
         }
+
+        state.emoji_panel_just_opened = false;
     }
 
     draw_sync_overlay(ui.ctx(), state, lang);
@@ -934,47 +1310,68 @@ fn draw_mobile_selection_bar(
 
 fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
     if let Some(err_msg) = state.show_error.clone() {
-        let screen_rect = ctx.content_rect();
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("error_overlay_bg")))
-            .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+        let now = Instant::now();
+        let display_duration = Duration::from_millis(2500);
 
-        egui::Window::new("error_warning_modal")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
-            .frame(egui::Frame::window(&ctx.global_style())
-                .fill(crate::ui::theme::panel_bg())
-                .stroke(egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()))
-                .inner_margin(24.0)
-                .corner_radius(12)
-            )
+        let reset = match &state.last_error_message {
+            Some(last) if last == &err_msg => false,
+            _ => true,
+        };
+
+        if reset {
+            state.last_error_message = Some(err_msg.clone());
+            state.error_display_timer = Some(now);
+        }
+
+        let start_time = state.error_display_timer.unwrap_or(now);
+        let elapsed = now.duration_since(start_time);
+
+        if elapsed >= display_duration {
+            state.show_error = None;
+            state.last_error_message = None;
+            state.error_display_timer = None;
+            return;
+        }
+
+        let remaining = display_duration.as_secs_f32() - elapsed.as_secs_f32();
+        let alpha = if remaining < 0.5 {
+            (remaining / 0.5).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+
+        let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
+        let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
+        let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
+
+        egui::Area::new(egui::Id::new("error_toast_area"))
+            .anchor(egui::Align2::CENTER_TOP, vec2(0.0, 80.0 + state.safe_area_top))
+            .order(egui::Order::Tooltip)
             .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        "ACTION FAILED",
-                        egui::FontId::proportional(26.0),
-                        crate::ui::theme::accent_danger()
-                    );
-                    
-                    ui.add_space(12.0);
-                    
-                    ui.label(RichText::new(err_msg)
-                        .size(16.0)
-                        .color(Color32::WHITE)
-                    );
-
-                    ui.add_space(24.0);
-
-                    let ok_btn = egui::Button::new(RichText::new("OK").size(16.0).strong())
-                        .fill(crate::ui::theme::menu_secondary_button())
-                        .corner_radius(8);
-                    
-                    if ui.add_sized(vec2(120.0, 40.0), ok_btn).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                        state.show_error = None;
-                    }
-                });
+                egui::Frame::new()
+                    .fill(bg_color)
+                    .stroke(egui::Stroke::new(1.0_f32, border_color))
+                    .corner_radius(6)
+                    .inner_margin(egui::Margin::symmetric(16, 8))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new("⚠️")
+                                    .color(border_color)
+                                    .size(12.0)
+                            );
+                            ui.add_space(6.0);
+                            ui.label(
+                                RichText::new(err_msg)
+                                    .color(text_color)
+                                    .size(12.0)
+                                    .strong()
+                            );
+                        });
+                    });
             });
+
+        // Request repaint so the fade-out animation and auto-dismiss run smoothly
+        ctx.request_repaint();
     }
 }

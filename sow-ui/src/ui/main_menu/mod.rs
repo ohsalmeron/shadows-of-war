@@ -57,7 +57,11 @@ impl Default for MainMenuState {
             show_avatar_picker: false,
             selected_avatar_id: 255,
             show_single_player_setup: false,
-            single_player_config: Box::new(sow_core::game_config::GameConfig::default()),
+            single_player_config: Box::new({
+                let mut config = sow_core::game_config::GameConfig::default();
+                config.map_name = "World".to_string();
+                config
+            }),
             error_message: None,
         }
     }

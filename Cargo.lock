@@ -3732,6 +3732,7 @@ dependencies = [
  "md5",
  "serde_json",
  "sow-core",
+ "sow-map",
  "sow-net",
  "sow-render",
  "sow-ui",
@@ -3763,6 +3764,37 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "toml",
+]
+
+[[package]]
+name = "sow-map"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "blade-egui",
+ "blade-graphics",
+ "brotli",
+ "console_error_panic_hook",
+ "console_log",
+ "crossbeam-channel",
+ "egui",
+ "env_logger",
+ "getrandom 0.2.17",
+ "image",
+ "js-sys",
+ "log",
+ "serde_json",
+ "sow-core",
+ "sow-lang",
+ "sow-render",
+ "sow-ui",
+ "tokio",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time 1.1.0",
+ "winit 0.31.0-beta.2",
 ]
 
 [[package]]
