@@ -63,45 +63,113 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let terrain_byte = (val >> 16u) & 0xFFu;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
+    // 1. Static high-fidelity paper parchment grain anchor
+    let px = floor(world_x * 8.0);
+    let py = floor(world_y * 8.0);
+    let paper_grain = fract(sin(px * 12.9898 + py * 78.233) * 43758.5453);
+    let land_texture = 0.94 + paper_grain * 0.06; // Fine organic paper tooth
+
     var terrain_color = vec4<f32>(0.0);
     
     if is_land {
         let is_shoreline = (terrain_byte & 0x40u) != 0u;
         let mag_center = f32(terrain_byte & 0x1Fu);
+
+        // A. Smooth Bilinear Lambertian hillshading (shaded mountain relief)
+        // Fetch 4 surrounding elevations to calculate smooth slopes crossing tile boundaries
+        let val_10 = textureLoad(territory_texture, pixel_coords + vec2<i32>(1, 0), 0).x;
+        let is_land_10 = ((val_10 >> 16u) & 0x80u) != 0u;
+        let elev_10 = select(0.0, f32((val_10 >> 16u) & 0x1Fu), is_land_10);
+
+        let val_01 = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, 1), 0).x;
+        let is_land_01 = ((val_01 >> 16u) & 0x80u) != 0u;
+        let elev_01 = select(0.0, f32((val_01 >> 16u) & 0x1Fu), is_land_01);
+
+        let val_11 = textureLoad(territory_texture, pixel_coords + vec2<i32>(1, 1), 0).x;
+        let is_land_11 = ((val_11 >> 16u) & 0x80u) != 0u;
+        let elev_11 = select(0.0, f32((val_11 >> 16u) & 0x1Fu), is_land_11);
+
+        let tx = fract(world_x);
+        let ty = fract(world_y);
+
+        // Continuous partial derivatives of bilinear interpolation
+        let slope_x = mix(elev_10 - mag_center, elev_11 - elev_01, ty);
+        let slope_y = mix(elev_01 - mag_center, elev_11 - elev_10, tx);
         
-        let px = floor(world_x * 8.0);
-        let py = floor(world_y * 8.0);
-        let land_noise = fract(sin(px * 12.9898 + py * 78.233) * 43758.5453);
-        let noise_offset = (land_noise - 0.5) * 0.05; // Gentle ±2.5% color variation
+        let light_dir = normalize(vec2<f32>(-1.0, -1.0)); // Top-Left virtual sun
+        let slope = vec2<f32>(slope_x, slope_y);
+        let hillshade = dot(slope, light_dir) * 0.035; // Drastically softened for watercolor/pencil feel
+
+        // Gentle noise integration for hand-sketched parchment look
+        let shaded_relief = hillshade * (1.0 + paper_grain * 0.2);
+
+        // B. Steppe Parchment desaturated paper base palette (darker & richer)
+        let shore_base = vec3<f32>(0.65, 0.58, 0.44);      // Rich Warm Sand Parchment
+        let plains_base = vec3<f32>(0.35, 0.45, 0.28);     // Rich Deep Mossy Green
+        let highland_base = vec3<f32>(0.52, 0.42, 0.30);   // Rich Cardboard Kraft Paper Brown
+        let mountain_base = vec3<f32>(0.32, 0.30, 0.28);   // Dark Slate Gray Paper
+        let snowy_peak = vec3<f32>(0.72, 0.72, 0.75);      // Soft Muted Snowy Peak
+
+        var base_land_color = plains_base;
 
         if is_shoreline {
-            let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);
-            terrain_color = vec4<f32>(base + noise_offset * 0.5, 1.0); // OpenFront Shore
+            base_land_color = shore_base;
         } else if mag_center < 10.0 {
-            let r = 190.0 / 255.0;
-            let g = (220.0 - 2.0 * mag_center) / 255.0;
-            let b = 138.0 / 255.0;
-            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset, 1.0); // OpenFront Plains
+            let factor = mag_center / 10.0;
+            base_land_color = mix(shore_base, plains_base, factor);
         } else if mag_center < 20.0 {
-            let r = (200.0 + 2.0 * mag_center) / 255.0;
-            let g = (183.0 + 2.0 * mag_center) / 255.0;
-            let b = (138.0 + 2.0 * mag_center) / 255.0;
-            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset * 1.2, 1.0); // OpenFront Highlands
+            let factor = (mag_center - 10.0) / 10.0;
+            base_land_color = mix(plains_base, highland_base, factor);
         } else {
-            // Smooth blend/fusion from high Highland color to snowy white peak
-            let highland_base = vec3<f32>(240.0 / 255.0, 223.0 / 255.0, 178.0 / 255.0);
-            let snowy_peak = vec3<f32>(245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0);
-            let blend = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
-            let peak_color = mix(highland_base, snowy_peak, blend);
-            terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // OpenFront Mountains
+            // Mountain Elevation Blending with Pencil Capping
+            if mag_center < 24.0 {
+                let blend = (mag_center - 20.0) / 4.0;
+                base_land_color = mix(highland_base, mountain_base, blend);
+            } else if mag_center < 27.0 {
+                let blend = (mag_center - 24.0) / 3.0;
+                base_land_color = mix(mountain_base, mountain_base * 0.7, blend); // Deep dark stone ridges
+            } else {
+                let blend = clamp((mag_center - 27.0) / 3.0, 0.0, 1.0);
+                base_land_color = mix(mountain_base * 0.7, snowy_peak, blend);
+            }
         }
+
+        // Apply paper texture + hillshade relief
+        let final_land = (base_land_color * land_texture) + vec3<f32>(shaded_relief);
+        terrain_color = vec4<f32>(final_land, 1.0);
+
     } else {
-        let is_ocean_water = (terrain_byte & 0x20u) != 0u;
-        
-        let px = floor(world_x * 8.0);
-        let py = floor(world_y * 8.0);
-        
-        // Procedural stable seed per tile for unique regional wave properties
+        // C. Coastal ribbon glows fading into Prussian Navy
+        // Check neighbors to identify water tiles adjacent to shorelines
+        let neighbor_u = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, -1), 0).x;
+        let neighbor_d = textureLoad(territory_texture, pixel_coords + vec2<i32>(0, 1), 0).x;
+        let neighbor_l = textureLoad(territory_texture, pixel_coords + vec2<i32>(-1, 0), 0).x;
+        let neighbor_r = textureLoad(territory_texture, pixel_coords + vec2<i32>(1, 0), 0).x;
+
+        let is_land_u = ((neighbor_u >> 16u) & 0x80u) != 0u;
+        let is_land_d = ((neighbor_d >> 16u) & 0x80u) != 0u;
+        let is_land_l = ((neighbor_l >> 16u) & 0x80u) != 0u;
+        let is_land_r = ((neighbor_r >> 16u) & 0x80u) != 0u;
+
+        let fx = fract(world_x);
+        let fy = fract(world_y);
+
+        var dist_to_land = 1.0;
+        if is_land_u { dist_to_land = min(dist_to_land, fy); }
+        if is_land_d { dist_to_land = min(dist_to_land, 1.0 - fy); }
+        if is_land_l { dist_to_land = min(dist_to_land, fx); }
+        if is_land_r { dist_to_land = min(dist_to_land, 1.0 - fx); }
+
+        let is_near_shore = is_land_u || is_land_d || is_land_l || is_land_r;
+        let glow_factor = select(0.0, clamp(1.0 - dist_to_land, 0.0, 1.0), is_near_shore);
+
+        let ocean_base = vec3<f32>(0.16, 0.28, 0.44); // Deep Navy Prussian Blue
+        let coast_glow = vec3<f32>(0.38, 0.56, 0.78); // Glowing light cyan ribbon
+
+        // Blend smooth coastal glow into ocean
+        var water_color = mix(ocean_base, coast_glow, pow(glow_factor, 1.8) * 0.7);
+
+        // Procedural stable seed for wave animations
         let tile_seed = fract(sin(f32(cell_x) * 12.9898 + f32(cell_y) * 78.233) * 43758.5453);
         let wave_speed = 0.8 + tile_seed * 1.4;
         let wave_phase = tile_seed * 6.28318;
@@ -111,32 +179,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let t = globals.time * wave_speed + wave_phase;
         let wave = sin(px * freq_x + py * freq_y + t) + cos(py * freq_x - px * freq_y + t * 0.7);
 
-        // Animated sparkling/glittering sparkles (1.2% chance per pixel, changes 4 times/sec)
-        let sparkle_t = floor(globals.time * 4.0);
-        let sparkle_hash = fract(sin(px * 12.9898 + py * 78.233 + sparkle_t) * 43758.5453);
-        let has_sparkle = sparkle_hash > 0.988;
-
-        var color_deep = vec3<f32>(70.0 / 255.0, 132.0 / 255.0, 180.0 / 255.0); // OpenFront base blue
-        var color_mid  = vec3<f32>(85.0 / 255.0, 143.0 / 255.0, 215.0 / 255.0);
-        var color_foam = vec3<f32>(100.0 / 255.0, 143.0 / 255.0, 255.0 / 255.0); // OpenFront Shoreline water
-        
-        if !is_ocean_water {
-            // River/Lake uses a fresh, teal-tinted pastel blue
-            color_deep = vec3<f32>(60.0 / 255.0, 140.0 / 255.0, 175.0 / 255.0);
-            color_mid  = vec3<f32>(75.0 / 255.0, 155.0 / 255.0, 195.0 / 255.0);
-            color_foam = vec3<f32>(95.0 / 255.0, 175.0 / 255.0, 220.0 / 255.0);
+        // Subtle retro water foam sparkle
+        if wave > 1.3 {
+            water_color = mix(water_color, coast_glow, 0.25);
         }
 
-        var final_water_color = color_deep;
-        if has_sparkle {
-            final_water_color = color_foam;
-        } else if wave > 1.2 {
-            final_water_color = color_foam;
-        } else if wave > 0.4 {
-            final_water_color = color_mid;
-        }
-
-        terrain_color = vec4<f32>(final_water_color, 1.0);
+        terrain_color = vec4<f32>(water_color * (0.98 + paper_grain * 0.02), 1.0);
     }
 
     // Convert sRGB palette input to linear space so final pow(base_color, 1.0/2.2) renders the exact intended colors
@@ -145,7 +193,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var base_color = terrain_color.rgb;
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
-        base_color = mix(terrain_color.rgb, albedo, 0.75);
+        // Rich 50% opacity alpha blend for player territories
+        base_color = mix(terrain_color.rgb, albedo, 0.50);
     }
 
     if owner_id > 0u {
