@@ -1315,7 +1315,7 @@ impl SowApp {
                                 }
 
                                 if let Some(path) = sow_core::building::railroad::find_rail_path(&temp_map, start_idx, station.tile_idx) {
-                                    if path.len() <= 120 {
+                                    if path.len() <= 480 {
                                         paths_found += 1;
                                         connected_stations.push(station.tile_idx);
                                         let rail_tiles = compute_rail_tiles(map_w, &path);

@@ -34,7 +34,11 @@ pub fn draw_avatar_picker_modal(
             ui.scope_builder(egui::UiBuilder::new().max_rect(modal_rect), |ui| {
                 crate::ui::theme::standard_panel_frame(is_mobile)
                     .show(ui, |ui| {
-                        ui.set_min_size(inner_size);
+                        if is_mobile {
+                            ui.set_min_height(inner_size.y);
+                        } else {
+                            ui.set_min_size(inner_size);
+                        }
                         ui.vertical(|ui| {
                             ui.add_space(4.0);
                             ui.vertical_centered(|ui| {

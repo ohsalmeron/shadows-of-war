@@ -203,7 +203,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                 let back_btn = crate::widgets::ThemeButton::new(&strings.back_button)
                     .style(crate::widgets::ThemeButtonStyle::Tertiary)
                     .min_size(egui::vec2(
-                        if compact { panel_w - 32.0 } else { 200.0 },
+                        if compact { ui.available_width() } else { 200.0 },
                         50.0,
                     ));
 

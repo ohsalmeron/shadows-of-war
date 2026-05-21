@@ -99,7 +99,11 @@ pub fn draw_modal(
             ui.scope_builder(egui::UiBuilder::new().max_rect(modal_rect), |ui| {
                 theme::standard_panel_frame(is_mobile)
                     .show(ui, |ui| {
-                        ui.set_min_size(inner_size);
+                        if is_mobile {
+                            ui.set_min_height(inner_size.y);
+                        } else {
+                            ui.set_min_size(inner_size);
+                        }
 
                         // Header Info
                         ui.vertical_centered(|ui| {
@@ -117,18 +121,51 @@ pub fn draw_modal(
                             );
                         });
 
-                        ui.add_space(20.0);
+                        ui.add_space(12.0);
 
                         // Content Scroll Area
                         egui::ScrollArea::vertical()
                             .auto_shrink(false)
                             .show(ui, |ui| {
-                                ui.spacing_mut().item_spacing = egui::vec2(0.0, 16.0);
+                                ui.spacing_mut().item_spacing = egui::vec2(0.0, 12.0);
                                 let config = &mut state.single_player_config;
+
+                                let draw_preview = |ui: &mut egui::Ui, config: &sow_core::game_config::GameConfig| {
+                                    let thumbnail = asset_loader.thumbnail(&config.map_name);
+                                    let aspect = 1.77_f32;
+                                    let w = ui.available_width();
+                                    let h = w / aspect;
+                                    let rect = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover()).0;
+
+                                    if let Some(tex) = thumbnail {
+                                        let image = egui::Image::new(tex)
+                                            .fit_to_exact_size(rect.size())
+                                            .corner_radius(12);
+                                        ui.put(rect, image);
+                                    } else {
+                                        ui.painter().rect_filled(rect, 12.0, Color32::from_black_alpha(120));
+                                        crate::ui::theme::outlined_text(
+                                            ui.painter(),
+                                            rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            &strings.no_preview,
+                                            egui::FontId::proportional(16.0),
+                                            theme::text_secondary(),
+                                            Color32::BLACK,
+                                        );
+                                    }
+
+                                    ui.painter().rect_stroke(
+                                        rect,
+                                        12.0_f32,
+                                        Stroke::new(1.5_f32, theme::menu_panel_border_glow()),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                };
 
                                 let draw_map_picker = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                                     setting_card(ui, &strings.map_selection, is_mobile, |ui| {
-                                        ui.style_mut().spacing.button_padding = egui::vec2(16.0, 10.0);
+                                        ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
                                         egui::ComboBox::from_id_salt("sp_map")
                                             .width(ui.available_width() - 8.0)
                                             .selected_text(RichText::new(&config.map_name).size(16.0))
@@ -151,7 +188,7 @@ pub fn draw_modal(
 
                                 let draw_diff = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                                     setting_card(ui, &strings.bot_difficulty, is_mobile, |ui| {
-                                        ui.style_mut().spacing.button_padding = egui::vec2(16.0, 10.0);
+                                        ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
                                         egui::ComboBox::from_id_salt("sp_diff")
                                             .width(ui.available_width() - 8.0)
                                             .selected_text(RichText::new(format!("{:?}", config.bot_difficulty)).size(16.0))
@@ -192,6 +229,7 @@ pub fn draw_modal(
                                 
                                 if is_mobile {
                                     // Single Column layout
+                                    draw_preview(ui, config);
                                     draw_map_picker(ui, config);
                                     draw_diff(ui, config);
                                     draw_bots(ui, config);
@@ -200,59 +238,27 @@ pub fn draw_modal(
                                 } else {
                                     // Two columns on Desktop
                                     ui.columns(2, |cols| {
-                                        cols[0].spacing_mut().item_spacing = egui::vec2(0.0, 16.0);
-                                        cols[1].spacing_mut().item_spacing = egui::vec2(0.0, 16.0);
+                                        cols[0].spacing_mut().item_spacing = egui::vec2(0.0, 12.0);
+                                        cols[1].spacing_mut().item_spacing = egui::vec2(0.0, 12.0);
 
-                                        // Left Column: Map Visual briefing, selector, diff, and spawn
-                                        // Draw Map visual preview
-                                        let thumbnail = asset_loader.thumbnail(&config.map_name);
-                                        let aspect = 1.77_f32;
-                                        let w = cols[0].available_width();
-                                        let h = w / aspect;
-                                        let rect = cols[0].allocate_exact_size(egui::vec2(w, h), egui::Sense::hover()).0;
-
-                                        if let Some(tex) = thumbnail {
-                                            let image = egui::Image::new(tex)
-                                                .fit_to_exact_size(rect.size())
-                                                .corner_radius(12);
-                                            cols[0].put(rect, image);
-                                        } else {
-                                            cols[0].painter().rect_filled(rect, 12.0, Color32::from_black_alpha(120));
-                                            crate::ui::theme::outlined_text(
-                                                cols[0].painter(),
-                                                rect.center(),
-                                                egui::Align2::CENTER_CENTER,
-                                                &strings.no_preview,
-                                                egui::FontId::proportional(16.0),
-                                                theme::text_secondary(),
-                                                Color32::BLACK,
-                                            );
-                                        }
-
-                                        cols[0].painter().rect_stroke(
-                                            rect,
-                                            12.0_f32,
-                                            Stroke::new(1.5_f32, theme::menu_panel_border_glow()),
-                                            egui::StrokeKind::Inside,
-                                        );
-
-                                        cols[0].add_space(4.0);
+                                        // Left Column: Map Preview and Selectors (3 items)
+                                        draw_preview(&mut cols[0], config);
                                         draw_map_picker(&mut cols[0], config);
                                         draw_diff(&mut cols[0], config);
-                                        draw_spawn(&mut cols[0], config);
 
-                                        // Right Column: Sliders
+                                        // Right Column: Sliders and Toggles (3 items)
                                         draw_bots(&mut cols[1], config);
                                         draw_nations(&mut cols[1], config);
+                                        draw_spawn(&mut cols[1], config);
                                     });
                                 }
 
-                                ui.add_space(20.0);
+                                ui.add_space(12.0);
 
                                 // Campaign action buttons at bottom
                                 ui.vertical_centered(|ui| {
                                     let (btn_w, btn_h) = if is_mobile {
-                                        (panel_w - 32.0, 44.0)
+                                        (ui.available_width(), 44.0)
                                     } else {
                                         (220.0, 50.0)
                                     };
@@ -296,7 +302,7 @@ pub fn draw_modal(
                                             close = true;
                                         }
 
-                                        ui.add_space(12.0);
+                                        ui.add_space(8.0);
 
                                         let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
                                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
@@ -309,7 +315,7 @@ pub fn draw_modal(
                                     }
                                 });
                                 
-                                ui.add_space(16.0);
+                                ui.add_space(8.0);
                             });
                      });
             });

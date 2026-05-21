@@ -174,7 +174,11 @@ pub fn draw(
             let inner_size = parent_available - egui::vec2(pad, pad);
 
             panel_frame.show(ui, |ui| {
-                ui.set_min_size(inner_size);
+                if compact {
+                    ui.set_min_height(inner_size.y);
+                } else {
+                    ui.set_min_size(inner_size);
+                }
                 let show_footer = ui.available_height() > 430.0;
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {

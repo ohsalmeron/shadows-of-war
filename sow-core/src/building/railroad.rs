@@ -230,7 +230,7 @@ pub fn update_railroads(engine: &mut SowEngine) {
                 let mut path2 = Vec::new();
                 let mut pathfound = false;
 
-                if let Some(mut to_s_path) = find_rail_path(&engine.state.map, closest_tile, s_tile) {
+                if let Some(to_s_path) = find_rail_path(&engine.state.map, closest_tile, s_tile) {
                     if to_s_path.len() <= 480 {
                         path1 = original_rail.path[0..closest_tile_idx].to_vec();
                         path1.extend(to_s_path.clone());

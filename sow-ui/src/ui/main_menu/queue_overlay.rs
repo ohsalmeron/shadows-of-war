@@ -29,7 +29,11 @@ pub fn draw_queue_overlay(
     let inner_size = parent_available - egui::vec2(pad, pad);
 
     panel_frame.show(ui, |ui| {
-        ui.set_min_size(inner_size);
+        if compact {
+            ui.set_min_height(inner_size.y);
+        } else {
+            ui.set_min_size(inner_size);
+        }
         ui.vertical(|ui| {
             if let Some(lobby) = lobby_info {
                 // Header (Status / Title / Timer)
