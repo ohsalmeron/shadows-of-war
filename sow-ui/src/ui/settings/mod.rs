@@ -1,9 +1,8 @@
 use crate::ui::theme::{
-    accent_solo_cyan, accent_solo_cyan_hover, menu_panel_border_glow, menu_secondary_button,
-    panel_bg, text_secondary,
+    accent_solo_cyan, accent_solo_cyan_hover, menu_secondary_button, text_secondary,
 };
 use crate::UiAction;
-use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Slider, Stroke};
+use egui::{Align, Color32, Layout, RichText, Slider, Stroke};
 pub use sow_lang::Language;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +36,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
     let mut action = None;
     let compact = root_ui.ctx().content_rect().width() < 900.0;
     let panel_w = if compact {
-        root_ui.ctx().content_rect().width() - 64.0
+        root_ui.ctx().content_rect().width()
     } else {
         520.0
     };
@@ -58,19 +57,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .fixed_size(egui::vec2(panel_w, 0.0))
-        .frame(
-            Frame::new()
-                .fill(panel_bg())
-                .stroke(Stroke::new(1.5_f32, menu_panel_border_glow()))
-                .corner_radius(CornerRadius::same(12))
-                .inner_margin(Margin::same(if compact { 16 } else { 24 }))
-                .shadow(egui::epaint::Shadow {
-                    offset: [0, 8],
-                    blur: 24,
-                    spread: 4,
-                    color: Color32::from_black_alpha(160),
-                }),
-        )
+        .frame(crate::ui::theme::standard_panel_frame(compact))
         .show(root_ui.ctx(), |ui| {
             // Header
             ui.horizontal(|ui| {

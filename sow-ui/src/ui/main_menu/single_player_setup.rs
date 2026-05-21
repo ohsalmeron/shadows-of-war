@@ -3,18 +3,18 @@ use egui::{Color32, CornerRadius, RichText, Stroke, Margin};
 use crate::ui::theme;
 use super::MainMenuState;
 
-fn setting_card(ui: &mut egui::Ui, title: &str, _is_mobile: bool, content: impl FnOnce(&mut egui::Ui)) {
+fn setting_card(ui: &mut egui::Ui, title: &str, is_mobile: bool, content: impl FnOnce(&mut egui::Ui)) {
     let frame = egui::Frame::NONE
         .fill(theme::nickname_field_bg())
         .stroke(egui::Stroke::new(1.0_f32, theme::nickname_field_border()))
         .corner_radius(CornerRadius::same(12))
-        .inner_margin(Margin::symmetric(16, 12));
+        .inner_margin(Margin::symmetric(14, if is_mobile { 10 } else { 8 }));
 
     frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.vertical(|ui| {
-            crate::ui::theme::outlined_label(ui, title, egui::FontId::proportional(16.0), theme::text_secondary());
-            ui.add_space(8.0);
+            crate::ui::theme::outlined_label(ui, title, egui::FontId::proportional(15.0), theme::text_secondary());
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 content(ui);
             });
@@ -81,28 +81,25 @@ pub fn draw_modal(
 
             // 3. Central Modal Panel
             let panel_w = if is_mobile {
-                screen_w - 32.0
+                screen_w
             } else {
                 840.0f32.min(screen_w - 64.0)
             };
-            let panel_h = 750.0f32.min(screen_h - 32.0);
+            let panel_h = if is_mobile {
+                screen_h
+            } else {
+                750.0f32.min(screen_h - 64.0)
+            };
             let modal_size = egui::vec2(panel_w, panel_h);
             let modal_rect = egui::Rect::from_center_size(screen_rect.center(), modal_size);
 
+            let pad = if is_mobile { 32.0 } else { 50.0 };
+            let inner_size = modal_size - egui::vec2(pad, pad);
+
             ui.scope_builder(egui::UiBuilder::new().max_rect(modal_rect), |ui| {
-                egui::Frame::NONE
-                    .fill(theme::panel_bg())
-                    .stroke(egui::Stroke::new(1.5_f32, theme::menu_panel_border_glow()))
-                    .corner_radius(CornerRadius::same(20))
-                    .inner_margin(if is_mobile { 16.0 } else { 28.0 })
-                    .shadow(egui::Shadow {
-                        blur: 32,
-                        spread: 0,
-                        color: theme::menu_panel_border_glow().linear_multiply(0.25),
-                        offset: [0, 10],
-                    })
+                theme::standard_panel_frame(is_mobile)
                     .show(ui, |ui| {
-                        ui.set_min_size(ui.available_size());
+                        ui.set_min_size(inner_size);
 
                         // Header Info
                         ui.vertical_centered(|ui| {

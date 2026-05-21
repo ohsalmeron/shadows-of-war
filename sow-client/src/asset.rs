@@ -42,11 +42,12 @@ impl SowApp {
                             color_image,
                             egui::TextureOptions::LINEAR,
                         );
+                        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
                         self.ui
                             .app
                             .asset_loader
                             .thumbnails
-                            .insert(map_name.clone(), texture);
+                            .insert(key, texture);
                     } else {
                         log::warn!("Failed to decode thumbnail for {}", map_name);
                     }

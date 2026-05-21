@@ -47,6 +47,8 @@ pub struct SowEngine {
     pub projectiles: Vec<crate::game::Projectile>,
     pub silo_cooldowns: std::collections::HashMap<u64, u32>,
     pub mirv_launches: std::collections::HashMap<u16, u32>,
+    pub recent_nuke_targets: Vec<(u16, u32, u64)>,
+    pub mirv_cooldown_targets: std::collections::HashMap<u16, u64>,
 }
 
 impl SowEngine {
@@ -86,6 +88,8 @@ impl SowEngine {
             projectiles: Vec::new(),
             silo_cooldowns: std::collections::HashMap::new(),
             mirv_launches: std::collections::HashMap::new(),
+            recent_nuke_targets: Vec::new(),
+            mirv_cooldown_targets: std::collections::HashMap::new(),
         }
     }
 

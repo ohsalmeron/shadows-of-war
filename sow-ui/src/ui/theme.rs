@@ -177,18 +177,27 @@ pub fn hud_panel_frame() -> egui::Frame {
 }
 
 #[inline]
-pub fn premium_panel_frame(compact: bool) -> egui::Frame {
-    egui::Frame::new()
-        .fill(panel_bg())
-        .stroke(egui::Stroke::new(1.0_f32, menu_panel_border_glow()))
-        .corner_radius(CornerRadius::same(12))
-        .inner_margin(if compact { egui::Margin::same(14) } else { egui::Margin::same(20) })
-        .shadow(egui::Shadow {
-            blur: 24,
-            spread: 0,
-            color: Color32::from_rgba_unmultiplied(6, 182, 212, 30),
-            offset: [0, 10],
-        })
+pub fn standard_panel_frame(compact: bool) -> egui::Frame {
+    if compact {
+        egui::Frame::new()
+            .fill(panel_bg())
+            .stroke(egui::Stroke::NONE)
+            .corner_radius(CornerRadius::ZERO)
+            .inner_margin(egui::Margin::same(16))
+            .shadow(egui::Shadow::NONE)
+    } else {
+        egui::Frame::new()
+            .fill(panel_bg())
+            .stroke(egui::Stroke::new(1.0_f32, menu_panel_border_glow()))
+            .corner_radius(CornerRadius::same(12))
+            .inner_margin(egui::Margin::same(24))
+            .shadow(egui::Shadow {
+                blur: 24,
+                spread: 0,
+                color: Color32::from_rgba_unmultiplied(6, 182, 212, 30),
+                offset: [0, 10],
+            })
+    }
 }
 
 

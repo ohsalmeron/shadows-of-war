@@ -22,21 +22,14 @@ pub fn draw_queue_overlay(
         }
     }
 
-    // 1. Premium dark panel matching main menu
-    let panel_frame = Frame::new()
-        .fill(crate::ui::theme::panel_bg())
-        .stroke(Stroke::new(1.0_f32, crate::ui::theme::menu_panel_border_glow()))
-        .corner_radius(CornerRadius::same(12))
-        .inner_margin(if compact { 18.0 } else { 24.0 })
-        .shadow(egui::Shadow {
-            blur: 24,
-            spread: 0,
-            color: crate::ui::theme::menu_panel_border_glow().linear_multiply(0.25),
-            offset: [0, 10],
-        });
+    // 1. Premium standard panel matching main menu
+    let panel_frame = crate::ui::theme::standard_panel_frame(compact);
+    let parent_available = ui.available_size();
+    let pad = if compact { 32.0 } else { 50.0 };
+    let inner_size = parent_available - egui::vec2(pad, pad);
 
     panel_frame.show(ui, |ui| {
-        ui.set_min_size(ui.available_size());
+        ui.set_min_size(inner_size);
         ui.vertical(|ui| {
             if let Some(lobby) = lobby_info {
                 // Header (Status / Title / Timer)
@@ -178,16 +171,22 @@ fn draw_map_briefing(
             if !is_mobile {
                 ui.set_height(ui.available_height());
             }
+            ui.spacing_mut().item_spacing.y = 6.0;
             ui.vertical(|ui| {
                 // Header
                 ui.label(RichText::new(&strings.tactical_briefing).size(14.0).strong().color(crate::ui::theme::text_secondary()));
-                ui.add_space(8.0);
+                ui.add_space(4.0);
 
                 // Map Preview Visual
                 let thumbnail = asset_loader.thumbnail(&lobby.map_name);
                 let aspect = if is_mobile { 2.4_f32 } else { 1.77_f32 }; // Panoramic on mobile
                 let preview_w = ui.available_width();
-                let preview_h = if is_mobile { 100.0f32.min(preview_w / aspect) } else { preview_w / aspect };
+                let max_img_h = if is_mobile {
+                    100.0f32
+                } else {
+                    (ui.available_height() - 190.0).max(80.0)
+                };
+                let preview_h = (preview_w / aspect).min(max_img_h);
 
                 let rect = ui.allocate_exact_size(egui::vec2(preview_w, preview_h), egui::Sense::hover()).0;
 
@@ -217,13 +216,13 @@ fn draw_map_briefing(
                     egui::StrokeKind::Inside,
                 );
 
-                ui.add_space(12.0);
+                ui.add_space(6.0);
 
                 // Map details
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(RichText::new(lobby.map_name.to_uppercase()).size(if is_mobile { 18.0 } else { 24.0 }).strong().color(Color32::WHITE));
-                        ui.add_space(4.0);
+                        ui.add_space(2.0);
 
                         // Mode indicator
                         let (mode_label, mode_color) = if lobby.game_mode == "FFA" {
@@ -245,9 +244,9 @@ fn draw_map_briefing(
                     });
                 });
 
-                ui.add_space(12.0);
+                ui.add_space(6.0);
                 ui.separator();
-                ui.add_space(8.0);
+                ui.add_space(4.0);
 
                 // Telemetry Details
                 if is_mobile {
@@ -266,7 +265,7 @@ fn draw_map_briefing(
                                 ui.label(RichText::new(val).size(12.0).strong().color(Color32::WHITE));
                             });
                         });
-                        ui.add_space(4.0);
+                        ui.add_space(2.0);
                     };
 
                     draw_detail(&strings.lobby_channel_label, &format!("#{:06X}", lobby.id % 0xFFFFFF));
@@ -292,6 +291,7 @@ fn draw_ready_room(
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.set_height(ui.available_height());
+            ui.spacing_mut().item_spacing.y = 6.0;
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {

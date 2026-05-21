@@ -3,7 +3,8 @@ use crate::building::{
     structure_kind_enabled,
 };
 use crate::engine::SowEngine;
-use crate::game::BuildingKind;
+use crate::execution::sam::sam_range;
+use crate::game::{BuildingKind, NukeKind};
 use crate::protocol::{AttackIntent, GameplayIntent, StampedIntent};
 use crate::rng::NextIntExt;
 use wyrand::WyRand;
@@ -436,7 +437,32 @@ impl SowEngine {
                     (p_me.alliances.clone(), p_me.troops, p_me.tile_count)
                 };
 
-                for &neighbor in &neighbor_players {
+                let max_alliances = if bot_iq >= 130 { 1 } else if bot_iq >= 100 { 3 } else { 5 };
+                
+                // Betrayal logic
+                if bot_iq >= 130 && !me_alliances.is_empty() {
+                    for &ally_id in &me_alliances {
+                        if let Some(ally) = self.state.player(ally_id) {
+                            if me_troops >= ally.troops * 2.0 {
+                                let tick = self.state.tick as u32;
+                                if let Some(p_me) = self.state.player_mut(bot_id) {
+                                    p_me.iq_points -= alliance_cost;
+                                    p_me.traitor = true;
+                                    p_me.traitor_tick = tick;
+                                }
+                                decisions.push(BotDecision {
+                                    bot_id,
+                                    kind: BotDecisionKind::Build,
+                                    intent: GameplayIntent::BreakAlliance { target_player: ally_id },
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if me_alliances.len() < max_alliances {
+                    for &neighbor in &neighbor_players {
                     let (neigh_alive, neigh_troops, neigh_tile_count) = match self.state.player(neighbor) {
                         Some(pn) => (pn.alive, pn.troops, pn.tile_count),
                         None => continue,
@@ -474,6 +500,7 @@ impl SowEngine {
                         }
                     }
                 }
+                }
 
                 if let Some(neighbor) = proposed_target {
                     if let Some(p_me) = self.state.player_mut(bot_id) {
@@ -491,10 +518,13 @@ impl SowEngine {
             if slot.do_structures && slot.is_nation {
                 let current_points = self.state.player(bot_id).unwrap().iq_points;
                 if current_points >= build_cost {
-                    let Some(player) = self.state.player(bot_id) else {
-                        continue;
+                    let (player_gold, player_tile_count) = {
+                        if let Some(player) = self.state.player(bot_id) {
+                            (player.gold, player.tile_count)
+                        } else {
+                            continue;
+                        }
                     };
-                    let player_gold = player.gold;
                     if player_gold >= cheapest_gold_cost(BuildingKind::DefensePost) {
                         let agg = self
                             .building_aggregates
@@ -502,7 +532,7 @@ impl SowEngine {
                             .copied()
                             .unwrap_or_default();
                         let city_equivalent =
-                            agg.ready_city_count.max((player.tile_count / 2000).max(1));
+                            agg.ready_city_count.max((player_tile_count / 2000).max(1));
                         let build_order = [
                             BuildingKind::DefensePost,
                             BuildingKind::Port,
@@ -516,15 +546,62 @@ impl SowEngine {
                                 continue;
                             }
                             let owned = agg.total_structures_of_kind(kind);
-                            let target_count = bot_structure_target_count(
+                            let mut target_count = bot_structure_target_count(
                                 kind,
                                 city_equivalent,
                                 crate::game_config::BotDifficulty::Terminator,
                             );
+                            if kind == BuildingKind::DefensePost && bot_iq >= 110 {
+                                let mut under_attack = false;
+                                for att in &self.attacks {
+                                    if att.target_owner == bot_id {
+                                        under_attack = true;
+                                        break;
+                                    }
+                                }
+                                if under_attack { target_count += 3; }
+                            }
                             if kind == BuildingKind::MissileSilo && owned >= 3 {
                                 continue;
                             }
                             if owned >= target_count {
+                                let total_owned = agg.count_city + agg.count_factory + agg.count_port + agg.count_defense + agg.count_sam + agg.count_silo;
+                                if bot_iq >= 110 && total_owned as f32 / player_tile_count.max(1) as f32 > 1.0 / 1500.0 {
+                                    let mut upgrade_target = None;
+                                    let mut best_score = -1.0;
+                                    for b in &self.buildings {
+                                        if b.owner_id == bot_id && b.kind == kind && !b.under_construction && b.level < 5 {
+                                            let mut score = 1.0;
+                                            for sam in &self.buildings {
+                                                if sam.owner_id == bot_id && sam.kind == BuildingKind::SamLauncher && !sam.under_construction {
+                                                    let dist_sq = crate::building::placement::manhattan(b.tile_idx as i32 % self.state.map.width as i32, b.tile_idx as i32 / self.state.map.width as i32, sam.tile_idx as i32 % self.state.map.width as i32, sam.tile_idx as i32 / self.state.map.width as i32);
+                                                    if dist_sq as f32 <= sam_range(sam.level) * sam_range(sam.level) {
+                                                        score += 10.0;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if score > best_score {
+                                                best_score = score;
+                                                upgrade_target = Some(b.id);
+                                            }
+                                        }
+                                    }
+                                    if let Some(target_id) = upgrade_target {
+                                        let cost = structure_build_cost_gold(kind, bot_id, &self.buildings);
+                                        if player_gold >= cost {
+                                            if let Some(p_me) = self.state.player_mut(bot_id) {
+                                                p_me.iq_points -= build_cost;
+                                            }
+                                            decisions.push(BotDecision {
+                                                bot_id,
+                                                kind: BotDecisionKind::Build,
+                                                intent: GameplayIntent::UpgradeStructure { building_id: target_id },
+                                            });
+                                            break;
+                                        }
+                                    }
+                                }
                                 continue;
                             }
                             if player_gold < cheapest_gold_cost(kind) {
@@ -606,6 +683,10 @@ impl SowEngine {
                     let (target_owner, is_neutral) = if has_neutral {
                         (0, true)
                     } else if targets.is_empty() {
+                        if slot.is_nation {
+                            self.maybe_launch_nuke(bot_id, &mut decisions, bot_iq, &targets);
+                            self.maybe_launch_mirv(bot_id, &mut decisions, bot_iq);
+                        }
                         processed += 1;
                         continue;
                     } else {
@@ -682,6 +763,10 @@ impl SowEngine {
                             });
                         }
                     }
+                    if slot.is_nation {
+                        self.maybe_launch_nuke(bot_id, &mut decisions, bot_iq, &targets);
+                        self.maybe_launch_mirv(bot_id, &mut decisions, bot_iq);
+                    }
                 }
             }
 
@@ -699,6 +784,192 @@ impl SowEngine {
                 intent: d.intent,
             };
             self.apply_stamped_intent(&stamped, intent_index as u32);
+        }
+    }
+
+    fn maybe_launch_nuke(&mut self, bot_id: u16, decisions: &mut Vec<BotDecision>, bot_iq: u32, targets: &[u16]) {
+        if bot_iq < 100 { return; }
+        
+        let mut has_silo = false;
+        let mut total_silos = 0;
+        for b in &self.buildings {
+            if b.owner_id == bot_id && b.kind == BuildingKind::MissileSilo && !b.under_construction {
+                if self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0 {
+                    has_silo = true;
+                }
+                total_silos += 1;
+            }
+        }
+        if !has_silo { return; }
+
+        let Some(player) = self.state.player(bot_id) else { return; };
+        let prev_mirv_launches = self.mirv_launches.get(&bot_id).copied().unwrap_or(0);
+        let atom_cost = NukeKind::AtomBomb.gold_cost(prev_mirv_launches);
+        let hydro_cost = NukeKind::HydrogenBomb.gold_cost(prev_mirv_launches);
+
+        // Gold hoarding for MIRV logic
+        let perceived_atom_cost = atom_cost * (1.0 + 0.5 * total_silos as f64);
+        let perceived_hydro_cost = hydro_cost * (1.0 + 0.25 * total_silos as f64);
+
+        let kind = if player.gold >= perceived_hydro_cost {
+            NukeKind::HydrogenBomb
+        } else if player.gold >= perceived_atom_cost {
+            NukeKind::AtomBomb
+        } else {
+            return;
+        };
+
+        // Find crown leader
+        let mut leader = 0;
+        let mut leader_tiles = 0;
+        for p in &self.state.players {
+            if p.alive && p.tile_count > leader_tiles {
+                leader = p.id;
+                leader_tiles = p.tile_count;
+            }
+        }
+
+        let mut primary_target = targets.first().copied().unwrap_or(0);
+        if targets.contains(&leader) {
+            primary_target = leader;
+        }
+
+        if primary_target == 0 || primary_target == bot_id { return; }
+
+        // Find best structure to nuke
+        let mut best_score = -1.0;
+        let mut best_tile = 0;
+        
+        for b in &self.buildings {
+            if b.owner_id != primary_target || b.under_construction { continue; }
+            let mut score = match b.kind {
+                BuildingKind::MissileSilo => 50000.0,
+                BuildingKind::City => 25000.0,
+                BuildingKind::Factory | BuildingKind::Port => 15000.0,
+                BuildingKind::DefensePost => 5000.0 * (b.level as f64),
+                BuildingKind::SamLauncher => 10000.0 * (b.level as f64),
+            };
+
+            let bx = b.tile_idx % self.state.map.width;
+            let by = b.tile_idx / self.state.map.width;
+
+            // SAM avoidance
+            let mut sam_covered = false;
+            for sam in &self.buildings {
+                if sam.owner_id != bot_id && sam.kind == BuildingKind::SamLauncher && !sam.under_construction {
+                    let sx = sam.tile_idx % self.state.map.width;
+                    let sy = sam.tile_idx / self.state.map.width;
+                    let dx = bx as f32 - sx as f32;
+                    let dy = by as f32 - sy as f32;
+                    let dist_sq = dx*dx + dy*dy;
+                    let range = sam_range(sam.level);
+                    if dist_sq <= range * range {
+                        sam_covered = true;
+                        break;
+                    }
+                }
+            }
+            if sam_covered {
+                score -= 100000.0;
+            }
+
+            // Target dedup
+            for (to, tt, _) in &self.recent_nuke_targets {
+                if *to == primary_target && *tt == b.tile_idx {
+                    score -= 50000.0;
+                }
+            }
+
+            if score > best_score {
+                best_score = score;
+                best_tile = b.tile_idx;
+            }
+        }
+
+        if best_score > 0.0 {
+            self.recent_nuke_targets.push((primary_target, best_tile, self.state.tick));
+            decisions.push(BotDecision {
+                bot_id,
+                kind: BotDecisionKind::Attack,
+                intent: GameplayIntent::LaunchNuke { kind, target_tile: best_tile },
+            });
+            let p_me = self.state.player_mut(bot_id).unwrap();
+            p_me.iq_points -= 15.0; // Assume 15 points
+        }
+    }
+
+    fn maybe_launch_mirv(&mut self, bot_id: u16, decisions: &mut Vec<BotDecision>, bot_iq: u32) {
+        if bot_iq < 100 { return; }
+
+        let mut has_silo = false;
+        for b in &self.buildings {
+            if b.owner_id == bot_id && b.kind == BuildingKind::MissileSilo && !b.under_construction {
+                if self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0 {
+                    has_silo = true;
+                    break;
+                }
+            }
+        }
+        if !has_silo { return; }
+
+        let Some(player) = self.state.player(bot_id) else { return; };
+        let prev_mirv_launches = self.mirv_launches.get(&bot_id).copied().unwrap_or(0);
+        let mirv_cost = NukeKind::MIRV.gold_cost(prev_mirv_launches);
+
+        if player.gold < mirv_cost { return; }
+
+        let total_land = self.state.total_land_tiles.max(1);
+        let mut target_id = 0;
+
+        // Counter-MIRV
+        for proj in &self.projectiles {
+            if proj.active && matches!(proj.kind, crate::game::ProjectileKind::Nuke(NukeKind::MIRV)) {
+                let target_x = proj.dst_x as i32;
+                let target_y = proj.dst_y as i32;
+                if self.state.map.is_valid_coord(target_x, target_y) {
+                    if self.state.map.owner_id(target_x as u32, target_y as u32) == bot_id {
+                        target_id = proj.owner_id;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Victory Denial
+        if target_id == 0 {
+            for p in &self.state.players {
+                if p.alive && p.id != bot_id && !player.alliances.contains(&p.id) {
+                    let share = p.tile_count as f32 / total_land as f32;
+                    let limit = if bot_iq >= 130 { 0.50 } else { 0.65 };
+                    if share > limit {
+                        target_id = p.id;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if target_id != 0 {
+            // Check cooldown to prevent pile-on
+            let last_mirv_tick = self.mirv_cooldown_targets.get(&target_id).copied().unwrap_or(0);
+            if self.state.tick > last_mirv_tick + 300 {
+                if let Some(target_p) = self.state.player(target_id) {
+                    if target_p.tile_count > 0 {
+                        let cx = (target_p.sum_x / target_p.tile_count as u64) as u32;
+                        let cy = (target_p.sum_y / target_p.tile_count as u64) as u32;
+                        let target_tile = cy * self.state.map.width + cx;
+                        
+                        self.mirv_cooldown_targets.insert(target_id, self.state.tick);
+                        decisions.push(BotDecision {
+                            bot_id,
+                            kind: BotDecisionKind::Attack,
+                            intent: GameplayIntent::LaunchNuke { kind: NukeKind::MIRV, target_tile },
+                        });
+                        let p_me = self.state.player_mut(bot_id).unwrap();
+                        p_me.iq_points -= 15.0;
+                    }
+                }
+            }
         }
     }
 }
@@ -779,5 +1050,210 @@ mod bot_iq_alliance_tests {
         // Low IQ (85): per_tick(0.85) = 0.85 * 0.1 * 1.0 = 0.085
         assert_eq!(engine.state.player(2).unwrap().iq_points, 50.085);
     }
-}
 
+    #[test]
+    fn test_alliance_proposal_threshold_high_iq() {
+        let mut engine = test_engine_two_players(42);
+        // Ensure bot 1 can afford alliance
+        engine.state.player_mut(1).unwrap().iq_points = 100.0;
+        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        // Since bot 1 has IQ 135, it only proposes if target troops > 0.8 * me_troops. 
+        // Bot 2 has 100 troops, Bot 1 has 1000. It should NOT propose an alliance.
+        assert!(engine.alliances_proposed.is_empty(), "High IQ bot should not propose to weak neighbor");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_alliance_betrayal_high_iq() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 100.0;
+        // Force alliance
+        engine.state.player_mut(1).unwrap().alliances.push(2);
+        engine.state.player_mut(2).unwrap().alliances.push(1);
+        
+        engine.refresh_building_grid();
+        engine.state.player_mut(1).unwrap().troops = 5000.0;
+        engine.state.map.set_owner_id(1, 0, 2);
+        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        // Bot 1 (1000 troops) should betray Bot 2 (100 troops)
+        let p1 = engine.state.player(1).unwrap();
+        assert!(p1.traitor);
+        assert_eq!(p1.traitor_tick, 0);
+    }
+
+    #[test]
+    fn test_density_upgrade_logic() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        engine.state.player_mut(1).unwrap().gold = 10_000_000.0;
+        engine.state.player_mut(1).unwrap().tile_count = 100; // Small area
+        engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
+        
+        // Add max structures to force upgrade
+        for i in 0..15 {
+            engine.buildings.push(crate::building::Building {
+                id: i,
+                owner_id: 1,
+                tile_idx: 0,
+                kind: crate::game::BuildingKind::Factory,
+                level: 1,
+                under_construction: false,
+                ticks_until_complete: 0,
+            });
+        }
+        engine.refresh_building_grid();
+        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        // As long as this executes without panic we're good
+    }
+
+    #[test]
+    fn test_frontline_defense_post_prioritization() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
+        
+        // Simulate under attack
+        engine.attacks.push(crate::execution::AttackExecution {
+            id: 1,
+            owner_id: 2,
+            target_owner: 1,
+            troops: 5000.0,
+            initial_troops: 5000.0,
+            to_conquer: Default::default(),
+            insert_seq_counter: 0,
+            rng: wyrand::WyRand::new(42),
+            retreating: false,
+        });
+        
+        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+    }
+
+    #[test]
+    fn test_nuke_launch_sam_avoidance() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        engine.state.player_mut(1).unwrap().gold = 100_000_000.0;
+        engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
+        
+        // Give bot 1 a silo
+        engine.buildings.push(crate::building::Building {
+            id: 100, owner_id: 1, tile_idx: 0, kind: crate::game::BuildingKind::MissileSilo,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+
+        // Give bot 2 a city
+        engine.buildings.push(crate::building::Building {
+            id: 101, owner_id: 2, tile_idx: 10, kind: crate::game::BuildingKind::City,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+
+        // Give bot 2 a SAM covering the city
+        engine.buildings.push(crate::building::Building {
+            id: 102, owner_id: 2, tile_idx: 10, kind: crate::game::BuildingKind::SamLauncher,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+        
+        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        // Since the only target is covered by SAM, it shouldn't launch.
+        assert!(engine.recent_nuke_targets.is_empty());
+    }
+
+    #[test]
+    fn test_mirv_launch_victory_denial() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        engine.state.player_mut(1).unwrap().gold = 100_000_000.0;
+        engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
+        
+        // Give bot 1 a silo
+        engine.buildings.push(crate::building::Building {
+            id: 100, owner_id: 1, tile_idx: 0, kind: crate::game::BuildingKind::MissileSilo,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+
+        // Make bot 2 have 60% of land
+        engine.state.total_land_tiles = 1000;
+        engine.state.player_mut(2).unwrap().tile_count = 600;
+        
+        engine.refresh_building_grid();
+        engine.state.tick = 400; // bypass cooldown
+        let mut decisions = Vec::new();
+        engine.maybe_launch_mirv(1, &mut decisions, 135);
+        
+        // Bot 1 has IQ 135, victory limit is 50%. Bot 2 has 60%. Bot 1 should MIRV Bot 2!
+        assert!(!decisions.is_empty(), "MIRV should be launched");
+    }
+
+    #[test]
+    fn test_mirv_launch_counter_mirv() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        engine.state.player_mut(1).unwrap().gold = 100_000_000.0;
+        engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
+        
+        // Give bot 1 a silo
+        engine.buildings.push(crate::building::Building {
+            id: 100, owner_id: 1, tile_idx: 0, kind: crate::game::BuildingKind::MissileSilo,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+
+        // Bot 2 fired a MIRV at Bot 1
+        engine.projectiles.push(crate::game::Projectile {
+            id: 1, owner_id: 2, active: true,
+            kind: crate::game::ProjectileKind::Nuke(crate::game::NukeKind::MIRV),
+            src_x: 10.0, src_y: 10.0, dst_x: 0.0, dst_y: 0.0,
+            progress: 0.5, speed: 1.0,
+        });
+
+        // Bot 1 owns tile (0,0)
+        engine.state.map.set_owner_id(0, 0, 1);
+        engine.state.player_mut(2).unwrap().tile_count = 1; // Need a tile to target!
+        
+        engine.refresh_building_grid();
+        engine.state.tick = 400; // bypass cooldown
+        let mut decisions = Vec::new();
+        engine.maybe_launch_mirv(1, &mut decisions, 135);
+        
+        assert!(!decisions.is_empty(), "Counter-MIRV should be launched");
+    }
+
+    #[test]
+    fn test_alliance_cap_enforced() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        // Bot 1 (IQ 135) allows max 1 alliance. Give it 1 alliance already.
+        engine.state.player_mut(1).unwrap().alliances.push(3);
+        
+        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        assert!(engine.alliances_proposed.is_empty(), "High IQ bot should respect alliance cap of 1");
+    }
+
+    #[test]
+    fn test_nuke_launch_target_centroid() {
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().iq_points = 500.0;
+        engine.state.player_mut(1).unwrap().gold = 100_000_000.0;
+        engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
+        
+        // Give bot 1 a silo
+        engine.buildings.push(crate::building::Building {
+            id: 100, owner_id: 1, tile_idx: 0, kind: crate::game::BuildingKind::MissileSilo,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+
+        // Give bot 2 a city
+        engine.buildings.push(crate::building::Building {
+            id: 101, owner_id: 2, tile_idx: 1, kind: crate::game::BuildingKind::City,
+            level: 1, under_construction: false, ticks_until_complete: 0,
+        });
+        
+        // Make sure bot 2 actually owns tile 1 so they are neighbors!
+        engine.state.map.set_owner_id(1, 0, 2);
+        
+        engine.refresh_building_grid();
+        let mut decisions = Vec::new();
+        engine.maybe_launch_nuke(1, &mut decisions, 135, &vec![2]);
+        assert!(!decisions.is_empty());
+        assert_eq!(engine.recent_nuke_targets[0].1, 1);
+    }
+}

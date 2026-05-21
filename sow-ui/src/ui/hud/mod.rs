@@ -551,7 +551,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
         }
 
         let response = area.show(ui.ctx(), |ui| {
-            crate::ui::theme::premium_panel_frame(compact)
+            crate::ui::theme::standard_panel_frame(compact)
                 .inner_margin(egui::Margin::same(6))
                 .show(ui, |ui| {
                     let cols = 8;

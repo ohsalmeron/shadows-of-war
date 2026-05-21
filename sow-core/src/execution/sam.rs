@@ -11,7 +11,7 @@ const SAM_COOLDOWN_TICKS: u32 = 90;
 const SAM_MAX_RANGE: f32 = 150.0;
 
 /// SAM effective range: 150 - 480/(level+5)
-fn sam_range(level: u8) -> f32 {
+pub fn sam_range(level: u8) -> f32 {
     SAM_MAX_RANGE - 480.0 / (level as f32 + 5.0)
 }
 

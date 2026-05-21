@@ -591,6 +591,65 @@ impl SowApp {
                 );
             }
 
+            // --- Render Railroads ---
+            let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
+            let is_water = |tile_idx: u32| {
+                let t = terrain.get(tile_idx as usize).copied().unwrap_or(0);
+                (t & 0x80) == 0
+            };
+
+            for rail in &snap.railroads {
+                let rail_tiles = compute_rail_tiles(self.sim.map_w, &rail.path);
+                let owner_color = player_colors.get(rail.owner_id as usize).copied().unwrap_or(egui::Color32::GRAY);
+
+                for rt in &rail_tiles {
+                    let tile_idx = rt.tile_idx;
+                    let col = (tile_idx % self.sim.map_w) as f32;
+                    let row = (tile_idx / self.sim.map_w) as f32;
+
+                    if is_water(tile_idx) {
+                        let bridge_rects = get_bridge_rects(rt.rail_type);
+                        let bridge_color = egui::Color32::from_rgb(197, 69, 72); // rusty red
+                        for &[dx, dy, w, h] in bridge_rects {
+                            let world_x = col + 0.5 + (dx as f32) / 2.0;
+                            let world_y = row + 0.5 + (dy as f32) / 2.0;
+                            let world_w = w as f32 / 2.0;
+                            let world_h = h as f32 / 2.0;
+
+                            let screen_x = (self.input.camera_x + world_x * self.input.camera_zoom) / sf;
+                            let screen_y = (self.input.camera_y + world_y * self.input.camera_zoom) / sf;
+                            let screen_w = world_w * self.input.camera_zoom / sf;
+                            let screen_h = world_h * self.input.camera_zoom / sf;
+
+                            painter.rect_filled(
+                                egui::Rect::from_min_size(egui::pos2(screen_x, screen_y), egui::vec2(screen_w, screen_h)),
+                                0.0,
+                                bridge_color,
+                            );
+                        }
+                    }
+
+                    let rail_rects = get_railroad_rects(rt.rail_type);
+                    for &[dx, dy, w, h] in rail_rects {
+                        let world_x = col + 0.5 + (dx as f32) / 2.0;
+                        let world_y = row + 0.5 + (dy as f32) / 2.0;
+                        let world_w = w as f32 / 2.0;
+                        let world_h = h as f32 / 2.0;
+
+                        let screen_x = (self.input.camera_x + world_x * self.input.camera_zoom) / sf;
+                        let screen_y = (self.input.camera_y + world_y * self.input.camera_zoom) / sf;
+                        let screen_w = world_w * self.input.camera_zoom / sf;
+                        let screen_h = world_h * self.input.camera_zoom / sf;
+
+                        painter.rect_filled(
+                            egui::Rect::from_min_size(egui::pos2(screen_x, screen_y), egui::vec2(screen_w, screen_h)),
+                            0.0,
+                            owner_color,
+                        );
+                    }
+                }
+            }
+
             for b in &snap.buildings {
                 if zoom_scaled < 0.25 {
                     // Zoomed out too far - don't render buildings at all for maximum FPS
@@ -1149,6 +1208,170 @@ impl SowApp {
                         buildings,
                     );
 
+                    let is_station_kind = kind == sow_core::game::BuildingKind::City
+                        || kind == sow_core::game::BuildingKind::Factory
+                        || kind == sow_core::game::BuildingKind::Port;
+
+                    if let Some(start_idx) = snapped_idx {
+                        if is_station_kind {
+                            let is_friendly = |other_id: u16| -> bool {
+                                if other_id == my_id || other_id == 0 {
+                                    return true;
+                                }
+                                if let Some(snapshot) = &self.sim.current_snapshot {
+                                    if let Some(my_p) = snapshot.players.iter().find(|p| p.id == my_id) {
+                                        if my_p.alliances.contains(&other_id) {
+                                            return true;
+                                        }
+                                    }
+                                    if let Some(other_p) = snapshot.players.iter().find(|p| p.id == other_id) {
+                                        if other_p.alliances.contains(&my_id) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                                false
+                            };
+
+                            let eligible_stations: Vec<_> = buildings.iter()
+                                .filter(|b| !b.under_construction && is_friendly(b.owner_id) && (b.kind == sow_core::game::BuildingKind::City || b.kind == sow_core::game::BuildingKind::Factory || b.kind == sow_core::game::BuildingKind::Port))
+                                .collect();
+
+                            let temp_map = sow_core::map::GameMap {
+                                width: map_w,
+                                height: map_h,
+                                terrain: terrain.iter().map(|&b| sow_core::map::MapTile::from_byte(b)).collect(),
+                                state: vec![0; (map_w * map_h) as usize],
+                                dirty_tiles: Vec::new(),
+                            };
+
+                            let mut adj: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+                            if let Some(snapshot) = &self.sim.current_snapshot {
+                                for rail in &snapshot.railroads {
+                                    if is_friendly(rail.owner_id) {
+                                        if let (Some(&s_node), Some(&e_node)) = (rail.path.first(), rail.path.last()) {
+                                            adj.entry(s_node).or_default().push(e_node);
+                                            adj.entry(e_node).or_default().push(s_node);
+                                        }
+                                    }
+                                }
+                            }
+
+                            let distance_from = |start_tile: u32, dest_tile: u32, max_dist: usize| -> Option<usize> {
+                                if start_tile == dest_tile {
+                                    return Some(0);
+                                }
+                                let mut visited = std::collections::HashSet::new();
+                                let mut queue = std::collections::VecDeque::new();
+                                visited.insert(start_tile);
+                                queue.push_back((start_tile, 0));
+
+                                while let Some((curr, dist)) = queue.pop_front() {
+                                    if curr == dest_tile {
+                                        return Some(dist);
+                                    }
+                                    if dist >= max_dist {
+                                        continue;
+                                    }
+                                    if let Some(neighbors) = adj.get(&curr) {
+                                        for &neighbor in neighbors {
+                                            if visited.insert(neighbor) {
+                                                queue.push_back((neighbor, dist + 1));
+                                            }
+                                        }
+                                    }
+                                }
+                                None
+                            };
+
+                            let mut candidates = Vec::new();
+                            for station in &eligible_stations {
+                                let x1 = (start_idx % map_w) as i32;
+                                let y1 = (start_idx / map_w) as i32;
+                                let x2 = (station.tile_idx % map_w) as i32;
+                                let y2 = (station.tile_idx / map_w) as i32;
+                                let dx = x1 - x2;
+                                let dy = y1 - y2;
+                                let dist_sq = dx * dx + dy * dy;
+                                if dist_sq >= 225 && dist_sq <= 10000 {
+                                    candidates.push((dist_sq, station));
+                                }
+                            }
+                            candidates.sort_by_key(|c| c.0);
+
+                            let mut paths_found = 0;
+                            let mut connected_stations = Vec::new();
+
+                            for &(_, station) in &candidates {
+                                if paths_found >= 5 {
+                                    break;
+                                }
+
+                                let already_reachable = connected_stations.iter().any(|&s| {
+                                    distance_from(station.tile_idx, s, 3).is_some()
+                                });
+                                if already_reachable {
+                                    continue;
+                                }
+
+                                if let Some(path) = sow_core::building::railroad::find_rail_path(&temp_map, start_idx, station.tile_idx) {
+                                    if path.len() <= 120 {
+                                        paths_found += 1;
+                                        connected_stations.push(station.tile_idx);
+                                        let rail_tiles = compute_rail_tiles(map_w, &path);
+                                        for rt in &rail_tiles {
+                                            let tile_idx = rt.tile_idx;
+                                            let c = (tile_idx % map_w) as f32;
+                                            let r = (tile_idx / map_w) as f32;
+
+                                            if is_water(tile_idx) {
+                                                let bridge_rects = get_bridge_rects(rt.rail_type);
+                                                let bridge_color = egui::Color32::from_rgba_unmultiplied(197, 69, 72, 102); // 40% rusty red
+                                                for &[dx, dy, w, h] in bridge_rects {
+                                                    let world_x = c + 0.5 + (dx as f32) / 2.0;
+                                                    let world_y = r + 0.5 + (dy as f32) / 2.0;
+                                                    let world_w = w as f32 / 2.0;
+                                                    let world_h = h as f32 / 2.0;
+
+                                                    let screen_x = (self.input.camera_x + world_x * self.input.camera_zoom) / sf;
+                                                    let screen_y = (self.input.camera_y + world_y * self.input.camera_zoom) / sf;
+                                                    let screen_w = world_w * self.input.camera_zoom / sf;
+                                                    let screen_h = world_h * self.input.camera_zoom / sf;
+
+                                                    painter.rect_filled(
+                                                        egui::Rect::from_min_size(egui::pos2(screen_x, screen_y), egui::vec2(screen_w, screen_h)),
+                                                        0.0,
+                                                        bridge_color,
+                                                    );
+                                                }
+                                            }
+
+                                            let rail_rects = get_railroad_rects(rt.rail_type);
+                                            let track_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 102); // 40% black
+                                            for &[dx, dy, w, h] in rail_rects {
+                                                let world_x = c + 0.5 + (dx as f32) / 2.0;
+                                                let world_y = r + 0.5 + (dy as f32) / 2.0;
+                                                let world_w = w as f32 / 2.0;
+                                                let world_h = h as f32 / 2.0;
+
+                                                let screen_x = (self.input.camera_x + world_x * self.input.camera_zoom) / sf;
+                                                let screen_y = (self.input.camera_y + world_y * self.input.camera_zoom) / sf;
+                                                let screen_w = world_w * self.input.camera_zoom / sf;
+                                                let screen_h = world_h * self.input.camera_zoom / sf;
+
+                                                painter.rect_filled(
+                                                    egui::Rect::from_min_size(egui::pos2(screen_x, screen_y), egui::vec2(screen_w, screen_h)),
+                                                    0.0,
+                                                    track_color,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let can_afford = {
                         let i = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
                         self.ui.app.hud_state.gold >= self.ui.app.hud_state.building_costs[i]
@@ -1208,3 +1431,201 @@ impl SowApp {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RailType {
+    Vertical,
+    Horizontal,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+pub struct RailTile {
+    pub tile_idx: u32,
+    pub rail_type: RailType,
+}
+
+fn get_railroad_rects(rail_type: RailType) -> &'static [[i32; 4]] {
+    match rail_type {
+        RailType::Vertical => &[
+            [-1, -1, 1, 2],
+            [1, -1, 1, 2],
+            [0, 0, 1, 1],
+        ],
+        RailType::Horizontal => &[
+            [-1, -1, 2, 1],
+            [-1, 1, 2, 1],
+            [-1, 0, 1, 1],
+        ],
+        RailType::TopRight => &[
+            [-1, -1, 1, 1],
+            [0, -1, 1, 2],
+            [1, -1, 1, 3],
+        ],
+        RailType::TopLeft => &[
+            [-1, -1, 1, 3],
+            [0, -1, 1, 2],
+            [1, -1, 1, 1],
+        ],
+        RailType::BottomRight => &[
+            [-1, 1, 1, 1],
+            [0, 0, 1, 2],
+            [1, -1, 1, 3],
+        ],
+        RailType::BottomLeft => &[
+            [-1, -1, 1, 3],
+            [0, 0, 1, 2],
+            [1, 1, 1, 1],
+        ],
+    }
+}
+
+fn get_bridge_rects(rail_type: RailType) -> &'static [[i32; 4]] {
+    match rail_type {
+        RailType::Vertical => &[
+            [-2, -1, 1, 3],
+            [2, -1, 1, 3],
+        ],
+        RailType::Horizontal => &[
+            [-1, -2, 3, 1],
+            [-1, 2, 3, 1],
+            [-1, 3, 1, 1],
+            [1, 3, 1, 1],
+        ],
+        RailType::TopRight => &[
+            [-2, -2, 1, 2],
+            [-1, 0, 1, 1],
+            [0, 1, 1, 1],
+            [1, 2, 2, 1],
+            [2, -2, 1, 1],
+        ],
+        RailType::TopLeft => &[
+            [-2, -2, 1, 1],
+            [-2, 2, 2, 1],
+            [0, 1, 1, 1],
+            [1, 0, 1, 1],
+            [2, -2, 1, 2],
+        ],
+        RailType::BottomRight => &[
+            [-2, 1, 1, 2],
+            [-1, 0, 1, 1],
+            [0, -1, 1, 1],
+            [1, -2, 2, 1],
+            [2, 2, 1, 1],
+        ],
+        RailType::BottomLeft => &[
+            [-2, -2, 2, 1],
+            [0, -1, 1, 1],
+            [1, 0, 1, 1],
+            [2, 1, 1, 2],
+            [-2, 2, 1, 1],
+        ],
+    }
+}
+
+fn compute_direction(w: u32, prev: u32, current: u32, next: u32) -> RailType {
+    let x1 = (prev % w) as i32;
+    let y1 = (prev / w) as i32;
+    let x2 = (current % w) as i32;
+    let y2 = (current / w) as i32;
+    let x3 = (next % w) as i32;
+    let y3 = (next / w) as i32;
+
+    let dx1 = x2 - x1;
+    let dy1 = y2 - y1;
+    let dx2 = x3 - x2;
+    let dy2 = y3 - y2;
+
+    if dx1 == dx2 && dy1 == dy2 {
+        if dx1 != 0 {
+            return RailType::Horizontal;
+        }
+        if dy1 != 0 {
+            return RailType::Vertical;
+        }
+    }
+
+    if (dx1 == 0 && dx2 != 0) || (dx1 != 0 && dx2 == 0) {
+        if dx1 == 0 && dx2 == 1 && dy1 == -1 {
+            return RailType::BottomRight;
+        }
+        if dx1 == 0 && dx2 == -1 && dy1 == -1 {
+            return RailType::BottomLeft;
+        }
+        if dx1 == 0 && dx2 == 1 && dy1 == 1 {
+            return RailType::TopRight;
+        }
+        if dx1 == 0 && dx2 == -1 && dy1 == 1 {
+            return RailType::TopLeft;
+        }
+
+        if dx1 == 1 && dx2 == 0 && dy2 == -1 {
+            return RailType::TopLeft;
+        }
+        if dx1 == -1 && dx2 == 0 && dy2 == -1 {
+            return RailType::TopRight;
+        }
+        if dx1 == 1 && dx2 == 0 && dy2 == 1 {
+            return RailType::BottomLeft;
+        }
+        if dx1 == -1 && dx2 == 0 && dy2 == 1 {
+            return RailType::BottomRight;
+        }
+    }
+
+    RailType::Vertical
+}
+
+fn compute_extremity_direction(w: u32, tile: u32, next: u32) -> RailType {
+    let x = (tile % w) as i32;
+    let y = (tile / w) as i32;
+    let next_x = (next % w) as i32;
+    let next_y = (next / w) as i32;
+
+    let dx = next_x - x;
+    let dy = next_y - y;
+
+    if dx == 0 && dy == 0 {
+        return RailType::Vertical;
+    }
+
+    if dx == 0 {
+        RailType::Vertical
+    } else if dy == 0 {
+        RailType::Horizontal
+    } else {
+        RailType::Vertical
+    }
+}
+
+fn compute_rail_tiles(w: u32, tiles: &[u32]) -> Vec<RailTile> {
+    if tiles.is_empty() {
+        return Vec::new();
+    }
+    if tiles.len() == 1 {
+        return vec![RailTile {
+            tile_idx: tiles[0],
+            rail_type: RailType::Vertical,
+        }];
+    }
+    let mut rail_tiles = Vec::with_capacity(tiles.len());
+    rail_tiles.push(RailTile {
+        tile_idx: tiles[0],
+        rail_type: compute_extremity_direction(w, tiles[0], tiles[1]),
+    });
+    for i in 1..tiles.len() - 1 {
+        let direction = compute_direction(w, tiles[i - 1], tiles[i], tiles[i + 1]);
+        rail_tiles.push(RailTile {
+            tile_idx: tiles[i],
+            rail_type: direction,
+        });
+    }
+    rail_tiles.push(RailTile {
+        tile_idx: tiles[tiles.len() - 1],
+        rail_type: compute_extremity_direction(w, tiles[tiles.len() - 1], tiles[tiles.len() - 2]),
+    });
+    rail_tiles
+}
+

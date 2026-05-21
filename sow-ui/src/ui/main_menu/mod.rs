@@ -5,7 +5,7 @@ pub mod queue_overlay;
 pub mod single_player_setup;
 
 use crate::UiAction;
-use egui::{Align, CentralPanel, Color32, CornerRadius, Frame, Layout};
+use egui::{Align, CentralPanel, Color32, Frame, Layout};
 use sow_core::protocol::LobbyInfo;
 
 pub struct MainMenuState {
@@ -94,7 +94,7 @@ pub fn draw(
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
-    let outer_pad = if compact { 12.0 } else { 16.0 };
+    let outer_pad = if compact { 0.0 } else { 16.0 };
     let section_gap = if compact { 12.0 } else { 16.0 };
 
     let action_min_h = if compact { 64.0 } else { 72.0 };
@@ -168,20 +168,13 @@ pub fn draw(
                 return;
             }
 
-            let panel_frame = Frame::new()
-                .fill(crate::ui::theme::panel_bg())
-                .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::menu_panel_border_glow()))
-                .corner_radius(CornerRadius::same(12))
-                .inner_margin(if compact { 18.0 } else { 24.0 })
-                .shadow(egui::Shadow {
-                    blur: 24,
-                    spread: 0,
-                    color: Color32::from_rgba_unmultiplied(6, 182, 212, 30),
-                    offset: [0, 10],
-                });
+            let panel_frame = crate::ui::theme::standard_panel_frame(compact);
+            let parent_available = ui.available_size();
+            let pad = if compact { 32.0 } else { 50.0 };
+            let inner_size = parent_available - egui::vec2(pad, pad);
 
             panel_frame.show(ui, |ui| {
-                ui.set_min_size(ui.available_size());
+                ui.set_min_size(inner_size);
                 let show_footer = ui.available_height() > 430.0;
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {

@@ -61,6 +61,10 @@ pub struct Player {
     pub emoji_timer: u32,
     #[serde(default)]
     pub emoji_pinned: bool,
+    #[serde(default)]
+    pub traitor: bool,
+    #[serde(default)]
+    pub traitor_tick: u32,
 }
 
 fn default_wyrand() -> WyRand {
@@ -100,6 +104,8 @@ impl Player {
             active_emoji: None,
             emoji_timer: 0,
             emoji_pinned: false,
+            traitor: false,
+            traitor_tick: 0,
         }
     }
     pub fn new_bot(
@@ -136,6 +142,8 @@ impl Player {
             active_emoji: None,
             emoji_timer: 0,
             emoji_pinned: false,
+            traitor: false,
+            traitor_tick: 0,
         }
     }
     pub fn new_nation(
@@ -172,6 +180,8 @@ impl Player {
             active_emoji: None,
             emoji_timer: 0,
             emoji_pinned: false,
+            traitor: false,
+            traitor_tick: 0,
         }
     }
     pub fn is_human(&self) -> bool {

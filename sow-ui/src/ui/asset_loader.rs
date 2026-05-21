@@ -86,25 +86,28 @@ impl AssetLoader {
     }
 
     pub fn has_map(&self, map_name: &str) -> bool {
-        map_name == "world" || map_name == "giantworldmap" || map_name == "tutorial" || self.maps.contains_key(map_name)
+        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
+        key == "world" || key == "giantworldmap" || key == "tutorial" || self.maps.contains_key(&key)
     }
 
     pub fn take_map(&mut self, map_name: &str) -> Option<Vec<u8>> {
-        if map_name == "world" && !self.maps.contains_key("world") {
+        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
+        if key == "world" && !self.maps.contains_key("world") {
             self.maps.insert("world".to_string(), include_bytes!("../../../assets/maps/world/map.bin.br").to_vec());
         }
-        if map_name == "giantworldmap" && !self.maps.contains_key("giantworldmap") {
+        if key == "giantworldmap" && !self.maps.contains_key("giantworldmap") {
             self.maps.insert("giantworldmap".to_string(), include_bytes!("../../../assets/maps/giantworldmap/map.bin.br").to_vec());
         }
-        if map_name == "tutorial" {
+        if key == "tutorial" {
             Some(include_bytes!("../../../assets/maps/tutorial/map.bin.br").to_vec())
         } else {
-            self.maps.remove(map_name)
+            self.maps.remove(&key)
         }
     }
 
     pub fn thumbnail(&self, map_name: &str) -> Option<&TextureHandle> {
-        self.thumbnails.get(map_name)
+        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
+        self.thumbnails.get(&key)
     }
 
     pub fn get_assets_to_fetch(
@@ -289,5 +292,17 @@ mod tests {
         assert!(loader.manifests.contains_key("giantworldmap"));
         assert!(loader.manifests.contains_key("tutorial"));
         assert!(loader.manifests.contains_key("custom"));
+    }
+
+    #[test]
+    fn test_thumbnail_decoding() {
+        let world_bytes = include_bytes!("../../../assets/maps/world/thumbnail.webp");
+        assert!(image::load_from_memory(world_bytes).is_ok());
+
+        let giant_bytes = include_bytes!("../../../assets/maps/giantworldmap/thumbnail.webp");
+        assert!(image::load_from_memory(giant_bytes).is_ok());
+
+        let tutorial_bytes = include_bytes!("../../../assets/maps/tutorial/thumbnail.webp");
+        assert!(image::load_from_memory(tutorial_bytes).is_ok());
     }
 }
