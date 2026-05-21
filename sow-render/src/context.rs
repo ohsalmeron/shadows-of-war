@@ -47,6 +47,12 @@ impl RenderContext {
             return Err(blade_graphics::NotSupportedError::PlatformNotSupported);
         }
 
+        let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
+            gpu::DisplaySync::Block
+        } else {
+            gpu::DisplaySync::Tear
+        };
+
         let config = gpu::SurfaceConfig {
             size: gpu::Extent {
                 width,
@@ -54,7 +60,7 @@ impl RenderContext {
                 depth: 1,
             },
             usage: gpu::TextureUsage::TARGET,
-            display_sync: gpu::DisplaySync::Block,
+            display_sync,
             color_space: gpu::ColorSpace::Srgb,
             ..Default::default()
         };

@@ -121,7 +121,7 @@ cyan "==> Keystore     : ${KEYSTORE}"
 # cargo-apk doesn't let us pass keystore CLI args easily. We will build release mode.
 
 cyan "📦 Building Android release APK..."
-RUSTFLAGS='--cfg gles' cargo apk build --release --lib --features sow-core/mem_profiler -p sow-client
+RUSTFLAGS='--cfg gles' cargo apk build --release --lib -p sow-client
 
 APK_SRC="${ROOT}/target/release/apk/sow-client.apk"
 if [[ -f "${APK_SRC}" ]]; then

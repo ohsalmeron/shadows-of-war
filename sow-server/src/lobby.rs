@@ -52,7 +52,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
     let mut config = GameConfig::default();
     static NEXT_MAP_INDEX: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let maps = ["europe", "world"];
+    let maps = ["pangaea", "fourislands"];
     config.map_name = maps[map_idx % maps.len()].to_string();
 
     let mut map_md5 = None;

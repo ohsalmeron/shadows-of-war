@@ -117,6 +117,16 @@ impl SowApp {
 
         let mut full_labels_drawn = 0;
 
+        let visual_config = ClientVisualConfig::default();
+        let ui_text_scale = visual_config.ui_text_scale;
+        let zoom_scale = (self.input.camera_zoom / sf).min(1.0).max(0.5);
+
+        // Precompute scaled nameplate font sizes once per frame for 100% CPU/memory efficiency!
+        // Round to whole point sizes to prevent egui glyph atlas invalidations.
+        let font_size_my = ((visual_config.nameplate_my_size * ui_text_scale * zoom_scale).round()).max(4.0);
+        let font_size_nation = ((visual_config.nameplate_nation_size * ui_text_scale * zoom_scale).round()).max(4.0);
+        let font_size_tribe = ((visual_config.nameplate_tribe_size * ui_text_scale * zoom_scale).round()).max(4.0);
+
         for vp in visible_players {
             let player = vp.player;
             let center = vp.center;
@@ -133,18 +143,14 @@ impl SowApp {
 
             if show_full {
                 full_labels_drawn += 1;
-                let visual_config = ClientVisualConfig::default();
-                let ui_text_scale = visual_config.ui_text_scale;
 
-                let base_font_size = if Some(player.id) == self.sim.my_player_id {
-                    visual_config.nameplate_my_size
+                let font_size = if Some(player.id) == self.sim.my_player_id {
+                    font_size_my
                 } else if player.id < 200 {
-                    visual_config.nameplate_nation_size
+                    font_size_nation
                 } else {
-                    visual_config.nameplate_tribe_size
+                    font_size_tribe
                 };
-                
-                let font_size = base_font_size * ui_text_scale;
 
                 let troops_for_label = self.ui.troop_label_throttle.displayed_troops(
                     wall_secs,

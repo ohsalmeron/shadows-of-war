@@ -37,6 +37,11 @@ impl SowApp {
                         let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                     }
                     if let Some(ref mut s) = self.gfx.surface {
+                        let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
+                            gpu::DisplaySync::Block
+                        } else {
+                            gpu::DisplaySync::Tear
+                        };
                         self.gfx.render_ctx.context.reconfigure_surface(
                             s,
                             gpu::SurfaceConfig {
@@ -46,7 +51,7 @@ impl SowApp {
                                     depth: 1,
                                 },
                                 usage: gpu::TextureUsage::TARGET,
-                                display_sync: gpu::DisplaySync::Tear,
+                                display_sync,
                                 ..Default::default()
                             },
                         );
