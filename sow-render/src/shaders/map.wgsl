@@ -66,41 +66,81 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var terrain_color = vec4<f32>(0.0);
     
     if is_land {
+        let is_shoreline = (terrain_byte & 0x40u) != 0u;
         let mag_center = f32(terrain_byte & 0x1Fu);
-        if mag_center < 10.0 {
-            terrain_color = vec4<f32>(0.12, 0.2, 0.1, 1.0); // Lush Plains
+        
+        let px = floor(world_x * 8.0);
+        let py = floor(world_y * 8.0);
+        let land_noise = fract(sin(px * 12.9898 + py * 78.233) * 43758.5453);
+        let noise_offset = (land_noise - 0.5) * 0.05; // Gentle ±2.5% color variation
+
+        if is_shoreline {
+            let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);
+            terrain_color = vec4<f32>(base + noise_offset * 0.5, 1.0); // OpenFront Shore
+        } else if mag_center < 10.0 {
+            let r = 190.0 / 255.0;
+            let g = (220.0 - 2.0 * mag_center) / 255.0;
+            let b = 138.0 / 255.0;
+            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset, 1.0); // OpenFront Plains
         } else if mag_center < 20.0 {
-            terrain_color = vec4<f32>(0.28, 0.22, 0.14, 1.0); // Earthy Highlands
+            let r = (200.0 + 2.0 * mag_center) / 255.0;
+            let g = (183.0 + 2.0 * mag_center) / 255.0;
+            let b = (138.0 + 2.0 * mag_center) / 255.0;
+            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset * 1.2, 1.0); // OpenFront Highlands
         } else {
-            let snow = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
-            terrain_color = mix(vec4<f32>(0.28, 0.28, 0.3, 1.0), vec4<f32>(0.58, 0.6, 0.62, 1.0), snow); // Snowy Mountains
+            // Smooth blend/fusion from high Highland color to snowy white peak
+            let highland_base = vec3<f32>(240.0 / 255.0, 223.0 / 255.0, 178.0 / 255.0);
+            let snowy_peak = vec3<f32>(245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0);
+            let blend = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
+            let peak_color = mix(highland_base, snowy_peak, blend);
+            terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // OpenFront Mountains
         }
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
         
         let px = floor(world_x * 8.0);
         let py = floor(world_y * 8.0);
-        let t = globals.time * 1.5;
-        let wave = sin(px * 0.15 + py * 0.08 + t) + cos(py * 0.15 - px * 0.08 + t * 0.7);
+        
+        // Procedural stable seed per tile for unique regional wave properties
+        let tile_seed = fract(sin(f32(cell_x) * 12.9898 + f32(cell_y) * 78.233) * 43758.5453);
+        let wave_speed = 0.8 + tile_seed * 1.4;
+        let wave_phase = tile_seed * 6.28318;
+        let freq_x = 0.12 + tile_seed * 0.06;
+        let freq_y = 0.06 + (1.0 - tile_seed) * 0.06;
 
-        var color_deep = vec3<f32>(0.05, 0.30, 0.50);
-        var color_mid  = vec3<f32>(0.08, 0.40, 0.60);
-        var color_foam = vec3<f32>(0.20, 0.60, 0.78);
+        let t = globals.time * wave_speed + wave_phase;
+        let wave = sin(px * freq_x + py * freq_y + t) + cos(py * freq_x - px * freq_y + t * 0.7);
+
+        // Animated sparkling/glittering sparkles (1.2% chance per pixel, changes 4 times/sec)
+        let sparkle_t = floor(globals.time * 4.0);
+        let sparkle_hash = fract(sin(px * 12.9898 + py * 78.233 + sparkle_t) * 43758.5453);
+        let has_sparkle = sparkle_hash > 0.988;
+
+        var color_deep = vec3<f32>(70.0 / 255.0, 132.0 / 255.0, 180.0 / 255.0); // OpenFront base blue
+        var color_mid  = vec3<f32>(85.0 / 255.0, 143.0 / 255.0, 215.0 / 255.0);
+        var color_foam = vec3<f32>(100.0 / 255.0, 143.0 / 255.0, 255.0 / 255.0); // OpenFront Shoreline water
         
         if !is_ocean_water {
-            color_deep = vec3<f32>(0.10, 0.32, 0.48);
-            color_mid  = vec3<f32>(0.14, 0.44, 0.62);
-            color_foam = vec3<f32>(0.30, 0.65, 0.82);
+            // River/Lake uses a fresh, teal-tinted pastel blue
+            color_deep = vec3<f32>(60.0 / 255.0, 140.0 / 255.0, 175.0 / 255.0);
+            color_mid  = vec3<f32>(75.0 / 255.0, 155.0 / 255.0, 195.0 / 255.0);
+            color_foam = vec3<f32>(95.0 / 255.0, 175.0 / 255.0, 220.0 / 255.0);
         }
 
-        if wave > 1.2 {
-            terrain_color = vec4<f32>(color_foam, 1.0);
+        var final_water_color = color_deep;
+        if has_sparkle {
+            final_water_color = color_foam;
+        } else if wave > 1.2 {
+            final_water_color = color_foam;
         } else if wave > 0.4 {
-            terrain_color = vec4<f32>(color_mid, 1.0);
-        } else {
-            terrain_color = vec4<f32>(color_deep, 1.0);
+            final_water_color = color_mid;
         }
+
+        terrain_color = vec4<f32>(final_water_color, 1.0);
     }
+
+    // Convert sRGB palette input to linear space so final pow(base_color, 1.0/2.2) renders the exact intended colors
+    terrain_color = vec4<f32>(pow(terrain_color.rgb, vec3<f32>(2.2)), terrain_color.a);
 
     var base_color = terrain_color.rgb;
     if owner_id > 0u {

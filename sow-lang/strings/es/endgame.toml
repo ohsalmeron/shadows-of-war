@@ -2,7 +2,7 @@ victory_title = "VICTORIA"
 defeat_title = "DERROTA"
 victory_subtitle = "Has conquistado el mundo entero."
 defeat_subtitle = "Tu imperio ha caído."
-return_to_lobby = "Regresar a la Sala"
+return_to_lobby = "REGRESAR"
 spectate = "ESPECTAR"
 
 victory_flavors = [

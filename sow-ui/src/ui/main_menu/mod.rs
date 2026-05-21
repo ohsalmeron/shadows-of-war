@@ -269,7 +269,7 @@ pub fn draw(
                                     "v{}",
                                     include_str!("../../../../.version").trim()
                                 ))
-                                .small()
+                                .size(2.0)
                                 .color(Color32::TRANSPARENT),
                             );
                             ui.separator();
