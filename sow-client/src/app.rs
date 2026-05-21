@@ -426,7 +426,6 @@ impl SowApp {
         self.ui.app.phase = ClientPhase::Splash;
         let lang = self.ui.app.settings_state.language;
         self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
-        self.ui.app.splash_state.select_voluntary_exit(lang);
         self.ui.is_spectating = false;
     }
 

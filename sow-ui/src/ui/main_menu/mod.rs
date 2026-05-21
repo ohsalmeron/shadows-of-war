@@ -357,8 +357,8 @@ pub fn draw(
                     
                     // Premium dismissal button
                     let btn_w = if is_mobile { ui.available_width() } else { 160.0 };
-                    let dismiss_btn = crate::widgets::NeonButton::new(&strings.dismiss)
-                        .style(crate::widgets::NeonButtonStyle::Danger)
+                    let dismiss_btn = crate::widgets::ThemeButton::new(&strings.dismiss)
+                        .style(crate::widgets::ThemeButtonStyle::Danger)
                         .min_size(egui::vec2(btn_w, 40.0));
                         
                     if ui.add(dismiss_btn).clicked() {

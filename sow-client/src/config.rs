@@ -31,7 +31,7 @@ impl Default for ClientVisualConfig {
             nameplate_my_size: 16.0,
             nameplate_nation_size: 14.0,
             nameplate_tribe_size: 12.0,
-            nameplate_disconnected_emoji_scale: 8.0,
+            nameplate_disconnected_emoji_scale: 4.0,
 
             // Android UI Theme Settings (Main Menu)
             top_bar_color: [15, 15, 20, 255],    // Dark gray

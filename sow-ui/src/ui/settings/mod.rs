@@ -213,8 +213,8 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
 
             // --- Back Button ---
             ui.vertical_centered(|ui| {
-                let back_btn = crate::widgets::NeonButton::new(&strings.back_button)
-                    .style(crate::widgets::NeonButtonStyle::Outline)
+                let back_btn = crate::widgets::ThemeButton::new(&strings.back_button)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
                     .min_size(egui::vec2(
                         if compact { panel_w - 32.0 } else { 200.0 },
                         50.0,

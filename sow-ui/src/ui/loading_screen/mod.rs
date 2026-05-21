@@ -7,17 +7,6 @@ const FADEOUT_DURATION: f64 = 0.25;
 /// Total visible time = FADEIN + MIN_HOLD + FADEOUT = 0.25 + 1.0 + 0.25 = 1.5s
 const MIN_HOLD_DURATION: f64 = 1.0;
 
-fn pick(pool: &[String]) -> String {
-    if pool.is_empty() {
-        return String::new();
-    }
-    let now = web_time::SystemTime::now()
-        .duration_since(web_time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_micros();
-    pool[(now % pool.len() as u128) as usize].clone()
-}
-
 fn smoothstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -52,7 +41,7 @@ impl Default for SplashState {
     fn default() -> Self {
         Self {
             job: SplashJob::Boot,
-            status_text: "Initializing...".to_string(),
+            status_text: String::new(),
             status_override: None,
             progress: 0.0,
             frames_drawn: 0,
@@ -71,7 +60,7 @@ impl Default for SplashState {
 }
 
 impl SplashState {
-    pub fn reset_anim(&mut self, new_job: SplashJob, lang: Language) {
+    pub fn reset_anim(&mut self, new_job: SplashJob, _lang: Language) {
         self.job = new_job;
         self.done = false;
         self.start_time = None;
@@ -85,20 +74,7 @@ impl SplashState {
         self.last_update_time = None;
         self.random_speed = 0.0;
         self.status_override = None;
-
-        self.status_text = pick(&sow_lang::get(lang).loading_screen.fun_phrases);
-    }
-
-    pub fn select_multiplayer_tip(&mut self, lang: Language) {
-        self.status_override = Some(pick(&sow_lang::get(lang).loading_screen.multiplayer_tips));
-    }
-
-    pub fn select_voluntary_exit(&mut self, lang: Language) {
-        self.status_override = Some(pick(&sow_lang::get(lang).loading_screen.voluntary_exit));
-    }
-
-    pub fn select_defeat_exit(&mut self, lang: Language) {
-        self.status_override = Some(pick(&sow_lang::get(lang).loading_screen.defeat_exit));
+        self.status_text = String::new();
     }
 }
 
@@ -108,7 +84,7 @@ pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut SplashState,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    _lang: Language,
+    lang: Language,
 ) -> Option<crate::app::ClientPhase> {
     state.frames_drawn += 1;
     let now = root_ui.input(|i| i.time);
@@ -272,13 +248,14 @@ pub fn draw(
     let shadow_color = Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
     let font_id = egui::FontId::proportional(if is_mobile { 14.0 } else { 16.0 });
 
-    let display_text = state.status_override.as_ref().unwrap_or(&state.status_text);
+    let pct = ((visual_progress * 100.0).clamp(0.0, 100.0)) as i32;
+    let display_text = format!("{} {}%", sow_lang::get(lang).loading_screen.loading, pct);
 
     crate::ui::theme::outlined_text(
         root_ui.painter(),
         bar_rect.center(),
         egui::Align2::CENTER_CENTER,
-        display_text,
+        &display_text,
         font_id,
         text_color,
         shadow_color,

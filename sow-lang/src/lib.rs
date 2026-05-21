@@ -71,10 +71,7 @@ pub struct SettingsStrings {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoadingScreenStrings {
-    pub fun_phrases: Vec<String>,
-    pub voluntary_exit: Vec<String>,
-    pub defeat_exit: Vec<String>,
-    pub multiplayer_tips: Vec<String>,
+    pub loading: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,28 +1,27 @@
 use egui::{Button, Color32, Response, Ui, Widget};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum NeonButtonStyle {
+pub enum ThemeButtonStyle {
     Primary,
     Secondary,
-    Success,
+    Tertiary,
     Danger,
-    Outline,
 }
 
-pub struct NeonButton {
+pub struct ThemeButton {
     text: String,
-    style: NeonButtonStyle,
+    style: ThemeButtonStyle,
     min_size: egui::Vec2,
     text_size: f32,
     custom_fill: Option<Color32>,
     custom_text_color: Option<Color32>,
 }
 
-impl NeonButton {
+impl ThemeButton {
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
-            style: NeonButtonStyle::Primary,
+            style: ThemeButtonStyle::Primary,
             min_size: egui::vec2(0.0, 0.0),
             text_size: 18.0,
             custom_fill: None,
@@ -30,7 +29,7 @@ impl NeonButton {
         }
     }
 
-    pub fn style(mut self, style: NeonButtonStyle) -> Self {
+    pub fn style(mut self, style: ThemeButtonStyle) -> Self {
         self.style = style;
         self
     }
@@ -56,15 +55,9 @@ impl NeonButton {
     }
 }
 
-impl Widget for NeonButton {
+impl Widget for ThemeButton {
     fn ui(self, ui: &mut Ui) -> Response {
-        let text_color = self.custom_text_color.unwrap_or_else(|| {
-            if self.style == NeonButtonStyle::Outline {
-                crate::ui::theme::text_secondary()
-            } else {
-                Color32::WHITE
-            }
-        });
+        let text_color = self.custom_text_color.unwrap_or(Color32::WHITE);
         
         let mut btn = Button::new("").min_size(self.min_size);
 
@@ -72,20 +65,17 @@ impl Widget for NeonButton {
             btn = btn.fill(fill);
         } else {
             match self.style {
-                NeonButtonStyle::Primary => {
+                ThemeButtonStyle::Primary => {
                     btn = btn.fill(crate::ui::theme::accent_solo_cyan());
                 }
-                NeonButtonStyle::Secondary => {
+                ThemeButtonStyle::Secondary => {
                     btn = btn.fill(crate::ui::theme::accent_ranked_gold());
                 }
-                NeonButtonStyle::Success => {
-                    btn = btn.fill(crate::ui::theme::accent_solo_cyan());
+                ThemeButtonStyle::Tertiary => {
+                    btn = btn.fill(crate::ui::theme::palette::button_inactive());
                 }
-                NeonButtonStyle::Danger => {
+                ThemeButtonStyle::Danger => {
                     btn = btn.fill(crate::ui::theme::accent_danger());
-                }
-                NeonButtonStyle::Outline => {
-                    // Relies on the default inactive/hovered visuals
                 }
             }
         }

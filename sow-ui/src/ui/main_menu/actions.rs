@@ -1,6 +1,6 @@
 use crate::UiAction;
 use egui::Ui;
-use crate::widgets::{NeonButton, NeonButtonStyle};
+use crate::widgets::{ThemeButton, ThemeButtonStyle};
 
 pub fn draw_right_column(
     ui: &mut Ui,
@@ -14,8 +14,8 @@ pub fn draw_right_column(
     let strings = &sow_lang::get(lang).main_menu;
     let solo_primary = if compact { 24.0 } else { 28.0 };
 
-    let tutorial_btn = NeonButton::new(&strings.play_tutorial)
-        .style(NeonButtonStyle::Primary)
+    let tutorial_btn = ThemeButton::new(&strings.play_tutorial)
+        .style(ThemeButtonStyle::Primary)
         .min_size(egui::vec2(ui.available_width(), action_min_h))
         .text_size(solo_primary);
 
@@ -25,8 +25,8 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
-    let solo_btn = NeonButton::new(&strings.single_player)
-        .style(NeonButtonStyle::Outline)
+    let solo_btn = ThemeButton::new(&strings.single_player)
+        .style(ThemeButtonStyle::Tertiary)
         .min_size(egui::vec2(ui.available_width(), action_min_h))
         .text_size(solo_primary);
 
@@ -36,8 +36,8 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
-    let ranked = NeonButton::new(&strings.ranked_match)
-        .style(NeonButtonStyle::Secondary)
+    let ranked = ThemeButton::new(&strings.ranked_match)
+        .style(ThemeButtonStyle::Secondary)
         .min_size(egui::vec2(
             ui.available_width(),
             (action_min_h - 10.0).max(60.0),
@@ -50,8 +50,8 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
-    let editor_btn = NeonButton::new(&strings.map_editor)
-        .style(NeonButtonStyle::Outline)
+    let editor_btn = ThemeButton::new(&strings.map_editor)
+        .style(ThemeButtonStyle::Tertiary)
         .min_size(egui::vec2(
             ui.available_width(),
             (action_min_h - 10.0).max(60.0),
@@ -65,8 +65,8 @@ pub fn draw_right_column(
     ui.add_space(section_gap);
 
     let h = if compact { 48.0 } else { 52.0 };
-    let btn = NeonButton::new(&strings.settings)
-        .style(NeonButtonStyle::Outline)
+    let btn = ThemeButton::new(&strings.settings)
+        .style(ThemeButtonStyle::Tertiary)
         .min_size(egui::vec2(ui.available_width(), h))
         .text_size(if compact { 16.0 } else { 18.0 });
 

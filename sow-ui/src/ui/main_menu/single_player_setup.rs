@@ -267,8 +267,8 @@ pub fn draw_modal(
                                             let remaining = (ui.available_width() - total_w) / 2.0;
                                             ui.add_space(remaining);
                                             
-                                            let cancel_btn = crate::widgets::NeonButton::new(&strings.back)
-                                                .style(crate::widgets::NeonButtonStyle::Outline)
+                                            let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
+                                                .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                                 .min_size(egui::vec2(btn_w, btn_h))
                                                 .text_size(18.0);
                                             
@@ -278,8 +278,8 @@ pub fn draw_modal(
 
                                             ui.add_space(spacing);
 
-                                            let start_btn = crate::widgets::NeonButton::new(&strings.start_simulation)
-                                                .style(crate::widgets::NeonButtonStyle::Primary)
+                                            let start_btn = crate::widgets::ThemeButton::new(&strings.start_simulation)
+                                                .style(crate::widgets::ThemeButtonStyle::Primary)
                                                 .min_size(egui::vec2(btn_w, btn_h))
                                                 .text_size(18.0);
                                             
@@ -289,8 +289,8 @@ pub fn draw_modal(
                                             }
                                         });
                                     } else {
-                                        let start_btn = crate::widgets::NeonButton::new(&strings.start_simulation)
-                                            .style(crate::widgets::NeonButtonStyle::Primary)
+                                        let start_btn = crate::widgets::ThemeButton::new(&strings.start_simulation)
+                                            .style(crate::widgets::ThemeButtonStyle::Primary)
                                             .min_size(egui::vec2(btn_w, btn_h))
                                             .text_size(18.0);
                                         
@@ -301,8 +301,8 @@ pub fn draw_modal(
 
                                         ui.add_space(12.0);
 
-                                        let cancel_btn = crate::widgets::NeonButton::new(&strings.back)
-                                            .style(crate::widgets::NeonButtonStyle::Outline)
+                                        let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
+                                            .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                             .min_size(egui::vec2(btn_w, btn_h))
                                             .text_size(18.0);
                                         

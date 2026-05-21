@@ -90,7 +90,7 @@ pub fn draw(ctx: &egui::Context, config: &EndgameConfig, lang: Language) -> Opti
                 if ui
                     .add_sized(
                         [200.0, 50.0],
-                        crate::widgets::NeonButton::new(&strings.return_to_lobby)
+                        crate::widgets::ThemeButton::new(&strings.return_to_lobby)
                             .custom_text_color(Color32::WHITE)
                             .text_size(20.0)
                             .custom_fill(btn_color),
@@ -105,7 +105,7 @@ pub fn draw(ctx: &egui::Context, config: &EndgameConfig, lang: Language) -> Opti
                     if ui
                         .add_sized(
                             [200.0, 50.0],
-                            crate::widgets::NeonButton::new(&strings.spectate)
+                            crate::widgets::ThemeButton::new(&strings.spectate)
                                 .custom_text_color(Color32::WHITE)
                                 .text_size(20.0)
                                 .custom_fill(Color32::from_rgb(60, 60, 60)),

@@ -193,8 +193,8 @@ pub fn draw_queue_overlay(
                     // 2. Bottom Area (Leave button)
                     ui.add_space(8.0);
                     ui.vertical_centered(|ui| {
-                        let cancel = crate::widgets::NeonButton::new(&strings.leave_lobby)
-                            .style(crate::widgets::NeonButtonStyle::Danger)
+                        let cancel = crate::widgets::ThemeButton::new(&strings.leave_lobby)
+                            .style(crate::widgets::ThemeButtonStyle::Danger)
                             .min_size(egui::vec2(220.0, action_min_h));
                         if ui.add(cancel).clicked() {
                             *action = Some(UiAction::LeaveLobby);
