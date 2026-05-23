@@ -71,6 +71,8 @@ pub fn draw_modal(
     action: &mut Option<UiAction>,
     lang: sow_lang::Language,
 ) {
+    state.single_player_config.player_leader = state.selected_leader;
+    state.single_player_config.player_civilization = state.selected_civilization;
     let strings = &sow_lang::get(lang).main_menu;
     let mut close = false;
 
@@ -85,9 +87,9 @@ pub fn draw_modal(
 
             // 1. Fullscreen Background Image
             let background_tex = if is_mobile {
-                asset_loader.splash_mobile.as_ref()
+                asset_loader.leader_mobile_images.get(&state.selected_leader)
             } else {
-                asset_loader.splash_desktop.as_ref()
+                asset_loader.leader_desktop_images.get(&state.selected_leader)
             };
 
             if let Some(texture) = background_tex {
@@ -241,107 +243,34 @@ pub fn draw_modal(
                                     });
                                 };
 
-                                let draw_leader_picker = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                    setting_card(ui, "LEADER & CIVILIZATION SELECTION", is_mobile, |ui| {
-                                        ui.vertical(|ui| {
-                                            ui.spacing_mut().item_spacing.y = 8.0;
-                                            
-                                            // Scrollable/Flexible row of Leader buttons
-                                            ui.horizontal(|ui| {
-                                                ui.spacing_mut().item_spacing.x = 6.0;
-                                                for &leader in sow_core::player::Leader::ALL.iter() {
-                                                    let is_selected = config.player_leader == leader;
-                                                    let civ = match leader {
-                                                        sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
-                                                        sow_core::player::Leader::Cleopatra => sow_core::player::Civilization::Egypt,
-                                                        sow_core::player::Leader::Ragnar => sow_core::player::Civilization::Vikings,
-                                                        sow_core::player::Leader::SunTzu => sow_core::player::Civilization::China,
-                                                        sow_core::player::Leader::Alexander => sow_core::player::Civilization::Macedon,
-                                                        sow_core::player::Leader::GenghisKhan => sow_core::player::Civilization::Mongols,
-                                                    };
-                                                    
-                                                    let emoji = match leader {
-                                                        sow_core::player::Leader::Caesar => "🏛️",
-                                                        sow_core::player::Leader::Cleopatra => "👑",
-                                                        sow_core::player::Leader::Ragnar => "🪓",
-                                                        sow_core::player::Leader::SunTzu => "📜",
-                                                        sow_core::player::Leader::Alexander => "🛡️",
-                                                        sow_core::player::Leader::GenghisKhan => "🐺",
-                                                    };
+                                 let draw_leader_picker = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                                     setting_card(ui, "ACTIVE LEADER & CIVILIZATION", is_mobile, |ui| {
+                                         ui.vertical(|ui| {
+                                             ui.spacing_mut().item_spacing.y = 4.0;
+                                             
+                                             let leader = config.player_leader;
+                                             let civ = config.player_civilization;
+                                             
+                                             let emoji = match leader {
+                                                 sow_core::player::Leader::Caesar => "🏛️",
+                                                 sow_core::player::Leader::Cleopatra => "👑",
+                                                 sow_core::player::Leader::Ragnar => "🪓",
+                                                 sow_core::player::Leader::SunTzu => "📜",
+                                                 sow_core::player::Leader::Alexander => "🛡️",
+                                                 sow_core::player::Leader::GenghisKhan => "🐺",
+                                             };
 
-                                                    let border_color = if is_selected {
-                                                        theme::accent_solo_cyan()
-                                                    } else {
-                                                        theme::nickname_field_border().linear_multiply(0.4)
-                                                    };
-                                                    
-                                                    let bg_color = if is_selected {
-                                                        theme::accent_solo_cyan().linear_multiply(0.12)
-                                                    } else {
-                                                        theme::nickname_field_bg()
-                                                    };
-
-                                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(60.0, 52.0), egui::Sense::click());
-                                                    
-                                                    let is_hovered = resp.hovered();
-                                                    let final_bg = if is_hovered && !is_selected {
-                                                        theme::nickname_field_bg().linear_multiply(0.7)
-                                                    } else {
-                                                        bg_color
-                                                    };
-
-                                                    ui.painter().rect(
-                                                        rect,
-                                                        8,
-                                                        final_bg,
-                                                        egui::Stroke::new(if is_selected { 1.5_f32 } else { 1.0_f32 }, border_color),
-                                                        egui::StrokeKind::Inside,
-                                                    );
-                                                    
-                                                    // Draw emoji
-                                                    ui.painter().text(
-                                                        rect.center() - egui::vec2(0.0, 8.0),
-                                                        egui::Align2::CENTER_CENTER,
-                                                        emoji,
-                                                        egui::FontId::proportional(18.0),
-                                                        Color32::WHITE,
-                                                     );
-                                                     
-                                                     // Draw name
-                                                     ui.painter().text(
-                                                         rect.center() + egui::vec2(0.0, 13.0),
-                                                         egui::Align2::CENTER_CENTER,
-                                                         leader.name(),
-                                                         egui::FontId::proportional(9.0),
-                                                         if is_selected { Color32::WHITE } else { theme::text_secondary() },
-                                                     );
-
-                                                    if resp.clicked() {
-                                                        config.player_leader = leader;
-                                                        config.player_civilization = civ;
-                                                    }
-                                                }
-                                            });
-                                            
-                                            ui.add_space(4.0);
-                                            
-                                            // Perk Detail Description
-                                            let selected_perk = config.player_leader.perk_description();
-                                            let selected_civ = config.player_civilization.name();
-                                            
-                                            ui.horizontal(|ui| {
-                                                ui.label(RichText::new("CIVILIZATION: ").color(theme::text_secondary()).size(11.0).strong());
-                                                ui.label(RichText::new(selected_civ.to_uppercase()).strong().color(Color32::WHITE).size(11.0));
-                                            });
-                                            ui.label(
-                                                RichText::new(selected_perk)
-                                                    .size(11.5)
-                                                    .color(theme::accent_solo_cyan())
-                                                    .strong()
-                                            );
-                                        });
-                                    });
-                                };
+                                             ui.horizontal(|ui| {
+                                                 ui.label(RichText::new(emoji).size(20.0));
+                                                 ui.add_space(4.0);
+                                                 ui.vertical(|ui| {
+                                                     ui.label(RichText::new(format!("{} ({})", leader.name(), civ.name())).strong().color(Color32::WHITE).size(13.0));
+                                                     ui.label(RichText::new(leader.perk_description()).size(10.5).color(theme::accent_solo_cyan()).strong());
+                                                 });
+                                             });
+                                         });
+                                     });
+                                 };
 
                                 let draw_bots = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                                     setting_card(ui, &strings.tribes_count, is_mobile, |ui| {

@@ -288,14 +288,22 @@ pub fn can_ground_attack_neutral(
             return true;
         }
 
-        let neighbors = [
-            y.checked_sub(1).map(|ny| (x, ny)),
-            if y + 1 < h { Some((x, y + 1)) } else { None },
-            x.checked_sub(1).map(|nx| (nx, y)),
-            if x + 1 < w { Some((x + 1, y)) } else { None },
-        ];
-        for opt in neighbors.into_iter().flatten() {
-            let (nx, ny) = opt;
+        let is_odd = (y % 2) != 0;
+        let deltas: [(i32, i32); 6] = if is_odd {
+            [(1,0),(-1,0),(0,-1),(1,-1),(0,1),(1,1)]
+        } else {
+            [(1,0),(-1,0),(-1,-1),(0,-1),(-1,1),(0,1)]
+        };
+        let neighbors = deltas.iter().filter_map(|&(dx, dy)| {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < w as i32 && ny >= 0 && ny < h as i32 {
+                Some((nx as u32, ny as u32))
+            } else {
+                None
+            }
+        });
+        for (nx, ny) in neighbors {
             if cx.abs_diff(nx) + cy.abs_diff(ny) > max_dist {
                 continue;
             }
@@ -450,14 +458,22 @@ pub fn closest_neutral_shore_on_components(
             }
         }
 
-        let neighbors = [
-            y.checked_sub(1).map(|ny| (x, ny)),
-            if y + 1 < h { Some((x, y + 1)) } else { None },
-            x.checked_sub(1).map(|nx| (nx, y)),
-            if x + 1 < w { Some((x + 1, y)) } else { None },
-        ];
-        for opt in neighbors.into_iter().flatten() {
-            let (nx, ny) = opt;
+        let is_odd = (y % 2) != 0;
+        let deltas: [(i32, i32); 6] = if is_odd {
+            [(1,0),(-1,0),(0,-1),(1,-1),(0,1),(1,1)]
+        } else {
+            [(1,0),(-1,0),(-1,-1),(0,-1),(-1,1),(0,1)]
+        };
+        let neighbors = deltas.iter().filter_map(|&(dx, dy)| {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < w as i32 && ny >= 0 && ny < h as i32 {
+                Some((nx as u32, ny as u32))
+            } else {
+                None
+            }
+        });
+        for (nx, ny) in neighbors {
             if cx.abs_diff(nx) + cy.abs_diff(ny) > max_dist {
                 continue;
             }
@@ -555,7 +571,7 @@ pub struct WarpFleet {
     pub src_tile: u32,
     pub dst_tile: u32,
     pub retreat_dst: Option<u32>,
-    pub path: Vec<u32>,
+    pub path: std::sync::Arc<Vec<u32>>,
     pub path_cursor: usize,
     pub current_tile: u32,
     pub retreating: bool,
@@ -584,7 +600,7 @@ impl WarpFleet {
             src_tile,
             dst_tile,
             retreat_dst: None,
-            path,
+            path: std::sync::Arc::new(path),
             path_cursor,
             current_tile,
             retreating: false,

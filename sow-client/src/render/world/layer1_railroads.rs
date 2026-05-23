@@ -20,7 +20,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
     if let Some(snap) = &sim.current_snapshot {
             // --- Layer 1: Railroads & Bridges (Bottom-most) ---
-            for rail in &snap.railroads {
+            for rail in snap.railroads.iter() {
                 let owner_color = player_colors.get(rail.owner_id as usize).copied().unwrap_or(egui::Color32::GRAY);
 
                 let (cached_path, cached_tiles) = ui.cached_railroads.entry(rail.id).or_insert_with(|| {
@@ -38,8 +38,10 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     let row = (tile_idx / sim.map_w) as f32;
 
                     // S4: Frustum cull individual rail tiles
-                    let scr_x = (input.camera_x + (col + 0.5) * input.camera_zoom) / sf;
-                    let scr_y = (input.camera_y + (row + 0.5) * input.camera_zoom) / sf;
+                    let r_world_x = col + 0.5 + (row as i32 % 2) as f32 * 0.5;
+                    let r_world_y = (row + 0.5) * 0.8660254_f32;
+                    let scr_x = (input.camera_x + r_world_x * input.camera_zoom) / sf;
+                    let scr_y = (input.camera_y + r_world_y * input.camera_zoom) / sf;
                     if scr_x < -zoom_scaled || scr_x > input.screen_w / sf + zoom_scaled
                         || scr_y < -zoom_scaled || scr_y > input.screen_h / sf + zoom_scaled {
                         continue;
@@ -49,8 +51,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         let bridge_rects = get_bridge_rects(rt.rail_type);
                         let bridge_color = egui::Color32::from_rgb(197, 69, 72); // rusty red
                         for &[dx, dy, w, h] in bridge_rects {
-                            let world_x = col + 0.5 + (dx as f32) / 2.0;
-                            let world_y = row + 0.5 + (dy as f32) / 2.0;
+                            let world_x = col + 0.5 + (row as i32 % 2) as f32 * 0.5 + (dx as f32) / 2.0;
+                            let world_y = (row + 0.5) * 0.8660254_f32 + (dy as f32) / 2.0;
                             let world_w = w as f32 / 2.0;
                             let world_h = h as f32 / 2.0;
 
@@ -69,8 +71,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
                     let rail_rects = get_railroad_rects(rt.rail_type);
                     for &[dx, dy, w, h] in rail_rects {
-                        let world_x = col + 0.5 + (dx as f32) / 2.0;
-                        let world_y = row + 0.5 + (dy as f32) / 2.0;
+                        let world_x = col + 0.5 + (row as i32 % 2) as f32 * 0.5 + (dx as f32) / 2.0;
+                        let world_y = (row + 0.5) * 0.8660254_f32 + (dy as f32) / 2.0;
                         let world_w = w as f32 / 2.0;
                         let world_h = h as f32 / 2.0;
 
@@ -124,9 +126,14 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         let col2 = (t2 % sim.map_w) as f32;
                         let row2 = (t2 / sim.map_w) as f32;
                         
-                        // Linear interpolation of world coordinates
-                        let wx = col1 + (col2 - col1) * segment_fract + 0.5;
-                        let wy = row1 + (row2 - row1) * segment_fract + 0.5;
+                        // Convert hex tile indices to world coordinates first
+                        let wx1 = col1 + 0.5 + (row1 as i32 % 2) as f32 * 0.5;
+                        let wy1 = (row1 + 0.5) * 0.8660254_f32;
+                        let wx2 = col2 + 0.5 + (row2 as i32 % 2) as f32 * 0.5;
+                        let wy2 = (row2 + 0.5) * 0.8660254_f32;
+
+                        let wx = wx1 + (wx2 - wx1) * segment_fract;
+                        let wy = wy1 + (wy2 - wy1) * segment_fract;
                         
                         // Convert to screen position
                         let screen_x = (input.camera_x + wx * input.camera_zoom) / sf;
@@ -193,7 +200,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
             // --- Sea Lanes: Dashed water paths between ports ---
             if zoom_scaled >= 0.3 {
                 let lane_color = egui::Color32::from_rgba_unmultiplied(59, 130, 246, 100); // blue, translucent
-                for lane in &snap.sea_lanes {
+                for lane in snap.sea_lanes.iter() {
                     let cached_tiles = ui.cached_sea_lanes.entry(lane.id).or_insert_with(|| {
                         compute_rail_tiles(sim.map_w, &lane.path)
                     });

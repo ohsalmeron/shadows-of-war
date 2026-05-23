@@ -370,7 +370,7 @@ pub fn update_railroads(engine: &mut SowEngine) {
                     owner_id: rail.owner_id,
                 });
             }
-            engine.state.railroads = final_railroads;
+            engine.state.railroads = std::sync::Arc::new(final_railroads);
             engine.railroad_calc = None;
         }
     }

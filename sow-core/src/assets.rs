@@ -16,6 +16,8 @@ macro_rules! all_assets {
             TransportShip => "transport_ship.svg",
             Battleship => "battleship.svg",
             Star => "star.svg",
+            Handshake => "handshake.svg",
+            Troops => "troops.webp",
             AtomBomb => "atombomb.png",
             HydrogenBomb => "hydrogenbomb.png",
             Mirv => "mirv.png",

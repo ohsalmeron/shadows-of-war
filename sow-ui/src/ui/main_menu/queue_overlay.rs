@@ -328,8 +328,15 @@ fn draw_ready_room(
                                     ui.horizontal(|ui| {
                                         // 1. Name Hash Avatar
                                         let name_hash = p.name.chars().map(|c| c as usize).sum::<usize>();
-                                        let avatar_idx = name_hash % 8;
-                                        let avatar_tex = asset_loader.avatars.get(avatar_idx).or(asset_loader.avatar_fallback.as_ref());
+                                        let leader_fallback = match name_hash % 6 {
+                                            0 => sow_core::player::Leader::Caesar,
+                                            1 => sow_core::player::Leader::Cleopatra,
+                                            2 => sow_core::player::Leader::Ragnar,
+                                            3 => sow_core::player::Leader::SunTzu,
+                                            4 => sow_core::player::Leader::Alexander,
+                                            _ => sow_core::player::Leader::GenghisKhan,
+                                        };
+                                        let avatar_tex = asset_loader.avatars.get(&leader_fallback).or(asset_loader.avatar_fallback.as_ref());
                                         if let Some(tex) = avatar_tex {
                                             ui.add(egui::Image::new(tex)
                                                 .fit_to_exact_size(egui::vec2(28.0, 28.0))

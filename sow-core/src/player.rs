@@ -43,7 +43,7 @@ impl Civilization {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Leader {
     Caesar,
     Cleopatra,
@@ -82,7 +82,7 @@ impl Leader {
 
     pub fn perk_description(self) -> &'static str {
         match self {
-            Leader::Caesar => "Pax Romana: Starts match with a free Military district.",
+            Leader::Caesar => "Pax Romana: Starts match with a Level 2 Capital City.",
             Leader::Cleopatra => "Gift of the Nile: Industry districts generate +50% Gold.",
             Leader::Ragnar => "Longship Raid: Ports generate +50% Gold.",
             Leader::SunTzu => "Art of War: Military districts produce troops 20% faster.",

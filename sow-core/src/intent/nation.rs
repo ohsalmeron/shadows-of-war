@@ -967,8 +967,8 @@ impl SowEngine {
         // Counter-MIRV
         for proj in &self.projectiles {
             if proj.active && matches!(proj.kind, crate::game::ProjectileKind::Nuke(NukeKind::MIRV)) {
-                let target_x = proj.dst_x as i32;
-                let target_y = proj.dst_y as i32;
+                let target_x = (proj.dst_tile % self.state.map.width) as i32;
+                let target_y = (proj.dst_tile / self.state.map.width) as i32;
                 if self.state.map.is_valid_coord(target_x, target_y) {
                     if self.state.map.owner_id(target_x as u32, target_y as u32) == bot_id {
                         target_id = proj.owner_id;
@@ -1245,8 +1245,10 @@ mod bot_iq_alliance_tests {
         engine.projectiles.push(crate::game::Projectile {
             id: 1, owner_id: 2, active: true,
             kind: crate::game::ProjectileKind::Nuke(crate::game::NukeKind::MIRV),
-            src_x: 10.0, src_y: 10.0, dst_x: 0.0, dst_y: 0.0,
-            progress: 0.5, speed: 1.0,
+            src_tile: 10 * 8 + 10, dst_tile: 0,
+            path: vec![10 * 8 + 10, 0],
+            path_cursor: 0,
+            steps_per_tick: 2,
         });
 
         // Bot 1 owns tile (0,0)

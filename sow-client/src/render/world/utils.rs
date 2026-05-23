@@ -1,11 +1,11 @@
 
 pub(crate) fn get_building_icon_size(zoom_scaled: f32) -> f32 {
     if zoom_scaled < 10.0 {
-        zoom_scaled * 2.5
-    } else {
         zoom_scaled * 2.0
+    } else {
+        zoom_scaled * 1.6
     }
-    .clamp(16.0, 96.0)
+    .clamp(11.0, 96.0)
 }
 
 pub(crate) fn get_level_str(level: u8) -> &'static str {

@@ -102,6 +102,9 @@ pub enum ClientMessage {
         is_observer: bool,
         target_lobby_id: Option<u64>,
         build_version: String,
+        clan_tag: String,
+        civilization: crate::player::Civilization,
+        leader: crate::player::Leader,
     },
     Gameplay {
         intent: GameplayIntent,
@@ -312,7 +315,7 @@ pub struct FleetSnapshot {
     pub unit_type: crate::game::UnitType,
     pub troops: f64,
     pub current_tile: u32,
-    pub path: Vec<u32>,
+    pub path: std::sync::Arc<Vec<u32>>,
     pub path_cursor: usize,
     pub retreating: bool,
 }
@@ -329,16 +332,24 @@ pub struct AttackSnapshot {
     pub front_cy: f32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProjectileSnapshot {
     pub id: u64,
     pub kind: crate::game::ProjectileKind,
     pub owner_id: u16,
-    pub src_x: f32,
-    pub src_y: f32,
-    pub dst_x: f32,
-    pub dst_y: f32,
-    pub progress: f32,
+    pub src_tile: u32,
+    pub dst_tile: u32,
+    pub path: Vec<u32>,
+    pub path_cursor: usize,
+    pub steps_per_tick: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NukeAlert {
+    pub owner_id: u16,
+    pub kind: crate::game::NukeKind,
+    pub tile_x: u32,
+    pub tile_y: u32,
 }
 
 /// Snapshot sent from the simulation thread to the main thread every tick.
@@ -353,11 +364,13 @@ pub struct SimSnapshot {
     pub attacks: Vec<AttackSnapshot>,
     pub buildings: Vec<BuildingSnapshot>,
     pub projectiles: Vec<ProjectileSnapshot>,
+    #[serde(default)]
+    pub nuke_alerts: Vec<NukeAlert>,
     pub winner: Option<u16>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,
     pub total_land_tiles: u32,
-    pub railroads: Vec<crate::building::railroad::Railroad>,
-    pub sea_lanes: Vec<crate::sea_lane::SeaLane>,
+    pub railroads: std::sync::Arc<Vec<crate::building::railroad::Railroad>>,
+    pub sea_lanes: std::sync::Arc<Vec<crate::sea_lane::SeaLane>>,
     pub debug_mem_info: String,
 }

@@ -8,10 +8,6 @@ struct Globals {
     border_darkness: f32,
     shore_thickness: f32,
     shore_darkness: f32,
-    border_roundness: f32,
-    graphics_quality: f32,
-    _pad2: f32,
-    _pad3: f32,
 }
 
 struct PlayerColors {
@@ -20,7 +16,8 @@ struct PlayerColors {
 
 var<uniform> globals: Globals;
 var<uniform> player_colors: PlayerColors;
-var territory_texture: texture_2d<u32>;
+var terrain_texture: texture_2d<u32>;
+var owner_texture: texture_2d<u32>;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -37,6 +34,71 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     return out;
 }
 
+fn get_cell_owner(hex: vec2<i32>) -> u32 {
+    if (hex.x < 0 || hex.y < 0 || hex.x >= i32(globals.map_size.x) || hex.y >= i32(globals.map_size.y)) {
+        return 0u;
+    }
+    return textureLoad(owner_texture, vec2<i32>(hex.x, hex.y), 0).x;
+}
+
+fn get_cell_terrain(hex: vec2<i32>) -> u32 {
+    if (hex.x < 0 || hex.y < 0 || hex.x >= i32(globals.map_size.x) || hex.y >= i32(globals.map_size.y)) {
+        return 0u;
+    }
+    return textureLoad(terrain_texture, vec2<i32>(hex.x, hex.y), 0).x;
+}
+
+fn world_to_hex(world_pos: vec2<f32>) -> vec2<i32> {
+    let q_f = world_pos.x - world_pos.y * 0.577350269;
+    let r_f = world_pos.y * 1.154700538;
+    let s_f = -q_f - r_f;
+
+    var rq = round(q_f);
+    var rr = round(r_f);
+    let rs = round(s_f);
+
+    let q_diff = abs(rq - q_f);
+    let r_diff = abs(rr - r_f);
+    let s_diff = abs(rs - s_f);
+
+    if q_diff > r_diff && q_diff > s_diff {
+        rq = -rr - rs;
+    } else if r_diff > s_diff {
+        rr = -rq - rs;
+    }
+
+    let col = i32(rq) + (i32(rr) - (i32(rr) & 1)) / 2;
+    let row = i32(rr);
+    return vec2<i32>(col, row);
+}
+
+fn hex_to_world(hex: vec2<i32>) -> vec2<f32> {
+    let col = f32(hex.x);
+    let row = f32(hex.y);
+    let bx = col + 0.5 + f32(hex.y & 1) * 0.5;
+    let by = (row + 0.5) * 0.8660254;
+    return vec2<f32>(bx, by);
+}
+
+fn get_hex_neighbor(hex: vec2<i32>, direction: i32) -> vec2<i32> {
+    let is_odd = (hex.y % 2) != 0;
+    var offset = vec2<i32>(0, 0);
+    if (direction == 0) {
+        offset = vec2<i32>(1, 0); // East
+    } else if (direction == 1) {
+        offset = vec2<i32>(-1, 0); // West
+    } else if (direction == 2) {
+        if (is_odd) { offset = vec2<i32>(0, -1); } else { offset = vec2<i32>(-1, -1); } // Northwest
+    } else if (direction == 3) {
+        if (is_odd) { offset = vec2<i32>(1, -1); } else { offset = vec2<i32>(0, -1); } // Northeast
+    } else if (direction == 4) {
+        if (is_odd) { offset = vec2<i32>(0, 1); } else { offset = vec2<i32>(-1, 1); } // Southwest
+    } else if (direction == 5) {
+        if (is_odd) { offset = vec2<i32>(1, 1); } else { offset = vec2<i32>(0, 1); } // Southeast
+    }
+    return hex + offset;
+}
+
 fn owner_albedo(owner_id: u32) -> vec3<f32> {
     if owner_id < 256u {
         return player_colors.colors[owner_id].rgb;
@@ -48,8 +110,7 @@ fn get_elevation(cx: i32, cy: i32) -> f32 {
     if (cx < 0 || cy < 0 || cx >= i32(globals.map_size.x) || cy >= i32(globals.map_size.y)) {
         return 0.0;
     }
-    let val = textureLoad(territory_texture, vec2<i32>(cx, cy), 0).x;
-    let terrain_byte = (val >> 16u) & 0xFFu;
+    let terrain_byte = textureLoad(terrain_texture, vec2<i32>(cx, cy), 0).x;
     let is_land = (terrain_byte & 0x80u) != 0u;
     if (is_land) {
         return f32(terrain_byte & 0x1Fu);
@@ -63,19 +124,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let world_x = (screen_pixel.x - globals.camera_pos.x) / globals.zoom;
     let world_y = (screen_pixel.y - globals.camera_pos.y) / globals.zoom;
 
-    let cell_x = i32(floor(world_x));
-    let cell_y = i32(floor(world_y));
+    let cell_hex = world_to_hex(vec2<f32>(world_x, world_y));
+    let cell_x = cell_hex.x;
+    let cell_y = cell_hex.y;
 
     if cell_x < 0 || cell_y < 0 || cell_x >= i32(globals.map_size.x) || cell_y >= i32(globals.map_size.y) {
         return vec4<f32>(0.015, 0.015, 0.02, 1.0); // Sleek dark space/canvas backdrop
     }
 
     let pixel_coords = vec2<i32>(cell_x, cell_y);
-    let val = textureLoad(territory_texture, pixel_coords, 0).x;
-    
-    let owner_id = val & 0x7FFFu;
-    let is_green_border = (val & 0x00008000u) != 0u;
-    let terrain_byte = (val >> 16u) & 0xFFu;
+    let terrain_byte = textureLoad(terrain_texture, pixel_coords, 0).x;
+    let owner_id = textureLoad(owner_texture, pixel_coords, 0).x;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
     var terrain_color = vec4<f32>(0.0);
@@ -113,14 +172,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // Mountains
         }
 
-        // Procedural Normal Mapping from Adjacent elevation gradient
-        let h_left  = get_elevation(cell_x - 1, cell_y);
+        // Procedural 6-Directional Normal Mapping from Adjacent elevation gradient
+        let is_odd = (cell_y % 2) != 0;
         let h_right = get_elevation(cell_x + 1, cell_y);
-        let h_up    = get_elevation(cell_x, cell_y - 1);
-        let h_down  = get_elevation(cell_x, cell_y + 1);
+        let h_left  = get_elevation(cell_x - 1, cell_y);
+        var h_up_l = 0.0;
+        var h_up_r = 0.0;
+        var h_dn_l = 0.0;
+        var h_dn_r = 0.0;
+        if is_odd {
+            h_up_l = get_elevation(cell_x, cell_y - 1);
+            h_up_r = get_elevation(cell_x + 1, cell_y - 1);
+            h_dn_l = get_elevation(cell_x, cell_y + 1);
+            h_dn_r = get_elevation(cell_x + 1, cell_y + 1);
+        } else {
+            h_up_l = get_elevation(cell_x - 1, cell_y - 1);
+            h_up_r = get_elevation(cell_x, cell_y - 1);
+            h_dn_l = get_elevation(cell_x - 1, cell_y + 1);
+            h_dn_r = get_elevation(cell_x, cell_y + 1);
+        }
         
-        let dx = (h_right - h_left) * 0.12;
-        let dy = (h_down - h_up) * 0.12;
+        let dx = ((h_right + 0.5 * h_up_r + 0.5 * h_dn_r) - (h_left + 0.5 * h_up_l + 0.5 * h_dn_l)) * 0.10;
+        let dy = ((0.866 * h_dn_l + 0.866 * h_dn_r) - (0.866 * h_up_l + 0.866 * h_up_r)) * 0.10;
         normal = normalize(vec3<f32>(-dx, -dy, 1.0));
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
@@ -182,49 +255,52 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     if owner_id > 0u {
-        let border_up = (val & 0x80000000u) != 0u;
-        let border_down = (val & 0x40000000u) != 0u;
-        let border_left = (val & 0x20000000u) != 0u;
-        let border_right = (val & 0x10000000u) != 0u;
+        let hex_center = hex_to_world(cell_hex);
+        let local_pos = vec2<f32>(world_x, world_y) - hex_center;
 
-        let shore_up = (val & 0x08000000u) != 0u;
-        let shore_down = (val & 0x04000000u) != 0u;
-        let shore_left = (val & 0x02000000u) != 0u;
-        let shore_right = (val & 0x01000000u) != 0u;
+        var is_shore = false;
+        var is_border = false;
+        var is_green_border = false;
+        let is_tribe = owner_id >= 200u;
 
-        let fx = fract(world_x);
-        let fy = fract(world_y);
-        
         let thickness = globals.border_thickness;
         let border_darkness = globals.border_darkness;
         let s_thickness = globals.shore_thickness;
         let s_darkness = globals.shore_darkness;
 
-        let roundness = globals.border_roundness;
-        let border_r = thickness * roundness;
-        
-        let core_min_x = select(0.0, thickness + border_r, border_left);
-        let core_max_x = select(1.0, 1.0 - thickness - border_r, border_right);
-        let core_min_y = select(0.0, thickness + border_r, border_up);
-        let core_max_y = select(1.0, 1.0 - thickness - border_r, border_down);
+        for (var i = 0; i < 6; i = i + 1) {
+            let neighbor_hex = get_hex_neighbor(cell_hex, i);
+            let neighbor_owner = get_cell_owner(neighbor_hex);
 
-        let dx = max(core_min_x - fx, max(0.0, fx - core_max_x));
-        let dy = max(core_min_y - fy, max(0.0, fy - core_max_y));
-        let is_border = sqrt(dx*dx + dy*dy) > border_r;
+            let border_exists = neighbor_owner != owner_id;
+            let shore_exists = border_exists && (neighbor_owner == 0u);
+            let green_exists = border_exists && is_tribe && (neighbor_owner >= 200u);
 
-        let shore_r = s_thickness * roundness;
-        
-        let s_core_min_x = select(0.0, s_thickness + shore_r, shore_left);
-        let s_core_max_x = select(1.0, 1.0 - s_thickness - shore_r, shore_right);
-        let s_core_min_y = select(0.0, s_thickness + shore_r, shore_up);
-        let s_core_max_y = select(1.0, 1.0 - s_thickness - shore_r, shore_down);
+            if border_exists {
+                var dir = vec2<f32>(0.0, 0.0);
+                if (i == 0) { dir = vec2<f32>(1.0, 0.0); }
+                else if (i == 1) { dir = vec2<f32>(-1.0, 0.0); }
+                else if (i == 2) { dir = vec2<f32>(-0.5, -0.8660254); }
+                else if (i == 3) { dir = vec2<f32>(0.5, -0.8660254); }
+                else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
+                else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
 
-        let s_dx = max(s_core_min_x - fx, max(0.0, fx - s_core_max_x));
-        let s_dy = max(s_core_min_y - fy, max(0.0, fy - s_core_max_y));
-        let is_shore = sqrt(s_dx*s_dx + s_dy*s_dy) > shore_r;
+                let dist_to_edge = 0.5 - dot(local_pos, dir);
+
+                if shore_exists && dist_to_edge < s_thickness {
+                    is_shore = true;
+                }
+                if dist_to_edge < thickness {
+                    is_border = true;
+                    if green_exists {
+                        is_green_border = true;
+                    }
+                }
+            }
+        }
 
         let is_defended = (terrain_byte & 0x40u) != 0u;
-        let is_even_tile = (u32(world_x) + u32(world_y)) % 2u == 0u;
+        let is_even_tile = (u32(cell_hex.x) + u32(cell_hex.y)) % 2u == 0u;
         let draw_line = !is_defended || is_even_tile;
 
         if is_shore && draw_line {
@@ -252,12 +328,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── Embossed Cell Vignette (Real board game physical tile borders) ──
-    let fx_cell = fract(world_x);
-    let fy_cell = fract(world_y);
-    let edge_x = min(fx_cell, 1.0 - fx_cell);
-    let edge_y = min(fy_cell, 1.0 - fy_cell);
-    let min_edge = min(edge_x, edge_y);
-    let cell_bevel = smoothstep(0.0, 0.06, min_edge);
+    let hex_center = hex_to_world(cell_hex);
+    let local_pos_bevel = vec2<f32>(world_x, world_y) - hex_center;
+    var min_dist_to_edge = 0.5;
+    for (var i = 0; i < 6; i = i + 1) {
+        var dir = vec2<f32>(0.0, 0.0);
+        if (i == 0) { dir = vec2<f32>(1.0, 0.0); }
+        else if (i == 1) { dir = vec2<f32>(-1.0, 0.0); }
+        else if (i == 2) { dir = vec2<f32>(-0.5, -0.8660254); }
+        else if (i == 3) { dir = vec2<f32>(0.5, -0.8660254); }
+        else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
+        else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
+
+        let dist_to_edge = 0.5 - dot(local_pos_bevel, dir);
+        min_dist_to_edge = min(min_dist_to_edge, dist_to_edge);
+    }
+    let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
     base_color = base_color * (0.86 + 0.14 * cell_bevel); // Emphasizes 3D depth of individual tiles
 
     // ── Tactile Canvas/Matte Paper Texture Overlay ──

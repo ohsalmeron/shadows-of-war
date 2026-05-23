@@ -97,6 +97,9 @@ impl SowApp {
                                 .main_menu_state
                                 .pending_join_lobby_id),
                             build_version: get_build_version(),
+                            clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
+                            civilization: self.ui.app.main_menu_state.selected_civilization,
+                            leader: self.ui.app.main_menu_state.selected_leader,
                         };
                         if let Ok(json) = bincode::serialize(&join_msg) {
                             client.send(json);
@@ -407,6 +410,9 @@ impl SowApp {
                                     is_observer: false,
                                     target_lobby_id: None,
                                     build_version: get_build_version(),
+                                    clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
+                                    civilization: self.ui.app.main_menu_state.selected_civilization,
+                                    leader: self.ui.app.main_menu_state.selected_leader,
                                 };
                                 c.send(bincode::serialize(&join_msg).unwrap());
                             } else {

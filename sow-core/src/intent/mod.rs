@@ -35,7 +35,7 @@ impl SowEngine {
             if (wf.owner_id == p1 && wf.target_owner == p2) || (wf.owner_id == p2 && wf.target_owner == p1) {
                 wf.retreating = true;
                 wf.retreat_dst = None;
-                wf.path.clear();
+                wf.path = std::sync::Arc::new(Vec::new());
                 wf.path_cursor = 0;
             }
         }
@@ -54,7 +54,7 @@ impl SowEngine {
                     }
                     wf.retreating = true;
                     wf.retreat_dst = None;
-                    wf.path.clear();
+                    wf.path = std::sync::Arc::new(Vec::new());
                     wf.path_cursor = 0;
                     break;
                 }
@@ -184,7 +184,7 @@ impl SowEngine {
                         });
 
                         if let Some(path) = path {
-                            fleet.path = path;
+                            fleet.path = std::sync::Arc::new(path);
                             fleet.path_cursor = 0;
                             fleet.retreating = false;
                         }
@@ -221,6 +221,11 @@ impl SowEngine {
                         self.state.place_spawn(pid, x, y);
 
                         // Place City Center!
+                        let is_caesar = if let Some(player) = self.state.player(pid) {
+                            player.leader == crate::player::Leader::Caesar
+                        } else {
+                            false
+                        };
                         let building_id = self.state.next_building_id;
                         self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
                         self.add_building(crate::building::Building {
@@ -228,27 +233,10 @@ impl SowEngine {
                             owner_id: pid,
                             tile_idx: y * w + x,
                             kind: crate::game::BuildingKind::City,
-                            level: 1,
+                            level: if is_caesar { 2 } else { 1 },
                             under_construction: false,
                             ticks_until_complete: 0,
                         });
-
-                        // Caesar (Rome) perk
-                        if let Some(player) = self.state.player(pid) {
-                            if player.leader == crate::player::Leader::Caesar {
-                                let military_id = self.state.next_building_id;
-                                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
-                                self.add_building(crate::building::Building {
-                                    id: military_id,
-                                    owner_id: pid,
-                                    tile_idx: y * w + (x + 1).min(w - 1),
-                                    kind: crate::game::BuildingKind::Factory,
-                                    level: 1,
-                                    under_construction: false,
-                                    ticks_until_complete: 0,
-                                });
-                            }
-                        }
                     }
                 }
             }

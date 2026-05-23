@@ -137,14 +137,23 @@ impl SowApp {
         if self.ui.app.phase == sow_ui::app::ClientPhase::Splash {
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
-                    if self.ui.app.asset_loader.map_catalog.is_some() {
+                    self.ui.app.asset_loader.ensure_avatars_loaded(&self.ui.egui_ctx);
+                    self.ui.app.asset_loader.ensure_leaders_loaded(&self.ui.egui_ctx);
+                    self.ui.app.asset_loader.ensure_ui_assets_loaded(&self.ui.egui_ctx);
+
+                    let catalog_ready = self.ui.app.asset_loader.map_catalog.is_some();
+                    let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
+                    let leaders_ready = !self.ui.app.asset_loader.leader_desktop_images.is_empty();
+                    let ui_ready = self.ui.app.asset_loader.ui_loader_empty.is_some();
+
+                    if catalog_ready && avatars_ready && leaders_ready && ui_ready {
                         self.ui.app.splash_state.done = true;
                         if self.ui.app.splash_state.target_phase.is_none() {
                             self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
                         }
                     } else {
                         self.ui.app.splash_state.status_text =
-                            "Fetching Map Catalog...".to_string();
+                            "Loading game assets...".to_string();
                     }
                 }
                 sow_ui::ui::loading_screen::SplashJob::ExitGame => {

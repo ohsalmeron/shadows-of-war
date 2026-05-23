@@ -49,6 +49,7 @@ pub struct SimState {
     pub map_h: u32,
     pub offline_tick_timer: f32,
     pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
+    pub last_synced_cost_tick: Option<u64>,
 }
 
 pub struct InputState {
@@ -135,6 +136,8 @@ pub struct UiState {
     pub last_preview_tile: Option<u32>,
     pub cached_preview_paths: Vec<Vec<u32>>,
     pub star_svg_registered: bool,
+    pub handshake_svg_registered: bool,
+    pub troops_webp_registered: bool,
     pub cached_sea_lanes: std::collections::HashMap<u64, Vec<crate::render::world::RailTile>>,
 }
 
@@ -385,6 +388,7 @@ impl SowApp {
                 map_h,
                 offline_tick_timer: 0.0,
                 offline_intents: Vec::new(),
+                last_synced_cost_tick: None,
             },
             input: InputState {
                 camera_x,
@@ -435,6 +439,8 @@ impl SowApp {
                 last_preview_tile: None,
                 cached_preview_paths: Vec::new(),
                 star_svg_registered: false,
+                handshake_svg_registered: false,
+                troops_webp_registered: false,
                 cached_sea_lanes: std::collections::HashMap::new(),
             },
             time: TimeState {
@@ -671,7 +677,7 @@ impl SowApp {
 
                 for p in players {
                     if p.player_type == sow_core::player::PlayerType::Human {
-                        new_engine.spawn_human(p.id, p.name, p.color, p.team);
+                        new_engine.spawn_human(p.id, p.name, p.color, p.team, p.civilization, p.leader);
                     }
                 }
 
@@ -720,6 +726,87 @@ impl SowApp {
                             snap.dirty_tiles = existing.dirty_tiles;
                         }
                     }
+                    // Process nuke alerts into HUD notifications
+                    let my_id = self.sim.my_player_id.unwrap_or(0);
+                    let now = web_time::Instant::now();
+                    for alert in &snap.nuke_alerts {
+                        let attacker_name = snap.players.iter()
+                            .find(|p| p.id == alert.owner_id)
+                            .map(|p| {
+                                if p.name.is_empty() {
+                                    if p.id >= 200 { format!("Tribe {}", p.id - 199) }
+                                    else { format!("Nation {}", p.id.saturating_sub(103)) }
+                                } else { p.name.clone() }
+                            })
+                            .unwrap_or_else(|| format!("Player {}", alert.owner_id));
+
+                        // Determine victim from tile ownership in previous snapshot state
+                        let tile_idx = alert.tile_y * self.sim.map_w + alert.tile_x;
+                        let victim_id = e.state.map.state.get(tile_idx as usize).copied().unwrap_or(0);
+                        let victim_name = if victim_id == 0 {
+                            "unclaimed territory".to_string()
+                        } else {
+                            snap.players.iter()
+                                .find(|p| p.id == victim_id)
+                                .map(|p| {
+                                    if p.name.is_empty() {
+                                        if p.id >= 200 { format!("Tribe {}", p.id - 199) }
+                                        else { format!("Nation {}", p.id.saturating_sub(103)) }
+                                    } else { p.name.clone() }
+                                })
+                                .unwrap_or_else(|| format!("Player {}", victim_id))
+                        };
+
+                        let kind_str = match alert.kind {
+                            sow_core::game::NukeKind::AtomBomb => "Atom Bomb",
+                            sow_core::game::NukeKind::HydrogenBomb => "H-Bomb",
+                            sow_core::game::NukeKind::MIRV => "MIRV",
+                        };
+
+                        let (message, color) = if victim_id == my_id && my_id != 0 {
+                            // You got nuked
+                            (
+                                format!("{} launched {} on YOUR territory!", attacker_name, kind_str),
+                                egui::Color32::from_rgb(239, 68, 68),
+                            )
+                        } else if alert.owner_id == my_id {
+                            // You nuked someone
+                            (
+                                format!("Your {} detonated on {}", kind_str, victim_name),
+                                egui::Color32::from_rgb(74, 222, 128),
+                            )
+                        } else if my_id != 0 && snap.players.iter()
+                            .find(|p| p.id == my_id)
+                            .map(|p| p.alliances.contains(&victim_id))
+                            .unwrap_or(false) && victim_id != 0
+                        {
+                            // Ally got nuked
+                            (
+                                format!("{} launched {} on ally {}!", attacker_name, kind_str, victim_name),
+                                egui::Color32::from_rgb(251, 191, 36),
+                            )
+                        } else {
+                            // Enemy vs enemy / neutral
+                            (
+                                format!("{} launched {} on {}", attacker_name, kind_str, victim_name),
+                                egui::Color32::from_rgb(180, 180, 200),
+                            )
+                        };
+
+                        self.ui.app.hud_state.nuke_alerts.push(
+                            sow_ui::ui::hud::NukeAlertDisplay {
+                                message,
+                                color,
+                                spawned_at: now,
+                            },
+                        );
+
+                        // Cap ring buffer at 8
+                        if self.ui.app.hud_state.nuke_alerts.len() > 8 {
+                            self.ui.app.hud_state.nuke_alerts.remove(0);
+                        }
+                    }
+
                     self.sim.current_snapshot = Some(snap);
                 }
             }

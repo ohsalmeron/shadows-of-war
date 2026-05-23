@@ -189,7 +189,7 @@ impl SowApp {
                             let mut thick = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_thickness"),
-                                    || 0.65f32,
+                                    || 1.0f32,
                                 )
                             });
                             let mut dark = ctx.data_mut(|d| {
@@ -210,18 +210,11 @@ impl SowApp {
                                     || 0.47f32,
                                 )
                             });
-                            let mut roundness = ctx.data_mut(|d| {
-                                *d.get_temp_mut_or_insert_with(
-                                    egui::Id::new("dev_roundness"),
-                                    || 1.0f32,
-                                )
-                            });
 
                             ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
                             ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
                             ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
                             ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Drk"));
-                            ui.add(egui::Slider::new(&mut roundness, 0.0..=1.0).text("Roundness"));
 
                             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
                             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
@@ -230,9 +223,6 @@ impl SowApp {
                             });
                             ctx.data_mut(|d| {
                                 d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark)
-                            });
-                            ctx.data_mut(|d| {
-                                d.insert_temp(egui::Id::new("dev_roundness"), roundness)
                             });
                         }
                     });

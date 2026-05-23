@@ -6,6 +6,38 @@ use sow_ui::app::ClientPhase;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
 impl SowApp {
+    fn mouse_to_tile(&self, x: f64, y: f64) -> Option<(i32, i32)> {
+        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+
+        let q_f = world_x - world_y * 0.577350269;
+        let r_f = world_y * 1.154700538;
+        let s_f = -q_f - r_f;
+
+        let mut rq = q_f.round();
+        let mut rr = r_f.round();
+        let rs = s_f.round();
+
+        let q_diff = (rq - q_f).abs();
+        let r_diff = (rr - r_f).abs();
+        let s_diff = (rs - s_f).abs();
+
+        if q_diff > r_diff && q_diff > s_diff {
+            rq = -rr - rs;
+        } else if r_diff > s_diff {
+            rr = -rq - rs;
+        }
+
+        let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
+        let row = rr as i32;
+
+        if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+            Some((col, row))
+        } else {
+            None
+        }
+    }
+
     pub fn handle_window_event(
         &mut self,
         event_loop: &dyn winit::event_loop::ActiveEventLoop,
@@ -80,17 +112,7 @@ impl SowApp {
                     if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) =
                         event.physical_key
                     {
-                        let world_x = (self.input.last_mouse_x as f32 - self.input.camera_x)
-                            / self.input.camera_zoom;
-                        let world_y = (self.input.last_mouse_y as f32 - self.input.camera_y)
-                            / self.input.camera_zoom;
-                        let col = world_x.floor() as i32;
-                        let row = world_y.floor() as i32;
-                        if col >= 0
-                            && row >= 0
-                            && col < self.sim.map_w as i32
-                            && row < self.sim.map_h as i32
-                        {
+                        if let Some((col, row)) = self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y) {
                             let idx = (row * self.sim.map_w as i32 + col) as usize;
 
                             let troops = Some(
@@ -509,13 +531,10 @@ impl SowApp {
             return;
         }
 
-        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
-        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
-        let col = world_x.floor() as i32;
-        let row = world_y.floor() as i32;
-        if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
-            return;
-        }
+        let (col, row) = match self.mouse_to_tile(x, y) {
+            Some(res) => res,
+            None => return,
+        };
         let idx = (row * self.sim.map_w as i32 + col) as usize;
         let owner = self
             .gfx
@@ -568,11 +587,7 @@ impl SowApp {
     }
 
     pub(crate) fn open_context_menu_at(&mut self, x: f64, y: f64) {
-        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
-        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
-        let col = world_x.floor() as i32;
-        let row = world_y.floor() as i32;
-        if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+        if let Some((col, row)) = self.mouse_to_tile(x, y) {
             let idx = (row * self.sim.map_w as i32 + col) as u32;
             
             // Clear any prior menu state first to avoid animation caching issues
@@ -594,13 +609,10 @@ impl SowApp {
             .map(|s| &s.phase)
             .unwrap_or(&sow_core::game::GamePhase::Lobby);
 
-        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
-        let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
-        let col = world_x.floor() as i32;
-        let row = world_y.floor() as i32;
-        if col < 0 || row < 0 || col >= self.sim.map_w as i32 || row >= self.sim.map_h as i32 {
-            return;
-        }
+        let (col, row) = match self.mouse_to_tile(x, y) {
+            Some(res) => res,
+            None => return,
+        };
 
         if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
             let intent = sow_core::protocol::GameplayIntent::Spawn {
@@ -707,17 +719,20 @@ impl SowApp {
             };
             self.send_intent(intent);
             self.ui.app.hud_state.selected_building_kind = None;
-        } else {
             // Check if we clicked on a Warship we own
             let mut clicked_warships = Vec::new();
             if let Some(snap) = &self.sim.current_snapshot {
                 let my_pid = self.sim.my_player_id.unwrap_or(0);
+                let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
                 for f in &snap.fleets {
                     if f.unit_type == sow_core::game::UnitType::Warship && f.owner_id == my_pid {
-                        let wx = (f.current_tile % self.sim.map_w) as f32;
-                        let wy = (f.current_tile / self.sim.map_w) as f32;
+                        let col = (f.current_tile % self.sim.map_w) as f32;
+                        let row = (f.current_tile / self.sim.map_w) as f32;
+                        let wx = col + 0.5 + (row as i32 % 2) as f32 * 0.5;
+                        let wy = (row + 0.5) * 0.8660254_f32;
                         // Click tolerance (half a tile)
-                        if (wx + 0.5 - world_x).abs() < 0.5 && (wy + 0.5 - world_y).abs() < 0.5 {
+                        if (wx - world_x).abs() < 0.5 && (wy - world_y).abs() < 0.5 {
                             clicked_warships.push(f.id);
                         }
                     }

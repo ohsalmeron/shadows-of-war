@@ -73,7 +73,7 @@ features = ["derive"]
 
 [workspace.dependencies.serde]
 version = "1"
-features = ["derive"]
+features = ["derive", "rc"]
 
 [workspace.dependencies.sow-core]
 path = "sow-core"

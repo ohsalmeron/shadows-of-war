@@ -57,19 +57,10 @@ impl SowApp {
                             if let Some(ref mut mr) = self.gfx.map_renderer {
                                 // Upload map state on first frame or after each tick
                                 if self.gfx.needs_first_upload {
-                                    self.gfx.render_ctx.command_encoder.init_texture(mr.texture);
+                                    self.gfx.render_ctx.command_encoder.init_texture(mr.terrain_texture);
+                                    self.gfx.render_ctx.command_encoder.init_texture(mr.owner_texture);
                                     self.gfx.needs_first_upload = false;
-                                    // Full buffer→texture copy so terrain is visible before any dirty tiles arrive
-                                    self.gfx.render_ctx.context.sync_buffer(mr.raw_buffer);
-                                    let src_piece: blade_graphics::BufferPiece = mr.raw_buffer.into();
-                                    let dst_piece: blade_graphics::TexturePiece = mr.texture.into();
-                                    let mut transfer = self.gfx.render_ctx.command_encoder.transfer("map_init_upload");
-                                    transfer.copy_buffer_to_texture(
-                                        src_piece,
-                                        mr.bytes_per_row,
-                                        dst_piece,
-                                        blade_graphics::Extent { width: mr.width, height: mr.height, depth: 1 },
-                                    );
+                                    mr.upload_terrain(&mut self.gfx.render_ctx.command_encoder);
                                 }
 
                                 // Perform CPU-side update of the map
@@ -78,18 +69,16 @@ impl SowApp {
                                 if let Some(snap) = &mut self.sim.current_snapshot {
                                     snap.dirty_tiles.clear();
                                 }
-                                let mut border_thickness = 0.65f32;
+                                let mut border_thickness = 1.0f32;
                                 let mut border_darkness = 0.40f32;
                                 let mut shore_thickness = 0.0f32;
                                 let mut shore_darkness = 0.47f32;
-                                let mut border_roundness = 1.0f32;
 
                                 self.ui.egui_ctx.data_mut(|d| {
-                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.65f32);
+                                    border_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 1.0f32);
                                     border_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.40f32);
                                     shore_thickness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 0.0f32);
                                     shore_darkness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 0.47f32);
-                                    border_roundness = *d.get_temp_mut_or_insert_with(egui::Id::new("dev_roundness"), || 1.0f32);
                                 });
 
                                 let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
@@ -101,12 +90,6 @@ impl SowApp {
                                     }
                                 }
 
-                                let graphics_q = match self.ui.app.settings_state.graphics_quality {
-                                    sow_ui::ui::settings::GraphicsQuality::Low => 0.0,
-                                    sow_ui::ui::settings::GraphicsQuality::Medium => 1.0,
-                                    sow_ui::ui::settings::GraphicsQuality::High => 2.0,
-                                };
-
                                 let globals = MapGlobals {
                                     camera_pos: [self.input.camera_x, self.input.camera_y],
                                     zoom: self.input.camera_zoom,
@@ -117,10 +100,6 @@ impl SowApp {
                                     border_darkness,
                                     shore_thickness,
                                     shore_darkness,
-                                    border_roundness,
-                                    graphics_quality: graphics_q,
-                                    _pad2: 0.0,
-                                    _pad3: 0.0,
                                 };
                                 let colors_struct = sow_render::PlayerColors {
                                     colors: player_colors,
@@ -402,13 +381,15 @@ impl SowApp {
                     if let Some(sp) = self.gfx.prev_sync_point.take() {
                         let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
                     }
-                    let mut old_terrain = vec![128; (self.sim.map_w * self.sim.map_h) as usize];
                     if let Some(mut old_mr) = self.gfx.map_renderer.take() {
-                        old_terrain = old_mr.terrain.clone();
+                        let old_terrain = old_mr.terrain.clone();
                         old_mr.destroy(&self.gfx.render_ctx);
+                        self.gfx.map_renderer = Some(sow_render::MapRenderer::new(&self.gfx.render_ctx.context, self.sim.map_w, self.sim.map_h, format, &old_terrain));
+                        self.gfx.needs_first_upload = true;
                     }
-                    self.gfx.map_renderer = Some(sow_render::MapRenderer::new(&self.gfx.render_ctx.context, self.sim.map_w, self.sim.map_h, format, &old_terrain));
-                    self.gfx.needs_first_upload = true;
+                    if let Some(mut old_gp) = self.gfx.gui_painter.take() {
+                        old_gp.destroy(&self.gfx.render_ctx.context);
+                    }
                     
                     self.gfx.gui_painter = Some(blade_egui::GuiPainter::new(s.info(), &self.gfx.render_ctx.context));
                     self.gfx.surface = Some(s);

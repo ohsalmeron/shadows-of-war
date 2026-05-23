@@ -20,10 +20,12 @@ pub struct AssetLoader {
     /// Expected MD5 hashes for maps
     pub expected_md5s: HashMap<String, String>,
     /// Pre-loaded avatar textures
-    pub avatars: Vec<TextureHandle>,
+    pub avatars: HashMap<sow_core::player::Leader, TextureHandle>,
     pub avatar_fallback: Option<TextureHandle>,
     pub ui_loader_empty: Option<TextureHandle>,
     pub ui_loader_full: Option<TextureHandle>,
+    pub leader_desktop_images: HashMap<sow_core::player::Leader, TextureHandle>,
+    pub leader_mobile_images: HashMap<sow_core::player::Leader, TextureHandle>,
     pub splash_desktop: Option<TextureHandle>,
     pub splash_mobile: Option<TextureHandle>,
 }
@@ -76,10 +78,12 @@ impl AssetLoader {
             catalog_in_flight: false,
             map_catalog,
             expected_md5s: HashMap::new(),
-            avatars: Vec::new(),
+            avatars: HashMap::new(),
             avatar_fallback: None,
             ui_loader_empty: None,
             ui_loader_full: None,
+            leader_desktop_images: HashMap::new(),
+            leader_mobile_images: HashMap::new(),
             splash_desktop: None,
             splash_mobile: None,
         }
@@ -187,14 +191,18 @@ impl AssetLoader {
             ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
         };
 
-        self.avatars.push(load_image("avatar_0", include_bytes!("../../assets/avatars/0.webp")));
-        self.avatars.push(load_image("avatar_1", include_bytes!("../../assets/avatars/1.webp")));
-        self.avatars.push(load_image("avatar_2", include_bytes!("../../assets/avatars/2.webp")));
-        self.avatars.push(load_image("avatar_3", include_bytes!("../../assets/avatars/3.webp")));
-        self.avatars.push(load_image("avatar_4", include_bytes!("../../assets/avatars/4.webp")));
-        self.avatars.push(load_image("avatar_5", include_bytes!("../../assets/avatars/5.webp")));
-        self.avatars.push(load_image("avatar_6", include_bytes!("../../assets/avatars/6.webp")));
-        self.avatars.push(load_image("avatar_7", include_bytes!("../../assets/avatars/7.webp")));
+        for &leader in &sow_core::player::Leader::ALL {
+            let avatar_bytes = match leader {
+                sow_core::player::Leader::Caesar => include_bytes!("../../assets/avatars/caesar.webp").as_slice(),
+                sow_core::player::Leader::Cleopatra => include_bytes!("../../assets/avatars/cleopatra.webp").as_slice(),
+                sow_core::player::Leader::Ragnar => include_bytes!("../../assets/avatars/ragnar.webp").as_slice(),
+                sow_core::player::Leader::SunTzu => include_bytes!("../../assets/avatars/sun_tzu.webp").as_slice(),
+                sow_core::player::Leader::Alexander => include_bytes!("../../assets/avatars/alexander.webp").as_slice(),
+                sow_core::player::Leader::GenghisKhan => include_bytes!("../../assets/avatars/genghis_khan.webp").as_slice(),
+            };
+            let name_lower = leader.name().to_lowercase().replace(' ', "_");
+            self.avatars.insert(leader, load_image(&format!("avatar_{}", name_lower), avatar_bytes));
+        }
 
         self.avatar_fallback = Some(load_image("avatar_null", include_bytes!("../../assets/avatars/null.webp")));
     }
@@ -273,6 +281,46 @@ impl AssetLoader {
                 );
                 self.thumbnails.insert("tutorial".to_string(), texture);
             }
+        }
+    }
+
+    pub fn ensure_leaders_loaded(&mut self, ctx: &egui::Context) {
+        if !self.leader_desktop_images.is_empty() {
+            return;
+        }
+
+        let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
+            let mut image = image::load_from_memory(bytes).expect("Failed to load leader image");
+            if image.width() > 2048 || image.height() > 2048 {
+                image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
+            }
+            let image_rgba = image.to_rgba8();
+            let size = [image_rgba.width() as _, image_rgba.height() as _];
+            let pixels = image_rgba.as_flat_samples();
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
+        };
+
+        for &leader in &sow_core::player::Leader::ALL {
+            let desktop_bytes = match leader {
+                sow_core::player::Leader::Caesar => include_bytes!("../../assets/ui/leaders/caesar_desktop.webp").as_slice(),
+                sow_core::player::Leader::Cleopatra => include_bytes!("../../assets/ui/leaders/cleopatra_desktop.webp").as_slice(),
+                sow_core::player::Leader::Ragnar => include_bytes!("../../assets/ui/leaders/ragnar_desktop.webp").as_slice(),
+                sow_core::player::Leader::SunTzu => include_bytes!("../../assets/ui/leaders/sun_tzu_desktop.webp").as_slice(),
+                sow_core::player::Leader::Alexander => include_bytes!("../../assets/ui/leaders/alexander_desktop.webp").as_slice(),
+                sow_core::player::Leader::GenghisKhan => include_bytes!("../../assets/ui/leaders/genghis_khan_desktop.webp").as_slice(),
+            };
+            let mobile_bytes = match leader {
+                sow_core::player::Leader::Caesar => include_bytes!("../../assets/ui/leaders/caesar_mobile.webp").as_slice(),
+                sow_core::player::Leader::Cleopatra => include_bytes!("../../assets/ui/leaders/cleopatra_mobile.webp").as_slice(),
+                sow_core::player::Leader::Ragnar => include_bytes!("../../assets/ui/leaders/ragnar_mobile.webp").as_slice(),
+                sow_core::player::Leader::SunTzu => include_bytes!("../../assets/ui/leaders/sun_tzu_mobile.webp").as_slice(),
+                sow_core::player::Leader::Alexander => include_bytes!("../../assets/ui/leaders/alexander_mobile.webp").as_slice(),
+                sow_core::player::Leader::GenghisKhan => include_bytes!("../../assets/ui/leaders/genghis_khan_mobile.webp").as_slice(),
+            };
+            let name_lower = leader.name().to_lowercase().replace(' ', "_");
+            self.leader_desktop_images.insert(leader, load_image(&format!("leader_{}_desktop", name_lower), desktop_bytes));
+            self.leader_mobile_images.insert(leader, load_image(&format!("leader_{}_mobile", name_lower), mobile_bytes));
         }
     }
 }

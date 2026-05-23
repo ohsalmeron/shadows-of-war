@@ -23,8 +23,10 @@ pub struct MainMenuState {
     pub cached_map: Option<Vec<u8>>,
     pub cached_manifest: Option<sow_core::map_legacy::MapManifest>,
     pub map_download_progress: u8,
-    pub show_avatar_picker: bool,
-    pub selected_avatar_id: u8,
+    pub show_leader_picker: bool,
+    pub clan_tag: String,
+    pub selected_leader: sow_core::player::Leader,
+    pub selected_civilization: sow_core::player::Civilization,
     pub show_single_player_setup: bool,
     pub single_player_config: Box<sow_core::game_config::GameConfig>,
     pub error_message: Option<String>,
@@ -47,6 +49,35 @@ impl Default for MainMenuState {
                     .as_millis();
                 format!("ANON{:03}", ms % 1000)
             },
+            clan_tag: "".to_string(),
+            selected_leader: {
+                let ms = web_time::SystemTime::now()
+                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                match ms % 6 {
+                    0 => sow_core::player::Leader::Caesar,
+                    1 => sow_core::player::Leader::Cleopatra,
+                    2 => sow_core::player::Leader::Ragnar,
+                    3 => sow_core::player::Leader::SunTzu,
+                    4 => sow_core::player::Leader::Alexander,
+                    _ => sow_core::player::Leader::GenghisKhan,
+                }
+            },
+            selected_civilization: {
+                let ms = web_time::SystemTime::now()
+                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                match ms % 6 {
+                    0 => sow_core::player::Civilization::Rome,
+                    1 => sow_core::player::Civilization::Egypt,
+                    2 => sow_core::player::Civilization::Vikings,
+                    3 => sow_core::player::Civilization::China,
+                    4 => sow_core::player::Civilization::Macedon,
+                    _ => sow_core::player::Civilization::Mongols,
+                }
+            },
             pending_join_lobby_id: None,
             joined_lobby_id: None,
             downloading_map_name: None,
@@ -54,8 +85,7 @@ impl Default for MainMenuState {
             cached_map: None,
             cached_manifest: None,
             map_download_progress: 0,
-            show_avatar_picker: false,
-            selected_avatar_id: 255,
+            show_leader_picker: false,
             show_single_player_setup: false,
             single_player_config: Box::new({
                 let mut config = sow_core::game_config::GameConfig::default();
@@ -107,16 +137,16 @@ pub fn draw(
                 .inner_margin(outer_pad),
         )
         .show_inside(root_ui, |ui| {
-            // Draw high-fidelity natural loader background texture
+            // Draw high-fidelity selected leader background texture
             let screen_rect = ui.ctx().content_rect();
             let screen_w = screen_rect.width();
             let screen_h = screen_rect.height();
             let is_mobile = compact;
 
             let background_tex = if is_mobile {
-                asset_loader.splash_mobile.as_ref()
+                asset_loader.leader_mobile_images.get(&state.selected_leader)
             } else {
-                asset_loader.splash_desktop.as_ref()
+                asset_loader.leader_desktop_images.get(&state.selected_leader)
             };
 
             if let Some(texture) = background_tex {
@@ -280,8 +310,8 @@ pub fn draw(
             });
         });
 
-    if state.show_avatar_picker && crate::widgets::draw_avatar_picker_modal(root_ui.ctx(), &mut state.selected_avatar_id, asset_loader) {
-        state.show_avatar_picker = false;
+    if state.show_leader_picker && crate::widgets::draw_leader_picker_modal(root_ui.ctx(), &mut state.selected_leader, &mut state.selected_civilization, asset_loader) {
+        state.show_leader_picker = false;
     }
 
     if state.show_single_player_setup {

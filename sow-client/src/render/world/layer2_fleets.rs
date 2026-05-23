@@ -59,9 +59,11 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 for &tile in &fleet.path[..trail_len] {
                     let wx = (tile % sim.map_w) as f32;
                     let wy = (tile / sim.map_w) as f32;
+                    let world_cx = wx + 0.5 + (wy as i32 % 2) as f32 * 0.5;
+                    let world_cy = (wy + 0.5) * 0.8660254_f32;
                     // Center the points in the tile
-                    let screen_x = (input.camera_x + (wx + 0.5) * input.camera_zoom) / sf;
-                    let screen_y = (input.camera_y + (wy + 0.5) * input.camera_zoom) / sf;
+                    let screen_x = (input.camera_x + world_cx * input.camera_zoom) / sf;
+                    let screen_y = (input.camera_y + world_cy * input.camera_zoom) / sf;
                     points.push(egui::pos2(screen_x, screen_y));
                 }
                 if points.len() > 1 {
@@ -75,8 +77,10 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 }
 
                 // Render boat with smooth visual interpolation
-                let wx_curr = (fleet.current_tile % sim.map_w) as f32;
-                let wy_curr = (fleet.current_tile / sim.map_w) as f32;
+                let tile_x_curr = (fleet.current_tile % sim.map_w) as f32;
+                let tile_y_curr = (fleet.current_tile / sim.map_w) as f32;
+                let wx_curr = tile_x_curr + 0.5 + (tile_y_curr as i32 % 2) as f32 * 0.5;
+                let wy_curr = (tile_y_curr + 0.5) * 0.8660254_f32;
 
                 let mut wx = wx_curr;
                 let mut wy = wy_curr;
@@ -87,15 +91,17 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         .saturating_sub(2)
                         .min(fleet.path.len().saturating_sub(1));
                     let prev_tile = fleet.path[prev_idx];
-                    let wx_prev = (prev_tile % sim.map_w) as f32;
-                    let wy_prev = (prev_tile / sim.map_w) as f32;
+                    let tile_x_prev = (prev_tile % sim.map_w) as f32;
+                    let tile_y_prev = (prev_tile / sim.map_w) as f32;
+                    let wx_prev = tile_x_prev + 0.5 + (tile_y_prev as i32 % 2) as f32 * 0.5;
+                    let wy_prev = (tile_y_prev + 0.5) * 0.8660254_f32;
 
                     wx = wx_prev + (wx_curr - wx_prev) * t;
                     wy = wy_prev + (wy_curr - wy_prev) * t;
                 }
 
-                let center_x = (input.camera_x + (wx + 0.5) * input.camera_zoom) / sf;
-                let center_y = (input.camera_y + (wy + 0.5) * input.camera_zoom) / sf;
+                let center_x = (input.camera_x + wx * input.camera_zoom) / sf;
+                let center_y = (input.camera_y + wy * input.camera_zoom) / sf;
                 let center = egui::pos2(center_x, center_y);
 
                 let base_size = (zoom_scaled * 0.7).clamp(12.0, 64.0);

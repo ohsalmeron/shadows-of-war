@@ -28,6 +28,9 @@ enum ServerEvent {
     Join {
         client_tx: mpsc::Sender<Vec<u8>>,
         name: String,
+        clan_tag: String,
+        civilization: sow_core::player::Civilization,
+        leader: sow_core::player::Leader,
         target_lobby_id: Option<u64>,
         build_version: String,
     },
@@ -179,14 +182,14 @@ async fn main() {
 
                                 player_infos.push(sow_core::protocol::PlayerInfo {
                                     id: p.player_id,
-                                    name: p.name.clone(),
+                                    name: if p.clan_tag.is_empty() { p.name.clone() } else { format!("[{}] {}", p.clan_tag, p.name) },
                                     player_type: sow_core::player::PlayerType::Human,
                                     color,
                                     team,
                                     spawn_x: 0,
                                     spawn_y: 0,
-                                    civilization: sow_core::player::Civilization::Rome,
-                                    leader: sow_core::player::Leader::Caesar,
+                                    civilization: p.civilization,
+                                    leader: p.leader,
                                 });
                             }
 
@@ -226,9 +229,9 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, target_lobby_id, build_version } => {
-                            log::info!("Player {} joining with version: {}", name, build_version);
-                            match join_player(&mut games, &mut nid, name, client_tx.clone(), target_lobby_id) {
+                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, build_version } => {
+                            log::info!("Player {} (clan: {}) joining with version: {}", name, clan_tag, build_version);
+                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id) {
                                 Ok((lobby_id, player_id, map_name)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name };
                                     let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)).unwrap();
@@ -313,7 +316,7 @@ async fn main() {
 
                                     if let Ok(msg) = bincode::deserialize::<sow_core::protocol::ClientMessage>(&data) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, build_version } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, build_version, clan_tag, civilization, leader } => {
                                                 let server_version = std::env::var("SOW_BUILD_VERSION")
                                                     .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
 
@@ -327,6 +330,9 @@ async fn main() {
 
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
+                                                    clan_tag,
+                                                    civilization,
+                                                    leader,
                                                     client_tx: direct_tx.clone(),
                                                     target_lobby_id,
                                                     build_version,

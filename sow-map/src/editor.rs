@@ -170,6 +170,9 @@ impl MapEditorSession {
                         if let Some(mut old_mr) = self.map_renderer.take() {
                             old_mr.destroy(&self.render_ctx);
                         }
+                        if let Some(mut old_gp) = self.gui_painter.take() {
+                            old_gp.destroy(&self.render_ctx.context);
+                        }
 
                         self.map_renderer = Some(MapRenderer::new(
                             &self.render_ctx.context,
@@ -703,18 +706,10 @@ impl MapEditorSession {
                 // Upload map updates to GPU
                 if let Some(ref mut mr) = self.map_renderer {
                     if self.needs_first_upload {
-                        self.render_ctx.command_encoder.init_texture(mr.texture);
+                        self.render_ctx.command_encoder.init_texture(mr.terrain_texture);
+                        self.render_ctx.command_encoder.init_texture(mr.owner_texture);
                         self.needs_first_upload = false;
-                        self.render_ctx.context.sync_buffer(mr.raw_buffer);
-                        let src_piece: gpu::BufferPiece = mr.raw_buffer.into();
-                        let dst_piece: gpu::TexturePiece = mr.texture.into();
-                        let mut transfer = self.render_ctx.command_encoder.transfer("map_init_upload");
-                        transfer.copy_buffer_to_texture(
-                            src_piece,
-                            mr.bytes_per_row,
-                            dst_piece,
-                            gpu::Extent { width: mr.width, height: mr.height, depth: 1 },
-                        );
+                        mr.upload_terrain(&mut self.render_ctx.command_encoder);
                     }
 
                     // Push dirty tile indexes to MapRenderer GPU buffer
@@ -746,14 +741,10 @@ impl MapEditorSession {
                         time: self.start_time.elapsed().as_secs_f32(),
                         screen_size: [self.screen_w, self.screen_h],
                         map_size: [self.width as f32, self.height as f32],
-                        border_thickness: 0.65,
+                        border_thickness: 1.0,
                         border_darkness: 0.40,
                         shore_thickness: 0.0,
                         shore_darkness: 0.47,
-                        border_roundness: 1.0,
-                        graphics_quality: 2.0,
-                        _pad2: 0.0,
-                        _pad3: 0.0,
                     };
                     let colors_struct = sow_render::PlayerColors {
                         colors: player_colors,

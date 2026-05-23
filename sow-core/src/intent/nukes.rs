@@ -69,21 +69,17 @@ impl SowEngine {
         let id = self.state.next_projectile_id;
         self.state.next_projectile_id = self.state.next_projectile_id.wrapping_add(1).max(1);
 
-        let sx = (silo_tile % w) as f32;
-        let sy = (silo_tile / w) as f32;
-        let dx = (target_tile % w) as f32;
-        let dy = (target_tile / w) as f32;
+        let path = crate::pathfinding::bresenham_line(silo_tile, target_tile, w);
 
         self.projectiles.push(crate::game::Projectile {
             id,
             kind: ProjectileKind::Nuke(kind),
             owner_id: player_id,
-            src_x: sx,
-            src_y: sy,
-            dst_x: dx,
-            dst_y: dy,
-            progress: 0.0,
-            speed: kind.speed(),
+            src_tile: silo_tile,
+            dst_tile: target_tile,
+            path,
+            path_cursor: 0,
+            steps_per_tick: kind.steps_per_tick(),
             active: true,
         });
     }

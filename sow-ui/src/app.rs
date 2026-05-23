@@ -59,6 +59,7 @@ impl ClientApp {
                 selected_building_kind: None,
                 building_costs: [0.0; 9],
                 selected_nuke_kind: None,
+                nuke_alerts: Vec::new(),
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
@@ -72,6 +73,7 @@ impl ClientApp {
             ClientPhase::MainMenu => {
                 self.asset_loader.ensure_avatars_loaded(ui.ctx());
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                self.asset_loader.ensure_leaders_loaded(ui.ctx());
                 main_menu::draw(ui, &mut self.main_menu_state, &self.asset_loader, self.settings_state.language)
             }
             ClientPhase::Splash => {

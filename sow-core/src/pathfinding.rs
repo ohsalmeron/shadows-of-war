@@ -381,21 +381,35 @@ impl WaterAStar {
             let current_x = node.idx % width;
             let current_y = node.idx / width;
 
-            // Neighbor order: N, S, W, E (matches `AStar.Water.ts`)
-            let neighbors = [
-                current_y.checked_sub(1).map(|ny| (current_x, ny)),
-                if current_y + 1 < height {
-                    Some((current_x, current_y + 1))
-                } else {
-                    None
-                },
-                current_x.checked_sub(1).map(|nx| (nx, current_y)),
-                if current_x + 1 < width {
-                    Some((current_x + 1, current_y))
-                } else {
-                    None
-                },
-            ];
+            let is_odd = (current_y % 2) != 0;
+            let deltas = if is_odd {
+                [
+                    (1, 0),   // East (0)
+                    (-1, 0),  // West (1)
+                    (0, -1),  // Northwest (2)
+                    (1, -1),  // Northeast (3)
+                    (0, 1),   // Southwest (4)
+                    (1, 1),   // Southeast (5)
+                ]
+            } else {
+                [
+                    (1, 0),   // East (0)
+                    (-1, 0),  // West (1)
+                    (-1, -1), // Northwest (2)
+                    (0, -1),  // Northeast (3)
+                    (-1, 1),  // Southwest (4)
+                    (0, 1),   // Southeast (5)
+                ]
+            };
+
+            let mut neighbors = [None; 6];
+            for (idx, &(dx, dy)) in deltas.iter().enumerate() {
+                let nx = current_x as i32 + dx;
+                let ny = current_y as i32 + dy;
+                if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+                    neighbors[idx] = Some((nx as u32, ny as u32));
+                }
+            }
 
             for opt in neighbors.into_iter().flatten() {
                 let (nx, ny) = opt;
@@ -461,7 +475,14 @@ impl WaterAStar {
 
 #[inline]
 fn manhattan(x1: u32, y1: u32, x2: u32, y2: u32) -> u32 {
-    x1.abs_diff(x2) + y1.abs_diff(y2)
+    let r1 = y1 as i32;
+    let q1 = x1 as i32 - (r1 - (r1 & 1)) / 2;
+    let r2 = y2 as i32;
+    let q2 = x2 as i32 - (r2 - (r2 & 1)) / 2;
+    
+    let dq = q1 - q2;
+    let dr = r1 - r2;
+    ((dq.abs() + (dq + dr).abs() + dr.abs()) / 2) as u32
 }
 
 /// Shared scratch buffers for water A* + closest-shore BFS (insert as `Resource` on the Bevy app).
@@ -471,6 +492,44 @@ pub struct WaterPathfinderScratch {
     pub bfs_queue: VecDeque<u32>,
     pub bfs_visited: Vec<u32>,
     pub bfs_stamp: u32,
+}
+/// Bresenham line rasterization on an offset hex grid. Returns a Vec of tile
+/// indices from `src` to `dst` (inclusive). Pure integer math — used for
+/// projectile flight paths that ignore terrain.
+pub fn bresenham_line(src: u32, dst: u32, width: u32) -> Vec<u32> {
+    let sx = (src % width) as i32;
+    let sy = (src / width) as i32;
+    let ex = (dst % width) as i32;
+    let ey = (dst / width) as i32;
+
+    let dx = (ex - sx).abs();
+    let dy = (ey - sy).abs();
+    let sign_x: i32 = if ex > sx { 1 } else { -1 };
+    let sign_y: i32 = if ey > sy { 1 } else { -1 };
+    let mut err = dx - dy;
+
+    let mut cx = sx;
+    let mut cy = sy;
+    let height = width; // square-ish maps; caller must ensure in-bounds
+    let _ = height;
+
+    let mut path = Vec::with_capacity((dx + dy + 1) as usize);
+    loop {
+        path.push(cy as u32 * width + cx as u32);
+        if cx == ex && cy == ey {
+            break;
+        }
+        let e2 = err * 2;
+        if e2 > -dy {
+            err -= dy;
+            cx += sign_x;
+        }
+        if e2 < dx {
+            err += dx;
+            cy += sign_y;
+        }
+    }
+    path
 }
 
 #[cfg(test)]
@@ -529,19 +588,37 @@ impl FlowField {
         let ty = self.target / self.width;
         
         distances[self.target as usize] = 0;
-        self.directions[self.target as usize] = 8; // Reached
+        self.directions[self.target as usize] = 6; // Reached
         queue.push_back((tx, ty));
-        
-        let dx = [0, 1, 1, 1, 0, -1, -1, -1];
-        let dy = [-1, -1, 0, 1, 1, 1, 0, -1];
         
         while let Some((cx, cy)) = queue.pop_front() {
             let curr_idx = (cy * self.width + cx) as usize;
             let current_dist = distances[curr_idx];
             
-            for i in 0..8 {
-                let nx = cx as i32 + dx[i];
-                let ny = cy as i32 + dy[i];
+            let is_odd = (cy % 2) != 0;
+            let deltas = if is_odd {
+                [
+                    (1, 0),   // East (0)
+                    (-1, 0),  // West (1)
+                    (0, -1),  // Northwest (2)
+                    (1, -1),  // Northeast (3)
+                    (0, 1),   // Southwest (4)
+                    (1, 1),   // Southeast (5)
+                ]
+            } else {
+                [
+                    (1, 0),   // East (0)
+                    (-1, 0),  // West (1)
+                    (-1, -1), // Northwest (2)
+                    (0, -1),  // Northeast (3)
+                    (-1, 1),  // Southwest (4)
+                    (0, 1),   // Southeast (5)
+                ]
+            };
+            
+            for i in 0..6 {
+                let nx = cx as i32 + deltas[i].0;
+                let ny = cy as i32 + deltas[i].1;
                 
                 if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
                     let n_idx = (ny as u32 * self.width + nx as u32) as usize;
@@ -552,9 +629,16 @@ impl FlowField {
                     
                     if distances[n_idx] > current_dist + 1 {
                         distances[n_idx] = current_dist + 1;
-                        // The direction FROM neighbor TO current is the opposite direction
-                        // If i is direction from current to neighbor, then (i+4)%8 is direction from neighbor to current
-                        self.directions[n_idx] = ((i + 4) % 8) as u8;
+                        let opp = match i {
+                            0 => 1,
+                            1 => 0,
+                            2 => 5,
+                            3 => 4,
+                            4 => 3,
+                            5 => 2,
+                            _ => 6,
+                        };
+                        self.directions[n_idx] = opp as u8;
                         queue.push_back((nx as u32, ny as u32));
                     }
                 }
@@ -566,14 +650,26 @@ impl FlowField {
 #[derive(Default, Clone)]
 pub struct FlowFieldCache {
     pub fields: std::collections::HashMap<u32, FlowField>,
+    pub access_order: std::collections::VecDeque<u32>,
 }
 
 impl FlowFieldCache {
     pub fn get_or_compute(&mut self, target: u32, map: &crate::map::GameMap) -> &FlowField {
         if !self.fields.contains_key(&target) {
+            if self.fields.len() >= 8 {
+                if let Some(oldest) = self.access_order.pop_front() {
+                    self.fields.remove(&oldest);
+                }
+            }
             let mut field = FlowField::new(map.width, map.height, target);
             field.compute_from_target(map);
             self.fields.insert(target, field);
+            self.access_order.push_back(target);
+        } else {
+            if let Some(pos) = self.access_order.iter().position(|&x| x == target) {
+                self.access_order.remove(pos);
+            }
+            self.access_order.push_back(target);
         }
         self.fields.get(&target).unwrap()
     }

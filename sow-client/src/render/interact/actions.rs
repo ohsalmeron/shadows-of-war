@@ -48,14 +48,18 @@ impl SowApp {
                         players: vec![
                             sow_core::protocol::PlayerInfo {
                                 id: 1,
-                                name: self.ui.app.main_menu_state.player_name.clone(),
+                                name: {
+                                    let name = &self.ui.app.main_menu_state.player_name;
+                                    let tag = &self.ui.app.main_menu_state.clan_tag;
+                                    if tag.is_empty() { name.clone() } else { format!("[{}] {}", tag, name) }
+                                },
                                 color: sow_core::player::human_shader_territory_rgb(1),
                                 player_type: sow_core::player::PlayerType::Human,
                                 team: None,
                                 spawn_x: 0,
                                 spawn_y: 0,
-                                civilization: self.ui.app.main_menu_state.single_player_config.player_civilization,
-                                leader: self.ui.app.main_menu_state.single_player_config.player_leader,
+                                civilization: self.ui.app.main_menu_state.selected_civilization,
+                                leader: self.ui.app.main_menu_state.selected_leader,
                             }
                         ],
                         missed_turns: vec![],
@@ -158,14 +162,18 @@ impl SowApp {
                         players: vec![
                             sow_core::protocol::PlayerInfo {
                                 id: 1,
-                                name: self.ui.app.main_menu_state.player_name.clone(),
+                                name: {
+                                    let name = &self.ui.app.main_menu_state.player_name;
+                                    let tag = &self.ui.app.main_menu_state.clan_tag;
+                                    if tag.is_empty() { name.clone() } else { format!("[{}] {}", tag, name) }
+                                },
                                 color: sow_core::player::human_shader_territory_rgb(1),
                                 player_type: sow_core::player::PlayerType::Human,
                                 team: None,
                                 spawn_x: 0,
                                 spawn_y: 0,
-                                civilization: self.ui.app.main_menu_state.single_player_config.player_civilization,
-                                leader: self.ui.app.main_menu_state.single_player_config.player_leader,
+                                civilization: self.ui.app.main_menu_state.selected_civilization,
+                                leader: self.ui.app.main_menu_state.selected_leader,
                             }
                         ],
                         missed_turns: vec![],
@@ -260,6 +268,9 @@ impl SowApp {
                         is_observer: false,
                         target_lobby_id: Some(id),
                         build_version: get_build_version(),
+                        clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
+                        civilization: self.ui.app.main_menu_state.selected_civilization,
+                        leader: self.ui.app.main_menu_state.selected_leader,
                     };
                     self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
                     if let Ok(json) = bincode::serialize(&join_msg) {
@@ -294,8 +305,8 @@ impl SowApp {
                             let cx = player.centroid_x;
                             let cy = player.centroid_y;
                             
-                            let world_cx = cx + 0.5;
-                            let world_cy = cy + 0.5;
+                            let world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
+                            let world_cy = (cy + 0.5) * 0.8660254_f32;
 
                             self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
                             self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;

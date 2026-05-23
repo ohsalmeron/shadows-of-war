@@ -19,7 +19,14 @@ fn main() {
     }
     
     // Spawn human
-    engine.spawn_human(1, "Bizkit".to_string(), [1.0, 0.0, 0.0], None);
+    engine.spawn_human(
+        1,
+        "Bizkit".to_string(),
+        [1.0, 0.0, 0.0],
+        None,
+        sow_core::player::Civilization::Rome,
+        sow_core::player::Leader::Caesar,
+    );
     
     // If it's spawning phase, let's fast forward so they actually spawn
     if let GamePhase::Spawning { end_tick } = engine.state.phase {

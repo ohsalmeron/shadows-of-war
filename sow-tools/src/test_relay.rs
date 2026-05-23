@@ -103,6 +103,9 @@ async fn main() {
         is_observer: false,
         target_lobby_id: None,
         build_version: version,
+        clan_tag: "".to_string(),
+        civilization: sow_core::player::Civilization::Rome,
+        leader: sow_core::player::Leader::Caesar,
     };
     ws_send(&mut write, &join).await;
 

@@ -105,9 +105,11 @@ impl SowApp {
                                     if self.input.dragging || self.input.last_pinch_state.is_some() || !self.input.active_touches.is_empty() {
                                         self.input.has_snapped_camera_to_spawn = true;
                                     } else {
-                                        let target_world_cx = player.centroid_x + 0.5;
-                                        let target_world_cy = player.centroid_y + 0.5;
-                                        let target_zoom = 20.0;
+                                         let cx = player.centroid_x;
+                                         let cy = player.centroid_y;
+                                         let target_world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
+                                         let target_world_cy = (cy + 0.5) * 0.8660254_f32;
+                                         let target_zoom = 20.0;
                                         
                                         let current_world_cx = (self.input.screen_w * 0.5 - self.input.camera_x) / self.input.camera_zoom;
                                         let current_world_cy = (self.input.screen_h * 0.5 - self.input.camera_y) / self.input.camera_zoom;
@@ -155,6 +157,12 @@ impl SowApp {
     }
 
     fn sync_building_costs(&mut self) {
+        let snap_tick = self.sim.current_snapshot.as_ref().map(|s| s.tick);
+        if snap_tick.is_some() && snap_tick == self.sim.last_synced_cost_tick {
+            return;
+        }
+        self.sim.last_synced_cost_tick = snap_tick;
+
         let pid = self.sim.my_player_id.unwrap_or(1);
         let buildings: Vec<sow_core::building::Building> = self
             .sim

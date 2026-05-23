@@ -198,6 +198,11 @@ impl SowEngine {
                         log::info!("Auto-spawned missing player {} at {}, {}", pid, sx, sy);
 
                         // Place City Center!
+                        let is_caesar = if let Some(player) = self.state.player(pid) {
+                            player.leader == crate::player::Leader::Caesar
+                        } else {
+                            false
+                        };
                         let building_id = self.state.next_building_id;
                         self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
                         let w = self.state.map.width;
@@ -206,27 +211,10 @@ impl SowEngine {
                             owner_id: pid,
                             tile_idx: sy * w + sx,
                             kind: crate::game::BuildingKind::City,
-                            level: 1,
+                            level: if is_caesar { 2 } else { 1 },
                             under_construction: false,
                             ticks_until_complete: 0,
                         });
-
-                        // Caesar (Rome) perk
-                        if let Some(player) = self.state.player(pid) {
-                            if player.leader == crate::player::Leader::Caesar {
-                                let military_id = self.state.next_building_id;
-                                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
-                                self.add_building(Building {
-                                    id: military_id,
-                                    owner_id: pid,
-                                    tile_idx: sy * w + (sx + 1).min(w - 1),
-                                    kind: crate::game::BuildingKind::Factory,
-                                    level: 1,
-                                    under_construction: false,
-                                    ticks_until_complete: 0,
-                                });
-                            }
-                        }
                     }
                 }
             }
@@ -448,6 +436,11 @@ impl SowEngine {
                 spawned_nations += 1;
 
                 // Place City Center!
+                let is_caesar = if let Some(p) = self.state.player(bot_id) {
+                    p.leader == crate::player::Leader::Caesar
+                } else {
+                    false
+                };
                 let building_id = self.state.next_building_id;
                 self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
                 let w = self.state.map.width;
@@ -456,27 +449,10 @@ impl SowEngine {
                     owner_id: bot_id,
                     tile_idx: sy * w + sx,
                     kind: crate::game::BuildingKind::City,
-                    level: 1,
+                    level: if is_caesar { 2 } else { 1 },
                     under_construction: false,
                     ticks_until_complete: 0,
                 });
-
-                // Caesar (Rome) perk
-                if let Some(p) = self.state.player(bot_id) {
-                    if p.leader == crate::player::Leader::Caesar {
-                        let military_id = self.state.next_building_id;
-                        self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
-                        self.add_building(Building {
-                            id: military_id,
-                            owner_id: bot_id,
-                            tile_idx: sy * w + (sx + 1).min(w - 1),
-                            kind: crate::game::BuildingKind::Factory,
-                            level: 1,
-                            under_construction: false,
-                            ticks_until_complete: 0,
-                        });
-                    }
-                }
             }
         }
 
@@ -530,7 +506,15 @@ impl SowEngine {
         }
     }
 
-    pub fn spawn_human(&mut self, player_id: u16, name: String, color: [f32; 3], team: Option<crate::protocol::Team>) {
+    pub fn spawn_human(
+        &mut self,
+        player_id: u16,
+        name: String,
+        color: [f32; 3],
+        team: Option<crate::protocol::Team>,
+        civilization: crate::player::Civilization,
+        leader: crate::player::Leader,
+    ) {
         use crate::player::Player;
         use wyrand::WyRand;
 
@@ -541,8 +525,8 @@ impl SowEngine {
         if !config.random_spawn {
             let mut player = Player::new_human(player_id, name, color, &config);
             player.team = team;
-            player.civilization = config.player_civilization;
-            player.leader = config.player_leader;
+            player.civilization = civilization;
+            player.leader = leader;
             self.state.register_player(player);
             return;
         }
@@ -550,8 +534,8 @@ impl SowEngine {
         if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
             let mut player = Player::new_human(player_id, name, color, &config);
             player.team = team;
-            player.civilization = config.player_civilization;
-            player.leader = config.player_leader;
+            player.civilization = civilization;
+            player.leader = leader;
             let is_caesar = player.leader == crate::player::Leader::Caesar;
             self.state.spawn_player(player, sx, sy);
 
@@ -562,28 +546,13 @@ impl SowEngine {
                 owner_id: player_id,
                 tile_idx: sy * w + sx,
                 kind: crate::game::BuildingKind::City,
-                level: 1,
+                level: if is_caesar { 2 } else { 1 },
                 under_construction: false,
                 ticks_until_complete: 0,
             });
             self.state.next_building_id += 1;
 
             self.building_aggregates_dirty = true;
-
-            // Caesar (Rome) perk
-            if is_caesar {
-                let military_id = self.state.next_building_id;
-                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
-                self.add_building(Building {
-                    id: military_id,
-                    owner_id: player_id,
-                    tile_idx: sy * w + (sx + 1).min(w - 1),
-                    kind: crate::game::BuildingKind::Factory,
-                    level: 1,
-                    under_construction: false,
-                    ticks_until_complete: 0,
-                });
-            }
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);
         }
@@ -769,11 +738,29 @@ impl SowEngine {
                     id: p.id,
                     kind: p.kind,
                     owner_id: p.owner_id,
-                    src_x: p.src_x,
-                    src_y: p.src_y,
-                    dst_x: p.dst_x,
-                    dst_y: p.dst_y,
-                    progress: p.progress,
+                    src_tile: p.src_tile,
+                    dst_tile: p.dst_tile,
+                    path: p.path.clone(),
+                    path_cursor: p.path_cursor,
+                    steps_per_tick: p.steps_per_tick,
+                }
+            }).collect(),
+            nuke_alerts: self.state.events.iter().filter_map(|e| {
+                if let crate::game::GameEvent::NukeDetonated { tile_x, tile_y, owner_id, inner_radius, outer_radius: _ } = e {
+                    // Determine NukeKind from radii (reverse-map)
+                    let kind = if *inner_radius >= 30 {
+                        crate::game::NukeKind::HydrogenBomb
+                    } else {
+                        crate::game::NukeKind::AtomBomb
+                    };
+                    Some(crate::protocol::NukeAlert {
+                        owner_id: *owner_id,
+                        kind,
+                        tile_x: *tile_x,
+                        tile_y: *tile_y,
+                    })
+                } else {
+                    None
                 }
             }).collect(),
             winner: self.state.winner,

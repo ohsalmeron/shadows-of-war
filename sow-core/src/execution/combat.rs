@@ -181,38 +181,59 @@ impl SowEngine {
                 expanded_this_tick += 1;
 
                 // Enqueue new neutral/enemy neighbors that touch our newly acquired tile
-                self.state.map.for_each_neighbor(target_tile.x, target_tile.y, |nx, ny| {
-                    // It must belong to target
-                    if self.state.map.owner_id(nx, ny) != execution.target_owner {
-                        return;
-                    }
-
-                    // How many tiles bordering (nx, ny) are owned by the attacker?
-                    let mut num_owned_by_me = 0;
-                    self.state.map.for_each_neighbor(nx, ny, |nnx, nny| {
-                        if self.state.map.owner_id(nnx, nny) == execution.owner_id {
-                            num_owned_by_me += 1;
+                let is_odd = (target_tile.y % 2) != 0;
+                let deltas = if is_odd {
+                    [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+                } else {
+                    [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+                };
+                for &(dx, dy) in &deltas {
+                    let nx = target_tile.x as i32 + dx;
+                    let ny = target_tile.y as i32 + dy;
+                    if nx >= 0 && nx < map_w as i32 && ny >= 0 && ny < map_h as i32 {
+                        let nx = nx as u32;
+                        let ny = ny as u32;
+                        if self.state.map.owner_id(nx, ny) != execution.target_owner {
+                            continue;
                         }
-                    });
 
-                    let terrain = self.state.map.terrain_type(nx, ny);
-                    let mut prio = execution.calc_priority(num_owned_by_me, terrain, tick_now);
-                    prio += self.defense_grid.priority_bonus(
-                        nx,
-                        ny,
-                        map_w,
-                        execution.target_owner,
-                    );
-                    let seq = execution.insert_seq_counter;
-                    execution.insert_seq_counter = execution.insert_seq_counter.wrapping_add(1);
+                        // How many tiles bordering (nx, ny) are owned by the attacker?
+                        let mut num_owned_by_me = 0;
+                        let n_is_odd = (ny % 2) != 0;
+                        let n_deltas = if n_is_odd {
+                            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+                        } else {
+                            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+                        };
+                        for &(ndx, ndy) in &n_deltas {
+                            let nnx = nx as i32 + ndx;
+                            let nny = ny as i32 + ndy;
+                            if nnx >= 0 && nnx < map_w as i32 && nny >= 0 && nny < map_h as i32 {
+                                if self.state.map.owner_id(nnx as u32, nny as u32) == execution.owner_id {
+                                    num_owned_by_me += 1;
+                                }
+                            }
+                        }
 
-                    execution.to_conquer.push(PrioritizedTile {
-                        priority: prio,
-                        insert_seq: seq,
-                        x: nx,
-                        y: ny,
-                    });
-                });
+                        let terrain = self.state.map.terrain_type(nx, ny);
+                        let mut prio = execution.calc_priority(num_owned_by_me, terrain, tick_now);
+                        prio += self.defense_grid.priority_bonus(
+                            nx,
+                            ny,
+                            map_w,
+                            execution.target_owner,
+                        );
+                        let seq = execution.insert_seq_counter;
+                        execution.insert_seq_counter = execution.insert_seq_counter.wrapping_add(1);
+
+                        execution.to_conquer.push(PrioritizedTile {
+                            priority: prio,
+                            insert_seq: seq,
+                            x: nx,
+                            y: ny,
+                        });
+                    }
+                }
 
                 // VALID CONQUEST
                 // Apply change AFTER enqueuing neighbors, mimicking OpenFront's `this._owner.conquer`
@@ -292,20 +313,36 @@ pub fn execute_fleets(&mut self) {
         return;
     }
 
+    // Spatial hash of fleets: current_tile -> fleet indices
+    let mut tile_to_fleets: std::collections::HashMap<u32, Vec<usize>> = std::collections::HashMap::new();
+    for (idx, fleet) in self.fleets.iter().enumerate() {
+        if fleet.troops > 0.0 {
+            tile_to_fleets.entry(fleet.current_tile).or_default().push(idx);
+        }
+    }
+
     // Simple Naval Combat: Warships damage enemy fleets on the same tile or adjacent tiles
     let mut damages = Vec::new();
     let w = self.state.map.width;
     for i in 0..self.fleets.len() {
         if self.fleets[i].unit_type == crate::game::UnitType::Warship && self.fleets[i].troops > 0.0 {
-            let fx = (self.fleets[i].current_tile % w) as i32;
-            let fy = (self.fleets[i].current_tile / w) as i32;
-            for j in 0..self.fleets.len() {
-                if i != j && self.fleets[j].owner_id != self.fleets[i].owner_id && self.fleets[j].troops > 0.0 {
-                    let ox = (self.fleets[j].current_tile % w) as i32;
-                    let oy = (self.fleets[j].current_tile / w) as i32;
-                    if (fx - ox).abs() + (fy - oy).abs() <= 1 {
-                        damages.push((j, 100.0));
-                        break;
+            let mut neighbors = [0u32; 7];
+            neighbors[0] = self.fleets[i].current_tile;
+            let mut n_count = 1;
+            let fx = self.fleets[i].current_tile % w;
+            let fy = self.fleets[i].current_tile / w;
+            self.state.map.for_each_neighbor(fx, fy, |nx, ny| {
+                neighbors[n_count] = ny * w + nx;
+                n_count += 1;
+            });
+
+            'outer: for &t in neighbors.iter().take(n_count) {
+                if let Some(indices) = tile_to_fleets.get(&t) {
+                    for &j in indices {
+                        if i != j && self.fleets[j].owner_id != self.fleets[i].owner_id && self.fleets[j].troops > 0.0 {
+                            damages.push((j, 100.0));
+                            break 'outer;
+                        }
                     }
                 }
             }
@@ -343,7 +380,7 @@ pub fn execute_fleets(&mut self) {
                 ) {
                     fleet.retreat_dst = Some(r_dst);
                     if let Some(path) = self.path_scratch.astar.find_path(&self.state.map, &[fleet.current_tile], r_dst) {
-                        fleet.path = path;
+                        fleet.path = std::sync::Arc::new(path);
                         fleet.path_cursor = 0;
                     } else {
                         refund_fleet_troops_to_player(&mut self.state, fleet.owner_id, fleet.troops);
@@ -382,7 +419,7 @@ pub fn execute_fleets(&mut self) {
                 fleet.current_tile = ny as u32 * w + nx as u32;
             } else if dir == 8 {
                 // Reached destination!
-                fleet.path.clear();
+                fleet.path = std::sync::Arc::new(Vec::new());
                 fleet.path_cursor = 0;
             } else {
                 // Unreachable via FlowField
@@ -401,7 +438,9 @@ pub fn execute_fleets(&mut self) {
             }
             if fleet.path_cursor >= fleet.path.len() && !fleet.path.is_empty() {
                 // Loop back
-                fleet.path.reverse();
+                let mut p = (*fleet.path).clone();
+                p.reverse();
+                fleet.path = std::sync::Arc::new(p);
                 fleet.path_cursor = 0;
             }
             continue;
@@ -410,7 +449,7 @@ pub fn execute_fleets(&mut self) {
         if fleet.unit_type == crate::game::UnitType::Warship {
             // Stop at destination
             if fleet.path_cursor >= fleet.path.len() {
-                fleet.path.clear();
+                fleet.path = std::sync::Arc::new(Vec::new());
                 fleet.path_cursor = 0;
             }
             continue;

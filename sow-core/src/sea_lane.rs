@@ -56,7 +56,7 @@ pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
         }
 
         if ports.len() < 2 {
-            engine.state.sea_lanes.clear();
+            engine.state.sea_lanes = std::sync::Arc::new(Vec::new());
             engine.sea_lane_calc = None;
             engine.sea_lanes_dirty = false;
             return;
@@ -139,7 +139,7 @@ pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
             engine.sea_lane_calc = Some((i + 1, lanes, port_components));
         } else {
             // Finished all ports! Apply
-            engine.state.sea_lanes = lanes;
+            engine.state.sea_lanes = std::sync::Arc::new(lanes);
             engine.sea_lane_calc = None;
         }
     }

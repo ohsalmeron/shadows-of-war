@@ -58,8 +58,8 @@ impl SowApp {
                 let avg_col = player.centroid_x;
                 let avg_row = player.centroid_y;
 
-                let target_cx = avg_col + 0.5;
-                let target_cy = avg_row + 0.5;
+                let target_cx = avg_col + 0.5 + (avg_row as i32 % 2) as f32 * 0.5;
+                let target_cy = (avg_row + 0.5) * 0.8660254_f32;
 
                 // Smooth position interpolation
                 let pos = self

@@ -23,8 +23,26 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 let world_x = (mx - input.camera_x) / input.camera_zoom;
                 let world_y = (my - input.camera_y) / input.camera_zoom;
 
-                let col = world_x.floor() as i32;
-                let row = world_y.floor() as i32;
+                let q_f = world_x - world_y * 0.577350269_f32;
+                let r_f = world_y * 1.154700538_f32;
+                let s_f = -q_f - r_f;
+
+                let mut rq = q_f.round();
+                let mut rr = r_f.round();
+                let rs = s_f.round();
+
+                let q_diff = (rq - q_f).abs();
+                let r_diff = (rr - r_f).abs();
+                let s_diff = (rs - s_f).abs();
+
+                if q_diff > r_diff && q_diff > s_diff {
+                    rq = -rr - rs;
+                } else if r_diff > s_diff {
+                    rr = -rq - rs;
+                }
+
+                let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
+                let row = rr as i32;
 
                 if col >= 0 && row >= 0 && col < sim.map_w as i32 && row < sim.map_h as i32 {
                     let map_w = sim.map_w;
@@ -113,7 +131,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
                             let mut adj: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
                             if let Some(snapshot) = &sim.current_snapshot {
-                                for rail in &snapshot.railroads {
+                                for rail in snapshot.railroads.iter() {
                                     if is_friendly(rail.owner_id) {
                                         if let (Some(&s_node), Some(&e_node)) = (rail.path.first(), rail.path.last()) {
                                             adj.entry(s_node).or_default().push(e_node);
@@ -262,8 +280,10 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         (col, row, false)
                     };
 
-                    let tile_screen_x = (input.camera_x + (draw_col as f32 + 0.5) * input.camera_zoom) / sf;
-                    let tile_screen_y = (input.camera_y + (draw_row as f32 + 0.5) * input.camera_zoom) / sf;
+                    let world_cx = draw_col as f32 + 0.5 + (draw_row % 2) as f32 * 0.5;
+                    let world_cy = (draw_row as f32 + 0.5) * 0.8660254_f32;
+                    let tile_screen_x = (input.camera_x + world_cx * input.camera_zoom) / sf;
+                    let tile_screen_y = (input.camera_y + world_cy * input.camera_zoom) / sf;
 
                     let fill_color = if is_valid {
                         egui::Color32::from_rgba_unmultiplied(74, 222, 128, 80)

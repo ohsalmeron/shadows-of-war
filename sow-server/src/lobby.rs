@@ -18,9 +18,12 @@ pub enum LobbyPhase {
 
 pub struct PlayerConnection {
     pub name: String,
+    pub clan_tag: String,
     pub player_id: u16,
     pub tx: mpsc::Sender<Vec<u8>>,
     pub download_progress: u8,
+    pub civilization: sow_core::player::Civilization,
+    pub leader: sow_core::player::Leader,
 }
 
 pub struct ServerLobby {
@@ -165,6 +168,9 @@ pub fn join_player(
     games: &mut Vec<ServerLobby>,
     next_id: &mut u64,
     name: String,
+    clan_tag: String,
+    civilization: sow_core::player::Civilization,
+    leader: sow_core::player::Leader,
     client_tx: mpsc::Sender<Vec<u8>>,
     target_lobby_id: Option<u64>,
 ) -> Result<(u64, u16, String), String> {
@@ -201,9 +207,12 @@ pub fn join_player(
 
     lobby.players.push(PlayerConnection {
         name,
+        clan_tag,
         player_id,
         tx: client_tx,
         download_progress: 0,
+        civilization,
+        leader,
     });
 
     log::info!("Player {} joined lobby {}", player_id, lobby_id);

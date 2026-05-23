@@ -140,10 +140,10 @@ impl NukeKind {
             NukeKind::MIRV => 18,
         }
     }
-    pub fn speed(self) -> f32 {
+    pub fn steps_per_tick(self) -> u8 {
         match self {
-            NukeKind::AtomBomb | NukeKind::HydrogenBomb => 8.0,
-            NukeKind::MIRV => 6.0,
+            NukeKind::AtomBomb | NukeKind::HydrogenBomb => 2,
+            NukeKind::MIRV => 2,
         }
     }
 }
@@ -162,12 +162,11 @@ pub struct Projectile {
     pub id: u64,
     pub kind: ProjectileKind,
     pub owner_id: u16,
-    pub src_x: f32,
-    pub src_y: f32,
-    pub dst_x: f32,
-    pub dst_y: f32,
-    pub progress: f32,
-    pub speed: f32,
+    pub src_tile: u32,
+    pub dst_tile: u32,
+    pub path: Vec<u32>,
+    pub path_cursor: usize,
+    pub steps_per_tick: u8,
     pub active: bool,
 }
 
@@ -210,13 +209,7 @@ impl UnitType {
         }
     }
 
-    pub fn speed(self) -> f64 {
-        match self {
-            UnitType::TransportShip => 1.5,
-            UnitType::TradeShip => 2.0,
-            UnitType::Warship => 2.5,
-        }
-    }
+
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -293,9 +286,9 @@ pub struct GameState {
     #[serde(default)]
     pub total_land_tiles: u32,
     #[serde(default)]
-    pub railroads: Vec<crate::building::railroad::Railroad>,
+    pub railroads: std::sync::Arc<Vec<crate::building::railroad::Railroad>>,
     #[serde(default)]
-    pub sea_lanes: Vec<crate::sea_lane::SeaLane>,
+    pub sea_lanes: std::sync::Arc<Vec<crate::sea_lane::SeaLane>>,
 }
 fn default_one() -> u64 {
     1
@@ -324,8 +317,8 @@ impl GameState {
             next_attack_id: 1,
             next_projectile_id: 1,
             total_land_tiles: 0,
-            railroads: Vec::new(),
-            sea_lanes: Vec::new(),
+            railroads: std::sync::Arc::new(Vec::new()),
+            sea_lanes: std::sync::Arc::new(Vec::new()),
         }
     }
     pub fn register_player(&mut self, player: Player) {
@@ -421,7 +414,7 @@ impl GameState {
             }
         }
 
-        let mut neighbors = [(0, 0); 4];
+        let mut neighbors = [(0, 0); 6];
         let mut n_count = 0;
         self.map.for_each_neighbor(x, y, |nx, ny| {
             neighbors[n_count] = (nx, ny);
@@ -446,7 +439,7 @@ impl GameState {
         }
 
         if new_owner != 0 {
-            let mut to_capture = [(0, 0); 4];
+            let mut to_capture = [(0, 0); 6];
             let mut capture_count = 0;
 
             for &(nx, ny) in neighbors.iter().take(n_count) {

@@ -79,18 +79,23 @@ impl GameMap {
             dirty_tiles: Vec::new(),
         }
     }
+    #[inline(always)]
     pub fn ref_id(&self, x: u32, y: u32) -> usize {
         (y * self.width + x) as usize
     }
+    #[inline(always)]
     pub fn terrain_type(&self, x: u32, y: u32) -> TerrainType {
         self.terrain[self.ref_id(x, y)].terrain_type()
     }
+    #[inline(always)]
     pub fn is_valid_coord(&self, x: i32, y: i32) -> bool {
         x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32
     }
+    #[inline(always)]
     pub fn owner_id(&self, x: u32, y: u32) -> u16 {
         self.state[self.ref_id(x, y)] & Self::PLAYER_ID_MASK
     }
+    #[inline(always)]
     pub fn set_owner_id(&mut self, x: u32, y: u32, player_id: u16) {
         let r = self.ref_id(x, y);
         let old = self.state[r];
@@ -100,8 +105,29 @@ impl GameMap {
             self.dirty_tiles.push(r);
         }
     }
+    #[inline(always)]
     pub fn for_each_neighbor(&self, x: u32, y: u32, mut f: impl FnMut(u32, u32)) {
-        for &(dx, dy) in &CARDINAL_NEIGHBOR_DELTAS {
+        let is_odd = (y % 2) != 0;
+        let neighbors = if is_odd {
+            [
+                (1, 0),   // East
+                (-1, 0),  // West
+                (0, -1),  // Northwest
+                (1, -1),  // Northeast
+                (0, 1),   // Southwest
+                (1, 1),   // Southeast
+            ]
+        } else {
+            [
+                (1, 0),   // East
+                (-1, 0),  // West
+                (-1, -1), // Northwest
+                (0, -1),  // Northeast
+                (-1, 1),  // Southwest
+                (0, 1),   // Southeast
+            ]
+        };
+        for &(dx, dy) in &neighbors {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
             if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
@@ -109,22 +135,33 @@ impl GameMap {
             }
         }
     }
+    #[inline(always)]
     pub fn neighbors(&self, x: u32, y: u32) -> Vec<(u32, u32)> {
-        let mut r = Vec::with_capacity(4);
+        let mut r = Vec::with_capacity(6);
         self.for_each_neighbor(x, y, |nx, ny| r.push((nx, ny)));
         r
     }
+    #[inline(always)]
     pub fn is_border_tile(&self, x: u32, y: u32, player_id: u16) -> bool {
         if self.owner_id(x, y) != player_id {
             return false;
         }
-        let mut b = false;
-        self.for_each_neighbor(x, y, |nx, ny| {
-            if !b && self.owner_id(nx, ny) != player_id {
-                b = true;
+        let is_odd = (y % 2) != 0;
+        let deltas = if is_odd {
+            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+        } else {
+            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+        };
+        for &(dx, dy) in &deltas {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
+                if self.owner_id(nx as u32, ny as u32) != player_id {
+                    return true;
+                }
             }
-        });
-        b
+        }
+        false
     }
     pub fn tiles_owned_by(&self, player_id: u16) -> u32 {
         self.state
@@ -132,14 +169,24 @@ impl GameMap {
             .filter(|&&s| (s & Self::PLAYER_ID_MASK) == player_id)
             .count() as u32
     }
+    #[inline(always)]
     pub fn is_adjacent_to_player(&self, x: u32, y: u32, player_id: u16) -> bool {
-        let mut a = false;
-        self.for_each_neighbor(x, y, |nx, ny| {
-            if !a && self.owner_id(nx, ny) == player_id {
-                a = true;
+        let is_odd = (y % 2) != 0;
+        let deltas = if is_odd {
+            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+        } else {
+            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+        };
+        for &(dx, dy) in &deltas {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
+                if self.owner_id(nx as u32, ny as u32) == player_id {
+                    return true;
+                }
             }
-        });
-        a
+        }
+        false
     }
     
     pub fn compute_shorelines(&mut self) {

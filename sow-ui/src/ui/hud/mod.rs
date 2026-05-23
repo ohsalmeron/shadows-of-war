@@ -5,6 +5,13 @@ use sow_core::protocol::{AttackSnapshot, FleetSnapshot, PlayerSnapshot};
 use sow_lang::Language;
 
 #[derive(Clone, Debug)]
+pub struct NukeAlertDisplay {
+    pub message: String,
+    pub color: Color32,
+    pub spawned_at: Instant,
+}
+
+#[derive(Clone, Debug)]
 pub struct SelectedTileInfo {
     pub tile_idx: u32,
     pub owner_id: u16,
@@ -44,6 +51,7 @@ pub struct HudState {
     pub selected_building_kind: Option<sow_core::game::BuildingKind>,
     pub building_costs: [f64; 9],
     pub selected_nuke_kind: Option<sow_core::game::NukeKind>,
+    pub nuke_alerts: Vec<NukeAlertDisplay>,
 }
 
 impl HudState {
@@ -899,6 +907,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
 
     draw_sync_overlay(ui.ctx(), state, lang);
     draw_betrayal_overlay(ui.ctx(), state, cancel_intents);
+    draw_nuke_alerts(ui.ctx(), state);
     draw_error_overlay(ui.ctx(), state);
 
     action
@@ -997,15 +1006,40 @@ fn draw_attacks_display(
                                         if attack.retreating {
                                             ui.label(RichText::new(&strings.retreating_label).size(10.0).color(Color32::GRAY));
                                         } else {
-                                            let retaliate = egui::Button::new(RichText::new("⚔").size(12.0))
-                                                .fill(crate::ui::theme::accent_danger())
-                                                .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::accent_danger_border()))
-                                                .corner_radius(6);
-                                            let _ = ui.add_sized(egui::vec2(24.0, 24.0), retaliate).on_hover_text(&strings.hover_retaliate);
+                                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
+                                             let is_hovered = resp.hovered();
+                                             let fill = if is_hovered { crate::ui::theme::accent_danger().linear_multiply(0.4) } else { crate::ui::theme::accent_danger().linear_multiply(0.3) };
+                                             ui.painter().rect(
+                                                 rect,
+                                                 6.0,
+                                                 fill,
+                                                 egui::Stroke::new(1.0_f32, crate::ui::theme::accent_danger_border()),
+                                                 egui::StrokeKind::Inside,
+                                             );
+                                             let load_res = ui.ctx().try_load_texture(
+                                                 sow_core::assets::Asset::Troops.uri(),
+                                                 egui::TextureOptions::default(),
+                                                 egui::load::SizeHint::Size {
+                                                     width: 12,
+                                                     height: 12,
+                                                     maintain_aspect_ratio: true,
+                                                 },
+                                             );
+                                             if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                                 let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(12.0, 12.0));
+                                                 ui.painter().image(
+                                                     texture.id,
+                                                     icon_rect,
+                                                     egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                                                     Color32::WHITE,
+                                                 );
+                                             }
+                                             let _ = resp.on_hover_text(&strings.hover_retaliate);
                                         }
                                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                            ui.add(egui::Image::new(sow_core::assets::Asset::Troops.uri()).fit_to_exact_size(vec2(12.0, 12.0)));
                                             let attacker_name = get_player_display_name(&state.players, attack.owner_id, &strings.default_player_name);
-                                            let txt = format!("★↓ {} {}", crate::utils::format_number(attack.troops), attacker_name);
+                                            let txt = format!("↓ {} {}", crate::utils::format_number(attack.troops), attacker_name);
                                             ui.label(RichText::new(txt).size(12.0).color(crate::ui::theme::accent_danger_border()).strong());
                                         });
                                     } else if idx < incoming_count + outgoing_count {
@@ -1020,8 +1054,9 @@ fn draw_attacks_display(
                                              }
                                         }
                                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                            ui.add(egui::Image::new(sow_core::assets::Asset::Troops.uri()).fit_to_exact_size(vec2(12.0, 12.0)));
                                             let target_name = get_player_display_name(&state.players, attack.target_owner, &strings.wilderness_player_name);
-                                            let txt = format!("★↑ {} {}", crate::utils::format_number(attack.troops), target_name);
+                                            let txt = format!("↑ {} {}", crate::utils::format_number(attack.troops), target_name);
                                             ui.label(RichText::new(txt).size(12.0).color(crate::ui::theme::accent_solo_cyan()).strong());
                                         });
                                     } else {
@@ -1036,7 +1071,8 @@ fn draw_attacks_display(
                                             }
                                         }
                                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                            let txt = format!("★↑ {} {}", crate::utils::format_number(fleet.troops), &strings.naval_invasion_label);
+                                            ui.add(egui::Image::new(sow_core::assets::Asset::Troops.uri()).fit_to_exact_size(vec2(12.0, 12.0)));
+                                            let txt = format!("↑ {} {}", crate::utils::format_number(fleet.troops), &strings.naval_invasion_label);
                                             ui.label(RichText::new(txt).size(12.0).color(crate::ui::theme::accent_solo_cyan()).strong());
                                         });
                                     }
@@ -1075,7 +1111,8 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
             // Attack Ratio + Slider
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("⚔ {:.0}%", state.attack_ratio * 100.0)).strong().size(12.0).color(Color32::from_rgb(220, 230, 220)));
+                    ui.add(egui::Image::new(sow_core::assets::Asset::Troops.uri()).fit_to_exact_size(vec2(12.0, 12.0)));
+                    ui.label(RichText::new(format!("{:.0}%", state.attack_ratio * 100.0)).strong().size(12.0).color(Color32::from_rgb(220, 230, 220)));
                     let mut ratio = state.attack_ratio;
                     if ui.add_sized(vec2(ui.available_width(), 16.0), Slider::new(&mut ratio, 0.01..=1.0).show_value(false)).changed() {
                         *action = Some(UiAction::SetAttackRatio(ratio));
@@ -1092,7 +1129,7 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
             
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-
+ 
                 // Rate
                 let rate_color = if is_increasing { crate::ui::theme::accent_solo_cyan_hover() } else { crate::ui::theme::accent_danger() };
                 egui::Frame::NONE
@@ -1100,14 +1137,18 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
                     .corner_radius(6)
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
-                        ui.label(RichText::new(format!("★ +{}/s", crate::utils::format_number(troop_rate))).strong().size(14.0).color(rate_color));
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.add(egui::Image::new(sow_core::assets::Asset::Troops.uri()).fit_to_exact_size(vec2(14.0, 14.0)));
+                            ui.label(RichText::new(format!("+{}/s", crate::utils::format_number(troop_rate))).strong().size(14.0).color(rate_color));
+                        });
                     });
-
+ 
                 // Troop Bar (Flex-1)
                 let bar_w = ui.available_width() - 80.0; // Reserve space for gold
                 let (rect, _resp) = ui.allocate_exact_size(vec2(bar_w.max(100.0), 24.0), egui::Sense::hover());
                 draw_troop_bar(ui, rect, state.troops_display, state.max_troops_display, troop_rate, false, is_increasing);
-
+ 
                 // Gold
                 egui::Frame::NONE
                     .stroke(Stroke::new(1.0_f32, crate::ui::theme::accent_ranked_gold_hover()))
@@ -1117,7 +1158,7 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
                         ui.label(RichText::new(format!("💰 {}", crate::utils::format_number(state.gold))).strong().size(14.0).color(crate::ui::theme::accent_ranked_gold_hover()));
                     });
             });
-
+ 
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 
@@ -1127,8 +1168,12 @@ fn draw_control_panel(ui: &mut egui::Ui, state: &HudState, compact: bool, action
                     .corner_radius(6)
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
-                        let ratio_troops = (state.troops * (state.attack_ratio as f64)).max(0.0);
-                        ui.label(RichText::new(format!("⚔ {:.0}% ({})", state.attack_ratio * 100.0, crate::utils::format_number(ratio_troops))).strong().size(14.0).color(Color32::from_rgb(220, 230, 220)));
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.add(egui::Image::new(sow_core::assets::Asset::Troops.uri()).fit_to_exact_size(vec2(14.0, 14.0)));
+                            let ratio_troops = (state.troops * (state.attack_ratio as f64)).max(0.0);
+                            ui.label(RichText::new(format!("{:.0}% ({})", state.attack_ratio * 100.0, crate::utils::format_number(ratio_troops))).strong().size(14.0).color(Color32::from_rgb(220, 230, 220)));
+                        });
                     });
 
                 let mut ratio = state.attack_ratio;
@@ -1162,7 +1207,7 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, max_troops: 
     // Draw background
     ui.painter().rect(
         rect,
-        6,
+        0,
         bg_color,
         Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()),
         egui::StrokeKind::Inside,
@@ -1171,12 +1216,7 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, max_troops: 
     // Draw green fill
     if green_pct_f32 > 0.0 {
         let green_rect = egui::Rect::from_min_size(rect.min, vec2(rect.width() * green_pct_f32, rect.height()));
-        let green_radius = if orange_pct_f32 > 0.0 {
-            egui::CornerRadius { nw: 6, ne: 0, sw: 6, se: 0 }
-        } else {
-            egui::CornerRadius::same(6)
-        };
-        ui.painter().rect_filled(green_rect, green_radius, green_color);
+        ui.painter().rect_filled(green_rect, 0, green_color);
     }
     
     // Draw orange fill (backfiller)
@@ -1185,7 +1225,7 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, max_troops: 
         let orange_rect = egui::Rect::from_min_size(pos2(orange_start, rect.min.y), vec2(rect.width() * orange_pct_f32, rect.height()));
         ui.painter().rect_filled(
             orange_rect, 
-            egui::CornerRadius { nw: 0, ne: 6, sw: 0, se: 6 }, 
+            0, 
             orange_color
         );
     }
@@ -1199,7 +1239,7 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, max_troops: 
             pos2(rect.left() + 4.0, rect.center().y),
             Align2::LEFT_CENTER,
             &troop_text,
-            egui::FontId::proportional(12.0),
+            egui::FontId::proportional(11.0),
             Color32::from_rgb(220, 230, 220),
             shadow,
         );
@@ -1209,32 +1249,91 @@ fn draw_troop_bar(ui: &mut egui::Ui, rect: egui::Rect, troops: f64, max_troops: 
             pos2(rect.right() - 4.0, rect.center().y),
             Align2::RIGHT_CENTER,
             &max_text,
-            egui::FontId::proportional(12.0),
+            egui::FontId::proportional(11.0),
             Color32::from_rgb(220, 230, 220),
             shadow,
         );
         let rate_color = if is_increasing { crate::ui::theme::accent_solo_cyan_hover() } else { crate::ui::theme::accent_danger() };
-        let rate_text = format!("★ +{}/s", crate::utils::format_number(troop_rate));
+        let rate_text = format!("+{}/s", crate::utils::format_number(troop_rate));
+        
+        let font_id = egui::FontId::proportional(11.0);
+        let galley = ui.painter().layout_no_wrap(rate_text.clone(), font_id.clone(), rate_color);
+        let icon_size = 10.0;
+        let total_w = icon_size + 4.0 + galley.rect.width();
+        let mut start_x = rect.center().x - total_w / 2.0;
+
+        let load_res = ui.ctx().try_load_texture(
+            sow_core::assets::Asset::Troops.uri(),
+            egui::TextureOptions::default(),
+            egui::load::SizeHint::Size {
+                width: icon_size.round() as u32,
+                height: icon_size.round() as u32,
+                maintain_aspect_ratio: true,
+            },
+        );
+        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+            let icon_rect = egui::Rect::from_min_size(
+                pos2(start_x, rect.center().y - icon_size / 2.0),
+                vec2(icon_size, icon_size),
+            );
+            ui.painter().image(
+                texture.id,
+                icon_rect,
+                egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            start_x += icon_size + 4.0;
+        }
+
         crate::ui::theme::outlined_text(
             ui.painter(),
-            rect.center(),
-            Align2::CENTER_CENTER,
+            pos2(start_x, rect.center().y),
+            Align2::LEFT_CENTER,
             &rate_text,
-            egui::FontId::proportional(10.0),
+            font_id,
             rate_color,
             shadow,
         );
     } else {
-        let text = format!("{} / {} ★", crate::utils::format_number(troops), crate::utils::format_number(max_troops));
+        let text = format!("{} / {}", crate::utils::format_number(troops), crate::utils::format_number(max_troops));
+        let font_id = egui::FontId::proportional(11.0);
+        let galley = ui.painter().layout_no_wrap(text.clone(), font_id.clone(), Color32::from_rgb(220, 230, 220));
+        let icon_size = 11.0;
+        let total_w = galley.rect.width() + 4.0 + icon_size;
+        let mut start_x = rect.center().x - total_w / 2.0;
+
         crate::ui::theme::outlined_text(
             ui.painter(),
-            rect.center(),
-            Align2::CENTER_CENTER,
+            pos2(start_x, rect.center().y),
+            Align2::LEFT_CENTER,
             &text,
-            egui::FontId::proportional(14.0),
+            font_id,
             Color32::from_rgb(220, 230, 220),
             shadow,
         );
+        start_x += galley.rect.width() + 4.0;
+
+        let load_res = ui.ctx().try_load_texture(
+            sow_core::assets::Asset::Troops.uri(),
+            egui::TextureOptions::default(),
+            egui::load::SizeHint::Size {
+                width: icon_size.round() as u32,
+                height: icon_size.round() as u32,
+                maintain_aspect_ratio: true,
+            },
+        );
+        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+            let icon_rect = egui::Rect::from_min_size(
+                pos2(start_x, rect.center().y - icon_size / 2.0),
+                vec2(icon_size, icon_size),
+            );
+            ui.painter().image(
+                texture.id,
+                icon_rect,
+                egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        }
     }
 }
 
@@ -1494,12 +1593,51 @@ fn draw_mobile_selection_bar(
                 let left_glow = if tile_info.is_own_territory { palette::neon_gold_hover() } else { palette::danger_border() };
                 let left_label = if tile_info.is_own_territory { &strings.btn_build } else { &strings.btn_attack };
 
-                let action_btn = egui::Button::new(RichText::new(left_label).strong().size(12.0))
-                    .fill(left_fill.linear_multiply(0.3))
-                    .stroke(egui::Stroke::new(1.2_f32, left_glow))
-                    .corner_radius(6);
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(btn_w, 32.0), egui::Sense::click());
+                let is_hovered = resp.hovered();
+                let fill = if is_hovered { left_fill.linear_multiply(0.4) } else { left_fill.linear_multiply(0.3) };
+                ui.painter().rect(rect, 6.0, fill, egui::Stroke::new(1.2_f32, left_glow), egui::StrokeKind::Inside);
+                
+                let clean_label = left_label.trim_start_matches('⚔').trim();
+                let font_id = egui::FontId::proportional(12.0);
+                let galley = ui.painter().layout_no_wrap(clean_label.to_owned(), font_id.clone(), Color32::WHITE);
+                
+                let icon_size = 12.0;
+                let total_w = if tile_info.is_own_territory {
+                    galley.rect.width()
+                } else {
+                    icon_size + 4.0 + galley.rect.width()
+                };
+                
+                let mut start_x = rect.center().x - total_w / 2.0;
+                if !tile_info.is_own_territory {
+                    let load_res = ui.ctx().try_load_texture(
+                        sow_core::assets::Asset::Troops.uri(),
+                        egui::TextureOptions::default(),
+                        egui::load::SizeHint::Size {
+                            width: icon_size.round() as u32,
+                            height: icon_size.round() as u32,
+                            maintain_aspect_ratio: true,
+                        },
+                    );
+                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                        let icon_rect = egui::Rect::from_min_size(
+                            pos2(start_x, rect.center().y - icon_size / 2.0),
+                            vec2(icon_size, icon_size),
+                        );
+                        ui.painter().image(
+                            texture.id,
+                            icon_rect,
+                            egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                            Color32::WHITE,
+                        );
+                        start_x += icon_size + 4.0;
+                    }
+                }
+                
+                ui.painter().galley(pos2(start_x, rect.center().y - galley.rect.height() / 2.0), galley, Color32::WHITE);
 
-                if ui.add_sized(egui::vec2(btn_w, 32.0), action_btn).clicked() {
+                if resp.clicked() {
                     if !tile_info.is_own_territory {
                         let troops = state.troops * (state.attack_ratio as f64);
                         if troops > 0.0 {
@@ -1515,6 +1653,76 @@ fn draw_mobile_selection_bar(
             ui.add_space(4.0);
         });
     }
+}
+fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
+    const MAX_VISIBLE: usize = 4;
+    const LIFETIME: Duration = Duration::from_millis(5000);
+    const FADE_START: f32 = 0.8; // fade-out in last 0.8s
+
+    let now = Instant::now();
+
+    // Expire old alerts
+    state.nuke_alerts.retain(|a| now.duration_since(a.spawned_at) < LIFETIME);
+
+    if state.nuke_alerts.is_empty() {
+        return;
+    }
+
+    // Show at most MAX_VISIBLE (newest)
+    let start = state.nuke_alerts.len().saturating_sub(MAX_VISIBLE);
+    let visible = &state.nuke_alerts[start..];
+
+    egui::Area::new(egui::Id::new("nuke_alerts_area"))
+        .anchor(Align2::CENTER_TOP, vec2(0.0, 12.0 + state.safe_area_top))
+        .order(egui::Order::Tooltip)
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                for alert in visible {
+                    let elapsed = now.duration_since(alert.spawned_at).as_secs_f32();
+                    let remaining = LIFETIME.as_secs_f32() - elapsed;
+                    let alpha = if remaining < FADE_START {
+                        (remaining / FADE_START).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
+
+                    // Slide-in from top
+                    let entry_t = (elapsed / 0.25).clamp(0.0, 1.0);
+                    let slide = (1.0 - entry_t) * -20.0;
+
+                    let bg = Color32::from_rgba_unmultiplied(15, 10, 5, (200.0 * alpha) as u8);
+                    let border = alert.color.linear_multiply(alpha);
+
+                    ui.add_space(slide);
+
+                    egui::Frame::new()
+                        .fill(bg)
+                        .stroke(Stroke::new(1.5_f32, border))
+                        .corner_radius(8)
+                        .inner_margin(egui::Margin::symmetric(14, 6))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new("☢")
+                                        .color(border)
+                                        .size(14.0)
+                                        .strong(),
+                                );
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new(&alert.message)
+                                        .color(Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8))
+                                        .size(12.0)
+                                        .strong(),
+                                );
+                            });
+                        });
+                }
+            });
+        });
+
+    ctx.request_repaint();
 }
 
 fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
