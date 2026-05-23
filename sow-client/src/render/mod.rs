@@ -121,9 +121,11 @@ impl SowApp {
                                     graphics_quality: graphics_q,
                                     _pad2: 0.0,
                                     _pad3: 0.0,
-                                    player_colors,
                                 };
-                                mr.draw(&mut self.gfx.render_ctx.command_encoder, frame.texture_view(), globals);
+                                let colors_struct = sow_render::PlayerColors {
+                                    colors: player_colors,
+                                };
+                                mr.draw(&mut self.gfx.render_ctx.command_encoder, frame.texture_view(), globals, colors_struct);
                                 map_drawn = true;
                             }
 

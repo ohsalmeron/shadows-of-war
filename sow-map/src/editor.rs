@@ -207,6 +207,7 @@ impl MapEditorSession {
                                 },
                                 usage: gpu::TextureUsage::TARGET,
                                 display_sync: gpu::DisplaySync::Tear,
+                                color_space: gpu::ColorSpace::Srgb,
                                 ..gpu::SurfaceConfig::default()
                             },
                         );
@@ -753,10 +754,12 @@ impl MapEditorSession {
                         graphics_quality: 2.0,
                         _pad2: 0.0,
                         _pad3: 0.0,
-                        player_colors,
+                    };
+                    let colors_struct = sow_render::PlayerColors {
+                        colors: player_colors,
                     };
 
-                    mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals);
+                    mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals, colors_struct);
                 }
 
                 // Draw EGUI overlay on top of map viewport

@@ -52,6 +52,7 @@ impl SowApp {
                                 },
                                 usage: gpu::TextureUsage::TARGET,
                                 display_sync,
+                                color_space: gpu::ColorSpace::Srgb,
                                 ..Default::default()
                             },
                         );

@@ -18,12 +18,18 @@ pub struct MapGlobals {
     pub graphics_quality: f32,
     pub _pad2: f32,
     pub _pad3: f32,
-    pub player_colors: [[f32; 4]; 256],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct PlayerColors {
+    pub colors: [[f32; 4]; 256],
 }
 
 #[derive(blade_macros::ShaderData)]
 pub struct MapShaderData {
     globals: MapGlobals,
+    player_colors: PlayerColors,
     territory_texture: gpu::TextureView,
 }
 
@@ -94,6 +100,11 @@ impl MapRenderer {
             std::mem::size_of::<MapGlobals>(),
             shader.get_struct_size("Globals") as usize,
             "MapGlobals must match WGSL `struct Globals` uniform layout"
+        );
+        assert_eq!(
+            std::mem::size_of::<PlayerColors>(),
+            shader.get_struct_size("PlayerColors") as usize,
+            "PlayerColors must match WGSL `struct PlayerColors` uniform layout"
         );
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
@@ -362,6 +373,7 @@ impl MapRenderer {
         encoder: &mut gpu::CommandEncoder,
         target_view: gpu::TextureView,
         globals: MapGlobals,
+        player_colors: PlayerColors,
     ) {
         let mut pass = encoder.render(
             "map_pass",
@@ -379,6 +391,7 @@ impl MapRenderer {
             0,
             &MapShaderData {
                 globals,
+                player_colors,
                 territory_texture: self.texture_view,
             },
         );

@@ -9,13 +9,17 @@ struct Globals {
     shore_thickness: f32,
     shore_darkness: f32,
     border_roundness: f32,
-    _pad1: f32,
+    graphics_quality: f32,
     _pad2: f32,
     _pad3: f32,
-    player_colors: array<vec4<f32>, 256>,
+}
+
+struct PlayerColors {
+    colors: array<vec4<f32>, 256>,
 }
 
 var<uniform> globals: Globals;
+var<uniform> player_colors: PlayerColors;
 var territory_texture: texture_2d<u32>;
 
 struct VertexOutput {
@@ -35,7 +39,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
 
 fn owner_albedo(owner_id: u32) -> vec3<f32> {
     if owner_id < 256u {
-        return globals.player_colors[owner_id].rgb;
+        return player_colors.colors[owner_id].rgb;
     }
     return vec3<f32>(0.5, 0.5, 0.5); // Fallback if out of bounds
 }
