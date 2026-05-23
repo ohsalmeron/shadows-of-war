@@ -6,6 +6,93 @@ use wyrand::WyRand;
 pub type PlayerId = u16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Civilization {
+    Rome,
+    Egypt,
+    Vikings,
+    China,
+    Macedon,
+    Mongols,
+}
+
+impl Default for Civilization {
+    fn default() -> Self {
+        Civilization::Rome
+    }
+}
+
+impl Civilization {
+    pub const ALL: [Civilization; 6] = [
+        Civilization::Rome,
+        Civilization::Egypt,
+        Civilization::Vikings,
+        Civilization::China,
+        Civilization::Macedon,
+        Civilization::Mongols,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Civilization::Rome => "Roman Empire",
+            Civilization::Egypt => "Egyptian Empire",
+            Civilization::Vikings => "Norse Kingdom",
+            Civilization::China => "Chinese Empire",
+            Civilization::Macedon => "Macedonian Empire",
+            Civilization::Mongols => "Mongol Horde",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Leader {
+    Caesar,
+    Cleopatra,
+    Ragnar,
+    SunTzu,
+    Alexander,
+    GenghisKhan,
+}
+
+impl Default for Leader {
+    fn default() -> Self {
+        Leader::Caesar
+    }
+}
+
+impl Leader {
+    pub const ALL: [Leader; 6] = [
+        Leader::Caesar,
+        Leader::Cleopatra,
+        Leader::Ragnar,
+        Leader::SunTzu,
+        Leader::Alexander,
+        Leader::GenghisKhan,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Leader::Caesar => "Caesar",
+            Leader::Cleopatra => "Cleopatra",
+            Leader::Ragnar => "Ragnar",
+            Leader::SunTzu => "Sun Tzu",
+            Leader::Alexander => "Alexander",
+            Leader::GenghisKhan => "Genghis Khan",
+        }
+    }
+
+    pub fn perk_description(self) -> &'static str {
+        match self {
+            Leader::Caesar => "Pax Romana: Starts match with a free Military district.",
+            Leader::Cleopatra => "Gift of the Nile: Industry districts generate +50% Gold.",
+            Leader::Ragnar => "Longship Raid: Ports generate +50% Gold.",
+            Leader::SunTzu => "Art of War: Military districts produce troops 20% faster.",
+            Leader::Alexander => "Great Conquest: Territory-conquering troops expand 15% faster.",
+            Leader::GenghisKhan => "Horde Momentum: Gain 10% of gold spent by defeated enemies.",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlayerType {
     Human,
     Bot,
@@ -65,6 +152,10 @@ pub struct Player {
     pub traitor: bool,
     #[serde(default)]
     pub traitor_tick: u32,
+    #[serde(default)]
+    pub civilization: Civilization,
+    #[serde(default)]
+    pub leader: Leader,
 }
 
 fn default_wyrand() -> WyRand {
@@ -106,6 +197,8 @@ impl Player {
             emoji_pinned: false,
             traitor: false,
             traitor_tick: 0,
+            civilization: Civilization::Rome,
+            leader: Leader::Caesar,
         }
     }
     pub fn new_bot(
@@ -116,6 +209,15 @@ impl Player {
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
         let iq = rng.next_int(80, 131) as u32;
+        let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
+        let leader = match civ {
+            Civilization::Rome => Leader::Caesar,
+            Civilization::Egypt => Leader::Cleopatra,
+            Civilization::Vikings => Leader::Ragnar,
+            Civilization::China => Leader::SunTzu,
+            Civilization::Macedon => Leader::Alexander,
+            Civilization::Mongols => Leader::GenghisKhan,
+        };
         Self {
             id,
             alive: true,
@@ -144,6 +246,8 @@ impl Player {
             emoji_pinned: false,
             traitor: false,
             traitor_tick: 0,
+            civilization: civ,
+            leader,
         }
     }
     pub fn new_nation(
@@ -154,6 +258,15 @@ impl Player {
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
         let iq = rng.next_int(110, 161) as u32;
+        let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
+        let leader = match civ {
+            Civilization::Rome => Leader::Caesar,
+            Civilization::Egypt => Leader::Cleopatra,
+            Civilization::Vikings => Leader::Ragnar,
+            Civilization::China => Leader::SunTzu,
+            Civilization::Macedon => Leader::Alexander,
+            Civilization::Mongols => Leader::GenghisKhan,
+        };
         Self {
             id,
             alive: true,
@@ -182,6 +295,8 @@ impl Player {
             emoji_pinned: false,
             traitor: false,
             traitor_tick: 0,
+            civilization: civ,
+            leader,
         }
     }
     pub fn is_human(&self) -> bool {

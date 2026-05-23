@@ -44,6 +44,65 @@ impl SowEngine {
             );
             return;
         };
+
+        // District checks: must be within 12-tile Euclidean radius of an owned completed City Center
+        // and cannot exceed the district slots limit (slots = City Center level)
+        let is_district = matches!(
+            kind,
+            BuildingKind::Factory
+                | BuildingKind::Port
+                | BuildingKind::Industry
+                | BuildingKind::Cultural
+                | BuildingKind::Science
+        );
+
+        if is_district {
+            let mut city_covering: Option<&Building> = None;
+            let (sx, sy) = crate::building::idx_xy(spawn_idx, w);
+            for b in &self.buildings {
+                if b.owner_id == player_id && b.kind == BuildingKind::City && !b.under_construction {
+                    let (cx, cy) = crate::building::idx_xy(b.tile_idx, w);
+                    if crate::building::euclid_sq(sx as i64, sy as i64, cx as i64, cy as i64) <= 144 {
+                        city_covering = Some(b);
+                        break;
+                    }
+                }
+            }
+            let Some(city) = city_covering else {
+                println!("apply_build_structure: district {:?} at {} not within 12 tiles of an owned City Center", kind, spawn_idx);
+                return;
+            };
+
+            // Count existing districts around this specific City Center
+            let (cx, cy) = crate::building::idx_xy(city.tile_idx, w);
+            let mut district_count = 0;
+            for b in &self.buildings {
+                if b.owner_id == player_id
+                    && matches!(
+                        b.kind,
+                        BuildingKind::Factory
+                            | BuildingKind::Port
+                            | BuildingKind::Industry
+                            | BuildingKind::Cultural
+                            | BuildingKind::Science
+                    )
+                {
+                    let (dx, dy) = crate::building::idx_xy(b.tile_idx, w);
+                    if crate::building::euclid_sq(dx as i64, dy as i64, cx as i64, cy as i64) <= 144 {
+                        district_count += 1;
+                    }
+                }
+            }
+
+            if district_count >= city.level as u32 {
+                println!(
+                    "apply_build_structure: city at {} has reached district slots limit ({}/{})",
+                    city.tile_idx, district_count, city.level
+                );
+                return;
+            }
+        }
+
         let cost = structure_build_cost_gold(kind, player_id, &self.buildings);
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;

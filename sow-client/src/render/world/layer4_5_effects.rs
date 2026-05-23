@@ -57,13 +57,13 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             x: dx,
                             y: dy,
                             start_time: current_time,
-                            max_radius: 120.0,
+                            max_radius: 112.5,
                             kind: crate::app::ExplosionKind::Hydrogen,
                         });
                         ui.fallout_zones.push(crate::app::FalloutZone {
                             x: dx,
                             y: dy,
-                            radius: 100.0,
+                            radius: 75.0,
                             start_time: current_time,
                         });
                     }

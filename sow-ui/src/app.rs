@@ -57,7 +57,7 @@ impl ClientApp {
                 last_error_message: None,
                 error_display_timer: None,
                 selected_building_kind: None,
-                building_costs: [0.0; 6],
+                building_costs: [0.0; 9],
                 selected_nuke_kind: None,
             },
             splash_state: loading_screen::SplashState::default(),

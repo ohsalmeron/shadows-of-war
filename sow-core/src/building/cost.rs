@@ -14,7 +14,7 @@ pub fn count_port_factory(buildings: &[Building], owner_id: u16) -> u32 {
     buildings
         .iter()
         .filter(|b| {
-            b.owner_id == owner_id && matches!(b.kind, BuildingKind::Port | BuildingKind::Factory)
+            b.owner_id == owner_id && matches!(b.kind, BuildingKind::Port | BuildingKind::Factory | BuildingKind::Industry | BuildingKind::Cultural | BuildingKind::Science)
         })
         .count() as u32
 }
@@ -41,7 +41,7 @@ pub fn structure_build_cost_gold(kind: BuildingKind, owner_id: u16, buildings: &
             let n = count_kind(buildings, owner_id, BuildingKind::City);
             scaled_pow2_cost(n, 125_000, 1_000_000, s)
         }
-        BuildingKind::Factory | BuildingKind::Port => {
+        BuildingKind::Factory | BuildingKind::Port | BuildingKind::Industry | BuildingKind::Cultural | BuildingKind::Science => {
             let n = count_port_factory(buildings, owner_id);
             scaled_pow2_cost(n, 125_000, 1_000_000, s)
         }

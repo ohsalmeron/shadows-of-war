@@ -217,6 +217,10 @@ pub struct PlayerInfo {
     pub team: Option<Team>,
     pub spawn_x: u32,
     pub spawn_y: u32,
+    #[serde(default)]
+    pub civilization: crate::player::Civilization,
+    #[serde(default)]
+    pub leader: crate::player::Leader,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -280,6 +284,8 @@ pub struct PlayerSnapshot {
     pub alliance_requests: Vec<crate::player::PlayerId>,
     pub disconnected: bool,
     pub active_emoji: Option<String>,
+    pub civilization: crate::player::Civilization,
+    pub leader: crate::player::Leader,
 }
 
 /// A single tile whose owner changed during a tick.

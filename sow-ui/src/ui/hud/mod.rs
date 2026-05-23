@@ -42,7 +42,7 @@ pub struct HudState {
     pub(crate) last_error_message: Option<String>,
     pub(crate) error_display_timer: Option<Instant>,
     pub selected_building_kind: Option<sow_core::game::BuildingKind>,
-    pub building_costs: [f64; 6],
+    pub building_costs: [f64; 9],
     pub selected_nuke_kind: Option<sow_core::game::NukeKind>,
 }
 
@@ -86,10 +86,21 @@ fn draw_buildings_dock(
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = if compact { 4.0 } else { 12.0 };
                 
-                let col_w = (width - 16.0 - 5.0 * (if compact { 4.0 } else { 12.0 })) / 6.0;
+                let active_kinds = [
+                    sow_core::game::BuildingKind::City,
+                    sow_core::game::BuildingKind::Factory,
+                    sow_core::game::BuildingKind::Port,
+                    sow_core::game::BuildingKind::Industry,
+                    sow_core::game::BuildingKind::DefensePost,
+                    sow_core::game::BuildingKind::SamLauncher,
+                    sow_core::game::BuildingKind::MissileSilo,
+                ];
+                let num_items = active_kinds.len() as f32;
+                let col_w = (width - 16.0 - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
                 
-                for (i, &kind) in sow_core::game::BuildingKind::ALL.iter().enumerate() {
-                    let cost = state.building_costs[i];
+                for (display_idx, &kind) in active_kinds.iter().enumerate() {
+                    let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                    let cost = state.building_costs[cost_idx];
                     let is_selected = state.selected_building_kind == Some(kind);
                     let can_afford = state.gold >= cost;
                     
@@ -122,20 +133,26 @@ fn draw_buildings_dock(
                     
                     resp = resp.on_hover_ui(|ui| {
                         let name = match kind {
-                            sow_core::game::BuildingKind::City => "City District",
-                            sow_core::game::BuildingKind::Factory => "Industrial Factory",
-                            sow_core::game::BuildingKind::Port => "Naval Port",
-                            sow_core::game::BuildingKind::DefensePost => "Defense Camera",
+                            sow_core::game::BuildingKind::City => "City Center",
+                            sow_core::game::BuildingKind::Factory => "Military District",
+                            sow_core::game::BuildingKind::Port => "Port District",
+                            sow_core::game::BuildingKind::Industry => "Industry District",
+                            sow_core::game::BuildingKind::Cultural => "Cultural District",
+                            sow_core::game::BuildingKind::Science => "Science District",
+                            sow_core::game::BuildingKind::DefensePost => "Defense Post",
                             sow_core::game::BuildingKind::SamLauncher => "SAM Launcher",
-                            sow_core::game::BuildingKind::MissileSilo => "Missile Silo",
+                            sow_core::game::BuildingKind::MissileSilo => "Nuclear Silo",
                         };
                         let desc = match kind {
-                            sow_core::game::BuildingKind::City => "Boosts gold income and expands territory borders",
+                            sow_core::game::BuildingKind::City => "Core of your empire. Levels up automatically with territory, unlocking district slots",
                             sow_core::game::BuildingKind::Factory => "Speeds up troop production and unit capacity",
-                            sow_core::game::BuildingKind::Port => "Enables building and launching naval fleets",
+                            sow_core::game::BuildingKind::Port => "Enables building and launching naval fleets. Generates Gold & Troops",
+                            sow_core::game::BuildingKind::Industry => "Generates passive Gold income",
+                            sow_core::game::BuildingKind::Cultural => "Generates passive defense: territory tiles cost +15% more for enemies to conquer per level",
+                            sow_core::game::BuildingKind::Science => "Unlocks advanced military structures (Nuclear Silo, SAM Launcher)",
                             sow_core::game::BuildingKind::DefensePost => "Reveals fog of war in a large radius",
-                            sow_core::game::BuildingKind::SamLauncher => "Automatically shoots down incoming missiles",
-                            sow_core::game::BuildingKind::MissileSilo => "Allows production and launch of nuclear weapons",
+                            sow_core::game::BuildingKind::SamLauncher => "Gated by Science. Automatically shoots down incoming missiles in range",
+                            sow_core::game::BuildingKind::MissileSilo => "Gated by Science. Allows production and launch of nuclear weapons",
                         };
                         
                         ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::accent_solo_cyan()));
@@ -167,7 +184,7 @@ fn draw_buildings_dock(
                         ui.painter().text(
                             egui::pos2(rect.left() + 5.0, rect.top() + 5.0),
                             egui::Align2::LEFT_TOP,
-                            format!("{}", i + 1),
+                            format!("{}", display_idx + 1),
                             egui::FontId::proportional(7.0),
                             hotkey_color,
                         );
@@ -183,6 +200,9 @@ fn draw_buildings_dock(
                         sow_core::game::BuildingKind::City => "bytes://city.svg",
                         sow_core::game::BuildingKind::Factory => "bytes://factory.svg",
                         sow_core::game::BuildingKind::Port => "bytes://port.svg",
+                        sow_core::game::BuildingKind::Industry => "bytes://factory.svg",
+                        sow_core::game::BuildingKind::Cultural => "bytes://city.svg",
+                        sow_core::game::BuildingKind::Science => "bytes://sam_launcher.svg",
                         sow_core::game::BuildingKind::DefensePost => "bytes://defense_post.svg",
                         sow_core::game::BuildingKind::SamLauncher => "bytes://sam_launcher.svg",
                         sow_core::game::BuildingKind::MissileSilo => "bytes://missile_silo.svg",
@@ -489,12 +509,34 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     .show(ui, |ui| {
                         ui.set_max_width(260.0);
                         ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new(&sow_lang::get(lang).hud.inbox_title)
-                                    .strong()
-                                    .color(crate::ui::theme::accent_solo_cyan())
-                                    .size(13.0)
-                            );
+                            ui.horizontal(|ui| {
+                                if requests.len() > 1 {
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.spacing_mut().item_spacing.x = 4.0;
+                                        ui.spacing_mut().button_padding = vec2(6.0, 2.0);
+                                        let btn_reject = egui::Button::new(RichText::new("REJECT ALL").size(9.0).color(Color32::from_rgb(239, 68, 68)))
+                                            .fill(crate::ui::theme::menu_secondary_button())
+                                            .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3)))
+                                            .corner_radius(4);
+                                        if ui.add(btn_reject).clicked() {
+                                            for &req in &requests {
+                                                cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: req });
+                                            }
+                                            state.show_alliance_inbox = false;
+                                        }
+                                        let btn_accept = egui::Button::new(RichText::new("ACCEPT ALL").size(9.0).color(Color32::from_rgb(74, 222, 128)))
+                                            .fill(crate::ui::theme::menu_secondary_button())
+                                            .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3)))
+                                            .corner_radius(4);
+                                        if ui.add(btn_accept).clicked() {
+                                            for &req in &requests {
+                                                cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: req });
+                                            }
+                                            state.show_alliance_inbox = false;
+                                        }
+                                    });
+                                }
+                            });
                             ui.add_space(6.0);
                             
                             if requests.is_empty() {

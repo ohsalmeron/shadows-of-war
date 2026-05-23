@@ -81,6 +81,13 @@ impl SowEngine {
         let momentum = (execution.troops / self.state.config.momentum_divisor).clamp(0.1, 5.0);
         max_tiles_f64 *= momentum;
 
+        // Alexander (Macedon) perk: +15% expansion speed
+        if let Some(player) = self.state.player(execution.owner_id) {
+            if player.leader == crate::player::Leader::Alexander {
+                max_tiles_f64 *= 1.15;
+            }
+        }
+
         // Scale expansion rate to real time (per_tick semantics: tick_rate × speed multiplier)
         max_tiles_f64 *= self.state.config.tick_rate_ms as f64 / 1000.0;
         max_tiles_f64 *= self.state.config.global_speed_multiplier;
@@ -157,7 +164,10 @@ impl SowEngine {
                     );
                     let dp_multiplier = 1.0 + (dp_bonus as f64 / 10.0); // Approximation of defense buff
 
-                    let atk_loss = self.state.config.attack_cost_enemy * terrain_multiplier * dp_multiplier;
+                    let defender_agg = self.building_aggregates.get(execution.target_owner as usize).copied().unwrap_or_default();
+                    let cultural_shield_mult = 1.0 + defender_agg.cultural_levels as f64 * 0.15; // +15% defense per level
+
+                    let atk_loss = self.state.config.attack_cost_enemy * terrain_multiplier * dp_multiplier * cultural_shield_mult;
 
                     execution.troops -= atk_loss;
 
@@ -256,7 +266,11 @@ impl SowEngine {
                 }
                 // 2. Transfer gold to conqueror
                 if let Some(attacker) = self.state.player_mut(execution_ref.owner_id) {
-                    attacker.gold += defeated_gold * transfer_ratio;
+                    let mut bounty_mult = 1.0;
+                    if attacker.leader == crate::player::Leader::GenghisKhan {
+                        bounty_mult = 1.5; // +50% bounty gold!
+                    }
+                    attacker.gold += defeated_gold * transfer_ratio * bounty_mult;
                 }
             }
         }
@@ -347,13 +361,36 @@ pub fn execute_fleets(&mut self) {
             }
         }
 
-        if fleet.path.is_empty() {
-            refund_fleet_troops_to_player(&mut self.state, fleet.owner_id, fleet.troops);
+        if fleet.flow_target.is_none() && fleet.path.is_empty() {
+            super::refund_fleet_troops_to_player(&mut self.state, fleet.owner_id, fleet.troops);
             to_remove.push(i);
             continue;
         }
 
-        if fleet.path_cursor < fleet.path.len() {
+        if let Some(target) = fleet.flow_target {
+            let map = &self.state.map;
+            let flow_field = self.flow_field_cache.get_or_compute(target, map);
+            let dir = flow_field.directions[fleet.current_tile as usize];
+            if dir < 8 {
+                let w = map.width;
+                let cx = fleet.current_tile % w;
+                let cy = fleet.current_tile / w;
+                let dx = [0, 1, 1, 1, 0, -1, -1, -1];
+                let dy = [-1, -1, 0, 1, 1, 1, 0, -1];
+                let nx = cx as i32 + dx[dir as usize];
+                let ny = cy as i32 + dy[dir as usize];
+                fleet.current_tile = ny as u32 * w + nx as u32;
+            } else if dir == 8 {
+                // Reached destination!
+                fleet.path.clear();
+                fleet.path_cursor = 0;
+            } else {
+                // Unreachable via FlowField
+                super::refund_fleet_troops_to_player(&mut self.state, fleet.owner_id, fleet.troops);
+                to_remove.push(i);
+                continue;
+            }
+        } else if fleet.path_cursor < fleet.path.len() {
             fleet.current_tile = fleet.path[fleet.path_cursor];
             fleet.path_cursor += 1;
         }

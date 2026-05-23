@@ -3,7 +3,7 @@ use crate::building::{
     structure_kind_enabled,
 };
 use crate::engine::SowEngine;
-use crate::execution::sam::sam_range;
+
 use crate::game::{BuildingKind, NukeKind};
 use crate::protocol::{AttackIntent, GameplayIntent, StampedIntent};
 use crate::rng::NextIntExt;
@@ -30,6 +30,7 @@ fn bot_structure_target_count(
         BuildingKind::SamLauncher => ((city_equivalent as f64) * sam_ratio).floor() as u32,
         BuildingKind::MissileSilo => ((city_equivalent as f64) * 0.2).floor() as u32,
         BuildingKind::City => city_equivalent.saturating_add(1),
+        _ => 0,
     }
 }
 
@@ -44,6 +45,7 @@ fn cheapest_gold_cost(kind: BuildingKind) -> f64 {
         BuildingKind::DefensePost => 50_000.0 / s,
         BuildingKind::SamLauncher => 1_500_000.0 / s,
         BuildingKind::MissileSilo => 1_000_000.0 / s,
+        _ => todo!(),
     }
 }
 
@@ -233,6 +235,7 @@ impl SowEngine {
                     .unwrap_or(0);
                 self.building_aggregates =
                     aggregate_buildings_per_player(self.buildings.iter().copied(), max_pid);
+                self.region_grid.rebuild(self.state.map.width, self.state.map.height, &self.state.map.state, &self.buildings);
                 self.building_aggregates_dirty = false;
             }
         }
@@ -572,14 +575,23 @@ impl SowEngine {
                                     for b in &self.buildings {
                                         if b.owner_id == bot_id && b.kind == kind && !b.under_construction && b.level < 5 {
                                             let mut score = 1.0;
-                                            for sam in &self.buildings {
-                                                if sam.owner_id == bot_id && sam.kind == BuildingKind::SamLauncher && !sam.under_construction {
-                                                    let dist_sq = crate::building::placement::manhattan(b.tile_idx as i32 % self.state.map.width as i32, b.tile_idx as i32 / self.state.map.width as i32, sam.tile_idx as i32 % self.state.map.width as i32, sam.tile_idx as i32 / self.state.map.width as i32);
-                                                    if dist_sq as f32 <= sam_range(sam.level) * sam_range(sam.level) {
-                                                        score += 10.0;
-                                                        break;
+                                            let cx = b.tile_idx % self.state.map.width / crate::region::REGION_SIZE;
+                                            let cy = b.tile_idx / self.state.map.width / crate::region::REGION_SIZE;
+                                            let cols = self.region_grid.grid_w;
+                                            let rows = self.region_grid.grid_h;
+                                            for dy in -1..=1 {
+                                                for dx in -1..=1 {
+                                                    let nx = cx as i32 + dx;
+                                                    let ny = cy as i32 + dy;
+                                                    if nx >= 0 && nx < cols as i32 && ny >= 0 && ny < rows as i32 {
+                                                        let r_idx = (ny * cols as i32 + nx) as usize;
+                                                        if self.region_grid.regions[r_idx].aggregate.count_sam > 0 {
+                                                            score += 10.0;
+                                                            break;
+                                                        }
                                                     }
                                                 }
+                                                if score > 1.0 { break; }
                                             }
                                             if score > best_score {
                                                 best_score = score;
@@ -790,6 +802,17 @@ impl SowEngine {
     fn maybe_launch_nuke(&mut self, bot_id: u16, decisions: &mut Vec<BotDecision>, bot_iq: u32, targets: &[u16]) {
         if bot_iq < 100 { return; }
         
+        if self.building_aggregates_dirty {
+            self.building_aggregates = crate::building::core::aggregate_buildings_per_player(
+                self.buildings.iter().copied(),
+                self.state.players.len(),
+            );
+            self.building_aggregates_dirty = false;
+        }
+        
+        let agg = self.building_aggregates.get(bot_id as usize).copied().unwrap_or_default();
+        if agg.count_silo == 0 { return; }
+        
         let mut has_silo = false;
         let mut total_silos = 0;
         for b in &self.buildings {
@@ -848,6 +871,7 @@ impl SowEngine {
                 BuildingKind::Factory | BuildingKind::Port => 15000.0,
                 BuildingKind::DefensePost => 5000.0 * (b.level as f64),
                 BuildingKind::SamLauncher => 10000.0 * (b.level as f64),
+                _ => 1000.0,
             };
 
             let bx = b.tile_idx % self.state.map.width;
@@ -855,19 +879,27 @@ impl SowEngine {
 
             // SAM avoidance
             let mut sam_covered = false;
-            for sam in &self.buildings {
-                if sam.owner_id != bot_id && sam.kind == BuildingKind::SamLauncher && !sam.under_construction {
-                    let sx = sam.tile_idx % self.state.map.width;
-                    let sy = sam.tile_idx / self.state.map.width;
-                    let dx = bx as f32 - sx as f32;
-                    let dy = by as f32 - sy as f32;
-                    let dist_sq = dx*dx + dy*dy;
-                    let range = sam_range(sam.level);
-                    if dist_sq <= range * range {
-                        sam_covered = true;
-                        break;
+            let cx = bx / crate::region::REGION_SIZE;
+            let cy = by / crate::region::REGION_SIZE;
+            let cols = self.region_grid.grid_w;
+            let rows = self.region_grid.grid_h;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let nx = cx as i32 + dx;
+                    let ny = cy as i32 + dy;
+                    if nx >= 0 && nx < cols as i32 && ny >= 0 && ny < rows as i32 {
+                        let r_idx = (ny * cols as i32 + nx) as usize;
+                        let r_data = &self.region_grid.regions[r_idx];
+                        if r_data.aggregate.count_sam > 0 {
+                            // Only check if it's not OUR SAM!
+                            if r_data.dominant_owner != bot_id {
+                                sam_covered = true;
+                                break;
+                            }
+                        }
                     }
                 }
+                if sam_covered { break; }
             }
             if sam_covered {
                 score -= 100000.0;
@@ -900,6 +932,17 @@ impl SowEngine {
 
     fn maybe_launch_mirv(&mut self, bot_id: u16, decisions: &mut Vec<BotDecision>, bot_iq: u32) {
         if bot_iq < 100 { return; }
+        
+        if self.building_aggregates_dirty {
+            self.building_aggregates = crate::building::core::aggregate_buildings_per_player(
+                self.buildings.iter().copied(),
+                self.state.players.len(),
+            );
+            self.building_aggregates_dirty = false;
+        }
+ 
+        let agg = self.building_aggregates.get(bot_id as usize).copied().unwrap_or_default();
+        if agg.count_silo == 0 { return; }
 
         let mut has_silo = false;
         for b in &self.buildings {

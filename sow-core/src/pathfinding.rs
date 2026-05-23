@@ -499,3 +499,82 @@ mod tests {
         assert_eq!(path[path.len() - 1], 32 * 31 + 31);
     }
 }
+
+#[derive(Clone)]
+pub struct FlowField {
+    pub target: u32,
+    pub width: u32,
+    pub height: u32,
+    pub directions: Vec<u8>, // 0-7: N, NE, E, SE, S, SW, W, NW. 255: Unreachable/Obstacle
+    pub stamp: u32,
+}
+
+impl FlowField {
+    pub fn new(width: u32, height: u32, target: u32) -> Self {
+        Self {
+            target,
+            width,
+            height,
+            directions: vec![255; (width * height) as usize],
+            stamp: 0,
+        }
+    }
+
+    pub fn compute_from_target(&mut self, map: &crate::map::GameMap) {
+        let n = (self.width * self.height) as usize;
+        let mut distances = vec![u32::MAX; n];
+        let mut queue = std::collections::VecDeque::new();
+        
+        let tx = self.target % self.width;
+        let ty = self.target / self.width;
+        
+        distances[self.target as usize] = 0;
+        self.directions[self.target as usize] = 8; // Reached
+        queue.push_back((tx, ty));
+        
+        let dx = [0, 1, 1, 1, 0, -1, -1, -1];
+        let dy = [-1, -1, 0, 1, 1, 1, 0, -1];
+        
+        while let Some((cx, cy)) = queue.pop_front() {
+            let curr_idx = (cy * self.width + cx) as usize;
+            let current_dist = distances[curr_idx];
+            
+            for i in 0..8 {
+                let nx = cx as i32 + dx[i];
+                let ny = cy as i32 + dy[i];
+                
+                if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
+                    let n_idx = (ny as u32 * self.width + nx as u32) as usize;
+                    
+                    let b = map.terrain[n_idx].as_byte();
+                    let is_land = (b & (1 << 7)) != 0;
+                    if is_land { continue; }
+                    
+                    if distances[n_idx] > current_dist + 1 {
+                        distances[n_idx] = current_dist + 1;
+                        // The direction FROM neighbor TO current is the opposite direction
+                        // If i is direction from current to neighbor, then (i+4)%8 is direction from neighbor to current
+                        self.directions[n_idx] = ((i + 4) % 8) as u8;
+                        queue.push_back((nx as u32, ny as u32));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct FlowFieldCache {
+    pub fields: std::collections::HashMap<u32, FlowField>,
+}
+
+impl FlowFieldCache {
+    pub fn get_or_compute(&mut self, target: u32, map: &crate::map::GameMap) -> &FlowField {
+        if !self.fields.contains_key(&target) {
+            let mut field = FlowField::new(map.width, map.height, target);
+            field.compute_from_target(map);
+            self.fields.insert(target, field);
+        }
+        self.fields.get(&target).unwrap()
+    }
+}

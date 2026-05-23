@@ -185,6 +185,8 @@ async fn main() {
                                     team,
                                     spawn_x: 0,
                                     spawn_y: 0,
+                                    civilization: sow_core::player::Civilization::Rome,
+                                    leader: sow_core::player::Leader::Caesar,
                                 });
                             }
 

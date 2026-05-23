@@ -559,6 +559,7 @@ pub struct WarpFleet {
     pub path_cursor: usize,
     pub current_tile: u32,
     pub retreating: bool,
+    pub flow_target: Option<u32>,
 }
 
 impl WarpFleet {
@@ -587,6 +588,7 @@ impl WarpFleet {
             path_cursor,
             current_tile,
             retreating: false,
+            flow_target: None,
         }
     }
 }

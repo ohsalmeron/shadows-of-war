@@ -5,6 +5,13 @@ use crate::pathfinding::WaterPathfinderScratch;
 use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
 
+#[derive(Debug, Clone)]
+pub enum AiEvent {
+    IncomeTick(u16),
+    UnderAttack { target: u16, attacker: u16, tile: u32 },
+    BuildingCompleted { owner: u16, tile: u32, kind: crate::game::BuildingKind },
+}
+
 #[derive(Clone)]
 pub struct PlacementScratch {
     pub visited_stamp: [u32; 1024],
@@ -32,11 +39,13 @@ pub struct SowEngine {
     pub buildings: Vec<Building>,
     pub water: WaterComponents,
     pub path_scratch: WaterPathfinderScratch,
+    pub flow_field_cache: crate::pathfinding::FlowFieldCache,
     pub placement_scratch: PlacementScratch,
     pub defense_grid: DefenseGrid,
     pub defense_grid_dirty: bool,
     pub render_defense_dirty: bool,
     pub building_grid: BuildingGrid,
+    pub region_grid: crate::region::RegionGrid,
     pub building_aggregates: Vec<BuildingAggregate>,
     pub building_aggregates_dirty: bool,
     pub railroads_dirty: bool,
@@ -46,6 +55,7 @@ pub struct SowEngine {
     /// Round-robin cursor for the unified AI pipeline.
     /// Ensures fair distribution of bot/nation think work across ticks.
     pub ai_round_robin: usize,
+    pub ai_events: std::collections::VecDeque<AiEvent>,
     pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
     pub port_queues: std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
     pub projectiles: Vec<crate::game::Projectile>,
@@ -79,11 +89,13 @@ impl SowEngine {
             buildings: Vec::with_capacity(4096),
             water,
             path_scratch,
+            flow_field_cache: crate::pathfinding::FlowFieldCache::default(),
             placement_scratch,
             defense_grid: DefenseGrid::default(),
             defense_grid_dirty: true,
             render_defense_dirty: true,
             building_grid: BuildingGrid::default(),
+            region_grid: crate::region::RegionGrid::default(),
             building_aggregates: Vec::with_capacity(256),
             building_aggregates_dirty: true,
             railroads_dirty: true,
@@ -91,6 +103,7 @@ impl SowEngine {
             railroad_calc: None,
             sea_lane_calc: None,
             ai_round_robin: 0,
+            ai_events: std::collections::VecDeque::new(),
             alliances_proposed: Vec::new(),
             port_queues: std::collections::HashMap::new(),
             projectiles: Vec::new(),
@@ -183,6 +196,37 @@ impl SowEngine {
                     if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
                         self.state.place_spawn(pid, sx, sy);
                         log::info!("Auto-spawned missing player {} at {}, {}", pid, sx, sy);
+
+                        // Place City Center!
+                        let building_id = self.state.next_building_id;
+                        self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                        let w = self.state.map.width;
+                        self.add_building(Building {
+                            id: building_id,
+                            owner_id: pid,
+                            tile_idx: sy * w + sx,
+                            kind: crate::game::BuildingKind::City,
+                            level: 1,
+                            under_construction: false,
+                            ticks_until_complete: 0,
+                        });
+
+                        // Caesar (Rome) perk
+                        if let Some(player) = self.state.player(pid) {
+                            if player.leader == crate::player::Leader::Caesar {
+                                let military_id = self.state.next_building_id;
+                                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                                self.add_building(Building {
+                                    id: military_id,
+                                    owner_id: pid,
+                                    tile_idx: sy * w + (sx + 1).min(w - 1),
+                                    kind: crate::game::BuildingKind::Factory,
+                                    level: 1,
+                                    under_construction: false,
+                                    ticks_until_complete: 0,
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -402,6 +446,37 @@ impl SowEngine {
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_nations += 1;
+
+                // Place City Center!
+                let building_id = self.state.next_building_id;
+                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                let w = self.state.map.width;
+                self.add_building(Building {
+                    id: building_id,
+                    owner_id: bot_id,
+                    tile_idx: sy * w + sx,
+                    kind: crate::game::BuildingKind::City,
+                    level: 1,
+                    under_construction: false,
+                    ticks_until_complete: 0,
+                });
+
+                // Caesar (Rome) perk
+                if let Some(p) = self.state.player(bot_id) {
+                    if p.leader == crate::player::Leader::Caesar {
+                        let military_id = self.state.next_building_id;
+                        self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                        self.add_building(Building {
+                            id: military_id,
+                            owner_id: bot_id,
+                            tile_idx: sy * w + (sx + 1).min(w - 1),
+                            kind: crate::game::BuildingKind::Factory,
+                            level: 1,
+                            under_construction: false,
+                            ticks_until_complete: 0,
+                        });
+                    }
+                }
             }
         }
 
@@ -466,6 +541,8 @@ impl SowEngine {
         if !config.random_spawn {
             let mut player = Player::new_human(player_id, name, color, &config);
             player.team = team;
+            player.civilization = config.player_civilization;
+            player.leader = config.player_leader;
             self.state.register_player(player);
             return;
         }
@@ -473,7 +550,40 @@ impl SowEngine {
         if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
             let mut player = Player::new_human(player_id, name, color, &config);
             player.team = team;
+            player.civilization = config.player_civilization;
+            player.leader = config.player_leader;
+            let is_caesar = player.leader == crate::player::Leader::Caesar;
             self.state.spawn_player(player, sx, sy);
+
+            // Build the initial capital city
+            let w = self.state.map.width;
+            self.buildings.push(Building {
+                id: self.state.next_building_id,
+                owner_id: player_id,
+                tile_idx: sy * w + sx,
+                kind: crate::game::BuildingKind::City,
+                level: 1,
+                under_construction: false,
+                ticks_until_complete: 0,
+            });
+            self.state.next_building_id += 1;
+
+            self.building_aggregates_dirty = true;
+
+            // Caesar (Rome) perk
+            if is_caesar {
+                let military_id = self.state.next_building_id;
+                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                self.add_building(Building {
+                    id: military_id,
+                    owner_id: player_id,
+                    tile_idx: sy * w + (sx + 1).min(w - 1),
+                    kind: crate::game::BuildingKind::Factory,
+                    level: 1,
+                    under_construction: false,
+                    ticks_until_complete: 0,
+                });
+            }
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);
         }
@@ -573,6 +683,8 @@ impl SowEngine {
                     alliance_requests,
                     disconnected: p.disconnected,
                     active_emoji: p.active_emoji.clone(),
+                    civilization: p.civilization,
+                    leader: p.leader,
                 }
             })
             .collect();

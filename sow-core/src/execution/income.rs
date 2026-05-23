@@ -18,6 +18,7 @@ impl SowEngine {
                 .unwrap_or(0);
             self.building_aggregates =
                 aggregate_buildings_per_player(self.buildings.iter().copied(), max_pid);
+            self.region_grid.rebuild(self.state.map.width, self.state.map.height, &self.state.map.state, &self.buildings);
             self.building_aggregates_dirty = false;
         }
 
@@ -60,12 +61,16 @@ impl SowEngine {
 
             player.max_troops = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
-                + agg.city_levels as f64 * config.city_max_troops_per_level;
+                + agg.city_levels as f64 * config.city_max_troops_per_level
+                + agg.factory_levels as f64 * 500.0;
 
             let raw_income = config.per_tick(config.troop_base_income);
 
             let cap_extra = (config.factory_income_bonus_cap - 1.0).max(0.0);
-            let factory_extra = (agg.factory_levels as f64 * config.factory_income_bonus_per_level)
+            let sun_tzu_mult = if player.leader == crate::player::Leader::SunTzu { 1.20 } else { 1.0 };
+            let total_troop_boost_levels = (agg.factory_levels as f64 * sun_tzu_mult) + agg.port_levels as f64 * 0.5;
+
+            let factory_extra = (total_troop_boost_levels * config.factory_income_bonus_per_level)
                 .min(cap_extra);
             let factory_mult = 1.0 + factory_extra;
             let income = raw_income * factory_mult;
@@ -74,13 +79,69 @@ impl SowEngine {
 
             let safe_gold = player.gold.max(0.0);
 
+            let cleo_mult = if player.leader == crate::player::Leader::Cleopatra { 1.50 } else { 1.0 };
+            let ragnar_mult = if player.leader == crate::player::Leader::Ragnar { 1.50 } else { 1.0 };
+
+            let industry_gold = agg.industry_levels as f64 * 100.0 * cleo_mult;
+            let port_gold = agg.port_levels as f64 * 50.0 * ragnar_mult;
+            let city_gold = agg.city_levels as f64 * config.gold_income_per_city_level;
+
             let gold_base = config.gold_base_income;
-            let gold_income =
-                config.per_tick(gold_base + agg.city_levels as f64 * config.gold_income_per_city_level);
+            let gold_income = config.per_tick(gold_base + city_gold + industry_gold + port_gold);
             player.gold = safe_gold + gold_income;
 
             let iq_gain = config.per_tick(player.iq as f64 / 100.0);
             player.iq_points = (player.iq_points + iq_gain).min(500.0);
+        }
+
+        let mut tribes_needing_city = Vec::new();
+        for player in self.state.players.iter().filter(|p| p.alive) {
+            if player.player_type == crate::player::PlayerType::Bot && player.cities == 0 && player.tile_count >= 150 {
+                tribes_needing_city.push((player.id, player.sum_x, player.sum_y, player.tile_count));
+            }
+        }
+
+        for (tid, sum_x, sum_y, tile_count) in tribes_needing_city {
+            let cx = (sum_x / tile_count as u64) as u32;
+            let cy = (sum_y / tile_count as u64) as u32;
+            let w = self.state.map.width;
+            let mut found_tile = None;
+            for dy in -5..=5 {
+                for dx in -5..=5 {
+                    let nx = cx as i32 + dx;
+                    let ny = cy as i32 + dy;
+                    if self.state.map.is_valid_coord(nx, ny) {
+                        let (ux, uy) = (nx as u32, ny as u32);
+                        if self.state.map.owner_id(ux, uy) == tid
+                            && self.state.map.terrain[self.state.map.ref_id(ux, uy)].is_land()
+                        {
+                            found_tile = Some(uy * w + ux);
+                            break;
+                        }
+                    }
+                }
+                if found_tile.is_some() {
+                    break;
+                }
+            }
+            if let Some(tile_idx) = found_tile {
+                let building_id = self.state.next_building_id;
+                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+
+                self.add_building(crate::building::Building {
+                    id: building_id,
+                    owner_id: tid,
+                    tile_idx,
+                    kind: crate::game::BuildingKind::City,
+                    level: 1,
+                    under_construction: false,
+                    ticks_until_complete: 0,
+                });
+                if let Some(p) = self.state.player_mut(tid) {
+                    p.cities += 1;
+                }
+                log::info!("Tribe {} established City Center at tile {}", tid, tile_idx);
+            }
         }
     }
 }

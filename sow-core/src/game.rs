@@ -15,31 +15,40 @@ pub enum GamePhase {
 #[repr(u8)]
 pub enum BuildingKind {
     City,
-    Factory,
-    Port,
+    Factory, // Represents Military District
+    Port,    // Represents Port District
     DefensePost,
     SamLauncher,
     MissileSilo,
+    Industry,
+    Cultural,
+    Science,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 6] = [
+    pub const ALL: [BuildingKind; 9] = [
         BuildingKind::City,
         BuildingKind::Factory,
         BuildingKind::Port,
         BuildingKind::DefensePost,
         BuildingKind::SamLauncher,
         BuildingKind::MissileSilo,
+        BuildingKind::Industry,
+        BuildingKind::Cultural,
+        BuildingKind::Science,
     ];
     #[inline]
     pub fn as_str(self) -> &'static str {
         match self {
             BuildingKind::City => "City",
-            BuildingKind::Factory => "Factory",
+            BuildingKind::Factory => "Military",
             BuildingKind::Port => "Port",
             BuildingKind::DefensePost => "DefensePost",
             BuildingKind::SamLauncher => "SAM",
             BuildingKind::MissileSilo => "Silo",
+            BuildingKind::Industry => "Industry",
+            BuildingKind::Cultural => "Cultural",
+            BuildingKind::Science => "Science",
         }
     }
     pub fn upgradable(self) -> bool {
@@ -47,7 +56,12 @@ impl BuildingKind {
     }
     pub fn construction_duration_ticks(self) -> u32 {
         match self {
-            BuildingKind::City | BuildingKind::Factory | BuildingKind::Port => 20,
+            BuildingKind::City
+            | BuildingKind::Factory
+            | BuildingKind::Port
+            | BuildingKind::Industry
+            | BuildingKind::Cultural
+            | BuildingKind::Science => 20,
             BuildingKind::DefensePost => 50,
             BuildingKind::SamLauncher => 300,
             BuildingKind::MissileSilo => 100,
@@ -82,14 +96,14 @@ impl NukeKind {
     pub fn inner_radius(self) -> u32 {
         match self {
             NukeKind::AtomBomb => 12,
-            NukeKind::HydrogenBomb => 80,
+            NukeKind::HydrogenBomb => 30,
             NukeKind::MIRV => 12,
         }
     }
     pub fn outer_radius(self) -> u32 {
         match self {
             NukeKind::AtomBomb => 30,
-            NukeKind::HydrogenBomb => 100,
+            NukeKind::HydrogenBomb => 75,
             NukeKind::MIRV => 18,
         }
     }

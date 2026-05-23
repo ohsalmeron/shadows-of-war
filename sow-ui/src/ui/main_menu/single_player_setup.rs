@@ -22,6 +22,48 @@ fn setting_card(ui: &mut egui::Ui, title: &str, is_mobile: bool, content: impl F
     });
 }
 
+fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::RangeInclusive<u32>) {
+    ui.horizontal_centered(|ui| {
+        let total_w = ui.available_width();
+        let qty_w = 64.0;
+        let spacing = 12.0;
+        let slider_w = (total_w - qty_w - spacing - 8.0).max(50.0);
+
+        ui.scope(|ui| {
+            ui.spacing_mut().slider_rail_height = 16.0;
+            ui.spacing_mut().slider_width = slider_w;
+            ui.spacing_mut().interact_size.y = 32.0;
+
+            ui.add(
+                egui::Slider::new(value, range)
+                    .show_value(false)
+                    .trailing_fill(true)
+            );
+        });
+
+        ui.add_space(spacing);
+
+        let frame = egui::Frame::NONE
+            .fill(theme::nickname_field_bg())
+            .stroke(egui::Stroke::new(1.0_f32, theme::nickname_field_border()))
+            .corner_radius(CornerRadius::same(8))
+            .inner_margin(Margin::symmetric(10, 6));
+
+        frame.show(ui, |ui| {
+            ui.set_min_size(egui::vec2(qty_w, 32.0));
+            ui.vertical_centered(|ui| {
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new(value.to_string())
+                        .font(egui::FontId::proportional(16.0))
+                        .color(Color32::WHITE)
+                        .strong()
+                );
+            });
+        });
+    });
+}
+
 pub fn draw_modal(
     ctx: &egui::Context,
     state: &mut MainMenuState,
@@ -199,17 +241,117 @@ pub fn draw_modal(
                                     });
                                 };
 
+                                let draw_leader_picker = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                                    setting_card(ui, "LEADER & CIVILIZATION SELECTION", is_mobile, |ui| {
+                                        ui.vertical(|ui| {
+                                            ui.spacing_mut().item_spacing.y = 8.0;
+                                            
+                                            // Scrollable/Flexible row of Leader buttons
+                                            ui.horizontal(|ui| {
+                                                ui.spacing_mut().item_spacing.x = 6.0;
+                                                for &leader in sow_core::player::Leader::ALL.iter() {
+                                                    let is_selected = config.player_leader == leader;
+                                                    let civ = match leader {
+                                                        sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
+                                                        sow_core::player::Leader::Cleopatra => sow_core::player::Civilization::Egypt,
+                                                        sow_core::player::Leader::Ragnar => sow_core::player::Civilization::Vikings,
+                                                        sow_core::player::Leader::SunTzu => sow_core::player::Civilization::China,
+                                                        sow_core::player::Leader::Alexander => sow_core::player::Civilization::Macedon,
+                                                        sow_core::player::Leader::GenghisKhan => sow_core::player::Civilization::Mongols,
+                                                    };
+                                                    
+                                                    let emoji = match leader {
+                                                        sow_core::player::Leader::Caesar => "🏛️",
+                                                        sow_core::player::Leader::Cleopatra => "👑",
+                                                        sow_core::player::Leader::Ragnar => "🪓",
+                                                        sow_core::player::Leader::SunTzu => "📜",
+                                                        sow_core::player::Leader::Alexander => "🛡️",
+                                                        sow_core::player::Leader::GenghisKhan => "🐺",
+                                                    };
+
+                                                    let border_color = if is_selected {
+                                                        theme::accent_solo_cyan()
+                                                    } else {
+                                                        theme::nickname_field_border().linear_multiply(0.4)
+                                                    };
+                                                    
+                                                    let bg_color = if is_selected {
+                                                        theme::accent_solo_cyan().linear_multiply(0.12)
+                                                    } else {
+                                                        theme::nickname_field_bg()
+                                                    };
+
+                                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(60.0, 52.0), egui::Sense::click());
+                                                    
+                                                    let is_hovered = resp.hovered();
+                                                    let final_bg = if is_hovered && !is_selected {
+                                                        theme::nickname_field_bg().linear_multiply(0.7)
+                                                    } else {
+                                                        bg_color
+                                                    };
+
+                                                    ui.painter().rect(
+                                                        rect,
+                                                        8,
+                                                        final_bg,
+                                                        egui::Stroke::new(if is_selected { 1.5 } else { 1.0 }, border_color),
+                                                        egui::StrokeKind::Inside,
+                                                    );
+                                                    
+                                                    // Draw emoji
+                                                    ui.painter().text(
+                                                        rect.center() - egui::vec2(0.0, 8.0),
+                                                        egui::Align2::CENTER_CENTER,
+                                                        emoji,
+                                                        egui::FontId::proportional(18.0),
+                                                        Color32::WHITE,
+                                                     );
+                                                     
+                                                     // Draw name
+                                                     ui.painter().text(
+                                                         rect.center() + egui::vec2(0.0, 13.0),
+                                                         egui::Align2::CENTER_CENTER,
+                                                         leader.name(),
+                                                         egui::FontId::proportional(9.0),
+                                                         if is_selected { Color32::WHITE } else { theme::text_secondary() },
+                                                     );
+
+                                                    if resp.clicked() {
+                                                        config.player_leader = leader;
+                                                        config.player_civilization = civ;
+                                                    }
+                                                }
+                                            });
+                                            
+                                            ui.add_space(4.0);
+                                            
+                                            // Perk Detail Description
+                                            let selected_perk = config.player_leader.perk_description();
+                                            let selected_civ = config.player_civilization.name();
+                                            
+                                            ui.horizontal(|ui| {
+                                                ui.label(RichText::new("CIVILIZATION: ").color(theme::text_secondary()).size(11.0).strong());
+                                                ui.label(RichText::new(selected_civ.to_uppercase()).strong().color(Color32::WHITE).size(11.0));
+                                            });
+                                            ui.label(
+                                                RichText::new(selected_perk)
+                                                    .size(11.5)
+                                                    .color(theme::accent_solo_cyan())
+                                                    .strong()
+                                            );
+                                        });
+                                    });
+                                };
+
                                 let draw_bots = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                                     setting_card(ui, &strings.tribes_count, is_mobile, |ui| {
-                                        ui.style_mut().spacing.slider_width = ui.available_width() - 80.0;
-                                        ui.add(egui::Slider::new(&mut config.bot_count, 0..=1000));
+                                        draw_custom_slider(ui, &mut config.bot_count, 0..=1000);
                                     });
                                 };
 
                                 let draw_nations = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                                     setting_card(ui, &strings.nations_count, is_mobile, |ui| {
-                                        ui.style_mut().spacing.slider_width = ui.available_width() - 80.0;
-                                        ui.add(egui::Slider::new(&mut config.nation_count, 0..=400));
+                                        draw_custom_slider(ui, &mut config.nation_count, 0..=400);
                                     });
                                 };
                                 
@@ -229,6 +371,7 @@ pub fn draw_modal(
                                 
                                 if is_mobile {
                                     // Single Column layout
+                                    draw_leader_picker(ui, config);
                                     draw_preview(ui, config);
                                     draw_map_picker(ui, config);
                                     draw_diff(ui, config);
@@ -246,7 +389,8 @@ pub fn draw_modal(
                                         draw_map_picker(&mut cols[0], config);
                                         draw_diff(&mut cols[0], config);
 
-                                        // Right Column: Sliders and Toggles (3 items)
+                                        // Right Column: Sliders and Toggles (4 items)
+                                        draw_leader_picker(&mut cols[1], config);
                                         draw_bots(&mut cols[1], config);
                                         draw_nations(&mut cols[1], config);
                                         draw_spawn(&mut cols[1], config);

@@ -54,6 +54,8 @@ impl SowApp {
                                 team: None,
                                 spawn_x: 0,
                                 spawn_y: 0,
+                                civilization: self.ui.app.main_menu_state.single_player_config.player_civilization,
+                                leader: self.ui.app.main_menu_state.single_player_config.player_leader,
                             }
                         ],
                         missed_turns: vec![],
@@ -162,6 +164,8 @@ impl SowApp {
                                 team: None,
                                 spawn_x: 0,
                                 spawn_y: 0,
+                                civilization: self.ui.app.main_menu_state.single_player_config.player_civilization,
+                                leader: self.ui.app.main_menu_state.single_player_config.player_leader,
                             }
                         ],
                         missed_turns: vec![],

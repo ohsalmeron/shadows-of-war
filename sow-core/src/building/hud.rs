@@ -87,7 +87,7 @@ pub fn compute_buildables_for_player(
     buildings: &[Building],
     grid: &super::core::BuildingGrid,
     scratch: &mut crate::engine::PlacementScratch,
-) -> [BuildableEntry; 6] {
+) -> [BuildableEntry; 9] {
     let mut out = [BuildableEntry {
         kind: BuildingKind::City,
         cost: 0.0,
@@ -96,7 +96,7 @@ pub fn compute_buildables_for_player(
         placement_feasible: false,
         can_build: false,
         can_upgrade: false,
-    }; 6];
+    }; 9];
     for (i, &kind) in BuildingKind::ALL.iter().enumerate() {
         let enabled = structure_kind_enabled(kind);
         let cost = structure_build_cost_gold(kind, owner_id, buildings);

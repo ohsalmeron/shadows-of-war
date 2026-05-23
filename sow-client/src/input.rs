@@ -133,15 +133,16 @@ impl SowApp {
                         }
                     }
 
-                    // Building hotkeys 1-6, Nuke hotkeys 7-9 (OpenFrontIO-style)
+                    // Building hotkeys 1-7, Nuke hotkeys 8-0 (Redesigned)
                     if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
                         let building = match code {
                             winit::keyboard::KeyCode::Digit1 | winit::keyboard::KeyCode::Numpad1 => Some(sow_core::game::BuildingKind::City),
                             winit::keyboard::KeyCode::Digit2 | winit::keyboard::KeyCode::Numpad2 => Some(sow_core::game::BuildingKind::Factory),
                             winit::keyboard::KeyCode::Digit3 | winit::keyboard::KeyCode::Numpad3 => Some(sow_core::game::BuildingKind::Port),
-                            winit::keyboard::KeyCode::Digit4 | winit::keyboard::KeyCode::Numpad4 => Some(sow_core::game::BuildingKind::DefensePost),
-                            winit::keyboard::KeyCode::Digit5 | winit::keyboard::KeyCode::Numpad5 => Some(sow_core::game::BuildingKind::SamLauncher),
-                            winit::keyboard::KeyCode::Digit6 | winit::keyboard::KeyCode::Numpad6 => Some(sow_core::game::BuildingKind::MissileSilo),
+                            winit::keyboard::KeyCode::Digit4 | winit::keyboard::KeyCode::Numpad4 => Some(sow_core::game::BuildingKind::Industry),
+                            winit::keyboard::KeyCode::Digit5 | winit::keyboard::KeyCode::Numpad5 => Some(sow_core::game::BuildingKind::DefensePost),
+                            winit::keyboard::KeyCode::Digit6 | winit::keyboard::KeyCode::Numpad6 => Some(sow_core::game::BuildingKind::SamLauncher),
+                            winit::keyboard::KeyCode::Digit7 | winit::keyboard::KeyCode::Numpad7 => Some(sow_core::game::BuildingKind::MissileSilo),
                             _ => None,
                         };
                         if let Some(kind) = building {
@@ -152,11 +153,11 @@ impl SowApp {
                                 self.ui.app.hud_state.selected_nuke_kind = None;
                             }
                         }
-
+ 
                         let nuke = match code {
-                            winit::keyboard::KeyCode::Digit7 | winit::keyboard::KeyCode::Numpad7 => Some(sow_core::game::NukeKind::AtomBomb),
-                            winit::keyboard::KeyCode::Digit8 | winit::keyboard::KeyCode::Numpad8 => Some(sow_core::game::NukeKind::HydrogenBomb),
-                            winit::keyboard::KeyCode::Digit9 | winit::keyboard::KeyCode::Numpad9 => Some(sow_core::game::NukeKind::MIRV),
+                            winit::keyboard::KeyCode::Digit8 | winit::keyboard::KeyCode::Numpad8 => Some(sow_core::game::NukeKind::AtomBomb),
+                            winit::keyboard::KeyCode::Digit9 | winit::keyboard::KeyCode::Numpad9 => Some(sow_core::game::NukeKind::HydrogenBomb),
+                            winit::keyboard::KeyCode::Digit0 | winit::keyboard::KeyCode::Numpad0 => Some(sow_core::game::NukeKind::MIRV),
                             _ => None,
                         };
                         if let Some(kind) = nuke {

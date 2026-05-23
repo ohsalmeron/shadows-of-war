@@ -135,6 +135,10 @@ pub struct GameConfig {
     pub factory_income_bonus_cap: f64,
     /// Flat gold income generated per level of an owned city.
     pub gold_income_per_city_level: f64,
+    #[serde(default)]
+    pub player_civilization: crate::player::Civilization,
+    #[serde(default)]
+    pub player_leader: crate::player::Leader,
 }
 
 impl GameConfig {
@@ -189,6 +193,8 @@ impl Default for GameConfig {
             factory_income_bonus_per_level: 100.0,
             factory_income_bonus_cap: 10000.0,
             gold_income_per_city_level: 50.0,
+            player_civilization: crate::player::Civilization::Rome,
+            player_leader: crate::player::Leader::Caesar,
         }
     }
 }

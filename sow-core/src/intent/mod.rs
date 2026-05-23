@@ -204,7 +204,7 @@ impl SowEngine {
                         && self.state.map.terrain[self.state.map.ref_id(x, y)].is_land()
                         && self.state.map.owner_id(x, y) == 0
                     {
-                        // Clear old tiles for this player
+                        // Clear old tiles and buildings for this player
                         let w = self.state.map.width;
                         let mut to_clear = Vec::new();
                         for (i, &owner) in self.state.map.state.iter().enumerate() {
@@ -215,9 +215,40 @@ impl SowEngine {
                         for i in to_clear {
                             self.state.set_tile_owner(i % w, i / w, 0);
                         }
+                        self.buildings.retain(|b| b.owner_id != pid);
 
                         // Set new spawn
                         self.state.place_spawn(pid, x, y);
+
+                        // Place City Center!
+                        let building_id = self.state.next_building_id;
+                        self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                        self.add_building(crate::building::Building {
+                            id: building_id,
+                            owner_id: pid,
+                            tile_idx: y * w + x,
+                            kind: crate::game::BuildingKind::City,
+                            level: 1,
+                            under_construction: false,
+                            ticks_until_complete: 0,
+                        });
+
+                        // Caesar (Rome) perk
+                        if let Some(player) = self.state.player(pid) {
+                            if player.leader == crate::player::Leader::Caesar {
+                                let military_id = self.state.next_building_id;
+                                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                                self.add_building(crate::building::Building {
+                                    id: military_id,
+                                    owner_id: pid,
+                                    tile_idx: y * w + (x + 1).min(w - 1),
+                                    kind: crate::game::BuildingKind::Factory,
+                                    level: 1,
+                                    under_construction: false,
+                                    ticks_until_complete: 0,
+                                });
+                            }
+                        }
                     }
                 }
             }
