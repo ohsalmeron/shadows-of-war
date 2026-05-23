@@ -60,11 +60,15 @@
     <div id="version">v__VERSION__</div>
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
+        if (window.location.hostname === "appassets.androidplatform.net") {
+            window.SOW_WS_URL = "wss://shadowsofwar.io/ws/";
+            window.SOW_MAPS_URL = window.location.origin + "/assets/assets/maps";
+        }
     </script>
     <script type="module">
         async function run() {
             // 1. Force unregister any active service workers first to prevent random fetch hangs
-            if ('serviceWorker' in navigator) {
+            if ('serviceWorker' in navigator && window.location.hostname !== "appassets.androidplatform.net") {
                 try {
                     const registrations = await navigator.serviceWorker.getRegistrations();
                     let unregisteredAny = false;
