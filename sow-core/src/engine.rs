@@ -578,6 +578,7 @@ impl SowEngine {
             .buildings
             .iter()
             .map(|b| crate::protocol::BuildingSnapshot {
+                id: b.id,
                 tile_idx: b.tile_idx,
                 owner_id: b.owner_id,
                 kind: b.kind,

@@ -118,6 +118,7 @@ pub struct UiState {
     pub active_explosions: Vec<ActiveExplosion>,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
+    pub cached_railroads: std::collections::HashMap<u64, (Vec<u32>, Vec<crate::render::world::RailTile>)>,
 }
 
 pub struct TimeState {
@@ -409,6 +410,7 @@ impl SowApp {
                 active_explosions: Vec::new(),
                 fallout_zones: Vec::new(),
                 last_projectiles: std::collections::HashMap::new(),
+                cached_railroads: std::collections::HashMap::new(),
             },
             time: TimeState {
                 last_tick,

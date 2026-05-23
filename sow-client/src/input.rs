@@ -623,6 +623,44 @@ impl SowApp {
             let my_id = self.sim.my_player_id.unwrap_or(0);
             let buildings = self.sim.current_snapshot.as_ref().map(|s| s.buildings.as_slice()).unwrap_or(&[]);
 
+            // Check if there is a valid upgrade target within Manhattan distance STRUCTURE_MIN_DIST of (col, row)
+            let mut upgrade_target = None;
+            if kind.upgradable() {
+                let min_dist = sow_core::building::STRUCTURE_MIN_DIST;
+                let mut best_dist = 999;
+                for b in buildings {
+                    if b.owner_id == my_id && b.kind == kind && !b.under_construction {
+                        let bx = (b.tile_idx % map_w) as i32;
+                        let by = (b.tile_idx / map_w) as i32;
+                        let d = (col - bx).abs() + (row - by).abs(); // Manhattan distance
+                        if d <= min_dist {
+                            if d < best_dist || (d == best_dist && upgrade_target.map_or(true, |old_id| b.id < old_id)) {
+                                best_dist = d;
+                                upgrade_target = Some(b.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let cost = {
+                let i = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                self.ui.app.hud_state.building_costs[i]
+            };
+
+            if let Some(target_id) = upgrade_target {
+                if self.ui.app.hud_state.gold < cost {
+                    self.ui.app.hud_state.show_error = Some(format!("Not enough Gold! You need {}.", cost));
+                } else {
+                    let intent = sow_core::protocol::GameplayIntent::UpgradeStructure {
+                        building_id: target_id,
+                    };
+                    self.send_intent(intent);
+                }
+                self.ui.app.hud_state.selected_building_kind = None;
+                return;
+            }
+
             let snapped_idx = resolve_building_placement_tile(
                 kind,
                 col,
@@ -728,6 +766,11 @@ pub fn resolve_building_placement_tile(
     my_id: u16,
     buildings: &[sow_core::protocol::BuildingSnapshot],
 ) -> Option<u32> {
+    let min_dist = sow_core::building::STRUCTURE_MIN_DIST;
+    let min_dist_sq = min_dist * min_dist;
+    let max_search_dist = min_dist * 2;
+    let max_search_dist_sq = max_search_dist * max_search_dist;
+
     // Filter buildings to those close to the click target to optimize distance checks
     let nearby_buildings: Vec<_> = buildings
         .iter()
@@ -736,20 +779,20 @@ pub fn resolve_building_placement_tile(
             let by = (b.tile_idx / map_w) as i32;
             let bdx = click_x - bx;
             let bdy = click_y - by;
-            (bdx * bdx + bdy * bdy) < 900 // 30 * 30 = 900 (max search radius of 15 + 15)
+            (bdx * bdx + bdy * bdy) < max_search_dist_sq
         })
         .collect();
 
-    // 1. Gather valid land structure tiles within Euclidean 15 of click target
+    // 1. Gather valid land structure tiles within Euclidean min_dist of click target
     let mut valid_land_tiles = Vec::new();
-    for dy in -15..=15 {
-        for dx in -15..=15 {
+    for dy in -min_dist..=min_dist {
+        for dx in -min_dist..=min_dist {
             let tx = click_x + dx;
             let ty = click_y + dy;
             if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
                 continue;
             }
-            if (dx * dx + dy * dy) >= 225 { // Euclidean distance >= 15
+            if (dx * dx + dy * dy) >= min_dist_sq { // Euclidean distance >= min_dist
                 continue;
             }
             let tile_idx = (ty * map_w as i32 + tx) as u32;
@@ -766,14 +809,14 @@ pub fn resolve_building_placement_tile(
                 continue;
             }
             
-            // Check minimum distance from existing buildings (STRUCTURE_MIN_DIST = 15)
+            // Check minimum distance from existing buildings
             let mut too_close = false;
             for b in &nearby_buildings {
                 let bx = (b.tile_idx % map_w) as i32;
                 let by = (b.tile_idx / map_w) as i32;
                 let bdx = tx - bx;
                 let bdy = ty - by;
-                if (bdx * bdx + bdy * bdy) < 225 {
+                if (bdx * bdx + bdy * bdy) < min_dist_sq {
                     too_close = true;
                     break;
                 }

@@ -291,6 +291,7 @@ pub struct DirtyTile {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct BuildingSnapshot {
+    pub id: u64,
     pub tile_idx: u32,
     pub owner_id: u16,
     pub kind: crate::game::BuildingKind,

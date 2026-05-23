@@ -53,6 +53,11 @@ impl SowEngine {
             continue;
         }
 
+        if execution.troops < self.state.config.attack_cost_neutral || execution.troops.is_nan() {
+            to_remove.push(i);
+            continue;
+        }
+
         // Fast approximation of active frontier size without scanning the entire empire border
         let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 

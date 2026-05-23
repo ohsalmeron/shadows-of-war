@@ -2,7 +2,7 @@ use super::core::BuildingGrid;
 use crate::game::BuildingKind;
 use crate::map::{GameMap, TerrainType};
 /// LegacyEngine `structureMinDist()` / search radius for land valid tiles.
-pub const STRUCTURE_MIN_DIST: i32 = 15;
+pub const STRUCTURE_MIN_DIST: i32 = 8;
 const STRUCTURE_MIN_DIST_SQ: i64 = (STRUCTURE_MIN_DIST as i64) * (STRUCTURE_MIN_DIST as i64);
 const STRUCTURE_SEARCH_RADIUS_SQ: i64 = STRUCTURE_MIN_DIST_SQ;
 

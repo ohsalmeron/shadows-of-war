@@ -165,7 +165,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.8,
+            global_speed_multiplier: 0.25,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
@@ -173,14 +173,14 @@ impl Default for GameConfig {
             terrain_multiplier_highland: 2.5,
             terrain_multiplier_mountain: 5.0,
 
-            max_tiles_per_tick: 1024.0,
+            max_tiles_per_tick: 256.0,
             max_tiles_per_tick_reference_troops: 10000.0,
             max_tiles_per_tick_at_reference: 64.0,
             momentum_divisor: 125.0,
 
             // Economy & Income Rates
             starting_troops: 1000.0,
-            starting_gold: 50_000_000.0, // TODO: revert to 1000.0 after testing
+            starting_gold: 500_000_000.0, // TODO: revert to 1000.0 after testing
             gold_base_income: 8.0,
             troop_base_income: 200.0,
             max_troops_base: 10.0,
