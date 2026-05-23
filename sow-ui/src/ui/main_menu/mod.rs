@@ -270,8 +270,8 @@ pub fn draw(
                                     "v{}",
                                     include_str!("../../../../.version").trim()
                                 ))
-                                .size(2.0)
-                                .color(Color32::TRANSPARENT),
+                                .size(14.0)
+                                .color(crate::ui::theme::text_secondary()),
                             );
                             ui.separator();
                         });

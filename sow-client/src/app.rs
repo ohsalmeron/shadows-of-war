@@ -101,6 +101,15 @@ pub struct FalloutZone {
     pub start_time: web_time::Instant,
 }
 
+#[derive(Clone, Debug)]
+pub struct ActiveUpgradeAnimation {
+    pub tile_idx: u32,
+    pub start_time: web_time::Instant,
+    pub duration: web_time::Duration,
+    pub kind: sow_core::game::BuildingKind,
+    pub level: u8,
+}
+
 pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
@@ -119,6 +128,14 @@ pub struct UiState {
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
     pub cached_railroads: std::collections::HashMap<u64, (Vec<u32>, Vec<crate::render::world::RailTile>)>,
+    pub active_upgrades: Vec<ActiveUpgradeAnimation>,
+    pub nameplate_galleys: std::collections::HashMap<u16, (String, f64, egui::FontId, std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)>,
+    pub cached_player_colors: Vec<egui::Color32>,
+    pub cached_player_count: usize,
+    pub last_preview_tile: Option<u32>,
+    pub cached_preview_paths: Vec<Vec<u32>>,
+    pub star_svg_registered: bool,
+    pub cached_sea_lanes: std::collections::HashMap<u64, Vec<crate::render::world::RailTile>>,
 }
 
 pub struct TimeState {
@@ -411,6 +428,14 @@ impl SowApp {
                 fallout_zones: Vec::new(),
                 last_projectiles: std::collections::HashMap::new(),
                 cached_railroads: std::collections::HashMap::new(),
+                active_upgrades: Vec::new(),
+                nameplate_galleys: std::collections::HashMap::new(),
+                cached_player_colors: Vec::new(),
+                cached_player_count: 0,
+                last_preview_tile: None,
+                cached_preview_paths: Vec::new(),
+                star_svg_registered: false,
+                cached_sea_lanes: std::collections::HashMap::new(),
             },
             time: TimeState {
                 last_tick,
@@ -674,6 +699,22 @@ impl SowApp {
 
                     let mut snap = e.build_snapshot();
                     if let Some(mut existing) = self.sim.current_snapshot.take() {
+                        // Detect building level upgrades and completions
+                        let now = web_time::Instant::now();
+                        for b_new in &snap.buildings {
+                            if let Some(b_old) = existing.buildings.iter().find(|b| b.id == b_new.id) {
+                                if b_new.level > b_old.level || (b_old.under_construction && !b_new.under_construction) {
+                                    self.ui.active_upgrades.push(crate::app::ActiveUpgradeAnimation {
+                                        tile_idx: b_new.tile_idx,
+                                        start_time: now,
+                                        duration: web_time::Duration::from_millis(2000),
+                                        kind: b_new.kind,
+                                        level: b_new.level,
+                                    });
+                                }
+                            }
+                        }
+
                         if !existing.dirty_tiles.is_empty() {
                             existing.dirty_tiles.append(&mut snap.dirty_tiles);
                             snap.dirty_tiles = existing.dirty_tiles;

@@ -36,6 +36,7 @@ pub struct HudState {
     pub emoji_panel_just_opened: bool,
     pub pin_emoji: bool,
     pub show_alliance_inbox: bool,
+    pub(crate) prev_requests: Vec<u16>,
     pub show_betrayal_warning: Option<(u16, sow_core::protocol::GameplayIntent)>,
     pub show_error: Option<String>,
     pub(crate) last_error_message: Option<String>,
@@ -114,10 +115,38 @@ fn draw_buildings_dock(
                         egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
                     };
                     
-                    let (rect, resp) = ui.allocate_exact_size(
+                    let (rect, mut resp) = ui.allocate_exact_size(
                         egui::vec2(col_w, if compact { 36.0 } else { 44.0 }),
                         egui::Sense::click(),
                     );
+                    
+                    resp = resp.on_hover_ui(|ui| {
+                        let name = match kind {
+                            sow_core::game::BuildingKind::City => "City District",
+                            sow_core::game::BuildingKind::Factory => "Industrial Factory",
+                            sow_core::game::BuildingKind::Port => "Naval Port",
+                            sow_core::game::BuildingKind::DefensePost => "Defense Camera",
+                            sow_core::game::BuildingKind::SamLauncher => "SAM Launcher",
+                            sow_core::game::BuildingKind::MissileSilo => "Missile Silo",
+                        };
+                        let desc = match kind {
+                            sow_core::game::BuildingKind::City => "Boosts gold income and expands territory borders",
+                            sow_core::game::BuildingKind::Factory => "Speeds up troop production and unit capacity",
+                            sow_core::game::BuildingKind::Port => "Enables building and launching naval fleets",
+                            sow_core::game::BuildingKind::DefensePost => "Reveals fog of war in a large radius",
+                            sow_core::game::BuildingKind::SamLauncher => "Automatically shoots down incoming missiles",
+                            sow_core::game::BuildingKind::MissileSilo => "Allows production and launch of nuclear weapons",
+                        };
+                        
+                        ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::accent_solo_cyan()));
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
+                        ui.add_space(6.0);
+                        
+                        let cost_text = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
+                        let cost_color = if can_afford { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
+                        ui.label(egui::RichText::new(format!("Cost: 🪙 {} Gold", cost_text)).strong().size(13.0).color(cost_color));
+                    });
                     
                     let is_hovered = resp.hovered();
                     let final_bg = if is_hovered && !is_selected {
@@ -234,10 +263,21 @@ fn draw_buildings_dock(
                             egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
                         };
                         
-                        let (rect, resp) = ui.allocate_exact_size(
+                        let (rect, mut resp) = ui.allocate_exact_size(
                             egui::vec2(nk_col_w, if compact { 36.0 } else { 44.0 }),
                             egui::Sense::click(),
                         );
+                        
+                        resp = resp.on_hover_ui(|ui| {
+                            let desc = match nuke_kind {
+                                sow_core::game::NukeKind::AtomBomb => "Standard nuclear payload. Destroys buildings in blast radius.",
+                                sow_core::game::NukeKind::HydrogenBomb => "Massive nuclear payload. Wipes out everything in a huge radius.",
+                                sow_core::game::NukeKind::MIRV => "Splits into multiple warheads over target area. Very hard to intercept.",
+                            };
+                            ui.label(egui::RichText::new(*label).strong().size(14.0).color(egui::Color32::from_rgb(239, 68, 68)));
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
+                        });
                         
                         let final_bg = if resp.hovered() && !is_selected {
                             crate::ui::theme::nickname_field_bg().linear_multiply(0.3)
@@ -376,15 +416,52 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
         });
 
     // ── Top-right HUD buttons ─────────────────────────────────────────────────
+    // ── Top-right HUD buttons ─────────────────────────────────────────────────
+    let my_snapshot = state.players.iter().find(|p| p.id == state.my_player_id);
+    let requests = my_snapshot.map(|p| p.alliance_requests.clone()).unwrap_or_default();
+
+    // Auto-open if a new request pops
+    let mut has_new_request = false;
+    for &req_id in &requests {
+        if !state.prev_requests.contains(&req_id) {
+            has_new_request = true;
+            break;
+        }
+    }
+    if has_new_request {
+        state.show_alliance_inbox = true;
+    }
+    state.prev_requests = requests.clone();
+
     egui::Area::new(egui::Id::new("hud_exit_button"))
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
             crate::ui::theme::hud_panel_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.add(crate::widgets::HudButton::new("📩")).on_hover_text(&sow_lang::get(lang).hud.inbox_title).clicked() {
+                    let btn_resp = ui.add(crate::widgets::HudButton::new("📩")).on_hover_text(&sow_lang::get(lang).hud.inbox_title);
+                    if btn_resp.clicked() {
                         state.show_alliance_inbox = !state.show_alliance_inbox;
                     }
+
+                    // Render red badge with active notifications at all times
+                    if !requests.is_empty() {
+                        let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
+                        let badge_radius = 8.0;
+                        ui.painter().circle_filled(
+                            badge_center,
+                            badge_radius,
+                            Color32::from_rgb(239, 68, 68),
+                        );
+                        ui.painter().text(
+                            badge_center,
+                            egui::Align2::CENTER_CENTER,
+                            requests.len().to_string(),
+                            egui::FontId::proportional(10.0),
+                            Color32::WHITE,
+                        );
+                    }
+
                     if ui.add(crate::widgets::HudButton::new("⚙")).on_hover_text(&sow_lang::get(lang).hud.hover_settings).clicked() {
                         action = Some(UiAction::ToggleSettings);
                     }
@@ -404,13 +481,13 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                 let panel_bg = crate::ui::theme::panel_bg();
                 let glow_color = crate::ui::theme::accent_solo_cyan();
                 
-                egui::Frame::menu(&ui.ctx().global_style())
+                let frame_res = egui::Frame::menu(&ui.ctx().global_style())
                     .fill(panel_bg)
                     .stroke(egui::Stroke::new(1.5_f32, glow_color))
                     .corner_radius(12)
-                    .inner_margin(16)
+                    .inner_margin(egui::Margin::symmetric(12, 10))
                     .show(ui, |ui| {
-                        ui.set_max_width(300.0);
+                        ui.set_max_width(260.0);
                         ui.vertical(|ui| {
                             ui.label(
                                 RichText::new(&sow_lang::get(lang).hud.inbox_title)
@@ -418,15 +495,12 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                     .color(crate::ui::theme::accent_solo_cyan())
                                     .size(13.0)
                             );
-                            ui.add_space(8.0);
-                            
-                            let my_snapshot = state.players.iter().find(|p| p.id == state.my_player_id);
-                            let requests = my_snapshot.map(|p| p.alliance_requests.clone()).unwrap_or_default();
+                            ui.add_space(6.0);
                             
                             if requests.is_empty() {
                                 ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_empty).color(Color32::GRAY));
                             } else {
-                                for requester_id in requests {
+                                for &requester_id in &requests {
                                     if let Some(requester) = state.players.iter().find(|p| p.id == requester_id) {
                                         let rgb = if requester.player_type == sow_core::player::PlayerType::Human {
                                             sow_core::player::human_shader_territory_rgb(requester.id)
@@ -439,57 +513,94 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                             (rgb[2] * 255.0) as u8,
                                         );
                                         
-                                        ui.horizontal(|ui| {
-                                            let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                            let name = if requester.name.is_empty() {
-                                                if requester.id >= 200 {
-                                                    format!("Tribe {}", requester.id - 199)
-                                                } else {
-                                                    format!("Nation {}", requester.id - 103)
-                                                }
+                                        let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
+                                        let name = if requester.name.is_empty() {
+                                            if requester.id >= 200 {
+                                                format!("Tribe {}", requester.id - 199)
                                             } else {
-                                                requester.name.clone()
-                                            };
-                                            
-                                            ui.label(RichText::new(icon).color(pc).size(16.0));
-                                            ui.vertical(|ui| {
-                                                ui.label(RichText::new(name).strong().color(pc));
-                                                ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_wants_ally).size(12.0).color(Color32::LIGHT_GRAY));
+                                                format!("Nation {}", requester.id - 103)
+                                            }
+                                        } else {
+                                            requester.name.clone()
+                                        };
+
+                                        egui::Frame::NONE
+                                            .fill(crate::ui::theme::nickname_field_bg().linear_multiply(0.5))
+                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.4)))
+                                            .corner_radius(8)
+                                            .inner_margin(8)
+                                            .show(ui, |ui| {
+                                                ui.vertical(|ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(RichText::new(icon).color(pc).size(14.0));
+                                                        ui.vertical(|ui| {
+                                                            ui.spacing_mut().item_spacing.y = 0.0;
+                                                            ui.label(RichText::new(name).strong().color(pc).size(12.5));
+                                                            ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_wants_ally).size(10.5).color(Color32::LIGHT_GRAY));
+                                                        });
+                                                    });
+                                                    
+                                                    ui.add_space(6.0);
+                                                    ui.horizontal(|ui| {
+                                                        ui.spacing_mut().item_spacing.x = 6.0;
+                                                        ui.spacing_mut().button_padding = vec2(8.0, 3.0);
+                                                        
+                                                        let is_last = requests.len() == 1;
+                                                        let btn_accept = egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_accept).size(11.0).color(Color32::from_rgb(74, 222, 128)))
+                                                            .fill(crate::ui::theme::menu_secondary_button())
+                                                            .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3)))
+                                                            .corner_radius(6);
+                                                        if ui.add(btn_accept).clicked() {
+                                                            cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
+                                                            if is_last {
+                                                                state.show_alliance_inbox = false;
+                                                            }
+                                                        }
+                                                        
+                                                        let btn_reject = egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_reject).size(11.0).color(Color32::from_rgb(239, 68, 68)))
+                                                            .fill(crate::ui::theme::menu_secondary_button())
+                                                            .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3)))
+                                                            .corner_radius(6);
+                                                        if ui.add(btn_reject).clicked() {
+                                                            cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
+                                                            if is_last {
+                                                                state.show_alliance_inbox = false;
+                                                            }
+                                                        }
+                                                    });
+                                                });
                                             });
-                                        });
-                                        
                                         ui.add_space(4.0);
-                                        ui.horizontal(|ui| {
-                                            let btn_accept = egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_accept).color(Color32::from_rgb(74, 222, 128)))
-                                                .fill(crate::ui::theme::menu_secondary_button())
-                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3)));
-                                            if ui.add(btn_accept).clicked() {
-                                                cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
-                                                state.show_alliance_inbox = false;
-                                            }
-                                            
-                                            let btn_reject = egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_reject).color(Color32::from_rgb(239, 68, 68)))
-                                                .fill(crate::ui::theme::menu_secondary_button())
-                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3)));
-                                            if ui.add(btn_reject).clicked() {
-                                                cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
-                                                // Don't close inbox on reject so they can reject multiple
-                                            }
-                                        });
-                                        ui.add_space(8.0);
                                     }
                                 }
                             }
                         });
                     });
+                let response_rect = frame_res.response.rect;
+                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("alliance_inbox_rect"), response_rect));
             });
 
         // Click outside the inbox panel closes it
         if ui.ctx().input(|i| i.pointer.any_pressed()) {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
+                let mut click_absorbed = false;
+                if let Some(rect) = ui.ctx().data(|d| d.get_temp::<egui::Rect>(egui::Id::new("alliance_inbox_rect"))) {
+                    if rect.contains(pos) {
+                        click_absorbed = true;
+                    }
+                }
+                
+                // Allow clicking the 📩 mailbox button to toggle without auto-closing
                 let screen_size = ui.ctx().content_rect();
-                let panel_center = pos2(screen_size.right() - 150.0, 150.0 + state.safe_area_top);
-                if pos.distance(panel_center) > 250.0 {
+                let toggle_btn_rect = egui::Rect::from_min_max(
+                    pos2(screen_size.right() - 120.0, 12.0 + state.safe_area_top),
+                    pos2(screen_size.right(), 50.0 + state.safe_area_top),
+                );
+                if toggle_btn_rect.contains(pos) {
+                    click_absorbed = true;
+                }
+
+                if !click_absorbed {
                     state.show_alliance_inbox = false;
                 }
             }
@@ -526,6 +637,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
         });
 
     if state.show_emoji_panel {
+        let screen_rect = ui.ctx().content_rect();
         let emojis = &[
             // Row 1: Happy / Expressive
             "😀", "😎", "😏", "😂", "🤣", "😋", "😉", "😜",
@@ -541,56 +653,105 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
             "🔥", "👀", "🏳️", "🤝", "💔", "🔌", "⭐", "🐺"
         ];
         
+        if compact {
+            // Mobile: Dim background backdrop
+            ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("emoji_dim_bg")))
+                .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(150));
+        }
+
         let mut area = egui::Area::new(egui::Id::new("floating_emoji_panel"))
             .order(egui::Order::Foreground);
             
-        if let Some(pos) = state.emoji_panel_pos {
+        if compact {
+            area = area.pivot(Align2::CENTER_CENTER).fixed_pos(screen_rect.center());
+        } else if let Some(pos) = state.emoji_panel_pos {
             area = area.pivot(Align2::CENTER_CENTER).fixed_pos(pos);
         } else {
             area = area.anchor(Align2::RIGHT_BOTTOM, vec2(-64.0, -100.0 - state.safe_area_bottom));
         }
 
-        let response = area.show(ui.ctx(), |ui| {
-            crate::ui::theme::standard_panel_frame(compact)
-                .inner_margin(egui::Margin::same(6))
+        let border_glow = Color32::from_rgb(251, 191, 36);
+
+        area.show(ui.ctx(), |ui| {
+            let frame_res = egui::Frame::window(&ui.ctx().global_style())
+                .fill(crate::ui::theme::panel_bg())
+                .stroke(egui::Stroke::new(1.8_f32, border_glow))
+                .shadow(egui::Shadow {
+                    blur: if compact { 12 } else { 16 },
+                    spread: 0,
+                    color: border_glow.linear_multiply(0.25),
+                    offset: [0, 0],
+                })
+                .inner_margin(egui::Margin::same(if compact { 10 } else { 12 }))
+                .corner_radius(if compact { 16 } else { 12 })
                 .show(ui, |ui| {
                     let cols = 8;
-                    let btn_size = 42.0;
-                    let emoji_size = 36.0;
-                    let spacing = 2.0;
+                    let btn_size = if compact { 38.0 } else { 42.0 };
+                    let emoji_size = if compact { 26.0 } else { 28.0 };
+                    let spacing = if compact { 2.0 } else { 3.0 };
                     let grid_width = cols as f32 * btn_size + (cols as f32 - 1.0) * spacing;
 
                     ui.vertical(|ui| {
                         ui.set_width(grid_width);
                         ui.spacing_mut().item_spacing.y = 0.0;
                         
+                        ui.vertical_centered(|ui| {
+                            ui.label(RichText::new("TACTICAL EXPRESSIONS").strong().size(13.0).color(border_glow));
+                        });
+                        ui.add_space(8.0);
+
+                        let mut emoji_idx = 0;
                         for chunk in emojis.chunks(cols) {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = spacing;
                                 for &emoji in chunk {
                                     let (rect, resp) = ui.allocate_exact_size(vec2(btn_size, btn_size), egui::Sense::click());
-                                    
                                     let is_hovered = resp.hovered();
                                     
-                                    if is_hovered {
-                                        let bg_color = crate::ui::theme::menu_secondary_button_hover().linear_multiply(0.6);
-                                        let stroke_color = crate::ui::theme::accent_solo_cyan().linear_multiply(0.8);
-                                        ui.painter().rect(
-                                            rect,
-                                            btn_size / 2.0,
-                                            bg_color,
-                                            egui::Stroke::new(1.0_f32, stroke_color),
-                                            egui::StrokeKind::Inside,
-                                        );
-                                    }
+                                    let scale_id = ui.make_persistent_id(("emoji_scale", emoji_idx));
+                                    let hover_t = ui.ctx().animate_bool_with_time(scale_id, is_hovered, 0.15);
                                     
+                                    // Spring calculation (easeOutBack) - optimized to direct multiplications
+                                    let spring_t = if hover_t > 0.0 {
+                                        let c1 = 1.70158;
+                                        let c3 = c1 + 1.0;
+                                        let xm1 = hover_t - 1.0;
+                                        1.0 + c3 * xm1 * xm1 * xm1 + c1 * xm1 * xm1
+                                    } else {
+                                        0.0
+                                    };
+
+                                    let bg_color = if is_hovered {
+                                        crate::ui::theme::menu_secondary_button_hover().linear_multiply(0.6 + 0.3 * hover_t)
+                                    } else {
+                                        crate::ui::theme::nickname_field_bg().linear_multiply(0.4)
+                                    };
+                                    
+                                    let stroke_color = border_glow.linear_multiply(0.3 + 0.7 * hover_t);
+                                    let active_stroke = egui::Stroke::new(1.0_f32 + 1.0_f32 * hover_t, stroke_color);
+
+                                    // Expand rect slightly on hover using spring_t for dynamic size popping
+                                    let active_rect = rect.expand(2.0 * spring_t);
+
+                                    ui.painter().rect(
+                                        active_rect,
+                                        8.0, // rounded corners radius 8.0
+                                        bg_color,
+                                        active_stroke,
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    
+                                    // Font size with spring scaling
+                                    let scaled_font_size = emoji_size + 6.0 * spring_t;
                                     ui.painter().text(
-                                        rect.center(),
+                                        active_rect.center(),
                                         egui::Align2::CENTER_CENTER,
                                         emoji,
-                                        egui::FontId::proportional(emoji_size),
+                                        egui::FontId::proportional(scaled_font_size),
                                         Color32::WHITE,
                                     );
+                                    
+                                    emoji_idx += 1;
                                     
                                     if resp.clicked() {
                                         let intent = sow_core::protocol::GameplayIntent::ExpressEmoji {
@@ -679,18 +840,20 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                             });
                         });
                     });
-                }).response.rect
-            });
-
-        let emoji_panel_rect = response.inner;
+                });
+            let response_rect = frame_res.response.rect;
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("emoji_panel_rect"), response_rect));
+        });
 
         // Robust dynamic Rect-based click-outside dismiss
         if !state.emoji_panel_just_opened && ui.ctx().input(|i| i.pointer.any_pressed()) {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
                 let mut is_outside = true;
                 
-                if emoji_panel_rect.contains(pos) {
-                    is_outside = false;
+                if let Some(rect) = ui.ctx().data(|d| d.get_temp::<egui::Rect>(egui::Id::new("emoji_panel_rect"))) {
+                    if rect.contains(pos) {
+                        is_outside = false;
+                    }
                 }
                 
                 // Allow clicking the HUD bottom bar controls without dismissing if we are in default mode
@@ -715,7 +878,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
     }
 
     draw_sync_overlay(ui.ctx(), state, lang);
-    draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang);
+    draw_betrayal_overlay(ui.ctx(), state, cancel_intents);
     draw_error_overlay(ui.ctx(), state);
 
     action
@@ -1123,79 +1286,105 @@ fn draw_sync_overlay(ctx: &Context, state: &HudState, lang: Language) {
     }
 }
 
-fn draw_betrayal_overlay(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>, _lang: Language) {
+fn draw_betrayal_overlay(ctx: &Context, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) {
     if let Some((ally_id, intent)) = state.show_betrayal_warning.clone() {
         let screen_rect = ctx.content_rect();
+        let compact = screen_rect.width() < 768.0;
+
         ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("betrayal_overlay_bg")))
             .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
 
-        egui::Window::new("betrayal_warning_modal")
+        let window = egui::Window::new("betrayal_warning_modal")
             .collapsible(false)
             .resizable(false)
-            .title_bar(false)
-            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
-            .frame(egui::Frame::window(&ctx.global_style())
-                .fill(crate::ui::theme::panel_bg())
-                .stroke(egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()))
-                .inner_margin(24.0)
-                .corner_radius(12)
-            )
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
-                    
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        "BETRAYAL WARNING",
-                        egui::FontId::proportional(28.0),
-                        crate::ui::theme::accent_danger()
-                    );
-                    
-                    ui.add_space(12.0);
-                    
-                    ui.label(RichText::new(format!("If you attack {}, other allies could attack you.", ally_name))
-                        .size(16.0)
-                        .color(Color32::WHITE)
-                    );
-                    
-                    ui.label(RichText::new("Are you sure?")
-                        .size(18.0)
-                        .strong()
-                        .color(crate::ui::theme::accent_ranked_gold())
-                    );
+            .title_bar(false);
 
-                    ui.add_space(24.0);
+        let window = if compact {
+            window.fixed_size(screen_rect.size())
+                .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
+        } else {
+            window.anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
+        };
 
-                    ui.horizontal(|ui| {
-                        // NO button (safe)
-                        let no_btn = egui::Button::new(RichText::new("NO, KEEP ALLIANCE").size(16.0))
-                            .fill(crate::ui::theme::menu_secondary_button())
-                            .corner_radius(8);
-                        
-                        if ui.add_sized(vec2(160.0, 44.0), no_btn).clicked() {
-                            state.show_betrayal_warning = None;
-                        }
+        window.frame(egui::Frame::window(&ctx.global_style())
+            .fill(crate::ui::theme::panel_bg())
+            .stroke(if compact { egui::Stroke::NONE } else { egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()) })
+            .inner_margin(if compact { 16.0 } else { 24.0 })
+            .corner_radius(if compact { 0 } else { 12 })
+        )
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                if compact {
+                    ui.add_space(screen_rect.height() * 0.15); // Push down a bit on mobile
+                }
 
+                let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
+                
+                crate::ui::theme::outlined_label(
+                    ui,
+                    "BETRAYAL WARNING",
+                    egui::FontId::proportional(if compact { 22.0 } else { 28.0 }),
+                    crate::ui::theme::accent_danger()
+                );
+                
+                ui.add_space(if compact { 16.0 } else { 12.0 });
+                
+                ui.label(RichText::new(format!("If you attack {}, other allies could attack you.", ally_name))
+                    .size(if compact { 14.0 } else { 16.0 })
+                    .color(Color32::WHITE)
+                );
+                
+                ui.label(RichText::new("Are you sure?")
+                    .size(if compact { 15.0 } else { 18.0 })
+                    .strong()
+                    .color(crate::ui::theme::accent_ranked_gold())
+                );
+
+                ui.add_space(if compact { 32.0 } else { 24.0 });
+
+                let btn_w = if compact {
+                    (ui.available_width() - 8.0) / 2.0
+                } else {
+                    160.0
+                };
+                let btn_h = if compact { 40.0 } else { 44.0 };
+
+                ui.horizontal(|ui| {
+                    if compact {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                    }
+
+                    // NO button (safe)
+                    let no_btn = egui::Button::new(RichText::new("NO, KEEP ALLIANCE").size(if compact { 13.0 } else { 16.0 }))
+                        .fill(crate::ui::theme::menu_secondary_button())
+                        .corner_radius(8);
+                    
+                    if ui.add_sized(vec2(btn_w, btn_h), no_btn).clicked() {
+                        state.show_betrayal_warning = None;
+                    }
+
+                    if !compact {
                         ui.add_space(16.0);
+                    }
 
-                        // YES button (danger)
-                        let yes_btn = egui::Button::new(RichText::new("YES, BETRAY").size(16.0).strong())
-                            .fill(crate::ui::theme::accent_danger().linear_multiply(0.3))
-                            .stroke(egui::Stroke::new(1.5f32, crate::ui::theme::accent_danger()))
-                            .corner_radius(8);
+                    // YES button (danger)
+                    let yes_btn = egui::Button::new(RichText::new("YES, BETRAY").size(if compact { 13.0 } else { 16.0 }).strong())
+                        .fill(crate::ui::theme::accent_danger().linear_multiply(0.3))
+                        .stroke(egui::Stroke::new(1.5f32, crate::ui::theme::accent_danger()))
+                        .corner_radius(8);
+                    
+                    if ui.add_sized(vec2(if compact { btn_w } else { 140.0 }, btn_h), yes_btn).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        // 1. Send BreakAlliance intent
+                        cancel_intents.push(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: ally_id });
                         
-                        if ui.add_sized(vec2(140.0, 44.0), yes_btn).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                            // 1. Send BreakAlliance intent
-                            cancel_intents.push(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: ally_id });
-                            
-                            // 2. Send the original Attack intent right after
-                            cancel_intents.push(intent);
-                            
-                            state.show_betrayal_warning = None;
-                        }
-                    });
+                        // 2. Send the original Attack intent right after
+                        cancel_intents.push(intent);
+                        
+                        state.show_betrayal_warning = None;
+                    }
                 });
             });
+        });
     }
 }
 

@@ -157,7 +157,33 @@ impl SowEngine {
                 }
                 for uid in unit_ids {
                     if let Some(fleet) = self.fleets.iter_mut().find(|f| f.id == *uid && f.owner_id == pid && f.unit_type == crate::game::UnitType::Warship) {
-                        if let Some(path) = self.path_scratch.astar.find_path(&self.state.map, &[fleet.current_tile], target) {
+                        // Try sea lane routing first (Dijkstra on ~20 port nodes)
+                        let lane_path = if !self.state.sea_lanes.is_empty() {
+                            let src_comp = self.water.component_of(fleet.current_tile);
+                            let dst_comp = self.water.component_of(target);
+                            if src_comp > 0 && src_comp == dst_comp {
+                                let src_port = crate::sea_lane::closest_port_on_component(
+                                    &self.buildings, &self.state.map, &self.water, fleet.current_tile, src_comp,
+                                );
+                                let dst_port = crate::sea_lane::closest_port_on_component(
+                                    &self.buildings, &self.state.map, &self.water, target, dst_comp,
+                                );
+                                match (src_port, dst_port) {
+                                    (Some(sp), Some(dp)) => crate::sea_lane::route_through_lanes(&self.state.sea_lanes, sp, dp),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        let path = lane_path.or_else(|| {
+                            self.path_scratch.astar.find_path(&self.state.map, &[fleet.current_tile], target)
+                        });
+
+                        if let Some(path) = path {
                             fleet.path = path;
                             fleet.path_cursor = 0;
                             fleet.retreating = false;
@@ -207,7 +233,7 @@ impl SowEngine {
                 if let Some(player) = self.state.player_mut(stamped.player_id) {
                     player.active_emoji = Some(emoji.clone());
                     player.emoji_pinned = *pinned;
-                    player.emoji_timer = if *pinned { 0 } else { 30 };
+                    player.emoji_timer = if *pinned { 0 } else { 150 };
                 }
             }
             GameplayIntent::ProposeAlliance { target_player } => {

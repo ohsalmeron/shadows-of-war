@@ -661,7 +661,7 @@ impl SowApp {
                 return;
             }
 
-            let snapped_idx = resolve_building_placement_tile(
+            let snapped_res = resolve_building_placement_tile(
                 kind,
                 col,
                 row,
@@ -683,13 +683,14 @@ impl SowApp {
 
             if self.ui.app.hud_state.gold < cost {
                 valid = false;
-                err_msg = format!("Not enough Gold! You need {}.", cost);
-            } else if snapped_idx.is_none() {
-                valid = false;
-                if kind == sow_core::game::BuildingKind::Port {
-                    err_msg = "No valid coastal shoreline space within range!".to_string();
-                } else {
-                    err_msg = "No valid building space within range (too close to other buildings or outside owned land)!".to_string();
+                err_msg = format!("Need {} Gold!", cost);
+            } else {
+                match snapped_res {
+                    Ok(_) => {}
+                    Err(msg) => {
+                        valid = false;
+                        err_msg = msg.to_string();
+                    }
                 }
             }
 
@@ -701,7 +702,7 @@ impl SowApp {
 
             let intent = sow_core::protocol::GameplayIntent::BuildStructure {
                 kind,
-                target_tile: snapped_idx.unwrap(),
+                target_tile: snapped_res.unwrap(),
             };
             self.send_intent(intent);
             self.ui.app.hud_state.selected_building_kind = None;
@@ -765,10 +766,17 @@ pub fn resolve_building_placement_tile(
     terrain: &[u8],
     my_id: u16,
     buildings: &[sow_core::protocol::BuildingSnapshot],
-) -> Option<u32> {
+) -> Result<u32, &'static str> {
     let min_dist = sow_core::building::STRUCTURE_MIN_DIST;
     let min_dist_sq = min_dist * min_dist;
-    let max_search_dist = min_dist * 2;
+    
+    // Snapping search radius: extremely forgiving (Poka Yoke) on mobile
+    let pokayoke_dist = match kind {
+        sow_core::game::BuildingKind::Port => 35, // extremely forgiving shoreline search for Port
+        _ => 25, // forgiving search for other structures
+    };
+    let pokayoke_dist_sq = pokayoke_dist * pokayoke_dist;
+    let max_search_dist = pokayoke_dist + min_dist;
     let max_search_dist_sq = max_search_dist * max_search_dist;
 
     // Filter buildings to those close to the click target to optimize distance checks
@@ -783,16 +791,22 @@ pub fn resolve_building_placement_tile(
         })
         .collect();
 
-    // 1. Gather valid land structure tiles within Euclidean min_dist of click target
+    // Diagnostic flags to identify exact failure reasons
+    let mut found_any_owned = false;
+    let mut found_any_land = false;
+    let mut found_any_far_enough = false;
+    let mut found_any_shoreline = false;
+
+    // 1. Gather valid land structure tiles within pokayoke_dist of click target
     let mut valid_land_tiles = Vec::new();
-    for dy in -min_dist..=min_dist {
-        for dx in -min_dist..=min_dist {
+    for dy in -pokayoke_dist..=pokayoke_dist {
+        for dx in -pokayoke_dist..=pokayoke_dist {
             let tx = click_x + dx;
             let ty = click_y + dy;
             if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
                 continue;
             }
-            if (dx * dx + dy * dy) >= min_dist_sq { // Euclidean distance >= min_dist
+            if (dx * dx + dy * dy) >= pokayoke_dist_sq { // Euclidean distance limit
                 continue;
             }
             let tile_idx = (ty * map_w as i32 + tx) as u32;
@@ -801,6 +815,7 @@ pub fn resolve_building_placement_tile(
             if owners.get(tile_idx as usize).copied().unwrap_or(0) != my_id {
                 continue;
             }
+            found_any_owned = true;
             
             // Check land (bit 7: is_land)
             let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
@@ -808,6 +823,7 @@ pub fn resolve_building_placement_tile(
             if !is_land {
                 continue;
             }
+            found_any_land = true;
             
             // Check minimum distance from existing buildings
             let mut too_close = false;
@@ -824,58 +840,50 @@ pub fn resolve_building_placement_tile(
             if too_close {
                 continue;
             }
+            found_any_far_enough = true;
             
             valid_land_tiles.push((tx, ty, tile_idx));
         }
     }
     
     if valid_land_tiles.is_empty() {
-        return None;
+        if !found_any_owned {
+            return Err("Target area must be inside your owned territory!");
+        }
+        if !found_any_land {
+            return Err("Structures can only be built on land territory!");
+        }
+        if !found_any_far_enough {
+            return Err("Too close to another structure! Minimum spacing is 8 tiles.");
+        }
+        return Err("No space nearby!");
     }
     
     match kind {
         sow_core::game::BuildingKind::Port => {
-            // Ports can only be built directly on a shoreline (bit 6: is_shoreline).
-            // Search within Manhattan distance 20 of click target.
             let mut candidates = Vec::new();
-            for dy in -20..=20 {
-                for dx in -20..=20 {
-                    let tx = click_x + dx;
-                    let ty = click_y + dy;
-                    if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
-                        continue;
-                    }
-                    let dist = dx.abs() + dy.abs();
-                    if dist > 20 {
-                        continue;
-                    }
-                    let tile_idx = (ty * map_w as i32 + tx) as u32;
-                    
-                    // Check ownership
-                    if owners.get(tile_idx as usize).copied().unwrap_or(0) != my_id {
-                        continue;
-                    }
-                    
-                    // Check shore & land
-                    let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
-                    let is_land = (tile_terrain & 0x80) != 0;
-                    let is_shoreline = (tile_terrain & 0x40) != 0;
-                    if !is_land || !is_shoreline {
-                        continue;
-                    }
-                    
-                    // Must be in valid_land_tiles (i.e. not too close to other buildings)
-                    if valid_land_tiles.iter().any(|&(_, _, idx)| idx == tile_idx) {
-                        candidates.push((tx, ty, tile_idx, dist));
-                    }
+            for &(tx, ty, tile_idx) in &valid_land_tiles {
+                let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
+                let is_shoreline = (tile_terrain & 0x40) != 0;
+                if is_shoreline {
+                    found_any_shoreline = true;
+                    let dist = (tx - click_x).abs() + (ty - click_y).abs();
+                    candidates.push((tx, ty, tile_idx, dist));
                 }
+            }
+            
+            if candidates.is_empty() {
+                if !found_any_shoreline {
+                    return Err("No shoreline here! Ports must be placed on coastal tiles next to water.");
+                }
+                return Err("No valid shoreline found for Port!");
             }
             
             // Sort candidates by Manhattan distance, then by tile index
             candidates.sort_by(|a, b| {
                 a.3.cmp(&b.3).then_with(|| a.2.cmp(&b.2))
             });
-            candidates.first().map(|&(_, _, idx, _)| idx)
+            Ok(candidates.first().map(|&(_, _, idx, _)| idx).unwrap())
         }
         _ => {
             // For other structures, find the closest valid land tile to click target by Euclidean distance
@@ -884,7 +892,7 @@ pub fn resolve_building_placement_tile(
                 let db = (b.0 - click_x) * (b.0 - click_x) + (b.1 - click_y) * (b.1 - click_y);
                 da.cmp(&db).then_with(|| a.2.cmp(&b.2))
             });
-            valid_land_tiles.first().map(|&(_, _, idx)| idx)
+            Ok(valid_land_tiles.first().map(|&(_, _, idx)| idx).unwrap())
         }
     }
 }

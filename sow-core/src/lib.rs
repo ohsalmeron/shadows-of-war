@@ -20,6 +20,7 @@ pub mod map;
 pub mod pathfinding;
 pub mod player;
 pub mod rng;
+pub mod sea_lane;
 pub mod warp_fleet;
 
 pub mod map_legacy;

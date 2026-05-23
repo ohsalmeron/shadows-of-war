@@ -1037,6 +1037,7 @@ mod bot_iq_alliance_tests {
     fn test_execute_income_iq_points_accumulation() {
         let mut engine = test_engine_two_players(42);
         engine.state.config.global_speed_multiplier = 1.0;
+        engine.state.config.tick_rate_ms = 100.0;
         
         // Prior to income
         assert_eq!(engine.state.player(1).unwrap().iq_points, 50.0);

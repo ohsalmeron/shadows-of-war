@@ -51,6 +51,7 @@ impl ClientApp {
                 emoji_panel_just_opened: false,
                 pin_emoji: false,
                 show_alliance_inbox: false,
+                prev_requests: Vec::new(),
                 show_betrayal_warning: None,
                 show_error: None,
                 last_error_message: None,

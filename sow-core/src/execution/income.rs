@@ -19,6 +19,7 @@ impl SowEngine {
             self.building_aggregates =
                 aggregate_buildings_per_player(self.buildings.iter().copied(), max_pid);
             crate::building::railroad::update_railroads(self);
+            crate::sea_lane::update_sea_lanes(self);
             self.building_aggregates_dirty = false;
         }
         let aggs = &self.building_aggregates;

@@ -352,5 +352,6 @@ pub struct SimSnapshot {
     pub defense_dirty: bool,
     pub total_land_tiles: u32,
     pub railroads: Vec<crate::building::railroad::Railroad>,
+    pub sea_lanes: Vec<crate::sea_lane::SeaLane>,
     pub debug_mem_info: String,
 }

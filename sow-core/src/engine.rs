@@ -182,6 +182,46 @@ impl SowEngine {
         self.execute_projectiles();
         self.execute_sam();
         self.execute_combat();
+
+        // Sync building ownership with tile ownership
+        for b in &mut self.buildings {
+            let col = b.tile_idx % self.state.map.width;
+            let row = b.tile_idx / self.state.map.width;
+            let tile_owner = self.state.map.owner_id(col, row);
+            
+            // Only transfer if the tile has a new valid owner
+            if tile_owner != 0 && tile_owner != b.owner_id {
+                let old_owner = b.owner_id;
+                let new_owner = tile_owner;
+                let kind = b.kind;
+                
+                // Transfer ownership
+                b.owner_id = new_owner;
+                
+                // Update player counts if necessary
+                if kind == crate::game::BuildingKind::City || kind == crate::game::BuildingKind::Factory {
+                    if old_owner != 0 {
+                        if let Some(p) = self.state.player_mut(old_owner) {
+                            if kind == crate::game::BuildingKind::City {
+                                p.cities = p.cities.saturating_sub(1);
+                            } else {
+                                p.factories = p.factories.saturating_sub(1);
+                            }
+                        }
+                    }
+                    if new_owner != 0 {
+                        if let Some(p) = self.state.player_mut(new_owner) {
+                            if kind == crate::game::BuildingKind::City {
+                                p.cities += 1;
+                            } else {
+                                p.factories += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.execute_fleets();
         self.check_winner();
 
@@ -613,6 +653,7 @@ impl SowEngine {
             defense_posts,
             defense_dirty,
             railroads: self.state.railroads.clone(),
+            sea_lanes: self.state.sea_lanes.clone(),
             debug_mem_info: if cfg!(feature = "mem_profiler") {
                 format!(
                     "Engine [Attacks: {}/{} | Fleets: {}/{} | Buildings: {}/{} | Events: {}/{} | Players: {}/{} | DirtyTilesCap: {}] Pathfinder [AStarHeapCap: {} | AStarCameCap: {} | BFSQueueCap: {} | BFSVisitedCap: {}] Placement [VisitedCap: {} | QueueCap: {} | BorderCap: {}]",
