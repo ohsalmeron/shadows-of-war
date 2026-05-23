@@ -207,6 +207,8 @@ impl SowEngine {
         self.building_grid.dirty = true;
         self.building_aggregates_dirty = true;
         self.defense_grid_dirty = true;
+        self.railroads_dirty = true;
+        self.sea_lanes_dirty = true;
 
         self.state.events.push(crate::game::GameEvent::NukeDetonated {
             tile_x: cx,

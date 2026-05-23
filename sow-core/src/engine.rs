@@ -39,6 +39,10 @@ pub struct SowEngine {
     pub building_grid: BuildingGrid,
     pub building_aggregates: Vec<BuildingAggregate>,
     pub building_aggregates_dirty: bool,
+    pub railroads_dirty: bool,
+    pub sea_lanes_dirty: bool,
+    pub railroad_calc: Option<(usize, Vec<crate::building::railroad::IncrementalRail>, Vec<Building>)>,
+    pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
     /// Round-robin cursor for the unified AI pipeline.
     /// Ensures fair distribution of bot/nation think work across ticks.
     pub ai_round_robin: usize,
@@ -82,6 +86,10 @@ impl SowEngine {
             building_grid: BuildingGrid::default(),
             building_aggregates: Vec::with_capacity(256),
             building_aggregates_dirty: true,
+            railroads_dirty: true,
+            sea_lanes_dirty: true,
+            railroad_calc: None,
+            sea_lane_calc: None,
             ai_round_robin: 0,
             alliances_proposed: Vec::new(),
             port_queues: std::collections::HashMap::new(),
@@ -129,6 +137,14 @@ impl SowEngine {
         self.buildings.insert(pos, b);
         self.building_grid.mark_dirty();
         self.building_aggregates_dirty = true;
+        if !b.under_construction {
+            if b.kind == crate::game::BuildingKind::City || b.kind == crate::game::BuildingKind::Factory || b.kind == crate::game::BuildingKind::Port {
+                self.railroads_dirty = true;
+            }
+            if b.kind == crate::game::BuildingKind::Port {
+                self.sea_lanes_dirty = true;
+            }
+        }
         if is_ready_defense {
             self.defense_grid_dirty = true;
             self.render_defense_dirty = true;

@@ -168,200 +168,210 @@ fn get_hop_distance(adj: &[Vec<usize>], start: usize, goal: usize, max_hops: usi
     None
 }
 
-struct IncrementalRail {
-    path: Vec<u32>,
-    owner_id: u16,
-    from_idx: usize,
-    to_idx: usize,
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct IncrementalRail {
+    pub path: Vec<u32>,
+    pub owner_id: u16,
+    pub from_idx: usize,
+    pub to_idx: usize,
 }
 
 pub fn update_railroads(engine: &mut SowEngine) {
-    let mut stations = Vec::new();
-    for b in &engine.buildings {
-        if !b.under_construction && (b.kind == BuildingKind::City || b.kind == BuildingKind::Factory || b.kind == BuildingKind::Port) {
-            stations.push(*b);
+    if engine.railroads_dirty {
+        let mut stations = Vec::new();
+        for b in &engine.buildings {
+            if !b.under_construction && (b.kind == BuildingKind::City || b.kind == BuildingKind::Factory || b.kind == BuildingKind::Port) {
+                stations.push(*b);
+            }
         }
+        // Sort by id to process deterministically in creation order
+        stations.sort_by_key(|b| b.id);
+        
+        engine.railroad_calc = Some((0, Vec::new(), stations));
+        engine.railroads_dirty = false;
     }
-
-    // Sort by id to process deterministically in creation order
-    stations.sort_by_key(|b| b.id);
 
     let w = engine.state.map.width;
     if w == 0 {
         return;
     }
 
-    let mut rails = Vec::<IncrementalRail>::new();
+    if let Some((s_idx, mut rails, stations)) = engine.railroad_calc.take() {
+        if s_idx < stations.len() {
+            let s_tile = stations[s_idx].tile_idx;
+            let (sx, sy) = (s_tile % w, s_tile / w);
+            let mut split_occurred = false;
+            let mut new_rails = Vec::new();
+            let mut i = 0;
 
-    for s_idx in 0..stations.len() {
-        let s_tile = stations[s_idx].tile_idx;
-        let (sx, sy) = (s_tile % w, s_tile / w);
-        let mut split_occurred = false;
-        let mut new_rails = Vec::new();
-        let mut i = 0;
+            while i < rails.len() {
+                let mut min_dist_sq = i32::MAX;
+                let mut closest_tile_idx = 0;
 
-        while i < rails.len() {
-            let mut min_dist_sq = i32::MAX;
-            let mut closest_tile_idx = 0;
-
-            for (tile_idx, &path_tile) in rails[i].path.iter().enumerate() {
-                let (tx, ty) = (path_tile % w, path_tile / w);
-                let dx = sx as i32 - tx as i32;
-                let dy = sy as i32 - ty as i32;
-                let dist_sq = dx * dx + dy * dy;
-                if dist_sq < min_dist_sq {
-                    min_dist_sq = dist_sq;
-                    closest_tile_idx = tile_idx;
-                }
-            }
-
-            let closest_tile = rails[i].path[closest_tile_idx];
-            let (tx, ty) = (closest_tile % w, closest_tile / w);
-            let dx = (sx as i32 - tx as i32).abs();
-            let dy = (sy as i32 - ty as i32).abs();
-
-            let is_near = dx <= 3 && dy <= 3;
-            let is_endpoint = closest_tile_idx == 0 || closest_tile_idx == rails[i].path.len() - 1;
-
-            if is_near && !is_endpoint {
-                let original_rail = rails.remove(i);
-
-                let mut path1 = Vec::new();
-                let mut path2 = Vec::new();
-                let mut pathfound = false;
-
-                if let Some(to_s_path) = find_rail_path(&engine.state.map, closest_tile, s_tile) {
-                    if to_s_path.len() <= 480 {
-                        path1 = original_rail.path[0..closest_tile_idx].to_vec();
-                        path1.extend(to_s_path.clone());
-
-                        let mut from_s_path = to_s_path;
-                        from_s_path.reverse();
-                        path2 = from_s_path;
-                        path2.extend_from_slice(&original_rail.path[closest_tile_idx + 1..]);
-                        pathfound = true;
+                for (tile_idx, &path_tile) in rails[i].path.iter().enumerate() {
+                    let (tx, ty) = (path_tile % w, path_tile / w);
+                    let dx = sx as i32 - tx as i32;
+                    let dy = sy as i32 - ty as i32;
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq < min_dist_sq {
+                        min_dist_sq = dist_sq;
+                        closest_tile_idx = tile_idx;
                     }
                 }
 
-                if !pathfound {
-                    path1 = original_rail.path[0..=closest_tile_idx].to_vec();
-                    if path1.last() != Some(&s_tile) {
-                        path1.push(s_tile);
-                    }
+                let closest_tile = rails[i].path[closest_tile_idx];
+                let (tx, ty) = (closest_tile % w, closest_tile / w);
+                let dx = (sx as i32 - tx as i32).abs();
+                let dy = (sy as i32 - ty as i32).abs();
 
-                    path2 = original_rail.path[closest_tile_idx..].to_vec();
-                    if path2.first() != Some(&s_tile) {
-                        path2.insert(0, s_tile);
-                    }
-                }
+                let is_near = dx <= 3 && dy <= 3;
+                let is_endpoint = closest_tile_idx == 0 || closest_tile_idx == rails[i].path.len() - 1;
 
-                new_rails.push(IncrementalRail {
-                    path: path1,
-                    owner_id: original_rail.owner_id,
-                    from_idx: original_rail.from_idx,
-                    to_idx: s_idx,
-                });
+                if is_near && !is_endpoint {
+                    let original_rail = rails.remove(i);
 
-                new_rails.push(IncrementalRail {
-                    path: path2,
-                    owner_id: original_rail.owner_id,
-                    from_idx: s_idx,
-                    to_idx: original_rail.to_idx,
-                });
+                    let mut path1 = Vec::new();
+                    let mut path2 = Vec::new();
+                    let mut pathfound = false;
 
-                split_occurred = true;
-            } else {
-                i += 1;
-            }
-        }
-        rails.extend(new_rails);
+                    if let Some(to_s_path) = find_rail_path(&engine.state.map, closest_tile, s_tile) {
+                        if to_s_path.len() <= 480 {
+                            path1 = original_rail.path[0..closest_tile_idx].to_vec();
+                            path1.extend(to_s_path.clone());
 
-        if !split_occurred {
-            let mut neighbors = Vec::new();
-            for other_idx in 0..s_idx {
-                let other = &stations[other_idx];
-
-                let id1 = stations[s_idx].owner_id;
-                let id2 = other.owner_id;
-                let friendly = if id1 == id2 {
-                    true
-                } else if id1 == 0 || id2 == 0 {
-                    true
-                } else {
-                    let mut is_ally = false;
-                    if let Some(p1) = engine.state.players.iter().find(|p| p.id == id1) {
-                        if p1.alliances.contains(&id2) {
-                            is_ally = true;
+                            let mut from_s_path = to_s_path;
+                            from_s_path.reverse();
+                            path2 = from_s_path;
+                            path2.extend_from_slice(&original_rail.path[closest_tile_idx + 1..]);
+                            pathfound = true;
                         }
                     }
-                    if !is_ally {
-                        if let Some(p2) = engine.state.players.iter().find(|p| p.id == id2) {
-                            if p2.alliances.contains(&id1) {
-                                    is_ally = true;
+
+                    if !pathfound {
+                        path1 = original_rail.path[0..=closest_tile_idx].to_vec();
+                        if path1.last() != Some(&s_tile) {
+                            path1.push(s_tile);
+                        }
+
+                        path2 = original_rail.path[closest_tile_idx..].to_vec();
+                        if path2.first() != Some(&s_tile) {
+                            path2.insert(0, s_tile);
+                        }
+                    }
+
+                    new_rails.push(IncrementalRail {
+                        path: path1,
+                        owner_id: original_rail.owner_id,
+                        from_idx: original_rail.from_idx,
+                        to_idx: s_idx,
+                    });
+
+                    new_rails.push(IncrementalRail {
+                        path: path2,
+                        owner_id: original_rail.owner_id,
+                        from_idx: s_idx,
+                        to_idx: original_rail.to_idx,
+                    });
+
+                    split_occurred = true;
+                } else {
+                    i += 1;
+                }
+            }
+            rails.extend(new_rails);
+
+            if !split_occurred {
+                let mut neighbors = Vec::new();
+                for other_idx in 0..s_idx {
+                    let other = &stations[other_idx];
+
+                    let id1 = stations[s_idx].owner_id;
+                    let id2 = other.owner_id;
+                    let friendly = if id1 == id2 {
+                        true
+                    } else if id1 == 0 || id2 == 0 {
+                        true
+                    } else {
+                        let mut is_ally = false;
+                        if let Some(p1) = engine.state.players.iter().find(|p| p.id == id1) {
+                            if p1.alliances.contains(&id2) {
+                                is_ally = true;
                             }
                         }
-                    }
-                    is_ally
-                };
+                        if !is_ally {
+                            if let Some(p2) = engine.state.players.iter().find(|p| p.id == id2) {
+                                if p2.alliances.contains(&id1) {
+                                    is_ally = true;
+                                }
+                            }
+                        }
+                        is_ally
+                    };
 
-                if !friendly {
-                    continue;
-                }
-
-                let (x2, y2) = (other.tile_idx % w, other.tile_idx / w);
-                let dx = sx as i32 - x2 as i32;
-                let dy = sy as i32 - y2 as i32;
-                let dist_sq = dx * dx + dy * dy;
-
-                if dist_sq >= 225 && dist_sq <= 10000 {
-                    neighbors.push((dist_sq, other_idx));
-                }
-            }
-
-            neighbors.sort_by_key(|n| n.0);
-
-            for (_, other_idx) in neighbors {
-                let mut adj = vec![Vec::new(); s_idx + 1];
-                for rail in &rails {
-                    if rail.from_idx <= s_idx && rail.to_idx <= s_idx {
-                        adj[rail.from_idx].push(rail.to_idx);
-                        adj[rail.to_idx].push(rail.from_idx);
-                    }
-                }
-
-                if let Some(hops) = get_hop_distance(&adj, s_idx, other_idx, 4) {
-                    if hops <= 4 {
+                    if !friendly {
                         continue;
                     }
+
+                    let (x2, y2) = (other.tile_idx % w, other.tile_idx / w);
+                    let dx = sx as i32 - x2 as i32;
+                    let dy = sy as i32 - y2 as i32;
+                    let dist_sq = dx * dx + dy * dy;
+
+                    if dist_sq >= 225 && dist_sq <= 10000 {
+                        neighbors.push((dist_sq, other_idx));
+                    }
                 }
 
-                let other = &stations[other_idx];
-                if let Some(path) = find_rail_path(&engine.state.map, s_tile, other.tile_idx) {
-                    if path.len() <= 480 {
-                        let owner_id = if stations[s_idx].owner_id != 0 {
-                            stations[s_idx].owner_id
-                        } else {
-                            other.owner_id
-                        };
-                        rails.push(IncrementalRail {
-                            path,
-                            owner_id,
-                            from_idx: s_idx,
-                            to_idx: other_idx,
-                        });
+                neighbors.sort_by_key(|n| n.0);
+
+                for (_, other_idx) in neighbors {
+                    let mut adj = vec![Vec::new(); s_idx + 1];
+                    for rail in &rails {
+                        if rail.from_idx <= s_idx && rail.to_idx <= s_idx {
+                            adj[rail.from_idx].push(rail.to_idx);
+                            adj[rail.to_idx].push(rail.from_idx);
+                        }
+                    }
+
+                    if let Some(hops) = get_hop_distance(&adj, s_idx, other_idx, 4) {
+                        if hops <= 4 {
+                            continue;
+                        }
+                    }
+
+                    let other = &stations[other_idx];
+                    if let Some(path) = find_rail_path(&engine.state.map, s_tile, other.tile_idx) {
+                        if path.len() <= 480 {
+                            let owner_id = if stations[s_idx].owner_id != 0 {
+                                stations[s_idx].owner_id
+                            } else {
+                                other.owner_id
+                            };
+                            rails.push(IncrementalRail {
+                                path,
+                                owner_id,
+                                from_idx: s_idx,
+                                to_idx: other_idx,
+                            });
+                        }
                     }
                 }
             }
+
+            // Save state back to continue on the next tick
+            engine.railroad_calc = Some((s_idx + 1, rails, stations));
+        } else {
+            // Completed all steps! Re-compile final railroads and apply
+            let mut final_railroads = Vec::new();
+            for (idx, rail) in rails.into_iter().enumerate() {
+                final_railroads.push(Railroad {
+                    id: idx as u64,
+                    path: rail.path,
+                    owner_id: rail.owner_id,
+                });
+            }
+            engine.state.railroads = final_railroads;
+            engine.railroad_calc = None;
         }
     }
-
-    let mut final_railroads = Vec::new();
-    for (idx, rail) in rails.into_iter().enumerate() {
-        final_railroads.push(Railroad {
-            id: idx as u64,
-            path: rail.path,
-            owner_id: rail.owner_id,
-        });
-    }
-    engine.state.railroads = final_railroads;
 }

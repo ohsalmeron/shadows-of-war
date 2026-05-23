@@ -59,6 +59,59 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 let pc = vp.pc;
                 let lod_presence = vp.lod_presence;
 
+                if player.player_type == sow_core::player::PlayerType::Human {
+                    let width = 160.0;
+                    let height = 48.0;
+                    
+                    let name_hash = player.name.chars().map(|c| c as usize).sum::<usize>();
+                    let avatar_idx = name_hash % 8;
+                    
+                    let area_id = egui::Id::new(("nameplate_player", player.id));
+                    egui::Area::new(area_id)
+                        .fixed_pos(center - egui::vec2(width / 2.0, height / 2.0))
+                        .order(egui::Order::Background)
+                        .show(painter.ctx(), |area_ui| {
+                            egui::Frame::NONE
+                                .fill(sow_ui::ui::theme::panel_bg().linear_multiply(0.85))
+                                .stroke(egui::Stroke::new(1.2_f32, pc))
+                                .corner_radius(8)
+                                .inner_margin(egui::Margin::symmetric(8, 6))
+                                .show(area_ui, |area_ui| {
+                                    area_ui.set_width(width);
+                                    area_ui.horizontal(|area_ui| {
+                                        let avatar_tex = ui.app.asset_loader.avatars.get(avatar_idx).or(ui.app.asset_loader.avatar_fallback.as_ref());
+                                        if let Some(tex) = avatar_tex {
+                                            area_ui.add(egui::Image::new(tex)
+                                                .fit_to_exact_size(egui::vec2(30.0, 30.0))
+                                                .corner_radius(15));
+                                        }
+                                        
+                                        area_ui.vertical(|area_ui| {
+                                            area_ui.spacing_mut().item_spacing.y = 2.0;
+                                            
+                                            let display_name = if player.name.is_empty() {
+                                                format!("Player {}", player.id)
+                                            } else {
+                                                player.name.clone()
+                                            };
+                                            area_ui.label(egui::RichText::new(display_name).strong().color(egui::Color32::WHITE).size(11.0));
+                                            
+                                            let ratio = (player.troops / player.max_troops.max(1.0)).clamp(0.0, 1.0) as f32;
+                                            let formatted_troops = sow_ui::utils::format_number(player.troops);
+                                            let formatted_max = sow_ui::utils::format_number(player.max_troops);
+                                            
+                                            let pbar = egui::ProgressBar::new(ratio)
+                                                .text(format!("{}/{}", formatted_troops, formatted_max))
+                                                .animate(false);
+                                            
+                                            area_ui.add_sized(egui::vec2(area_ui.available_width(), 12.0), pbar);
+                                        });
+                                    });
+                                });
+                        });
+                    continue;
+                }
+
                 // Small nations require zooming in to appear.
                 let threshold = if player.id >= 200 {
                     1.00 // Tribes need to be much closer/bigger to show text

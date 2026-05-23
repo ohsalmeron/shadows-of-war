@@ -27,6 +27,7 @@ struct RelayConfig {
     tick_number: u64,
     active_empty_secs: f32,
     players: Vec<PlayerEntry>,
+    tick_rate_ms: f32,
 }
 
 #[derive(serde::Deserialize)]
@@ -126,8 +127,9 @@ async fn main() {
     let cleanup_port = port;
 
     // Main Tick Loop
+    let tick_interval_ms = config.tick_rate_ms as u64;
     tokio::spawn(async move {
-        let mut ticker = interval(Duration::from_millis(50)); // 20 ticks per second (Server config tick time = 0.05)
+        let mut ticker = interval(Duration::from_millis(tick_interval_ms));
         let mut last_status = std::time::Instant::now();
 
         loop {

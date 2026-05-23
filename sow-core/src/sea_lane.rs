@@ -47,89 +47,102 @@ fn adjacent_water_tile(map: &crate::map::GameMap, land_idx: u32) -> Option<u32> 
 pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
     use crate::game::BuildingKind;
 
-    let mut ports: Vec<(u64, u32)> = Vec::new(); // (building_id, tile_idx)
-    for b in &engine.buildings {
-        if !b.under_construction && b.kind == BuildingKind::Port {
-            ports.push((b.id, b.tile_idx));
-        }
-    }
-
-    if ports.len() < 2 {
-        engine.state.sea_lanes.clear();
-        return;
-    }
-
-    // Group ports by water component for O(1) connectivity check
-    let mut port_components: Vec<(u64, u32, u32)> = Vec::new(); // (id, tile, component)
-    for &(id, tile) in &ports {
-        if let Some(water_tile) = adjacent_water_tile(&engine.state.map, tile) {
-            let comp = engine.water.component_of(water_tile);
-            if comp > 0 {
-                port_components.push((id, tile, comp));
+    if engine.sea_lanes_dirty {
+        let mut ports: Vec<(u64, u32)> = Vec::new(); // (building_id, tile_idx)
+        for b in &engine.buildings {
+            if !b.under_construction && b.kind == BuildingKind::Port {
+                ports.push((b.id, b.tile_idx));
             }
         }
-    }
 
-    let mut lanes = Vec::new();
-    let mut lane_id: u64 = 0;
+        if ports.len() < 2 {
+            engine.state.sea_lanes.clear();
+            engine.sea_lane_calc = None;
+            engine.sea_lanes_dirty = false;
+            return;
+        }
 
-    for i in 0..port_components.len() {
-        for j in (i + 1)..port_components.len() {
-            let (id_a, tile_a, comp_a) = port_components[i];
-            let (id_b, tile_b, comp_b) = port_components[j];
-
-            // Must share the same water body
-            if comp_a != comp_b {
-                continue;
-            }
-
-            // Skip if already connected (check existing lanes)
-            let already_connected = lanes.iter().any(|l: &SeaLane| {
-                (l.port_a_id == id_a && l.port_b_id == id_b)
-                    || (l.port_a_id == id_b && l.port_b_id == id_a)
-            });
-            if already_connected {
-                continue;
-            }
-
-            // Distance sanity check (Euclidean² < 500² = 250000)
-            let w = engine.state.map.width;
-            let dx = (tile_a % w) as i32 - (tile_b % w) as i32;
-            let dy = (tile_a / w) as i32 - (tile_b / w) as i32;
-            if dx * dx + dy * dy > 250_000 {
-                continue;
-            }
-
-            // Get water entry points
-            let water_a = match adjacent_water_tile(&engine.state.map, tile_a) {
-                Some(t) => t,
-                None => continue,
-            };
-            let water_b = match adjacent_water_tile(&engine.state.map, tile_b) {
-                Some(t) => t,
-                None => continue,
-            };
-
-            // A* pathfind on water (reuses engine scratch buffers)
-            if let Some(path) = engine.path_scratch.astar.find_path(
-                &engine.state.map,
-                &[water_a],
-                water_b,
-            ) {
-                if path.len() <= 1000 {
-                    lanes.push(SeaLane {
-                        id: lane_id,
-                        port_a_id: id_a,
-                        port_b_id: id_b,
-                        path,
-                    });
-                    lane_id += 1;
+        // Group ports by water component for O(1) connectivity check
+        let mut port_components: Vec<(u64, u32, u32)> = Vec::new(); // (id, tile, component)
+        for &(id, tile) in &ports {
+            if let Some(water_tile) = adjacent_water_tile(&engine.state.map, tile) {
+                let comp = engine.water.component_of(water_tile);
+                if comp > 0 {
+                    port_components.push((id, tile, comp));
                 }
             }
         }
+
+        engine.sea_lane_calc = Some((0, Vec::new(), port_components));
+        engine.sea_lanes_dirty = false;
     }
 
-    engine.state.sea_lanes = lanes;
+    if let Some((i, mut lanes, port_components)) = engine.sea_lane_calc.take() {
+        if i < port_components.len() {
+            let mut lane_id = lanes.len() as u64;
+            let (id_a, tile_a, comp_a) = port_components[i];
+
+            for j in (i + 1)..port_components.len() {
+                let (id_b, tile_b, comp_b) = port_components[j];
+
+                // Must share the same water body
+                if comp_a != comp_b {
+                    continue;
+                }
+
+                // Skip if already connected
+                let already_connected = lanes.iter().any(|l: &SeaLane| {
+                    (l.port_a_id == id_a && l.port_b_id == id_b)
+                        || (l.port_a_id == id_b && l.port_b_id == id_a)
+                });
+                if already_connected {
+                    continue;
+                }
+
+                // Distance sanity check
+                let w = engine.state.map.width;
+                let dx = (tile_a % w) as i32 - (tile_b % w) as i32;
+                let dy = (tile_a / w) as i32 - (tile_b / w) as i32;
+                if dx * dx + dy * dy > 250_000 {
+                    continue;
+                }
+
+                // Get water entry points
+                let water_a = match adjacent_water_tile(&engine.state.map, tile_a) {
+                    Some(t) => t,
+                    None => continue,
+                };
+                let water_b = match adjacent_water_tile(&engine.state.map, tile_b) {
+                    Some(t) => t,
+                    None => continue,
+                };
+
+                // A* pathfind on water (reuses engine scratch buffers)
+                if let Some(path) = engine.path_scratch.astar.find_path(
+                    &engine.state.map,
+                    &[water_a],
+                    water_b,
+                ) {
+                    if path.len() <= 1000 {
+                        lanes.push(SeaLane {
+                            id: lane_id,
+                            port_a_id: id_a,
+                            port_b_id: id_b,
+                            path,
+                        });
+                        lane_id += 1;
+                    }
+                }
+            }
+
+            // Save state to continue on next tick
+            engine.sea_lane_calc = Some((i + 1, lanes, port_components));
+        } else {
+            // Finished all ports! Apply
+            engine.state.sea_lanes = lanes;
+            engine.sea_lane_calc = None;
+        }
+    }
 }
 
 /// Route a fleet through the sea lane graph from a source port to a destination port.

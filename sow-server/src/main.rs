@@ -115,7 +115,8 @@ async fn main() {
                                 "lobby_id": lobby.id,
                                 "tick_number": 0,
                                 "active_empty_secs": lobby.active_empty_secs,
-                                "players": players_json
+                                "players": players_json,
+                                "tick_rate_ms": lobby.config.tick_rate_ms,
                             });
 
                             let log_file = std::fs::File::create(format!("relay_{}.log", relay_port)).unwrap();

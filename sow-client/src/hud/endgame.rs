@@ -135,7 +135,7 @@ impl SowApp {
                             Color32::from_rgb(140, 40, 40)
                         };
 
-                        let return_btn = sow_ui::widgets::ThemeButton::new("REWARDS")
+                        let return_btn = sow_ui::widgets::ThemeButton::new("EXIT")
                             .min_size(btn_size)
                             .text_size(if is_mobile { 16.0 } else { 20.0 })
                             .custom_fill(btn_color);

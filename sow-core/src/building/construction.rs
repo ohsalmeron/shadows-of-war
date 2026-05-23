@@ -20,6 +20,12 @@ impl SowEngine {
             if b.ticks_until_complete == 0 {
                 b.under_construction = false;
                 self.building_aggregates_dirty = true;
+                if b.kind == BuildingKind::City || b.kind == BuildingKind::Factory || b.kind == BuildingKind::Port {
+                    self.railroads_dirty = true;
+                }
+                if b.kind == BuildingKind::Port {
+                    self.sea_lanes_dirty = true;
+                }
                 if b.kind == BuildingKind::DefensePost {
                     self.defense_grid_dirty = true;
                 }

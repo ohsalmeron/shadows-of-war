@@ -164,8 +164,8 @@ impl Default for GameConfig {
             map_control_win_percentage: 0.60,
 
             // Core Simulation Pacing
-            tick_rate_ms: 500.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.1,
+            tick_rate_ms: 35.0, // Server clock ticks every 100ms (10 ticks per second)
+            global_speed_multiplier: 0.50,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
