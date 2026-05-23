@@ -35,6 +35,7 @@ egui_extras = { path = "egui/crates/egui_extras", default-features = false, feat
 image = { version = "0.25.10", default-features = false, features = ["webp"] }
 sow-lang = { path = "sow-lang" }
 sow-map = { path = "sow-map" }
+sow-ui = { path = "sow-ui" }
 winit = { path = "winit/winit", features = ["android-native-activity"] }
 brotli = "8.0.2"
 crossbeam-channel = "0.5.15"
@@ -46,7 +47,16 @@ console_error_panic_hook = "0.1.7"
 console_log = "1.0"
 web-sys = { version = "0.3.69", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
 js-sys = "0.3.69"
-tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-tungstenite = { version = "0.20.1", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+redis = "0.27"
+rand = "0.8"
+reqwest = { version = "0.11", features = ["json"] }
+geo = "0.28"
+geo-types = "0.7"
+clap = { version = "4.4", features = ["derive"] }
+toml = "0.8"
 
 [workspace.dependencies.blade-egui]
 path = "blade/blade-egui"

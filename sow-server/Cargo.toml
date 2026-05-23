@@ -12,11 +12,11 @@ serde_json.workspace = true
 bincode.workspace = true
 log = { workspace = true }
 env_logger = { workspace = true }
-tokio = { version = "1.0", features = ["full"] }
-tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
-futures-util = "0.3"
-rand = "0.10.1"
-brotli = "8.0.2"
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+rand = { workspace = true }
+brotli = { workspace = true }
 axum = "0.8.9"
 tower-http = { version = "0.6.10", features = ["fs", "compression-br", "cors"] }
-redis = "0.27"
+redis = { workspace = true }

@@ -14,7 +14,7 @@ serde_json.workspace = true
 bincode.workspace = true
 log = { workspace = true }
 env_logger = { workspace = true }
-tokio = { version = "1.0", features = ["full"] }
-tokio-tungstenite = { version = "0.20", features = ["rustls-tls-webpki-roots"] }
-futures-util = "0.3"
-redis = "0.27"
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+redis = { workspace = true }

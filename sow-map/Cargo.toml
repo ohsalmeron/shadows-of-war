@@ -11,7 +11,7 @@ path = "src/lib.rs"
 [dependencies]
 sow-core = { workspace = true }
 sow-render = { workspace = true }
-sow-ui = { path = "../sow-ui" }
+sow-ui = { workspace = true }
 sow-lang = { workspace = true }
 
 blade-graphics = { workspace = true }
