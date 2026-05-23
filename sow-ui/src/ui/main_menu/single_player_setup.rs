@@ -294,7 +294,7 @@ pub fn draw_modal(
                                                         rect,
                                                         8,
                                                         final_bg,
-                                                        egui::Stroke::new(if is_selected { 1.5 } else { 1.0 }, border_color),
+                                                        egui::Stroke::new(if is_selected { 1.5_f32 } else { 1.0_f32 }, border_color),
                                                         egui::StrokeKind::Inside,
                                                     );
                                                     

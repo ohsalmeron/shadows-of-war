@@ -51,6 +51,20 @@ impl BuildingKind {
             BuildingKind::Science => "Science",
         }
     }
+    #[inline]
+    pub fn asset(self) -> crate::assets::Asset {
+        match self {
+            BuildingKind::City => crate::assets::Asset::City,
+            BuildingKind::Factory => crate::assets::Asset::Factory,
+            BuildingKind::Port => crate::assets::Asset::Port,
+            BuildingKind::Industry => crate::assets::Asset::Factory,
+            BuildingKind::Cultural => crate::assets::Asset::City,
+            BuildingKind::Science => crate::assets::Asset::SamLauncher,
+            BuildingKind::DefensePost => crate::assets::Asset::DefensePost,
+            BuildingKind::SamLauncher => crate::assets::Asset::SamLauncher,
+            BuildingKind::MissileSilo => crate::assets::Asset::MissileSilo,
+        }
+    }
     pub fn upgradable(self) -> bool {
         !matches!(self, BuildingKind::DefensePost)
     }
@@ -77,6 +91,17 @@ pub enum UnitType {
     Warship,
 }
 
+impl UnitType {
+    #[inline]
+    pub fn asset(self) -> crate::assets::Asset {
+        match self {
+            UnitType::TransportShip => crate::assets::Asset::TransportShip,
+            UnitType::TradeShip => crate::assets::Asset::TradeShip,
+            UnitType::Warship => crate::assets::Asset::Battleship,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum NukeKind {
@@ -86,6 +111,14 @@ pub enum NukeKind {
 }
 
 impl NukeKind {
+    #[inline]
+    pub fn asset(self) -> crate::assets::Asset {
+        match self {
+            NukeKind::AtomBomb => crate::assets::Asset::AtomBomb,
+            NukeKind::HydrogenBomb => crate::assets::Asset::HydrogenBomb,
+            NukeKind::MIRV => crate::assets::Asset::Mirv,
+        }
+    }
     pub fn gold_cost(self, prev_mirv_launches: u32) -> f64 {
         match self {
             NukeKind::AtomBomb => 750_000.0,

@@ -102,11 +102,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 let margin = base_size * 0.2;
                 let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
 
-                let uri = match fleet.unit_type {
-                    sow_core::game::UnitType::TransportShip => "bytes://transport_ship.svg",
-                    sow_core::game::UnitType::TradeShip => "bytes://trade_ship.svg",
-                    sow_core::game::UnitType::Warship => "bytes://battleship.svg",
-                };
+                let uri = fleet.unit_type.asset().uri();
 
                 let size_hint = egui::load::SizeHint::Size {
                     width: 64,

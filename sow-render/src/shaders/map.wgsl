@@ -44,7 +44,18 @@ fn owner_albedo(owner_id: u32) -> vec3<f32> {
     return vec3<f32>(0.5, 0.5, 0.5); // Fallback if out of bounds
 }
 
-
+fn get_elevation(cx: i32, cy: i32) -> f32 {
+    if (cx < 0 || cy < 0 || cx >= i32(globals.map_size.x) || cy >= i32(globals.map_size.y)) {
+        return 0.0;
+    }
+    let val = textureLoad(territory_texture, vec2<i32>(cx, cy), 0).x;
+    let terrain_byte = (val >> 16u) & 0xFFu;
+    let is_land = (terrain_byte & 0x80u) != 0u;
+    if (is_land) {
+        return f32(terrain_byte & 0x1Fu);
+    }
+    return 0.0;
+}
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -56,7 +67,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cell_y = i32(floor(world_y));
 
     if cell_x < 0 || cell_y < 0 || cell_x >= i32(globals.map_size.x) || cell_y >= i32(globals.map_size.y) {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0); // Matte black background
+        return vec4<f32>(0.015, 0.015, 0.02, 1.0); // Sleek dark space/canvas backdrop
     }
 
     let pixel_coords = vec2<i32>(cell_x, cell_y);
@@ -68,6 +79,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let is_land = (terrain_byte & 0x80u) != 0u;
 
     var terrain_color = vec4<f32>(0.0);
+    var normal = vec3<f32>(0.0, 0.0, 1.0);
+    var is_specular = false;
     
     if is_land {
         let is_shoreline = (terrain_byte & 0x40u) != 0u;
@@ -76,34 +89,44 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let px = floor(world_x * 8.0);
         let py = floor(world_y * 8.0);
         let land_noise = fract(sin(px * 12.9898 + py * 78.233) * 43758.5453);
-        let noise_offset = (land_noise - 0.5) * 0.05; // Gentle ±2.5% color variation
+        let noise_offset = (land_noise - 0.5) * 0.03; // Gentle ±1.5% color variation
 
         if is_shoreline {
             let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);
-            terrain_color = vec4<f32>(base + noise_offset * 0.5, 1.0); // OpenFront Shore
+            terrain_color = vec4<f32>(base + noise_offset * 0.5, 1.0); // Shore
         } else if mag_center < 10.0 {
             let r = 190.0 / 255.0;
             let g = (220.0 - 2.0 * mag_center) / 255.0;
             let b = 138.0 / 255.0;
-            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset, 1.0); // OpenFront Plains
+            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset, 1.0); // Plains
         } else if mag_center < 20.0 {
             let r = (200.0 + 2.0 * mag_center) / 255.0;
             let g = (183.0 + 2.0 * mag_center) / 255.0;
             let b = (138.0 + 2.0 * mag_center) / 255.0;
-            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset * 1.2, 1.0); // OpenFront Highlands
+            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset * 1.2, 1.0); // Highlands
         } else {
             // Smooth blend/fusion from high Highland color to snowy white peak
             let highland_base = vec3<f32>(240.0 / 255.0, 223.0 / 255.0, 178.0 / 255.0);
-            let snowy_peak = vec3<f32>(245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0);
+            let snowy_peak = vec3<f32>(248.0 / 255.0, 248.0 / 255.0, 248.0 / 255.0);
             let blend = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
             let peak_color = mix(highland_base, snowy_peak, blend);
-            terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // OpenFront Mountains
+            terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // Mountains
         }
+
+        // Procedural Normal Mapping from Adjacent elevation gradient
+        let h_left  = get_elevation(cell_x - 1, cell_y);
+        let h_right = get_elevation(cell_x + 1, cell_y);
+        let h_up    = get_elevation(cell_x, cell_y - 1);
+        let h_down  = get_elevation(cell_x, cell_y + 1);
+        
+        let dx = (h_right - h_left) * 0.12;
+        let dy = (h_down - h_up) * 0.12;
+        normal = normalize(vec3<f32>(-dx, -dy, 1.0));
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
         
-        let px = floor(world_x * 8.0);
-        let py = floor(world_y * 8.0);
+        let px = world_x * 8.0;
+        let py = world_y * 8.0;
         
         // Procedural stable seed per tile for unique regional wave properties
         let tile_seed = fract(sin(f32(cell_x) * 12.9898 + f32(cell_y) * 78.233) * 43758.5453);
@@ -120,9 +143,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let sparkle_hash = fract(sin(px * 12.9898 + py * 78.233 + sparkle_t) * 43758.5453);
         let has_sparkle = sparkle_hash > 0.988;
 
-        var color_deep = vec3<f32>(70.0 / 255.0, 132.0 / 255.0, 180.0 / 255.0); // OpenFront base blue
+        var color_deep = vec3<f32>(70.0 / 255.0, 132.0 / 255.0, 180.0 / 255.0); // Ocean
         var color_mid  = vec3<f32>(85.0 / 255.0, 143.0 / 255.0, 215.0 / 255.0);
-        var color_foam = vec3<f32>(100.0 / 255.0, 143.0 / 255.0, 255.0 / 255.0); // OpenFront Shoreline water
+        var color_foam = vec3<f32>(100.0 / 255.0, 143.0 / 255.0, 255.0 / 255.0); // Shoreline water
         
         if !is_ocean_water {
             // River/Lake uses a fresh, teal-tinted pastel blue
@@ -141,9 +164,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
 
         terrain_color = vec4<f32>(final_water_color, 1.0);
+
+        // Water Wave Normal Shading
+        let wave_dx = cos(px * freq_x + py * freq_y + t) * freq_x - sin(py * freq_x - px * freq_y + t * 0.7) * freq_y;
+        let wave_dy = cos(px * freq_x + py * freq_y + t) * freq_y + sin(py * freq_x - px * freq_y + t * 0.7) * freq_x;
+        normal = normalize(vec3<f32>(-wave_dx * 0.8, -wave_dy * 0.8, 1.0));
+        is_specular = true;
     }
 
-    // Convert sRGB palette input to linear space so final pow(base_color, 1.0/2.2) renders the exact intended colors
+    // Convert sRGB palette input to linear space
     terrain_color = vec4<f32>(pow(terrain_color.rgb, vec3<f32>(2.2)), terrain_color.a);
 
     var base_color = terrain_color.rgb;
@@ -210,7 +239,40 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    // Convert from linear to sRGB for final output to the Unorm surface
+    // ── Upgraded Lighting (Sun directional diffuse + Specular highlights) ──
+    let light_dir = normalize(vec3<f32>(-1.0, -1.0, 1.6)); // Directional sun light from top-left
+    let diffuse = max(0.68, dot(normal, light_dir));
+    base_color = base_color * (diffuse * 1.12);
+
+    if is_specular {
+        let view_dir = vec3<f32>(0.0, 0.0, 1.0);
+        let half_dir = normalize(light_dir + view_dir);
+        let spec = pow(max(0.0, dot(normal, half_dir)), 96.0);
+        base_color = base_color + vec3<f32>(0.15 * spec);
+    }
+
+    // ── Embossed Cell Vignette (Real board game physical tile borders) ──
+    let fx_cell = fract(world_x);
+    let fy_cell = fract(world_y);
+    let edge_x = min(fx_cell, 1.0 - fx_cell);
+    let edge_y = min(fy_cell, 1.0 - fy_cell);
+    let min_edge = min(edge_x, edge_y);
+    let cell_bevel = smoothstep(0.0, 0.06, min_edge);
+    base_color = base_color * (0.86 + 0.14 * cell_bevel); // Emphasizes 3D depth of individual tiles
+
+    // ── Tactile Canvas/Matte Paper Texture Overlay ──
+    let px_screen = in.uv.x * 2400.0;
+    let py_screen = in.uv.y * 2400.0;
+    let paper_noise = fract(sin(px_screen * 12.9898 + py_screen * 78.233) * 43758.5453);
+    let paper_grain = 0.95 + 0.05 * paper_noise;
+    base_color = base_color * paper_grain;
+
+    // ── Screen Vignetting (Soft shading at screen edges) ──
+    let d_center = length(in.uv - 0.5);
+    let vignette = smoothstep(0.8, 0.45, d_center);
+    base_color = base_color * (0.82 + 0.18 * vignette);
+
+    // Convert from linear to sRGB for final output
     let final_color = pow(base_color, vec3<f32>(1.0 / 2.2));
     return vec4<f32>(final_color, 1.0);
 }

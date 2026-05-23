@@ -285,25 +285,20 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
                     // Draw ghost SVG
                     {
-                        let uri = match kind {
-                            sow_core::game::BuildingKind::City => "bytes://city.svg",
-                            sow_core::game::BuildingKind::Factory => "bytes://factory.svg",
-                            sow_core::game::BuildingKind::Port => "bytes://port.svg",
-                            sow_core::game::BuildingKind::Industry => "bytes://factory.svg",
-                            sow_core::game::BuildingKind::Cultural => "bytes://city.svg",
-                            sow_core::game::BuildingKind::Science => "bytes://sam_launcher.svg",
-                            sow_core::game::BuildingKind::DefensePost => "bytes://defense_post.svg",
-                            sow_core::game::BuildingKind::SamLauncher => "bytes://sam_launcher.svg",
-                            sow_core::game::BuildingKind::MissileSilo => "bytes://missile_silo.svg",
-                        };
+                        let uri = kind.asset().uri();
                         let base_size = get_building_icon_size(tile_size);
                         let size_hint = egui::load::SizeHint::Size { width: 64, height: 64, maintain_aspect_ratio: true };
                         if let Ok(egui::load::TexturePoll::Ready { texture }) = painter.ctx().try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint) {
+                            let tint = if kind.asset().is_svg() {
+                                egui::Color32::BLACK
+                            } else {
+                                egui::Color32::from_white_alpha(180)
+                            };
                             painter.image(
                                 texture.id,
                                 egui::Rect::from_center_size(egui::pos2(tile_screen_x, tile_screen_y), egui::vec2(base_size, base_size)),
                                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                egui::Color32::BLACK,
+                                tint,
                             );
                         }
                     }

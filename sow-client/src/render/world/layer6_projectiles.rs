@@ -114,11 +114,9 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 }
 
                 let uri = match proj.kind {
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::AtomBomb) => "bytes://atombomb.png",
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => "bytes://hydrogenbomb.png",
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::MIRV) => "bytes://mirv.png",
-                    sow_core::game::ProjectileKind::MIRVWarhead => "bytes://atombomb.png",
-                    sow_core::game::ProjectileKind::SAMMissile => "bytes://sam_missile.png",
+                    sow_core::game::ProjectileKind::Nuke(nk) => nk.asset().uri(),
+                    sow_core::game::ProjectileKind::MIRVWarhead => sow_core::assets::Asset::AtomBomb.uri(),
+                    sow_core::game::ProjectileKind::SAMMissile => sow_core::assets::Asset::SamMissile.uri(),
                     sow_core::game::ProjectileKind::Shell => continue,
                 };
 

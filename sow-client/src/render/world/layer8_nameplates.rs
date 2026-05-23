@@ -395,12 +395,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             name_pos_start.y + 1.0,
                         );
                         let star_rect = egui::Rect::from_min_size(star_pos, egui::vec2(star_size, star_size));
-                        let star_uri = "bytes://star.svg";
-                        // S5: Register star.svg bytes only once
-                        if !ui.star_svg_registered {
-                            painter.ctx().include_bytes(star_uri, include_bytes!("../../../assets/star.svg"));
-                            ui.star_svg_registered = true;
-                        }
+                        let star_uri = sow_core::assets::Asset::Star.uri();
                         let size_hint = egui::load::SizeHint::Size {
                             width: star_size.round() as u32,
                             height: star_size.round() as u32,

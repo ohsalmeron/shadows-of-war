@@ -31,8 +31,8 @@ serde_json = "1"
 web-time = "1.1"
 wyrand = "0.2"
 egui = "0.34"
-egui_extras = { path = "egui/crates/egui_extras", default-features = false, features = ["svg"] }
-image = { version = "0.25.10", default-features = false, features = ["webp"] }
+egui_extras = { path = "egui/crates/egui_extras", default-features = false, features = ["svg", "image", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["webp", "png"] }
 sow-lang = { path = "sow-lang" }
 sow-map = { path = "sow-map" }
 sow-ui = { path = "sow-ui" }

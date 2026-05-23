@@ -196,17 +196,7 @@ fn draw_buildings_dock(
                         egui::vec2(icon_size, icon_size),
                     );
                     
-                    let uri = match kind {
-                        sow_core::game::BuildingKind::City => "bytes://city.svg",
-                        sow_core::game::BuildingKind::Factory => "bytes://factory.svg",
-                        sow_core::game::BuildingKind::Port => "bytes://port.svg",
-                        sow_core::game::BuildingKind::Industry => "bytes://factory.svg",
-                        sow_core::game::BuildingKind::Cultural => "bytes://city.svg",
-                        sow_core::game::BuildingKind::Science => "bytes://sam_launcher.svg",
-                        sow_core::game::BuildingKind::DefensePost => "bytes://defense_post.svg",
-                        sow_core::game::BuildingKind::SamLauncher => "bytes://sam_launcher.svg",
-                        sow_core::game::BuildingKind::MissileSilo => "bytes://missile_silo.svg",
-                    };
+                    let uri = kind.asset().uri();
                     
                     let image = egui::Image::new(uri).tint(tint);
                     image.paint_at(ui, icon_rect);
@@ -255,14 +245,15 @@ fn draw_buildings_dock(
                     ui.separator();
                     ui.add_space(4.0);
                     
-                    let nukes: [(sow_core::game::NukeKind, &str, &str); 3] = [
-                        (sow_core::game::NukeKind::AtomBomb, "bytes://atombomb.png", "Atom"),
-                        (sow_core::game::NukeKind::HydrogenBomb, "bytes://hydrogenbomb.png", "H-Bomb"),
-                        (sow_core::game::NukeKind::MIRV, "bytes://mirv.png", "MIRV"),
+                    let nukes: [(sow_core::game::NukeKind, &str); 3] = [
+                        (sow_core::game::NukeKind::AtomBomb, "Atom"),
+                        (sow_core::game::NukeKind::HydrogenBomb, "H-Bomb"),
+                        (sow_core::game::NukeKind::MIRV, "MIRV"),
                     ];
                     
-                    for (ni, (nuke_kind, uri, label)) in nukes.iter().enumerate() {
-                        let is_selected = state.selected_nuke_kind == Some(*nuke_kind);
+                    for (ni, &(nuke_kind, label)) in nukes.iter().enumerate() {
+                        let uri = nuke_kind.asset().uri();
+                        let is_selected = state.selected_nuke_kind == Some(nuke_kind);
                         let nk_col_w = if compact { 28.0 } else { 36.0 };
                         
                         let tint = if is_selected {
@@ -294,7 +285,7 @@ fn draw_buildings_dock(
                                 sow_core::game::NukeKind::HydrogenBomb => "Massive nuclear payload. Wipes out everything in a huge radius.",
                                 sow_core::game::NukeKind::MIRV => "Splits into multiple warheads over target area. Very hard to intercept.",
                             };
-                            ui.label(egui::RichText::new(*label).strong().size(14.0).color(egui::Color32::from_rgb(239, 68, 68)));
+                            ui.label(egui::RichText::new(label).strong().size(14.0).color(egui::Color32::from_rgb(239, 68, 68)));
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
                         });
@@ -328,14 +319,14 @@ fn draw_buildings_dock(
                             egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
                             egui::vec2(icon_size, icon_size),
                         );
-                        let image = egui::Image::new(*uri).tint(tint);
+                        let image = egui::Image::new(uri).tint(tint);
                         image.paint_at(ui, icon_rect);
                         
                         let font_size = if compact { 7.0 } else { 8.0 };
                         ui.painter().text(
                             egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
                             egui::Align2::CENTER_CENTER,
-                            *label,
+                            label,
                             egui::FontId::proportional(font_size),
                             if is_selected { egui::Color32::from_rgb(239, 68, 68) } else { egui::Color32::GRAY },
                         );
@@ -344,7 +335,7 @@ fn draw_buildings_dock(
                             if is_selected {
                                 state.selected_nuke_kind = None;
                             } else {
-                                state.selected_nuke_kind = Some(*nuke_kind);
+                                state.selected_nuke_kind = Some(nuke_kind);
                                 state.selected_building_kind = None;
                             }
                         }
@@ -357,20 +348,7 @@ fn draw_buildings_dock(
 pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>, lang: Language) -> Option<UiAction> {
     static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
     REGISTER_ONCE.call_once(|| {
-        ui.ctx().include_bytes("bytes://city.svg", include_bytes!("../../../../sow-client/assets/city.svg").as_slice());
-        ui.ctx().include_bytes("bytes://factory.svg", include_bytes!("../../../../sow-client/assets/factory.svg").as_slice());
-        ui.ctx().include_bytes("bytes://port.svg", include_bytes!("../../../../sow-client/assets/port.svg").as_slice());
-        ui.ctx().include_bytes("bytes://defense_post.svg", include_bytes!("../../../../sow-client/assets/defense_post.svg").as_slice());
-        ui.ctx().include_bytes("bytes://sam_launcher.svg", include_bytes!("../../../../sow-client/assets/sam_launcher.svg").as_slice());
-        ui.ctx().include_bytes("bytes://missile_silo.svg", include_bytes!("../../../../sow-client/assets/missile_silo.svg").as_slice());
-        ui.ctx().include_bytes("bytes://trade_ship.svg", include_bytes!("../../../../sow-client/assets/trade_ship.svg").as_slice());
-        ui.ctx().include_bytes("bytes://transport_ship.svg", include_bytes!("../../../../sow-client/assets/transport_ship.svg").as_slice());
-        ui.ctx().include_bytes("bytes://battleship.svg", include_bytes!("../../../../sow-client/assets/battleship.svg").as_slice());
-        ui.ctx().include_bytes("bytes://atombomb.png", include_bytes!("../../../../sow-client/assets/atombomb.png").as_slice());
-        ui.ctx().include_bytes("bytes://hydrogenbomb.png", include_bytes!("../../../../sow-client/assets/hydrogenbomb.png").as_slice());
-        ui.ctx().include_bytes("bytes://mirv.png", include_bytes!("../../../../sow-client/assets/mirv.png").as_slice());
-        ui.ctx().include_bytes("bytes://sam_missile.png", include_bytes!("../../../../sow-client/assets/sam_missile.png").as_slice());
-        ui.ctx().include_bytes("bytes://nuke_explosion.png", include_bytes!("../../../../sow-client/assets/nuke_explosion.png").as_slice());
+        sow_core::register_game_assets!(ui.ctx(), "../../../../sow-client/assets/");
     });
 
     let mut action = None;
