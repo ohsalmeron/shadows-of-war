@@ -1,6 +1,6 @@
 use sow_render::{MapRenderer, RenderContext};
 
-use crate::hud::nameplate::*;
+
 use crate::spawn_sow_client_connect;
 use crate::{EngineInitEvent, MapDownloadEvent};
 use blade_egui::GuiPainter;
@@ -115,7 +115,7 @@ pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
     pub raw_input: egui::RawInput,
-    pub troop_label_throttle: crate::hud::nameplate::TroopLabelThrottle,
+
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub tutorial_completed: bool,
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
@@ -130,7 +130,7 @@ pub struct UiState {
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
     pub cached_railroads: std::collections::HashMap<u64, (Vec<u32>, Vec<crate::render::world::RailTile>)>,
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
-    pub nameplate_galleys: std::collections::HashMap<u16, (String, f64, egui::FontId, std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)>,
+    pub nameplate_galleys: std::collections::HashMap<u16, (String, String, egui::FontId, std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)>,
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,
     pub last_preview_tile: Option<u32>,
@@ -249,7 +249,7 @@ impl SowApp {
         let pending_engine_init_data: Option<EngineInitData> = None;
         let engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
-        let troop_label_throttle = TroopLabelThrottle::default();
+
 
         let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
@@ -418,7 +418,7 @@ impl SowApp {
                 app,
                 egui_ctx,
                 raw_input,
-                troop_label_throttle,
+
                 label_positions: std::collections::HashMap::new(),
                 tutorial_completed,
                 tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
@@ -472,7 +472,7 @@ impl SowApp {
     }
 
     /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
-    pub(crate) fn begin_exit_to_main_menu(&mut self) {
+    pub(crate) fn begin_exit_to_main_menu(&mut self, use_loader: bool) {
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
         self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
@@ -490,9 +490,13 @@ impl SowApp {
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
-        self.ui.app.phase = ClientPhase::Splash;
-        let lang = self.ui.app.settings_state.language;
-        self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
+        if use_loader {
+            self.ui.app.phase = ClientPhase::Splash;
+            let lang = self.ui.app.settings_state.language;
+            self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
+        } else {
+            self.ui.app.phase = ClientPhase::MainMenu;
+        }
         self.ui.is_spectating = false;
     }
 

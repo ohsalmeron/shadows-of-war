@@ -1,24 +1,6 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 
-
-/// Nameplate troop text: matches with each tick for 100% sync.
-#[derive(Default)]
-pub struct TroopLabelThrottle {
-    shown_troops: HashMap<u16, f64>,
-}
-
-impl TroopLabelThrottle {
-    pub fn displayed_troops(&mut self, _tick: u64, player_id: u16, sim_troops: f64) -> f64 {
-        self.shown_troops.insert(player_id, sim_troops);
-        sim_troops
-    }
-
-    pub fn clear(&mut self) {
-        self.shown_troops.clear();
-    }
-}
 
 /// Paper-map label ink (off-white, not pure white).
 pub const NAMEPLATE_FILL: egui::Color32 = egui::Color32::BLACK;
@@ -49,6 +31,7 @@ pub fn paint_glow_text(
     font_id: egui::FontId,
     base_color: egui::Color32,
     rect_size: egui::Vec2,
+    is_tribe: bool,
 ) {
     if text.is_empty() {
         return;
@@ -57,8 +40,13 @@ pub fn paint_glow_text(
     // Opaque Matte Black for outline and 3D dragged shadow (Supercell style!)
     let black = egui::Color32::BLACK;
 
-    // 1. Dragged-down 3D Opaque Black Shadow (creates a solid 3D block)
-    for dy in &[1.0, 2.0, 3.0, 4.0] {
+    // 1. Dragged-down 3D Opaque Black Shadow (shallower 2px depth for Tribes to tune it down; full 4px depth for Players/Nations)
+    let shadow_offsets = if is_tribe {
+        &[1.0, 2.0][..]
+    } else {
+        &[1.0, 2.0, 3.0, 4.0][..]
+    };
+    for dy in shadow_offsets {
         painter.text(pos + egui::vec2(-1.5, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
         painter.text(pos + egui::vec2(1.5, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
         painter.text(pos + egui::vec2(0.0, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
@@ -76,11 +64,11 @@ pub fn paint_glow_text(
     // 3. Top-to-Bottom Gradient Core: top is the pure base color (brightest), bottom is 50% brightness of the base color
     let bright_top = base_color;
 
-    // Dark bottom: 50% brightness of the base color
+    // Dark bottom: 72% brightness of the base color (less dark, more pastel/vibrant!)
     let dark_bottom = egui::Color32::from_rgb(
-        (base_color.r() as u32 * 50 / 100) as u8,
-        (base_color.g() as u32 * 50 / 100) as u8,
-        (base_color.b() as u32 * 50 / 100) as u8,
+        (base_color.r() as u32 * 72 / 100) as u8,
+        (base_color.g() as u32 * 72 / 100) as u8,
+        (base_color.b() as u32 * 72 / 100) as u8,
     );
 
     // Draw the bright top layer first
@@ -102,9 +90,10 @@ pub fn paint_glow_nameplate_galley(
     galley: Arc<egui::Galley>,
     base_color: egui::Color32,
     font_id: egui::FontId,
+    is_tribe: bool,
 ) {
     if !galley.is_empty() {
-        paint_glow_text(painter, pos, &galley.text(), font_id, base_color, galley.rect.size());
+        paint_glow_text(painter, pos, &galley.text(), font_id, base_color, galley.rect.size(), is_tribe);
     }
 }
 

@@ -160,7 +160,7 @@ impl Default for GameConfig {
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning
-            map_name: "europe".to_string(),
+            map_name: "world".to_string(),
             game_mode: "FFA".to_string(),
             map_width: 2904,
             map_height: 1672,
@@ -168,7 +168,7 @@ impl Default for GameConfig {
             map_control_win_percentage: 0.60,
 
             // Core Simulation Pacing
-            tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
+            tick_rate_ms: 50.0, // Server clock ticks every 100ms (10 ticks per second)
             global_speed_multiplier: 0.25,
 
             // Combat & Expansion Mechanics
@@ -186,13 +186,13 @@ impl Default for GameConfig {
             starting_troops: 1000.0,
             starting_gold: 500_000_000.0, // TODO: revert to 1000.0 after testing
             gold_base_income: 8.0,
-            troop_base_income: 200.0,
+            troop_base_income: 250.0,
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
             city_max_troops_per_level: 1000.0,
-            factory_income_bonus_per_level: 100.0,
-            factory_income_bonus_cap: 10000.0,
-            gold_income_per_city_level: 50.0,
+            factory_income_bonus_per_level: 8.0,
+            factory_income_bonus_cap: 100.0,
+            gold_income_per_city_level: 8.0,
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,
         }

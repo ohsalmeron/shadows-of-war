@@ -41,7 +41,8 @@ impl SowApp {
     }
 
     pub(crate) fn render_dev_panels(&mut self, ctx: &egui::Context) {
-        let compact = ctx.content_rect().width() < 768.0;
+        let rect = ctx.content_rect();
+        let compact = rect.width() < 1024.0 || rect.width() < rect.height() * 1.25;
         let text_size = if compact { 10.0 } else { 12.0 };
         let padding = if compact {
             egui::Margin::symmetric(6, 3)

@@ -10,7 +10,7 @@ impl SowEngine {
         troops: Option<f64>,
     ) {
         let Some(player) = self.state.player(player_id) else {
-            println!("apply_launch_fleet_intent: player {} not found", player_id);
+            log::debug!("apply_launch_fleet_intent: player {} not found", player_id);
             return;
         };
         if !player.alive {
@@ -18,7 +18,7 @@ impl SowEngine {
         }
         let map_area = self.state.map.width.saturating_mul(self.state.map.height);
         if map_area == 0 || target_tile >= map_area {
-            println!(
+            log::debug!(
                 "apply_launch_fleet_intent: out-of-range target_tile={} (player {})",
                 target_tile, player_id
             );
@@ -51,7 +51,7 @@ impl SowEngine {
             match self.state.player(target_owner) {
                 Some(p) => Some(&p.border_tiles),
                 None => {
-                    println!(
+                    log::debug!(
                         "apply_launch_fleet_intent: target_owner={} not found (player {})",
                         target_owner, player_id
                     );
@@ -77,7 +77,7 @@ impl SowEngine {
         ) {
             Ok(r) => r,
             Err(e) => {
-                println!(
+                log::debug!(
                     "apply_launch_fleet_intent: {} (player {}, target_owner={}, tile={})",
                     e, player_id, target_owner, target_tile
                 );

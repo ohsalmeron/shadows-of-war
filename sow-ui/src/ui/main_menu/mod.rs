@@ -161,8 +161,13 @@ pub fn draw(
                     u1 = 1.0 - u0;
                 } else {
                     let crop_h = tex_aspect / screen_aspect;
-                    v0 = (1.0 - crop_h) / 2.0;
-                    v1 = 1.0 - v0;
+                    if is_mobile {
+                        v0 = 0.0;
+                        v1 = crop_h;
+                    } else {
+                        v0 = (1.0 - crop_h) / 2.0;
+                        v1 = 1.0 - v0;
+                    }
                 }
 
                 ui.painter().image(

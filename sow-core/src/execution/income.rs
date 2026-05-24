@@ -18,7 +18,6 @@ impl SowEngine {
                 .unwrap_or(0);
             self.building_aggregates =
                 aggregate_buildings_per_player(self.buildings.iter().copied(), max_pid);
-            self.region_grid.rebuild(self.state.map.width, self.state.map.height, &self.state.map.state, &self.buildings);
             self.building_aggregates_dirty = false;
         }
 
@@ -59,12 +58,21 @@ impl SowEngine {
             let t_eighth = t_quarter.sqrt();
             let max_troops_bonus = t_half * t_eighth;
 
-            player.max_troops = config.max_troops_base
+            let is_standard_bot = player.player_type == crate::player::PlayerType::Bot && player.id % 100 != 0;
+
+            let mut max_tr = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
                 + agg.city_levels as f64 * config.city_max_troops_per_level
                 + agg.factory_levels as f64 * 500.0;
+            if is_standard_bot {
+                max_tr /= 1.5;
+            }
+            player.max_troops = max_tr;
 
-            let raw_income = config.per_tick(config.troop_base_income);
+            let mut raw_income = config.per_tick(config.troop_base_income);
+            if is_standard_bot {
+                raw_income *= 0.75;
+            }
 
             let cap_extra = (config.factory_income_bonus_cap - 1.0).max(0.0);
             let sun_tzu_mult = if player.leader == crate::player::Leader::SunTzu { 1.20 } else { 1.0 };
@@ -87,11 +95,38 @@ impl SowEngine {
             let city_gold = agg.city_levels as f64 * config.gold_income_per_city_level;
 
             let gold_base = config.gold_base_income;
-            let gold_income = config.per_tick(gold_base + city_gold + industry_gold + port_gold);
+            let mut gold_income = config.per_tick(gold_base + city_gold + industry_gold + port_gold);
+            if is_standard_bot {
+                gold_income *= 0.75;
+            }
             player.gold = safe_gold + gold_income;
 
             let iq_gain = config.per_tick(player.iq as f64 / 100.0);
             player.iq_points = (player.iq_points + iq_gain).min(500.0);
+        }
+
+        // Delete any captured structures owned by standard bots (tribes)
+        let mut buildings_deleted = false;
+        let p_lookup = &self.state.player_lookup;
+        let p_list = &self.state.players;
+        self.buildings.retain(|b| {
+            let pid_usize = b.owner_id as usize;
+            let is_standard_bot = if pid_usize < p_lookup.len() {
+                p_lookup[pid_usize].and_then(|idx| p_list.get(idx)).map_or(false, |p| {
+                    p.player_type == crate::player::PlayerType::Bot && p.id % 100 != 0
+                })
+            } else {
+                false
+            };
+            if is_standard_bot {
+                buildings_deleted = true;
+                false
+            } else {
+                true
+            }
+        });
+        if buildings_deleted {
+            self.building_aggregates_dirty = true;
         }
 
         let mut tribes_needing_city = Vec::new();

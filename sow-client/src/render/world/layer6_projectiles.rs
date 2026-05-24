@@ -29,7 +29,7 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let (wx_prev, wy_prev) = tile_to_world(proj.path[prev_cursor], map_w);
 
             // Smooth interpolation between prev and current tile
-            let sim_dt = std::time::Instant::now().duration_since(time.last_tick).as_secs_f32();
+            let sim_dt = web_time::Instant::now().duration_since(time.last_tick).as_secs_f32();
             let tick_dur = time.tick_interval.as_secs_f32().max(0.01);
             let mut t = (sim_dt / tick_dur).clamp(0.0, 1.0);
             t = t * t * (3.0 - 2.0 * t); // smoothstep
@@ -196,11 +196,7 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
                 rx = attacker.centroid_x + 0.5 + (attacker.centroid_y as i32 % 2) as f32 * 0.5;
                 ry = (attacker.centroid_y + 0.5) * 0.8660254_f32;
-                let rgb = if attacker.player_type == sow_core::player::PlayerType::Human {
-                    sow_core::player::human_shader_territory_rgb(attacker.id)
-                } else {
-                    attacker.color
-                };
+                let rgb = attacker.color;
                 r = rgb[0];
                 g = rgb[1];
                 b = rgb[2];

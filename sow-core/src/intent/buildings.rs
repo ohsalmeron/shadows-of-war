@@ -38,7 +38,7 @@ impl SowEngine {
             &self.building_grid,
             &mut self.placement_scratch,
         ) else {
-            println!(
+            log::debug!(
                 "apply_build_structure: no valid spawn for {:?} at tile {}",
                 kind, target_tile
             );
@@ -69,7 +69,7 @@ impl SowEngine {
                 }
             }
             let Some(city) = city_covering else {
-                println!("apply_build_structure: district {:?} at {} not within 12 tiles of an owned City Center", kind, spawn_idx);
+                log::debug!("apply_build_structure: district {:?} at {} not within 12 tiles of an owned City Center", kind, spawn_idx);
                 return;
             };
 
@@ -95,7 +95,7 @@ impl SowEngine {
             }
 
             if district_count >= city.level as u32 {
-                println!(
+                log::debug!(
                     "apply_build_structure: city at {} has reached district slots limit ({}/{})",
                     city.tile_idx, district_count, city.level
                 );
@@ -154,7 +154,7 @@ impl SowEngine {
             found = Some((idx, b.kind, b.tile_idx));
         }
         let Some((idx, kind, tile_idx)) = found else {
-            println!("apply_upgrade_structure: id {} not found", building_id);
+            log::debug!("apply_upgrade_structure: id {} not found", building_id);
             return;
         };
         if !structure_kind_enabled(kind) {

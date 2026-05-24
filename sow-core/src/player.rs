@@ -208,7 +208,15 @@ impl Player {
         config: &crate::game_config::GameConfig,
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
-        let iq = rng.next_int(80, 131) as u32;
+        let iq = if id % 100 == 0 {
+            rng.next_int(130, 181) as u32 // 1% Smartest tribes (Nation disguise)
+        } else if id % 10 == 0 {
+            rng.next_int(100, 121) as u32 // 9% Advanced tribes
+        } else if id % 10 == 1 {
+            rng.next_int(60, 81) as u32  // 10% Stupidest tribes
+        } else {
+            rng.next_int(85, 106) as u32 // 80% Standard baseline tribes
+        };
         let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
         let leader = match civ {
             Civilization::Rome => Leader::Caesar,
@@ -218,15 +226,22 @@ impl Player {
             Civilization::Macedon => Leader::Alexander,
             Civilization::Mongols => Leader::GenghisKhan,
         };
+        let is_smart_tribe = id % 100 == 0;
+        let starting_troops = config.starting_troops;
+        let starting_gold = if is_smart_tribe {
+            config.starting_gold
+        } else {
+            0.0
+        };
         Self {
             id,
             alive: true,
             player_type: PlayerType::Bot,
             name,
             color,
-            troops: config.starting_troops,
+            troops: starting_troops,
             max_troops: config.max_troops_base,
-            gold: config.starting_gold,
+            gold: starting_gold,
             has_spawned: false,
             sum_x: 0,
             sum_y: 0,
@@ -257,7 +272,7 @@ impl Player {
         config: &crate::game_config::GameConfig,
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
-        let iq = rng.next_int(110, 161) as u32;
+        let iq = rng.next_int(130, 181) as u32;
         let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
         let leader = match civ {
             Civilization::Rome => Leader::Caesar,

@@ -201,7 +201,7 @@ impl SowApp {
                             let mut s_thick = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_shore_thickness"),
-                                    || 0.0f32,
+                                    || 0.08f32,
                                 )
                             });
                             let mut s_dark = ctx.data_mut(|d| {

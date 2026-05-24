@@ -45,7 +45,7 @@ impl SowApp {
         if show_endgame {
             // Dim background
             egui::Area::new(egui::Id::new("endgame_dimmer"))
-                .order(egui::Order::Background)
+                .order(egui::Order::Foreground)
                 .fixed_pos(egui::Pos2::ZERO)
                 .show(ctx, |ui| {
                     let rect = ctx.content_rect();
@@ -81,6 +81,7 @@ impl SowApp {
                 .title_bar(false)
                 .collapsible(false)
                 .resizable(false)
+                .order(egui::Order::Foreground)
                 .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
                 .frame(
                     egui::Frame::window(&ctx.global_style())
@@ -143,7 +144,7 @@ impl SowApp {
                         if ui.add(return_btn).clicked() {
                             // Disconnect and return to main menu
                             self.net.client = None;
-                            self.begin_exit_to_main_menu();
+                            self.begin_exit_to_main_menu(true);
                         }
 
                         // Add SPECTATE button if defeated but the game has not officially ended

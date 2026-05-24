@@ -569,8 +569,8 @@ impl SowApp {
             let intent = sow_core::protocol::GameplayIntent::Attack(attack);
 
             if is_allied {
-                // Intercept and open context menu instead
-                self.open_context_menu_at(x, y);
+                // Do not attack nor open menu on press; handled on release (click) instead
+                return;
             } else {
                 if !is_touch {
                     // Desktop: fire immediately
@@ -742,6 +742,23 @@ impl SowApp {
                 self.input.selected_warships = clicked_warships;
             } else {
                 self.input.selected_warships.clear();
+
+                // If not selecting warships, check if we clicked on allied territory to open context menu on release
+                let idx = (row * self.sim.map_w as i32 + col) as usize;
+                let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+                let my_id = self.sim.my_player_id.unwrap_or(0);
+                let is_betrayer = self.sim.current_snapshot.as_ref()
+                    .and_then(|s| s.players.iter().find(|p| p.id == owner))
+                    .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                    .unwrap_or(false);
+                let is_allied = self.sim.current_snapshot.as_ref()
+                    .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                    .map(|p| p.alliances.contains(&owner) && !is_betrayer)
+                    .unwrap_or(false);
+
+                if owner != 0 && owner != my_id && is_allied {
+                    self.open_context_menu_at(x, y);
+                }
             }
         }
     }
@@ -812,6 +829,17 @@ pub fn resolve_building_placement_tile(
     let mut found_any_land = false;
     let mut found_any_far_enough = false;
     let mut found_any_shoreline = false;
+    let mut found_any_near_city = false;
+    let mut found_any_under_slot_limit = false;
+
+    let is_district = matches!(
+        kind,
+        sow_core::game::BuildingKind::Factory
+            | sow_core::game::BuildingKind::Port
+            | sow_core::game::BuildingKind::Industry
+            | sow_core::game::BuildingKind::Cultural
+            | sow_core::game::BuildingKind::Science
+    );
 
     // 1. Gather valid land structure tiles within pokayoke_dist of click target
     let mut valid_land_tiles = Vec::new();
@@ -857,6 +885,58 @@ pub fn resolve_building_placement_tile(
                 continue;
             }
             found_any_far_enough = true;
+
+            // Check district constraints
+            if is_district {
+                let mut city_covering = None;
+                for b in buildings {
+                    if b.owner_id == my_id && b.kind == sow_core::game::BuildingKind::City && !b.under_construction {
+                        let cx = (b.tile_idx % map_w) as i64;
+                        let cy = (b.tile_idx / map_w) as i64;
+                        let dist_x = tx as i64 - cx;
+                        let dist_y = ty as i64 - cy;
+                        if dist_x * dist_x + dist_y * dist_y <= 144 {
+                            city_covering = Some(b);
+                            break;
+                        }
+                    }
+                }
+                
+                let Some(city) = city_covering else {
+                    continue; // too far from City
+                };
+                found_any_near_city = true;
+
+                // Count existing districts around this City Center
+                let cx = (city.tile_idx % map_w) as i64;
+                let cy = (city.tile_idx / map_w) as i64;
+                let mut district_count = 0;
+                for b in buildings {
+                    if b.owner_id == my_id
+                        && matches!(
+                            b.kind,
+                            sow_core::game::BuildingKind::Factory
+                                | sow_core::game::BuildingKind::Port
+                                | sow_core::game::BuildingKind::Industry
+                                | sow_core::game::BuildingKind::Cultural
+                                | sow_core::game::BuildingKind::Science
+                        )
+                    {
+                        let dx = (b.tile_idx % map_w) as i64;
+                        let dy = (b.tile_idx / map_w) as i64;
+                        let cx_dist = dx - cx;
+                        let cy_dist = dy - cy;
+                        if cx_dist * cx_dist + cy_dist * cy_dist <= 144 {
+                            district_count += 1;
+                        }
+                    }
+                }
+
+                if district_count >= city.level as u32 {
+                    continue; // reached limit
+                }
+                found_any_under_slot_limit = true;
+            }
             
             valid_land_tiles.push((tx, ty, tile_idx));
         }
@@ -871,6 +951,14 @@ pub fn resolve_building_placement_tile(
         }
         if !found_any_far_enough {
             return Err("Too close to another structure! Minimum spacing is 8 tiles.");
+        }
+        if is_district {
+            if !found_any_near_city {
+                return Err("Districts must be built within 12 tiles of a completed owned City Center!");
+            }
+            if !found_any_under_slot_limit {
+                return Err("City has reached its district slots limit (1 per City level)!");
+            }
         }
         return Err("No space nearby!");
     }

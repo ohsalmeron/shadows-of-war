@@ -153,7 +153,7 @@ impl SowEngine {
         let target_owner = attack.target_owner;
 
         let Some(player) = self.state.player(player_id) else {
-            println!("apply_attack_intent: player {} not found", player_id);
+            log::debug!("apply_attack_intent: player {} not found", player_id);
             return;
         };
 

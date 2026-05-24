@@ -27,5 +27,4 @@ pub mod map_legacy;
 pub mod protocol;
 pub mod water_components;
 pub mod tribes;
-pub mod region;
 pub mod assets;

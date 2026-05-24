@@ -46,7 +46,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
     // Dark scrim behind the modal
     let screen_rect = root_ui.ctx().content_rect();
     root_ui.ctx().layer_painter(egui::LayerId::new(
-        egui::Order::Background,
+        egui::Order::Foreground,
         egui::Id::new("settings_scrim"),
     ))
     .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(200));
@@ -55,6 +55,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
         .title_bar(false)
         .collapsible(false)
         .resizable(false)
+        .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .fixed_size(egui::vec2(panel_w, 0.0))
         .frame(crate::ui::theme::standard_panel_frame(compact))

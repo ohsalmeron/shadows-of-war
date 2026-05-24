@@ -303,6 +303,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                             name: p.name.clone(),
                             is_ready: lobby.ready_players.contains(&p.player_id),
                             download_progress: p.download_progress,
+                            leader: p.leader,
                         })
                         .collect();
 
@@ -409,6 +410,7 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
                     name: p.name.clone(),
                     is_ready: g.ready_players.contains(&p.player_id),
                     download_progress: p.download_progress,
+                    leader: p.leader,
                 })
                 .collect(),
         })

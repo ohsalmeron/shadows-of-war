@@ -32,11 +32,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 let mut g = 0.5;
                 let mut b = 0.5;
                 if let Some(owner) = snap.players.iter().find(|p| p.id == fleet.owner_id) {
-                    let rgb = if owner.player_type == sow_core::player::PlayerType::Human {
-                        sow_core::player::human_shader_territory_rgb(owner.id)
-                    } else {
-                        owner.color
-                    };
+                    let rgb = owner.color;
                     r = rgb[0];
                     g = rgb[1];
                     b = rgb[2];

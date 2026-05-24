@@ -253,59 +253,67 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let albedo = owner_albedo(owner_id);
         base_color = mix(terrain_color.rgb, albedo, 0.75);
     }
+    let hex_center = hex_to_world(cell_hex);
+    let local_pos = vec2<f32>(world_x, world_y) - hex_center;
 
-    if owner_id > 0u {
-        let hex_center = hex_to_world(cell_hex);
-        let local_pos = vec2<f32>(world_x, world_y) - hex_center;
+    var is_shore = false;
+    var is_border = false;
+    var is_green_border = false;
 
-        var is_shore = false;
-        var is_border = false;
-        var is_green_border = false;
+    let thickness = globals.border_thickness;
+    let border_darkness = globals.border_darkness;
+    let s_thickness = globals.shore_thickness;
+    let s_darkness = globals.shore_darkness;
+
+    if is_land {
         let is_tribe = owner_id >= 200u;
-
-        let thickness = globals.border_thickness;
-        let border_darkness = globals.border_darkness;
-        let s_thickness = globals.shore_thickness;
-        let s_darkness = globals.shore_darkness;
 
         for (var i = 0; i < 6; i = i + 1) {
             let neighbor_hex = get_hex_neighbor(cell_hex, i);
+            let neighbor_terrain = get_cell_terrain(neighbor_hex);
             let neighbor_owner = get_cell_owner(neighbor_hex);
+            let neighbor_is_land = (neighbor_terrain & 0x80u) != 0u;
 
-            let border_exists = neighbor_owner != owner_id;
-            let shore_exists = border_exists && (neighbor_owner == 0u);
-            let green_exists = border_exists && is_tribe && (neighbor_owner >= 200u);
+            var dir = vec2<f32>(0.0, 0.0);
+            if (i == 0) { dir = vec2<f32>(1.0, 0.0); }
+            else if (i == 1) { dir = vec2<f32>(-1.0, 0.0); }
+            else if (i == 2) { dir = vec2<f32>(-0.5, -0.8660254); }
+            else if (i == 3) { dir = vec2<f32>(0.5, -0.8660254); }
+            else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
+            else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
 
-            if border_exists {
-                var dir = vec2<f32>(0.0, 0.0);
-                if (i == 0) { dir = vec2<f32>(1.0, 0.0); }
-                else if (i == 1) { dir = vec2<f32>(-1.0, 0.0); }
-                else if (i == 2) { dir = vec2<f32>(-0.5, -0.8660254); }
-                else if (i == 3) { dir = vec2<f32>(0.5, -0.8660254); }
-                else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
-                else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
+            let dist_to_edge = 0.5 - dot(local_pos, dir);
 
-                let dist_to_edge = 0.5 - dot(local_pos, dir);
-
-                if shore_exists && dist_to_edge < s_thickness {
+            if !neighbor_is_land {
+                if dist_to_edge < s_thickness {
                     is_shore = true;
                 }
-                if dist_to_edge < thickness {
-                    is_border = true;
-                    if green_exists {
-                        is_green_border = true;
+                if owner_id > 0u {
+                    if dist_to_edge < thickness {
+                        is_border = true;
+                    }
+                }
+            } else {
+                if owner_id > 0u && neighbor_owner != owner_id {
+                    if dist_to_edge < thickness {
+                        is_border = true;
+                        let green_exists = is_tribe && (neighbor_owner >= 200u);
+                        if green_exists {
+                            is_green_border = true;
+                        }
                     }
                 }
             }
         }
 
-        let is_defended = (terrain_byte & 0x40u) != 0u;
-        let is_even_tile = (u32(cell_hex.x) + u32(cell_hex.y)) % 2u == 0u;
-        let draw_line = !is_defended || is_even_tile;
-
-        if is_shore && draw_line {
-            base_color = base_color * s_darkness;
-        } else if is_border && draw_line {
+        if is_shore {
+            if owner_id > 0u {
+                let border_albedo = owner_albedo(owner_id) * border_darkness;
+                base_color = mix(border_albedo, vec3<f32>(0.015, 0.012, 0.010), 0.50);
+            } else {
+                base_color = vec3<f32>(0.025, 0.020, 0.015);
+            }
+        } else if is_border {
             if is_green_border {
                 base_color = vec3<f32>(0.2, 0.8, 0.2) * border_darkness;
             } else {
@@ -328,8 +336,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── Embossed Cell Vignette (Real board game physical tile borders) ──
-    let hex_center = hex_to_world(cell_hex);
-    let local_pos_bevel = vec2<f32>(world_x, world_y) - hex_center;
     var min_dist_to_edge = 0.5;
     for (var i = 0; i < 6; i = i + 1) {
         var dir = vec2<f32>(0.0, 0.0);
@@ -340,7 +346,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
         else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
 
-        let dist_to_edge = 0.5 - dot(local_pos_bevel, dir);
+        let dist_to_edge = 0.5 - dot(local_pos, dir);
         min_dist_to_edge = min(min_dist_to_edge, dist_to_edge);
     }
     let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);

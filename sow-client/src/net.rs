@@ -52,7 +52,7 @@ impl SowApp {
                     self.net.relay_connect_start = None;
                     self.net.relay_retry_count = 0;
                     self.ui.app.main_menu_state.error_message = Some("Failed to connect to the game server. Please check your internet connection.".to_string());
-                    self.begin_exit_to_main_menu();
+                    self.begin_exit_to_main_menu(true);
                 }
             }
         } else {
@@ -119,7 +119,7 @@ impl SowApp {
                             self.net.relay_connect_start = None;
                             self.net.relay_retry_count = 0;
                             self.ui.app.main_menu_state.error_message = Some("Failed to connect to the game server after 3 attempts.".to_string());
-                            self.begin_exit_to_main_menu();
+                            self.begin_exit_to_main_menu(true);
                         } else {
                             log::warn!("Relay connection failed; retrying rapid connection attempt {}/3", self.net.relay_retry_count + 1);
                             self.net.ws_connect_fail_backoff_ms = 100;
@@ -602,7 +602,7 @@ impl SowApp {
         } // end if let Some(c)
 
         if exit_to_menu_after_net {
-            self.begin_exit_to_main_menu();
+            self.begin_exit_to_main_menu(true);
         }
 
         if let Some(relay_port) = switch_to_relay {
@@ -671,7 +671,7 @@ impl SowApp {
                         "[CLIENT NET] Connection lost during match — returning to main menu"
                     );
                     self.ui.app.main_menu_state.error_message = Some("Connection to the matchmaking server was lost.".to_string());
-                    self.begin_exit_to_main_menu();
+                    self.begin_exit_to_main_menu(true);
                 }
             } else if self.ui.app.phase != ClientPhase::Splash {
                 log::warn!("[CLIENT NET] Disconnected outside match; reconnecting to orchestrator");

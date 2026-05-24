@@ -128,7 +128,7 @@ impl SowApp {
                 std::thread::spawn(init_logic);
 
                 self.sim.turn_queue.clear();
-                self.ui.troop_label_throttle.clear();
+
                 self.sim.current_snapshot = None;
                 self.gfx.needs_first_upload = true;
             }
@@ -192,7 +192,7 @@ impl SowApp {
                         });
                         self.sim.turn_queue.clear();
                         self.ui.label_positions.clear();
-                        self.ui.troop_label_throttle.clear();
+        
                         self.sim.current_snapshot = None;
                         self.gfx.needs_first_upload = true;
 

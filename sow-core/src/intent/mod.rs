@@ -93,10 +93,10 @@ impl SowEngine {
                         return;
                     }
                 }
-                println!(
-                "apply_stamped_intent: cancel attack_id={} for player {} — not found or not owner",
-                attack_id, pid
-            );
+                log::debug!(
+                    "apply_stamped_intent: cancel attack_id={} for player {} — not found or not owner",
+                    attack_id, pid
+                );
             }
             GameplayIntent::Attack(attack) => {
                 let owner = attack.target_owner;
@@ -262,6 +262,11 @@ impl SowEngine {
                     let proposer_alive = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
                     let target_alive = self.state.player(target).map(|p| p.alive).unwrap_or(false);
                     if proposer_alive && target_alive {
+                        let is_teammate = {
+                            let p_prop = self.state.player(proposer).unwrap();
+                            let p_target = self.state.player(target).unwrap();
+                            p_prop.team.is_some() && p_prop.team == p_target.team
+                        };
                         let (is_allied, can_renew) = self.state.player(proposer)
                             .map(|p| {
                                 let allied = p.alliances.contains(&target);
@@ -269,6 +274,16 @@ impl SowEngine {
                                 (allied, allied && timer <= 600) // 30 seconds expiration window
                             })
                             .unwrap_or((false, false));
+
+                        if is_teammate {
+                            log::warn!("ABERRATION: Player {} tried to propose alliance to teammate/ally {} in team game", proposer, target);
+                            return;
+                        }
+
+                        if is_allied && !can_renew {
+                            log::warn!("ABERRATION: Player {} tried to propose alliance to active ally {} outside renewal window", proposer, target);
+                            return;
+                        }
 
                         if !is_allied || can_renew {
                             if self.alliances_proposed.contains(&(target, proposer)) {

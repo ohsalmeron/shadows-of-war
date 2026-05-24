@@ -236,6 +236,8 @@ pub struct LobbyPlayerSyncState {
     pub name: String,
     pub is_ready: bool,
     pub download_progress: u8,
+    #[serde(default)]
+    pub leader: crate::player::Leader,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

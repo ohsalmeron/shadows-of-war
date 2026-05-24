@@ -69,10 +69,43 @@ pub fn draw_leader_picker_modal(
             let screen_rect = ctx.content_rect();
             let is_mobile = screen_rect.width() < 720.0;
 
+            let content_rect = if is_mobile {
+                let mut rect = screen_rect;
+                rect.min.x += 24.0; // Generous left margin
+                rect.max.x -= 24.0; // Generous right margin
+                rect.min.y += 56.0; // Top margin to clear safe areas and notch
+                rect.max.y -= 36.0; // Bottom margin to clear home indicator and safe areas
+                rect
+            } else {
+                screen_rect.shrink(40.0)
+            };
+
+            let is_inside_active_ui = if let Some(click_pos) = ctx.input(|i| i.pointer.press_origin().or_else(|| i.pointer.interact_pos())) {
+                if is_mobile {
+                    content_rect.contains(click_pos)
+                } else {
+                    let header_rect = egui::Rect::from_min_max(
+                        egui::pos2(content_rect.min.x, content_rect.min.y),
+                        egui::pos2(content_rect.max.x, content_rect.min.y + 80.0),
+                    );
+                    let card_rect = egui::Rect::from_min_max(
+                        egui::pos2(content_rect.max.x - 380.0, content_rect.min.y + 60.0),
+                        egui::pos2(content_rect.max.x + 20.0, content_rect.max.y - 120.0),
+                    );
+                    let bottom_rect = egui::Rect::from_min_max(
+                        egui::pos2(content_rect.min.x, content_rect.max.y - 180.0),
+                        egui::pos2(content_rect.max.x, content_rect.max.y + 20.0),
+                    );
+                    header_rect.contains(click_pos) || card_rect.contains(click_pos) || bottom_rect.contains(click_pos)
+                }
+            } else {
+                false
+            };
+
             // Click backdrop to close
             let backdrop_response = ui.allocate_rect(screen_rect, egui::Sense::click());
             ui.painter().rect_filled(screen_rect, 0.0, Color32::from_black_alpha(210));
-            if backdrop_response.clicked() {
+            if backdrop_response.clicked() && !is_inside_active_ui {
                 close = true;
             }
 
@@ -118,18 +151,6 @@ pub fn draw_leader_picker_modal(
                 Color32::from_black_alpha(0),
                 Color32::from_black_alpha(128),
             );
-
-            // Layout the widgets directly on top of the fullscreen viewport
-            let content_rect = if is_mobile {
-                let mut rect = screen_rect;
-                rect.min.x += 24.0; // Generous left margin
-                rect.max.x -= 24.0; // Generous right margin
-                rect.min.y += 56.0; // Top margin to clear safe areas and notch
-                rect.max.y -= 36.0; // Bottom margin to clear home indicator and safe areas
-                rect
-            } else {
-                screen_rect.shrink(40.0)
-            };
 
             ui.scope_builder(egui::UiBuilder::new().max_rect(content_rect), |ui| {
                 ui.vertical(|ui| {
@@ -244,80 +265,104 @@ pub fn draw_leader_picker_modal(
 
                     // Horizontal Scrollable Carousel for Avatar Selection (Centered at bottom)
                     let avatar_size = if is_mobile { 64.0 } else { 72.0 };
-                    let scroll_area_h = avatar_size + 16.0;
+                    let scroll_area_h = avatar_size; // No extra height needed since scrollbar is hidden!
+
+                    let panel_w = if is_mobile {
+                        ui.available_width()
+                    } else {
+                        540.0
+                    };
 
                     ui.vertical_centered(|ui| {
-                        ui.allocate_ui(egui::vec2(ui.available_width(), scroll_area_h), |ui| {
-                            egui::ScrollArea::horizontal()
-                                .show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.spacing_mut().item_spacing.x = 12.0;
+                        ui.allocate_ui(egui::vec2(panel_w, scroll_area_h + 24.0), |ui| {
+                            let carousel_frame = egui::Frame::NONE
+                                .fill(Color32::from_black_alpha(150))
+                                .stroke(Stroke::new(1.2_f32, crate::ui::theme::accent_solo_cyan().linear_multiply(0.4)))
+                                .corner_radius(if is_mobile { 10 } else { 12 })
+                                .inner_margin(egui::Margin::symmetric(
+                                    if is_mobile { 8 } else { 16 },
+                                    12,
+                                ));
 
-                                        // Optional spacer to center the avatars if they don't exceed screen width
-                                        let total_carousel_w = (avatar_size + 12.0) * 6.0 - 12.0;
-                                        if ui.available_width() > total_carousel_w {
-                                            let space = (ui.available_width() - total_carousel_w) / 2.0;
-                                            ui.add_space(space);
-                                        }
+                            carousel_frame.show(ui, |ui| {
+                                egui::ScrollArea::horizontal()
+                                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.spacing_mut().item_spacing.x = 12.0;
 
-                                        for &leader in sow_core::player::Leader::ALL.iter() {
-                                            let is_selected = *selected_leader == leader;
-                                            let civ = match leader {
-                                                sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
-                                                sow_core::player::Leader::Cleopatra => sow_core::player::Civilization::Egypt,
-                                                sow_core::player::Leader::Ragnar => sow_core::player::Civilization::Vikings,
-                                                sow_core::player::Leader::SunTzu => sow_core::player::Civilization::China,
-                                                sow_core::player::Leader::Alexander => sow_core::player::Civilization::Macedon,
-                                                sow_core::player::Leader::GenghisKhan => sow_core::player::Civilization::Mongols,
-                                            };
-
-                                            let bg = if is_selected {
-                                                crate::ui::theme::accent_solo_cyan().linear_multiply(0.2)
+                                            // Spacer to center the avatars inside the panel if they fit
+                                            let inner_w = panel_w - (if is_mobile { 16.0 } else { 32.0 });
+                                            let total_carousel_w = (avatar_size + 12.0) * 6.0 - 12.0;
+                                            if inner_w > total_carousel_w {
+                                                let space = (inner_w - total_carousel_w) / 2.0;
+                                                ui.add_space(space);
                                             } else {
-                                                Color32::from_black_alpha(140)
-                                            };
-                                            let border = if is_selected {
-                                                crate::ui::theme::accent_solo_cyan()
-                                            } else {
-                                                crate::ui::theme::nickname_field_border()
-                                            };
-
-                                            let (s_rect, s_resp) = ui.allocate_exact_size(egui::vec2(avatar_size, avatar_size), egui::Sense::click());
-                                            if s_resp.hovered() {
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                                ui.add_space(12.0);
                                             }
 
-                                            ui.painter().rect(
-                                                s_rect,
-                                                8,
-                                                bg,
-                                                Stroke::NONE,
-                                                egui::StrokeKind::Inside,
-                                            );
-                                            
-                                            if let Some(tex) = asset_loader.avatars.get(&leader) {
-                                                let image = egui::Image::new(tex)
-                                                    .fit_to_exact_size(s_rect.size())
-                                                    .corner_radius(egui::CornerRadius::same(8));
-                                                ui.put(s_rect, image);
-                                            }
+                                            for &leader in sow_core::player::Leader::ALL.iter() {
+                                                let is_selected = *selected_leader == leader;
+                                                let civ = match leader {
+                                                    sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
+                                                    sow_core::player::Leader::Cleopatra => sow_core::player::Civilization::Egypt,
+                                                    sow_core::player::Leader::Ragnar => sow_core::player::Civilization::Vikings,
+                                                    sow_core::player::Leader::SunTzu => sow_core::player::Civilization::China,
+                                                    sow_core::player::Leader::Alexander => sow_core::player::Civilization::Macedon,
+                                                    sow_core::player::Leader::GenghisKhan => sow_core::player::Civilization::Mongols,
+                                                };
 
-                                            // Draw premium light border frame on top of the image so it is clearly visible
-                                            ui.painter().rect(
-                                                s_rect,
-                                                8,
-                                                Color32::TRANSPARENT,
-                                                Stroke::new(if is_selected { 2.0_f32 } else { 0.5_f32 }, border),
-                                                egui::StrokeKind::Inside,
-                                            );
+                                                let bg = if is_selected {
+                                                    crate::ui::theme::accent_solo_cyan().linear_multiply(0.2)
+                                                } else {
+                                                    Color32::from_black_alpha(140)
+                                                };
+                                                let border = if is_selected {
+                                                    crate::ui::theme::accent_solo_cyan()
+                                                } else {
+                                                    crate::ui::theme::nickname_field_border()
+                                                };
 
-                                            if s_resp.clicked() {
-                                                *selected_leader = leader;
-                                                *selected_civilization = civ;
+                                                let (s_rect, s_resp) = ui.allocate_exact_size(egui::vec2(avatar_size, avatar_size), egui::Sense::click());
+                                                if s_resp.hovered() {
+                                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                                }
+
+                                                ui.painter().rect(
+                                                    s_rect,
+                                                    8,
+                                                    bg,
+                                                    Stroke::NONE,
+                                                    egui::StrokeKind::Inside,
+                                                );
+                                                
+                                                if let Some(tex) = asset_loader.avatars.get(&leader) {
+                                                    let image = egui::Image::new(tex)
+                                                        .fit_to_exact_size(s_rect.size())
+                                                        .corner_radius(egui::CornerRadius::same(8));
+                                                    ui.put(s_rect, image);
+                                                }
+
+                                                // Draw premium light border frame on top of the image so it is clearly visible
+                                                ui.painter().rect(
+                                                    s_rect,
+                                                    8,
+                                                    Color32::TRANSPARENT,
+                                                    Stroke::new(if is_selected { 2.0_f32 } else { 0.5_f32 }, border),
+                                                    egui::StrokeKind::Inside,
+                                                );
+
+                                                if s_resp.clicked() {
+                                                    *selected_leader = leader;
+                                                    *selected_civilization = civ;
+                                                }
                                             }
-                                        }
+                                            if inner_w <= total_carousel_w {
+                                                ui.add_space(12.0);
+                                            }
+                                        });
                                     });
-                                });
+                            });
                         });
                     });
 

@@ -96,13 +96,7 @@ impl SowApp {
                 }
 
                 let center = egui::pos2(screen_x, screen_y);
-                // Map shader derives human tint from id, not `player.color`; match that for dots + ★.
-                let rgb = if player.player_type == sow_core::player::PlayerType::Human {
-                    sow_core::player::human_shader_territory_rgb(player.id)
-                } else {
-                    player.color
-                };
-                let pc = nameplate_matte_player_rgb(rgb);
+                let pc = nameplate_matte_player_rgb(player.color);
 
                 // `lod_presence` uses zoom (when zoomed out, dots only). `sizing_presence`
                 // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
@@ -139,11 +133,7 @@ impl SowApp {
             }
             for p in &snap.players {
                 let id = p.id as usize;
-                let rgb = if p.player_type == sow_core::player::PlayerType::Human {
-                    sow_core::player::human_shader_territory_rgb(p.id)
-                } else {
-                    p.color
-                };
+                let rgb = p.color;
                 if id < self.ui.cached_player_colors.len() {
                     self.ui.cached_player_colors[id] = egui::Color32::from_rgb(
                         (rgb[0] * 255.0) as u8,

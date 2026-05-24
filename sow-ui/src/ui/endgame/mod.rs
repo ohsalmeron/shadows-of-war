@@ -21,11 +21,11 @@ pub fn draw(ctx: &egui::Context, config: &EndgameConfig, lang: Language) -> Opti
 
     let strings = &sow_lang::get(lang).endgame;
     let screen_rect = ctx.content_rect();
-    let compact = screen_rect.width() < 768.0;
+    let compact = screen_rect.width() < 1024.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
     // Dim background
     egui::Area::new(egui::Id::new("endgame_dimmer"))
-        .order(egui::Order::Background)
+        .order(egui::Order::Foreground)
         .fixed_pos(egui::Pos2::ZERO)
         .show(ctx, |ui| {
             let rect = ctx.content_rect();
@@ -36,7 +36,8 @@ pub fn draw(ctx: &egui::Context, config: &EndgameConfig, lang: Language) -> Opti
     let window = egui::Window::new("Endgame")
         .title_bar(false)
         .collapsible(false)
-        .resizable(false);
+        .resizable(false)
+        .order(egui::Order::Foreground);
 
     let window = if compact {
         window.fixed_size(screen_rect.size())

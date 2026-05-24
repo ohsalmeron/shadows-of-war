@@ -7,7 +7,7 @@ macro_rules! all_assets {
         $macro! {
             $($extra,)*
             City => "city.webp",
-            Factory => "factory.svg",
+            Factory => "factory.webp",
             Port => "port.svg",
             DefensePost => "defense_post.svg",
             SamLauncher => "sam_launcher.svg",
