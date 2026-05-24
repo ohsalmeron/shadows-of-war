@@ -368,15 +368,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    // ── WAR FOG: Attack Threat Visualization ──
-    // Multi-layered: desaturation → smoke gradient → ripple waves → corona front
-    if owner_id > 0u {
+    // ── WAR FOG + FRONTIER GLOW ──
+    {
         let world_pos_hex = hex_to_world(cell_hex);
         for (var ti = 0; ti < 4; ti = ti + 1) {
             let slot = globals.threat_slots[ti];
             let radius = slot.z;
             if radius <= 0.0 { continue; }
-            if u32(slot.w) != owner_id { continue; }
+
+            let packed = u32(slot.w);
+            let target_id = packed / 1024u;
+            let attacker_id = packed % 1024u;
+            if target_id != owner_id { continue; }
+
             let front_world = vec2<f32>(
                 slot.x + 0.5 + f32(i32(slot.y) & 1) * 0.5,
                 (slot.y + 0.5) * 0.8660254
@@ -385,33 +389,60 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let threat = 1.0 - smoothstep(0.0, radius, dist);
             if threat <= 0.0 { continue; }
 
-            // Layer 1: Desaturation — threatened territory looks drained/dying
-            let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
-            let desat = mix(base_color, vec3<f32>(lum), threat * 0.6);
+            if target_id == 0u {
+                // ── FRONTIER GLOW: Wilderness expansion ──
+                // Golden-green aura — your civilization spreading into the wild
+                let atk_color = owner_albedo(attacker_id);
+                let gold = vec3<f32>(0.95, 0.85, 0.3);
+                let frontier_bright = mix(atk_color, gold, 0.5) * 1.2 + vec3<f32>(0.15);
+                let frontier_dark = mix(atk_color, gold, 0.3) * 0.2;
 
-            // Layer 2: Smoke gradient — hot ember core fading to dark ash at edge
-            let ember = vec3<f32>(0.95, 0.15, 0.05);   // Bright red-orange core
-            let ash   = vec3<f32>(0.12, 0.04, 0.02);    // Dark smoke edge
-            let smoke_color = mix(ash, ember, threat * threat); // Quadratic falloff = sharp core
-            let smoke_blend = threat * 0.55;
+                // Gentle radial glow
+                let glow_color = mix(frontier_dark, frontier_bright, threat);
+                let glow_blend = threat * 0.35;
 
-            // Layer 3: Ripple waves — directional pulses radiating from attack front
-            let wave_dir = normalize(world_pos_hex - front_world + vec2<f32>(0.001));
-            let wave_phase = dist * 3.0 - globals.time * 4.0;
-            let ripple = (sin(wave_phase) + 1.0) * 0.5;
-            let ripple_intensity = ripple * threat * threat * 0.25;
+                // Slower, wider expansion ripples
+                let wave_phase = dist * 2.0 - globals.time * 2.0;
+                let ripple = (sin(wave_phase) + 1.0) * 0.5;
+                let ripple_glow = ripple * threat * 0.15;
 
-            // Layer 4: Corona — bright hot line at the attack front edge
-            let corona_dist = abs(dist - radius * 0.15); // Ring near the front
-            let corona = smoothstep(1.5, 0.0, corona_dist) * 0.7;
-            let corona_color = vec3<f32>(1.0, 0.4, 0.1); // Hot orange-white
+                // Soft leading edge (no aggressive corona)
+                let edge_dist = abs(dist - radius * 0.85);
+                let edge = smoothstep(2.5, 0.0, edge_dist) * 0.3;
+                let edge_color = min(frontier_bright, vec3<f32>(1.0));
 
-            // Composite all layers
-            var war_color = mix(desat, smoke_color, smoke_blend);
-            war_color += corona_color * corona;
-            war_color += ember * ripple_intensity;
+                base_color = mix(base_color, glow_color, glow_blend);
+                base_color += edge_color * edge;
+                base_color += frontier_bright * ripple_glow;
+            } else {
+                // ── WAR FOG: PvP attack ──
+                let atk_color = owner_albedo(attacker_id);
+                let atk_bright = atk_color * 1.4 + vec3<f32>(0.3);
+                let atk_dark = atk_color * 0.15;
 
-            base_color = war_color;
+                // Desaturation — territory drains to grey
+                let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
+                let desat = mix(base_color, vec3<f32>(lum), threat * 0.6);
+
+                // Attacker smoke
+                let smoke_color = mix(atk_dark, atk_bright, threat * threat);
+                let smoke_blend = threat * 0.55;
+
+                // Ripple waves
+                let wave_phase = dist * 3.0 - globals.time * 4.0;
+                let ripple = (sin(wave_phase) + 1.0) * 0.5;
+                let ripple_intensity = ripple * threat * threat * 0.25;
+
+                // Corona front
+                let corona_dist = abs(dist - radius * 0.15);
+                let corona = smoothstep(1.5, 0.0, corona_dist) * 0.7;
+                let corona_color = min(atk_color * 2.0 + vec3<f32>(0.5), vec3<f32>(1.0));
+
+                var war_color = mix(desat, smoke_color, smoke_blend);
+                war_color += corona_color * corona;
+                war_color += atk_bright * ripple_intensity;
+                base_color = war_color;
+            }
         }
     }
 

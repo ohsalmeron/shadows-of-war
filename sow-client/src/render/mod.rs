@@ -129,9 +129,9 @@ impl SowApp {
                         if slot >= 4 {
                             break;
                         }
-                        let involves_me = my_id != 0
-                            && (attack.target_owner == my_id || attack.owner_id == my_id);
-                        if !involves_me || attack.troops <= 0.0 {
+                        let is_mine = my_id != 0 && attack.owner_id == my_id;
+                        let targets_me = my_id != 0 && attack.target_owner == my_id;
+                        if !(is_mine || targets_me) || attack.troops <= 0.0 {
                             continue;
                         }
                         if attack.front_cx == 0.0 && attack.front_cy == 0.0 {
@@ -139,12 +139,14 @@ impl SowApp {
                         }
                         let radius = (attack.troops as f32 / std::f32::consts::PI)
                             .sqrt()
-                            .clamp(1.0, 200.0);
+                            .clamp(1.0, 200.0)
+                            * 2.5;
                         threat_slots[slot] = [
                             attack.front_cx,
                             attack.front_cy,
                             radius,
-                            attack.target_owner as f32,
+                            attack.target_owner as f32 * 1024.0
+                                + attack.owner_id as f32,
                         ];
                         slot += 1;
                     }
