@@ -8,7 +8,7 @@ struct Globals {
     border_darkness: f32,
     shore_thickness: f32,
     shore_darkness: f32,
-    threat_slots: array<vec4<f32>, 4>,
+    threat_slots: array<vec4<f32>, 8>,
     effect_shockwave: f32,
     effect_breathe: f32,
     effect_energy_flow: f32,
@@ -371,7 +371,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ── WAR FOG + FRONTIER GLOW ──
     {
         let world_pos_hex = hex_to_world(cell_hex);
-        for (var ti = 0; ti < 4; ti = ti + 1) {
+        for (var ti = 0; ti < 8; ti = ti + 1) {
             let slot = globals.threat_slots[ti];
             let radius = slot.z;
             if radius <= 0.0 { continue; }

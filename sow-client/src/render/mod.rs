@@ -121,12 +121,12 @@ impl SowApp {
                     }
                 }
 
-                let mut threat_slots = [[0.0f32; 4]; 4];
+                let mut threat_slots = [[0.0f32; 4]; 8];
                 if let Some(snap) = &self.sim.current_snapshot {
                     let my_id = self.sim.my_player_id.unwrap_or(0);
                     let mut slot = 0usize;
                     for attack in &snap.attacks {
-                        if slot >= 4 {
+                        if slot >= 8 {
                             break;
                         }
                         let is_mine = my_id != 0 && attack.owner_id == my_id;

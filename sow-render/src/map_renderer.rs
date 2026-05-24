@@ -14,8 +14,8 @@ pub struct MapGlobals {
     pub border_darkness: f32,
     pub shore_thickness: f32,
     pub shore_darkness: f32,
-    /// Up to 4 attack threat slots: [front_x, front_y, radius, target_owner_id].
-    pub threat_slots: [[f32; 4]; 4],
+    /// Up to 8 attack threat slots: [front_x, front_y, radius, packed_ids].
+    pub threat_slots: [[f32; 4]; 8],
     /// Conquest shockwave intensity (0 = off, 1 = full).
     pub effect_shockwave: f32,
     /// Border breathing intensity (0 = off, 1 = full).

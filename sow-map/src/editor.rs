@@ -823,7 +823,7 @@ impl MapEditorSession {
                         border_darkness: 0.40,
                         shore_thickness: 0.12,
                         shore_darkness: 0.47,
-                        threat_slots: [[0.0; 4]; 4],
+                        threat_slots: [[0.0; 4]; 8],
                         effect_shockwave: 0.0,
                         effect_breathe: 0.0,
                         effect_energy_flow: 0.0,
