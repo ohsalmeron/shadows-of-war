@@ -1,13 +1,11 @@
-use super::core::BuildingGrid;
+use super::core::{BuildingGrid, Building};
 use crate::game::BuildingKind;
 use crate::map::{GameMap, TerrainType};
-/// LegacyEngine `structureMinDist()` / search radius for land valid tiles.
-pub const STRUCTURE_MIN_DIST: i32 = 8;
+
+/// Min spacing distance between Cities.
+pub const STRUCTURE_MIN_DIST: i32 = 12;
 const STRUCTURE_MIN_DIST_SQ: i64 = (STRUCTURE_MIN_DIST as i64) * (STRUCTURE_MIN_DIST as i64);
 const STRUCTURE_SEARCH_RADIUS_SQ: i64 = STRUCTURE_MIN_DIST_SQ;
-
-/// LegacyEngine `radiusPortSpawn()`.
-pub const PORT_SPAWN_MANHATTAN: i32 = 20;
 
 #[inline]
 pub fn idx_xy(idx: u32, w: u32) -> (u32, u32) {
@@ -31,7 +29,7 @@ pub fn manhattan(ax: i32, ay: i32, bx: i32, by: i32) -> i32 {
     (ax - bx).abs() + (ay - by).abs()
 }
 
-/// Land shoreline tile: land terrain with shoreline bit (matches fleet/shore tests).
+/// Land shoreline tile: land terrain with shoreline bit.
 pub fn is_shore_land_tile(map: &GameMap, x: u32, y: u32) -> bool {
     let t = map.terrain[map.ref_id(x, y)];
     t.is_land() && t.is_shoreline()
@@ -44,13 +42,15 @@ fn is_land_structure_tile(map: &GameMap, x: u32, y: u32) -> bool {
     )
 }
 
-/// Tiles within Euclidean 15 of `click_idx`, 4-connected, owned by `owner_id`, excluding tiles
-/// within Euclidean 15 of any existing structure (LegacyEngine `validStructureSpawnTiles`).
+/// Tiles within Euclidean 12 of `click_idx`, 4-connected, owned by `owner_id`,
+/// excluding tiles too close to existing cities if building a City.
 pub fn valid_land_structure_indices(
     map: &GameMap,
     owner_id: u16,
     click_idx: u32,
+    kind: BuildingKind,
     existing: &BuildingGrid,
+    buildings: &[Building],
     scratch: &mut crate::engine::PlacementScratch,
 ) -> Vec<u32> {
     let w = map.width;
@@ -80,6 +80,11 @@ pub fn valid_land_structure_indices(
 
     let mut out: Vec<u32> = Vec::new();
 
+    let bunker_tiles: Vec<u32> = buildings.iter()
+        .filter(|b| b.kind == BuildingKind::Bunker)
+        .map(|b| b.tile_idx)
+        .collect();
+
     let mut qi = 0usize;
     while qi < scratch.queue.len() {
         let idx = scratch.queue[qi];
@@ -98,12 +103,62 @@ pub fn valid_land_structure_indices(
         }
 
         let mut too_close = false;
-        for (bx, by) in existing.iter_in_range(x, y, STRUCTURE_MIN_DIST as u32) {
-            if euclid_sq(xi, yi, bx as i64, by as i64) < STRUCTURE_MIN_DIST_SQ {
-                too_close = true;
-                break;
+        if kind == BuildingKind::City {
+            for (bx, by) in existing.iter_in_range(x, y, STRUCTURE_MIN_DIST as u32) {
+                if euclid_sq(xi, yi, bx as i64, by as i64) < STRUCTURE_MIN_DIST_SQ {
+                    too_close = true;
+                    break;
+                }
+            }
+        } else if kind == BuildingKind::Bunker {
+            // Spacing from Cities: cannot be within radius 6 (dist sq = 36)
+            for (bx, by) in existing.iter_in_range(x, y, 6) {
+                if euclid_sq(xi, yi, bx as i64, by as i64) < 36 {
+                    too_close = true;
+                    break;
+                }
+            }
+            // Spacing from other Bunkers: cannot be within radius 4 (dist sq = 16)
+            if !too_close {
+                for &b_tile in &bunker_tiles {
+                    let bx = b_tile % w;
+                    let by = b_tile / w;
+                    if euclid_sq(xi, yi, bx as i64, by as i64) < 16 {
+                        too_close = true;
+                        break;
+                    }
+                }
+            }
+            // Border constraints: must be adjacent to non-owned tile or map edge
+            if !too_close {
+                let mut is_border = false;
+                map.for_each_neighbor(x, y, |nx, ny| {
+                    if map.owner_id(nx, ny) != owner_id {
+                        is_border = true;
+                    }
+                });
+                if !is_border {
+                    let is_odd = (y % 2) != 0;
+                    let offsets = if is_odd {
+                        [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+                    } else {
+                        [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+                    };
+                    for &(dx, dy) in &offsets {
+                        let nx = x as i32 + dx;
+                        let ny = y as i32 + dy;
+                        if nx < 0 || nx >= map.width as i32 || ny < 0 || ny >= map.height as i32 {
+                            is_border = true;
+                            break;
+                        }
+                    }
+                }
+                if !is_border {
+                    too_close = true;
+                }
             }
         }
+
         if !too_close {
             out.push(idx);
         }
@@ -138,54 +193,6 @@ pub fn valid_land_structure_indices(
     out
 }
 
-/// LegacyEngine `portSpawn`: closest owned shore (Manhattan) within `PORT_SPAWN_MANHATTAN` of click
-/// that lies in `valid_land` (as tile indices).
-pub fn resolve_port_spawn_tile(
-    map: &GameMap,
-    owner_id: u16,
-    click_idx: u32,
-    valid_land: &[u32],
-) -> Option<u32> {
-    let w = map.width;
-    let h = map.height;
-    let (cx, cy) = idx_xy(click_idx, w);
-
-    let mut candidates: Vec<u32> = Vec::new();
-    let r = PORT_SPAWN_MANHATTAN;
-    let cx_i = cx as i32;
-    let cy_i = cy as i32;
-    let x_min = (cx_i - r).clamp(0, w.saturating_sub(1) as i32) as u32;
-    let x_max = (cx_i + r).clamp(0, w.saturating_sub(1) as i32) as u32;
-    let y_min = (cy_i - r).clamp(0, h.saturating_sub(1) as i32) as u32;
-    let y_max = (cy_i + r).clamp(0, h.saturating_sub(1) as i32) as u32;
-    for y in y_min..=y_max {
-        for x in x_min..=x_max {
-            if manhattan(x as i32, y as i32, cx_i, cy_i) > r {
-                continue;
-            }
-            if map.owner_id(x, y) != owner_id {
-                continue;
-            }
-            if !is_shore_land_tile(map, x, y) {
-                continue;
-            }
-            candidates.push(xy_idx(x, y, w));
-        }
-    }
-
-    candidates.sort_by(|&a, &b| {
-        let (ax, ay) = idx_xy(a, w);
-        let (bx, by) = idx_xy(b, w);
-        let da = manhattan(ax as i32, ay as i32, cx as i32, cy as i32);
-        let db = manhattan(bx as i32, by as i32, cx as i32, cy as i32);
-        da.cmp(&db).then_with(|| a.cmp(&b))
-    });
-
-    candidates
-        .into_iter()
-        .find(|idx| valid_land.binary_search(idx).is_ok())
-}
-
 /// Resolve final spawn tile index for `kind` at `click_idx`, or `None` if illegal.
 pub fn resolve_structure_spawn_tile(
     map: &GameMap,
@@ -193,6 +200,7 @@ pub fn resolve_structure_spawn_tile(
     kind: BuildingKind,
     click_idx: u32,
     existing: &BuildingGrid,
+    buildings: &[Building],
     scratch: &mut crate::engine::PlacementScratch,
 ) -> Option<u32> {
     let w = map.width;
@@ -202,13 +210,6 @@ pub fn resolve_structure_spawn_tile(
         return None;
     }
 
-    let valid = valid_land_structure_indices(map, owner_id, click_idx, existing, scratch);
-    if valid.is_empty() {
-        return None;
-    }
-
-    match kind {
-        BuildingKind::Port => resolve_port_spawn_tile(map, owner_id, click_idx, &valid),
-        _ => valid.first().copied(),
-    }
+    let valid = valid_land_structure_indices(map, owner_id, click_idx, kind, existing, buildings, scratch);
+    valid.first().copied()
 }

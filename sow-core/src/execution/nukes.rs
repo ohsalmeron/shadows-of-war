@@ -1,14 +1,8 @@
 use crate::engine::SowEngine;
-use crate::game::{GamePhase, NukeKind, ProjectileKind};
+use crate::game::{GamePhase, ProjectileKind};
 
 /// Silo cooldown in ticks (90 ticks ≈ 9 seconds at 100ms/tick).
 pub const SILO_COOLDOWN_TICKS: u32 = 90;
-
-/// MIRV warhead count (matching OpenFront).
-const MIRV_WARHEAD_COUNT: u32 = 350;
-
-/// Minimum manhattan spread between MIRV warheads.
-const MIRV_MIN_SPREAD: i32 = 55;
 
 impl SowEngine {
     pub fn execute_projectiles(&mut self) {
@@ -22,11 +16,8 @@ impl SowEngine {
                 *cd -= 1;
             }
         });
-        self.silo_cooldowns.retain(|_, cd| *cd > 0);
-
-        // Advance all active projectiles
+        self.silo_cooldowns.retain(|_, cd| *cd > 0);        // Advance all active projectiles
         let mut detonations = Vec::new();
-        let mut mirv_separations = Vec::new();
 
         for proj in &mut self.projectiles {
             if !proj.active {
@@ -41,27 +32,14 @@ impl SowEngine {
                 let dst_x = proj.dst_tile % self.state.map.width;
                 let dst_y = proj.dst_tile / self.state.map.width;
                 match proj.kind {
-                    ProjectileKind::Nuke(NukeKind::MIRV) => {
-                        mirv_separations.push((
-                            proj.owner_id,
-                            proj.dst_tile,
-                        ));
-                    }
-                    ProjectileKind::Nuke(nk) => {
+                    ProjectileKind::Nuke { level } => {
+                        let inner = 12 + (level.saturating_sub(1) as u32) * 10;
+                        let outer = 30 + (level.saturating_sub(1) as u32) * 25;
                         detonations.push((
                             dst_x,
                             dst_y,
-                            nk.inner_radius(),
-                            nk.outer_radius(),
-                            proj.owner_id,
-                        ));
-                    }
-                    ProjectileKind::MIRVWarhead => {
-                        detonations.push((
-                            dst_x,
-                            dst_y,
-                            NukeKind::MIRV.inner_radius(),
-                            NukeKind::MIRV.outer_radius(),
+                            inner,
+                            outer,
                             proj.owner_id,
                         ));
                     }
@@ -78,67 +56,9 @@ impl SowEngine {
         // Cleanup inactive projectiles
         self.projectiles.retain(|p| p.active);
 
-        // Process MIRV separations → spawn warheads
-        for (owner_id, dst_tile) in mirv_separations {
-            self.spawn_mirv_warheads(owner_id, dst_tile);
-        }
-
         // Process detonations
         for (dx, dy, inner, outer, owner_id) in detonations {
             self.detonate_nuke(dx, dy, inner, outer, owner_id);
-        }
-    }
-
-    fn spawn_mirv_warheads(&mut self, owner_id: u16, center_tile: u32) {
-        let w = self.state.map.width;
-        let h = self.state.map.height;
-        let cx = (center_tile % w) as i32;
-        let cy = (center_tile / w) as i32;
-
-        let mut placed: Vec<(i32, i32)> = Vec::with_capacity(MIRV_WARHEAD_COUNT as usize);
-        let mut rng_seed = self.state.tick.wrapping_mul(owner_id as u64);
-
-        for _ in 0..MIRV_WARHEAD_COUNT {
-            // Pseudo-random offset (integer polar → cartesian via lookup-free approximation)
-            rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let angle = (rng_seed & 0xFFFF) as f32 / 65536.0 * std::f32::consts::TAU;
-            rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let radius = ((rng_seed & 0xFFFF) as f32 / 65536.0) * 80.0;
-
-            let tx = (cx as f32 + angle.cos() * radius).clamp(0.0, (w - 1) as f32) as i32;
-            let ty = (cy as f32 + angle.sin() * radius).clamp(0.0, (h - 1) as f32) as i32;
-
-            // Check minimum spread
-            let too_close = placed.iter().any(|&(px, py)| {
-                let md = (tx - px).abs() + (ty - py).abs();
-                md < MIRV_MIN_SPREAD
-            });
-            if too_close {
-                continue;
-            }
-            placed.push((tx, ty));
-
-            let id = self.state.next_projectile_id;
-            self.state.next_projectile_id = self.state.next_projectile_id.wrapping_add(1).max(1);
-
-            let dst_tile = ty as u32 * w + tx as u32;
-            let path = crate::pathfinding::bresenham_line(center_tile, dst_tile, w);
-
-            // Random delay via varied steps_per_tick (3-5 tiles/tick for warheads)
-            rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let spt = 3 + (rng_seed & 0x3) as u8; // 3..6
-
-            self.projectiles.push(crate::game::Projectile {
-                id,
-                kind: ProjectileKind::MIRVWarhead,
-                owner_id,
-                src_tile: center_tile,
-                dst_tile,
-                path,
-                path_cursor: 0,
-                steps_per_tick: spt,
-                active: true,
-            });
         }
     }
 

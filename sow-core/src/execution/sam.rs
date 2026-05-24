@@ -1,5 +1,5 @@
 use crate::engine::SowEngine;
-use crate::game::{BuildingKind, GamePhase, NukeKind, ProjectileKind};
+use crate::game::{BuildingKind, GamePhase, ProjectileKind};
 
 /// SAM steps per tick (fast interceptor).
 const SAM_STEPS_PER_TICK: u8 = 4;
@@ -43,11 +43,10 @@ impl SowEngine {
 
         // Collect SAM launchers that are ready (not under construction)
         let sams: Vec<(u64, u16, u32, f32)> = self.buildings.iter()
-            .filter(|b| b.kind == BuildingKind::SamLauncher && !b.under_construction)
-            .map(|b| (b.id, b.owner_id, b.tile_idx, sam_range(b.level)))
+            .filter(|b| b.kind == BuildingKind::City && b.modules.shield > 0 && !b.under_construction)
+            .map(|b| (b.id, b.owner_id, b.tile_idx, sam_range(b.modules.shield)))
             .collect();
 
-        let mut nukes_to_delete = Vec::new();
         let mut sam_missiles = Vec::new();
 
         for (sam_id, sam_owner, sam_tile, range) in &sams {
@@ -64,8 +63,8 @@ impl SowEngine {
                 if !proj.active {
                     continue;
                 }
-                // Only intercept nukes and MIRV warheads, not SAM missiles or shells
-                let is_nuke = matches!(proj.kind, ProjectileKind::Nuke(_) | ProjectileKind::MIRVWarhead);
+                // Only intercept nukes, not SAM missiles or shells
+                let is_nuke = matches!(proj.kind, ProjectileKind::Nuke { .. });
                 if !is_nuke || proj.owner_id == *sam_owner {
                     continue;
                 }
@@ -76,20 +75,10 @@ impl SowEngine {
                     continue;
                 }
 
-                // MIRV warheads: instant delete within 50 hex tiles
-                if matches!(proj.kind, ProjectileKind::MIRVWarhead) {
-                    if dist < 50 {
-                        nukes_to_delete.push(proj.id);
-                        continue;
-                    }
-                }
-
-                // Prioritize H-bombs over atom bombs
+                // Prioritize higher-level missiles
                 let priority = match proj.kind {
-                    ProjectileKind::Nuke(NukeKind::HydrogenBomb) => 0.0,
-                    ProjectileKind::Nuke(NukeKind::MIRV) => 1.0,
-                    ProjectileKind::Nuke(NukeKind::AtomBomb) => 2.0,
-                    _ => 3.0,
+                    ProjectileKind::Nuke { level } => 10.0 - level as f32,
+                    _ => 20.0,
                 };
 
                 let score = priority * 10000.0 + dist as f32;
@@ -110,12 +99,7 @@ impl SowEngine {
             }
         }
 
-        // Delete MIRV warheads that were instantly intercepted
-        for nuke_id in &nukes_to_delete {
-            if let Some(p) = self.projectiles.iter_mut().find(|p| p.id == *nuke_id) {
-                p.active = false;
-            }
-        }
+
 
         // Spawn SAM missiles
         for (id, owner, src_tile, dst_tile) in sam_missiles {
@@ -147,7 +131,7 @@ impl SowEngine {
                 if !nuke.active || nuke.id == sam.id {
                     continue;
                 }
-                let is_nuke = matches!(nuke.kind, ProjectileKind::Nuke(_) | ProjectileKind::MIRVWarhead);
+                let is_nuke = matches!(nuke.kind, ProjectileKind::Nuke { .. });
                 if !is_nuke {
                     continue;
                 }

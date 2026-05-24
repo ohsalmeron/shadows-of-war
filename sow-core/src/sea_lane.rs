@@ -50,7 +50,7 @@ pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
     if engine.sea_lanes_dirty {
         let mut ports: Vec<(u64, u32)> = Vec::new(); // (building_id, tile_idx)
         for b in &engine.buildings {
-            if !b.under_construction && b.kind == BuildingKind::Port {
+            if !b.under_construction && b.kind == BuildingKind::City && b.modules.port > 0 {
                 ports.push((b.id, b.tile_idx));
             }
         }
@@ -252,7 +252,7 @@ pub fn closest_port_on_component(
     let mut best: Option<(u32, u64)> = None;
 
     for b in buildings {
-        if b.under_construction || b.kind != BuildingKind::Port {
+        if b.under_construction || b.kind != BuildingKind::City || b.modules.port == 0 {
             continue;
         }
         if let Some(water_tile) = adjacent_water_tile(map, b.tile_idx) {

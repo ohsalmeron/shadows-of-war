@@ -87,9 +87,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         ).ok()
                     };
 
-                    let is_station_kind = (kind == sow_core::game::BuildingKind::City
-                        || kind == sow_core::game::BuildingKind::Factory
-                        || kind == sow_core::game::BuildingKind::Port)
+                    let is_station_kind = kind == sow_core::game::BuildingKind::City
                         && upgrade_building.is_none();
 
                     if let Some(start_idx) = snapped_idx {
@@ -98,48 +96,30 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             ui.last_preview_tile = Some(start_idx);
                             ui.cached_preview_paths.clear();
 
-                            let is_friendly = |other_id: u16| -> bool {
-                                if other_id == my_id || other_id == 0 {
-                                    return true;
-                                }
-                                if let Some(snapshot) = &sim.current_snapshot {
-                                    if let Some(my_p) = snapshot.players.iter().find(|p| p.id == my_id) {
-                                        if my_p.alliances.contains(&other_id) {
-                                            return true;
-                                        }
-                                    }
-                                    if let Some(other_p) = snapshot.players.iter().find(|p| p.id == other_id) {
-                                        if other_p.alliances.contains(&my_id) {
-                                            return true;
-                                        }
-                                    }
-                                }
-                                false
-                            };
-
-                            let eligible_stations: Vec<_> = buildings.iter()
-                                .filter(|b| !b.under_construction && is_friendly(b.owner_id) && (b.kind == sow_core::game::BuildingKind::City || b.kind == sow_core::game::BuildingKind::Factory || b.kind == sow_core::game::BuildingKind::Port))
+                             let eligible_stations: Vec<_> = buildings.iter()
+                                .filter(|b| !b.under_construction && b.kind == sow_core::game::BuildingKind::City)
                                 .collect();
 
-                            let temp_map = sow_core::map::GameMap {
-                                width: map_w,
-                                height: map_h,
-                                terrain: terrain.iter().map(|&b| sow_core::map::MapTile::from_byte(b)).collect(),
-                                state: vec![0; (map_w * map_h) as usize],
-                                dirty_tiles: Vec::new(),
-                            };
+                             let temp_map = sow_core::map::GameMap {
+                                 width: map_w,
+                                 height: map_h,
+                                 terrain: terrain.iter().map(|&b| sow_core::map::MapTile::from_byte(b)).collect(),
+                                 state: vec![0; (map_w * map_h) as usize],
+                                 tile_upgrades: vec![0; (map_w * map_h) as usize],
+                                 dirty_tiles: Vec::new(),
+                             };
 
-                            let mut adj: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
-                            if let Some(snapshot) = &sim.current_snapshot {
-                                for rail in snapshot.railroads.iter() {
-                                    if is_friendly(rail.owner_id) {
-                                        if let (Some(&s_node), Some(&e_node)) = (rail.path.first(), rail.path.last()) {
-                                            adj.entry(s_node).or_default().push(e_node);
-                                            adj.entry(e_node).or_default().push(s_node);
-                                        }
-                                    }
-                                }
-                            }
+                             let mut adj: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+                             if let Some(snapshot) = &sim.current_snapshot {
+                                 for rail in snapshot.railroads.iter() {
+                                     if true {
+                                         if let (Some(&s_node), Some(&e_node)) = (rail.path.first(), rail.path.last()) {
+                                             adj.entry(s_node).or_default().push(e_node);
+                                             adj.entry(e_node).or_default().push(s_node);
+                                         }
+                                     }
+                                 }
+                             }
 
                             let distance_from = |start_tile: u32, dest_tile: u32, max_dist: usize| -> Option<usize> {
                                 if start_tile == dest_tile {
@@ -267,6 +247,107 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         // No valid snap — clear cache
                         ui.last_preview_tile = None;
                         ui.cached_preview_paths.clear();
+                    }
+
+                    // --- Render Radius Signals (No-build zones) ---
+                    for b in buildings {
+                        let (b_cx, b_cy) = (b.tile_idx % map_w, b.tile_idx / map_w);
+                        let world_bcx = b_cx as f32 + 0.5 + (b_cy % 2) as f32 * 0.5;
+                        let world_bcy = (b_cy as f32 + 0.5) * 0.8660254_f32;
+                        let s_bcx = (input.camera_x + world_bcx * input.camera_zoom) / sf;
+                        let s_bcy = (input.camera_y + world_bcy * input.camera_zoom) / sf;
+                        let s_pos = egui::pos2(s_bcx, s_bcy);
+
+                        let radius_tiles = if kind == sow_core::game::BuildingKind::City {
+                            if b.kind == sow_core::game::BuildingKind::City {
+                                Some(12.0_f32)
+                            } else {
+                                None
+                            }
+                        } else if kind == sow_core::game::BuildingKind::Bunker {
+                            if b.kind == sow_core::game::BuildingKind::City {
+                                Some(6.0_f32)
+                            } else if b.kind == sow_core::game::BuildingKind::Bunker {
+                                Some(4.0_f32)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        if let Some(r_val) = radius_tiles {
+                            let s_radius = r_val * input.camera_zoom / sf;
+                            if s_bcx + s_radius >= 0.0 && s_bcx - s_radius <= input.screen_w / sf
+                                && s_bcy + s_radius >= 0.0 && s_bcy - s_radius <= input.screen_h / sf {
+                                painter.circle_filled(
+                                    s_pos,
+                                    s_radius,
+                                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 12),
+                                );
+                                painter.circle_stroke(
+                                    s_pos,
+                                    s_radius,
+                                    egui::Stroke::new(1.2_f32, egui::Color32::from_rgba_unmultiplied(239, 68, 68, 150)),
+                                );
+                            }
+                        }
+                    }
+
+                    // --- Render Organizational Hex Grid around hover target ---
+                    let grid_radius = 12;
+                    for dy in -grid_radius..=grid_radius {
+                        for dx in -grid_radius..=grid_radius {
+                            let tx = col + dx;
+                            let ty = row + dy;
+                            if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
+                                continue;
+                            }
+                            let tile_idx = (ty * map_w as i32 + tx) as u32;
+                            let tile_owner = owners.get(tile_idx as usize).copied().unwrap_or(0);
+                            let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
+                            let is_land = (tile_terrain & 0x80) != 0;
+                            if !is_land {
+                                continue;
+                            }
+
+                            // Color depending on ownership / hover
+                            let border_color = if tile_owner == my_id {
+                                if tx == col && ty == row {
+                                    egui::Color32::from_rgb(34, 211, 238) // cyan highlight for hovered tile
+                                } else {
+                                    egui::Color32::from_rgba_unmultiplied(74, 222, 128, 60) // soft green for owned territory
+                                }
+                            } else {
+                                egui::Color32::from_rgba_unmultiplied(156, 163, 175, 20) // very faint gray for others
+                            };
+
+                            let thickness = if tx == col && ty == row { 1.5_f32 } else { 0.8_f32 };
+
+                            // Draw hex cell outline
+                            let world_cx = tx as f32 + 0.5 + (ty % 2) as f32 * 0.5;
+                            let world_cy = (ty as f32 + 0.5) * 0.8660254_f32;
+                            let screen_cx = (input.camera_x + world_cx * input.camera_zoom) / sf;
+                            let screen_cy = (input.camera_y + world_cy * input.camera_zoom) / sf;
+                            let screen_r = (0.577350269_f32 * input.camera_zoom) / sf;
+
+                            if screen_cx + screen_r >= 0.0 && screen_cx - screen_r <= input.screen_w / sf
+                                && screen_cy + screen_r >= 0.0 && screen_cy - screen_r <= input.screen_h / sf {
+                                let points: Vec<egui::Pos2> = (0..6).map(|i| {
+                                    let angle = (i as f32 * 60.0 + 30.0).to_radians();
+                                    egui::pos2(
+                                        screen_cx + screen_r * angle.cos(),
+                                        screen_cy + screen_r * angle.sin(),
+                                    )
+                                }).collect();
+
+                                 painter.add(egui::Shape::convex_polygon(
+                                     points,
+                                     egui::Color32::TRANSPARENT,
+                                     egui::Stroke::new(thickness, border_color),
+                                 ));
+                            }
+                        }
                     }
 
                     let can_afford = {

@@ -110,5 +110,6 @@ pub fn layout_nameplate_troops_galley(
     font_id: egui::FontId,
     troops_str: &str,
 ) -> Arc<egui::Galley> {
-    painter.layout_no_wrap(troops_str.to_owned(), font_id, NAMEPLATE_FILL)
+    let text = format!("⚔{}", troops_str);
+    painter.layout_no_wrap(text, font_id, NAMEPLATE_FILL)
 }

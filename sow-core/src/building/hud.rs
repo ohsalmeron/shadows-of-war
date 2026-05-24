@@ -12,6 +12,7 @@ pub fn player_has_valid_placement_sampled(
     owner_id: u16,
     kind: BuildingKind,
     grid: &super::core::BuildingGrid,
+    buildings: &[Building],
     scratch: &mut crate::engine::PlacementScratch,
     max_samples: usize,
 ) -> bool {
@@ -28,7 +29,7 @@ pub fn player_has_valid_placement_sampled(
         if map.owner_id(x, y) != owner_id {
             continue;
         }
-        if resolve_structure_spawn_tile(map, owner_id, kind, idx, grid, scratch).is_some() {
+        if resolve_structure_spawn_tile(map, owner_id, kind, idx, grid, buildings, scratch).is_some() {
             return true;
         }
     }
@@ -41,9 +42,10 @@ pub fn player_has_valid_placement_scan(
     owner_id: u16,
     kind: BuildingKind,
     grid: &super::core::BuildingGrid,
+    buildings: &[Building],
     scratch: &mut crate::engine::PlacementScratch,
 ) -> bool {
-    player_has_valid_placement_sampled(map, owner_id, kind, grid, scratch, usize::MAX)
+    player_has_valid_placement_sampled(map, owner_id, kind, grid, buildings, scratch, usize::MAX)
 }
 #[derive(Clone, Copy, Debug)]
 pub struct BuildableEntry {
@@ -87,7 +89,7 @@ pub fn compute_buildables_for_player(
     buildings: &[Building],
     grid: &super::core::BuildingGrid,
     scratch: &mut crate::engine::PlacementScratch,
-) -> [BuildableEntry; 9] {
+) -> [BuildableEntry; 2] {
     let mut out = [BuildableEntry {
         kind: BuildingKind::City,
         cost: 0.0,
@@ -96,7 +98,7 @@ pub fn compute_buildables_for_player(
         placement_feasible: false,
         can_build: false,
         can_upgrade: false,
-    }; 9];
+    }; 2];
     for (i, &kind) in BuildingKind::ALL.iter().enumerate() {
         let enabled = structure_kind_enabled(kind);
         let cost = structure_build_cost_gold(kind, owner_id, buildings);
@@ -107,6 +109,7 @@ pub fn compute_buildables_for_player(
             owner_id,
             kind,
             grid,
+            buildings,
             scratch,
             PLACEMENT_HUD_MAX_SAMPLES,
         );

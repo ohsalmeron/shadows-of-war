@@ -725,6 +725,7 @@ impl MapEditorSession {
                             .map(|&idx| sow_core::protocol::DirtyTile {
                                 index: idx as u32,
                                 new_owner: 0,
+                                upgrade_level: 0,
                             })
                             .collect();
                         mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, &dirty_dt);

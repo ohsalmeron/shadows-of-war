@@ -15,6 +15,8 @@ pub enum UiAction {
     StartTutorial,
     SetAttackRatio(f32),
     CenterCamera,
+    /// Pan + zoom camera to world-space tile coords (col, row).
+    FocusTile(f32, f32),
     ZoomIn,
     ZoomOut,
     ToggleSettings,

@@ -1,5 +1,6 @@
 use crate::building::{
     resolve_structure_spawn_tile, structure_build_cost_gold, structure_kind_enabled, Building,
+    CityModules, ModuleKind,
 };
 use crate::engine::SowEngine;
 use crate::game::{BuildingKind, GameEvent, GamePhase};
@@ -36,66 +37,11 @@ impl SowEngine {
             kind,
             target_tile,
             &self.building_grid,
+            &self.buildings,
             &mut self.placement_scratch,
         ) else {
-            log::debug!(
-                "apply_build_structure: no valid spawn for {:?} at tile {}",
-                kind, target_tile
-            );
             return;
         };
-
-        // District checks: must be within 12-tile Euclidean radius of an owned completed City Center
-        // and cannot exceed the district slots limit (slots = City Center level)
-        let is_district = matches!(
-            kind,
-            BuildingKind::Factory
-                | BuildingKind::Port
-        );
-
-        if is_district {
-            let mut city_covering: Option<&Building> = None;
-            let (sx, sy) = crate::building::idx_xy(spawn_idx, w);
-            for b in &self.buildings {
-                if b.owner_id == player_id && b.kind == BuildingKind::City && !b.under_construction {
-                    let (cx, cy) = crate::building::idx_xy(b.tile_idx, w);
-                    if crate::building::euclid_sq(sx as i64, sy as i64, cx as i64, cy as i64) <= 144 {
-                        city_covering = Some(b);
-                        break;
-                    }
-                }
-            }
-            let Some(city) = city_covering else {
-                log::debug!("apply_build_structure: district {:?} at {} not within 12 tiles of an owned City Center", kind, spawn_idx);
-                return;
-            };
-
-            // Count existing districts around this specific City Center
-            let (cx, cy) = crate::building::idx_xy(city.tile_idx, w);
-            let mut district_count = 0;
-            for b in &self.buildings {
-                if b.owner_id == player_id
-                    && matches!(
-                        b.kind,
-                        BuildingKind::Factory
-                            | BuildingKind::Port
-                    )
-                {
-                    let (dx, dy) = crate::building::idx_xy(b.tile_idx, w);
-                    if crate::building::euclid_sq(dx as i64, dy as i64, cx as i64, cy as i64) <= 144 {
-                        district_count += 1;
-                    }
-                }
-            }
-
-            if district_count >= city.level as u32 {
-                log::debug!(
-                    "apply_build_structure: city at {} has reached district slots limit ({}/{})",
-                    city.tile_idx, district_count, city.level
-                );
-                return;
-            }
-        }
 
         let cost = structure_build_cost_gold(kind, player_id, &self.buildings);
         let Some(player_mut) = self.state.player_mut(player_id) else {
@@ -118,6 +64,7 @@ impl SowEngine {
             level: 1,
             under_construction: under,
             ticks_until_complete: ticks,
+            modules: CityModules::default(),
         });
         self.state.events.push(GameEvent::StructureSpawned {
             id,
@@ -132,30 +79,36 @@ impl SowEngine {
         if self.state.phase != GamePhase::Playing {
             return;
         }
-        let mut found: Option<(usize, BuildingKind, u32)> = None;
+        let mut found: Option<(usize, BuildingKind, u32, u8)> = None;
         if let Ok(idx) = self.buildings.binary_search_by_key(&building_id, |b| b.id) {
             let b = &self.buildings[idx];
-            // ID matches since we used binary_search_by_key
             if b.owner_id != player_id {
                 return;
             }
             if b.under_construction {
                 return;
             }
-            if !b.kind.upgradable() {
-                return;
-            }
-            found = Some((idx, b.kind, b.tile_idx));
+            found = Some((idx, b.kind, b.tile_idx, b.level));
         }
-        let Some((idx, kind, tile_idx)) = found else {
-            log::debug!("apply_upgrade_structure: id {} not found", building_id);
+        let Some((idx, kind, tile_idx, current_level)) = found else {
             return;
         };
-        if !structure_kind_enabled(kind) {
-            return;
+        
+        let new_level = current_level.saturating_add(1);
+        match kind {
+            BuildingKind::City => {
+                if new_level > 5 { return; }
+            }
+            BuildingKind::Bunker => {
+                if new_level > 3 { return; }
+            }
         }
 
-        let cost = structure_build_cost_gold(kind, player_id, &self.buildings);
+        let cost = match kind {
+            BuildingKind::City => crate::building::city_upgrade_cost_gold(new_level),
+            BuildingKind::Bunker => crate::building::bunker_upgrade_cost_gold(new_level),
+        };
+        
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
         };
@@ -165,16 +118,144 @@ impl SowEngine {
         player_mut.gold = (player_mut.gold - cost).max(0.0);
 
         let b = &mut self.buildings[idx];
-        b.level = b.level.saturating_add(1);
-        let new_level = b.level;
+        b.level = new_level;
         self.building_aggregates_dirty = true;
-        if kind == BuildingKind::DefensePost {
+        if kind == BuildingKind::Bunker {
             self.defense_grid_dirty = true;
         }
         self.state.events.push(GameEvent::StructureUpgraded {
             id: building_id,
             tile_idx,
             kind,
+            level: new_level,
+        });
+    }
+
+    pub(super) fn apply_upgrade_city_module_intent(
+        &mut self,
+        player_id: u16,
+        building_id: u64,
+        module: ModuleKind,
+    ) {
+        if self.state.phase != GamePhase::Playing {
+            return;
+        }
+        let Some(player) = self.state.player(player_id) else {
+            return;
+        };
+        if !player.alive {
+            return;
+        }
+        let mut found: Option<(usize, u8, u8)> = None;
+        if let Ok(idx) = self.buildings.binary_search_by_key(&building_id, |b| b.id) {
+            let b = &self.buildings[idx];
+            if b.owner_id == player_id && b.kind == BuildingKind::City && !b.under_construction {
+                let current_level = b.modules.get_level(module);
+                found = Some((idx, current_level, b.level));
+            }
+        }
+        let Some((idx, current_level, city_level)) = found else {
+            return;
+        };
+        
+        let new_level = current_level.saturating_add(1);
+        if new_level > 5 {
+            return;
+        }
+        if module == ModuleKind::Arsenal && new_level > 3 {
+            return;
+        }
+        
+        match module {
+            ModuleKind::Intel => {
+                if city_level < 2 { return; }
+            }
+            ModuleKind::Arsenal | ModuleKind::Shield => {
+                if city_level < 3 { return; }
+            }
+            _ => {}
+        }
+        
+        if module == ModuleKind::Port {
+            let city_tile = self.buildings[idx].tile_idx;
+            let (cx, cy) = crate::building::idx_xy(city_tile, self.state.map.width);
+            if !crate::building::is_shore_land_tile(&self.state.map, cx, cy) {
+                return;
+            }
+        }
+        
+        if module == ModuleKind::Arsenal && current_level == 0 {
+            let has_arsenal = self.buildings.iter().any(|b| b.owner_id == player_id && b.modules.arsenal > 0);
+            if has_arsenal {
+                return;
+            }
+        }
+        
+        let cost = crate::building::module_upgrade_cost_gold(module, new_level);
+        let Some(player_mut) = self.state.player_mut(player_id) else {
+            return;
+        };
+        if player_mut.gold < cost || !cost.is_finite() {
+            return;
+        }
+        player_mut.gold = (player_mut.gold - cost).max(0.0);
+        
+        let b = &mut self.buildings[idx];
+        b.modules.set_level(module, new_level);
+        self.building_aggregates_dirty = true;
+        
+        if module == ModuleKind::Port {
+            self.sea_lanes_dirty = true;
+        }
+        
+        self.state.events.push(GameEvent::StructureUpgraded {
+            id: building_id,
+            tile_idx: b.tile_idx,
+            kind: b.kind,
+            level: b.level,
+        });
+    }
+
+    pub(super) fn apply_upgrade_tile_intent(&mut self, player_id: u16, tile_idx: u32) {
+        if self.state.phase != GamePhase::Playing {
+            return;
+        }
+        let Some(player) = self.state.player(player_id) else {
+            return;
+        };
+        if !player.alive {
+            return;
+        }
+        
+        let w = self.state.map.width;
+        let h = self.state.map.height;
+        if tile_idx >= w * h {
+            return;
+        }
+        
+        if self.state.map.owner_id(tile_idx % w, tile_idx / w) != player_id {
+            return;
+        }
+        
+        let current_level = self.state.map.tile_upgrades[tile_idx as usize];
+        let new_level = current_level.saturating_add(1);
+        
+        let s = crate::config::GOLD_SCALE.max(1.0);
+        let cost = (1000.0 * 1.5f64.powi(current_level as i32)) / s;
+        
+        let Some(player_mut) = self.state.player_mut(player_id) else {
+            return;
+        };
+        if player_mut.gold < cost || !cost.is_finite() {
+            return;
+        }
+        player_mut.gold = (player_mut.gold - cost).max(0.0);
+        
+        self.state.map.tile_upgrades[tile_idx as usize] = new_level;
+        self.state.map.dirty_tiles.push(tile_idx as usize);
+        
+        self.state.events.push(GameEvent::TileUpgraded {
+            tile_idx,
             level: new_level,
         });
     }

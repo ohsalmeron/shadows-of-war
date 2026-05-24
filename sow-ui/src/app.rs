@@ -39,6 +39,7 @@ impl ClientApp {
                 sync_state: None,
 
                 my_player_id: 0,
+                map_w: 0,
                 attacks: Vec::new(),
                 fleets: Vec::new(),
                 players: Vec::new(),

@@ -520,37 +520,15 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                                      area_ui.horizontal(|area_ui| {
                                                          area_ui.spacing_mut().item_spacing.x = 4.0 * scale_factor;
 
-                                                         if !ui.troops_webp_registered {
-                                                             ui.troops_webp_registered = true;
-                                                             area_ui.ctx().include_bytes(
-                                                                 sow_core::assets::Asset::Troops.uri(),
-                                                                 include_bytes!("../../../assets/troops.webp").as_slice(),
-                                                             );
-                                                         }
                                                          let troops_font_size = font_size * 1.30; // Significantly larger text for troops!
-                                                         let troops_icon_size = troops_font_size * 1.25; // Significantly larger icon for troops!
-                                                         let load_res = area_ui.ctx().try_load_texture(
-                                                             sow_core::assets::Asset::Troops.uri(),
-                                                             egui::TextureOptions::default(),
-                                                             egui::load::SizeHint::Size {
-                                                                 width: troops_icon_size.round() as u32,
-                                                                 height: troops_icon_size.round() as u32,
-                                                                 maintain_aspect_ratio: true,
-                                                             },
-                                                         );
-
-                                                         let formatted_troops = sow_ui::utils::format_number(player.troops);
+                                                         let formatted_troops = format!("⚔{}", sow_ui::utils::format_number(player.troops));
                                                          let troops_font_id = egui::FontId::proportional(troops_font_size);
                                                          let troops_galley = area_ui.painter().layout_no_wrap(formatted_troops, troops_font_id.clone(), egui::Color32::WHITE);
 
-                                                         let row_w = troops_icon_size + 4.0 * scale_factor + troops_galley.rect.width();
+                                                         let row_w = troops_galley.rect.width();
                                                          let name_w = name_galley.rect.width();
                                                          if name_w > row_w {
                                                              area_ui.add_space((name_w - row_w) / 2.0);
-                                                         }
-
-                                                         if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                                                             area_ui.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(troops_icon_size, troops_icon_size)).sense(egui::Sense::empty()));
                                                          }
 
                                                          let (rect, _resp) = area_ui.allocate_exact_size(troops_galley.rect.size(), egui::Sense::empty());
@@ -1021,49 +999,12 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     current_y += h_max + 0.5;
 
                     // 5. Troops Image instead of emoji for non-human players
-                    if !ui.troops_webp_registered {
-                        ui.troops_webp_registered = true;
-                        painter.ctx().include_bytes(
-                            sow_core::assets::Asset::Troops.uri(),
-                            include_bytes!("../../../assets/troops.webp").as_slice(),
-                        );
-                    }
-                    let troops_icon_size = font_size * 0.9;
-                    let load_res = painter.ctx().try_load_texture(
-                        sow_core::assets::Asset::Troops.uri(),
-                        egui::TextureOptions::default(),
-                        egui::load::SizeHint::Size {
-                            width: troops_icon_size.round() as u32,
-                            height: troops_icon_size.round() as u32,
-                            maintain_aspect_ratio: true,
-                        },
-                    );
-
-                    let total_troops_w = if let Ok(egui::load::TexturePoll::Ready { .. }) = load_res {
-                        troops_icon_size + 2.0 + troops_galley.rect.width()
-                    } else {
-                        troops_galley.rect.width()
-                    };
-
-                    let mut troops_start_x = center.x - total_troops_w / 2.0;
-
-                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                        let icon_rect = egui::Rect::from_min_size(
-                            egui::pos2(troops_start_x, current_y),
-                            egui::vec2(troops_icon_size, troops_icon_size),
-                        );
-                        painter.image(
-                            texture.id,
-                            icon_rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            egui::Color32::WHITE,
-                        );
-                        troops_start_x += troops_icon_size + 2.0;
-                    }
+                    let total_troops_w = troops_galley.rect.width();
+                    let troops_start_x = center.x - total_troops_w / 2.0;
 
                     let troops_pos = egui::pos2(
                         troops_start_x,
-                        current_y + (troops_icon_size - troops_galley.rect.height()) / 2.0,
+                        current_y,
                     );
                     let is_tribe = player.id >= 200;
                     crate::hud::nameplate::paint_glow_nameplate_galley(

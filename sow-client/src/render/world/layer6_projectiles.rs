@@ -56,13 +56,12 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
 
             let is_nuke = matches!(
                 proj.kind,
-                sow_core::game::ProjectileKind::Nuke(_)
-                    | sow_core::game::ProjectileKind::MIRVWarhead
+                sow_core::game::ProjectileKind::Nuke { .. }
             );
 
             let center = egui::pos2(screen_x, screen_y);
 
-            // 1. Draw glowing flight trajectory trail curve for Flying Nukes & MIRV Warheads!
+            // 1. Draw glowing flight trajectory trail curve for Flying Nukes!
             if is_nuke {
                 let trail_end = cursor.min(proj.path.len() - 1);
                 let trail_step = (trail_end / 15).max(1);
@@ -79,25 +78,23 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
                 // Always include the current interpolated position as the last point
                 curve_points.push(center);
 
-                let trail_color = match proj.kind {
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => {
-                        egui::Color32::from_rgba_unmultiplied(255, 50, 0, 150)
-                    }
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::MIRV) => {
-                        egui::Color32::from_rgba_unmultiplied(255, 170, 0, 150)
-                    }
-                    sow_core::game::ProjectileKind::MIRVWarhead => {
-                        egui::Color32::from_rgba_unmultiplied(255, 140, 0, 110)
-                    }
-                    _ => {
-                        egui::Color32::from_rgba_unmultiplied(255, 90, 0, 140)
-                    }
+                let level = match proj.kind {
+                    sow_core::game::ProjectileKind::Nuke { level } => level,
+                    _ => 1,
+                };
+
+                let trail_color = if level >= 3 {
+                    egui::Color32::from_rgba_unmultiplied(255, 170, 0, 160)
+                } else if level == 2 {
+                    egui::Color32::from_rgba_unmultiplied(255, 50, 0, 150)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(255, 90, 0, 140)
                 };
 
                 for win in curve_points.windows(2) {
                     painter.line_segment(
                         [win[0], win[1]],
-                        egui::Stroke::new(1.8f32, trail_color),
+                        egui::Stroke::new(1.8f32 + (level as f32 * 0.4), trail_color),
                     );
                 }
 
@@ -109,11 +106,7 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
                     let dir_len = (dir.x * dir.x + dir.y * dir.y).sqrt().max(0.1);
                     let dir_norm = dir / dir_len;
 
-                    let flame_len = match proj.kind {
-                        sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => 14.0,
-                        sow_core::game::ProjectileKind::MIRVWarhead => 6.0,
-                        _ => 10.0,
-                    };
+                    let flame_len = 6.0 + (level as f32) * 4.0;
                     let flame_back = tip - dir_norm * flame_len;
                     let perp = egui::vec2(-dir_norm.y, dir_norm.x) * (flame_len * 0.28);
 
@@ -136,17 +129,13 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             }
 
             let uri = match proj.kind {
-                sow_core::game::ProjectileKind::Nuke(nk) => nk.asset().uri(),
-                sow_core::game::ProjectileKind::MIRVWarhead => sow_core::assets::Asset::AtomBomb.uri(),
+                sow_core::game::ProjectileKind::Nuke { .. } => sow_core::assets::Asset::AtomBomb.uri(),
                 sow_core::game::ProjectileKind::SAMMissile => sow_core::assets::Asset::SamMissile.uri(),
                 sow_core::game::ProjectileKind::Shell => continue,
             };
 
             let base_size = match proj.kind {
-                sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => 24.0,
-                sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::MIRV) => 20.0,
-                sow_core::game::ProjectileKind::Nuke(_) => 16.0,
-                sow_core::game::ProjectileKind::MIRVWarhead => 8.0,
+                sow_core::game::ProjectileKind::Nuke { level } => 10.0 + (level as f32) * 6.0,
                 sow_core::game::ProjectileKind::SAMMissile => 10.0,
                 _ => 12.0,
             };
@@ -181,7 +170,11 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             if attack.target_owner == 0 {
                 continue;
             }
-            if attack.owner_id != sim.my_player_id.unwrap_or(0) {
+            let my_id = sim.my_player_id.unwrap_or(0);
+            let is_outgoing = attack.owner_id == my_id && my_id != 0;
+            let is_incoming = attack.target_owner == my_id && my_id != 0;
+
+            if !is_outgoing && !is_incoming {
                 continue;
             }
 
@@ -211,20 +204,51 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let end_x = (input.camera_x + tx * input.camera_zoom) / sf;
             let end_y = (input.camera_y + ty * input.camera_zoom) / sf;
 
-            let color = egui::Color32::from_rgb(
+            let mut color = egui::Color32::from_rgb(
                 (r * 255.0) as u8,
                 (g * 255.0) as u8,
                 (b * 255.0) as u8,
             );
+
+            if is_incoming {
+                color = egui::Color32::from_rgb(255, 60, 60); // Bright warning red for incoming
+            }
+
             let start_pos = egui::pos2(start_x, start_y);
             let end_pos = egui::pos2(end_x, end_y);
 
-            // Simple thick line to represent attack
+            // 1. Draw a soft, elegant background guide rail/shadow line
             painter.line_segment(
                 [start_pos, end_pos],
-                egui::Stroke::new(3.0_f32, egui::Color32::from_black_alpha(150)),
+                egui::Stroke::new(3.0_f32, egui::Color32::from_black_alpha(30)),
             );
-            painter.line_segment([start_pos, end_pos], egui::Stroke::new(1.5_f32, color));
+            painter.line_segment(
+                [start_pos, end_pos],
+                egui::Stroke::new(1.0_f32, color.linear_multiply(0.35)),
+            );
+
+            // 2. Render beautiful flowing dots sliding towards the target
+            let elapsed = time.start_time.elapsed().as_secs_f32();
+            let num_dots = 4;
+            for i in 0..num_dots {
+                let t_offset = (i as f32) / (num_dots as f32);
+                let t = (t_offset + elapsed * 0.45) % 1.0;
+
+                // Interpolated position along the ray
+                let dot_pos = egui::pos2(
+                    start_pos.x + (end_pos.x - start_pos.x) * t,
+                    start_pos.y + (end_pos.y - start_pos.y) * t,
+                );
+
+                // Fade out as it reaches the target destination
+                let alpha = ((1.0 - t) * 255.0) as u8;
+                let outer_glow = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha / 3);
+                let inner_core = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+
+                // Draw soft outer halo and solid inner core
+                painter.circle_filled(dot_pos, 4.5_f32, outer_glow);
+                painter.circle_filled(dot_pos, 1.8_f32, inner_core);
+            }
 
             if attack.retreating
                 && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2)
@@ -240,6 +264,65 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             }
         }
 
+        // --- Render Attack Troop Count Badges at the frontier centroids ---
+        let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new("attack_badges"),
+        ));
 
+        for attack in &snap.attacks {
+            if attack.troops <= 0.0 {
+                continue;
+            }
+
+            let my_id = sim.my_player_id.unwrap_or(0);
+            let is_outgoing = attack.owner_id == my_id && my_id != 0;
+            let is_incoming = attack.target_owner == my_id && my_id != 0;
+
+            // Only show labels for outgoing or incoming attacks involving the player
+            if !is_outgoing && !is_incoming {
+                continue;
+            }
+
+            let cx = attack.front_cx;
+            let cy = attack.front_cy;
+            if cx == 0.0 && cy == 0.0 {
+                continue;
+            }
+
+            // Convert centroid column/row to world coordinates
+            let wx = cx + 0.5 + ((cy as i32 % 2) as f32 * 0.5);
+            let wy = (cy + 0.5) * 0.8660254_f32;
+
+            // Convert to screen coordinates
+            let screen_x = (input.camera_x + wx * input.camera_zoom) / sf;
+            let screen_y = (input.camera_y + wy * input.camera_zoom) / sf;
+
+            // Frustum cull
+            if screen_x < -80.0 || screen_x > input.screen_w / sf + 80.0
+                || screen_y < -40.0 || screen_y > input.screen_h / sf + 40.0 {
+                continue;
+            }
+
+            let label = format!("⚔ {}", sow_ui::utils::format_number(attack.troops));
+            let color = if is_incoming {
+                egui::Color32::from_rgb(255, 90, 90) // Red for incoming
+            } else {
+                sow_ui::ui::theme::accent_solo_cyan_hover() // Cyan for outgoing
+            };
+
+            let pos = egui::pos2(screen_x, screen_y);
+
+            // Supercell style text: solid black outline + heavy bottom shadow
+            sow_ui::ui::theme::outlined_text(
+                &middle_painter,
+                pos,
+                egui::Align2::CENTER_CENTER,
+                &label,
+                egui::FontId::proportional(13.0),
+                color,
+                egui::Color32::BLACK,
+            );
+        }
     }
 }

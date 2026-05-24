@@ -66,6 +66,12 @@ impl SowApp {
                                 // Perform CPU-side update of the map
                                 let dirty = self.sim.current_snapshot.as_ref().map(|s| s.dirty_tiles.as_slice()).unwrap_or(&[]);
                                 mr.update(&mut self.gfx.render_ctx.command_encoder, &self.gfx.render_ctx.context, dirty);
+                                for dt in dirty {
+                                    let i = dt.index as usize;
+                                    if i < self.sim.tile_upgrades.len() {
+                                        self.sim.tile_upgrades[i] = dt.upgrade_level;
+                                    }
+                                }
                                 if let Some(snap) = &mut self.sim.current_snapshot {
                                     snap.dirty_tiles.clear();
                                 }

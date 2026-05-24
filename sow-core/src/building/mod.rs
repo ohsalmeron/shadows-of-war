@@ -40,7 +40,7 @@ mod tests {
         let (map, owner) = tiny_owned_map();
         let grid = BuildingGrid::rebuild_empty(map.width, map.height);
         let mut scratch = crate::engine::PlacementScratch::default();
-        let v = valid_land_structure_indices(&map, owner, 2, &grid, &mut scratch);
+        let v = valid_land_structure_indices(&map, owner, 2, BuildingKind::City, &grid, &[], &mut scratch);
         assert!(v.contains(&2));
     }
 
@@ -59,21 +59,9 @@ mod tests {
         let mut grid = BuildingGrid::default();
         grid.rebuild_from_pairs(w, 1, &[(15u32, 0u32)]);
         let mut scratch = crate::engine::PlacementScratch::default();
-        let v = valid_land_structure_indices(&m, owner, click, &grid, &mut scratch);
+        let v = valid_land_structure_indices(&m, owner, click, BuildingKind::City, &grid, &[], &mut scratch);
         assert!(!v.contains(&15));
         assert!(!v.is_empty());
-    }
-
-    #[test]
-    fn port_picks_shore_in_valid_set() {
-        let (map, owner) = tiny_owned_map();
-        let grid = BuildingGrid::rebuild_empty(map.width, map.height);
-        let mut scratch = crate::engine::PlacementScratch::default();
-        let valid = valid_land_structure_indices(&map, owner, 2, &grid, &mut scratch);
-        let p = resolve_port_spawn_tile(&map, owner, 2, &valid);
-        assert!(p.is_some());
-        let (x, y) = idx_xy(p.unwrap(), map.width);
-        assert!(is_shore_land_tile(&map, x, y));
     }
 
     #[test]
@@ -87,6 +75,7 @@ mod tests {
             level: 1,
             under_construction: false,
             ticks_until_complete: 0,
+            modules: crate::building::CityModules::default(),
         };
         let b2 = Building {
             id: 2,
@@ -96,6 +85,7 @@ mod tests {
             level: 1,
             under_construction: false,
             ticks_until_complete: 0,
+            modules: crate::building::CityModules::default(),
         };
         let map = GameMap::new(w, 20);
         let click = xy_idx(5, 5, w);
@@ -136,6 +126,7 @@ mod tests {
             level: 1,
             under_construction: true,
             ticks_until_complete: 1,
+            modules: crate::building::CityModules::default(),
         });
         engine.execute_construction();
         assert!(engine
@@ -143,25 +134,6 @@ mod tests {
             .events
             .iter()
             .any(|e| matches!(e, GameEvent::StructureReady { id: 7, .. })));
-    }
-
-
-    #[test]
-    fn compute_buildables_port_invalid_without_shore() {
-        let w = 6u32;
-        let mut m = GameMap::new(w, 1);
-        let owner = 1u16;
-        for x in 0..w {
-            m.set_owner_id(x, 0, owner);
-            let ri = m.ref_id(x, 0);
-            // Land but no shoreline bit — cannot place Port.
-            m.terrain[ri] = MapTile::from_byte(0b1000_0000);
-        }
-        let grid = BuildingGrid::rebuild_empty(m.width, m.height);
-        let mut scratch = crate::engine::PlacementScratch::default();
-        let rows = compute_buildables_for_player(&m, owner, 50_000.0, &[], &grid, &mut scratch);
-        let port = rows.iter().find(|e| e.kind == BuildingKind::Port).unwrap();
-        assert!(!port.can_build);
     }
 
     #[test]
@@ -175,6 +147,7 @@ mod tests {
                 level: 5,
                 under_construction: true,
                 ticks_until_complete: 3,
+                modules: crate::building::CityModules::default(),
             },
             Building {
                 id: 2,
@@ -184,6 +157,7 @@ mod tests {
                 level: 2,
                 under_construction: false,
                 ticks_until_complete: 0,
+                modules: crate::building::CityModules::default(),
             },
         ];
         let aggs = aggregate_buildings_per_player(b.into_iter(), 2);
@@ -199,57 +173,15 @@ mod tests {
             id: 1,
             owner_id: 2,
             tile_idx: xy_idx(10, 10, w),
-            kind: BuildingKind::DefensePost,
+            kind: BuildingKind::Bunker,
             level: 2,
             under_construction: false,
             ticks_until_complete: 0,
+            modules: crate::building::CityModules::default(),
         };
         let bonus = defense_post_priority_bonus(&[b], 10, 10, w);
         assert_eq!(bonus, 2 * crate::config::DEFENSE_POST_PRIORITY_PER_LEVEL);
         let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w);
         assert_eq!(bonus_far, 0);
-    }
-
-    #[test]
-    fn legacy_engine_cost_scaling_city_and_port_factory_shared_counter() {
-        let s = crate::config::GOLD_SCALE;
-        let owner = 1u16;
-        let city0 = structure_build_cost_gold(BuildingKind::City, owner, &[]);
-        assert_eq!(city0, 125_000.0 / s);
-
-        let one_city = [Building {
-            id: 1,
-            owner_id: owner,
-            tile_idx: 0,
-            kind: BuildingKind::City,
-            level: 1,
-            under_construction: false,
-            ticks_until_complete: 0,
-        }];
-        let city1 = structure_build_cost_gold(BuildingKind::City, owner, &one_city);
-        assert_eq!(city1, 250_000.0 / s);
-
-        let pf = [
-            Building {
-                id: 2,
-                owner_id: owner,
-                tile_idx: 1,
-                kind: BuildingKind::Port,
-                level: 1,
-                under_construction: false,
-                ticks_until_complete: 0,
-            },
-            Building {
-                id: 3,
-                owner_id: owner,
-                tile_idx: 2,
-                kind: BuildingKind::Factory,
-                level: 1,
-                under_construction: false,
-                ticks_until_complete: 0,
-            },
-        ];
-        let next_pf = structure_build_cost_gold(BuildingKind::Factory, owner, &pf);
-        assert_eq!(next_pf, 500_000.0 / s);
     }
 }

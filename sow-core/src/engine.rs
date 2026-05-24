@@ -51,9 +51,7 @@ pub struct SowEngine {
     pub sea_lanes_dirty: bool,
     pub railroad_calc: Option<(usize, Vec<crate::building::railroad::IncrementalRail>, Vec<Building>)>,
     pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
-    /// Round-robin cursor for the unified AI pipeline.
-    /// Ensures fair distribution of bot/nation think work across ticks.
-    pub ai_round_robin: usize,
+
     pub ai_events: std::collections::VecDeque<AiEvent>,
     pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
     pub port_queues: std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
@@ -100,7 +98,7 @@ impl SowEngine {
             sea_lanes_dirty: true,
             railroad_calc: None,
             sea_lane_calc: None,
-            ai_round_robin: 0,
+
             ai_events: std::collections::VecDeque::new(),
             alliances_proposed: Vec::new(),
             port_queues: std::collections::HashMap::new(),
@@ -143,16 +141,14 @@ impl SowEngine {
     #[inline]
     pub fn add_building(&mut self, b: Building) {
         let is_ready_defense =
-            b.kind == crate::game::BuildingKind::DefensePost && !b.under_construction;
+            b.kind == crate::game::BuildingKind::Bunker && !b.under_construction;
         let pos = self.buildings.partition_point(|x| x.id < b.id);
         self.buildings.insert(pos, b);
         self.building_grid.mark_dirty();
         self.building_aggregates_dirty = true;
         if !b.under_construction {
-            if b.kind == crate::game::BuildingKind::City || b.kind == crate::game::BuildingKind::Factory || b.kind == crate::game::BuildingKind::Port {
+            if b.kind == crate::game::BuildingKind::City {
                 self.railroads_dirty = true;
-            }
-            if b.kind == crate::game::BuildingKind::Port {
                 self.sea_lanes_dirty = true;
             }
         }
@@ -212,6 +208,7 @@ impl SowEngine {
                             level: if is_caesar { 2 } else { 1 },
                             under_construction: false,
                             ticks_until_complete: 0,
+                            modules: crate::building::CityModules::default(),
                         });
                     }
                 }
@@ -221,6 +218,15 @@ impl SowEngine {
 
         self.state.events.clear(); // Prevent unbounded memory leak (was growing infinitely on tile capture)
         self.state.tick();
+
+        // Run active incremental calculations on every tick to spread pathfinding workload
+        if self.railroad_calc.is_some() {
+            crate::building::railroad::update_railroads(self);
+        }
+        if self.sea_lane_calc.is_some() {
+            crate::sea_lane::update_sea_lanes(self);
+        }
+
         self.execute_income();
         self.execute_ai_think();
         self.execute_construction();
@@ -245,23 +251,15 @@ impl SowEngine {
                 b.owner_id = new_owner;
                 
                 // Update player counts if necessary
-                if kind == crate::game::BuildingKind::City || kind == crate::game::BuildingKind::Factory {
+                if kind == crate::game::BuildingKind::City {
                     if old_owner != 0 {
                         if let Some(p) = self.state.player_mut(old_owner) {
-                            if kind == crate::game::BuildingKind::City {
-                                p.cities = p.cities.saturating_sub(1);
-                            } else {
-                                p.factories = p.factories.saturating_sub(1);
-                            }
+                            p.cities = p.cities.saturating_sub(1);
                         }
                     }
                     if new_owner != 0 {
                         if let Some(p) = self.state.player_mut(new_owner) {
-                            if kind == crate::game::BuildingKind::City {
-                                p.cities += 1;
-                            } else {
-                                p.factories += 1;
-                            }
+                            p.cities += 1;
                         }
                     }
                 }
@@ -450,6 +448,7 @@ impl SowEngine {
                     level: if is_caesar { 2 } else { 1 },
                     under_construction: false,
                     ticks_until_complete: 0,
+                    modules: crate::building::CityModules::default(),
                 });
             }
         }
@@ -547,6 +546,7 @@ impl SowEngine {
                 level: if is_caesar { 2 } else { 1 },
                 under_construction: false,
                 ticks_until_complete: 0,
+                modules: crate::building::CityModules::default(),
             });
             self.state.next_building_id += 1;
 
@@ -605,6 +605,7 @@ impl SowEngine {
             .map(|i| crate::protocol::DirtyTile {
                 index: i as u32,
                 new_owner: self.state.map.state[i],
+                upgrade_level: self.state.map.tile_upgrades[i],
             })
             .collect();
 
@@ -675,7 +676,11 @@ impl SowEngine {
             .attacks
             .iter()
             .map(|a| {
-                let (fcx, fcy) = a.frontier_centroid();
+                let (fcx, fcy) = if a.target_owner != 0 {
+                    a.frontier_centroid()
+                } else {
+                    (0.0, 0.0)
+                };
                 crate::protocol::AttackSnapshot {
                     id: a.id,
                     owner_id: a.owner_id,
@@ -691,7 +696,7 @@ impl SowEngine {
         let mut defense_posts = Vec::new();
         if self.render_defense_dirty {
             for b in &self.buildings {
-                if b.kind == crate::game::BuildingKind::DefensePost && !b.under_construction {
+                if b.kind == crate::game::BuildingKind::Bunker && !b.under_construction {
                     defense_posts.push(b.tile_idx);
                 }
             }
@@ -720,6 +725,7 @@ impl SowEngine {
                 level: b.level,
                 under_construction: b.under_construction,
                 ticks_until_complete: b.ticks_until_complete,
+                modules: b.modules,
             })
             .collect();
 
@@ -745,13 +751,8 @@ impl SowEngine {
                 }
             }).collect(),
             nuke_alerts: self.state.events.iter().filter_map(|e| {
-                if let crate::game::GameEvent::NukeDetonated { tile_x, tile_y, owner_id, inner_radius, outer_radius: _ } = e {
-                    // Determine NukeKind from radii (reverse-map)
-                    let kind = if *inner_radius >= 30 {
-                        crate::game::NukeKind::HydrogenBomb
-                    } else {
-                        crate::game::NukeKind::AtomBomb
-                    };
+                if let crate::game::GameEvent::NukeDetonated { tile_x, tile_y, owner_id, inner_radius: _, outer_radius: _ } = e {
+                    let kind = crate::game::NukeKind::AtomBomb;
                     Some(crate::protocol::NukeAlert {
                         owner_id: *owner_id,
                         kind,

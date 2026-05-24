@@ -184,7 +184,7 @@ pub fn update_railroads(engine: &mut SowEngine) {
     if engine.railroads_dirty {
         let mut stations = Vec::new();
         for b in &engine.buildings {
-            if !b.under_construction && (b.kind == BuildingKind::City || b.kind == BuildingKind::Factory || b.kind == BuildingKind::Port) {
+            if !b.under_construction && b.kind == BuildingKind::City {
                 stations.push(*b);
             }
         }
@@ -288,33 +288,6 @@ pub fn update_railroads(engine: &mut SowEngine) {
                 let mut neighbors = Vec::new();
                 for other_idx in 0..s_idx {
                     let other = &stations[other_idx];
-
-                    let id1 = stations[s_idx].owner_id;
-                    let id2 = other.owner_id;
-                    let friendly = if id1 == id2 {
-                        true
-                    } else if id1 == 0 || id2 == 0 {
-                        true
-                    } else {
-                        let mut is_ally = false;
-                        if let Some(p1) = engine.state.players.iter().find(|p| p.id == id1) {
-                            if p1.alliances.contains(&id2) {
-                                is_ally = true;
-                            }
-                        }
-                        if !is_ally {
-                            if let Some(p2) = engine.state.players.iter().find(|p| p.id == id2) {
-                                if p2.alliances.contains(&id1) {
-                                    is_ally = true;
-                                }
-                            }
-                        }
-                        is_ally
-                    };
-
-                    if !friendly {
-                        continue;
-                    }
 
                     let (x2, y2) = (other.tile_idx % w, other.tile_idx / w);
                     let dx = sx as i32 - x2 as i32;

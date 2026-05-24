@@ -28,6 +28,7 @@ impl SowApp {
     pub(crate) fn sync_hud_combat_state(&mut self) {
         let my_pid = self.sim.my_player_id.unwrap_or(0);
         self.ui.app.hud_state.my_player_id = my_pid;
+        self.ui.app.hud_state.map_w = self.sim.map_w;
 
         if let Some(snap) = &self.sim.current_snapshot {
             self.ui.app.hud_state.attacks = snap.attacks.clone();

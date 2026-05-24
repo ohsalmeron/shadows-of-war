@@ -49,12 +49,45 @@ pub enum TerrainType {
     Mountain,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum TileResource {
+    None = 0,
+    Corn = 1,
+    Rice = 2,
+    Wheat = 3,
+    Copper = 4,
+    Stone = 5,
+    Iron = 6,
+    Jade = 7,
+    Diamonds = 8,
+    Salt = 9,
+}
+
+impl TileResource {
+    pub fn name(self) -> &'static str {
+        match self {
+            TileResource::None => "None",
+            TileResource::Corn => "Corn",
+            TileResource::Rice => "Rice",
+            TileResource::Wheat => "Wheat",
+            TileResource::Copper => "Copper",
+            TileResource::Stone => "Stone",
+            TileResource::Iron => "Iron",
+            TileResource::Jade => "Jade",
+            TileResource::Diamonds => "Diamonds",
+            TileResource::Salt => "Salt",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GameMap {
     pub width: u32,
     pub height: u32,
     pub terrain: Vec<MapTile>,
     pub state: Vec<u16>,
+    pub tile_upgrades: Vec<u32>,
     #[serde(skip)]
     pub dirty_tiles: Vec<usize>,
 }
@@ -76,7 +109,51 @@ impl GameMap {
             height,
             terrain: vec![MapTile::from_byte(0b10000000); size],
             state: vec![0; size],
+            tile_upgrades: vec![0; size],
             dirty_tiles: Vec::new(),
+        }
+    }
+
+    #[inline]
+    pub fn get_tile_resource(&self, x: u32, y: u32) -> TileResource {
+        let ri = self.ref_id(x, y);
+        let t = self.terrain[ri];
+        if !t.is_land() {
+            return TileResource::None;
+        }
+        let magnitude = t.magnitude();
+        
+        let seed = (x as u64).wrapping_mul(374761393)
+            .wrapping_add((y as u64).wrapping_mul(668265263))
+            .wrapping_add(magnitude as u64);
+        let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177) % 100;
+        
+        if magnitude >= 20 {
+            match hash % 5 {
+                0 => TileResource::Copper,
+                1 => TileResource::Stone,
+                2 => TileResource::Iron,
+                3 => TileResource::Diamonds,
+                _ => TileResource::None,
+            }
+        } else if magnitude >= 10 {
+            match hash % 8 {
+                0 => TileResource::Wheat,
+                1 => TileResource::Stone,
+                2 => TileResource::Copper,
+                3 => TileResource::Iron,
+                4 => TileResource::Jade,
+                _ => TileResource::None,
+            }
+        } else {
+            match hash % 10 {
+                0 => TileResource::Corn,
+                1 => TileResource::Rice,
+                2 => TileResource::Wheat,
+                3 => TileResource::Jade,
+                4 => TileResource::Salt,
+                _ => TileResource::None,
+            }
         }
     }
     #[inline(always)]

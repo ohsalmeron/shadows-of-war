@@ -179,6 +179,7 @@ impl SowApp {
                         level: b.level,
                         under_construction: b.under_construction,
                         ticks_until_complete: 0,
+                        modules: b.modules,
                     })
                     .collect()
             })

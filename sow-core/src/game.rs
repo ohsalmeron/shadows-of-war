@@ -15,55 +15,35 @@ pub enum GamePhase {
 #[repr(u8)]
 pub enum BuildingKind {
     City,
-    Factory, // Represents Military District
-    Port,    // Represents Port District
-    DefensePost,
-    SamLauncher,
-    MissileSilo,
+    Bunker,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 6] = [
+    pub const ALL: [BuildingKind; 2] = [
         BuildingKind::City,
-        BuildingKind::Factory,
-        BuildingKind::Port,
-        BuildingKind::DefensePost,
-        BuildingKind::SamLauncher,
-        BuildingKind::MissileSilo,
+        BuildingKind::Bunker,
     ];
     #[inline]
     pub fn as_str(self) -> &'static str {
         match self {
             BuildingKind::City => "City",
-            BuildingKind::Factory => "Military",
-            BuildingKind::Port => "Port",
-            BuildingKind::DefensePost => "DefensePost",
-            BuildingKind::SamLauncher => "SAM",
-            BuildingKind::MissileSilo => "Silo",
+            BuildingKind::Bunker => "Bunker",
         }
     }
     #[inline]
     pub fn asset(self) -> crate::assets::Asset {
         match self {
             BuildingKind::City => crate::assets::Asset::City,
-            BuildingKind::Factory => crate::assets::Asset::Factory,
-            BuildingKind::Port => crate::assets::Asset::Port,
-            BuildingKind::DefensePost => crate::assets::Asset::DefensePost,
-            BuildingKind::SamLauncher => crate::assets::Asset::SamLauncher,
-            BuildingKind::MissileSilo => crate::assets::Asset::MissileSilo,
+            BuildingKind::Bunker => crate::assets::Asset::DefensePost,
         }
     }
     pub fn upgradable(self) -> bool {
-        !matches!(self, BuildingKind::DefensePost)
+        true
     }
     pub fn construction_duration_ticks(self) -> u32 {
         match self {
-            BuildingKind::City
-            | BuildingKind::Factory
-            | BuildingKind::Port => 20,
-            BuildingKind::DefensePost => 50,
-            BuildingKind::SamLauncher => 300,
-            BuildingKind::MissileSilo => 100,
+            BuildingKind::City => 20,
+            BuildingKind::Bunker => 50,
         }
     }
 }
@@ -91,53 +71,30 @@ impl UnitType {
 #[repr(u8)]
 pub enum NukeKind {
     AtomBomb,
-    HydrogenBomb,
-    MIRV,
 }
 
 impl NukeKind {
     #[inline]
     pub fn asset(self) -> crate::assets::Asset {
-        match self {
-            NukeKind::AtomBomb => crate::assets::Asset::AtomBomb,
-            NukeKind::HydrogenBomb => crate::assets::Asset::HydrogenBomb,
-            NukeKind::MIRV => crate::assets::Asset::Mirv,
-        }
+        crate::assets::Asset::AtomBomb
     }
-    pub fn gold_cost(self, prev_mirv_launches: u32) -> f64 {
-        match self {
-            NukeKind::AtomBomb => 750_000.0,
-            NukeKind::HydrogenBomb => 5_000_000.0,
-            NukeKind::MIRV => 25_000_000.0 + prev_mirv_launches as f64 * 15_000_000.0,
-        }
+    pub fn gold_cost(self, _prev_launches: u32) -> f64 {
+        750_000.0
     }
     pub fn inner_radius(self) -> u32 {
-        match self {
-            NukeKind::AtomBomb => 12,
-            NukeKind::HydrogenBomb => 30,
-            NukeKind::MIRV => 12,
-        }
+        12
     }
     pub fn outer_radius(self) -> u32 {
-        match self {
-            NukeKind::AtomBomb => 30,
-            NukeKind::HydrogenBomb => 75,
-            NukeKind::MIRV => 18,
-        }
+        30
     }
     pub fn steps_per_tick(self) -> u8 {
-        match self {
-            NukeKind::AtomBomb | NukeKind::HydrogenBomb => 2,
-            NukeKind::MIRV => 2,
-        }
+        2
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[repr(u8)]
 pub enum ProjectileKind {
-    Nuke(NukeKind),
-    MIRVWarhead,
+    Nuke { level: u8 },
     SAMMissile,
     Shell,
 }
@@ -245,6 +202,10 @@ pub enum GameEvent {
         inner_radius: u32,
         outer_radius: u32,
         owner_id: u16,
+    },
+    TileUpgraded {
+        tile_idx: u32,
+        level: u32,
     },
 }
 

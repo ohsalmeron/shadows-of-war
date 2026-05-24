@@ -160,11 +160,7 @@ impl SowApp {
                     if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
                         let building = match code {
                             winit::keyboard::KeyCode::Digit1 | winit::keyboard::KeyCode::Numpad1 => Some(sow_core::game::BuildingKind::City),
-                            winit::keyboard::KeyCode::Digit2 | winit::keyboard::KeyCode::Numpad2 => Some(sow_core::game::BuildingKind::Factory),
-                            winit::keyboard::KeyCode::Digit3 | winit::keyboard::KeyCode::Numpad3 => Some(sow_core::game::BuildingKind::Port),
-                            winit::keyboard::KeyCode::Digit4 | winit::keyboard::KeyCode::Numpad4 => Some(sow_core::game::BuildingKind::DefensePost),
-                            winit::keyboard::KeyCode::Digit5 | winit::keyboard::KeyCode::Numpad5 => Some(sow_core::game::BuildingKind::SamLauncher),
-                            winit::keyboard::KeyCode::Digit6 | winit::keyboard::KeyCode::Numpad6 => Some(sow_core::game::BuildingKind::MissileSilo),
+                            winit::keyboard::KeyCode::Digit2 | winit::keyboard::KeyCode::Numpad2 => Some(sow_core::game::BuildingKind::Bunker),
                             _ => None,
                         };
                         if let Some(kind) = building {
@@ -178,8 +174,6 @@ impl SowApp {
  
                         let nuke = match code {
                             winit::keyboard::KeyCode::Digit8 | winit::keyboard::KeyCode::Numpad8 => Some(sow_core::game::NukeKind::AtomBomb),
-                            winit::keyboard::KeyCode::Digit9 | winit::keyboard::KeyCode::Numpad9 => Some(sow_core::game::NukeKind::HydrogenBomb),
-                            winit::keyboard::KeyCode::Digit0 | winit::keyboard::KeyCode::Numpad0 => Some(sow_core::game::NukeKind::MIRV),
                             _ => None,
                         };
                         if let Some(kind) = nuke {
@@ -803,16 +797,13 @@ pub fn resolve_building_placement_tile(
     let min_dist = sow_core::building::STRUCTURE_MIN_DIST;
     let min_dist_sq = min_dist * min_dist;
     
-    // Snapping search radius: extremely forgiving (Poka Yoke) on mobile
-    let pokayoke_dist = match kind {
-        sow_core::game::BuildingKind::Port => 35, // extremely forgiving shoreline search for Port
-        _ => 25, // forgiving search for other structures
-    };
+    // Snapping search radius
+    let pokayoke_dist = 25;
     let pokayoke_dist_sq = pokayoke_dist * pokayoke_dist;
     let max_search_dist = pokayoke_dist + min_dist;
     let max_search_dist_sq = max_search_dist * max_search_dist;
 
-    // Filter buildings to those close to the click target to optimize distance checks
+    // Filter buildings to those close to the click target
     let nearby_buildings: Vec<_> = buildings
         .iter()
         .filter(|b| {
@@ -824,21 +815,10 @@ pub fn resolve_building_placement_tile(
         })
         .collect();
 
-    // Diagnostic flags to identify exact failure reasons
     let mut found_any_owned = false;
     let mut found_any_land = false;
     let mut found_any_far_enough = false;
-    let mut found_any_shoreline = false;
-    let mut found_any_near_city = false;
-    let mut found_any_under_slot_limit = false;
 
-    let is_district = matches!(
-        kind,
-        sow_core::game::BuildingKind::Factory
-            | sow_core::game::BuildingKind::Port
-    );
-
-    // 1. Gather valid land structure tiles within pokayoke_dist of click target
     let mut valid_land_tiles = Vec::new();
     for dy in -pokayoke_dist..=pokayoke_dist {
         for dx in -pokayoke_dist..=pokayoke_dist {
@@ -847,7 +827,7 @@ pub fn resolve_building_placement_tile(
             if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
                 continue;
             }
-            if (dx * dx + dy * dy) >= pokayoke_dist_sq { // Euclidean distance limit
+            if (dx * dx + dy * dy) >= pokayoke_dist_sq {
                 continue;
             }
             let tile_idx = (ty * map_w as i32 + tx) as u32;
@@ -866,71 +846,82 @@ pub fn resolve_building_placement_tile(
             }
             found_any_land = true;
             
-            // Check minimum distance from existing buildings
+            // Check minimum distance from existing structures
             let mut too_close = false;
-            for b in &nearby_buildings {
-                let bx = (b.tile_idx % map_w) as i32;
-                let by = (b.tile_idx / map_w) as i32;
-                let bdx = tx - bx;
-                let bdy = ty - by;
-                if (bdx * bdx + bdy * bdy) < min_dist_sq {
-                    too_close = true;
-                    break;
+            if kind == sow_core::game::BuildingKind::City {
+                for b in &nearby_buildings {
+                    if b.kind == sow_core::game::BuildingKind::City {
+                        let bx = (b.tile_idx % map_w) as i32;
+                        let by = (b.tile_idx / map_w) as i32;
+                        let bdx = tx - bx;
+                        let bdy = ty - by;
+                        if (bdx * bdx + bdy * bdy) < min_dist_sq {
+                            too_close = true;
+                            break;
+                        }
+                    }
+                }
+            } else if kind == sow_core::game::BuildingKind::Bunker {
+                // Spacing from Cities: cannot be within radius 6 (dist sq = 36)
+                for b in &nearby_buildings {
+                    if b.kind == sow_core::game::BuildingKind::City {
+                        let bx = (b.tile_idx % map_w) as i32;
+                        let by = (b.tile_idx / map_w) as i32;
+                        let bdx = tx - bx;
+                        let bdy = ty - by;
+                        if (bdx * bdx + bdy * bdy) < 36 {
+                            too_close = true;
+                            break;
+                        }
+                    }
+                }
+                // Spacing from other Bunkers: cannot be within radius 4 (dist sq = 16)
+                if !too_close {
+                    for b in &nearby_buildings {
+                        if b.kind == sow_core::game::BuildingKind::Bunker {
+                            let bx = (b.tile_idx % map_w) as i32;
+                            let by = (b.tile_idx / map_w) as i32;
+                            let bdx = tx - bx;
+                            let bdy = ty - by;
+                            if (bdx * bdx + bdy * bdy) < 16 {
+                                too_close = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                // Border constraint: must be adjacent to non-owned tile or map edge
+                if !too_close {
+                    let mut is_border = false;
+                    let is_odd = (ty % 2) != 0;
+                    let offsets = if is_odd {
+                        [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
+                    } else {
+                        [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
+                    };
+                    for &(dx, dy) in &offsets {
+                        let nx = tx + dx;
+                        let ny = ty + dy;
+                        if nx >= 0 && nx < map_w as i32 && ny >= 0 && ny < map_h as i32 {
+                            let n_idx = (ny * map_w as i32 + nx) as usize;
+                            if owners.get(n_idx).copied().unwrap_or(0) != my_id {
+                                is_border = true;
+                                break;
+                            }
+                        } else {
+                            is_border = true;
+                            break;
+                        }
+                    }
+                    if !is_border {
+                        too_close = true;
+                    }
                 }
             }
             if too_close {
                 continue;
             }
             found_any_far_enough = true;
-
-            // Check district constraints
-            if is_district {
-                let mut city_covering = None;
-                for b in buildings {
-                    if b.owner_id == my_id && b.kind == sow_core::game::BuildingKind::City && !b.under_construction {
-                        let cx = (b.tile_idx % map_w) as i64;
-                        let cy = (b.tile_idx / map_w) as i64;
-                        let dist_x = tx as i64 - cx;
-                        let dist_y = ty as i64 - cy;
-                        if dist_x * dist_x + dist_y * dist_y <= 144 {
-                            city_covering = Some(b);
-                            break;
-                        }
-                    }
-                }
-                
-                let Some(city) = city_covering else {
-                    continue; // too far from City
-                };
-                found_any_near_city = true;
-
-                // Count existing districts around this City Center
-                let cx = (city.tile_idx % map_w) as i64;
-                let cy = (city.tile_idx / map_w) as i64;
-                let mut district_count = 0;
-                for b in buildings {
-                    if b.owner_id == my_id
-                        && matches!(
-                            b.kind,
-                            sow_core::game::BuildingKind::Factory
-                                | sow_core::game::BuildingKind::Port
-                        )
-                    {
-                        let dx = (b.tile_idx % map_w) as i64;
-                        let dy = (b.tile_idx / map_w) as i64;
-                        let cx_dist = dx - cx;
-                        let cy_dist = dy - cy;
-                        if cx_dist * cx_dist + cy_dist * cy_dist <= 144 {
-                            district_count += 1;
-                        }
-                    }
-                }
-
-                if district_count >= city.level as u32 {
-                    continue; // reached limit
-                }
-                found_any_under_slot_limit = true;
-            }
             
             valid_land_tiles.push((tx, ty, tile_idx));
         }
@@ -944,54 +935,21 @@ pub fn resolve_building_placement_tile(
             return Err("Structures can only be built on land territory!");
         }
         if !found_any_far_enough {
-            return Err("Too close to another structure! Minimum spacing is 8 tiles.");
-        }
-        if is_district {
-            if !found_any_near_city {
-                return Err("Districts must be built within 12 tiles of a completed owned City Center!");
-            }
-            if !found_any_under_slot_limit {
-                return Err("City has reached its district slots limit (1 per City level)!");
+            if kind == sow_core::game::BuildingKind::City {
+                return Err("Too close to another City! Minimum spacing is 12 tiles.");
+            } else {
+                return Err("Bunkers can only be built at border tiles (min spacing: 4 from Bunkers, 6 from Cities)!");
             }
         }
         return Err("No space nearby!");
     }
     
-    match kind {
-        sow_core::game::BuildingKind::Port => {
-            let mut candidates = Vec::new();
-            for &(tx, ty, tile_idx) in &valid_land_tiles {
-                let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
-                let is_shoreline = (tile_terrain & 0x40) != 0;
-                if is_shoreline {
-                    found_any_shoreline = true;
-                    let dist = (tx - click_x).abs() + (ty - click_y).abs();
-                    candidates.push((tx, ty, tile_idx, dist));
-                }
-            }
-            
-            if candidates.is_empty() {
-                if !found_any_shoreline {
-                    return Err("No shoreline here! Ports must be placed on coastal tiles next to water.");
-                }
-                return Err("No valid shoreline found for Port!");
-            }
-            
-            // Sort candidates by Manhattan distance, then by tile index
-            candidates.sort_by(|a, b| {
-                a.3.cmp(&b.3).then_with(|| a.2.cmp(&b.2))
-            });
-            Ok(candidates.first().map(|&(_, _, idx, _)| idx).unwrap())
-        }
-        _ => {
-            // For other structures, find the closest valid land tile to click target by Euclidean distance
-            valid_land_tiles.sort_by(|a, b| {
-                let da = (a.0 - click_x) * (a.0 - click_x) + (a.1 - click_y) * (a.1 - click_y);
-                let db = (b.0 - click_x) * (b.0 - click_x) + (b.1 - click_y) * (b.1 - click_y);
-                da.cmp(&db).then_with(|| a.2.cmp(&b.2))
-            });
-            Ok(valid_land_tiles.first().map(|&(_, _, idx)| idx).unwrap())
-        }
-    }
+    // Sort valid land tiles by proximity to click target (Euclidean distance)
+    valid_land_tiles.sort_by(|a, b| {
+        let da = (a.0 - click_x) * (a.0 - click_x) + (a.1 - click_y) * (a.1 - click_y);
+        let db = (b.0 - click_x) * (b.0 - click_x) + (b.1 - click_y) * (b.1 - click_y);
+        da.cmp(&db).then_with(|| a.2.cmp(&b.2))
+    });
+    Ok(valid_land_tiles.first().map(|&(_, _, idx)| idx).unwrap())
 }
 

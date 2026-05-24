@@ -1,9 +1,76 @@
 use super::placement::{idx_xy, manhattan};
 use crate::config;
 use crate::game::BuildingKind;
-/// Build and upgrade costs use **gold**; see `structure_build_cost_gold`.
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum ModuleKind {
+    Port,
+    Foundry,
+    Armory,
+    Intel,
+    Arsenal,
+    Shield,
+}
+
+impl ModuleKind {
+    pub const ALL: [ModuleKind; 6] = [
+        ModuleKind::Port,
+        ModuleKind::Foundry,
+        ModuleKind::Armory,
+        ModuleKind::Intel,
+        ModuleKind::Arsenal,
+        ModuleKind::Shield,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ModuleKind::Port => "Port",
+            ModuleKind::Foundry => "Foundry",
+            ModuleKind::Armory => "Armory",
+            ModuleKind::Intel => "Intel",
+            ModuleKind::Arsenal => "Arsenal",
+            ModuleKind::Shield => "Shield",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CityModules {
+    pub port: u8,
+    pub foundry: u8,
+    pub armory: u8,
+    pub intel: u8,
+    pub arsenal: u8,
+    pub shield: u8,
+}
+
+impl CityModules {
+    pub fn get_level(&self, kind: ModuleKind) -> u8 {
+        match kind {
+            ModuleKind::Port => self.port,
+            ModuleKind::Foundry => self.foundry,
+            ModuleKind::Armory => self.armory,
+            ModuleKind::Intel => self.intel,
+            ModuleKind::Arsenal => self.arsenal,
+            ModuleKind::Shield => self.shield,
+        }
+    }
+
+    pub fn set_level(&mut self, kind: ModuleKind, level: u8) {
+        match kind {
+            ModuleKind::Port => self.port = level,
+            ModuleKind::Foundry => self.foundry = level,
+            ModuleKind::Armory => self.armory = level,
+            ModuleKind::Intel => self.intel = level,
+            ModuleKind::Arsenal => self.arsenal = level,
+            ModuleKind::Shield => self.shield = level,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Building {
     pub id: u64,
     pub owner_id: u16,
@@ -13,26 +80,26 @@ pub struct Building {
     pub level: u8,
     pub under_construction: bool,
     pub ticks_until_complete: u32,
+    pub modules: CityModules,
 }
 
 /// Per-player totals for income / fleet gates (only **ready** structures count).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BuildingAggregate {
     pub city_levels: u32,
-    pub factory_levels: u32,
+    pub bunker_levels: u32,
     pub port_levels: u32,
-    pub defense_levels: u32,
-    /// True if any ready Port exists (same as `port_levels > 0` when ports are never level-0 ready without existing).
+    pub foundry_levels: u32,
+    pub armory_levels: u32,
+    pub intel_levels: u32,
+    pub arsenal_levels: u32,
+    pub shield_levels: u32,
     pub has_completed_port: bool,
     /// Ready cities only (for bot `city_equivalent` base).
     pub ready_city_count: u32,
     /// Total instances per kind, **including** under construction (for bot build quotas).
     pub count_city: u32,
-    pub count_factory: u32,
-    pub count_port: u32,
-    pub count_defense: u32,
-    pub count_sam: u32,
-    pub count_silo: u32,
+    pub count_bunker: u32,
 }
 
 impl BuildingAggregate {
@@ -40,11 +107,7 @@ impl BuildingAggregate {
     pub fn total_structures_of_kind(self, kind: BuildingKind) -> u32 {
         match kind {
             BuildingKind::City => self.count_city,
-            BuildingKind::Factory => self.count_factory,
-            BuildingKind::Port => self.count_port,
-            BuildingKind::DefensePost => self.count_defense,
-            BuildingKind::SamLauncher => self.count_sam,
-            BuildingKind::MissileSilo => self.count_silo,
+            BuildingKind::Bunker => self.count_bunker,
         }
     }
 }
@@ -63,11 +126,7 @@ pub fn aggregate_buildings_per_player(
         let a = &mut out[i];
         match b.kind {
             BuildingKind::City => a.count_city += 1,
-            BuildingKind::Factory => a.count_factory += 1,
-            BuildingKind::Port => a.count_port += 1,
-            BuildingKind::DefensePost => a.count_defense += 1,
-            BuildingKind::SamLauncher => a.count_sam += 1,
-            BuildingKind::MissileSilo => a.count_silo += 1,
+            BuildingKind::Bunker => a.count_bunker += 1,
         }
         if b.under_construction {
             continue;
@@ -77,14 +136,19 @@ pub fn aggregate_buildings_per_player(
             BuildingKind::City => {
                 a.city_levels += b.level as u32;
                 a.ready_city_count += 1;
+                a.port_levels += b.modules.port as u32;
+                if b.modules.port > 0 {
+                    a.has_completed_port = true;
+                }
+                a.foundry_levels += b.modules.foundry as u32;
+                a.armory_levels += b.modules.armory as u32;
+                a.intel_levels += b.modules.intel as u32;
+                a.arsenal_levels += b.modules.arsenal as u32;
+                a.shield_levels += b.modules.shield as u32;
             }
-            BuildingKind::Factory => a.factory_levels += b.level as u32,
-            BuildingKind::Port => {
-                a.port_levels += b.level as u32;
-                a.has_completed_port = true;
+            BuildingKind::Bunker => {
+                a.bunker_levels += b.level as u32;
             }
-            BuildingKind::DefensePost => a.defense_levels += b.level as u32,
-            BuildingKind::SamLauncher | BuildingKind::MissileSilo => {}
         }
     }
     out
@@ -146,7 +210,7 @@ impl DefenseGrid {
         }
 
         for &b in buildings {
-            if b.kind == BuildingKind::DefensePost && !b.under_construction {
+            if b.kind == BuildingKind::Bunker && !b.under_construction {
                 let bx = b.tile_idx % map_width;
                 let by = b.tile_idx / map_width;
                 let cx = bx / cell_size;
@@ -261,6 +325,9 @@ impl BuildingGrid {
         }
 
         for b in buildings {
+            if b.kind != BuildingKind::City {
+                continue;
+            }
             let bx = b.tile_idx % map_w;
             let by = b.tile_idx / map_w;
             let cx = bx / cell_size;

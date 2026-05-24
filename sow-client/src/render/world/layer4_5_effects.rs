@@ -41,48 +41,26 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
             let current_time = web_time::Instant::now();
             for (dx, dy, kind) in new_detonations {
                 match kind {
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::AtomBomb) => {
+                    sow_core::game::ProjectileKind::Nuke { level } => {
+                        let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
+                        let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
+                        let exp_kind = if level >= 2 {
+                            crate::app::ExplosionKind::Hydrogen
+                        } else {
+                            crate::app::ExplosionKind::Atom
+                        };
+                        
                         ui.active_explosions.push(crate::app::ActiveExplosion {
                             x: dx,
                             y: dy,
                             start_time: current_time,
-                            max_radius: 45.0,
-                            kind: crate::app::ExplosionKind::Atom,
+                            max_radius,
+                            kind: exp_kind,
                         });
                         ui.fallout_zones.push(crate::app::FalloutZone {
                             x: dx,
                             y: dy,
-                            radius: 30.0,
-                            start_time: current_time,
-                        });
-                    }
-                    sow_core::game::ProjectileKind::Nuke(sow_core::game::NukeKind::HydrogenBomb) => {
-                        ui.active_explosions.push(crate::app::ActiveExplosion {
-                            x: dx,
-                            y: dy,
-                            start_time: current_time,
-                            max_radius: 112.5,
-                            kind: crate::app::ExplosionKind::Hydrogen,
-                        });
-                        ui.fallout_zones.push(crate::app::FalloutZone {
-                            x: dx,
-                            y: dy,
-                            radius: 75.0,
-                            start_time: current_time,
-                        });
-                    }
-                    sow_core::game::ProjectileKind::MIRVWarhead => {
-                        ui.active_explosions.push(crate::app::ActiveExplosion {
-                            x: dx,
-                            y: dy,
-                            start_time: current_time,
-                            max_radius: 20.0,
-                            kind: crate::app::ExplosionKind::MIRVWarhead,
-                        });
-                        ui.fallout_zones.push(crate::app::FalloutZone {
-                            x: dx,
-                            y: dy,
-                            radius: 18.0,
+                            radius: fallout_radius,
                             start_time: current_time,
                         });
                     }

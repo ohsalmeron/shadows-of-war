@@ -127,11 +127,17 @@ impl SowEngine {
             GameplayIntent::UpgradeStructure { building_id } => {
                 self.apply_upgrade_structure_intent(stamped.player_id, *building_id);
             }
+            GameplayIntent::UpgradeCityModule { building_id, module } => {
+                self.apply_upgrade_city_module_intent(stamped.player_id, *building_id, *module);
+            }
+            GameplayIntent::UpgradeTile { tile_idx } => {
+                self.apply_upgrade_tile_intent(stamped.player_id, *tile_idx);
+            }
             GameplayIntent::BuildShip { port_tile, kind } => {
                 let pid = stamped.player_id;
                 let cost = kind.gold_cost();
                 let port_id = self.buildings.iter()
-                    .find(|b| b.tile_idx == *port_tile && b.kind == crate::game::BuildingKind::Port && b.owner_id == pid && !b.under_construction)
+                    .find(|b| b.tile_idx == *port_tile && b.kind == crate::game::BuildingKind::City && b.modules.port > 0 && b.owner_id == pid && !b.under_construction)
                     .map(|b| b.id);
                 
                 if let Some(port_id) = port_id {
@@ -236,6 +242,7 @@ impl SowEngine {
                             level: if is_caesar { 2 } else { 1 },
                             under_construction: false,
                             ticks_until_complete: 0,
+                            modules: crate::building::CityModules::default(),
                         });
                     }
                 }

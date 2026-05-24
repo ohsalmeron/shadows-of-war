@@ -11,7 +11,7 @@ impl SowApp {
 
             let is_own_territory = owner_id == my_id;
             let has_completed_port = self.sim.current_snapshot.as_ref()
-                .map(|s| s.buildings.iter().any(|b| b.tile_idx == tile_idx && b.kind == sow_core::game::BuildingKind::Port && !b.under_construction))
+                .map(|s| s.buildings.iter().any(|b| b.tile_idx == tile_idx && b.kind == sow_core::game::BuildingKind::City && b.modules.port > 0 && !b.under_construction))
                 .unwrap_or(false);
             let is_friendly = owner_id != 0 && owner_id != my_id;
 
@@ -308,33 +308,14 @@ impl SowApp {
 
                     if scale > 0.05 {
                         let alpha = (255.0 * progress.clamp(0.0, 1.0)) as u8;
-                        if !self.ui.troops_webp_registered {
-                            self.ui.troops_webp_registered = true;
-                            painter.ctx().include_bytes(
-                                sow_core::assets::Asset::Troops.uri(),
-                                include_bytes!("../../../assets/troops.webp").as_slice(),
-                            );
-                        }
-                        let size_val = (24.0 + 8.0 * c_hover_t) * scale;
-                        let size_hint = egui::load::SizeHint::Size {
-                            width: size_val.round() as u32,
-                            height: size_val.round() as u32,
-                            maintain_aspect_ratio: true,
-                        };
-                        let load_res = painter.ctx().try_load_texture(
-                            sow_core::assets::Asset::Troops.uri(),
-                            egui::TextureOptions::default(),
-                            size_hint,
+                        let text_size = (24.0 + 8.0 * c_hover_t) * scale;
+                        painter.text(
+                            center,
+                            egui::Align2::CENTER_CENTER,
+                            "⚔",
+                            egui::FontId::proportional(text_size),
+                            Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
                         );
-                        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                            let icon_rect = egui::Rect::from_center_size(center, egui::vec2(size_val, size_val));
-                            painter.image(
-                                texture.id,
-                                icon_rect,
-                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
-                            );
-                        }
                     }
 
                     // Click Actions (primary/left only — ignore right-clicks that opened the menu)
@@ -540,14 +521,11 @@ impl SowApp {
                                                 ui.add_space(4.0);
                                             }
                                         } else {
-                                            let buildings_list = [
-                                                (sow_core::game::BuildingKind::City, "City District", "🏛️"),
-                                                (sow_core::game::BuildingKind::Factory, "Industrial Factory", "🏭"),
-                                                (sow_core::game::BuildingKind::Port, "Naval Port", "⚓"),
-                                                (sow_core::game::BuildingKind::DefensePost, "Defense Post", "🛡️"),
-                                                (sow_core::game::BuildingKind::SamLauncher, "SAM Launcher", "📡"),
-                                                (sow_core::game::BuildingKind::MissileSilo, "Missile Silo", "🚀"),
-                                            ];
+                                            let current_level = if (tile_idx as usize) < self.sim.tile_upgrades.len() {
+                                                self.sim.tile_upgrades[tile_idx as usize]
+                                            } else {
+                                                0
+                                            };
 
                                             let current_buildings = self.sim.current_snapshot.as_ref().map(|s| &s.buildings[..]).unwrap_or(&[]);
                                             let temp_buildings: Vec<sow_core::building::Building> = current_buildings.iter().map(|b| {
@@ -559,8 +537,136 @@ impl SowApp {
                                                     level: b.level,
                                                     under_construction: b.under_construction,
                                                     ticks_until_complete: 0,
+                                                    modules: b.modules,
                                                 }
                                             }).collect();
+
+                                            let tile_byte = self.gfx.map_renderer.as_ref()
+                                                .and_then(|mr| mr.terrain.get(tile_idx as usize).copied())
+                                                .unwrap_or(0b10000000);
+                                            let map_tile = sow_core::map::MapTile::from_byte(tile_byte);
+                                            
+                                            // Procedural resource extraction identical to map.rs
+                                            let magnitude = map_tile.magnitude();
+                                            let seed = (col as u64).wrapping_mul(374761393)
+                                                .wrapping_add((row as u64).wrapping_mul(668265263))
+                                                .wrapping_add(magnitude as u64);
+                                            let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177) % 100;
+                                            
+                                            let resource = if !map_tile.is_land() {
+                                                sow_core::map::TileResource::None
+                                            } else if magnitude >= 20 {
+                                                match hash % 5 {
+                                                    0 => sow_core::map::TileResource::Copper,
+                                                    1 => sow_core::map::TileResource::Stone,
+                                                    2 => sow_core::map::TileResource::Iron,
+                                                    3 => sow_core::map::TileResource::Diamonds,
+                                                    _ => sow_core::map::TileResource::None,
+                                                }
+                                            } else if magnitude >= 10 {
+                                                match hash % 8 {
+                                                    0 => sow_core::map::TileResource::Wheat,
+                                                    1 => sow_core::map::TileResource::Stone,
+                                                    2 => sow_core::map::TileResource::Copper,
+                                                    3 => sow_core::map::TileResource::Iron,
+                                                    4 => sow_core::map::TileResource::Jade,
+                                                    _ => sow_core::map::TileResource::None,
+                                                }
+                                            } else {
+                                                match hash % 10 {
+                                                    0 => sow_core::map::TileResource::Corn,
+                                                    1 => sow_core::map::TileResource::Rice,
+                                                    2 => sow_core::map::TileResource::Wheat,
+                                                    3 => sow_core::map::TileResource::Jade,
+                                                    4 => sow_core::map::TileResource::Salt,
+                                                    _ => sow_core::map::TileResource::None,
+                                                }
+                                            };
+
+                                            let (upgrade_label, upgrade_icon) = match resource {
+                                                sow_core::map::TileResource::Corn => ("Upgrade Farm (Corn)", "🌽"),
+                                                sow_core::map::TileResource::Rice => ("Upgrade Farm (Rice)", "🌾"),
+                                                sow_core::map::TileResource::Wheat => ("Upgrade Farm (Wheat)", "🍞"),
+                                                sow_core::map::TileResource::Copper => ("Upgrade Mine (Copper)", "🪙"),
+                                                sow_core::map::TileResource::Stone => ("Upgrade Quarry (Stone)", "🪨"),
+                                                sow_core::map::TileResource::Iron => ("Upgrade Mine (Iron)", "⛓️"),
+                                                sow_core::map::TileResource::Jade => ("Upgrade Jade Opp.", "🟢"),
+                                                sow_core::map::TileResource::Diamonds => ("Upgrade Diamond Opp.", "💎"),
+                                                sow_core::map::TileResource::Salt => ("Upgrade Salt Opp.", "🧂"),
+                                                sow_core::map::TileResource::None => {
+                                                    match map_tile.terrain_type() {
+                                                        sow_core::map::TerrainType::Land => ("Upgrade Flatland Farm", "🌾"),
+                                                        sow_core::map::TerrainType::Highland | sow_core::map::TerrainType::Mountain => ("Upgrade Highland Mine", "🪨"),
+                                                        sow_core::map::TerrainType::Water | sow_core::map::TerrainType::Lake => ("Upgrade Water Opp.", "🐠"),
+                                                    }
+                                                }
+                                            };
+
+                                            let s = sow_core::config::GOLD_SCALE.max(1.0);
+                                            let upgrade_cost = (1000.0 * 1.5f64.powi(current_level as i32)) / s;
+
+                                            // Render Upgrade Card
+                                            let is_upgrade_disabled = self.ui.app.hud_state.gold < upgrade_cost;
+                                            let (upgrade_rect, upgrade_resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+                                            let is_upgrade_hovered = upgrade_resp.hovered() && !is_upgrade_disabled;
+                                            let upgrade_hover_id = ui.make_persistent_id(("popover_hover", "upgrade_tile"));
+                                            let upgrade_hover_t = ui.ctx().animate_bool_with_time(upgrade_hover_id, is_upgrade_hovered, 0.15);
+
+                                            let upgrade_border_glow = theme_color.linear_multiply(0.3 + 0.7 * upgrade_hover_t);
+                                            let upgrade_bg_fill = if is_upgrade_disabled {
+                                                Color32::from_rgba_unmultiplied(20, 20, 20, 180)
+                                            } else if is_upgrade_hovered {
+                                                theme_color.linear_multiply(0.12)
+                                            } else {
+                                                Color32::from_rgba_unmultiplied(10, 15, 30, 220)
+                                            };
+
+                                            ui.painter().rect(
+                                                upgrade_rect,
+                                                8.0,
+                                                upgrade_bg_fill,
+                                                egui::Stroke::new(1.0_f32 + upgrade_hover_t * 1.0_f32, upgrade_border_glow),
+                                                egui::StrokeKind::Inside,
+                                            );
+
+                                            ui.painter().text(
+                                                upgrade_rect.min + egui::vec2(20.0, card_h / 2.0),
+                                                egui::Align2::CENTER_CENTER,
+                                                upgrade_icon,
+                                                egui::FontId::proportional((22.0 + 4.0 * upgrade_hover_t) * scale),
+                                                if is_upgrade_disabled { Color32::GRAY } else { Color32::WHITE }
+                                            );
+
+                                            ui.painter().text(
+                                                upgrade_rect.min + egui::vec2(44.0, card_h / 2.0 - 8.0),
+                                                egui::Align2::LEFT_CENTER,
+                                                upgrade_label,
+                                                egui::FontId::proportional(13.0),
+                                                if is_upgrade_disabled { Color32::GRAY } else { Color32::WHITE }
+                                            );
+
+                                            ui.painter().text(
+                                                upgrade_rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
+                                                egui::Align2::LEFT_CENTER,
+                                                format!("Lvl {} ➔ {} | {}g", current_level, current_level + 1, upgrade_cost as u32),
+                                                egui::FontId::proportional(10.5),
+                                                if is_upgrade_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
+                                            );
+
+                                            if !is_upgrade_disabled && upgrade_resp.clicked() {
+                                                self.send_intent(sow_core::protocol::GameplayIntent::UpgradeTile { tile_idx });
+                                                ctx.data_mut(|d| d.insert_temp(build_active_id, false));
+                                                self.input.map_context_menu = None;
+                                            }
+
+                                            ui.add_space(6.0);
+                                            ui.separator();
+                                            ui.add_space(4.0);
+
+                                            let buildings_list = [
+                                                (sow_core::game::BuildingKind::City, "City District", "🏛️"),
+                                                (sow_core::game::BuildingKind::Bunker, "Defense Bunker", "🛡️"),
+                                            ];
 
                                             for &(kind, label, icon) in &buildings_list {
                                                 let cost = sow_core::building::cost::structure_build_cost_gold(kind, my_id, &temp_buildings);
@@ -669,9 +775,7 @@ impl SowApp {
                                         let card_h = 50.0;
 
                                         let nukes = [
-                                            (sow_core::game::NukeKind::AtomBomb, "Atom Bomb", "☢️"),
-                                            (sow_core::game::NukeKind::HydrogenBomb, "Hydrogen Bomb", "💥"),
-                                            (sow_core::game::NukeKind::MIRV, "MIRV Strike", "☄️"),
+                                            (sow_core::game::NukeKind::AtomBomb, "Missile Strike", "☢️"),
                                         ];
 
                                         for &(kind, label, icon) in &nukes {

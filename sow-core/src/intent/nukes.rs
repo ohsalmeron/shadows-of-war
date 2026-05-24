@@ -5,7 +5,7 @@ use crate::game::{BuildingKind, GamePhase, NukeKind, ProjectileKind};
 const SILO_COOLDOWN_TICKS: u32 = 90;
 
 impl SowEngine {
-    pub fn apply_launch_nuke_intent(&mut self, player_id: u16, kind: NukeKind, target_tile: u32) {
+    pub fn apply_launch_nuke_intent(&mut self, player_id: u16, _kind: NukeKind, target_tile: u32) {
         if self.state.phase != GamePhase::Playing {
             return;
         }
@@ -28,9 +28,10 @@ impl SowEngine {
 
         let best_silo = self.buildings.iter()
             .filter(|b| {
-                b.kind == BuildingKind::MissileSilo
+                b.kind == BuildingKind::City
                     && b.owner_id == player_id
                     && !b.under_construction
+                    && b.modules.arsenal >= 1
                     && self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0
             })
             .min_by_key(|b| {
@@ -44,10 +45,11 @@ impl SowEngine {
         };
         let silo_id = silo.id;
         let silo_tile = silo.tile_idx;
+        let level = silo.modules.arsenal;
 
-        // Check gold
-        let prev_mirv = self.mirv_launches.get(&player_id).copied().unwrap_or(0);
-        let cost = kind.gold_cost(prev_mirv);
+        // Check gold based on the level of this arsenal
+        // Level 1 = 750k, Level 2 = 1.5M, Level 3 = 3.0M
+        let cost = 750_000.0 * 2.0f64.powi(level as i32 - 1);
 
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
@@ -60,11 +62,6 @@ impl SowEngine {
         // Set silo cooldown
         self.silo_cooldowns.insert(silo_id, SILO_COOLDOWN_TICKS);
 
-        // Track MIRV launches
-        if matches!(kind, NukeKind::MIRV) {
-            *self.mirv_launches.entry(player_id).or_insert(0) += 1;
-        }
-
         // Spawn projectile
         let id = self.state.next_projectile_id;
         self.state.next_projectile_id = self.state.next_projectile_id.wrapping_add(1).max(1);
@@ -73,13 +70,13 @@ impl SowEngine {
 
         self.projectiles.push(crate::game::Projectile {
             id,
-            kind: ProjectileKind::Nuke(kind),
+            kind: ProjectileKind::Nuke { level },
             owner_id: player_id,
             src_tile: silo_tile,
             dst_tile: target_tile,
             path,
             path_cursor: 0,
-            steps_per_tick: kind.steps_per_tick(),
+            steps_per_tick: 1 + level,
             active: true,
         });
     }

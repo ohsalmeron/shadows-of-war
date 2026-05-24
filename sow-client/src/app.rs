@@ -50,6 +50,7 @@ pub struct SimState {
     pub offline_tick_timer: f32,
     pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
     pub last_synced_cost_tick: Option<u64>,
+    pub tile_upgrades: Vec<u32>,
 }
 
 pub struct InputState {
@@ -389,6 +390,7 @@ impl SowApp {
                 offline_tick_timer: 0.0,
                 offline_intents: Vec::new(),
                 last_synced_cost_tick: None,
+                tile_upgrades: Vec::new(),
             },
             input: InputState {
                 camera_x,
@@ -693,6 +695,7 @@ impl SowApp {
                 let snap = new_engine.build_snapshot();
                 self.sim.current_snapshot = Some(snap);
                 self.sim.engine = Some(new_engine);
+                self.sim.tile_upgrades = vec![0; (map_w * map_h) as usize];
 
                 self.input.camera_zoom = 0.5;
                 self.input.camera_x =
@@ -764,9 +767,7 @@ impl SowApp {
                         };
 
                         let kind_str = match alert.kind {
-                            sow_core::game::NukeKind::AtomBomb => "Atom Bomb",
-                            sow_core::game::NukeKind::HydrogenBomb => "H-Bomb",
-                            sow_core::game::NukeKind::MIRV => "MIRV",
+                            sow_core::game::NukeKind::AtomBomb => "Tactical Nuke",
                         };
 
                         let (message, color) = if victim_id == my_id && my_id != 0 {

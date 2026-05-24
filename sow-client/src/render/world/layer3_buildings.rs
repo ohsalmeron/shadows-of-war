@@ -10,11 +10,24 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
     ));
     let sf = ctx.sf;
     let zoom_scaled = ctx.zoom_scaled;
+    let player_colors = ctx.player_colors;
+    let wall_secs = ctx.wall_secs;
+    let building_scale = ctx.painter.ctx().data(|d| {
+        d.get_temp::<f32>(egui::Id::new("dev_building_scale")).unwrap_or(1.0)
+    });
 
     if let Some(snap) = &sim.current_snapshot {
         // S2: Restore zoom LOD gate — at zoom < 0.25, buildings are sub-pixel, skip entirely
         if zoom_scaled < 0.25 {
             return;
+        }
+
+        // Collect silo tiles that have an active projectile in-flight
+        let mut launching_silo_tiles: Vec<u32> = Vec::new();
+        for proj in &snap.projectiles {
+            if matches!(proj.kind, sow_core::game::ProjectileKind::Nuke { .. }) {
+                launching_silo_tiles.push(proj.src_tile);
+            }
         }
 
         struct RenderedBuilding {
@@ -25,6 +38,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
             under_construction: bool,
             ticks_until_complete: u32,
             count: usize,
+            owner_id: u16,
+            tile_idx: u32,
         }
 
         let cell_size = if zoom_scaled < 0.6 {
@@ -95,6 +110,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     under_construction: false,
                     ticks_until_complete: 0,
                     count,
+                    owner_id: key.owner_id,
+                    tile_idx: 0,
                 });
             }
         } else {
@@ -111,6 +128,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     under_construction: b.under_construction,
                     ticks_until_complete: b.ticks_until_complete,
                     count: 1,
+                    owner_id: b.owner_id,
+                    tile_idx: b.tile_idx,
                 });
             }
         }
@@ -148,8 +167,44 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)
             } else {
                 get_building_icon_size(zoom_scaled)
-            };
+            } * building_scale;
             let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
+
+            // --- Cybernetic Base Plate & Glow effects (drawn behind the sprite) ---
+            if b.owner_id != 0 {
+                let pc = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::GRAY);
+                let is_launching_silo = launching_silo_tiles.contains(&b.tile_idx);
+
+                // 1. Sleek drop shadow (dark semi-transparent offset circle to give depth)
+                let shadow_offset = base_size * 0.08;
+                let shadow_center = center + egui::vec2(shadow_offset, shadow_offset);
+                painter.circle_filled(shadow_center, base_size * 0.46, egui::Color32::from_black_alpha(150));
+
+                // 2. High-contrast Dark cyber-plate foundation disc (blocks out underlying terrain color)
+                painter.circle_filled(center, base_size * 0.46, egui::Color32::from_rgba_unmultiplied(15, 15, 20, 240));
+
+                // 3. Sharp, high-contrast Player colored neon ring outline
+                if is_launching_silo {
+                    // Double ring / pulsing launching silo effect
+                    let ring_pulse = (wall_secs * 15.0).sin() as f32 * 0.5 + 0.5;
+                    let ext_r = base_size * (0.46 + ring_pulse * 0.15);
+                    let ext_a = (180.0 * (1.0 - ring_pulse)) as u8;
+                    // Fading expanding ring
+                    painter.circle_stroke(center, ext_r, egui::Stroke::new(2.0_f32, egui::Color32::from_rgba_unmultiplied(pc.r(), pc.g(), pc.b(), ext_a)));
+                    // Solid inner neon ring
+                    painter.circle_stroke(center, base_size * 0.46, egui::Stroke::new(3.0_f32, pc));
+                } else if b.under_construction {
+                    // Dotted/pulsing construction ring
+                    let pulse = (wall_secs * 5.0).sin() as f32 * 0.5 + 0.5;
+                    let stroke_w = 1.5_f32 + pulse * 2.0_f32;
+                    let construction_color = egui::Color32::from_rgba_unmultiplied(pc.r(), pc.g(), pc.b(), (100.0 + pulse * 155.0) as u8);
+                    painter.circle_stroke(center, base_size * 0.46, egui::Stroke::new(stroke_w, construction_color));
+                } else {
+                    // High-contrast, sharp, beautiful neon outline
+                    painter.circle_stroke(center, base_size * 0.46, egui::Stroke::new(2.5_f32, pc));
+                }
+            }
+
 
             let size_hint = egui::load::SizeHint::Size {
                 width: 64,
@@ -167,11 +222,23 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 let tint = if b.under_construction {
                     if b.kind.asset().is_svg() {
                         egui::Color32::from_black_alpha(128)
+                    } else if b.owner_id != 0 {
+                        let player_color = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::WHITE);
+                        let r = ((player_color.r() as f32 * 0.30) + (255.0 * 0.70)) as u8;
+                        let g = ((player_color.g() as f32 * 0.30) + (255.0 * 0.70)) as u8;
+                        let b_val = ((player_color.b() as f32 * 0.30) + (255.0 * 0.70)) as u8;
+                        egui::Color32::from_rgba_unmultiplied(r, g, b_val, 128)
                     } else {
                         egui::Color32::from_white_alpha(128)
                     }
                 } else if b.kind.asset().is_svg() {
                     egui::Color32::BLACK
+                } else if b.owner_id != 0 {
+                    let player_color = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::WHITE);
+                    let r = ((player_color.r() as f32 * 0.30) + (255.0 * 0.70)) as u8;
+                    let g = ((player_color.g() as f32 * 0.30) + (255.0 * 0.70)) as u8;
+                    let b_val = ((player_color.b() as f32 * 0.30) + (255.0 * 0.70)) as u8;
+                    egui::Color32::from_rgba_unmultiplied(r, g, b_val, 255)
                 } else {
                     egui::Color32::WHITE
                 };
