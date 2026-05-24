@@ -1,8 +1,8 @@
+use serde_json::json;
+use sow_core::map::MapTile;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
-use serde_json::json;
-use sow_core::map::MapTile;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 800;
@@ -122,12 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Compress to map.bin.br
     let br_path = output_dir.join("map.bin.br");
-    let mut compressor = brotli::CompressorWriter::new(
-        File::create(&br_path)?,
-        4096,
-        11,
-        22,
-    );
+    let mut compressor = brotli::CompressorWriter::new(File::create(&br_path)?, 4096, 11, 22);
     compressor.write_all(&bin_data)?;
     compressor.flush()?;
     println!("⚡ Compressed map.bin to map.bin.br");

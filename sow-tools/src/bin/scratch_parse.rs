@@ -9,10 +9,18 @@ fn main() {
                 total += 1;
                 match serde_json::from_str::<sow_core::map_legacy::MapManifest>(&data) {
                     Ok(man) => {
-                        println!("Parsed OK: {} ({} nations)", entry.file_name().to_string_lossy(), man.nations.map_or(0, |n| n.len()));
+                        println!(
+                            "Parsed OK: {} ({} nations)",
+                            entry.file_name().to_string_lossy(),
+                            man.nations.map_or(0, |n| n.len())
+                        );
                         success += 1;
                     }
-                    Err(e) => println!("Error parsing {}: {}", entry.file_name().to_string_lossy(), e),
+                    Err(e) => println!(
+                        "Error parsing {}: {}",
+                        entry.file_name().to_string_lossy(),
+                        e
+                    ),
                 }
             }
         }

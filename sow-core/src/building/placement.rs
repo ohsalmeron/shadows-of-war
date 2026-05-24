@@ -1,4 +1,4 @@
-use super::core::{BuildingGrid, Building};
+use super::core::{Building, BuildingGrid};
 use crate::game::BuildingKind;
 use crate::map::{GameMap, TerrainType};
 
@@ -80,7 +80,8 @@ pub fn valid_land_structure_indices(
 
     let mut out: Vec<u32> = Vec::new();
 
-    let bunker_tiles: Vec<u32> = buildings.iter()
+    let bunker_tiles: Vec<u32> = buildings
+        .iter()
         .filter(|b| b.kind == BuildingKind::Bunker)
         .map(|b| b.tile_idx)
         .collect();
@@ -210,6 +211,7 @@ pub fn resolve_structure_spawn_tile(
         return None;
     }
 
-    let valid = valid_land_structure_indices(map, owner_id, click_idx, kind, existing, buildings, scratch);
+    let valid =
+        valid_land_structure_indices(map, owner_id, click_idx, kind, existing, buildings, scratch);
     valid.first().copied()
 }

@@ -1,4 +1,3 @@
-
 pub(crate) fn get_building_icon_size(zoom_scaled: f32) -> f32 {
     let size = if zoom_scaled < 10.0 {
         zoom_scaled * 2.0
@@ -91,8 +90,6 @@ pub(crate) fn get_train_gold_str(segment_idx: usize) -> &'static str {
     }
 }
 
-
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RailType {
     Vertical,
@@ -110,51 +107,19 @@ pub struct RailTile {
 
 pub(crate) fn get_railroad_rects(rail_type: RailType) -> &'static [[i32; 4]] {
     match rail_type {
-        RailType::Vertical => &[
-            [-1, -1, 1, 2],
-            [1, -1, 1, 2],
-            [0, 0, 1, 1],
-        ],
-        RailType::Horizontal => &[
-            [-1, -1, 2, 1],
-            [-1, 1, 2, 1],
-            [-1, 0, 1, 1],
-        ],
-        RailType::TopRight => &[
-            [-1, -1, 1, 1],
-            [0, -1, 1, 2],
-            [1, -1, 1, 3],
-        ],
-        RailType::TopLeft => &[
-            [-1, -1, 1, 3],
-            [0, -1, 1, 2],
-            [1, -1, 1, 1],
-        ],
-        RailType::BottomRight => &[
-            [-1, 1, 1, 1],
-            [0, 0, 1, 2],
-            [1, -1, 1, 3],
-        ],
-        RailType::BottomLeft => &[
-            [-1, -1, 1, 3],
-            [0, 0, 1, 2],
-            [1, 1, 1, 1],
-        ],
+        RailType::Vertical => &[[-1, -1, 1, 2], [1, -1, 1, 2], [0, 0, 1, 1]],
+        RailType::Horizontal => &[[-1, -1, 2, 1], [-1, 1, 2, 1], [-1, 0, 1, 1]],
+        RailType::TopRight => &[[-1, -1, 1, 1], [0, -1, 1, 2], [1, -1, 1, 3]],
+        RailType::TopLeft => &[[-1, -1, 1, 3], [0, -1, 1, 2], [1, -1, 1, 1]],
+        RailType::BottomRight => &[[-1, 1, 1, 1], [0, 0, 1, 2], [1, -1, 1, 3]],
+        RailType::BottomLeft => &[[-1, -1, 1, 3], [0, 0, 1, 2], [1, 1, 1, 1]],
     }
 }
 
 pub(crate) fn get_bridge_rects(rail_type: RailType) -> &'static [[i32; 4]] {
     match rail_type {
-        RailType::Vertical => &[
-            [-2, -1, 1, 3],
-            [2, -1, 1, 3],
-        ],
-        RailType::Horizontal => &[
-            [-1, -2, 3, 1],
-            [-1, 2, 3, 1],
-            [-1, 3, 1, 1],
-            [1, 3, 1, 1],
-        ],
+        RailType::Vertical => &[[-2, -1, 1, 3], [2, -1, 1, 3]],
+        RailType::Horizontal => &[[-1, -2, 3, 1], [-1, 2, 3, 1], [-1, 3, 1, 1], [1, 3, 1, 1]],
         RailType::TopRight => &[
             [-2, -2, 1, 2],
             [-1, 0, 1, 1],
@@ -289,4 +254,3 @@ pub(crate) fn compute_rail_tiles(w: u32, tiles: &[u32]) -> Vec<RailTile> {
     });
     rail_tiles
 }
-

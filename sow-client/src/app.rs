@@ -1,6 +1,5 @@
 use sow_render::{MapRenderer, RenderContext};
 
-
 use crate::spawn_sow_client_connect;
 use crate::{EngineInitEvent, MapDownloadEvent};
 use blade_egui::GuiPainter;
@@ -129,9 +128,19 @@ pub struct UiState {
     pub active_explosions: Vec<ActiveExplosion>,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
-    pub cached_railroads: std::collections::HashMap<u64, (Vec<u32>, Vec<crate::render::world::RailTile>)>,
+    pub cached_railroads:
+        std::collections::HashMap<u64, (Vec<u32>, Vec<crate::render::world::RailTile>)>,
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
-    pub nameplate_galleys: std::collections::HashMap<u16, (String, String, egui::FontId, std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)>,
+    pub nameplate_galleys: std::collections::HashMap<
+        u16,
+        (
+            String,
+            String,
+            egui::FontId,
+            std::sync::Arc<egui::Galley>,
+            std::sync::Arc<egui::Galley>,
+        ),
+    >,
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,
     pub last_preview_tile: Option<u32>,
@@ -250,8 +259,6 @@ impl SowApp {
         let pending_engine_init_data: Option<EngineInitData> = None;
         let engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
-
-
         let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
         // Reconnect scheduling (idle drop / resume / failed handshake).
@@ -280,7 +287,12 @@ impl SowApp {
                 }
                 if !found_in_js {
                     if let Ok(host) = window.location().host() {
-                        let protocol = if window.location().protocol().unwrap_or_default() == "https:" { "wss" } else { "ws" };
+                        let protocol =
+                            if window.location().protocol().unwrap_or_default() == "https:" {
+                                "wss"
+                            } else {
+                                "ws"
+                            };
                         ws_url = format!("{}://{}/ws/", protocol, host);
                     }
                 }
@@ -495,7 +507,10 @@ impl SowApp {
         if use_loader {
             self.ui.app.phase = ClientPhase::Splash;
             let lang = self.ui.app.settings_state.language;
-            self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
+            self.ui
+                .app
+                .splash_state
+                .reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
         } else {
             self.ui.app.phase = ClientPhase::MainMenu;
         }
@@ -559,7 +574,9 @@ impl SowApp {
                     .unwrap()
                     .dyn_into::<web_sys::HtmlCanvasElement>()
                     .unwrap();
-                let is_mobile = window.navigator().user_agent()
+                let is_mobile = window
+                    .navigator()
+                    .user_agent()
                     .map(|ua| {
                         let ua = ua.to_lowercase();
                         ua.contains("mobi")
@@ -634,7 +651,8 @@ impl SowApp {
 
     pub(crate) fn teardown_map_editor_and_exit(&mut self) {
         if let Some(session) = self.map_editor.take() {
-            let (window, surface, render_ctx, gui_painter, client_app) = session.destroy_and_reclaim();
+            let (window, surface, render_ctx, gui_painter, client_app) =
+                session.destroy_and_reclaim();
             self.gfx.window = window;
             self.gfx.surface = surface;
             self.gfx.render_ctx = render_ctx;
@@ -683,7 +701,14 @@ impl SowApp {
 
                 for p in players {
                     if p.player_type == sow_core::player::PlayerType::Human {
-                        new_engine.spawn_human(p.id, p.name, p.color, p.team, p.civilization, p.leader);
+                        new_engine.spawn_human(
+                            p.id,
+                            p.name,
+                            p.color,
+                            p.team,
+                            p.civilization,
+                            p.leader,
+                        );
                     }
                 }
 
@@ -715,15 +740,21 @@ impl SowApp {
                         // Detect building level upgrades and completions
                         let now = web_time::Instant::now();
                         for b_new in &snap.buildings {
-                            if let Some(b_old) = existing.buildings.iter().find(|b| b.id == b_new.id) {
-                                if b_new.level > b_old.level || (b_old.under_construction && !b_new.under_construction) {
-                                    self.ui.active_upgrades.push(crate::app::ActiveUpgradeAnimation {
-                                        tile_idx: b_new.tile_idx,
-                                        start_time: now,
-                                        duration: web_time::Duration::from_millis(2000),
-                                        kind: b_new.kind,
-                                        level: b_new.level,
-                                    });
+                            if let Some(b_old) =
+                                existing.buildings.iter().find(|b| b.id == b_new.id)
+                            {
+                                if b_new.level > b_old.level
+                                    || (b_old.under_construction && !b_new.under_construction)
+                                {
+                                    self.ui.active_upgrades.push(
+                                        crate::app::ActiveUpgradeAnimation {
+                                            tile_idx: b_new.tile_idx,
+                                            start_time: now,
+                                            duration: web_time::Duration::from_millis(2000),
+                                            kind: b_new.kind,
+                                            level: b_new.level,
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -737,31 +768,47 @@ impl SowApp {
                     let my_id = self.sim.my_player_id.unwrap_or(0);
                     let now = web_time::Instant::now();
                     for alert in &snap.nuke_alerts {
-                        let attacker_name = snap.players.iter()
+                        let attacker_name = snap
+                            .players
+                            .iter()
                             .find(|p| p.id == alert.owner_id)
                             .map(|p| {
                                 if p.name.is_empty() {
-                                    if p.id >= 200 { format!("Tribe {}", p.id - 199) }
-                                    else { format!("Nation {}", p.id.saturating_sub(103)) }
-                                } else { p.name.clone() }
+                                    if p.id >= 200 {
+                                        format!("Tribe {}", p.id - 199)
+                                    } else {
+                                        format!("Nation {}", p.id.saturating_sub(103))
+                                    }
+                                } else {
+                                    p.name.clone()
+                                }
                             })
                             .unwrap_or_else(|| format!("Player {}", alert.owner_id));
 
                         // Determine victim from tile ownership in previous snapshot state
                         let tile_idx = alert.tile_y * self.sim.map_w + alert.tile_x;
-                        let victim_id = self.gfx.map_renderer.as_ref()
+                        let victim_id = self
+                            .gfx
+                            .map_renderer
+                            .as_ref()
                             .and_then(|mr| mr.owners.get(tile_idx as usize).copied())
                             .unwrap_or(0);
                         let victim_name = if victim_id == 0 {
                             "unclaimed territory".to_string()
                         } else {
-                            snap.players.iter()
+                            snap.players
+                                .iter()
                                 .find(|p| p.id == victim_id)
                                 .map(|p| {
                                     if p.name.is_empty() {
-                                        if p.id >= 200 { format!("Tribe {}", p.id - 199) }
-                                        else { format!("Nation {}", p.id.saturating_sub(103)) }
-                                    } else { p.name.clone() }
+                                        if p.id >= 200 {
+                                            format!("Tribe {}", p.id - 199)
+                                        } else {
+                                            format!("Nation {}", p.id.saturating_sub(103))
+                                        }
+                                    } else {
+                                        p.name.clone()
+                                    }
                                 })
                                 .unwrap_or_else(|| format!("Player {}", victim_id))
                         };
@@ -773,7 +820,10 @@ impl SowApp {
                         let (message, color) = if victim_id == my_id && my_id != 0 {
                             // You got nuked
                             (
-                                format!("{} launched {} on YOUR territory!", attacker_name, kind_str),
+                                format!(
+                                    "{} launched {} on YOUR territory!",
+                                    attacker_name, kind_str
+                                ),
                                 egui::Color32::from_rgb(239, 68, 68),
                             )
                         } else if alert.owner_id == my_id {
@@ -782,31 +832,43 @@ impl SowApp {
                                 format!("Your {} detonated on {}", kind_str, victim_name),
                                 egui::Color32::from_rgb(74, 222, 128),
                             )
-                        } else if my_id != 0 && snap.players.iter()
-                            .find(|p| p.id == my_id)
-                            .map(|p| p.alliances.contains(&victim_id))
-                            .unwrap_or(false) && victim_id != 0
+                        } else if my_id != 0
+                            && snap
+                                .players
+                                .iter()
+                                .find(|p| p.id == my_id)
+                                .map(|p| p.alliances.contains(&victim_id))
+                                .unwrap_or(false)
+                            && victim_id != 0
                         {
                             // Ally got nuked
                             (
-                                format!("{} launched {} on ally {}!", attacker_name, kind_str, victim_name),
+                                format!(
+                                    "{} launched {} on ally {}!",
+                                    attacker_name, kind_str, victim_name
+                                ),
                                 egui::Color32::from_rgb(251, 191, 36),
                             )
                         } else {
                             // Enemy vs enemy / neutral
                             (
-                                format!("{} launched {} on {}", attacker_name, kind_str, victim_name),
+                                format!(
+                                    "{} launched {} on {}",
+                                    attacker_name, kind_str, victim_name
+                                ),
                                 egui::Color32::from_rgb(180, 180, 200),
                             )
                         };
 
-                        self.ui.app.hud_state.nuke_alerts.push(
-                            sow_ui::ui::hud::NukeAlertDisplay {
+                        self.ui
+                            .app
+                            .hud_state
+                            .nuke_alerts
+                            .push(sow_ui::ui::hud::NukeAlertDisplay {
                                 message,
                                 color,
                                 spawned_at: now,
-                            },
-                        );
+                            });
 
                         // Cap ring buffer at 8
                         if self.ui.app.hud_state.nuke_alerts.len() > 8 {

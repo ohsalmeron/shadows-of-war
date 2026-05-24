@@ -64,8 +64,6 @@ fn camera_zoom_upper_bound(screen_w: f32, screen_h: f32) -> f32 {
     (longest * 3.0).clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM_CAP.max(CAMERA_MIN_ZOOM))
 }
 
-
-
 fn spawn_sow_client_connect(
     url: String,
     connect_tx: &crossbeam_channel::Sender<Result<SowClient, String>>,

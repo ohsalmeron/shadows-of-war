@@ -122,12 +122,13 @@ impl GameMap {
             return TileResource::None;
         }
         let magnitude = t.magnitude();
-        
-        let seed = (x as u64).wrapping_mul(374761393)
+
+        let seed = (x as u64)
+            .wrapping_mul(374761393)
             .wrapping_add((y as u64).wrapping_mul(668265263))
             .wrapping_add(magnitude as u64);
         let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177) % 100;
-        
+
         if magnitude >= 20 {
             match hash % 5 {
                 0 => TileResource::Copper,
@@ -187,12 +188,12 @@ impl GameMap {
         let is_odd = (y % 2) != 0;
         let neighbors = if is_odd {
             [
-                (1, 0),   // East
-                (-1, 0),  // West
-                (0, -1),  // Northwest
-                (1, -1),  // Northeast
-                (0, 1),   // Southwest
-                (1, 1),   // Southeast
+                (1, 0),  // East
+                (-1, 0), // West
+                (0, -1), // Northwest
+                (1, -1), // Northeast
+                (0, 1),  // Southwest
+                (1, 1),  // Southeast
             ]
         } else {
             [
@@ -265,7 +266,7 @@ impl GameMap {
         }
         false
     }
-    
+
     pub fn compute_shorelines(&mut self) {
         let mut new_terrain = self.terrain.clone();
         for y in 0..self.height {
@@ -289,7 +290,6 @@ impl GameMap {
 #[cfg(test)]
 mod border_mask_tests {
     use super::CARDINAL_NEIGHBOR_DELTAS;
-
 
     fn compute_border_mask_u32(raw: &[u32], w: u32, h: u32, x: u32, y: u32) -> u32 {
         let i = (y * w + x) as usize;

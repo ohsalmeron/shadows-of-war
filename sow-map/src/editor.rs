@@ -1,13 +1,13 @@
-use winit::window::Window;
+use blade_egui::GuiPainter;
+use blade_graphics as gpu;
+use egui::Context;
+use sow_render::{MapGlobals, MapRenderer, RenderContext};
+use sow_ui::ClientApp;
+use std::path::PathBuf;
+use web_time::Instant;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
-use blade_graphics as gpu;
-use blade_egui::GuiPainter;
-use egui::Context;
-use sow_ui::ClientApp;
-use sow_render::{RenderContext, MapRenderer, MapGlobals};
-use web_time::Instant;
-use std::path::PathBuf;
+use winit::window::Window;
 
 pub struct MapEditorSession {
     // Reclaimable graphics state
@@ -51,7 +51,7 @@ pub struct MapEditorSession {
     pub map_name: String,
     pub spawns: Vec<NationSpawn>,
     pub notification: Option<(String, Instant)>,
-    
+
     // New Map dimensions
     pub new_map_w: u32,
     pub new_map_h: u32,
@@ -89,19 +89,13 @@ impl MapEditorSession {
         let width = 400;
         let height = 300;
         let size = (width * height) as usize;
-        
+
         // Start with a basic water background
         // bit 7: is_land, bit 6: is_shoreline, bit 5: is_ocean
         let terrain = vec![0b00100000; size]; // Default ocean tiles
 
         let format = surface.info().format;
-        let map_renderer = MapRenderer::new(
-            &render_ctx.context,
-            width,
-            height,
-            format,
-            &terrain,
-        );
+        let map_renderer = MapRenderer::new(&render_ctx.context, width, height, format, &terrain);
 
         let camera_zoom = 1.0f32;
         let camera_x = 1280.0 * 0.5 - (width as f32 * 0.5) * camera_zoom;
@@ -143,7 +137,7 @@ impl MapEditorSession {
             map_name: "custom_map".to_string(),
             spawns: Vec::new(),
             notification: None,
-            
+
             new_map_w: 400,
             new_map_h: 300,
             show_new_dialog: false,
@@ -154,7 +148,10 @@ impl MapEditorSession {
         if self.surface.is_none() {
             if let Some(win) = self.window.as_ref() {
                 let sz = win.surface_size();
-                match self.render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
+                match self
+                    .render_ctx
+                    .create_surface(win, sz.width.max(1), sz.height.max(1))
+                {
                     Ok(s) => {
                         self.screen_w = sz.width as f32;
                         self.screen_h = sz.height as f32;
@@ -162,7 +159,7 @@ impl MapEditorSession {
                             egui::Pos2::ZERO,
                             egui::Vec2::new(self.screen_w, self.screen_h),
                         ));
-                        
+
                         if let Some(sp) = self.prev_sync_point.take() {
                             let _ = self.render_ctx.context.wait_for(&sp, !0);
                         }
@@ -182,7 +179,8 @@ impl MapEditorSession {
                             &self.terrain,
                         ));
                         self.needs_first_upload = true;
-                        self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
+                        self.gui_painter =
+                            Some(GuiPainter::new(s.info(), &self.render_ctx.context));
                         self.surface = Some(s);
                         log::info!("Successfully recreated editor surface.");
                     }
@@ -223,7 +221,9 @@ impl MapEditorSession {
                     ));
                 }
             }
-            WindowEvent::PointerMoved { position, primary, .. } => {
+            WindowEvent::PointerMoved {
+                position, primary, ..
+            } => {
                 if primary {
                     let sf = self.window.as_ref().map_or(1.0, |w| w.scale_factor());
                     let logical_x = position.x / sf;
@@ -236,19 +236,27 @@ impl MapEditorSession {
                         self.camera_x += dx as f32;
                         self.camera_y += dy as f32;
                     }
-                    self.raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(
-                        logical_x as f32,
-                        logical_y as f32,
-                    )));
+                    self.raw_input
+                        .events
+                        .push(egui::Event::PointerMoved(egui::Pos2::new(
+                            logical_x as f32,
+                            logical_y as f32,
+                        )));
                 }
             }
-            WindowEvent::PointerButton { state, button, position, primary, .. } => {
+            WindowEvent::PointerButton {
+                state,
+                button,
+                position,
+                primary,
+                ..
+            } => {
                 let pressed = state == winit::event::ElementState::Pressed;
                 if primary {
                     self.last_mouse_x = position.x;
                     self.last_mouse_y = position.y;
                 }
-                
+
                 let is_left = match button {
                     winit::event::ButtonSource::Mouse(b) => b == winit::event::MouseButton::Left,
                     _ => primary,
@@ -269,17 +277,14 @@ impl MapEditorSession {
                     let logical_x = position.x / sf;
                     let logical_y = position.y / sf;
                     self.raw_input.events.push(egui::Event::PointerButton {
-                        pos: egui::Pos2::new(
-                            logical_x as f32,
-                            logical_y as f32,
-                        ),
+                        pos: egui::Pos2::new(logical_x as f32, logical_y as f32),
                         button: match button {
                             winit::event::ButtonSource::Mouse(winit::event::MouseButton::Right) => {
                                 egui::PointerButton::Secondary
                             }
-                            winit::event::ButtonSource::Mouse(winit::event::MouseButton::Middle) => {
-                                egui::PointerButton::Middle
-                            }
+                            winit::event::ButtonSource::Mouse(
+                                winit::event::MouseButton::Middle,
+                            ) => egui::PointerButton::Middle,
                             _ => egui::PointerButton::Primary,
                         },
                         pressed,
@@ -294,8 +299,9 @@ impl MapEditorSession {
                 };
                 let zoom_speed = 0.002f32;
                 let old_zoom = self.camera_zoom;
-                self.camera_zoom = (self.camera_zoom * (1.0 + scroll * zoom_speed)).clamp(0.2, 10.0);
-                
+                self.camera_zoom =
+                    (self.camera_zoom * (1.0 + scroll * zoom_speed)).clamp(0.2, 10.0);
+
                 // Adjust camera position to zoom toward cursor
                 let mx = self.last_mouse_x as f32;
                 let my = self.last_mouse_y as f32;
@@ -387,7 +393,10 @@ impl MapEditorSession {
         self.camera_zoom = 1.0;
         self.camera_x = self.screen_w * 0.5 - (self.width as f32 * 0.5) * self.camera_zoom;
         self.camera_y = self.screen_h * 0.5 - (self.height as f32 * 0.5) * self.camera_zoom;
-        let msg = sow_lang::get(self.client_app.settings_state.language).map_editor.msg_blank_created.clone();
+        let msg = sow_lang::get(self.client_app.settings_state.language)
+            .map_editor
+            .msg_blank_created
+            .clone();
         self.notify(&msg);
     }
 
@@ -406,7 +415,7 @@ impl MapEditorSession {
         for (i, &byte) in self.terrain.iter().enumerate() {
             let is_land = (byte & 0b10000000) != 0;
             let mag = byte & 0b00011111;
-            
+
             let mut blue = 106u8; // default water blue
             if is_land {
                 blue = (mag as u16 + 140).min(200) as u8;
@@ -433,7 +442,8 @@ impl MapEditorSession {
 
                 if std::fs::write(out_dir.join("map.bin"), &result.map_data).is_ok()
                     && std::fs::write(out_dir.join("mini_map.bin"), &result.mini_map_data).is_ok()
-                    && std::fs::write(out_dir.join("thumbnail.webp"), &result.thumbnail_data).is_ok()
+                    && std::fs::write(out_dir.join("thumbnail.webp"), &result.thumbnail_data)
+                        .is_ok()
                 {
                     // Construct and serialize manifest metadata
                     let manifest = serde_json::json!({
@@ -466,14 +476,19 @@ impl MapEditorSession {
         self.check_surface();
         let mut transition = None;
 
-        let sf = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+        let sf = self
+            .window
+            .as_ref()
+            .map_or(1.0, |w| w.scale_factor() as f32);
         self.egui_ctx.set_pixels_per_point(sf);
         self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
             egui::Vec2::new(self.screen_w / sf, self.screen_h / sf),
         ));
 
-        let dt = Instant::now().duration_since(self.last_frame_time).as_secs_f32();
+        let dt = Instant::now()
+            .duration_since(self.last_frame_time)
+            .as_secs_f32();
         self.last_frame_time = Instant::now();
         self.raw_input.predicted_dt = dt.min(0.1);
 
@@ -483,10 +498,13 @@ impl MapEditorSession {
         let egui_ctx = self.egui_ctx.clone();
         let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ui| {
             let transparent_bg = sow_ui::ui::theme::panel_bg_transparent();
-            
+
             let top_frame = egui::Frame::new()
                 .fill(transparent_bg)
-                .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::palette::field_border()))
+                .stroke(egui::Stroke::new(
+                    1.0_f32,
+                    sow_ui::ui::theme::palette::field_border(),
+                ))
                 .corner_radius(12.0)
                 .inner_margin(egui::Margin::symmetric(20, 14))
                 .shadow(egui::Shadow {
@@ -498,7 +516,10 @@ impl MapEditorSession {
 
             let side_frame = egui::Frame::new()
                 .fill(transparent_bg)
-                .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::palette::field_border()))
+                .stroke(egui::Stroke::new(
+                    1.0_f32,
+                    sow_ui::ui::theme::palette::field_border(),
+                ))
                 .corner_radius(12.0)
                 .inner_margin(egui::Margin::symmetric(16, 20))
                 .shadow(egui::Shadow {
@@ -526,9 +547,12 @@ impl MapEditorSession {
                         }
 
                         ui.add_space(20.0);
-                        ui.label(strings.label_size
-                            .replacen("{}", &self.width.to_string(), 1)
-                            .replacen("{}", &self.height.to_string(), 1));
+                        ui.label(
+                            strings
+                                .label_size
+                                .replacen("{}", &self.width.to_string(), 1)
+                                .replacen("{}", &self.height.to_string(), 1),
+                        );
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button(&strings.btn_exit).clicked() {
@@ -548,20 +572,54 @@ impl MapEditorSession {
                     ui.add_space(10.0);
 
                     ui.label(&strings.label_terrain);
-                    ui.radio_value(&mut self.selected_paint, PaintType::Plains, &strings.paint_plains);
-                    ui.radio_value(&mut self.selected_paint, PaintType::Highlands, &strings.paint_highlands);
-                    ui.radio_value(&mut self.selected_paint, PaintType::Mountains, &strings.paint_mountains);
-                    ui.radio_value(&mut self.selected_paint, PaintType::Water, &strings.paint_lake);
-                    ui.radio_value(&mut self.selected_paint, PaintType::Ocean, &strings.paint_ocean);
-                    ui.radio_value(&mut self.selected_paint, PaintType::Shoreline, &strings.paint_shoreline);
+                    ui.radio_value(
+                        &mut self.selected_paint,
+                        PaintType::Plains,
+                        &strings.paint_plains,
+                    );
+                    ui.radio_value(
+                        &mut self.selected_paint,
+                        PaintType::Highlands,
+                        &strings.paint_highlands,
+                    );
+                    ui.radio_value(
+                        &mut self.selected_paint,
+                        PaintType::Mountains,
+                        &strings.paint_mountains,
+                    );
+                    ui.radio_value(
+                        &mut self.selected_paint,
+                        PaintType::Water,
+                        &strings.paint_lake,
+                    );
+                    ui.radio_value(
+                        &mut self.selected_paint,
+                        PaintType::Ocean,
+                        &strings.paint_ocean,
+                    );
+                    ui.radio_value(
+                        &mut self.selected_paint,
+                        PaintType::Shoreline,
+                        &strings.paint_shoreline,
+                    );
 
                     ui.add_space(15.0);
-                    ui.label(strings.label_brush_size.replace("{}", &self.brush_size.to_string()));
+                    ui.label(
+                        strings
+                            .label_brush_size
+                            .replace("{}", &self.brush_size.to_string()),
+                    );
                     ui.add(egui::Slider::new(&mut self.brush_size, 1..=20).show_value(false));
 
                     ui.add_space(15.0);
-                    ui.label(strings.label_strength.replace("{:.1}", &format!("{:.1}", self.brush_strength)));
-                    ui.add(egui::Slider::new(&mut self.brush_strength, 1.0..=31.0).show_value(false));
+                    ui.label(
+                        strings
+                            .label_strength
+                            .replace("{:.1}", &format!("{:.1}", self.brush_strength)),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.brush_strength, 1.0..=31.0).show_value(false),
+                    );
 
                     // Quick help panel
                     ui.add_space(30.0);
@@ -596,27 +654,31 @@ impl MapEditorSession {
 
                     ui.add_space(15.0);
                     ui.label(&strings.label_placed_spawns);
-                    
+
                     let mut to_remove = None;
-                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                        for (i, spawn) in self.spawns.iter_mut().enumerate() {
-                            ui.group(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.text_edit_singleline(&mut spawn.name).on_hover_text(&strings.hover_nation_name);
-                                    ui.text_edit_singleline(&mut spawn.flag).on_hover_text(&strings.hover_flag);
-                                    if ui.button("🗑").clicked() {
-                                        to_remove = Some(i);
-                                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            for (i, spawn) in self.spawns.iter_mut().enumerate() {
+                                ui.group(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.text_edit_singleline(&mut spawn.name)
+                                            .on_hover_text(&strings.hover_nation_name);
+                                        ui.text_edit_singleline(&mut spawn.flag)
+                                            .on_hover_text(&strings.hover_flag);
+                                        if ui.button("🗑").clicked() {
+                                            to_remove = Some(i);
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("X:");
+                                        ui.add(egui::DragValue::new(&mut spawn.x));
+                                        ui.label("Y:");
+                                        ui.add(egui::DragValue::new(&mut spawn.y));
+                                    });
                                 });
-                                ui.horizontal(|ui| {
-                                    ui.label("X:");
-                                    ui.add(egui::DragValue::new(&mut spawn.x));
-                                    ui.label("Y:");
-                                    ui.add(egui::DragValue::new(&mut spawn.y));
-                                });
-                            });
-                        }
-                    });
+                            }
+                        });
 
                     if let Some(idx) = to_remove {
                         self.spawns.remove(idx);
@@ -681,7 +743,10 @@ impl MapEditorSession {
         self.raw_input.events.clear();
 
         // Tesselate and upload UI delta textures
-        let sf_fact = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+        let sf_fact = self
+            .window
+            .as_ref()
+            .map_or(1.0, |w| w.scale_factor() as f32);
         if let Some(ref mut gp) = self.gui_painter {
             if let Some(ref mut s) = self.surface {
                 let frame = s.acquire_frame();
@@ -690,7 +755,9 @@ impl MapEditorSession {
                 }
 
                 self.render_ctx.command_encoder.start();
-                self.render_ctx.command_encoder.init_texture(frame.texture());
+                self.render_ctx
+                    .command_encoder
+                    .init_texture(frame.texture());
 
                 let screen_desc = blade_egui::ScreenDescriptor {
                     physical_size: (self.screen_w as u32, self.screen_h as u32),
@@ -706,8 +773,12 @@ impl MapEditorSession {
                 // Upload map updates to GPU
                 if let Some(ref mut mr) = self.map_renderer {
                     if self.needs_first_upload {
-                        self.render_ctx.command_encoder.init_texture(mr.terrain_texture);
-                        self.render_ctx.command_encoder.init_texture(mr.owner_texture);
+                        self.render_ctx
+                            .command_encoder
+                            .init_texture(mr.terrain_texture);
+                        self.render_ctx
+                            .command_encoder
+                            .init_texture(mr.owner_texture);
                         self.needs_first_upload = false;
                         mr.upload_terrain(&mut self.render_ctx.command_encoder);
                     }
@@ -720,7 +791,8 @@ impl MapEditorSession {
                                 mr.terrain[idx] = self.terrain[idx];
                             }
                         }
-                        let dirty_dt: Vec<sow_core::protocol::DirtyTile> = self.dirty_tiles
+                        let dirty_dt: Vec<sow_core::protocol::DirtyTile> = self
+                            .dirty_tiles
                             .iter()
                             .map(|&idx| sow_core::protocol::DirtyTile {
                                 index: idx as u32,
@@ -728,7 +800,11 @@ impl MapEditorSession {
                                 upgrade_level: 0,
                             })
                             .collect();
-                        mr.update(&mut self.render_ctx.command_encoder, &self.render_ctx.context, &dirty_dt);
+                        mr.update(
+                            &mut self.render_ctx.command_encoder,
+                            &self.render_ctx.context,
+                            &dirty_dt,
+                        );
                         self.dirty_tiles.clear();
                     }
 
@@ -751,25 +827,41 @@ impl MapEditorSession {
                         colors: player_colors,
                     };
 
-                    mr.draw(&mut self.render_ctx.command_encoder, frame.texture_view(), globals, colors_struct);
+                    mr.draw(
+                        &mut self.render_ctx.command_encoder,
+                        frame.texture_view(),
+                        globals,
+                        colors_struct,
+                    );
                 }
 
                 // Draw EGUI overlay on top of map viewport
-                let mut pass = self.render_ctx.command_encoder.render("editor_ui_pass", gpu::RenderTargetSet {
-                    colors: &[gpu::RenderTarget {
-                        view: frame.texture_view(),
-                        init_op: gpu::InitOp::Load,
-                        finish_op: gpu::FinishOp::Store,
-                    }],
-                    depth_stencil: None,
-                });
-                gp.paint(&mut pass, &paint_jobs, &screen_desc, &self.render_ctx.context);
+                let mut pass = self.render_ctx.command_encoder.render(
+                    "editor_ui_pass",
+                    gpu::RenderTargetSet {
+                        colors: &[gpu::RenderTarget {
+                            view: frame.texture_view(),
+                            init_op: gpu::InitOp::Load,
+                            finish_op: gpu::FinishOp::Store,
+                        }],
+                        depth_stencil: None,
+                    },
+                );
+                gp.paint(
+                    &mut pass,
+                    &paint_jobs,
+                    &screen_desc,
+                    &self.render_ctx.context,
+                );
                 drop(pass);
                 gp.sync(&self.render_ctx.context);
 
                 self.render_ctx.command_encoder.present(frame);
-                let sync_point = self.render_ctx.context.submit(&mut self.render_ctx.command_encoder);
-                gp.after_submit(&sync_point);
+                let sync_point = self
+                    .render_ctx
+                    .context
+                    .submit(&mut self.render_ctx.command_encoder);
+                gp.after_submit(&sync_point, &self.render_ctx.context);
                 self.prev_sync_point = Some(sync_point);
             }
         }
@@ -777,7 +869,9 @@ impl MapEditorSession {
         transition
     }
 
-    pub fn destroy_and_reclaim(mut self) -> (
+    pub fn destroy_and_reclaim(
+        mut self,
+    ) -> (
         Option<Box<dyn Window>>,
         Option<gpu::Surface>,
         RenderContext,

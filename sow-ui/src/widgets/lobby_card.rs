@@ -82,7 +82,8 @@ impl<'a> Widget for LobbyCard<'a> {
                 .tint(tint);
             ui.put(rect, image);
         } else {
-            ui.painter().rect_filled(rect, 12.0, crate::ui::theme::menu_secondary_button());
+            ui.painter()
+                .rect_filled(rect, 12.0, crate::ui::theme::menu_secondary_button());
         }
 
         ui.painter().rect_stroke(
@@ -93,16 +94,26 @@ impl<'a> Widget for LobbyCard<'a> {
         );
 
         let top_rect = rect.shrink(8.0);
-        let mode_text = if self.lobby.game_mode == "FFA" { "FFA" } else { "TEAMS" };
+        let mode_text = if self.lobby.game_mode == "FFA" {
+            "FFA"
+        } else {
+            "TEAMS"
+        };
 
         let mode_galley = ui.painter().layout_no_wrap(
             mode_text.to_string(),
             egui::FontId::proportional(14.0),
             Color32::WHITE,
         );
-        let mode_badge_rect = egui::Rect::from_min_size(top_rect.min, mode_galley.size() + egui::vec2(12.0, 6.0));
-        ui.painter().rect_filled(mode_badge_rect, 4.0, crate::ui::theme::accent_solo_cyan());
-        ui.painter().galley(mode_badge_rect.center() - mode_galley.size() / 2.0, mode_galley, Color32::WHITE);
+        let mode_badge_rect =
+            egui::Rect::from_min_size(top_rect.min, mode_galley.size() + egui::vec2(12.0, 6.0));
+        ui.painter()
+            .rect_filled(mode_badge_rect, 4.0, crate::ui::theme::accent_solo_cyan());
+        ui.painter().galley(
+            mode_badge_rect.center() - mode_galley.size() / 2.0,
+            mode_galley,
+            Color32::WHITE,
+        );
 
         let timer_text = if self.lobby.is_counting_down {
             format!("Starts in {:.0}s", self.lobby.timer_secs.max(0.0))
@@ -115,12 +126,18 @@ impl<'a> Widget for LobbyCard<'a> {
             crate::ui::theme::text_secondary()
         };
         let timer_text_str = timer_text.clone();
-        let timer_galley = ui.painter().layout_no_wrap(timer_text, egui::FontId::proportional(14.0), timer_color);
+        let timer_galley =
+            ui.painter()
+                .layout_no_wrap(timer_text, egui::FontId::proportional(14.0), timer_color);
         let timer_badge_rect = egui::Rect::from_min_size(
-            egui::pos2(top_rect.max.x - timer_galley.size().x - 12.0, top_rect.min.y),
+            egui::pos2(
+                top_rect.max.x - timer_galley.size().x - 12.0,
+                top_rect.min.y,
+            ),
             timer_galley.size() + egui::vec2(12.0, 6.0),
         );
-        ui.painter().rect_filled(timer_badge_rect, 4.0, Color32::from_black_alpha(180));
+        ui.painter()
+            .rect_filled(timer_badge_rect, 4.0, Color32::from_black_alpha(180));
         crate::ui::theme::outlined_text(
             ui.painter(),
             timer_badge_rect.center() - timer_galley.size() / 2.0,
@@ -132,10 +149,16 @@ impl<'a> Widget for LobbyCard<'a> {
         );
 
         let bottom_height = 44.0;
-        let bottom_rect = egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.max.y - bottom_height), rect.max);
+        let bottom_rect =
+            egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.max.y - bottom_height), rect.max);
         ui.painter().rect_filled(
             bottom_rect,
-            CornerRadius { nw: 0, ne: 0, sw: 12, se: 12 },
+            CornerRadius {
+                nw: 0,
+                ne: 0,
+                sw: 12,
+                se: 12,
+            },
             Color32::from_black_alpha(200),
         );
 
@@ -147,7 +170,10 @@ impl<'a> Widget for LobbyCard<'a> {
         );
         crate::ui::theme::outlined_text(
             ui.painter(),
-            egui::pos2(bottom_rect.min.x + 12.0, bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0),
+            egui::pos2(
+                bottom_rect.min.x + 12.0,
+                bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0,
+            ),
             egui::Align2::LEFT_TOP,
             &map_text,
             egui::FontId::proportional(18.0),
@@ -163,10 +189,14 @@ impl<'a> Widget for LobbyCard<'a> {
             Color32::WHITE,
         );
         let players_badge_rect = egui::Rect::from_min_size(
-            egui::pos2(bottom_rect.max.x - players_galley.size().x - 16.0, bottom_rect.min.y - 12.0),
+            egui::pos2(
+                bottom_rect.max.x - players_galley.size().x - 16.0,
+                bottom_rect.min.y - 12.0,
+            ),
             players_galley.size() + egui::vec2(12.0, 6.0),
         );
-        ui.painter().rect_filled(players_badge_rect, 4.0, Color32::from_black_alpha(220));
+        ui.painter()
+            .rect_filled(players_badge_rect, 4.0, Color32::from_black_alpha(220));
         crate::ui::theme::outlined_text(
             ui.painter(),
             players_badge_rect.center() - players_galley.size() / 2.0,

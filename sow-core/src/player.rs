@@ -213,7 +213,7 @@ impl Player {
         } else if id % 10 == 0 {
             rng.next_int(100, 121) as u32 // 9% Advanced tribes
         } else if id % 10 == 1 {
-            rng.next_int(60, 81) as u32  // 10% Stupidest tribes
+            rng.next_int(60, 81) as u32 // 10% Stupidest tribes
         } else {
             rng.next_int(85, 106) as u32 // 80% Standard baseline tribes
         };

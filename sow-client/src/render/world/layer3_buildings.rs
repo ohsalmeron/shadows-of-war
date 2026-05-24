@@ -3,7 +3,14 @@ use super::*;
 use crate::render::world::utils::*;
 
 #[allow(unused_variables)]
-pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, input: &crate::app::InputState, time: &crate::app::TimeState, gfx: &crate::app::GraphicsState, ctx: &RenderContext) {
+pub(crate) fn render(
+    ui: &mut crate::app::UiState,
+    sim: &crate::app::SimState,
+    input: &crate::app::InputState,
+    time: &crate::app::TimeState,
+    gfx: &crate::app::GraphicsState,
+    ctx: &RenderContext,
+) {
     let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
         egui::Order::Background,
         egui::Id::new("world_buildings"),
@@ -13,7 +20,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
     let player_colors = ctx.player_colors;
     let wall_secs = ctx.wall_secs;
     let building_scale = ctx.painter.ctx().data(|d| {
-        d.get_temp::<f32>(egui::Id::new("dev_building_scale")).unwrap_or(1.0)
+        d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
+            .unwrap_or(1.0)
     });
 
     if let Some(snap) = &sim.current_snapshot {
@@ -45,11 +53,11 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
         let cell_size = if zoom_scaled < 0.6 {
             128.0 // LOD 3: Major sector-level grouping
         } else if zoom_scaled < 1.2 {
-            64.0  // LOD 2: Intermediate grid grouping
+            64.0 // LOD 2: Intermediate grid grouping
         } else if zoom_scaled < 2.5 {
-            24.0  // LOD 1: Close clustering
+            24.0 // LOD 1: Close clustering
         } else {
-            1.0   // No clustering
+            1.0 // No clustering
         };
 
         let mut rendered_buildings = Vec::new();
@@ -63,8 +71,10 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 kind: Option<sow_core::game::BuildingKind>,
                 level: Option<u8>,
             }
-            let mut clusters: std::collections::HashMap<ClusterKey, (f32, f32, usize, u32, Option<sow_core::game::BuildingKind>)> =
-                std::collections::HashMap::new();
+            let mut clusters: std::collections::HashMap<
+                ClusterKey,
+                (f32, f32, usize, u32, Option<sow_core::game::BuildingKind>),
+            > = std::collections::HashMap::new();
 
             for b in &snap.buildings {
                 let tile_x = (b.tile_idx % sim.map_w) as f32;
@@ -91,9 +101,15 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     level: level_key,
                 };
 
-                let b_level = if b.under_construction { 1 } else { b.level as u32 };
+                let b_level = if b.under_construction {
+                    1
+                } else {
+                    b.level as u32
+                };
 
-                let entry = clusters.entry(key).or_insert((0.0, 0.0, 0, 0, Some(b.kind)));
+                let entry = clusters
+                    .entry(key)
+                    .or_insert((0.0, 0.0, 0, 0, Some(b.kind)));
                 entry.0 += bx;
                 entry.1 += by;
                 entry.2 += 1;
@@ -101,7 +117,10 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
             }
 
             for (key, (sum_bx, sum_by, count, sum_level, cluster_kind)) in clusters {
-                let final_kind = key.kind.or(cluster_kind).unwrap_or(sow_core::game::BuildingKind::City);
+                let final_kind = key
+                    .kind
+                    .or(cluster_kind)
+                    .unwrap_or(sow_core::game::BuildingKind::City);
                 rendered_buildings.push(RenderedBuilding {
                     bx: sum_bx / count as f32,
                     by: sum_by / count as f32,
@@ -138,10 +157,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
         rendered_buildings.sort_by(|a, b| {
             a.by.partial_cmp(&b.by)
                 .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| {
-                    a.bx.partial_cmp(&b.bx)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
+                .then_with(|| a.bx.partial_cmp(&b.bx).unwrap_or(std::cmp::Ordering::Equal))
                 .then_with(|| a.count.cmp(&b.count))
         });
 
@@ -172,16 +188,27 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
             // --- Cybernetic Base Plate & Glow effects (drawn behind the sprite) ---
             if b.owner_id != 0 {
-                let pc = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::GRAY);
+                let pc = player_colors
+                    .get(b.owner_id as usize)
+                    .copied()
+                    .unwrap_or(egui::Color32::GRAY);
                 let is_launching_silo = launching_silo_tiles.contains(&b.tile_idx);
 
                 // 1. Sleek drop shadow (dark semi-transparent offset circle to give depth)
                 let shadow_offset = base_size * 0.08;
                 let shadow_center = center + egui::vec2(shadow_offset, shadow_offset);
-                painter.circle_filled(shadow_center, base_size * 0.46, egui::Color32::from_black_alpha(150));
+                painter.circle_filled(
+                    shadow_center,
+                    base_size * 0.46,
+                    egui::Color32::from_black_alpha(150),
+                );
 
                 // 2. High-contrast Dark cyber-plate foundation disc (blocks out underlying terrain color)
-                painter.circle_filled(center, base_size * 0.46, egui::Color32::from_rgba_unmultiplied(15, 15, 20, 240));
+                painter.circle_filled(
+                    center,
+                    base_size * 0.46,
+                    egui::Color32::from_rgba_unmultiplied(15, 15, 20, 240),
+                );
 
                 // 3. Sharp, high-contrast Player colored neon ring outline
                 if is_launching_silo {
@@ -190,21 +217,36 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     let ext_r = base_size * (0.46 + ring_pulse * 0.15);
                     let ext_a = (180.0 * (1.0 - ring_pulse)) as u8;
                     // Fading expanding ring
-                    painter.circle_stroke(center, ext_r, egui::Stroke::new(2.0_f32, egui::Color32::from_rgba_unmultiplied(pc.r(), pc.g(), pc.b(), ext_a)));
+                    painter.circle_stroke(
+                        center,
+                        ext_r,
+                        egui::Stroke::new(
+                            2.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(pc.r(), pc.g(), pc.b(), ext_a),
+                        ),
+                    );
                     // Solid inner neon ring
                     painter.circle_stroke(center, base_size * 0.46, egui::Stroke::new(3.0_f32, pc));
                 } else if b.under_construction {
                     // Dotted/pulsing construction ring
                     let pulse = (wall_secs * 5.0).sin() as f32 * 0.5 + 0.5;
                     let stroke_w = 1.5_f32 + pulse * 2.0_f32;
-                    let construction_color = egui::Color32::from_rgba_unmultiplied(pc.r(), pc.g(), pc.b(), (100.0 + pulse * 155.0) as u8);
-                    painter.circle_stroke(center, base_size * 0.46, egui::Stroke::new(stroke_w, construction_color));
+                    let construction_color = egui::Color32::from_rgba_unmultiplied(
+                        pc.r(),
+                        pc.g(),
+                        pc.b(),
+                        (100.0 + pulse * 155.0) as u8,
+                    );
+                    painter.circle_stroke(
+                        center,
+                        base_size * 0.46,
+                        egui::Stroke::new(stroke_w, construction_color),
+                    );
                 } else {
                     // High-contrast, sharp, beautiful neon outline
                     painter.circle_stroke(center, base_size * 0.46, egui::Stroke::new(2.5_f32, pc));
                 }
             }
-
 
             let size_hint = egui::load::SizeHint::Size {
                 width: 64,
@@ -212,18 +254,20 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 maintain_aspect_ratio: true,
             };
 
-            let load_res = painter.ctx().try_load_texture(
-                uri,
-                egui::TextureOptions::LINEAR,
-                size_hint,
-            );
+            let load_res =
+                painter
+                    .ctx()
+                    .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint);
 
             if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
                 let tint = if b.under_construction {
                     if b.kind.asset().is_svg() {
                         egui::Color32::from_black_alpha(128)
                     } else if b.owner_id != 0 {
-                        let player_color = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::WHITE);
+                        let player_color = player_colors
+                            .get(b.owner_id as usize)
+                            .copied()
+                            .unwrap_or(egui::Color32::WHITE);
                         let r = ((player_color.r() as f32 * 0.30) + (255.0 * 0.70)) as u8;
                         let g = ((player_color.g() as f32 * 0.30) + (255.0 * 0.70)) as u8;
                         let b_val = ((player_color.b() as f32 * 0.30) + (255.0 * 0.70)) as u8;
@@ -234,7 +278,10 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                 } else if b.kind.asset().is_svg() {
                     egui::Color32::BLACK
                 } else if b.owner_id != 0 {
-                    let player_color = player_colors.get(b.owner_id as usize).copied().unwrap_or(egui::Color32::WHITE);
+                    let player_color = player_colors
+                        .get(b.owner_id as usize)
+                        .copied()
+                        .unwrap_or(egui::Color32::WHITE);
                     let r = ((player_color.r() as f32 * 0.30) + (255.0 * 0.70)) as u8;
                     let g = ((player_color.g() as f32 * 0.30) + (255.0 * 0.70)) as u8;
                     let b_val = ((player_color.b() as f32 * 0.30) + (255.0 * 0.70)) as u8;
@@ -249,21 +296,22 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     tint,
                 );
             }
-            
+
             if b.under_construction && b.ticks_until_complete > 0 {
                 let total_ticks = b.kind.construction_duration_ticks();
                 if total_ticks > 0 {
-                    let progress = 1.0 - (b.ticks_until_complete as f32 / total_ticks as f32).clamp(0.0, 1.0);
-                    
+                    let progress =
+                        1.0 - (b.ticks_until_complete as f32 / total_ticks as f32).clamp(0.0, 1.0);
+
                     // Design: Sleek glassmorphic bar just below the building
                     let bar_w = base_size * 0.95;
                     let bar_h = (4.0 * zoom_scaled).clamp(3.0, 5.0);
                     let bar_y = center.y + base_size * 0.55;
                     let bar_rect = egui::Rect::from_center_size(
                         egui::pos2(center.x, bar_y),
-                        egui::vec2(bar_w, bar_h)
+                        egui::vec2(bar_w, bar_h),
                     );
-                    
+
                     // Glass background pill with border
                     let bg_color = egui::Color32::from_black_alpha(160);
                     let border_color = egui::Color32::from_white_alpha(40);
@@ -274,13 +322,13 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         egui::Stroke::new(1.0_f32, border_color),
                         egui::StrokeKind::Inside,
                     );
-                    
+
                     // Glowing cyan progress fill
                     if progress > 0.0 {
                         let fill_w = bar_w * progress;
                         let fill_rect = egui::Rect::from_min_max(
                             egui::pos2(bar_rect.min.x, bar_rect.min.y),
-                            egui::pos2(bar_rect.min.x + fill_w, bar_rect.max.y)
+                            egui::pos2(bar_rect.min.x + fill_w, bar_rect.max.y),
                         );
                         let fill_color = egui::Color32::from_rgb(0, 220, 255);
                         painter.rect(
@@ -291,12 +339,16 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             egui::StrokeKind::Inside,
                         );
                     }
-                    
+
                     // Small, premium, highly legible micro-font tick label below the bar
                     let font_size = (8.5 * zoom_scaled).clamp(8.0, 12.0).round();
                     let text_y = bar_y + bar_h * 0.5 + font_size * 0.5 + 1.0;
-                    let label = format!("{} / {} t", total_ticks.saturating_sub(b.ticks_until_complete), total_ticks);
-                    
+                    let label = format!(
+                        "{} / {} t",
+                        total_ticks.saturating_sub(b.ticks_until_complete),
+                        total_ticks
+                    );
+
                     // Subtle drop shadow for readability
                     painter.text(
                         egui::pos2(center.x + 1.0, text_y + 1.0),
@@ -305,7 +357,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         egui::FontId::proportional(font_size),
                         egui::Color32::from_black_alpha(180),
                     );
-                    
+
                     // Main crisp text
                     painter.text(
                         egui::pos2(center.x, text_y),
@@ -326,7 +378,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
             if text_val != "1" {
                 let font_size = (zoom_scaled * 0.65).clamp(11.0, 18.0).round();
-                let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
+                let bg_center =
+                    egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
 
                 painter.text(
                     bg_center,

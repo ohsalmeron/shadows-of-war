@@ -1,6 +1,13 @@
 use super::*;
 
-pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, input: &crate::app::InputState, time: &crate::app::TimeState, _gfx: &crate::app::GraphicsState, ctx: &RenderContext) {
+pub(crate) fn render(
+    _ui: &mut crate::app::UiState,
+    sim: &crate::app::SimState,
+    input: &crate::app::InputState,
+    time: &crate::app::TimeState,
+    _gfx: &crate::app::GraphicsState,
+    ctx: &RenderContext,
+) {
     let painter = ctx.painter;
     let sf = ctx.sf;
 
@@ -29,7 +36,9 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let (wx_prev, wy_prev) = tile_to_world(proj.path[prev_cursor], map_w);
 
             // Smooth interpolation between prev and current tile
-            let sim_dt = web_time::Instant::now().duration_since(time.last_tick).as_secs_f32();
+            let sim_dt = web_time::Instant::now()
+                .duration_since(time.last_tick)
+                .as_secs_f32();
             let tick_dur = time.tick_interval.as_secs_f32().max(0.01);
             let mut t = (sim_dt / tick_dur).clamp(0.0, 1.0);
             t = t * t * (3.0 - 2.0 * t); // smoothstep
@@ -49,15 +58,15 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let screen_y = (input.camera_y + (cur_y - height * 20.0) * input.camera_zoom) / sf;
 
             // Frustum cull
-            if screen_x < -50.0 || screen_x > input.screen_w / sf + 50.0
-                || screen_y < -50.0 || screen_y > input.screen_h / sf + 50.0 {
+            if screen_x < -50.0
+                || screen_x > input.screen_w / sf + 50.0
+                || screen_y < -50.0
+                || screen_y > input.screen_h / sf + 50.0
+            {
                 continue;
             }
 
-            let is_nuke = matches!(
-                proj.kind,
-                sow_core::game::ProjectileKind::Nuke { .. }
-            );
+            let is_nuke = matches!(proj.kind, sow_core::game::ProjectileKind::Nuke { .. });
 
             let center = egui::pos2(screen_x, screen_y);
 
@@ -129,8 +138,12 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             }
 
             let uri = match proj.kind {
-                sow_core::game::ProjectileKind::Nuke { .. } => sow_core::assets::Asset::AtomBomb.uri(),
-                sow_core::game::ProjectileKind::SAMMissile => sow_core::assets::Asset::SamMissile.uri(),
+                sow_core::game::ProjectileKind::Nuke { .. } => {
+                    sow_core::assets::Asset::AtomBomb.uri()
+                }
+                sow_core::game::ProjectileKind::SAMMissile => {
+                    sow_core::assets::Asset::SamMissile.uri()
+                }
                 sow_core::game::ProjectileKind::Shell => continue,
             };
 
@@ -144,8 +157,16 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let size = base_size * scale;
             let rect = egui::Rect::from_center_size(center, egui::vec2(size, size));
 
-            let size_hint = egui::load::SizeHint::Size { width: 64, height: 64, maintain_aspect_ratio: true };
-            if let Ok(egui::load::TexturePoll::Ready { texture }) = painter.ctx().try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint) {
+            let size_hint = egui::load::SizeHint::Size {
+                width: 64,
+                height: 64,
+                maintain_aspect_ratio: true,
+            };
+            if let Ok(egui::load::TexturePoll::Ready { texture }) =
+                painter
+                    .ctx()
+                    .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint)
+            {
                 painter.image(
                     texture.id,
                     rect,
@@ -161,7 +182,10 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
                 let trail_y = (input.camera_y + src_wy * input.camera_zoom) / sf;
                 painter.line_segment(
                     [egui::pos2(trail_x, trail_y), center],
-                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgba_unmultiplied(100, 200, 255, 100)),
+                    egui::Stroke::new(
+                        1.0_f32,
+                        egui::Color32::from_rgba_unmultiplied(100, 200, 255, 100),
+                    ),
                 );
             }
         }
@@ -204,11 +228,8 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let end_x = (input.camera_x + tx * input.camera_zoom) / sf;
             let end_y = (input.camera_y + ty * input.camera_zoom) / sf;
 
-            let mut color = egui::Color32::from_rgb(
-                (r * 255.0) as u8,
-                (g * 255.0) as u8,
-                (b * 255.0) as u8,
-            );
+            let mut color =
+                egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
 
             if is_incoming {
                 color = egui::Color32::from_rgb(255, 60, 60); // Bright warning red for incoming
@@ -242,16 +263,21 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
 
                 // Fade out as it reaches the target destination
                 let alpha = ((1.0 - t) * 255.0) as u8;
-                let outer_glow = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha / 3);
-                let inner_core = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+                let outer_glow = egui::Color32::from_rgba_unmultiplied(
+                    color.r(),
+                    color.g(),
+                    color.b(),
+                    alpha / 3,
+                );
+                let inner_core =
+                    egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
 
                 // Draw soft outer halo and solid inner core
                 painter.circle_filled(dot_pos, 4.5_f32, outer_glow);
                 painter.circle_filled(dot_pos, 1.8_f32, inner_core);
             }
 
-            if attack.retreating
-                && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2)
+            if attack.retreating && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2)
             {
                 let center = start_pos.lerp(end_pos, 0.5);
                 painter.text(
@@ -299,8 +325,11 @@ pub(crate) fn render(_ui: &mut crate::app::UiState, sim: &crate::app::SimState, 
             let screen_y = (input.camera_y + wy * input.camera_zoom) / sf;
 
             // Frustum cull
-            if screen_x < -80.0 || screen_x > input.screen_w / sf + 80.0
-                || screen_y < -40.0 || screen_y > input.screen_h / sf + 40.0 {
+            if screen_x < -80.0
+                || screen_x > input.screen_w / sf + 80.0
+                || screen_y < -40.0
+                || screen_y > input.screen_h / sf + 40.0
+            {
                 continue;
             }
 

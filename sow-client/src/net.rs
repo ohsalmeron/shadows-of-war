@@ -23,7 +23,9 @@ impl SowApp {
         }
 
         // Fetch dynamic map catalog if not already fetched
-        if self.ui.app.asset_loader.map_catalog.is_none() && !self.ui.app.asset_loader.catalog_in_flight {
+        if self.ui.app.asset_loader.map_catalog.is_none()
+            && !self.ui.app.asset_loader.catalog_in_flight
+        {
             self.ui.app.asset_loader.catalog_in_flight = true;
             let maps_base = get_maps_url();
             let url = format!("{}/maps.json", maps_base.trim_end_matches('/'));
@@ -32,7 +34,10 @@ impl SowApp {
             ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
                 if let Ok(res) = result {
                     if res.ok {
-                        if let Ok(catalog) = serde_json::from_slice::<Vec<sow_core::map_legacy::MapManifest>>(&res.bytes) {
+                        if let Ok(catalog) = serde_json::from_slice::<
+                            Vec<sow_core::map_legacy::MapManifest>,
+                        >(&res.bytes)
+                        {
                             let _ = tx.send(crate::MapDownloadEvent::CatalogReady(catalog));
                         }
                     }
@@ -118,10 +123,16 @@ impl SowApp {
                             log::error!("Relay connection failed after 3 attempts");
                             self.net.relay_connect_start = None;
                             self.net.relay_retry_count = 0;
-                            self.ui.app.main_menu_state.error_message = Some("Failed to connect to the game server after 3 attempts.".to_string());
+                            self.ui.app.main_menu_state.error_message = Some(
+                                "Failed to connect to the game server after 3 attempts."
+                                    .to_string(),
+                            );
                             self.begin_exit_to_main_menu(true);
                         } else {
-                            log::warn!("Relay connection failed; retrying rapid connection attempt {}/3", self.net.relay_retry_count + 1);
+                            log::warn!(
+                                "Relay connection failed; retrying rapid connection attempt {}/3",
+                                self.net.relay_retry_count + 1
+                            );
                             self.net.ws_connect_fail_backoff_ms = 100;
                             self.net.ws_connect_not_before = now + Duration::from_millis(100);
                         }
@@ -180,7 +191,10 @@ impl SowApp {
                             if self.ui.app.phase != sow_ui::app::ClientPhase::Splash {
                                 self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
                                 let lang = self.ui.app.settings_state.language;
-                                self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::EnterGame, lang);
+                                self.ui.app.splash_state.reset_anim(
+                                    sow_ui::ui::loading_screen::SplashJob::EnterGame,
+                                    lang,
+                                );
                             }
                             self.ui.app.main_menu_state.is_waiting = false;
                             self.ui.app.main_menu_state.pending_join_lobby_id = None;
@@ -215,7 +229,10 @@ impl SowApp {
                                     if self.ui.app.phase != sow_ui::app::ClientPhase::Splash {
                                         self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
                                         let lang = self.ui.app.settings_state.language;
-                                        self.ui.app.splash_state.reset_anim(sow_ui::ui::loading_screen::SplashJob::EnterGame, lang);
+                                        self.ui.app.splash_state.reset_anim(
+                                            sow_ui::ui::loading_screen::SplashJob::EnterGame,
+                                            lang,
+                                        );
                                     }
                                     self.ui.app.main_menu_state.is_waiting = false;
                                 } else {
@@ -314,11 +331,16 @@ impl SowApp {
                                     move |result: ehttp::Result<ehttp::Response>| {
                                         if let Ok(res) = result {
                                             if res.ok {
-                                                if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(&res.bytes) {
-                                                    let _ = tx.send(MapDownloadEvent::ManifestReady(
-                                                        map_name_for_closure,
-                                                        manifest,
-                                                    ));
+                                                if let Ok(manifest) = serde_json::from_slice::<
+                                                    sow_core::map_legacy::MapManifest,
+                                                >(
+                                                    &res.bytes
+                                                ) {
+                                                    let _ =
+                                                        tx.send(MapDownloadEvent::ManifestReady(
+                                                            map_name_for_closure,
+                                                            manifest,
+                                                        ));
                                                 }
                                             }
                                         }
@@ -670,7 +692,8 @@ impl SowApp {
                     log::warn!(
                         "[CLIENT NET] Connection lost during match — returning to main menu"
                     );
-                    self.ui.app.main_menu_state.error_message = Some("Connection to the matchmaking server was lost.".to_string());
+                    self.ui.app.main_menu_state.error_message =
+                        Some("Connection to the matchmaking server was lost.".to_string());
                     self.begin_exit_to_main_menu(true);
                 }
             } else if self.ui.app.phase != ClientPhase::Splash {

@@ -43,18 +43,28 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
 
     let strings = &sow_lang::get(state.language).settings;
 
-    let progress = root_ui.ctx().animate_bool_with_time(egui::Id::new("settings_animation_progress"), is_open, 0.22);
+    let progress = root_ui.ctx().animate_bool_with_time(
+        egui::Id::new("settings_animation_progress"),
+        is_open,
+        0.22,
+    );
     if progress <= 0.01 && !is_open {
         return None;
     }
 
     // Dark scrim behind the modal
     let screen_rect = root_ui.ctx().content_rect();
-    root_ui.ctx().layer_painter(egui::LayerId::new(
-        egui::Order::Foreground,
-        egui::Id::new("settings_scrim"),
-    ))
-    .rect_filled(screen_rect, 0.0, Color32::from_black_alpha((200.0 * progress) as u8));
+    root_ui
+        .ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("settings_scrim"),
+        ))
+        .rect_filled(
+            screen_rect,
+            0.0,
+            Color32::from_black_alpha((200.0 * progress) as u8),
+        );
 
     // Disney overshoot curve
     let anim_scale = if is_open {
@@ -236,4 +246,3 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
 
     action
 }
-

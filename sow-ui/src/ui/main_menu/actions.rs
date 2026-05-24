@@ -1,6 +1,6 @@
+use crate::widgets::{ThemeButton, ThemeButtonStyle};
 use crate::UiAction;
 use egui::Ui;
-use crate::widgets::{ThemeButton, ThemeButtonStyle};
 
 pub fn draw_right_column(
     ui: &mut Ui,
@@ -74,4 +74,3 @@ pub fn draw_right_column(
         *action = Some(UiAction::ToggleSettings);
     }
 }
-

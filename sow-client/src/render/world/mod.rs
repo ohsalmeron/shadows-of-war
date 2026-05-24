@@ -1,4 +1,3 @@
-pub mod utils;
 pub mod layer1_railroads;
 pub mod layer2_fleets;
 pub mod layer3_buildings;
@@ -6,12 +5,13 @@ pub mod layer4_5_effects;
 pub mod layer6_projectiles;
 pub mod layer7_preview;
 pub mod layer8_nameplates;
+pub mod utils;
 
 pub use utils::*;
 
+use crate::app::SowApp;
 use crate::config::ClientVisualConfig;
 use crate::hud::nameplate::*;
-use crate::app::SowApp;
 
 #[derive(Copy, Clone)]
 pub(crate) struct VisPlayer<'a> {
@@ -33,8 +33,6 @@ pub(crate) struct RenderContext<'a> {
     pub sf: f32,
 }
 
-
-
 impl SowApp {
     pub(crate) fn render_world_overlays(&mut self, ctx: &egui::Context, sf: f32) {
         // Register world_buildings layer first to draw behind world_overlays
@@ -48,11 +46,15 @@ impl SowApp {
             egui::Id::new("world_overlays"),
         ));
         let wall_secs = self.time.start_time.elapsed().as_secs_f64();
-        let current_tick = self.sim.current_snapshot.as_ref().map(|s| s.tick).unwrap_or(0);
+        let current_tick = self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .map(|s| s.tick)
+            .unwrap_or(0);
 
         // Configuration variables removed from GameConfig
         let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
-
 
         let mut visible_players = Vec::new();
         if let Some(snap) = &self.sim.current_snapshot {
@@ -128,13 +130,17 @@ impl SowApp {
 
             // Clean up expired upgrade animations once per frame
             let now = web_time::Instant::now();
-            self.ui.active_upgrades.retain(|anim| now.duration_since(anim.start_time) < anim.duration);
+            self.ui
+                .active_upgrades
+                .retain(|anim| now.duration_since(anim.start_time) < anim.duration);
 
             // Rebuild player colors only when the player list size changes
             let player_count = snap.players.len();
             if self.ui.cached_player_count != player_count {
                 let max_pid = snap.players.iter().map(|p| p.id).max().unwrap_or(0) as usize;
-                self.ui.cached_player_colors.resize(max_pid + 1, egui::Color32::GRAY);
+                self.ui
+                    .cached_player_colors
+                    .resize(max_pid + 1, egui::Color32::GRAY);
                 self.ui.cached_player_count = player_count;
             }
             for p in &snap.players {
@@ -152,8 +158,12 @@ impl SowApp {
             // Take the player colors out temporarily to break the shared borrow without allocating
             let player_colors = std::mem::take(&mut self.ui.cached_player_colors);
 
-            let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
-
+            let terrain = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.terrain.as_slice())
+                .unwrap_or(&[]);
 
             let ctx_struct = RenderContext {
                 painter: &painter,
@@ -167,13 +177,62 @@ impl SowApp {
                 sf,
             };
 
-            layer1_railroads::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
-            layer2_fleets::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
-            layer3_buildings::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
-            layer4_5_effects::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
-            layer6_projectiles::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
-            layer7_preview::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
-            layer8_nameplates::render(&mut self.ui, &self.sim, &self.input, &self.time, &self.gfx, &ctx_struct);
+            layer1_railroads::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            layer2_fleets::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            layer3_buildings::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            layer4_5_effects::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            layer6_projectiles::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            layer7_preview::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            layer8_nameplates::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
 
             // Restore the player colors back to UI state to preserve the pre-allocated capacity
             self.ui.cached_player_colors = player_colors;

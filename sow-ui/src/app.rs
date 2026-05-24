@@ -1,5 +1,7 @@
-
-use crate::{UiAction, ui::{main_menu, hud, loading_screen, asset_loader}};
+use crate::{
+    ui::{asset_loader, hud, loading_screen, main_menu},
+    UiAction,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientPhase {
@@ -68,27 +70,45 @@ impl ClientApp {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>) -> Option<UiAction> {
+    pub fn draw(
+        &mut self,
+        ui: &mut egui::Ui,
+        cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
+    ) -> Option<UiAction> {
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
                 self.asset_loader.ensure_avatars_loaded(ui.ctx());
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
                 self.asset_loader.ensure_leaders_loaded(ui.ctx());
-                main_menu::draw(ui, &mut self.main_menu_state, &self.asset_loader, self.settings_state.language)
+                main_menu::draw(
+                    ui,
+                    &mut self.main_menu_state,
+                    &self.asset_loader,
+                    self.settings_state.language,
+                )
             }
             ClientPhase::Splash => {
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
-                if let Some(new_phase) = loading_screen::draw(ui, &mut self.splash_state, &self.asset_loader, self.settings_state.language) {
+                if let Some(new_phase) = loading_screen::draw(
+                    ui,
+                    &mut self.splash_state,
+                    &self.asset_loader,
+                    self.settings_state.language,
+                ) {
                     self.phase = new_phase;
                 }
                 None
             }
-            ClientPhase::Playing => {
-                hud::draw(ui, &mut self.hud_state, cancel_intents, self.settings_state.language)
-            }
+            ClientPhase::Playing => hud::draw(
+                ui,
+                &mut self.hud_state,
+                cancel_intents,
+                self.settings_state.language,
+            ),
         };
 
-        let settings_action = crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
+        let settings_action =
+            crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
         if let Some(UiAction::ToggleSettings) = settings_action {
             self.is_settings_open = !self.is_settings_open;
         } else if let Some(UiAction::ToggleSettings) = action {
@@ -99,4 +119,3 @@ impl ClientApp {
         action
     }
 }
-

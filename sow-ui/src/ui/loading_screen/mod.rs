@@ -222,9 +222,10 @@ pub fn draw(
         if vp > 0.0 {
             let mut clip_rect = bar_rect;
             clip_rect.max.x = bar_rect.min.x + bar_width * vp;
-            let uv_rect =
-                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(vp, 1.0));
-            root_ui.painter().image(full_tex.id(), clip_rect, uv_rect, tint);
+            let uv_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(vp, 1.0));
+            root_ui
+                .painter()
+                .image(full_tex.id(), clip_rect, uv_rect, tint);
         }
     } else {
         let vp = visual_progress.clamp(0.0, 1.0);

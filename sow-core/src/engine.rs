@@ -8,8 +8,16 @@ use crate::water_components::WaterComponents;
 #[derive(Debug, Clone)]
 pub enum AiEvent {
     IncomeTick(u16),
-    UnderAttack { target: u16, attacker: u16, tile: u32 },
-    BuildingCompleted { owner: u16, tile: u32, kind: crate::game::BuildingKind },
+    UnderAttack {
+        target: u16,
+        attacker: u16,
+        tile: u32,
+    },
+    BuildingCompleted {
+        owner: u16,
+        tile: u32,
+        kind: crate::game::BuildingKind,
+    },
 }
 
 #[derive(Clone)]
@@ -49,12 +57,17 @@ pub struct SowEngine {
     pub building_aggregates_dirty: bool,
     pub railroads_dirty: bool,
     pub sea_lanes_dirty: bool,
-    pub railroad_calc: Option<(usize, Vec<crate::building::railroad::IncrementalRail>, Vec<Building>)>,
+    pub railroad_calc: Option<(
+        usize,
+        Vec<crate::building::railroad::IncrementalRail>,
+        Vec<Building>,
+    )>,
     pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
 
     pub ai_events: std::collections::VecDeque<AiEvent>,
     pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
-    pub port_queues: std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
+    pub port_queues:
+        std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
     pub projectiles: Vec<crate::game::Projectile>,
     pub silo_cooldowns: std::collections::HashMap<u64, u32>,
     pub mirv_launches: std::collections::HashMap<u16, u32>,
@@ -140,8 +153,7 @@ impl SowEngine {
 
     #[inline]
     pub fn add_building(&mut self, b: Building) {
-        let is_ready_defense =
-            b.kind == crate::game::BuildingKind::Bunker && !b.under_construction;
+        let is_ready_defense = b.kind == crate::game::BuildingKind::Bunker && !b.under_construction;
         let pos = self.buildings.partition_point(|x| x.id < b.id);
         self.buildings.insert(pos, b);
         self.building_grid.mark_dirty();
@@ -198,7 +210,8 @@ impl SowEngine {
                             false
                         };
                         let building_id = self.state.next_building_id;
-                        self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                        self.state.next_building_id =
+                            self.state.next_building_id.wrapping_add(1).max(1);
                         let w = self.state.map.width;
                         self.add_building(Building {
                             id: building_id,
@@ -240,16 +253,16 @@ impl SowEngine {
             let col = b.tile_idx % self.state.map.width;
             let row = b.tile_idx / self.state.map.width;
             let tile_owner = self.state.map.owner_id(col, row);
-            
+
             // Only transfer if the tile has a new valid owner
             if tile_owner != 0 && tile_owner != b.owner_id {
                 let old_owner = b.owner_id;
                 let new_owner = tile_owner;
                 let kind = b.kind;
-                
+
                 // Transfer ownership
                 b.owner_id = new_owner;
-                
+
                 // Update player counts if necessary
                 if kind == crate::game::BuildingKind::City {
                     if old_owner != 0 {
@@ -359,7 +372,12 @@ impl SowEngine {
             self.state.phase = crate::game::GamePhase::GameOver;
         }
     }
-    pub fn spawn_ai(&mut self, nation_count: u32, tribe_count: u32, manifest_nations: Option<Vec<crate::map_legacy::Nation>>) {
+    pub fn spawn_ai(
+        &mut self,
+        nation_count: u32,
+        tribe_count: u32,
+        manifest_nations: Option<Vec<crate::map_legacy::Nation>>,
+    ) {
         let mut spawned_nations = 0;
         let mut spawned_tribes = 0;
         use crate::player::Player;
@@ -367,7 +385,7 @@ impl SowEngine {
 
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
-        
+
         let n_queue = manifest_nations.unwrap_or_default();
         if nation_count > 0 || tribe_count > 0 {
             log::info!("spawn_ai: n_queue len is {}", n_queue.len());
@@ -380,10 +398,10 @@ impl SowEngine {
         // Spawn Nations (IDs 104 to 199)
         for i in 0..nation_count {
             let bot_id = 104 + i as u16;
-            
+
             let manifest_nation = n_iter.next();
             let mut spawn_point = None;
-            
+
             let mut name = if fallback_indices.is_empty() {
                 fallback_indices = (0..fallback_pool.len()).collect();
                 let idx = (rng.rand() as usize) % fallback_indices.len();
@@ -398,16 +416,22 @@ impl SowEngine {
             if let Some(n) = &manifest_nation {
                 let nx = n.coordinates[0];
                 let ny = n.coordinates[1];
-                if self.state.map.is_valid_coord(nx as i32, ny as i32) && 
-                   self.state.map.owner_id(nx, ny) == 0 && 
-                   self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
+                if self.state.map.is_valid_coord(nx as i32, ny as i32)
+                    && self.state.map.owner_id(nx, ny) == 0
+                    && self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land()
+                {
                     spawn_point = Some((nx, ny));
                 }
                 name = n.name.clone();
             }
 
             if i < 5 {
-                log::info!("spawn_ai Nation[{}]: name='{}' manifest={}", i, name, manifest_nation.is_some());
+                log::info!(
+                    "spawn_ai Nation[{}]: name='{}' manifest={}",
+                    i,
+                    name,
+                    manifest_nation.is_some()
+                );
             }
 
             if spawn_point.is_none() {
@@ -425,8 +449,7 @@ impl SowEngine {
                     (None, crate::player::human_shader_territory_rgb(bot_id))
                 };
 
-                let mut player =
-                    Player::new_nation(bot_id, name, color, &config);
+                let mut player = Player::new_nation(bot_id, name, color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
                 spawned_nations += 1;
@@ -457,10 +480,10 @@ impl SowEngine {
         let tribe_start_id = 104 + nation_count as u16;
         for i in 0..tribe_count {
             let bot_id = tribe_start_id + i as u16;
-            
+
             let manifest_nation = n_iter.next();
             let mut spawn_point = None;
-            
+
             let mut name = if fallback_indices.is_empty() {
                 fallback_indices = (0..fallback_pool.len()).collect();
                 let idx = (rng.rand() as usize) % fallback_indices.len();
@@ -475,9 +498,10 @@ impl SowEngine {
             if let Some(n) = &manifest_nation {
                 let nx = n.coordinates[0];
                 let ny = n.coordinates[1];
-                if self.state.map.is_valid_coord(nx as i32, ny as i32) && 
-                   self.state.map.owner_id(nx, ny) == 0 && 
-                   self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
+                if self.state.map.is_valid_coord(nx as i32, ny as i32)
+                    && self.state.map.owner_id(nx, ny) == 0
+                    && self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land()
+                {
                     spawn_point = Some((nx, ny));
                 }
                 name = n.name.clone();
@@ -626,7 +650,8 @@ impl SowEngine {
 
                 let name = p.name.clone();
 
-                let alliance_requests = proposed.iter()
+                let alliance_requests = proposed
+                    .iter()
                     .filter(|pair| pair.1 == p.id)
                     .map(|pair| pair.0)
                     .collect();
@@ -738,8 +763,11 @@ impl SowEngine {
             fleets,
             attacks,
             buildings,
-            projectiles: self.projectiles.iter().filter(|p| p.active).map(|p| {
-                crate::protocol::ProjectileSnapshot {
+            projectiles: self
+                .projectiles
+                .iter()
+                .filter(|p| p.active)
+                .map(|p| crate::protocol::ProjectileSnapshot {
                     id: p.id,
                     kind: p.kind,
                     owner_id: p.owner_id,
@@ -748,21 +776,33 @@ impl SowEngine {
                     path: p.path.clone(),
                     path_cursor: p.path_cursor,
                     steps_per_tick: p.steps_per_tick,
-                }
-            }).collect(),
-            nuke_alerts: self.state.events.iter().filter_map(|e| {
-                if let crate::game::GameEvent::NukeDetonated { tile_x, tile_y, owner_id, inner_radius: _, outer_radius: _ } = e {
-                    let kind = crate::game::NukeKind::AtomBomb;
-                    Some(crate::protocol::NukeAlert {
-                        owner_id: *owner_id,
-                        kind,
-                        tile_x: *tile_x,
-                        tile_y: *tile_y,
-                    })
-                } else {
-                    None
-                }
-            }).collect(),
+                })
+                .collect(),
+            nuke_alerts: self
+                .state
+                .events
+                .iter()
+                .filter_map(|e| {
+                    if let crate::game::GameEvent::NukeDetonated {
+                        tile_x,
+                        tile_y,
+                        owner_id,
+                        inner_radius: _,
+                        outer_radius: _,
+                    } = e
+                    {
+                        let kind = crate::game::NukeKind::AtomBomb;
+                        Some(crate::protocol::NukeAlert {
+                            owner_id: *owner_id,
+                            kind,
+                            tile_x: *tile_x,
+                            tile_y: *tile_y,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             winner: self.state.winner,
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,

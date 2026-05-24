@@ -93,14 +93,12 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
     let thumbnail_rgba = create_map_thumbnail(&mini_grid, 0.5);
 
     let mut thumbnail_data = Vec::new();
-    if let Err(e) = image::codecs::webp::WebPEncoder::new_lossless(&mut thumbnail_data)
-        .encode(
-            &thumbnail_rgba,
-            (mini_grid.len() as u32 / 2).max(1),
-            (mini_grid[0].len() as u32 / 2).max(1),
-            image::ExtendedColorType::Rgba8,
-        )
-    {
+    if let Err(e) = image::codecs::webp::WebPEncoder::new_lossless(&mut thumbnail_data).encode(
+        &thumbnail_rgba,
+        (mini_grid.len() as u32 / 2).max(1),
+        (mini_grid[0].len() as u32 / 2).max(1),
+        image::ExtendedColorType::Rgba8,
+    ) {
         log::error!("Failed to encode thumbnail WebP: {:?}", e);
     }
 
@@ -196,7 +194,10 @@ fn get_area(
     let mut area = Vec::new();
     let mut queue = VecDeque::new();
 
-    queue.push_back(Coord { x: start_x as i32, y: start_y as i32 });
+    queue.push_back(Coord {
+        x: start_x as i32,
+        y: start_y as i32,
+    });
     visited[start_x][start_y] = true;
 
     let directions = [(0, 1), (1, 0), (0, -1), (-1, 0)];
@@ -249,7 +250,10 @@ fn process_shore(grid: &mut Vec<Vec<TerrainTile>>) -> Vec<Coord> {
             if is_shore {
                 grid[x][y].shoreline = true;
                 if tile_type == TerrainType::Water {
-                    shoreline_waters.push(Coord { x: x as i32, y: y as i32 });
+                    shoreline_waters.push(Coord {
+                        x: x as i32,
+                        y: y as i32,
+                    });
                 }
             }
         }
@@ -442,7 +446,7 @@ mod tests {
         let width = 10;
         let height = 10;
         let mut pixels = vec![[106, 106, 106, 255]; (width * height) as usize];
-        
+
         for x in 3..7 {
             for y in 3..7 {
                 let idx = y * width + x;
@@ -461,9 +465,8 @@ mod tests {
         assert_eq!(res.width, 10);
         assert_eq!(res.height, 10);
         assert!(res.num_land_tiles > 0);
-        
+
         let center_tile = res.map_data[5 * 10 + 5];
         assert_ne!(center_tile & 0b10000000, 0);
     }
 }
-

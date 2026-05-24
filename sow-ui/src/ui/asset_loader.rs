@@ -43,7 +43,9 @@ impl AssetLoader {
 
         let mut catalog = Vec::new();
 
-        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/world/manifest.json")) {
+        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
+            include_bytes!("../../../assets/maps/world/manifest.json"),
+        ) {
             manifests.insert("world".to_string(), manifest.clone());
             catalog.push(manifest.clone());
 
@@ -54,12 +56,16 @@ impl AssetLoader {
             manifests.insert("custom".to_string(), custom_manifest);
         }
 
-        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/giantworldmap/manifest.json")) {
+        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
+            include_bytes!("../../../assets/maps/giantworldmap/manifest.json"),
+        ) {
             manifests.insert("giantworldmap".to_string(), manifest.clone());
             catalog.push(manifest);
         }
 
-        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(include_bytes!("../../../assets/maps/tutorial/manifest.json")) {
+        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
+            include_bytes!("../../../assets/maps/tutorial/manifest.json"),
+        ) {
             manifests.insert("tutorial".to_string(), manifest.clone());
             catalog.push(manifest);
         }
@@ -91,16 +97,25 @@ impl AssetLoader {
 
     pub fn has_map(&self, map_name: &str) -> bool {
         let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
-        key == "world" || key == "giantworldmap" || key == "tutorial" || self.maps.contains_key(&key)
+        key == "world"
+            || key == "giantworldmap"
+            || key == "tutorial"
+            || self.maps.contains_key(&key)
     }
 
     pub fn take_map(&mut self, map_name: &str) -> Option<Vec<u8>> {
         let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
         if key == "world" && !self.maps.contains_key("world") {
-            self.maps.insert("world".to_string(), include_bytes!("../../../assets/maps/world/map.bin.br").to_vec());
+            self.maps.insert(
+                "world".to_string(),
+                include_bytes!("../../../assets/maps/world/map.bin.br").to_vec(),
+            );
         }
         if key == "giantworldmap" && !self.maps.contains_key("giantworldmap") {
-            self.maps.insert("giantworldmap".to_string(), include_bytes!("../../../assets/maps/giantworldmap/map.bin.br").to_vec());
+            self.maps.insert(
+                "giantworldmap".to_string(),
+                include_bytes!("../../../assets/maps/giantworldmap/map.bin.br").to_vec(),
+            );
         }
         if key == "tutorial" {
             Some(include_bytes!("../../../assets/maps/tutorial/map.bin.br").to_vec())
@@ -184,7 +199,9 @@ impl AssetLoader {
         }
 
         let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
-            let image = image::load_from_memory(bytes).expect("Failed to load avatar").to_rgba8();
+            let image = image::load_from_memory(bytes)
+                .expect("Failed to load avatar")
+                .to_rgba8();
             let size = [image.width() as _, image.height() as _];
             let pixels = image.as_flat_samples();
             let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
@@ -193,18 +210,36 @@ impl AssetLoader {
 
         for &leader in &sow_core::player::Leader::ALL {
             let avatar_bytes = match leader {
-                sow_core::player::Leader::Caesar => include_bytes!("../../assets/avatars/caesar.webp").as_slice(),
-                sow_core::player::Leader::Cleopatra => include_bytes!("../../assets/avatars/cleopatra.webp").as_slice(),
-                sow_core::player::Leader::Ragnar => include_bytes!("../../assets/avatars/ragnar.webp").as_slice(),
-                sow_core::player::Leader::SunTzu => include_bytes!("../../assets/avatars/sun_tzu.webp").as_slice(),
-                sow_core::player::Leader::Alexander => include_bytes!("../../assets/avatars/alexander.webp").as_slice(),
-                sow_core::player::Leader::GenghisKhan => include_bytes!("../../assets/avatars/genghis_khan.webp").as_slice(),
+                sow_core::player::Leader::Caesar => {
+                    include_bytes!("../../assets/avatars/caesar.webp").as_slice()
+                }
+                sow_core::player::Leader::Cleopatra => {
+                    include_bytes!("../../assets/avatars/cleopatra.webp").as_slice()
+                }
+                sow_core::player::Leader::Ragnar => {
+                    include_bytes!("../../assets/avatars/ragnar.webp").as_slice()
+                }
+                sow_core::player::Leader::SunTzu => {
+                    include_bytes!("../../assets/avatars/sun_tzu.webp").as_slice()
+                }
+                sow_core::player::Leader::Alexander => {
+                    include_bytes!("../../assets/avatars/alexander.webp").as_slice()
+                }
+                sow_core::player::Leader::GenghisKhan => {
+                    include_bytes!("../../assets/avatars/genghis_khan.webp").as_slice()
+                }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
-            self.avatars.insert(leader, load_image(&format!("avatar_{}", name_lower), avatar_bytes));
+            self.avatars.insert(
+                leader,
+                load_image(&format!("avatar_{}", name_lower), avatar_bytes),
+            );
         }
 
-        self.avatar_fallback = Some(load_image("avatar_null", include_bytes!("../../assets/avatars/null.webp")));
+        self.avatar_fallback = Some(load_image(
+            "avatar_null",
+            include_bytes!("../../assets/avatars/null.webp"),
+        ));
     }
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
@@ -214,12 +249,12 @@ impl AssetLoader {
 
         let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
             let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
-            
+
             // eGui has a maximum texture side limit (often 2048). Scale it down if it's too large.
             if image.width() > 2048 || image.height() > 2048 {
                 image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
             }
-            
+
             let image_rgba = image.to_rgba8();
             let size = [image_rgba.width() as _, image_rgba.height() as _];
             let pixels = image_rgba.as_flat_samples();
@@ -227,10 +262,22 @@ impl AssetLoader {
             ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
         };
 
-        self.ui_loader_empty = Some(load_image("ui_loader_empty", include_bytes!("../../assets/ui/loader_empty.webp")));
-        self.ui_loader_full = Some(load_image("ui_loader_full", include_bytes!("../../assets/ui/loader_full.webp")));
-        self.splash_desktop = Some(load_image("sow_splash_desktop", include_bytes!("../../assets/ui/sow-splash-desktop.webp")));
-        self.splash_mobile = Some(load_image("sow_splash_mobile", include_bytes!("../../assets/ui/sow-splash-mobile.webp")));
+        self.ui_loader_empty = Some(load_image(
+            "ui_loader_empty",
+            include_bytes!("../../assets/ui/loader_empty.webp"),
+        ));
+        self.ui_loader_full = Some(load_image(
+            "ui_loader_full",
+            include_bytes!("../../assets/ui/loader_full.webp"),
+        ));
+        self.splash_desktop = Some(load_image(
+            "sow_splash_desktop",
+            include_bytes!("../../assets/ui/sow-splash-desktop.webp"),
+        ));
+        self.splash_mobile = Some(load_image(
+            "sow_splash_mobile",
+            include_bytes!("../../assets/ui/sow-splash-mobile.webp"),
+        ));
 
         // Load the embedded world map thumbnail
         if !self.thumbnails.contains_key("world") {
@@ -240,11 +287,7 @@ impl AssetLoader {
                 let image_buffer = img.to_rgba8();
                 let pixels = image_buffer.as_flat_samples();
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                let texture = ctx.load_texture(
-                    "world",
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                );
+                let texture = ctx.load_texture("world", color_image, egui::TextureOptions::LINEAR);
                 self.thumbnails.insert("world".to_string(), texture);
             }
         }
@@ -257,11 +300,8 @@ impl AssetLoader {
                 let image_buffer = img.to_rgba8();
                 let pixels = image_buffer.as_flat_samples();
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                let texture = ctx.load_texture(
-                    "giantworldmap",
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                );
+                let texture =
+                    ctx.load_texture("giantworldmap", color_image, egui::TextureOptions::LINEAR);
                 self.thumbnails.insert("giantworldmap".to_string(), texture);
             }
         }
@@ -274,11 +314,8 @@ impl AssetLoader {
                 let image_buffer = img.to_rgba8();
                 let pixels = image_buffer.as_flat_samples();
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                let texture = ctx.load_texture(
-                    "tutorial",
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                );
+                let texture =
+                    ctx.load_texture("tutorial", color_image, egui::TextureOptions::LINEAR);
                 self.thumbnails.insert("tutorial".to_string(), texture);
             }
         }
@@ -303,24 +340,54 @@ impl AssetLoader {
 
         for &leader in &sow_core::player::Leader::ALL {
             let desktop_bytes = match leader {
-                sow_core::player::Leader::Caesar => include_bytes!("../../assets/ui/leaders/caesar_desktop.webp").as_slice(),
-                sow_core::player::Leader::Cleopatra => include_bytes!("../../assets/ui/leaders/cleopatra_desktop.webp").as_slice(),
-                sow_core::player::Leader::Ragnar => include_bytes!("../../assets/ui/leaders/ragnar_desktop.webp").as_slice(),
-                sow_core::player::Leader::SunTzu => include_bytes!("../../assets/ui/leaders/sun_tzu_desktop.webp").as_slice(),
-                sow_core::player::Leader::Alexander => include_bytes!("../../assets/ui/leaders/alexander_desktop.webp").as_slice(),
-                sow_core::player::Leader::GenghisKhan => include_bytes!("../../assets/ui/leaders/genghis_khan_desktop.webp").as_slice(),
+                sow_core::player::Leader::Caesar => {
+                    include_bytes!("../../assets/ui/leaders/caesar_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::Cleopatra => {
+                    include_bytes!("../../assets/ui/leaders/cleopatra_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::Ragnar => {
+                    include_bytes!("../../assets/ui/leaders/ragnar_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::SunTzu => {
+                    include_bytes!("../../assets/ui/leaders/sun_tzu_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::Alexander => {
+                    include_bytes!("../../assets/ui/leaders/alexander_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::GenghisKhan => {
+                    include_bytes!("../../assets/ui/leaders/genghis_khan_desktop.webp").as_slice()
+                }
             };
             let mobile_bytes = match leader {
-                sow_core::player::Leader::Caesar => include_bytes!("../../assets/ui/leaders/caesar_mobile.webp").as_slice(),
-                sow_core::player::Leader::Cleopatra => include_bytes!("../../assets/ui/leaders/cleopatra_mobile.webp").as_slice(),
-                sow_core::player::Leader::Ragnar => include_bytes!("../../assets/ui/leaders/ragnar_mobile.webp").as_slice(),
-                sow_core::player::Leader::SunTzu => include_bytes!("../../assets/ui/leaders/sun_tzu_mobile.webp").as_slice(),
-                sow_core::player::Leader::Alexander => include_bytes!("../../assets/ui/leaders/alexander_mobile.webp").as_slice(),
-                sow_core::player::Leader::GenghisKhan => include_bytes!("../../assets/ui/leaders/genghis_khan_mobile.webp").as_slice(),
+                sow_core::player::Leader::Caesar => {
+                    include_bytes!("../../assets/ui/leaders/caesar_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::Cleopatra => {
+                    include_bytes!("../../assets/ui/leaders/cleopatra_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::Ragnar => {
+                    include_bytes!("../../assets/ui/leaders/ragnar_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::SunTzu => {
+                    include_bytes!("../../assets/ui/leaders/sun_tzu_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::Alexander => {
+                    include_bytes!("../../assets/ui/leaders/alexander_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::GenghisKhan => {
+                    include_bytes!("../../assets/ui/leaders/genghis_khan_mobile.webp").as_slice()
+                }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
-            self.leader_desktop_images.insert(leader, load_image(&format!("leader_{}_desktop", name_lower), desktop_bytes));
-            self.leader_mobile_images.insert(leader, load_image(&format!("leader_{}_mobile", name_lower), mobile_bytes));
+            self.leader_desktop_images.insert(
+                leader,
+                load_image(&format!("leader_{}_desktop", name_lower), desktop_bytes),
+            );
+            self.leader_mobile_images.insert(
+                leader,
+                load_image(&format!("leader_{}_mobile", name_lower), mobile_bytes),
+            );
         }
     }
 }
@@ -333,8 +400,12 @@ mod tests {
     fn test_embedded_manifest_parsing() {
         let manifest_bytes = include_bytes!("../../../assets/maps/world/manifest.json");
         let parsed = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(manifest_bytes);
-        assert!(parsed.is_ok(), "Failed to parse manifest: {:?}", parsed.err());
-        
+        assert!(
+            parsed.is_ok(),
+            "Failed to parse manifest: {:?}",
+            parsed.err()
+        );
+
         let loader = AssetLoader::new();
         assert!(loader.manifests.contains_key("world"));
         assert!(loader.manifests.contains_key("giantworldmap"));

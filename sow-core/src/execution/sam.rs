@@ -42,8 +42,12 @@ impl SowEngine {
         let width = self.state.map.width;
 
         // Collect SAM launchers that are ready (not under construction)
-        let sams: Vec<(u64, u16, u32, f32)> = self.buildings.iter()
-            .filter(|b| b.kind == BuildingKind::City && b.modules.shield > 0 && !b.under_construction)
+        let sams: Vec<(u64, u16, u32, f32)> = self
+            .buildings
+            .iter()
+            .filter(|b| {
+                b.kind == BuildingKind::City && b.modules.shield > 0 && !b.under_construction
+            })
             .map(|b| (b.id, b.owner_id, b.tile_idx, sam_range(b.modules.shield)))
             .collect();
 
@@ -91,15 +95,14 @@ impl SowEngine {
                 // Find the target projectile's destination
                 if let Some(target) = self.projectiles.iter().find(|p| p.id == target_id) {
                     let id = self.state.next_projectile_id;
-                    self.state.next_projectile_id = self.state.next_projectile_id.wrapping_add(1).max(1);
+                    self.state.next_projectile_id =
+                        self.state.next_projectile_id.wrapping_add(1).max(1);
 
                     sam_missiles.push((id, *sam_owner, *sam_tile, target.dst_tile));
                     self.silo_cooldowns.insert(*sam_id, SAM_COOLDOWN_TICKS);
                 }
             }
         }
-
-
 
         // Spawn SAM missiles
         for (id, owner, src_tile, dst_tile) in sam_missiles {
@@ -124,7 +127,10 @@ impl SowEngine {
             if !sam.active || !matches!(sam.kind, ProjectileKind::SAMMissile) {
                 continue;
             }
-            let sam_tile = sam.path.get(sam.path_cursor).copied()
+            let sam_tile = sam
+                .path
+                .get(sam.path_cursor)
+                .copied()
                 .unwrap_or(sam.dst_tile);
 
             for nuke in &self.projectiles {
@@ -135,7 +141,10 @@ impl SowEngine {
                 if !is_nuke {
                     continue;
                 }
-                let nuke_tile = nuke.path.get(nuke.path_cursor).copied()
+                let nuke_tile = nuke
+                    .path
+                    .get(nuke.path_cursor)
+                    .copied()
                     .unwrap_or(nuke.dst_tile);
 
                 // Intercept if on the same tile or within 1 hex neighbor

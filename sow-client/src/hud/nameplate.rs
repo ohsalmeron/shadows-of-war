@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-
-
 /// Paper-map label ink (off-white, not pure white).
 pub const NAMEPLATE_FILL: egui::Color32 = egui::Color32::BLACK;
 
@@ -47,16 +45,40 @@ pub fn paint_glow_text(
         &[1.0, 2.0, 3.0, 4.0][..]
     };
     for dy in shadow_offsets {
-        painter.text(pos + egui::vec2(-1.5, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
-        painter.text(pos + egui::vec2(1.5, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
-        painter.text(pos + egui::vec2(0.0, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
+        painter.text(
+            pos + egui::vec2(-1.5, *dy),
+            egui::Align2::LEFT_TOP,
+            text,
+            font_id.clone(),
+            black,
+        );
+        painter.text(
+            pos + egui::vec2(1.5, *dy),
+            egui::Align2::LEFT_TOP,
+            text,
+            font_id.clone(),
+            black,
+        );
+        painter.text(
+            pos + egui::vec2(0.0, *dy),
+            egui::Align2::LEFT_TOP,
+            text,
+            font_id.clone(),
+            black,
+        );
     }
 
     // 2. Thick Opaque Black Outline (8-way 1.5px offset for bold strategic style)
     for dx in &[-1.5, 0.0, 1.5] {
         for dy in &[-1.5, 0.0, 1.5] {
             if *dx != 0.0 || *dy != 0.0 {
-                painter.text(pos + egui::vec2(*dx, *dy), egui::Align2::LEFT_TOP, text, font_id.clone(), black);
+                painter.text(
+                    pos + egui::vec2(*dx, *dy),
+                    egui::Align2::LEFT_TOP,
+                    text,
+                    font_id.clone(),
+                    black,
+                );
             }
         }
     }
@@ -72,7 +94,13 @@ pub fn paint_glow_text(
     );
 
     // Draw the bright top layer first
-    painter.text(pos, egui::Align2::LEFT_TOP, text, font_id.clone(), bright_top);
+    painter.text(
+        pos,
+        egui::Align2::LEFT_TOP,
+        text,
+        font_id.clone(),
+        bright_top,
+    );
 
     // Draw the dark bottom layer clipped to the bottom half of the text rect
     let text_rect = egui::Rect::from_min_size(pos, rect_size);
@@ -93,7 +121,15 @@ pub fn paint_glow_nameplate_galley(
     is_tribe: bool,
 ) {
     if !galley.is_empty() {
-        paint_glow_text(painter, pos, &galley.text(), font_id, base_color, galley.rect.size(), is_tribe);
+        paint_glow_text(
+            painter,
+            pos,
+            &galley.text(),
+            font_id,
+            base_color,
+            galley.rect.size(),
+            is_tribe,
+        );
     }
 }
 

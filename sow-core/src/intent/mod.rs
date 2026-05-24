@@ -27,12 +27,16 @@ impl SowEngine {
 
     pub fn retreat_mutual_aggression(&mut self, p1: u16, p2: u16) {
         for ex in &mut self.attacks {
-            if (ex.owner_id == p1 && ex.target_owner == p2) || (ex.owner_id == p2 && ex.target_owner == p1) {
+            if (ex.owner_id == p1 && ex.target_owner == p2)
+                || (ex.owner_id == p2 && ex.target_owner == p1)
+            {
                 ex.retreating = true;
             }
         }
         for wf in &mut self.fleets {
-            if (wf.owner_id == p1 && wf.target_owner == p2) || (wf.owner_id == p2 && wf.target_owner == p1) {
+            if (wf.owner_id == p1 && wf.target_owner == p2)
+                || (wf.owner_id == p2 && wf.target_owner == p1)
+            {
                 wf.retreating = true;
                 wf.retreat_dst = None;
                 wf.path = std::sync::Arc::new(Vec::new());
@@ -64,9 +68,17 @@ impl SowEngine {
                 troops,
             } => {
                 let owner = self.state.map.state[*target_tile as usize];
-                let is_betrayer = self.state.player(owner).map(|p| p.active_emoji.as_deref() == Some("🗡️")).unwrap_or(false);
-                let is_allied_in_list = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
-                
+                let is_betrayer = self
+                    .state
+                    .player(owner)
+                    .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                    .unwrap_or(false);
+                let is_allied_in_list = self
+                    .state
+                    .player(stamped.player_id)
+                    .map(|p| p.alliances.contains(&owner))
+                    .unwrap_or(false);
+
                 if is_allied_in_list && is_betrayer {
                     // Silently break the alliance without any penalty for the attacker
                     let attacker = stamped.player_id;
@@ -80,7 +92,11 @@ impl SowEngine {
                     }
                 }
 
-                let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
+                let is_allied = self
+                    .state
+                    .player(stamped.player_id)
+                    .map(|p| p.alliances.contains(&owner))
+                    .unwrap_or(false);
                 if !is_allied {
                     self.apply_launch_fleet_intent(stamped.player_id, *target_tile, *troops);
                 }
@@ -100,8 +116,16 @@ impl SowEngine {
             }
             GameplayIntent::Attack(attack) => {
                 let owner = attack.target_owner;
-                let is_betrayer = self.state.player(owner).map(|p| p.active_emoji.as_deref() == Some("🗡️")).unwrap_or(false);
-                let is_allied_in_list = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
+                let is_betrayer = self
+                    .state
+                    .player(owner)
+                    .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                    .unwrap_or(false);
+                let is_allied_in_list = self
+                    .state
+                    .player(stamped.player_id)
+                    .map(|p| p.alliances.contains(&owner))
+                    .unwrap_or(false);
 
                 if is_allied_in_list && is_betrayer {
                     // Silently break the alliance without any penalty for the attacker
@@ -116,7 +140,11 @@ impl SowEngine {
                     }
                 }
 
-                let is_allied = self.state.player(stamped.player_id).map(|p| p.alliances.contains(&owner)).unwrap_or(false);
+                let is_allied = self
+                    .state
+                    .player(stamped.player_id)
+                    .map(|p| p.alliances.contains(&owner))
+                    .unwrap_or(false);
                 if !is_allied {
                     self.apply_attack_intent(stamped.player_id, attack, intent_index);
                 }
@@ -127,7 +155,10 @@ impl SowEngine {
             GameplayIntent::UpgradeStructure { building_id } => {
                 self.apply_upgrade_structure_intent(stamped.player_id, *building_id);
             }
-            GameplayIntent::UpgradeCityModule { building_id, module } => {
+            GameplayIntent::UpgradeCityModule {
+                building_id,
+                module,
+            } => {
                 self.apply_upgrade_city_module_intent(stamped.player_id, *building_id, *module);
             }
             GameplayIntent::UpgradeTile { tile_idx } => {
@@ -136,15 +167,26 @@ impl SowEngine {
             GameplayIntent::BuildShip { port_tile, kind } => {
                 let pid = stamped.player_id;
                 let cost = kind.gold_cost();
-                let port_id = self.buildings.iter()
-                    .find(|b| b.tile_idx == *port_tile && b.kind == crate::game::BuildingKind::City && b.modules.port > 0 && b.owner_id == pid && !b.under_construction)
+                let port_id = self
+                    .buildings
+                    .iter()
+                    .find(|b| {
+                        b.tile_idx == *port_tile
+                            && b.kind == crate::game::BuildingKind::City
+                            && b.modules.port > 0
+                            && b.owner_id == pid
+                            && !b.under_construction
+                    })
                     .map(|b| b.id);
-                
+
                 if let Some(port_id) = port_id {
                     if let Some(player) = self.state.player_mut(pid) {
                         if player.gold >= cost {
                             player.gold -= cost;
-                            let queue = self.port_queues.entry(port_id).or_insert_with(std::collections::VecDeque::new);
+                            let queue = self
+                                .port_queues
+                                .entry(port_id)
+                                .or_insert_with(std::collections::VecDeque::new);
                             queue.push_back(crate::game::ShipProduction {
                                 kind: *kind,
                                 ticks_until_complete: kind.build_duration_ticks(),
@@ -153,7 +195,10 @@ impl SowEngine {
                     }
                 }
             }
-            GameplayIntent::MoveWarships { unit_ids, target_tile } => {
+            GameplayIntent::MoveWarships {
+                unit_ids,
+                target_tile,
+            } => {
                 let pid = stamped.player_id;
                 let target = *target_tile;
                 let w = self.state.map.width;
@@ -162,20 +207,36 @@ impl SowEngine {
                     return;
                 }
                 for uid in unit_ids {
-                    if let Some(fleet) = self.fleets.iter_mut().find(|f| f.id == *uid && f.owner_id == pid && f.unit_type == crate::game::UnitType::Warship) {
+                    if let Some(fleet) = self.fleets.iter_mut().find(|f| {
+                        f.id == *uid
+                            && f.owner_id == pid
+                            && f.unit_type == crate::game::UnitType::Warship
+                    }) {
                         // Try sea lane routing first (Dijkstra on ~20 port nodes)
                         let lane_path = if !self.state.sea_lanes.is_empty() {
                             let src_comp = self.water.component_of(fleet.current_tile);
                             let dst_comp = self.water.component_of(target);
                             if src_comp > 0 && src_comp == dst_comp {
                                 let src_port = crate::sea_lane::closest_port_on_component(
-                                    &self.buildings, &self.state.map, &self.water, fleet.current_tile, src_comp,
+                                    &self.buildings,
+                                    &self.state.map,
+                                    &self.water,
+                                    fleet.current_tile,
+                                    src_comp,
                                 );
                                 let dst_port = crate::sea_lane::closest_port_on_component(
-                                    &self.buildings, &self.state.map, &self.water, target, dst_comp,
+                                    &self.buildings,
+                                    &self.state.map,
+                                    &self.water,
+                                    target,
+                                    dst_comp,
                                 );
                                 match (src_port, dst_port) {
-                                    (Some(sp), Some(dp)) => crate::sea_lane::route_through_lanes(&self.state.sea_lanes, sp, dp),
+                                    (Some(sp), Some(dp)) => crate::sea_lane::route_through_lanes(
+                                        &self.state.sea_lanes,
+                                        sp,
+                                        dp,
+                                    ),
                                     _ => None,
                                 }
                             } else {
@@ -186,7 +247,11 @@ impl SowEngine {
                         };
 
                         let path = lane_path.or_else(|| {
-                            self.path_scratch.astar.find_path(&self.state.map, &[fleet.current_tile], target)
+                            self.path_scratch.astar.find_path(
+                                &self.state.map,
+                                &[fleet.current_tile],
+                                target,
+                            )
                         });
 
                         if let Some(path) = path {
@@ -233,7 +298,8 @@ impl SowEngine {
                             false
                         };
                         let building_id = self.state.next_building_id;
-                        self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                        self.state.next_building_id =
+                            self.state.next_building_id.wrapping_add(1).max(1);
                         self.add_building(crate::building::Building {
                             id: building_id,
                             owner_id: pid,
@@ -266,7 +332,11 @@ impl SowEngine {
                 let proposer = stamped.player_id;
                 let target = *target_player;
                 if proposer != target {
-                    let proposer_alive = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
+                    let proposer_alive = self
+                        .state
+                        .player(proposer)
+                        .map(|p| p.alive)
+                        .unwrap_or(false);
                     let target_alive = self.state.player(target).map(|p| p.alive).unwrap_or(false);
                     if proposer_alive && target_alive {
                         let is_teammate = {
@@ -274,7 +344,9 @@ impl SowEngine {
                             let p_target = self.state.player(target).unwrap();
                             p_prop.team.is_some() && p_prop.team == p_target.team
                         };
-                        let (is_allied, can_renew) = self.state.player(proposer)
+                        let (is_allied, can_renew) = self
+                            .state
+                            .player(proposer)
                             .map(|p| {
                                 let allied = p.alliances.contains(&target);
                                 let timer = p.alliance_timers.get(&target).copied().unwrap_or(0);
@@ -295,14 +367,22 @@ impl SowEngine {
                         if !is_allied || can_renew {
                             if self.alliances_proposed.contains(&(target, proposer)) {
                                 // Mutual request! Accept/Renew it immediately.
-                                let idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == proposer).unwrap();
+                                let idx = self
+                                    .alliances_proposed
+                                    .iter()
+                                    .position(|&(p, t)| p == target && t == proposer)
+                                    .unwrap();
                                 self.alliances_proposed.remove(idx);
                                 if let Some(p1) = self.state.player_mut(proposer) {
-                                    if !p1.alliances.contains(&target) { p1.alliances.push(target); }
+                                    if !p1.alliances.contains(&target) {
+                                        p1.alliances.push(target);
+                                    }
                                     p1.alliance_timers.insert(target, 2400); // 120 seconds duration
                                 }
                                 if let Some(p2) = self.state.player_mut(target) {
-                                    if !p2.alliances.contains(&proposer) { p2.alliances.push(proposer); }
+                                    if !p2.alliances.contains(&proposer) {
+                                        p2.alliances.push(proposer);
+                                    }
                                     p2.alliance_timers.insert(proposer, 2400); // 120 seconds duration
                                 }
                                 self.retreat_mutual_aggression(proposer, target);
@@ -316,10 +396,17 @@ impl SowEngine {
             GameplayIntent::AcceptAlliance { target_player } => {
                 let acceptor = stamped.player_id;
                 let target = *target_player;
-                let prop_idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == acceptor);
+                let prop_idx = self
+                    .alliances_proposed
+                    .iter()
+                    .position(|&(p, t)| p == target && t == acceptor);
                 if let Some(idx) = prop_idx {
                     self.alliances_proposed.remove(idx);
-                    if let Some(rev_idx) = self.alliances_proposed.iter().position(|&(p, t)| p == acceptor && t == target) {
+                    if let Some(rev_idx) = self
+                        .alliances_proposed
+                        .iter()
+                        .position(|&(p, t)| p == acceptor && t == target)
+                    {
                         self.alliances_proposed.remove(rev_idx);
                     }
                     if let Some(p1) = self.state.player_mut(acceptor) {
@@ -340,7 +427,10 @@ impl SowEngine {
             GameplayIntent::RejectAlliance { target_player } => {
                 let rejector = stamped.player_id;
                 let target = *target_player;
-                let prop_idx = self.alliances_proposed.iter().position(|&(p, t)| p == target && t == rejector);
+                let prop_idx = self
+                    .alliances_proposed
+                    .iter()
+                    .position(|&(p, t)| p == target && t == rejector);
                 if let Some(idx) = prop_idx {
                     self.alliances_proposed.remove(idx);
                 }
@@ -359,7 +449,11 @@ impl SowEngine {
                     p2.alliance_timers.remove(&breaker);
                 }
             }
-            GameplayIntent::SendResources { target_player, gold, troops } => {
+            GameplayIntent::SendResources {
+                target_player,
+                gold,
+                troops,
+            } => {
                 let sender = stamped.player_id;
                 let target = *target_player;
                 let g = *gold;
@@ -382,13 +476,13 @@ impl SowEngine {
                         if let Some(t_player) = self.state.player_mut(target) {
                             if t_player.alive {
                                 t_player.gold += actual_g;
-                                t_player.troops = (t_player.troops + actual_t).min(t_player.max_troops);
+                                t_player.troops =
+                                    (t_player.troops + actual_t).min(t_player.max_troops);
                             }
                         }
                     }
                 }
             }
-
         }
     }
 }

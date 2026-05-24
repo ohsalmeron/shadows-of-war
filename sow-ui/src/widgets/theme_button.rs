@@ -58,7 +58,7 @@ impl ThemeButton {
 impl Widget for ThemeButton {
     fn ui(self, ui: &mut Ui) -> Response {
         let text_color = self.custom_text_color.unwrap_or(Color32::WHITE);
-        
+
         let mut btn = Button::new("").min_size(self.min_size);
 
         if let Some(fill) = self.custom_fill {
@@ -83,7 +83,7 @@ impl Widget for ThemeButton {
         // We use an empty button to handle the interaction and background,
         // then overlay our custom outlined text perfectly centered over it.
         let response = ui.add(btn);
-        
+
         if ui.is_rect_visible(response.rect) {
             crate::ui::theme::outlined_text(
                 ui.painter(),
@@ -95,7 +95,7 @@ impl Widget for ThemeButton {
                 Color32::BLACK,
             );
         }
-        
+
         response
     }
 }

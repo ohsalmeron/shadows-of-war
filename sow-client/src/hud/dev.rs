@@ -57,7 +57,10 @@ impl SowApp {
             .show(ctx, |ui| {
                 egui::Frame::new()
                     .fill(sow_ui::ui::theme::panel_bg_transparent())
-                    .stroke(egui::Stroke::new(1.0_f32, sow_ui::ui::theme::nickname_field_border()))
+                    .stroke(egui::Stroke::new(
+                        1.0_f32,
+                        sow_ui::ui::theme::nickname_field_border(),
+                    ))
                     .corner_radius(corner_radius)
                     .inner_margin(padding)
                     .show(ui, |ui| {
@@ -68,20 +71,20 @@ impl SowApp {
                                     egui::RichText::new(format!("Ping: {}ms", ping))
                                         .color(egui::Color32::WHITE)
                                         .size(text_size)
-                                        .strong()
+                                        .strong(),
                                 );
                             }
                             ui.label(
                                 egui::RichText::new(format!("FPS: {}", self.time.current_fps))
                                     .color(egui::Color32::YELLOW)
                                     .size(text_size)
-                                    .strong()
+                                    .strong(),
                             );
                             ui.label(
                                 egui::RichText::new(format!("Zoom: {:.2}", self.input.camera_zoom))
                                     .color(egui::Color32::LIGHT_BLUE)
                                     .size(text_size)
-                                    .strong()
+                                    .strong(),
                             );
                         });
                     });

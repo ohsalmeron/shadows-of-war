@@ -1,9 +1,13 @@
-use sow_ui::{app::ClientPhase, UiAction};
-use crate::{spawn_sow_client_connect, get_build_version};
 use crate::app::SowApp;
+use crate::{get_build_version, spawn_sow_client_connect};
+use sow_ui::{app::ClientPhase, UiAction};
 
 impl SowApp {
-    pub(crate) fn process_ui_actions(&mut self, _ctx: &egui::Context, action: Option<sow_ui::UiAction>) {
+    pub(crate) fn process_ui_actions(
+        &mut self,
+        _ctx: &egui::Context,
+        action: Option<sow_ui::UiAction>,
+    ) {
         if let Some(action) = action {
             match action {
                 UiAction::StartTutorial => {
@@ -45,23 +49,25 @@ impl SowApp {
                         config,
                         my_player_id: Some(1),
                         seed: 42,
-                        players: vec![
-                            sow_core::protocol::PlayerInfo {
-                                id: 1,
-                                name: {
-                                    let name = &self.ui.app.main_menu_state.player_name;
-                                    let tag = &self.ui.app.main_menu_state.clan_tag;
-                                    if tag.is_empty() { name.clone() } else { format!("[{}] {}", tag, name) }
-                                },
-                                color: sow_core::player::human_shader_territory_rgb(1),
-                                player_type: sow_core::player::PlayerType::Human,
-                                team: None,
-                                spawn_x: 0,
-                                spawn_y: 0,
-                                civilization: self.ui.app.main_menu_state.selected_civilization,
-                                leader: self.ui.app.main_menu_state.selected_leader,
-                            }
-                        ],
+                        players: vec![sow_core::protocol::PlayerInfo {
+                            id: 1,
+                            name: {
+                                let name = &self.ui.app.main_menu_state.player_name;
+                                let tag = &self.ui.app.main_menu_state.clan_tag;
+                                if tag.is_empty() {
+                                    name.clone()
+                                } else {
+                                    format!("[{}] {}", tag, name)
+                                }
+                            },
+                            color: sow_core::player::human_shader_territory_rgb(1),
+                            player_type: sow_core::player::PlayerType::Human,
+                            team: None,
+                            spawn_x: 0,
+                            spawn_y: 0,
+                            civilization: self.ui.app.main_menu_state.selected_civilization,
+                            leader: self.ui.app.main_menu_state.selected_leader,
+                        }],
                         missed_turns: vec![],
                         map_data: None,
                         relay_port: None,
@@ -70,28 +76,40 @@ impl SowApp {
                     self.tasks.engine_init_queued_msg = Some(start_msg);
 
                     if self.ui.app.asset_loader.has_map(&map_name) {
-                        self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_name);
+                        self.ui.app.main_menu_state.cached_map =
+                            self.ui.app.asset_loader.take_map(&map_name);
                         self.ui.app.main_menu_state.is_downloading_map = false;
                     } else {
                         self.ui.app.main_menu_state.is_downloading_map = true;
                         self.ui.app.main_menu_state.cached_map = None;
                         let maps_base = crate::get_maps_url();
-                        let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_name);
+                        let url = format!(
+                            "{}/{}/map.bin.br",
+                            maps_base.trim_end_matches('/'),
+                            map_name
+                        );
                         let tx = self.tasks.map_tx.clone();
-                        
+
                         let request = ehttp::Request::get(&url);
                         let map_name_for_closure = map_name.clone();
                         let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
                         let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
-                        
-                        ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
-                            match result {
+
+                        ehttp::streaming::fetch(
+                            request,
+                            move |result: ehttp::Result<ehttp::streaming::Part>| match result {
                                 Ok(ehttp::streaming::Part::Response(res)) => {
                                     if !res.ok {
-                                        let _ = tx.send(crate::MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
+                                        let _ = tx.send(crate::MapDownloadEvent::Error(format!(
+                                            "HTTP Error: {}",
+                                            res.status
+                                        )));
                                         return std::ops::ControlFlow::Break(());
                                     }
-                                    let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
+                                    let cl = res
+                                        .headers
+                                        .get("content-length")
+                                        .or_else(|| res.headers.get("Content-Length"));
                                     if let Some(cl_str) = cl {
                                         if let Ok(b) = cl_str.parse::<usize>() {
                                             *total_bytes.lock().unwrap() = b;
@@ -101,8 +119,12 @@ impl SowApp {
                                 }
                                 Ok(ehttp::streaming::Part::Chunk(chunk)) => {
                                     if chunk.is_empty() {
-                                        let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
-                                        let _ = tx.send(crate::MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                        let final_bytes =
+                                            std::mem::take(&mut *accumulated.lock().unwrap());
+                                        let _ = tx.send(crate::MapDownloadEvent::MapReady(
+                                            map_name_for_closure.clone(),
+                                            final_bytes,
+                                        ));
                                         return std::ops::ControlFlow::Break(());
                                     }
                                     let mut acc = accumulated.lock().unwrap();
@@ -113,15 +135,18 @@ impl SowApp {
                                     } else {
                                         0
                                     };
-                                    let _ = tx.send(crate::MapDownloadEvent::Progress(map_name_for_closure.clone(), pct));
+                                    let _ = tx.send(crate::MapDownloadEvent::Progress(
+                                        map_name_for_closure.clone(),
+                                        pct,
+                                    ));
                                     std::ops::ControlFlow::Continue(())
                                 }
                                 Err(e) => {
                                     let _ = tx.send(crate::MapDownloadEvent::Error(e.to_string()));
                                     std::ops::ControlFlow::Break(())
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
                 }
                 UiAction::StartSinglePlayer(config) => {
@@ -159,23 +184,25 @@ impl SowApp {
                         config,
                         my_player_id: Some(1),
                         seed: 42,
-                        players: vec![
-                            sow_core::protocol::PlayerInfo {
-                                id: 1,
-                                name: {
-                                    let name = &self.ui.app.main_menu_state.player_name;
-                                    let tag = &self.ui.app.main_menu_state.clan_tag;
-                                    if tag.is_empty() { name.clone() } else { format!("[{}] {}", tag, name) }
-                                },
-                                color: sow_core::player::human_shader_territory_rgb(1),
-                                player_type: sow_core::player::PlayerType::Human,
-                                team: None,
-                                spawn_x: 0,
-                                spawn_y: 0,
-                                civilization: self.ui.app.main_menu_state.selected_civilization,
-                                leader: self.ui.app.main_menu_state.selected_leader,
-                            }
-                        ],
+                        players: vec![sow_core::protocol::PlayerInfo {
+                            id: 1,
+                            name: {
+                                let name = &self.ui.app.main_menu_state.player_name;
+                                let tag = &self.ui.app.main_menu_state.clan_tag;
+                                if tag.is_empty() {
+                                    name.clone()
+                                } else {
+                                    format!("[{}] {}", tag, name)
+                                }
+                            },
+                            color: sow_core::player::human_shader_territory_rgb(1),
+                            player_type: sow_core::player::PlayerType::Human,
+                            team: None,
+                            spawn_x: 0,
+                            spawn_y: 0,
+                            civilization: self.ui.app.main_menu_state.selected_civilization,
+                            leader: self.ui.app.main_menu_state.selected_leader,
+                        }],
                         missed_turns: vec![],
                         map_data: None,
                         relay_port: None,
@@ -184,7 +211,8 @@ impl SowApp {
                     self.tasks.engine_init_queued_msg = Some(start_msg);
 
                     if self.ui.app.asset_loader.has_map(&map_id) {
-                        self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_id);
+                        self.ui.app.main_menu_state.cached_map =
+                            self.ui.app.asset_loader.take_map(&map_id);
                         self.ui.app.main_menu_state.is_downloading_map = false;
                     } else {
                         self.ui.app.main_menu_state.is_downloading_map = true;
@@ -192,36 +220,56 @@ impl SowApp {
                         let maps_base = crate::get_maps_url();
                         let map_name_clone = map_id.clone();
                         let tx_man = self.tasks.map_tx.clone();
-                        
+
                         // 1. Fetch manifest.json
-                        let manifest_url = format!("{}/{}/manifest.json", maps_base.trim_end_matches('/'), map_id);
+                        let manifest_url = format!(
+                            "{}/{}/manifest.json",
+                            maps_base.trim_end_matches('/'),
+                            map_id
+                        );
                         let request_man = ehttp::Request::get(&manifest_url);
                         ehttp::fetch(request_man, move |result| {
                             if let Ok(res) = result {
                                 if res.ok {
-                                    if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(&res.bytes) {
-                                        let _ = tx_man.send(crate::MapDownloadEvent::ManifestReady(map_name_clone, manifest));
+                                    if let Ok(manifest) =
+                                        serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
+                                            &res.bytes,
+                                        )
+                                    {
+                                        let _ =
+                                            tx_man.send(crate::MapDownloadEvent::ManifestReady(
+                                                map_name_clone,
+                                                manifest,
+                                            ));
                                     }
                                 }
                             }
                         });
 
                         // 2. Fetch map.bin.br
-                        let url = format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_id);
+                        let url =
+                            format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_id);
                         let tx = self.tasks.map_tx.clone();
                         let request = ehttp::Request::get(&url);
                         let map_name_for_closure = map_id.clone();
                         let accumulated = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
                         let total_bytes = std::sync::Arc::new(std::sync::Mutex::new(0usize));
-                        
-                        ehttp::streaming::fetch(request, move |result: ehttp::Result<ehttp::streaming::Part>| {
-                            match result {
+
+                        ehttp::streaming::fetch(
+                            request,
+                            move |result: ehttp::Result<ehttp::streaming::Part>| match result {
                                 Ok(ehttp::streaming::Part::Response(res)) => {
                                     if !res.ok {
-                                        let _ = tx.send(crate::MapDownloadEvent::Error(format!("HTTP Error: {}", res.status)));
+                                        let _ = tx.send(crate::MapDownloadEvent::Error(format!(
+                                            "HTTP Error: {}",
+                                            res.status
+                                        )));
                                         return std::ops::ControlFlow::Break(());
                                     }
-                                    let cl = res.headers.get("content-length").or_else(|| res.headers.get("Content-Length"));
+                                    let cl = res
+                                        .headers
+                                        .get("content-length")
+                                        .or_else(|| res.headers.get("Content-Length"));
                                     if let Some(cl_str) = cl {
                                         if let Ok(b) = cl_str.parse::<usize>() {
                                             *total_bytes.lock().unwrap() = b;
@@ -231,8 +279,12 @@ impl SowApp {
                                 }
                                 Ok(ehttp::streaming::Part::Chunk(chunk)) => {
                                     if chunk.is_empty() {
-                                        let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
-                                        let _ = tx.send(crate::MapDownloadEvent::MapReady(map_name_for_closure.clone(), final_bytes));
+                                        let final_bytes =
+                                            std::mem::take(&mut *accumulated.lock().unwrap());
+                                        let _ = tx.send(crate::MapDownloadEvent::MapReady(
+                                            map_name_for_closure.clone(),
+                                            final_bytes,
+                                        ));
                                         return std::ops::ControlFlow::Break(());
                                     }
                                     let mut acc = accumulated.lock().unwrap();
@@ -243,15 +295,18 @@ impl SowApp {
                                     } else {
                                         0
                                     };
-                                    let _ = tx.send(crate::MapDownloadEvent::Progress(map_name_for_closure.clone(), pct));
+                                    let _ = tx.send(crate::MapDownloadEvent::Progress(
+                                        map_name_for_closure.clone(),
+                                        pct,
+                                    ));
                                     std::ops::ControlFlow::Continue(())
                                 }
                                 Err(e) => {
                                     let _ = tx.send(crate::MapDownloadEvent::Error(e.to_string()));
                                     std::ops::ControlFlow::Break(())
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
                 }
                 UiAction::ConnectToServer(addr) => {
@@ -298,18 +353,23 @@ impl SowApp {
                 }
                 UiAction::CenterCamera => {
                     let pid = self.sim.my_player_id.unwrap_or(1);
-                    if let Some(player) =
-                        self.sim.current_snapshot.as_ref().and_then(|s| s.players.iter().find(|p| p.id == pid))
+                    if let Some(player) = self
+                        .sim
+                        .current_snapshot
+                        .as_ref()
+                        .and_then(|s| s.players.iter().find(|p| p.id == pid))
                     {
                         if player.tile_count > 0 && player.alive {
                             let cx = player.centroid_x;
                             let cy = player.centroid_y;
-                            
+
                             let world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
                             let world_cy = (cy + 0.5) * 0.8660254_f32;
 
-                            self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
-                            self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
+                            self.input.camera_x =
+                                self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
+                            self.input.camera_y =
+                                self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
                         }
                     }
                 }
@@ -330,16 +390,36 @@ impl SowApp {
                     // Handle settings toggle if it's there
                 }
                 UiAction::ZoomIn => {
-                    self.process_camera_zoom(1.25, self.input.screen_w * 0.5, self.input.screen_h * 0.5);
+                    self.process_camera_zoom(
+                        1.25,
+                        self.input.screen_w * 0.5,
+                        self.input.screen_h * 0.5,
+                    );
                 }
                 UiAction::ZoomOut => {
-                    self.process_camera_zoom(0.8, self.input.screen_w * 0.5, self.input.screen_h * 0.5);
+                    self.process_camera_zoom(
+                        0.8,
+                        self.input.screen_w * 0.5,
+                        self.input.screen_h * 0.5,
+                    );
                 }
                 UiAction::OpenMapEditor => {
-                    let window = self.gfx.window.take().expect("No window to handoff to editor");
-                    let surface = self.gfx.surface.take().expect("No surface to handoff to editor");
+                    let window = self
+                        .gfx
+                        .window
+                        .take()
+                        .expect("No window to handoff to editor");
+                    let surface = self
+                        .gfx
+                        .surface
+                        .take()
+                        .expect("No surface to handoff to editor");
                     let render_ctx = std::mem::take(&mut self.gfx.render_ctx);
-                    let gui_painter = self.gfx.gui_painter.take().expect("No gui_painter to handoff to editor");
+                    let gui_painter = self
+                        .gfx
+                        .gui_painter
+                        .take()
+                        .expect("No gui_painter to handoff to editor");
                     let egui_ctx = self.ui.egui_ctx.clone();
                     let client_app = std::mem::take(&mut self.ui.app);
 

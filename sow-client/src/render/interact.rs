@@ -1,12 +1,17 @@
-pub mod hold_attack;
-pub mod context_menu;
 pub mod actions;
+pub mod context_menu;
+pub mod hold_attack;
 
 use crate::app::SowApp;
 
 impl SowApp {
     pub(crate) fn handle_map_interactions(&mut self, ctx: &egui::Context) {
-        if self.sim.current_snapshot.as_ref().is_some_and(|s| s.winner.is_some()) {
+        if self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .is_some_and(|s| s.winner.is_some())
+        {
             return;
         }
 

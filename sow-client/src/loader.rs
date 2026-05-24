@@ -9,7 +9,13 @@ impl SowApp {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
             // Auto-populate cached_manifest from asset_loader if missing
             if self.ui.app.main_menu_state.cached_manifest.is_none() {
-                if let Some(man) = self.ui.app.asset_loader.manifests.get(&start_msg.config.map_name) {
+                if let Some(man) = self
+                    .ui
+                    .app
+                    .asset_loader
+                    .manifests
+                    .get(&start_msg.config.map_name)
+                {
                     self.ui.app.main_menu_state.cached_manifest = Some(man.clone());
                 }
             }
@@ -17,16 +23,17 @@ impl SowApp {
             let has_map = self.ui.app.main_menu_state.cached_map.is_some();
             let has_manifest = self.ui.app.main_menu_state.cached_manifest.is_some();
             let needs_manifest = self.net.is_offline; // Multiplayer server sends config; we only need manifest for singleplayer
-            
+
             if !has_map || (needs_manifest && !has_manifest) {
                 self.tasks.engine_init_queued_msg = Some(start_msg);
 
                 // Keep splash screen updated with map download progress
                 self.ui.app.splash_state.status_text = format!(
-                    "Downloading Map... {}%", 
+                    "Downloading Map... {}%",
                     self.ui.app.main_menu_state.map_download_progress
                 );
-                self.ui.app.splash_state.progress = self.ui.app.main_menu_state.map_download_progress as f32 / 100.0;
+                self.ui.app.splash_state.progress =
+                    self.ui.app.main_menu_state.map_download_progress as f32 / 100.0;
             } else {
                 log::info!("Map downloaded, computing heavy init in background");
 
@@ -42,7 +49,7 @@ impl SowApp {
                     start_msg_clone.config.map_width = man.map.width;
                     start_msg_clone.config.map_height = man.map.height;
                 }
-                
+
                 let tx = self.tasks.engine_init_tx.clone();
 
                 let init_logic = move || {
@@ -137,9 +144,18 @@ impl SowApp {
         if self.ui.app.phase == sow_ui::app::ClientPhase::Splash {
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
-                    self.ui.app.asset_loader.ensure_avatars_loaded(&self.ui.egui_ctx);
-                    self.ui.app.asset_loader.ensure_leaders_loaded(&self.ui.egui_ctx);
-                    self.ui.app.asset_loader.ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                    self.ui
+                        .app
+                        .asset_loader
+                        .ensure_avatars_loaded(&self.ui.egui_ctx);
+                    self.ui
+                        .app
+                        .asset_loader
+                        .ensure_leaders_loaded(&self.ui.egui_ctx);
+                    self.ui
+                        .app
+                        .asset_loader
+                        .ensure_ui_assets_loaded(&self.ui.egui_ctx);
 
                     let catalog_ready = self.ui.app.asset_loader.map_catalog.is_some();
                     let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
@@ -152,8 +168,7 @@ impl SowApp {
                             self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
                         }
                     } else {
-                        self.ui.app.splash_state.status_text =
-                            "Loading game assets...".to_string();
+                        self.ui.app.splash_state.status_text = "Loading game assets...".to_string();
                     }
                 }
                 sow_ui::ui::loading_screen::SplashJob::ExitGame => {
@@ -192,7 +207,7 @@ impl SowApp {
                         });
                         self.sim.turn_queue.clear();
                         self.ui.label_positions.clear();
-        
+
                         self.sim.current_snapshot = None;
                         self.gfx.needs_first_upload = true;
 
@@ -269,13 +284,14 @@ impl SowApp {
                             mr.destroy(&self.gfx.render_ctx); // MANDATORY MEMORY LEAK FIX
                         }
                         if let Some(ref s) = self.gfx.surface {
-                            self.gfx.map_renderer = Some(sow_render::map_renderer::MapRenderer::new(
-                                &self.gfx.render_ctx.context,
-                                self.sim.map_w,
-                                self.sim.map_h,
-                                s.info().format,
-                                &map_bytes,
-                            ));
+                            self.gfx.map_renderer =
+                                Some(sow_render::map_renderer::MapRenderer::new(
+                                    &self.gfx.render_ctx.context,
+                                    self.sim.map_w,
+                                    self.sim.map_h,
+                                    s.info().format,
+                                    &map_bytes,
+                                ));
                             self.gfx.needs_first_upload = true;
                         }
 
@@ -283,7 +299,8 @@ impl SowApp {
                         self.ui.app.splash_state.gpu_load_step = 2;
                         self.ui.app.splash_state.frames_drawn = 0;
                         self.ui.app.splash_state.progress = 0.98;
-                        self.ui.app.splash_state.status_text = "Uploading Map Texture...".to_string();
+                        self.ui.app.splash_state.status_text =
+                            "Uploading Map Texture...".to_string();
 
                         // Re-insert pending data so we stay in this block until Step 4
                         self.tasks.pending_engine_init_data = Some((state, water, start_msg));
@@ -298,14 +315,17 @@ impl SowApp {
                     let ready_to_release = if self.net.is_offline {
                         true
                     } else {
-                        self.ui.app.main_menu_state.is_connected && self.net.client.is_some() && self.ws_on_relay()
+                        self.ui.app.main_menu_state.is_connected
+                            && self.net.client.is_some()
+                            && self.ws_on_relay()
                     };
 
                     if ready_to_release {
                         self.ui.app.splash_state.gpu_load_step = 4;
                         self.ui.app.splash_state.done = true;
                         if self.ui.app.splash_state.target_phase.is_none() {
-                            self.ui.app.splash_state.target_phase = Some(sow_ui::app::ClientPhase::Playing);
+                            self.ui.app.splash_state.target_phase =
+                                Some(sow_ui::app::ClientPhase::Playing);
                         }
 
                         // Clear pending init data to completely finish EnterGame phase
@@ -313,15 +333,21 @@ impl SowApp {
                         log::info!("First snapshot received, releasing loader!");
 
                         if let Some(c) = self.net.client.as_ref() {
-                            if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
-                                let ready_msg = sow_core::protocol::ClientMessage::Ready { lobby_id: lid, player_id: pid };
+                            if let (Some(lid), Some(pid)) =
+                                (self.sim.my_lobby_id, self.sim.my_player_id)
+                            {
+                                let ready_msg = sow_core::protocol::ClientMessage::Ready {
+                                    lobby_id: lid,
+                                    player_id: pid,
+                                };
                                 let json = bincode::serialize(&ready_msg).unwrap();
                                 c.send(json);
                             }
                         }
                     } else {
                         self.ui.app.splash_state.progress = 0.99;
-                        self.ui.app.splash_state.status_text = "Connecting to game server...".to_string();
+                        self.ui.app.splash_state.status_text =
+                            "Connecting to game server...".to_string();
                     }
                 }
             }

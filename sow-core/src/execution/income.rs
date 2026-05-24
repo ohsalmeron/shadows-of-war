@@ -54,7 +54,9 @@ impl SowEngine {
             let t_eighth = t_quarter.sqrt();
             let max_troops_bonus = t_half * t_eighth;
 
-            let is_standard_bot = self.state.players[idx].player_type == crate::player::PlayerType::Bot && player_id % 100 != 0;
+            let is_standard_bot = self.state.players[idx].player_type
+                == crate::player::PlayerType::Bot
+                && player_id % 100 != 0;
 
             let mut max_tr = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
@@ -66,8 +68,16 @@ impl SowEngine {
             self.state.players[idx].max_troops = max_tr;
 
             let leader = self.state.players[idx].leader;
-            let sun_tzu_mult = if leader == crate::player::Leader::SunTzu { 1.20 } else { 1.0 };
-            let ragnar_mult = if leader == crate::player::Leader::Ragnar { 1.50 } else { 1.0 };
+            let sun_tzu_mult = if leader == crate::player::Leader::SunTzu {
+                1.20
+            } else {
+                1.0
+            };
+            let ragnar_mult = if leader == crate::player::Leader::Ragnar {
+                1.50
+            } else {
+                1.0
+            };
 
             let mut troop_income = config.per_tick(config.troop_base_income)
                 + config.per_tick(50.0) * agg.city_levels as f64
@@ -80,7 +90,11 @@ impl SowEngine {
             self.state.players[idx].troops = (safe_troops + troop_income).min(max_tr);
 
             let safe_gold = self.state.players[idx].gold.max(0.0);
-            let cleo_mult = if leader == crate::player::Leader::Cleopatra { 1.50 } else { 1.0 };
+            let cleo_mult = if leader == crate::player::Leader::Cleopatra {
+                1.50
+            } else {
+                1.0
+            };
 
             let mut gold_income = config.per_tick(config.gold_base_income)
                 + config.per_tick(8.0) * agg.city_levels as f64
@@ -93,7 +107,8 @@ impl SowEngine {
             self.state.players[idx].gold = safe_gold + gold_income;
 
             let iq_gain = config.per_tick(self.state.players[idx].iq as f64 / 100.0);
-            self.state.players[idx].iq_points = (self.state.players[idx].iq_points + iq_gain).min(500.0);
+            self.state.players[idx].iq_points =
+                (self.state.players[idx].iq_points + iq_gain).min(500.0);
         }
 
         // Delete any captured structures owned by standard bots
@@ -103,9 +118,11 @@ impl SowEngine {
         self.buildings.retain(|b| {
             let pid_usize = b.owner_id as usize;
             let is_standard_bot = if pid_usize < p_lookup.len() {
-                p_lookup[pid_usize].and_then(|idx| p_list.get(idx)).map_or(false, |p| {
-                    p.player_type == crate::player::PlayerType::Bot && p.id % 100 != 0
-                })
+                p_lookup[pid_usize]
+                    .and_then(|idx| p_list.get(idx))
+                    .map_or(false, |p| {
+                        p.player_type == crate::player::PlayerType::Bot && p.id % 100 != 0
+                    })
             } else {
                 false
             };
@@ -122,8 +139,16 @@ impl SowEngine {
 
         let mut tribes_needing_city = Vec::new();
         for player in self.state.players.iter().filter(|p| p.alive) {
-            if player.player_type == crate::player::PlayerType::Bot && player.cities == 0 && player.tile_count >= 150 {
-                tribes_needing_city.push((player.id, player.sum_x, player.sum_y, player.tile_count));
+            if player.player_type == crate::player::PlayerType::Bot
+                && player.cities == 0
+                && player.tile_count >= 150
+            {
+                tribes_needing_city.push((
+                    player.id,
+                    player.sum_x,
+                    player.sum_y,
+                    player.tile_count,
+                ));
             }
         }
 

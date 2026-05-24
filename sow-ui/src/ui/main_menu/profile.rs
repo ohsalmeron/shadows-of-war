@@ -1,5 +1,5 @@
-use egui::{Color32, Stroke, Ui};
 use super::MainMenuState;
+use egui::{Color32, Stroke, Ui};
 
 pub fn draw_user_profile_header(
     ui: &mut Ui,
@@ -12,7 +12,10 @@ pub fn draw_user_profile_header(
     let desired_width = if compact { ui.available_width() } else { 280.0 };
     let desired_height = 56.0;
 
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(desired_width, desired_height), egui::Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(desired_width, desired_height),
+        egui::Sense::hover(),
+    );
     let is_hovered = response.hovered();
 
     if is_hovered {
@@ -24,7 +27,7 @@ pub fn draw_user_profile_header(
     } else {
         crate::ui::theme::menu_secondary_button()
     };
-    
+
     ui.painter().rect_filled(rect, 8.0, bg_color);
     ui.painter().rect_stroke(
         rect,
@@ -42,8 +45,12 @@ pub fn draw_user_profile_header(
         ),
         egui::vec2(avatar_size, avatar_size),
     );
-    
-    let avatar_response = ui.interact(avatar_rect, ui.id().with("avatar_btn"), egui::Sense::click());
+
+    let avatar_response = ui.interact(
+        avatar_rect,
+        ui.id().with("avatar_btn"),
+        egui::Sense::click(),
+    );
     if avatar_response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -71,8 +78,12 @@ pub fn draw_user_profile_header(
         avatar_rect,
         6.0,
         Stroke::new(
-            if avatar_response.hovered() { 1.5_f32 } else { 1.0_f32 },
-            crate::ui::theme::accent_solo_cyan()
+            if avatar_response.hovered() {
+                1.5_f32
+            } else {
+                1.0_f32
+            },
+            crate::ui::theme::accent_solo_cyan(),
         ),
         egui::StrokeKind::Inside,
     );
@@ -104,9 +115,14 @@ pub fn draw_user_profile_header(
                 .show(ui);
 
             if output_name.response.gained_focus() {
-                if let Some(mut edit_state) = egui::text_edit::TextEditState::load(ui.ctx(), output_name.response.id) {
+                if let Some(mut edit_state) =
+                    egui::text_edit::TextEditState::load(ui.ctx(), output_name.response.id)
+                {
                     let char_count = state.player_name.chars().count();
-                    let range = egui::text_selection::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(char_count));
+                    let range = egui::text_selection::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(char_count),
+                    );
                     edit_state.cursor.set_char_range(Some(range));
                     edit_state.store(ui.ctx(), output_name.response.id);
                 }

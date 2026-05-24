@@ -144,9 +144,13 @@ pub fn draw(
             let is_mobile = compact;
 
             let background_tex = if is_mobile {
-                asset_loader.leader_mobile_images.get(&state.selected_leader)
+                asset_loader
+                    .leader_mobile_images
+                    .get(&state.selected_leader)
             } else {
-                asset_loader.leader_desktop_images.get(&state.selected_leader)
+                asset_loader
+                    .leader_desktop_images
+                    .get(&state.selected_leader)
             };
 
             if let Some(texture) = background_tex {
@@ -185,11 +189,8 @@ pub fn draw(
             }
 
             // Draw a translucent overlay to make main menu text perfectly readable
-            ui.painter().rect_filled(
-                screen_rect,
-                0.0,
-                Color32::from_black_alpha(120),
-            );
+            ui.painter()
+                .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(120));
             if state.is_waiting {
                 queue_overlay::draw_queue_overlay(
                     ui,
@@ -219,14 +220,23 @@ pub fn draw(
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             if !compact {
-                                profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
+                                profile::draw_user_profile_header(
+                                    ui,
+                                    state,
+                                    compact,
+                                    asset_loader,
+                                    lang,
+                                );
                             }
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if !state.is_connected {
                                 ui.horizontal(|ui| {
                                     ui.spinner();
-                                    ui.label(egui::RichText::new(&strings.connecting).color(crate::ui::theme::text_secondary()));
+                                    ui.label(
+                                        egui::RichText::new(&strings.connecting)
+                                            .color(crate::ui::theme::text_secondary()),
+                                    );
                                 });
                             }
                         });
@@ -235,7 +245,13 @@ pub fn draw(
                     if compact {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             ui.add_space(8.0);
-                            profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
+                            profile::draw_user_profile_header(
+                                ui,
+                                state,
+                                compact,
+                                asset_loader,
+                                lang,
+                            );
                             ui.add_space(8.0);
 
                             ui.vertical(|ui| {
@@ -250,7 +266,15 @@ pub fn draw(
                                     lang,
                                 );
                                 ui.add_space(section_gap);
-                                actions::draw_right_column(ui, state, section_gap, action_min_h, compact, &mut action, lang);
+                                actions::draw_right_column(
+                                    ui,
+                                    state,
+                                    section_gap,
+                                    action_min_h,
+                                    compact,
+                                    &mut action,
+                                    lang,
+                                );
                             });
                         });
                     } else {
@@ -315,7 +339,14 @@ pub fn draw(
             });
         });
 
-    if state.show_leader_picker && crate::widgets::draw_leader_picker_modal(root_ui.ctx(), &mut state.selected_leader, &mut state.selected_civilization, asset_loader) {
+    if state.show_leader_picker
+        && crate::widgets::draw_leader_picker_modal(
+            root_ui.ctx(),
+            &mut state.selected_leader,
+            &mut state.selected_civilization,
+            asset_loader,
+        )
+    {
         state.show_leader_picker = false;
     }
 
@@ -325,16 +356,17 @@ pub fn draw(
 
     if let Some(err_msg) = &state.error_message {
         let mut clear_error = false;
-        
+
         // 1. Draw a full-screen backdrop to dim the background and intercept clicks
         egui::Area::new(egui::Id::new("error_modal_backdrop"))
             .order(egui::Order::Foreground)
             .fixed_pos(egui::pos2(0.0, 0.0))
             .show(root_ui.ctx(), |ui| {
                 let screen_rect = ui.ctx().content_rect();
-                ui.painter().rect_filled(screen_rect, 0.0, crate::ui::theme::menu_backdrop());
+                ui.painter()
+                    .rect_filled(screen_rect, 0.0, crate::ui::theme::menu_backdrop());
             });
-            
+
         // 2. Draw responsive centered window on top
         let screen_rect = root_ui.ctx().content_rect();
         let is_mobile = screen_rect.width() < 600.0;
@@ -353,7 +385,10 @@ pub fn draw(
             .frame(
                 egui::Frame::new()
                     .fill(crate::ui::theme::panel_bg())
-                    .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::accent_danger_border()))
+                    .stroke(egui::Stroke::new(
+                        1.5_f32,
+                        crate::ui::theme::accent_danger_border(),
+                    ))
                     .corner_radius(egui::CornerRadius::same(16))
                     .inner_margin(24.0)
                     .shadow(egui::Shadow {
@@ -367,7 +402,7 @@ pub fn draw(
                 ui.set_width(modal_w - 48.0); // account for inner margin
                 ui.vertical_centered(|ui| {
                     ui.add_space(4.0);
-                    
+
                     // Outlined Warning Icon
                     crate::ui::theme::outlined_label(
                         ui,
@@ -375,9 +410,9 @@ pub fn draw(
                         egui::FontId::proportional(36.0),
                         crate::ui::theme::accent_danger(),
                     );
-                    
+
                     ui.add_space(12.0);
-                    
+
                     // Outlined Game-Themed Title
                     crate::ui::theme::outlined_label(
                         ui,
@@ -385,9 +420,9 @@ pub fn draw(
                         egui::FontId::proportional(22.0),
                         crate::ui::theme::accent_danger(),
                     );
-                    
+
                     ui.add_space(16.0);
-                    
+
                     // Center-aligned, beautifully colored error details in uppercase
                     ui.label(
                         egui::RichText::new(err_msg.to_uppercase())
@@ -395,23 +430,27 @@ pub fn draw(
                             .color(crate::ui::theme::text_secondary())
                             .strong(),
                     );
-                    
+
                     ui.add_space(24.0);
-                    
+
                     // Premium dismissal button
-                    let btn_w = if is_mobile { ui.available_width() } else { 160.0 };
+                    let btn_w = if is_mobile {
+                        ui.available_width()
+                    } else {
+                        160.0
+                    };
                     let dismiss_btn = crate::widgets::ThemeButton::new(&strings.dismiss)
                         .style(crate::widgets::ThemeButtonStyle::Danger)
                         .min_size(egui::vec2(btn_w, 40.0));
-                        
+
                     if ui.add(dismiss_btn).clicked() {
                         clear_error = true;
                     }
-                    
+
                     ui.add_space(4.0);
                 });
             });
-        
+
         if clear_error {
             state.error_message = None;
         }

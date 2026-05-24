@@ -29,7 +29,9 @@ pub fn player_has_valid_placement_sampled(
         if map.owner_id(x, y) != owner_id {
             continue;
         }
-        if resolve_structure_spawn_tile(map, owner_id, kind, idx, grid, buildings, scratch).is_some() {
+        if resolve_structure_spawn_tile(map, owner_id, kind, idx, grid, buildings, scratch)
+            .is_some()
+        {
             return true;
         }
     }

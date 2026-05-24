@@ -93,14 +93,18 @@ impl SowEngine {
         let Some((idx, kind, tile_idx, current_level)) = found else {
             return;
         };
-        
+
         let new_level = current_level.saturating_add(1);
         match kind {
             BuildingKind::City => {
-                if new_level > 5 { return; }
+                if new_level > 5 {
+                    return;
+                }
             }
             BuildingKind::Bunker => {
-                if new_level > 3 { return; }
+                if new_level > 3 {
+                    return;
+                }
             }
         }
 
@@ -108,7 +112,7 @@ impl SowEngine {
             BuildingKind::City => crate::building::city_upgrade_cost_gold(new_level),
             BuildingKind::Bunker => crate::building::bunker_upgrade_cost_gold(new_level),
         };
-        
+
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
         };
@@ -157,7 +161,7 @@ impl SowEngine {
         let Some((idx, current_level, city_level)) = found else {
             return;
         };
-        
+
         let new_level = current_level.saturating_add(1);
         if new_level > 5 {
             return;
@@ -165,17 +169,21 @@ impl SowEngine {
         if module == ModuleKind::Arsenal && new_level > 3 {
             return;
         }
-        
+
         match module {
             ModuleKind::Intel => {
-                if city_level < 2 { return; }
+                if city_level < 2 {
+                    return;
+                }
             }
             ModuleKind::Arsenal | ModuleKind::Shield => {
-                if city_level < 3 { return; }
+                if city_level < 3 {
+                    return;
+                }
             }
             _ => {}
         }
-        
+
         if module == ModuleKind::Port {
             let city_tile = self.buildings[idx].tile_idx;
             let (cx, cy) = crate::building::idx_xy(city_tile, self.state.map.width);
@@ -183,14 +191,17 @@ impl SowEngine {
                 return;
             }
         }
-        
+
         if module == ModuleKind::Arsenal && current_level == 0 {
-            let has_arsenal = self.buildings.iter().any(|b| b.owner_id == player_id && b.modules.arsenal > 0);
+            let has_arsenal = self
+                .buildings
+                .iter()
+                .any(|b| b.owner_id == player_id && b.modules.arsenal > 0);
             if has_arsenal {
                 return;
             }
         }
-        
+
         let cost = crate::building::module_upgrade_cost_gold(module, new_level);
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
@@ -199,15 +210,15 @@ impl SowEngine {
             return;
         }
         player_mut.gold = (player_mut.gold - cost).max(0.0);
-        
+
         let b = &mut self.buildings[idx];
         b.modules.set_level(module, new_level);
         self.building_aggregates_dirty = true;
-        
+
         if module == ModuleKind::Port {
             self.sea_lanes_dirty = true;
         }
-        
+
         self.state.events.push(GameEvent::StructureUpgraded {
             id: building_id,
             tile_idx: b.tile_idx,
@@ -226,23 +237,23 @@ impl SowEngine {
         if !player.alive {
             return;
         }
-        
+
         let w = self.state.map.width;
         let h = self.state.map.height;
         if tile_idx >= w * h {
             return;
         }
-        
+
         if self.state.map.owner_id(tile_idx % w, tile_idx / w) != player_id {
             return;
         }
-        
+
         let current_level = self.state.map.tile_upgrades[tile_idx as usize];
         let new_level = current_level.saturating_add(1);
-        
+
         let s = crate::config::GOLD_SCALE.max(1.0);
         let cost = (1000.0 * 1.5f64.powi(current_level as i32)) / s;
-        
+
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
         };
@@ -250,10 +261,10 @@ impl SowEngine {
             return;
         }
         player_mut.gold = (player_mut.gold - cost).max(0.0);
-        
+
         self.state.map.tile_upgrades[tile_idx as usize] = new_level;
         self.state.map.dirty_tiles.push(tile_idx as usize);
-        
+
         self.state.events.push(GameEvent::TileUpgraded {
             tile_idx,
             level: new_level,

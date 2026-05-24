@@ -1,6 +1,6 @@
+use super::MainMenuState;
 use crate::UiAction;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
-use super::MainMenuState;
 
 pub fn draw_queue_overlay(
     ui: &mut Ui,
@@ -90,7 +90,7 @@ pub fn draw_queue_overlay(
                                     egui::Layout::top_down(egui::Align::Min),
                                     |ui| {
                                         draw_ready_room(ui, lobby, asset_loader, lang);
-                                    }
+                                    },
                                 );
                             });
                         } else {
@@ -118,7 +118,7 @@ pub fn draw_queue_overlay(
                                 );
                             });
                         }
-                    }
+                    },
                 );
             } else {
                 // Connecting/Syncing state
@@ -139,7 +139,7 @@ pub fn draw_queue_overlay(
                                 crate::ui::theme::text_secondary(),
                             );
                         });
-                    }
+                    },
                 );
             }
 
@@ -167,7 +167,10 @@ fn draw_map_briefing(
     let strings = &sow_lang::get(lang).main_menu;
     Frame::NONE
         .fill(crate::ui::theme::nickname_field_bg())
-        .stroke(Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
+        .stroke(Stroke::new(
+            1.0_f32,
+            crate::ui::theme::nickname_field_border(),
+        ))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(16.0)
         .show(ui, |ui| {
@@ -178,7 +181,12 @@ fn draw_map_briefing(
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.vertical(|ui| {
                 // Header
-                ui.label(RichText::new(&strings.tactical_briefing).size(14.0).strong().color(crate::ui::theme::text_secondary()));
+                ui.label(
+                    RichText::new(&strings.tactical_briefing)
+                        .size(14.0)
+                        .strong()
+                        .color(crate::ui::theme::text_secondary()),
+                );
                 ui.add_space(4.0);
 
                 // Map Preview Visual
@@ -192,7 +200,9 @@ fn draw_map_briefing(
                 };
                 let preview_h = (preview_w / aspect).min(max_img_h);
 
-                let rect = ui.allocate_exact_size(egui::vec2(preview_w, preview_h), egui::Sense::hover()).0;
+                let rect = ui
+                    .allocate_exact_size(egui::vec2(preview_w, preview_h), egui::Sense::hover())
+                    .0;
 
                 if let Some(tex) = thumbnail {
                     let image = egui::Image::new(tex)
@@ -200,7 +210,8 @@ fn draw_map_briefing(
                         .corner_radius(CornerRadius::same(8));
                     ui.put(rect, image);
                 } else {
-                    ui.painter().rect_filled(rect, 8.0, Color32::from_black_alpha(120));
+                    ui.painter()
+                        .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
                     crate::ui::theme::outlined_text(
                         ui.painter(),
                         rect.center(),
@@ -225,14 +236,22 @@ fn draw_map_briefing(
                 // Map details
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new(lobby.map_name.to_uppercase()).size(if is_mobile { 18.0 } else { 24.0 }).strong().color(Color32::WHITE));
+                        ui.label(
+                            RichText::new(lobby.map_name.to_uppercase())
+                                .size(if is_mobile { 18.0 } else { 24.0 })
+                                .strong()
+                                .color(Color32::WHITE),
+                        );
                         ui.add_space(2.0);
 
                         // Mode indicator
                         let (mode_label, mode_color) = if lobby.game_mode == "FFA" {
                             (&strings.free_for_all, crate::ui::theme::accent_solo_cyan())
                         } else if lobby.game_mode == "Teams" {
-                            (&strings.team_tactics, crate::ui::theme::accent_ranked_gold())
+                            (
+                                &strings.team_tactics,
+                                crate::ui::theme::accent_ranked_gold(),
+                            )
                         } else {
                             (&strings.simulation, crate::ui::theme::avatar_pink())
                         };
@@ -243,7 +262,12 @@ fn draw_map_briefing(
                             .corner_radius(CornerRadius::same(4))
                             .inner_margin(Margin::symmetric(8, 4))
                             .show(ui, |ui| {
-                                ui.label(RichText::new(mode_label).size(12.0).strong().color(mode_color));
+                                ui.label(
+                                    RichText::new(mode_label)
+                                        .size(12.0)
+                                        .strong()
+                                        .color(mode_color),
+                                );
                             });
                     });
                 });
@@ -255,25 +279,61 @@ fn draw_map_briefing(
                 // Telemetry Details
                 if is_mobile {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(&strings.channel).size(11.0).color(crate::ui::theme::text_secondary()));
-                        ui.label(RichText::new(format!("#{:06X}", lobby.id % 0xFFFFFF)).size(11.0).strong().color(Color32::WHITE));
+                        ui.label(
+                            RichText::new(&strings.channel)
+                                .size(11.0)
+                                .color(crate::ui::theme::text_secondary()),
+                        );
+                        ui.label(
+                            RichText::new(format!("#{:06X}", lobby.id % 0xFFFFFF))
+                                .size(11.0)
+                                .strong()
+                                .color(Color32::WHITE),
+                        );
                         ui.add_space(12.0);
-                        ui.label(RichText::new(&strings.slots).size(11.0).color(crate::ui::theme::text_secondary()));
-                        ui.label(RichText::new(format!("{}", lobby.max_players)).size(11.0).strong().color(Color32::WHITE));
+                        ui.label(
+                            RichText::new(&strings.slots)
+                                .size(11.0)
+                                .color(crate::ui::theme::text_secondary()),
+                        );
+                        ui.label(
+                            RichText::new(format!("{}", lobby.max_players))
+                                .size(11.0)
+                                .strong()
+                                .color(Color32::WHITE),
+                        );
                     });
                 } else {
                     let mut draw_detail = |key: &str, val: &str| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(key).size(12.0).color(crate::ui::theme::text_secondary()));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(val).size(12.0).strong().color(Color32::WHITE));
-                            });
+                            ui.label(
+                                RichText::new(key)
+                                    .size(12.0)
+                                    .color(crate::ui::theme::text_secondary()),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new(val)
+                                            .size(12.0)
+                                            .strong()
+                                            .color(Color32::WHITE),
+                                    );
+                                },
+                            );
                         });
                         ui.add_space(2.0);
                     };
 
-                    draw_detail(&strings.lobby_channel_label, &format!("#{:06X}", lobby.id % 0xFFFFFF));
-                    draw_detail(&strings.max_sector_slots, &format!("{} PARTICIPANTS", lobby.max_players));
+                    draw_detail(
+                        &strings.lobby_channel_label,
+                        &format!("#{:06X}", lobby.id % 0xFFFFFF),
+                    );
+                    draw_detail(
+                        &strings.max_sector_slots,
+                        &format!("{} PARTICIPANTS", lobby.max_players),
+                    );
                     draw_detail(&strings.deployment_engine, &strings.deployment_engine_val);
                 }
             });
@@ -289,7 +349,10 @@ fn draw_ready_room(
     let strings = &sow_lang::get(lang).main_menu;
     Frame::NONE
         .fill(crate::ui::theme::nickname_field_bg())
-        .stroke(Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
+        .stroke(Stroke::new(
+            1.0_f32,
+            crate::ui::theme::nickname_field_border(),
+        ))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(16.0)
         .show(ui, |ui| {
@@ -299,7 +362,12 @@ fn draw_ready_room(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(&strings.ready_room).size(14.0).strong().color(crate::ui::theme::text_secondary()));
+                    ui.label(
+                        RichText::new(&strings.ready_room)
+                            .size(14.0)
+                            .strong()
+                            .color(crate::ui::theme::text_secondary()),
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(format!("{}/{}", lobby.num_players, lobby.max_players))
@@ -320,48 +388,92 @@ fn draw_ready_room(
                         for p in &lobby.players {
                             Frame::NONE
                                 .fill(crate::ui::theme::panel_bg_transparent())
-                                .stroke(Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
+                                .stroke(Stroke::new(
+                                    1.0_f32,
+                                    crate::ui::theme::nickname_field_border(),
+                                ))
                                 .corner_radius(CornerRadius::same(8))
                                 .inner_margin(Margin::symmetric(12, 10))
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
                                     ui.horizontal(|ui| {
                                         // 1. Chosen Leader Avatar
-                                        let avatar_tex = asset_loader.avatars.get(&p.leader).or(asset_loader.avatar_fallback.as_ref());
+                                        let avatar_tex = asset_loader
+                                            .avatars
+                                            .get(&p.leader)
+                                            .or(asset_loader.avatar_fallback.as_ref());
                                         if let Some(tex) = avatar_tex {
-                                            ui.add(egui::Image::new(tex)
-                                                .fit_to_exact_size(egui::vec2(28.0, 28.0))
-                                                .corner_radius(CornerRadius::same(14)));
+                                            ui.add(
+                                                egui::Image::new(tex)
+                                                    .fit_to_exact_size(egui::vec2(28.0, 28.0))
+                                                    .corner_radius(CornerRadius::same(14)),
+                                            );
                                         }
 
                                         ui.add_space(8.0);
 
                                         // 2. Player Name
-                                        ui.label(RichText::new(&p.name).size(16.0).strong().color(Color32::WHITE));
+                                        ui.label(
+                                            RichText::new(&p.name)
+                                                .size(16.0)
+                                                .strong()
+                                                .color(Color32::WHITE),
+                                        );
 
                                         // 3. Ready Badge
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            let map_ready = p.download_progress == 100 || p.is_ready;
-                                            if map_ready {
-                                                Frame::NONE
-                                                    .fill(Color32::from_rgba_unmultiplied(74, 222, 128, 30))
-                                                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128)))
-                                                    .corner_radius(CornerRadius::same(4))
-                                                    .inner_margin(Margin::symmetric(8, 4))
-                                                    .show(ui, |ui| {
-                                                        ui.label(RichText::new(&strings.ready).size(11.0).strong().color(Color32::from_rgb(74, 222, 128)));
-                                                    });
-                                            } else {
-                                                Frame::NONE
-                                                    .fill(Color32::from_rgba_unmultiplied(250, 204, 21, 30))
-                                                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(250, 204, 21)))
-                                                    .corner_radius(CornerRadius::same(4))
-                                                    .inner_margin(Margin::symmetric(8, 4))
-                                                    .show(ui, |ui| {
-                                                        ui.label(RichText::new(format!("SYNCING {}%", p.download_progress)).size(11.0).strong().color(Color32::from_rgb(250, 204, 21)));
-                                                    });
-                                            }
-                                        });
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                let map_ready =
+                                                    p.download_progress == 100 || p.is_ready;
+                                                if map_ready {
+                                                    Frame::NONE
+                                                        .fill(Color32::from_rgba_unmultiplied(
+                                                            74, 222, 128, 30,
+                                                        ))
+                                                        .stroke(Stroke::new(
+                                                            1.0_f32,
+                                                            Color32::from_rgb(74, 222, 128),
+                                                        ))
+                                                        .corner_radius(CornerRadius::same(4))
+                                                        .inner_margin(Margin::symmetric(8, 4))
+                                                        .show(ui, |ui| {
+                                                            ui.label(
+                                                                RichText::new(&strings.ready)
+                                                                    .size(11.0)
+                                                                    .strong()
+                                                                    .color(Color32::from_rgb(
+                                                                        74, 222, 128,
+                                                                    )),
+                                                            );
+                                                        });
+                                                } else {
+                                                    Frame::NONE
+                                                        .fill(Color32::from_rgba_unmultiplied(
+                                                            250, 204, 21, 30,
+                                                        ))
+                                                        .stroke(Stroke::new(
+                                                            1.0_f32,
+                                                            Color32::from_rgb(250, 204, 21),
+                                                        ))
+                                                        .corner_radius(CornerRadius::same(4))
+                                                        .inner_margin(Margin::symmetric(8, 4))
+                                                        .show(ui, |ui| {
+                                                            ui.label(
+                                                                RichText::new(format!(
+                                                                    "SYNCING {}%",
+                                                                    p.download_progress
+                                                                ))
+                                                                .size(11.0)
+                                                                .strong()
+                                                                .color(Color32::from_rgb(
+                                                                    250, 204, 21,
+                                                                )),
+                                                            );
+                                                        });
+                                                }
+                                            },
+                                        );
                                     });
                                 });
                         }

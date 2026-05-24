@@ -1,7 +1,7 @@
-use crate::UiAction;
-use egui::Ui;
 use super::MainMenuState;
 use crate::widgets::LobbyCard;
+use crate::UiAction;
+use egui::Ui;
 
 pub fn draw_left_column(
     ui: &mut Ui,
@@ -28,9 +28,8 @@ pub fn draw_left_column(
             ui,
             &strings.waiting_for_lobby,
             egui::FontId::proportional(16.0),
-            crate::ui::theme::text_secondary()
+            crate::ui::theme::text_secondary(),
         );
-
     } else {
         let ffa_lobbies: Vec<_> = state
             .lobbies

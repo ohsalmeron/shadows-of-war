@@ -26,7 +26,9 @@ impl SowEngine {
         let tx = (target_tile % w) as i32;
         let ty = (target_tile / w) as i32;
 
-        let best_silo = self.buildings.iter()
+        let best_silo = self
+            .buildings
+            .iter()
             .filter(|b| {
                 b.kind == BuildingKind::City
                     && b.owner_id == player_id

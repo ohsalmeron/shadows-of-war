@@ -118,11 +118,12 @@ pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
                 };
 
                 // A* pathfind on water (reuses engine scratch buffers)
-                if let Some(path) = engine.path_scratch.astar.find_path(
-                    &engine.state.map,
-                    &[water_a],
-                    water_b,
-                ) {
+                if let Some(path) =
+                    engine
+                        .path_scratch
+                        .astar
+                        .find_path(&engine.state.map, &[water_a], water_b)
+                {
                     if path.len() <= 1000 {
                         lanes.push(SeaLane {
                             id: lane_id,
@@ -170,7 +171,8 @@ pub fn route_through_lanes(
 
     // Dijkstra on the port graph (typically < 30 nodes)
     let mut dist: std::collections::HashMap<u64, u32> = std::collections::HashMap::new();
-    let mut prev: std::collections::HashMap<u64, (u64, usize, bool)> = std::collections::HashMap::new();
+    let mut prev: std::collections::HashMap<u64, (u64, usize, bool)> =
+        std::collections::HashMap::new();
     // (port_id_from, lane_index, reversed)
     let mut heap = std::collections::BinaryHeap::new();
 

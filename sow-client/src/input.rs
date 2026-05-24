@@ -112,7 +112,9 @@ impl SowApp {
                     if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) =
                         event.physical_key
                     {
-                        if let Some((col, row)) = self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y) {
+                        if let Some((col, row)) =
+                            self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y)
+                        {
                             let idx = (row * self.sim.map_w as i32 + col) as usize;
 
                             let troops = Some(
@@ -124,19 +126,33 @@ impl SowApp {
                                 troops,
                             };
 
-                            let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+                            let owner = self
+                                .gfx
+                                .map_renderer
+                                .as_ref()
+                                .map(|mr| mr.owners[idx])
+                                .unwrap_or(0);
                             let my_id = self.sim.my_player_id.unwrap_or(0);
-                            let is_betrayer = self.sim.current_snapshot.as_ref()
+                            let is_betrayer = self
+                                .sim
+                                .current_snapshot
+                                .as_ref()
                                 .and_then(|s| s.players.iter().find(|p| p.id == owner))
                                 .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
                                 .unwrap_or(false);
-                            let is_allied = self.sim.current_snapshot.as_ref()
+                            let is_allied = self
+                                .sim
+                                .current_snapshot
+                                .as_ref()
                                 .and_then(|s| s.players.iter().find(|p| p.id == my_id))
                                 .map(|p| p.alliances.contains(&owner) && !is_betrayer)
                                 .unwrap_or(false);
 
                             if owner != 0 && owner != my_id && is_allied {
-                                self.ui.app.hud_state.show_error = Some("You must break the alliance first to send the boat!".to_string());
+                                self.ui.app.hud_state.show_error = Some(
+                                    "You must break the alliance first to send the boat!"
+                                        .to_string(),
+                                );
                                 let mx = self.input.last_mouse_x;
                                 let my = self.input.last_mouse_y;
                                 self.open_context_menu_at(mx, my);
@@ -159,8 +175,14 @@ impl SowApp {
                     // Building hotkeys 1-6, Nuke hotkeys 8-0 (Redesigned)
                     if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
                         let building = match code {
-                            winit::keyboard::KeyCode::Digit1 | winit::keyboard::KeyCode::Numpad1 => Some(sow_core::game::BuildingKind::City),
-                            winit::keyboard::KeyCode::Digit2 | winit::keyboard::KeyCode::Numpad2 => Some(sow_core::game::BuildingKind::Bunker),
+                            winit::keyboard::KeyCode::Digit1
+                            | winit::keyboard::KeyCode::Numpad1 => {
+                                Some(sow_core::game::BuildingKind::City)
+                            }
+                            winit::keyboard::KeyCode::Digit2
+                            | winit::keyboard::KeyCode::Numpad2 => {
+                                Some(sow_core::game::BuildingKind::Bunker)
+                            }
                             _ => None,
                         };
                         if let Some(kind) = building {
@@ -171,9 +193,12 @@ impl SowApp {
                                 self.ui.app.hud_state.selected_nuke_kind = None;
                             }
                         }
- 
+
                         let nuke = match code {
-                            winit::keyboard::KeyCode::Digit8 | winit::keyboard::KeyCode::Numpad8 => Some(sow_core::game::NukeKind::AtomBomb),
+                            winit::keyboard::KeyCode::Digit8
+                            | winit::keyboard::KeyCode::Numpad8 => {
+                                Some(sow_core::game::NukeKind::AtomBomb)
+                            }
                             _ => None,
                         };
                         if let Some(kind) = nuke {
@@ -349,7 +374,8 @@ impl SowApp {
                                     .map_touch_start
                                     .map(|(_, x, y)| (x, y))
                                     .unwrap_or((position.x, position.y));
-                                let is_building = self.ui.app.hud_state.selected_building_kind.is_some();
+                                let is_building =
+                                    self.ui.app.hud_state.selected_building_kind.is_some();
                                 if is_touch && !is_spawning && !is_building {
                                     // Tap on mobile → open context menu
                                     self.open_context_menu_at(sx, sy);
@@ -372,11 +398,17 @@ impl SowApp {
                     } else if self.ui.app.hud_state.selected_nuke_kind.is_some() {
                         self.ui.app.hud_state.selected_nuke_kind = None;
                     } else if !self.input.selected_warships.is_empty() {
-                        let world_x = (position.x as f32 - self.input.camera_x) / self.input.camera_zoom;
-                        let world_y = (position.y as f32 - self.input.camera_y) / self.input.camera_zoom;
+                        let world_x =
+                            (position.x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                        let world_y =
+                            (position.y as f32 - self.input.camera_y) / self.input.camera_zoom;
                         let col = world_x.floor() as i32;
                         let row = world_y.floor() as i32;
-                        if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                        if col >= 0
+                            && row >= 0
+                            && col < self.sim.map_w as i32
+                            && row < self.sim.map_h as i32
+                        {
                             let target_tile = (row * self.sim.map_w as i32 + col) as u32;
                             let intent = sow_core::protocol::GameplayIntent::MoveWarships {
                                 unit_ids: self.input.selected_warships.clone(),
@@ -410,7 +442,10 @@ impl SowApp {
                 }
             }
             WindowEvent::PointerMoved {
-                source, position, primary, ..
+                source,
+                position,
+                primary,
+                ..
             } => {
                 let is_touch = matches!(source, winit::event::PointerSource::Touch { .. });
                 if let winit::event::PointerSource::Touch { finger_id, .. } = source {
@@ -447,7 +482,7 @@ impl SowApp {
                         let delta_dist = distance - last_dist;
                         let delta_x = pinch_cx - last_cx;
                         let delta_y = pinch_cy - last_cy;
-                        
+
                         self.input.camera_x += delta_x as f32;
                         self.input.camera_y += delta_y as f32;
 
@@ -468,7 +503,7 @@ impl SowApp {
                         self.input.camera_y += dy as f32;
                     }
                 }
-                
+
                 if primary {
                     self.input.last_mouse_x = position.x;
                     self.input.last_mouse_y = position.y;
@@ -546,11 +581,17 @@ impl SowApp {
         let my_id = self.sim.my_player_id.unwrap_or(0);
 
         if is_land && owner != my_id {
-            let is_betrayer = self.sim.current_snapshot.as_ref()
+            let is_betrayer = self
+                .sim
+                .current_snapshot
+                .as_ref()
                 .and_then(|s| s.players.iter().find(|p| p.id == owner))
                 .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
                 .unwrap_or(false);
-            let is_allied = self.sim.current_snapshot.as_ref()
+            let is_allied = self
+                .sim
+                .current_snapshot
+                .as_ref()
                 .and_then(|s| s.players.iter().find(|p| p.id == my_id))
                 .map(|p| p.alliances.contains(&owner) && !is_betrayer)
                 .unwrap_or(false);
@@ -569,7 +610,8 @@ impl SowApp {
                 if !is_touch {
                     // Desktop: fire immediately
                     self.send_intent(intent);
-                    self.input.hold_attack_target = Some((owner, web_time::Instant::now(), x, y, true));
+                    self.input.hold_attack_target =
+                        Some((owner, web_time::Instant::now(), x, y, true));
                 } else {
                     // Mobile: wait for hold to distinguish from tap (context menu)
                     self.input.hold_attack_target =
@@ -583,14 +625,14 @@ impl SowApp {
     pub(crate) fn open_context_menu_at(&mut self, x: f64, y: f64) {
         if let Some((col, row)) = self.mouse_to_tile(x, y) {
             let idx = (row * self.sim.map_w as i32 + col) as u32;
-            
+
             // Clear any prior menu state first to avoid animation caching issues
             self.input.map_context_menu = None;
             self.input.map_context_menu_active = None;
             self.input.context_menu_timer = 0.0;
             self.input.context_menu_open_time = Some(web_time::Instant::now());
             self.input.map_context_menu_session += 1;
-            
+
             self.input.map_context_menu = Some((x as f32, y as f32, idx));
         }
     }
@@ -625,10 +667,25 @@ impl SowApp {
         } else if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
             let map_w = self.sim.map_w;
             let map_h = self.sim.map_h;
-            let owners = self.gfx.map_renderer.as_ref().map(|mr| mr.owners.as_slice()).unwrap_or(&[]);
-            let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
+            let owners = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.owners.as_slice())
+                .unwrap_or(&[]);
+            let terrain = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.terrain.as_slice())
+                .unwrap_or(&[]);
             let my_id = self.sim.my_player_id.unwrap_or(0);
-            let buildings = self.sim.current_snapshot.as_ref().map(|s| s.buildings.as_slice()).unwrap_or(&[]);
+            let buildings = self
+                .sim
+                .current_snapshot
+                .as_ref()
+                .map(|s| s.buildings.as_slice())
+                .unwrap_or(&[]);
 
             // Check if there is a valid upgrade target within Manhattan distance STRUCTURE_MIN_DIST of (col, row)
             let mut upgrade_target = None;
@@ -641,7 +698,10 @@ impl SowApp {
                         let by = (b.tile_idx / map_w) as i32;
                         let d = (col - bx).abs() + (row - by).abs(); // Manhattan distance
                         if d <= min_dist {
-                            if d < best_dist || (d == best_dist && upgrade_target.map_or(true, |old_id| b.id < old_id)) {
+                            if d < best_dist
+                                || (d == best_dist
+                                    && upgrade_target.map_or(true, |old_id| b.id < old_id))
+                            {
                                 best_dist = d;
                                 upgrade_target = Some(b.id);
                             }
@@ -651,13 +711,17 @@ impl SowApp {
             }
 
             let cost = {
-                let i = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                let i = sow_core::game::BuildingKind::ALL
+                    .iter()
+                    .position(|&k| k == kind)
+                    .unwrap_or(0);
                 self.ui.app.hud_state.building_costs[i]
             };
 
             if let Some(target_id) = upgrade_target {
                 if self.ui.app.hud_state.gold < cost {
-                    self.ui.app.hud_state.show_error = Some(format!("Not enough Gold! You need {}.", cost));
+                    self.ui.app.hud_state.show_error =
+                        Some(format!("Not enough Gold! You need {}.", cost));
                 } else {
                     let intent = sow_core::protocol::GameplayIntent::UpgradeStructure {
                         building_id: target_id,
@@ -669,19 +733,14 @@ impl SowApp {
             }
 
             let snapped_res = resolve_building_placement_tile(
-                kind,
-                col,
-                row,
-                map_w,
-                map_h,
-                owners,
-                terrain,
-                my_id,
-                buildings,
+                kind, col, row, map_w, map_h, owners, terrain, my_id, buildings,
             );
 
             let cost = {
-                let i = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                let i = sow_core::game::BuildingKind::ALL
+                    .iter()
+                    .position(|&k| k == kind)
+                    .unwrap_or(0);
                 self.ui.app.hud_state.building_costs[i]
             };
 
@@ -739,13 +798,24 @@ impl SowApp {
 
                 // If not selecting warships, check if we clicked on allied territory to open context menu on release
                 let idx = (row * self.sim.map_w as i32 + col) as usize;
-                let owner = self.gfx.map_renderer.as_ref().map(|mr| mr.owners[idx]).unwrap_or(0);
+                let owner = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.owners[idx])
+                    .unwrap_or(0);
                 let my_id = self.sim.my_player_id.unwrap_or(0);
-                let is_betrayer = self.sim.current_snapshot.as_ref()
+                let is_betrayer = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
                     .and_then(|s| s.players.iter().find(|p| p.id == owner))
                     .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
                     .unwrap_or(false);
-                let is_allied = self.sim.current_snapshot.as_ref()
+                let is_allied = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
                     .and_then(|s| s.players.iter().find(|p| p.id == my_id))
                     .map(|p| p.alliances.contains(&owner) && !is_betrayer)
                     .unwrap_or(false);
@@ -796,7 +866,7 @@ pub fn resolve_building_placement_tile(
 ) -> Result<u32, &'static str> {
     let min_dist = sow_core::building::STRUCTURE_MIN_DIST;
     let min_dist_sq = min_dist * min_dist;
-    
+
     // Snapping search radius
     let pokayoke_dist = 25;
     let pokayoke_dist_sq = pokayoke_dist * pokayoke_dist;
@@ -831,13 +901,13 @@ pub fn resolve_building_placement_tile(
                 continue;
             }
             let tile_idx = (ty * map_w as i32 + tx) as u32;
-            
+
             // Check ownership
             if owners.get(tile_idx as usize).copied().unwrap_or(0) != my_id {
                 continue;
             }
             found_any_owned = true;
-            
+
             // Check land (bit 7: is_land)
             let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
             let is_land = (tile_terrain & 0x80) != 0;
@@ -845,7 +915,7 @@ pub fn resolve_building_placement_tile(
                 continue;
             }
             found_any_land = true;
-            
+
             // Check minimum distance from existing structures
             let mut too_close = false;
             if kind == sow_core::game::BuildingKind::City {
@@ -922,11 +992,11 @@ pub fn resolve_building_placement_tile(
                 continue;
             }
             found_any_far_enough = true;
-            
+
             valid_land_tiles.push((tx, ty, tile_idx));
         }
     }
-    
+
     if valid_land_tiles.is_empty() {
         if !found_any_owned {
             return Err("Target area must be inside your owned territory!");
@@ -943,7 +1013,7 @@ pub fn resolve_building_placement_tile(
         }
         return Err("No space nearby!");
     }
-    
+
     // Sort valid land tiles by proximity to click target (Euclidean distance)
     valid_land_tiles.sort_by(|a, b| {
         let da = (a.0 - click_x) * (a.0 - click_x) + (a.1 - click_y) * (a.1 - click_y);
@@ -952,4 +1022,3 @@ pub fn resolve_building_placement_tile(
     });
     Ok(valid_land_tiles.first().map(|&(_, _, idx)| idx).unwrap())
 }
-

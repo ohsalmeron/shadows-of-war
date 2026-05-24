@@ -138,7 +138,10 @@ async fn run_bot(
                 lobby_id = ack.lobby_id;
                 player_id = ack.player_id;
                 map_name = ack.map_name;
-                println!("[Bot {}] '{}' joined lobby {} as player {}", bot_index, name, lobby_id, player_id);
+                println!(
+                    "[Bot {}] '{}' joined lobby {} as player {}",
+                    bot_index, name, lobby_id, player_id
+                );
                 break;
             }
             ServerMessage::JoinFailed(f) => return Err(format!("Join failed: {}", f.reason)),

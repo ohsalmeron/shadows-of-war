@@ -3,15 +3,15 @@ pub mod core;
 pub mod cost;
 pub mod hud;
 pub mod placement;
-pub mod upgrade;
 pub mod railroad;
+pub mod upgrade;
 
 pub use core::*;
 pub use cost::*;
 pub use hud::*;
 pub use placement::*;
-pub use upgrade::*;
 pub use railroad::*;
+pub use upgrade::*;
 
 #[cfg(test)]
 mod tests {
@@ -40,7 +40,15 @@ mod tests {
         let (map, owner) = tiny_owned_map();
         let grid = BuildingGrid::rebuild_empty(map.width, map.height);
         let mut scratch = crate::engine::PlacementScratch::default();
-        let v = valid_land_structure_indices(&map, owner, 2, BuildingKind::City, &grid, &[], &mut scratch);
+        let v = valid_land_structure_indices(
+            &map,
+            owner,
+            2,
+            BuildingKind::City,
+            &grid,
+            &[],
+            &mut scratch,
+        );
         assert!(v.contains(&2));
     }
 
@@ -59,7 +67,15 @@ mod tests {
         let mut grid = BuildingGrid::default();
         grid.rebuild_from_pairs(w, 1, &[(15u32, 0u32)]);
         let mut scratch = crate::engine::PlacementScratch::default();
-        let v = valid_land_structure_indices(&m, owner, click, BuildingKind::City, &grid, &[], &mut scratch);
+        let v = valid_land_structure_indices(
+            &m,
+            owner,
+            click,
+            BuildingKind::City,
+            &grid,
+            &[],
+            &mut scratch,
+        );
         assert!(!v.contains(&15));
         assert!(!v.is_empty());
     }

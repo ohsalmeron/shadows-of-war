@@ -1,5 +1,5 @@
-use std::sync::OnceLock;
 use serde::Deserialize;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum Language {
@@ -193,32 +193,28 @@ static ES_STRINGS: OnceLock<LanguageStrings> = OnceLock::new();
 
 pub fn get(lang: Language) -> &'static LanguageStrings {
     match lang {
-        Language::Spanish => {
-            ES_STRINGS.get_or_init(|| {
-                load_language(
-                    include_str!("../strings/es/main_menu.toml"),
-                    include_str!("../strings/es/settings.toml"),
-                    include_str!("../strings/es/loading_screen.toml"),
-                    include_str!("../strings/es/endgame.toml"),
-                    include_str!("../strings/es/hud.toml"),
-                    include_str!("../strings/es/tutorial.toml"),
-                    include_str!("../strings/es/map_editor.toml"),
-                )
-            })
-        }
-        _ => {
-            EN_STRINGS.get_or_init(|| {
-                load_language(
-                    include_str!("../strings/en/main_menu.toml"),
-                    include_str!("../strings/en/settings.toml"),
-                    include_str!("../strings/en/loading_screen.toml"),
-                    include_str!("../strings/en/endgame.toml"),
-                    include_str!("../strings/en/hud.toml"),
-                    include_str!("../strings/en/tutorial.toml"),
-                    include_str!("../strings/en/map_editor.toml"),
-                )
-            })
-        }
+        Language::Spanish => ES_STRINGS.get_or_init(|| {
+            load_language(
+                include_str!("../strings/es/main_menu.toml"),
+                include_str!("../strings/es/settings.toml"),
+                include_str!("../strings/es/loading_screen.toml"),
+                include_str!("../strings/es/endgame.toml"),
+                include_str!("../strings/es/hud.toml"),
+                include_str!("../strings/es/tutorial.toml"),
+                include_str!("../strings/es/map_editor.toml"),
+            )
+        }),
+        _ => EN_STRINGS.get_or_init(|| {
+            load_language(
+                include_str!("../strings/en/main_menu.toml"),
+                include_str!("../strings/en/settings.toml"),
+                include_str!("../strings/en/loading_screen.toml"),
+                include_str!("../strings/en/endgame.toml"),
+                include_str!("../strings/en/hud.toml"),
+                include_str!("../strings/en/tutorial.toml"),
+                include_str!("../strings/en/map_editor.toml"),
+            )
+        }),
     }
 }
 
@@ -234,7 +230,8 @@ fn load_language(
     LanguageStrings {
         main_menu: toml::from_str(main_menu_toml).expect("Failed to parse main_menu.toml"),
         settings: toml::from_str(settings_toml).expect("Failed to parse settings.toml"),
-        loading_screen: toml::from_str(loading_screen_toml).expect("Failed to parse loading_screen.toml"),
+        loading_screen: toml::from_str(loading_screen_toml)
+            .expect("Failed to parse loading_screen.toml"),
         endgame: toml::from_str(endgame_toml).expect("Failed to parse endgame.toml"),
         hud: toml::from_str(hud_toml).expect("Failed to parse hud.toml"),
         tutorial: toml::from_str(tutorial_toml).expect("Failed to parse tutorial.toml"),

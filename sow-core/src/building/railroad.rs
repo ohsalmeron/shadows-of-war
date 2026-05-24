@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
+use crate::engine::SowEngine;
 use crate::game::BuildingKind;
 use crate::map::GameMap;
-use crate::engine::SowEngine;
-use std::collections::{BinaryHeap, HashMap};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Railroad {
@@ -76,7 +76,10 @@ pub fn find_rail_path(map: &GameMap, start: u32, goal: u32) -> Option<Vec<u32>> 
     let mut heap = BinaryHeap::new();
 
     dist.insert(start, 0);
-    heap.push(State { cost: 0, position: start });
+    heap.push(State {
+        cost: 0,
+        position: start,
+    });
 
     let (gx, gy) = (goal % w, goal / w);
 
@@ -146,7 +149,12 @@ pub fn find_rail_path(map: &GameMap, start: u32, goal: u32) -> Option<Vec<u32>> 
     None
 }
 
-fn get_hop_distance(adj: &[Vec<usize>], start: usize, goal: usize, max_hops: usize) -> Option<usize> {
+fn get_hop_distance(
+    adj: &[Vec<usize>],
+    start: usize,
+    goal: usize,
+    max_hops: usize,
+) -> Option<usize> {
     if start == goal {
         return Some(0);
     }
@@ -190,7 +198,7 @@ pub fn update_railroads(engine: &mut SowEngine) {
         }
         // Sort by id to process deterministically in creation order
         stations.sort_by_key(|b| b.id);
-        
+
         engine.railroad_calc = Some((0, Vec::new(), stations));
         engine.railroads_dirty = false;
     }
@@ -229,7 +237,8 @@ pub fn update_railroads(engine: &mut SowEngine) {
                 let dy = (sy as i32 - ty as i32).abs();
 
                 let is_near = dx <= 3 && dy <= 3;
-                let is_endpoint = closest_tile_idx == 0 || closest_tile_idx == rails[i].path.len() - 1;
+                let is_endpoint =
+                    closest_tile_idx == 0 || closest_tile_idx == rails[i].path.len() - 1;
 
                 if is_near && !is_endpoint {
                     let original_rail = rails.remove(i);
@@ -238,7 +247,8 @@ pub fn update_railroads(engine: &mut SowEngine) {
                     let mut path2 = Vec::new();
                     let mut pathfound = false;
 
-                    if let Some(to_s_path) = find_rail_path(&engine.state.map, closest_tile, s_tile) {
+                    if let Some(to_s_path) = find_rail_path(&engine.state.map, closest_tile, s_tile)
+                    {
                         if to_s_path.len() <= 480 {
                             path1 = original_rail.path[0..closest_tile_idx].to_vec();
                             path1.extend(to_s_path.clone());

@@ -1,56 +1,158 @@
 use egui::{
+    style::{Selection, WidgetVisuals, Widgets},
     Color32, Context, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals,
-    style::{WidgetVisuals, Widgets, Selection},
 };
 
 /// Cosmic Rush palette
 pub mod palette {
     use egui::Color32;
 
-    #[inline] pub fn backdrop() -> Color32 { Color32::from_black_alpha(120) } // Glassmorphism backdrop
-    #[inline] pub fn surface() -> Color32 { Color32::from_rgba_unmultiplied(12, 12, 14, 140) } // Translucent glass base
-    #[inline] pub fn surface_transparent() -> Color32 { Color32::from_rgba_unmultiplied(12, 12, 14, 100) }
-    
-    #[inline] pub fn neon_cyan() -> Color32 { Color32::from_rgb(6, 182, 212) } // var(--cosmic-cyan)
-    #[inline] pub fn neon_cyan_hover() -> Color32 { Color32::from_rgb(34, 211, 238) } // Brighter cyan
-    #[inline] pub fn neon_cyan_glow() -> Color32 { Color32::from_rgba_unmultiplied(6, 182, 212, 80) } // Electric blue glow
-    
-    #[inline] pub fn neon_gold() -> Color32 { Color32::from_rgb(234, 179, 8) } // var(--cosmic-yellow)
-    #[inline] pub fn neon_gold_hover() -> Color32 { Color32::from_rgb(250, 204, 21) } // Brighter yellow
+    #[inline]
+    pub fn backdrop() -> Color32 {
+        Color32::from_black_alpha(120)
+    } // Glassmorphism backdrop
+    #[inline]
+    pub fn surface() -> Color32 {
+        Color32::from_rgba_unmultiplied(12, 12, 14, 140)
+    } // Translucent glass base
+    #[inline]
+    pub fn surface_transparent() -> Color32 {
+        Color32::from_rgba_unmultiplied(12, 12, 14, 100)
+    }
 
-    #[inline] pub fn button_inactive() -> Color32 { Color32::from_rgba_unmultiplied(22, 22, 24, 120) }
-    #[inline] pub fn button_hovered() -> Color32 { Color32::from_rgba_unmultiplied(40, 40, 44, 170) }
-    
-    #[inline] pub fn field_bg() -> Color32 { Color32::from_rgba_unmultiplied(8, 8, 10, 150) } // Deep inset glass
-    #[inline] pub fn field_border() -> Color32 { Color32::from_rgba_unmultiplied(75, 85, 99, 80) } // Subtle slate border
+    #[inline]
+    pub fn neon_cyan() -> Color32 {
+        Color32::from_rgb(6, 182, 212)
+    } // var(--cosmic-cyan)
+    #[inline]
+    pub fn neon_cyan_hover() -> Color32 {
+        Color32::from_rgb(34, 211, 238)
+    } // Brighter cyan
+    #[inline]
+    pub fn neon_cyan_glow() -> Color32 {
+        Color32::from_rgba_unmultiplied(6, 182, 212, 80)
+    } // Electric blue glow
 
-    #[inline] pub fn danger() -> Color32 { Color32::from_rgb(239, 68, 68) } // var(--cosmic-red)
-    #[inline] pub fn danger_border() -> Color32 { Color32::from_rgb(220, 38, 38) }
+    #[inline]
+    pub fn neon_gold() -> Color32 {
+        Color32::from_rgb(234, 179, 8)
+    } // var(--cosmic-yellow)
+    #[inline]
+    pub fn neon_gold_hover() -> Color32 {
+        Color32::from_rgb(250, 204, 21)
+    } // Brighter yellow
 
-    #[inline] pub fn pink() -> Color32 { Color32::from_rgb(236, 72, 153) } // var(--cosmic-pink)
-    
-    #[inline] pub fn text_normal() -> Color32 { Color32::from_rgb(243, 244, 246) }
-    #[inline] pub fn text_muted() -> Color32 { Color32::from_rgb(156, 163, 175) } // var(--cosmic-gray)
+    #[inline]
+    pub fn button_inactive() -> Color32 {
+        Color32::from_rgba_unmultiplied(22, 22, 24, 120)
+    }
+    #[inline]
+    pub fn button_hovered() -> Color32 {
+        Color32::from_rgba_unmultiplied(40, 40, 44, 170)
+    }
+
+    #[inline]
+    pub fn field_bg() -> Color32 {
+        Color32::from_rgba_unmultiplied(8, 8, 10, 150)
+    } // Deep inset glass
+    #[inline]
+    pub fn field_border() -> Color32 {
+        Color32::from_rgba_unmultiplied(75, 85, 99, 80)
+    } // Subtle slate border
+
+    #[inline]
+    pub fn danger() -> Color32 {
+        Color32::from_rgb(239, 68, 68)
+    } // var(--cosmic-red)
+    #[inline]
+    pub fn danger_border() -> Color32 {
+        Color32::from_rgb(220, 38, 38)
+    }
+
+    #[inline]
+    pub fn pink() -> Color32 {
+        Color32::from_rgb(236, 72, 153)
+    } // var(--cosmic-pink)
+
+    #[inline]
+    pub fn text_normal() -> Color32 {
+        Color32::from_rgb(243, 244, 246)
+    }
+    #[inline]
+    pub fn text_muted() -> Color32 {
+        Color32::from_rgb(156, 163, 175)
+    } // var(--cosmic-gray)
 }
 
 // Backward-compatible inline functions
-#[inline] pub fn menu_backdrop() -> Color32 { palette::backdrop() }
-#[inline] pub fn panel_bg() -> Color32 { palette::surface() }
-#[inline] pub fn panel_bg_transparent() -> Color32 { palette::surface_transparent() }
-#[inline] pub fn menu_panel_border_glow() -> Color32 { palette::neon_cyan_glow() }
-#[inline] pub fn accent_solo_cyan() -> Color32 { palette::neon_cyan() }
-#[inline] pub fn accent_solo_cyan_hover() -> Color32 { palette::neon_cyan_hover() }
-#[inline] pub fn accent_ranked_gold() -> Color32 { palette::neon_gold() }
-#[inline] pub fn accent_ranked_gold_hover() -> Color32 { palette::neon_gold_hover() }
-#[inline] pub fn menu_secondary_button() -> Color32 { palette::button_inactive() }
-#[inline] pub fn menu_secondary_button_hover() -> Color32 { palette::button_hovered() }
-#[inline] pub fn nickname_field_bg() -> Color32 { palette::field_bg() }
-#[inline] pub fn nickname_field_border() -> Color32 { palette::field_border() }
-#[inline] pub fn accent_danger() -> Color32 { palette::danger() }
-#[inline] pub fn accent_danger_border() -> Color32 { palette::danger_border() }
-#[inline] pub fn avatar_pink() -> Color32 { palette::pink() }
-#[inline] pub fn avatar_cyan() -> Color32 { palette::neon_cyan_hover() }
-#[inline] pub fn text_secondary() -> Color32 { palette::text_muted() }
+#[inline]
+pub fn menu_backdrop() -> Color32 {
+    palette::backdrop()
+}
+#[inline]
+pub fn panel_bg() -> Color32 {
+    palette::surface()
+}
+#[inline]
+pub fn panel_bg_transparent() -> Color32 {
+    palette::surface_transparent()
+}
+#[inline]
+pub fn menu_panel_border_glow() -> Color32 {
+    palette::neon_cyan_glow()
+}
+#[inline]
+pub fn accent_solo_cyan() -> Color32 {
+    palette::neon_cyan()
+}
+#[inline]
+pub fn accent_solo_cyan_hover() -> Color32 {
+    palette::neon_cyan_hover()
+}
+#[inline]
+pub fn accent_ranked_gold() -> Color32 {
+    palette::neon_gold()
+}
+#[inline]
+pub fn accent_ranked_gold_hover() -> Color32 {
+    palette::neon_gold_hover()
+}
+#[inline]
+pub fn menu_secondary_button() -> Color32 {
+    palette::button_inactive()
+}
+#[inline]
+pub fn menu_secondary_button_hover() -> Color32 {
+    palette::button_hovered()
+}
+#[inline]
+pub fn nickname_field_bg() -> Color32 {
+    palette::field_bg()
+}
+#[inline]
+pub fn nickname_field_border() -> Color32 {
+    palette::field_border()
+}
+#[inline]
+pub fn accent_danger() -> Color32 {
+    palette::danger()
+}
+#[inline]
+pub fn accent_danger_border() -> Color32 {
+    palette::danger_border()
+}
+#[inline]
+pub fn avatar_pink() -> Color32 {
+    palette::pink()
+}
+#[inline]
+pub fn avatar_cyan() -> Color32 {
+    palette::neon_cyan_hover()
+}
+#[inline]
+pub fn text_secondary() -> Color32 {
+    palette::text_muted()
+}
 
 pub fn apply_theme(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -88,7 +190,7 @@ pub fn apply_theme(ctx: &Context) {
     visuals.window_fill = palette::backdrop();
     visuals.panel_fill = palette::surface();
     visuals.faint_bg_color = palette::button_inactive();
-    
+
     // Cosmic Drop Shadows
     visuals.window_shadow = egui::Shadow {
         blur: 32,
@@ -158,7 +260,6 @@ pub fn apply_theme(ctx: &Context) {
 
     style.visuals = visuals;
     ctx.set_global_style(style);
-
 }
 
 #[inline]
@@ -168,7 +269,7 @@ pub fn hud_panel_frame() -> egui::Frame {
     } else {
         (8, 4)
     };
-    
+
     egui::Frame::NONE
         .fill(Color32::from_black_alpha(150))
         .corner_radius(8.0)
@@ -199,7 +300,6 @@ pub fn standard_panel_frame(compact: bool) -> egui::Frame {
             })
     }
 }
-
 
 #[inline]
 pub fn hud_button_text_size() -> f32 {
@@ -250,7 +350,9 @@ pub fn outlined_label(
     font_id: egui::FontId,
     color: Color32,
 ) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(text.to_string(), font_id.clone(), color);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_string(), font_id.clone(), color);
     let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
         outlined_text(

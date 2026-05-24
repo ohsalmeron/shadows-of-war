@@ -94,7 +94,14 @@ impl Default for WaterAStar {
 }
 
 #[inline]
-fn chunk_contains_water(map: &GameMap, cx: u32, cy: u32, goal_cx: u32, goal_cy: u32, starts: &[u32]) -> bool {
+fn chunk_contains_water(
+    map: &GameMap,
+    cx: u32,
+    cy: u32,
+    goal_cx: u32,
+    goal_cy: u32,
+    starts: &[u32],
+) -> bool {
     if cx == goal_cx && cy == goal_cy {
         return true;
     }
@@ -240,9 +247,17 @@ impl WaterAStar {
 
             let neighbors = [
                 current_cy.checked_sub(1).map(|ny| (current_cx, ny)),
-                if current_cy + 1 < macro_rows { Some((current_cx, current_cy + 1)) } else { None },
+                if current_cy + 1 < macro_rows {
+                    Some((current_cx, current_cy + 1))
+                } else {
+                    None
+                },
                 current_cx.checked_sub(1).map(|nx| (nx, current_cy)),
-                if current_cx + 1 < macro_cols { Some((current_cx + 1, current_cy)) } else { None },
+                if current_cx + 1 < macro_cols {
+                    Some((current_cx + 1, current_cy))
+                } else {
+                    None
+                },
             ];
 
             for opt in neighbors.into_iter().flatten() {
@@ -260,7 +275,9 @@ impl WaterAStar {
                 let cost = 16 * COST_SCALE;
                 let tentative_g = current_g.saturating_add(cost);
 
-                if self.macro_gscore_stamp[neighbor] != stamp || tentative_g < self.macro_gscore[neighbor] {
+                if self.macro_gscore_stamp[neighbor] != stamp
+                    || tentative_g < self.macro_gscore[neighbor]
+                {
                     self.macro_came_from[neighbor] = current as i32;
                     self.macro_gscore[neighbor] = tentative_g;
                     self.macro_gscore_stamp[neighbor] = stamp;
@@ -384,12 +401,12 @@ impl WaterAStar {
             let is_odd = (current_y % 2) != 0;
             let deltas = if is_odd {
                 [
-                    (1, 0),   // East (0)
-                    (-1, 0),  // West (1)
-                    (0, -1),  // Northwest (2)
-                    (1, -1),  // Northeast (3)
-                    (0, 1),   // Southwest (4)
-                    (1, 1),   // Southeast (5)
+                    (1, 0),  // East (0)
+                    (-1, 0), // West (1)
+                    (0, -1), // Northwest (2)
+                    (1, -1), // Northeast (3)
+                    (0, 1),  // Southwest (4)
+                    (1, 1),  // Southeast (5)
                 ]
             } else {
                 [
@@ -479,7 +496,7 @@ fn manhattan(x1: u32, y1: u32, x2: u32, y2: u32) -> u32 {
     let q1 = x1 as i32 - (r1 - (r1 & 1)) / 2;
     let r2 = y2 as i32;
     let q2 = x2 as i32 - (r2 - (r2 & 1)) / 2;
-    
+
     let dq = q1 - q2;
     let dr = r1 - r2;
     ((dq.abs() + (dq + dr).abs() + dr.abs()) / 2) as u32
@@ -583,27 +600,27 @@ impl FlowField {
         let n = (self.width * self.height) as usize;
         let mut distances = vec![u32::MAX; n];
         let mut queue = std::collections::VecDeque::new();
-        
+
         let tx = self.target % self.width;
         let ty = self.target / self.width;
-        
+
         distances[self.target as usize] = 0;
         self.directions[self.target as usize] = 6; // Reached
         queue.push_back((tx, ty));
-        
+
         while let Some((cx, cy)) = queue.pop_front() {
             let curr_idx = (cy * self.width + cx) as usize;
             let current_dist = distances[curr_idx];
-            
+
             let is_odd = (cy % 2) != 0;
             let deltas = if is_odd {
                 [
-                    (1, 0),   // East (0)
-                    (-1, 0),  // West (1)
-                    (0, -1),  // Northwest (2)
-                    (1, -1),  // Northeast (3)
-                    (0, 1),   // Southwest (4)
-                    (1, 1),   // Southeast (5)
+                    (1, 0),  // East (0)
+                    (-1, 0), // West (1)
+                    (0, -1), // Northwest (2)
+                    (1, -1), // Northeast (3)
+                    (0, 1),  // Southwest (4)
+                    (1, 1),  // Southeast (5)
                 ]
             } else {
                 [
@@ -615,18 +632,20 @@ impl FlowField {
                     (0, 1),   // Southeast (5)
                 ]
             };
-            
+
             for i in 0..6 {
                 let nx = cx as i32 + deltas[i].0;
                 let ny = cy as i32 + deltas[i].1;
-                
+
                 if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
                     let n_idx = (ny as u32 * self.width + nx as u32) as usize;
-                    
+
                     let b = map.terrain[n_idx].as_byte();
                     let is_land = (b & (1 << 7)) != 0;
-                    if is_land { continue; }
-                    
+                    if is_land {
+                        continue;
+                    }
+
                     if distances[n_idx] > current_dist + 1 {
                         distances[n_idx] = current_dist + 1;
                         let opp = match i {

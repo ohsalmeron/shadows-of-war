@@ -217,8 +217,12 @@ impl SowApp {
                                     || 1.0f32,
                                 )
                             });
-                            ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
-                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
+                            ui.add(
+                                egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"),
+                            );
+                            ctx.data_mut(|d| {
+                                d.insert_temp(egui::Id::new("dev_building_scale"), bscale)
+                            });
 
                             ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
                             ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));

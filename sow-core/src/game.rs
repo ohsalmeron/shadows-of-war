@@ -19,10 +19,7 @@ pub enum BuildingKind {
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 2] = [
-        BuildingKind::City,
-        BuildingKind::Bunker,
-    ];
+    pub const ALL: [BuildingKind; 2] = [BuildingKind::City, BuildingKind::Bunker];
     #[inline]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -126,7 +123,7 @@ impl UnitType {
             UnitType::Warship => "Warship",
         }
     }
-    
+
     pub fn gold_cost(self) -> f64 {
         match self {
             UnitType::TransportShip => 0.0, // Free, converted from land troops
@@ -150,8 +147,6 @@ impl UnitType {
             UnitType::Warship => 1000.0,
         }
     }
-
-
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

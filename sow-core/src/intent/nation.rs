@@ -9,8 +9,6 @@ use crate::protocol::{AttackIntent, GameplayIntent, StampedIntent};
 use crate::rng::NextIntExt;
 use wyrand::WyRand;
 
-
-
 fn bot_structure_target_count(
     kind: BuildingKind,
     city_equivalent: u32,
@@ -169,15 +167,15 @@ impl SowEngine {
                 continue;
             }
             let bot_id = p.id;
-            
+
             let profile = get_bot_ai_profile(bot_id, is_nation);
             let interval_base = profile.interval_base;
 
             let mut sched_rng = WyRand::new(
                 self.state
-                     .seed
-                     .wrapping_add(bot_id as u64)
-                     .wrapping_add(interval_base),
+                    .seed
+                    .wrapping_add(bot_id as u64)
+                    .wrapping_add(interval_base),
             );
             let interval = sched_rng
                 .next_int(interval_base as i32, (interval_base as i32 * 2).max(1))
@@ -264,7 +262,11 @@ impl SowEngine {
             let mut proposals_to_accept = Vec::new();
             for &(proposer, target) in &self.alliances_proposed {
                 if target == bot_id {
-                    let proposer_ok = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
+                    let proposer_ok = self
+                        .state
+                        .player(proposer)
+                        .map(|p| p.alive)
+                        .unwrap_or(false);
                     if proposer_ok {
                         let is_teammate = {
                             let p_me = self.state.player(bot_id).unwrap();
@@ -278,18 +280,26 @@ impl SowEngine {
                         if current_points >= alliance_cost {
                             let mut accept = false;
                             if bot_iq >= 130 {
-                                if let (Some(p_me), Some(p_prop)) = (self.state.player(bot_id), self.state.player(proposer)) {
+                                if let (Some(p_me), Some(p_prop)) =
+                                    (self.state.player(bot_id), self.state.player(proposer))
+                                {
                                     let me_troops = p_me.troops.max(1.0);
                                     let me_tiles = p_me.tile_count.max(1);
-                                    if p_prop.troops >= me_troops * 0.8 && p_prop.tile_count >= (me_tiles as f64 * 0.8) as u32 {
+                                    if p_prop.troops >= me_troops * 0.8
+                                        && p_prop.tile_count >= (me_tiles as f64 * 0.8) as u32
+                                    {
                                         accept = true;
                                     }
                                 }
                             } else if bot_iq >= 100 {
-                                if let (Some(p_me), Some(p_prop)) = (self.state.player(bot_id), self.state.player(proposer)) {
+                                if let (Some(p_me), Some(p_prop)) =
+                                    (self.state.player(bot_id), self.state.player(proposer))
+                                {
                                     let me_troops = p_me.troops.max(1.0);
                                     let me_tiles = p_me.tile_count.max(1);
-                                    if p_prop.troops >= me_troops * 0.5 && p_prop.tile_count >= (me_tiles as f64 * 0.5) as u32 {
+                                    if p_prop.troops >= me_troops * 0.5
+                                        && p_prop.tile_count >= (me_tiles as f64 * 0.5) as u32
+                                    {
                                         accept = true;
                                     }
                                 }
@@ -311,7 +321,9 @@ impl SowEngine {
                 decisions.push(BotDecision {
                     bot_id,
                     kind: BotDecisionKind::Build,
-                    intent: GameplayIntent::AcceptAlliance { target_player: proposer },
+                    intent: GameplayIntent::AcceptAlliance {
+                        target_player: proposer,
+                    },
                 });
             }
 
@@ -324,7 +336,10 @@ impl SowEngine {
                         if p_me.gold > 200_000.0 && p_me.troops > p_me.max_troops * 0.5 {
                             for &ally_id in &p_me.alliances {
                                 if let Some(p_ally) = self.state.player(ally_id) {
-                                    if p_ally.alive && (p_ally.troops < p_ally.max_troops * 0.3 || p_ally.troops <= 500.0) {
+                                    if p_ally.alive
+                                        && (p_ally.troops < p_ally.max_troops * 0.3
+                                            || p_ally.troops <= 500.0)
+                                    {
                                         ally_to_help = Some(ally_id);
                                         break;
                                     }
@@ -360,11 +375,15 @@ impl SowEngine {
                                 let me_troops = p_me.troops.max(1.0);
                                 let me_tiles = p_me.tile_count.max(1);
                                 if bot_iq >= 130 {
-                                    if p_ally.troops < me_troops * 0.8 || p_ally.tile_count < (me_tiles as f64 * 0.8) as u32 {
+                                    if p_ally.troops < me_troops * 0.8
+                                        || p_ally.tile_count < (me_tiles as f64 * 0.8) as u32
+                                    {
                                         alliances_to_break.push(ally_id);
                                     }
                                 } else if bot_iq >= 100 {
-                                    if p_ally.troops < me_troops * 0.5 || p_ally.tile_count < (me_tiles as f64 * 0.5) as u32 {
+                                    if p_ally.troops < me_troops * 0.5
+                                        || p_ally.tile_count < (me_tiles as f64 * 0.5) as u32
+                                    {
                                         alliances_to_break.push(ally_id);
                                     }
                                 }
@@ -379,7 +398,9 @@ impl SowEngine {
                             decisions.push(BotDecision {
                                 bot_id,
                                 kind: BotDecisionKind::Build,
-                                intent: GameplayIntent::BreakAlliance { target_player: ally_id },
+                                intent: GameplayIntent::BreakAlliance {
+                                    target_player: ally_id,
+                                },
                             });
                         }
                     }
@@ -433,8 +454,14 @@ impl SowEngine {
                     (p_me.alliances.clone(), p_me.troops, p_me.tile_count)
                 };
 
-                let max_alliances = if bot_iq >= 130 { 1 } else if bot_iq >= 100 { 3 } else { 5 };
-                
+                let max_alliances = if bot_iq >= 130 {
+                    1
+                } else if bot_iq >= 100 {
+                    3
+                } else {
+                    5
+                };
+
                 // Betrayal logic
                 if bot_iq >= 130 && !me_alliances.is_empty() {
                     for &ally_id in &me_alliances {
@@ -449,7 +476,9 @@ impl SowEngine {
                                 decisions.push(BotDecision {
                                     bot_id,
                                     kind: BotDecisionKind::Build,
-                                    intent: GameplayIntent::BreakAlliance { target_player: ally_id },
+                                    intent: GameplayIntent::BreakAlliance {
+                                        target_player: ally_id,
+                                    },
                                 });
                                 break;
                             }
@@ -458,10 +487,11 @@ impl SowEngine {
                 }
 
                 for &neighbor in &neighbor_players {
-                    let (neigh_alive, neigh_troops, neigh_tile_count) = match self.state.player(neighbor) {
-                        Some(pn) => (pn.alive, pn.troops, pn.tile_count),
-                        None => continue,
-                    };
+                    let (neigh_alive, neigh_troops, neigh_tile_count) =
+                        match self.state.player(neighbor) {
+                            Some(pn) => (pn.alive, pn.troops, pn.tile_count),
+                            None => continue,
+                        };
                     if neigh_alive {
                         let is_teammate = {
                             let p_me = self.state.player(bot_id).unwrap();
@@ -475,7 +505,7 @@ impl SowEngine {
                             (allied, allied && timer <= 600)
                         };
                         let is_proposed = self.alliances_proposed.contains(&(bot_id, neighbor));
-                        
+
                         let has_room = me_alliances.len() < max_alliances;
                         let should_propose = (has_room && !is_allied && !is_teammate) || can_renew;
 
@@ -491,13 +521,17 @@ impl SowEngine {
                             } else if bot_iq >= 130 {
                                 let me_troops_val = me_troops.max(1.0);
                                 let me_tiles_val = me_tile_count.max(1);
-                                if neigh_troops >= me_troops_val * 0.8 && neigh_tile_count >= (me_tiles_val as f64 * 0.8) as u32 {
+                                if neigh_troops >= me_troops_val * 0.8
+                                    && neigh_tile_count >= (me_tiles_val as f64 * 0.8) as u32
+                                {
                                     meets_threshold = roll < 15;
                                 }
                             } else if bot_iq >= 100 {
                                 let me_troops_val = me_troops.max(1.0);
                                 let me_tiles_val = me_tile_count.max(1);
-                                if neigh_troops >= me_troops_val * 0.5 && neigh_tile_count >= (me_tiles_val as f64 * 0.5) as u32 {
+                                if neigh_troops >= me_troops_val * 0.5
+                                    && neigh_tile_count >= (me_tiles_val as f64 * 0.5) as u32
+                                {
                                     meets_threshold = roll < 10;
                                 }
                             } else {
@@ -519,7 +553,9 @@ impl SowEngine {
                     decisions.push(BotDecision {
                         bot_id,
                         kind: BotDecisionKind::Build,
-                        intent: GameplayIntent::ProposeAlliance { target_player: neighbor },
+                        intent: GameplayIntent::ProposeAlliance {
+                            target_player: neighbor,
+                        },
                     });
                 }
             }
@@ -543,10 +579,7 @@ impl SowEngine {
                             .unwrap_or_default();
                         let city_equivalent =
                             agg.ready_city_count.max((player_tile_count / 2000).max(1));
-                        let build_order = [
-                            BuildingKind::Bunker,
-                            BuildingKind::City,
-                        ];
+                        let build_order = [BuildingKind::Bunker, BuildingKind::City];
                         for kind in build_order {
                             if !structure_kind_enabled(kind) {
                                 continue;
@@ -565,9 +598,11 @@ impl SowEngine {
                                         break;
                                     }
                                 }
-                                if under_attack { target_count += 3; }
+                                if under_attack {
+                                    target_count += 3;
+                                }
                             }
-                             let total_owned = agg.count_city + agg.count_bunker;
+                            let total_owned = agg.count_city + agg.count_bunker;
                             let density = total_owned as f32 / player_tile_count.max(1) as f32;
                             let is_density_high = bot_iq >= 110 && density > 1.0 / 1500.0;
 
@@ -576,14 +611,30 @@ impl SowEngine {
                                 let mut upgrade_target = None;
                                 let mut best_score = -1.0;
                                 for b in &self.buildings {
-                                    if b.owner_id == bot_id && b.kind == kind && !b.under_construction && b.level < 5 {
+                                    if b.owner_id == bot_id
+                                        && b.kind == kind
+                                        && !b.under_construction
+                                        && b.level < 5
+                                    {
                                         let mut score = 1.0;
                                         let mut has_sam = false;
-                                        let (bx, by) = (b.tile_idx % self.state.map.width, b.tile_idx / self.state.map.width);
+                                        let (bx, by) = (
+                                            b.tile_idx % self.state.map.width,
+                                            b.tile_idx / self.state.map.width,
+                                        );
                                         for b2 in &self.buildings {
-                                            if b2.kind == crate::game::BuildingKind::City && b2.modules.shield > 0 && !b2.under_construction {
-                                                let (sx, sy) = (b2.tile_idx % self.state.map.width, b2.tile_idx / self.state.map.width);
-                                                if (bx as i32 - sx as i32).abs() + (by as i32 - sy as i32).abs() <= 48 {
+                                            if b2.kind == crate::game::BuildingKind::City
+                                                && b2.modules.shield > 0
+                                                && !b2.under_construction
+                                            {
+                                                let (sx, sy) = (
+                                                    b2.tile_idx % self.state.map.width,
+                                                    b2.tile_idx / self.state.map.width,
+                                                );
+                                                if (bx as i32 - sx as i32).abs()
+                                                    + (by as i32 - sy as i32).abs()
+                                                    <= 48
+                                                {
                                                     has_sam = true;
                                                     break;
                                                 }
@@ -599,7 +650,8 @@ impl SowEngine {
                                     }
                                 }
                                 if let Some(target_id) = upgrade_target {
-                                    let cost = structure_build_cost_gold(kind, bot_id, &self.buildings);
+                                    let cost =
+                                        structure_build_cost_gold(kind, bot_id, &self.buildings);
                                     if player_gold >= cost {
                                         if let Some(p_me) = self.state.player_mut(bot_id) {
                                             p_me.iq_points -= build_cost;
@@ -607,7 +659,9 @@ impl SowEngine {
                                         decisions.push(BotDecision {
                                             bot_id,
                                             kind: BotDecisionKind::Build,
-                                            intent: GameplayIntent::UpgradeStructure { building_id: target_id },
+                                            intent: GameplayIntent::UpgradeStructure {
+                                                building_id: target_id,
+                                            },
                                         });
                                         upgraded = true;
                                     }
@@ -688,7 +742,9 @@ impl SowEngine {
                         (player.troops, player.max_troops)
                     };
 
-                    let targets: Vec<u16> = neighbor_players.iter().copied()
+                    let targets: Vec<u16> = neighbor_players
+                        .iter()
+                        .copied()
                         .filter(|&id| {
                             if let Some(p_me) = self.state.player(bot_id) {
                                 !p_me.alliances.contains(&id)
@@ -699,7 +755,8 @@ impl SowEngine {
                         .collect();
 
                     let is_mfo = slot.is_nation && (bot_id % 8 == 0);
-                    let has_port = crate::building::cost::player_has_completed_port(&self.buildings, bot_id);
+                    let has_port =
+                        crate::building::cost::player_has_completed_port(&self.buildings, bot_id);
                     let mut revenge_choice = None;
                     if is_mfo {
                         let mut max_attacker_troops = -1.0;
@@ -707,7 +764,9 @@ impl SowEngine {
                             if att.target_owner == bot_id && targets.contains(&att.owner_id) {
                                 if let Some(p_att) = self.state.player(att.owner_id) {
                                     if let Some(p_me) = self.state.player(bot_id) {
-                                        if p_me.troops > p_att.troops && p_att.troops > max_attacker_troops {
+                                        if p_me.troops > p_att.troops
+                                            && p_att.troops > max_attacker_troops
+                                        {
                                             max_attacker_troops = p_att.troops;
                                             revenge_choice = Some(att.owner_id);
                                         }
@@ -718,16 +777,24 @@ impl SowEngine {
                     }
 
                     let mut launched_fleet = false;
-                    if is_mfo && has_port && troops >= max_troops * 0.20 && (targets.is_empty() || self.state.tick % 12 == 0) {
+                    if is_mfo
+                        && has_port
+                        && troops >= max_troops * 0.20
+                        && (targets.is_empty() || self.state.tick % 12 == 0)
+                    {
                         let mut best_target_p_id = None;
                         let mut min_troops = f64::MAX;
                         for p in &self.state.players {
                             if p.alive && p.id != bot_id {
                                 let is_friendly = {
                                     let p_me = self.state.player(bot_id).unwrap();
-                                    p_me.alliances.contains(&p.id) || (p_me.team.is_some() && p_me.team == p.team)
+                                    p_me.alliances.contains(&p.id)
+                                        || (p_me.team.is_some() && p_me.team == p.team)
                                 };
-                                if !is_friendly && p.troops < min_troops && !p.border_tiles.is_empty() {
+                                if !is_friendly
+                                    && p.troops < min_troops
+                                    && !p.border_tiles.is_empty()
+                                {
                                     min_troops = p.troops;
                                     best_target_p_id = Some(p.id);
                                 }
@@ -741,8 +808,11 @@ impl SowEngine {
                                 let border_len = target_p.border_tiles.count_ones();
                                 if border_len > 0 {
                                     let pick_idx = (self.state.tick as usize) % border_len;
-                                    if let Some(t_tile) = target_p.border_tiles.ones().nth(pick_idx).map(|t| t as u32) {
-                                        let border_tiles = &self.state.player(bot_id).unwrap().border_tiles;
+                                    if let Some(t_tile) =
+                                        target_p.border_tiles.ones().nth(pick_idx).map(|t| t as u32)
+                                    {
+                                        let border_tiles =
+                                            &self.state.player(bot_id).unwrap().border_tiles;
                                         if let Ok(_route) = crate::warp_fleet::resolve_fleet_route(
                                             &self.state.map,
                                             &self.water,
@@ -793,7 +863,8 @@ impl SowEngine {
                                 let is_friendly = {
                                     let p_me = self.state.player(bot_id).unwrap();
                                     let p_att = self.state.player(attacker_id).unwrap();
-                                    p_me.alliances.contains(&attacker_id) || (p_me.team.is_some() && p_me.team == p_att.team)
+                                    p_me.alliances.contains(&attacker_id)
+                                        || (p_me.team.is_some() && p_me.team == p_att.team)
                                 };
                                 if !is_friendly && att.troops > largest_attack {
                                     largest_attack = att.troops;
@@ -834,12 +905,15 @@ impl SowEngine {
                         if bot_iq >= 130 {
                             let mut best_target = targets[0];
                             for &t_id in &targets {
-                                if let (Some(p_t), Some(p_b)) = (
-                                    self.state.player(t_id),
-                                    self.state.player(best_target),
-                                ) {
-                                    let t_is_tribe = p_t.player_type == crate::player::PlayerType::Bot && t_id % 100 != 0;
-                                    let b_is_tribe = p_b.player_type == crate::player::PlayerType::Bot && best_target % 100 != 0;
+                                if let (Some(p_t), Some(p_b)) =
+                                    (self.state.player(t_id), self.state.player(best_target))
+                                {
+                                    let t_is_tribe = p_t.player_type
+                                        == crate::player::PlayerType::Bot
+                                        && t_id % 100 != 0;
+                                    let b_is_tribe = p_b.player_type
+                                        == crate::player::PlayerType::Bot
+                                        && best_target % 100 != 0;
 
                                     if t_is_tribe && !b_is_tribe {
                                         best_target = t_id;
@@ -854,11 +928,12 @@ impl SowEngine {
                         } else if bot_iq >= 100 {
                             let mut weakest = targets[0];
                             for &t_id in &targets {
-                                if let (Some(p_t), Some(p_w)) = (
-                                    self.state.player(t_id),
-                                    self.state.player(weakest),
-                                ) {
-                                    if p_t.troops < p_w.troops { weakest = t_id; }
+                                if let (Some(p_t), Some(p_w)) =
+                                    (self.state.player(t_id), self.state.player(weakest))
+                                {
+                                    if p_t.troops < p_w.troops {
+                                        weakest = t_id;
+                                    }
                                 }
                             }
                             target_owner = weakest;
@@ -868,8 +943,17 @@ impl SowEngine {
                             target_owner = targets[roll];
                         }
 
-                        let is_target_human = self.state.player(target_owner).map(|pl| pl.is_human()).unwrap_or(false);
-                        let refuse_roll = self.state.player_mut(bot_id).unwrap().bot_rng.next_int(0, 100);
+                        let is_target_human = self
+                            .state
+                            .player(target_owner)
+                            .map(|pl| pl.is_human())
+                            .unwrap_or(false);
+                        let refuse_roll = self
+                            .state
+                            .player_mut(bot_id)
+                            .unwrap()
+                            .bot_rng
+                            .next_int(0, 100);
                         if is_target_human && refuse_roll < refuse_human_chance {
                             continue;
                         }
@@ -909,7 +993,6 @@ impl SowEngine {
                     }
                 }
             }
-
         }
 
         // ── Apply decisions deterministically ───────────────────────────────
@@ -923,9 +1006,17 @@ impl SowEngine {
         }
     }
 
-    fn maybe_launch_nuke(&mut self, bot_id: u16, decisions: &mut Vec<BotDecision>, bot_iq: u32, targets: &[u16]) {
-        if bot_iq < 100 { return; }
-        
+    fn maybe_launch_nuke(
+        &mut self,
+        bot_id: u16,
+        decisions: &mut Vec<BotDecision>,
+        bot_iq: u32,
+        targets: &[u16],
+    ) {
+        if bot_iq < 100 {
+            return;
+        }
+
         if self.building_aggregates_dirty {
             self.building_aggregates = crate::building::core::aggregate_buildings_per_player(
                 self.buildings.iter().copied(),
@@ -933,23 +1024,37 @@ impl SowEngine {
             );
             self.building_aggregates_dirty = false;
         }
-        
-        let agg = self.building_aggregates.get(bot_id as usize).copied().unwrap_or_default();
-        if agg.arsenal_levels == 0 { return; }
-        
+
+        let agg = self
+            .building_aggregates
+            .get(bot_id as usize)
+            .copied()
+            .unwrap_or_default();
+        if agg.arsenal_levels == 0 {
+            return;
+        }
+
         let mut has_silo = false;
         let mut total_silos = 0;
         for b in &self.buildings {
-            if b.owner_id == bot_id && b.kind == BuildingKind::City && b.modules.arsenal > 0 && !b.under_construction {
+            if b.owner_id == bot_id
+                && b.kind == BuildingKind::City
+                && b.modules.arsenal > 0
+                && !b.under_construction
+            {
                 if self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0 {
                     has_silo = true;
                 }
                 total_silos += 1;
             }
         }
-        if !has_silo { return; }
+        if !has_silo {
+            return;
+        }
 
-        let Some(player) = self.state.player(bot_id) else { return; };
+        let Some(player) = self.state.player(bot_id) else {
+            return;
+        };
         let cost = NukeKind::AtomBomb.gold_cost(0);
         let perceived_cost = cost * (1.0 + 0.5 * total_silos as f64);
 
@@ -973,19 +1078,27 @@ impl SowEngine {
             primary_target = leader;
         }
 
-        if primary_target == 0 || primary_target == bot_id { return; }
+        if primary_target == 0 || primary_target == bot_id {
+            return;
+        }
 
         // Find best structure to nuke
         let mut best_score = -1.0;
         let mut best_tile = 0;
-        
+
         for b in &self.buildings {
-            if b.owner_id != primary_target || b.under_construction { continue; }
+            if b.owner_id != primary_target || b.under_construction {
+                continue;
+            }
             let mut score = match b.kind {
                 BuildingKind::City => {
                     let mut val = 25000.0;
-                    if b.modules.arsenal > 0 { val += 25000.0; }
-                    if b.modules.shield > 0 { val += 15000.0; }
+                    if b.modules.arsenal > 0 {
+                        val += 25000.0;
+                    }
+                    if b.modules.shield > 0 {
+                        val += 15000.0;
+                    }
                     val
                 }
                 BuildingKind::Bunker => 5000.0 * (b.level as f64),
@@ -997,7 +1110,11 @@ impl SowEngine {
             // SAM avoidance
             let mut sam_covered = false;
             for b2 in &self.buildings {
-                if b2.kind == crate::game::BuildingKind::City && b2.modules.shield > 0 && !b2.under_construction && b2.owner_id != bot_id {
+                if b2.kind == crate::game::BuildingKind::City
+                    && b2.modules.shield > 0
+                    && !b2.under_construction
+                    && b2.owner_id != bot_id
+                {
                     let mut is_ally = false;
                     if let Some(p1) = self.state.player(bot_id) {
                         if p1.alliances.contains(&b2.owner_id) {
@@ -1005,7 +1122,10 @@ impl SowEngine {
                         }
                     }
                     if !is_ally {
-                        let (sx, sy) = (b2.tile_idx % self.state.map.width, b2.tile_idx / self.state.map.width);
+                        let (sx, sy) = (
+                            b2.tile_idx % self.state.map.width,
+                            b2.tile_idx / self.state.map.width,
+                        );
                         if (bx as i32 - sx as i32).abs() + (by as i32 - sy as i32).abs() <= 48 {
                             sam_covered = true;
                             break;
@@ -1031,20 +1151,21 @@ impl SowEngine {
         }
 
         if best_score > 0.0 {
-            self.recent_nuke_targets.push((primary_target, best_tile, self.state.tick));
+            self.recent_nuke_targets
+                .push((primary_target, best_tile, self.state.tick));
             decisions.push(BotDecision {
                 bot_id,
                 kind: BotDecisionKind::Attack,
-                intent: GameplayIntent::LaunchNuke { kind, target_tile: best_tile },
+                intent: GameplayIntent::LaunchNuke {
+                    kind,
+                    target_tile: best_tile,
+                },
             });
             let p_me = self.state.player_mut(bot_id).unwrap();
             p_me.iq_points -= 15.0; // Assume 15 points
         }
     }
-
-
 }
-
 
 #[cfg(test)]
 mod bot_iq_alliance_tests {
@@ -1056,7 +1177,7 @@ mod bot_iq_alliance_tests {
     fn test_engine_two_players(seed: u64) -> SowEngine {
         let mut game = GameState::new(seed, 8, 8, crate::game_config::GameConfig::default());
         game.phase = GamePhase::Playing;
-        
+
         // Player 1 (Bot, IQ 135 - High IQ)
         let mut p1 = Player::new_bot(
             1,
@@ -1109,7 +1230,7 @@ mod bot_iq_alliance_tests {
         let mut engine = test_engine_two_players(42);
         engine.state.config.global_speed_multiplier = 1.0;
         engine.state.config.tick_rate_ms = 100.0;
-        
+
         // Prior to income
         assert_eq!(engine.state.player(1).unwrap().iq_points, 50.0);
         assert_eq!(engine.state.player(2).unwrap().iq_points, 50.0);
@@ -1128,10 +1249,16 @@ mod bot_iq_alliance_tests {
         let mut engine = test_engine_two_players(42);
         // Ensure bot 1 can afford alliance
         engine.state.player_mut(1).unwrap().iq_points = 100.0;
-        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
-        // Since bot 1 has IQ 135, it only proposes if target troops > 0.8 * me_troops. 
+        for _ in 0..30 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+        }
+        // Since bot 1 has IQ 135, it only proposes if target troops > 0.8 * me_troops.
         // Bot 2 has 100 troops, Bot 1 has 1000. It should NOT propose an alliance.
-        assert!(engine.alliances_proposed.is_empty(), "High IQ bot should not propose to weak neighbor");
+        assert!(
+            engine.alliances_proposed.is_empty(),
+            "High IQ bot should not propose to weak neighbor"
+        );
     }
 
     #[test]
@@ -1142,11 +1269,14 @@ mod bot_iq_alliance_tests {
         // Force alliance
         engine.state.player_mut(1).unwrap().alliances.push(2);
         engine.state.player_mut(2).unwrap().alliances.push(1);
-        
+
         engine.refresh_building_grid();
         engine.state.player_mut(1).unwrap().troops = 5000.0;
         engine.state.map.set_owner_id(1, 0, 2);
-        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        for _ in 0..30 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+        }
         // Bot 1 (1000 troops) should betray Bot 2 (100 troops)
         let p1 = engine.state.player(1).unwrap();
         assert!(p1.traitor);
@@ -1160,7 +1290,7 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().gold = 10_000_000.0;
         engine.state.player_mut(1).unwrap().tile_count = 100; // Small area
         engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
-        
+
         // Add max structures to force upgrade
         for i in 0..15 {
             engine.buildings.push(crate::building::Building {
@@ -1175,7 +1305,10 @@ mod bot_iq_alliance_tests {
             });
         }
         engine.refresh_building_grid();
-        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+        for _ in 0..30 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+        }
         // As long as this executes without panic we're good
     }
 
@@ -1184,7 +1317,7 @@ mod bot_iq_alliance_tests {
         let mut engine = test_engine_two_players(42);
         engine.state.player_mut(1).unwrap().iq_points = 500.0;
         engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
-        
+
         // Simulate under attack
         engine.attacks.push(crate::execution::AttackExecution {
             id: 1,
@@ -1197,8 +1330,11 @@ mod bot_iq_alliance_tests {
             rng: wyrand::WyRand::new(42),
             retreating: false,
         });
-        
-        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+
+        for _ in 0..30 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+        }
     }
 
     #[test]
@@ -1207,20 +1343,30 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().iq_points = 500.0;
         engine.state.player_mut(1).unwrap().gold = 100_000_000.0;
         engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
-        
+
         // Give bot 1 a silo
         let mut m1 = crate::building::CityModules::default();
         m1.arsenal = 1;
         engine.buildings.push(crate::building::Building {
-            id: 100, owner_id: 1, tile_idx: 0, kind: crate::game::BuildingKind::City,
-            level: 1, under_construction: false, ticks_until_complete: 0,
+            id: 100,
+            owner_id: 1,
+            tile_idx: 0,
+            kind: crate::game::BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
             modules: m1,
         });
 
         // Give bot 2 a city
         engine.buildings.push(crate::building::Building {
-            id: 101, owner_id: 2, tile_idx: 10, kind: crate::game::BuildingKind::City,
-            level: 1, under_construction: false, ticks_until_complete: 0,
+            id: 101,
+            owner_id: 2,
+            tile_idx: 10,
+            kind: crate::game::BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
             modules: crate::building::CityModules::default(),
         });
 
@@ -1228,17 +1374,23 @@ mod bot_iq_alliance_tests {
         let mut m2 = crate::building::CityModules::default();
         m2.shield = 1;
         engine.buildings.push(crate::building::Building {
-            id: 102, owner_id: 2, tile_idx: 10, kind: crate::game::BuildingKind::City,
-            level: 1, under_construction: false, ticks_until_complete: 0,
+            id: 102,
+            owner_id: 2,
+            tile_idx: 10,
+            kind: crate::game::BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
             modules: m2,
         });
-        
-        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
+
+        for _ in 0..30 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+        }
         // Since the only target is covered by SAM, it shouldn't launch.
         assert!(engine.recent_nuke_targets.is_empty());
     }
-
-
 
     #[test]
     fn test_alliance_cap_enforced() {
@@ -1246,9 +1398,15 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().iq_points = 500.0;
         // Bot 1 (IQ 135) allows max 1 alliance. Give it 1 alliance already.
         engine.state.player_mut(1).unwrap().alliances.push(3);
-        
-        for _ in 0..30 { engine.state.tick += 1; engine.execute_ai_think(); }
-        assert!(engine.alliances_proposed.is_empty(), "High IQ bot should respect alliance cap of 1");
+
+        for _ in 0..30 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+        }
+        assert!(
+            engine.alliances_proposed.is_empty(),
+            "High IQ bot should respect alliance cap of 1"
+        );
     }
 
     #[test]
@@ -1257,26 +1415,36 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().iq_points = 500.0;
         engine.state.player_mut(1).unwrap().gold = 100_000_000.0;
         engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
-        
+
         // Give bot 1 a silo
         let mut m1 = crate::building::CityModules::default();
         m1.arsenal = 1;
         engine.buildings.push(crate::building::Building {
-            id: 100, owner_id: 1, tile_idx: 0, kind: crate::game::BuildingKind::City,
-            level: 1, under_construction: false, ticks_until_complete: 0,
+            id: 100,
+            owner_id: 1,
+            tile_idx: 0,
+            kind: crate::game::BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
             modules: m1,
         });
 
         // Give bot 2 a city
         engine.buildings.push(crate::building::Building {
-            id: 101, owner_id: 2, tile_idx: 1, kind: crate::game::BuildingKind::City,
-            level: 1, under_construction: false, ticks_until_complete: 0,
+            id: 101,
+            owner_id: 2,
+            tile_idx: 1,
+            kind: crate::game::BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
             modules: crate::building::CityModules::default(),
         });
-        
+
         // Make sure bot 2 actually owns tile 1 so they are neighbors!
         engine.state.map.set_owner_id(1, 0, 2);
-        
+
         engine.refresh_building_grid();
         let mut decisions = Vec::new();
         engine.maybe_launch_nuke(1, &mut decisions, 135, &vec![2]);
@@ -1296,6 +1464,9 @@ mod bot_iq_alliance_tests {
             intent: crate::protocol::GameplayIntent::ProposeAlliance { target_player: 2 },
         };
         engine.apply_stamped_intent(&stamped, 0);
-        assert!(engine.alliances_proposed.is_empty(), "Teammates should not be allowed to propose alliance");
+        assert!(
+            engine.alliances_proposed.is_empty(),
+            "Teammates should not be allowed to propose alliance"
+        );
     }
 }

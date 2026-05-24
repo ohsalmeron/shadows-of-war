@@ -16,7 +16,7 @@ impl SowEngine {
                 *cd -= 1;
             }
         });
-        self.silo_cooldowns.retain(|_, cd| *cd > 0);        // Advance all active projectiles
+        self.silo_cooldowns.retain(|_, cd| *cd > 0); // Advance all active projectiles
         let mut detonations = Vec::new();
 
         for proj in &mut self.projectiles {
@@ -35,13 +35,7 @@ impl SowEngine {
                     ProjectileKind::Nuke { level } => {
                         let inner = 12 + (level.saturating_sub(1) as u32) * 10;
                         let outer = 30 + (level.saturating_sub(1) as u32) * 25;
-                        detonations.push((
-                            dst_x,
-                            dst_y,
-                            inner,
-                            outer,
-                            proj.owner_id,
-                        ));
+                        detonations.push((dst_x, dst_y, inner, outer, proj.owner_id));
                     }
                     ProjectileKind::SAMMissile => {
                         // SAM missiles delete their target on contact — handled in execute_sam
@@ -131,12 +125,14 @@ impl SowEngine {
         self.railroads_dirty = true;
         self.sea_lanes_dirty = true;
 
-        self.state.events.push(crate::game::GameEvent::NukeDetonated {
-            tile_x: cx,
-            tile_y: cy,
-            inner_radius: inner,
-            outer_radius: outer,
-            owner_id,
-        });
+        self.state
+            .events
+            .push(crate::game::GameEvent::NukeDetonated {
+                tile_x: cx,
+                tile_y: cy,
+                inner_radius: inner,
+                outer_radius: outer,
+                owner_id,
+            });
     }
 }

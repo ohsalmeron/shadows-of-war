@@ -23,8 +23,8 @@ pub mod rng;
 pub mod sea_lane;
 pub mod warp_fleet;
 
+pub mod assets;
 pub mod map_legacy;
 pub mod protocol;
-pub mod water_components;
 pub mod tribes;
-pub mod assets;
+pub mod water_components;

@@ -20,7 +20,8 @@ impl SowEngine {
         if map_area == 0 || target_tile >= map_area {
             log::debug!(
                 "apply_launch_fleet_intent: out-of-range target_tile={} (player {})",
-                target_tile, player_id
+                target_tile,
+                player_id
             );
             return;
         }
@@ -53,7 +54,8 @@ impl SowEngine {
                 None => {
                     log::debug!(
                         "apply_launch_fleet_intent: target_owner={} not found (player {})",
-                        target_owner, player_id
+                        target_owner,
+                        player_id
                     );
                     return;
                 }
@@ -79,7 +81,10 @@ impl SowEngine {
             Err(e) => {
                 log::debug!(
                     "apply_launch_fleet_intent: {} (player {}, target_owner={}, tile={})",
-                    e, player_id, target_owner, target_tile
+                    e,
+                    player_id,
+                    target_owner,
+                    target_tile
                 );
                 return;
             }

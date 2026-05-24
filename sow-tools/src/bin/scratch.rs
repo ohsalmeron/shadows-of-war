@@ -1,9 +1,9 @@
 fn main() {
     // Let's test varying tile counts to see what produces 1.4K with scale 1.0
     // and what produced 47K with scale 12.0.
-    
+
     let target1 = 1400.0;
-    
+
     for t in 0..2000000 {
         let t_f64 = t as f64;
         let bonus = t_f64.powf(0.625);
@@ -13,7 +13,7 @@ fn main() {
             break;
         }
     }
-    
+
     let target2 = 47000.0;
     for t in 0..2000000 {
         let t_f64 = t as f64;

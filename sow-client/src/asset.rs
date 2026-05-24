@@ -43,11 +43,7 @@ impl SowApp {
                             egui::TextureOptions::LINEAR,
                         );
                         let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
-                        self.ui
-                            .app
-                            .asset_loader
-                            .thumbnails
-                            .insert(key, texture);
+                        self.ui.app.asset_loader.thumbnails.insert(key, texture);
                     } else {
                         log::warn!("Failed to decode thumbnail for {}", map_name);
                     }
@@ -114,7 +110,7 @@ impl SowApp {
                                     bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
                                         lobby_id: lid,
                                         player_id: pid,
-                                     })
+                                    })
                                     .unwrap(),
                                 );
                             }
@@ -122,8 +118,16 @@ impl SowApp {
                     }
                 }
                 MapDownloadEvent::ManifestReady(map_name, manifest) => {
-                    self.ui.app.asset_loader.manifests_in_flight.remove(&map_name);
-                    self.ui.app.asset_loader.manifests.insert(map_name.clone(), manifest.clone());
+                    self.ui
+                        .app
+                        .asset_loader
+                        .manifests_in_flight
+                        .remove(&map_name);
+                    self.ui
+                        .app
+                        .asset_loader
+                        .manifests
+                        .insert(map_name.clone(), manifest.clone());
                     if Some(map_name) == self.ui.app.main_menu_state.downloading_map_name {
                         self.ui.app.main_menu_state.cached_manifest = Some(manifest);
                     }

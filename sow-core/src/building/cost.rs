@@ -56,9 +56,12 @@ pub fn count_kind_levels(buildings: &[Building], owner_id: u16, kind: BuildingKi
 /// At least one **ready** Port owned by `player_id` (fleet launches require this).
 #[inline]
 pub fn player_has_completed_port(buildings: &[Building], player_id: u16) -> bool {
-    buildings
-        .iter()
-        .any(|b| b.owner_id == player_id && b.kind == BuildingKind::City && !b.under_construction && b.modules.port > 0)
+    buildings.iter().any(|b| {
+        b.owner_id == player_id
+            && b.kind == BuildingKind::City
+            && !b.under_construction
+            && b.modules.port > 0
+    })
 }
 
 pub fn module_upgrade_cost_gold(kind: crate::building::ModuleKind, level: u8) -> f64 {
