@@ -267,8 +267,8 @@ async fn run_bot(
                             p.color,
                             &start.config,
                         );
-                        new_player.player_type = p.player_type.clone();
-                        new_player.team = p.team.clone();
+                        new_player.player_type = p.player_type;
+                        new_player.team = p.team;
                         state.register_player(new_player);
                     }
 

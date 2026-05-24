@@ -86,7 +86,7 @@ impl SowEngine {
                 };
 
                 let score = priority * 10000.0 + dist as f32;
-                if best_target.map_or(true, |(_, s)| score < s) {
+                if best_target.is_none_or(|(_, s)| score < s) {
                     best_target = Some((proj.id, score));
                 }
             }

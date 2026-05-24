@@ -185,7 +185,7 @@ impl GameMap {
     }
     #[inline(always)]
     pub fn for_each_neighbor(&self, x: u32, y: u32, mut f: impl FnMut(u32, u32)) {
-        let is_odd = (y % 2) != 0;
+        let is_odd = !y.is_multiple_of(2);
         let neighbors = if is_odd {
             [
                 (1, 0),  // East
@@ -224,7 +224,7 @@ impl GameMap {
         if self.owner_id(x, y) != player_id {
             return false;
         }
-        let is_odd = (y % 2) != 0;
+        let is_odd = !y.is_multiple_of(2);
         let deltas = if is_odd {
             [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
         } else {
@@ -233,10 +233,13 @@ impl GameMap {
         for &(dx, dy) in &deltas {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
-            if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
-                if self.owner_id(nx as u32, ny as u32) != player_id {
-                    return true;
-                }
+            if nx >= 0
+                && nx < self.width as i32
+                && ny >= 0
+                && ny < self.height as i32
+                && self.owner_id(nx as u32, ny as u32) != player_id
+            {
+                return true;
             }
         }
         false
@@ -249,7 +252,7 @@ impl GameMap {
     }
     #[inline(always)]
     pub fn is_adjacent_to_player(&self, x: u32, y: u32, player_id: u16) -> bool {
-        let is_odd = (y % 2) != 0;
+        let is_odd = !y.is_multiple_of(2);
         let deltas = if is_odd {
             [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
         } else {
@@ -258,10 +261,13 @@ impl GameMap {
         for &(dx, dy) in &deltas {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
-            if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
-                if self.owner_id(nx as u32, ny as u32) == player_id {
-                    return true;
-                }
+            if nx >= 0
+                && nx < self.width as i32
+                && ny >= 0
+                && ny < self.height as i32
+                && self.owner_id(nx as u32, ny as u32) == player_id
+            {
+                return true;
             }
         }
         false

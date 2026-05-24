@@ -288,7 +288,7 @@ pub fn can_ground_attack_neutral(
             return true;
         }
 
-        let is_odd = (y % 2) != 0;
+        let is_odd = !y.is_multiple_of(2);
         let deltas: [(i32, i32); 6] = if is_odd {
             [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
         } else {
@@ -458,7 +458,7 @@ pub fn closest_neutral_shore_on_components(
             }
         }
 
-        let is_odd = (y % 2) != 0;
+        let is_odd = !y.is_multiple_of(2);
         let deltas: [(i32, i32); 6] = if is_odd {
             [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
         } else {
@@ -579,6 +579,7 @@ pub struct WarpFleet {
 }
 
 impl WarpFleet {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: u64,
         owner_id: u16,

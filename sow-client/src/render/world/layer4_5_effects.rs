@@ -32,8 +32,8 @@ pub(crate) fn render(
                 let at_end = prev_proj.path_cursor + (prev_proj.steps_per_tick as usize)
                     >= prev_proj.path.len();
                 if at_end {
-                    let dst_x = (prev_proj.dst_tile % sim.map_w as u32) as f32;
-                    let dst_y = (prev_proj.dst_tile / sim.map_w as u32) as f32;
+                    let dst_x = (prev_proj.dst_tile % sim.map_w) as f32;
+                    let dst_y = (prev_proj.dst_tile / sim.map_w) as f32;
                     new_detonations.push((dst_x, dst_y, prev_proj.kind));
                 }
             }
@@ -48,31 +48,28 @@ pub(crate) fn render(
         // Spawn active explosions and fallout zones for new detonations
         let current_time = web_time::Instant::now();
         for (dx, dy, kind) in new_detonations {
-            match kind {
-                sow_core::game::ProjectileKind::Nuke { level } => {
-                    let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
-                    let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
-                    let exp_kind = if level >= 2 {
-                        crate::app::ExplosionKind::Hydrogen
-                    } else {
-                        crate::app::ExplosionKind::Atom
-                    };
+            if let sow_core::game::ProjectileKind::Nuke { level } = kind {
+                let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
+                let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
+                let exp_kind = if level >= 2 {
+                    crate::app::ExplosionKind::Hydrogen
+                } else {
+                    crate::app::ExplosionKind::Atom
+                };
 
-                    ui.active_explosions.push(crate::app::ActiveExplosion {
-                        x: dx,
-                        y: dy,
-                        start_time: current_time,
-                        max_radius,
-                        kind: exp_kind,
-                    });
-                    ui.fallout_zones.push(crate::app::FalloutZone {
-                        x: dx,
-                        y: dy,
-                        radius: fallout_radius,
-                        start_time: current_time,
-                    });
-                }
-                _ => {}
+                ui.active_explosions.push(crate::app::ActiveExplosion {
+                    x: dx,
+                    y: dy,
+                    start_time: current_time,
+                    max_radius,
+                    kind: exp_kind,
+                });
+                ui.fallout_zones.push(crate::app::FalloutZone {
+                    x: dx,
+                    y: dy,
+                    radius: fallout_radius,
+                    start_time: current_time,
+                });
             }
         }
 

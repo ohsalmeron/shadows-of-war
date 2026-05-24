@@ -12,6 +12,11 @@ pub mod world;
 
 impl SowApp {
     pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
+        REGISTER_ONCE.call_once(|| {
+            sow_core::register_game_assets!(self.ui.egui_ctx, "../../../sow-client/assets/");
+        });
+
         if self.map_editor.is_some() {
             return;
         }
@@ -446,57 +451,60 @@ impl SowApp {
 
 impl SowApp {
     pub fn check_surface(&mut self) {
-        if self.gfx.surface.is_none() && self.gfx.window.is_some() {
-            let win = self.gfx.window.as_ref().unwrap();
-            let sz = win.surface_size();
-            match self
-                .gfx
-                .render_ctx
-                .create_surface(win, sz.width.max(1), sz.height.max(1))
-            {
-                Ok(s) => {
-                    self.input.screen_w = sz.width as f32;
-                    self.input.screen_h = sz.height as f32;
-                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                    self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                    self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        egui::Vec2::new(self.input.screen_w, self.input.screen_h),
-                    ));
-                    let format = s.info().format;
-
-                    if let Some(sp) = self.gfx.prev_sync_point.take() {
-                        let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
-                    }
-                    if let Some(mut old_mr) = self.gfx.map_renderer.take() {
-                        let old_terrain = old_mr.terrain.clone();
-                        old_mr.destroy(&self.gfx.render_ctx);
-                        self.gfx.map_renderer = Some(sow_render::MapRenderer::new(
-                            &self.gfx.render_ctx.context,
-                            self.sim.map_w,
-                            self.sim.map_h,
-                            format,
-                            &old_terrain,
+        if self.gfx.surface.is_none() {
+            if let Some(ref win) = self.gfx.window {
+                let sz = win.surface_size();
+                match self
+                    .gfx
+                    .render_ctx
+                    .create_surface(win, sz.width.max(1), sz.height.max(1))
+                {
+                    Ok(s) => {
+                        self.input.screen_w = sz.width as f32;
+                        self.input.screen_h = sz.height as f32;
+                        let zmax =
+                            camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+                        self.input.camera_zoom =
+                            self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                        self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::Vec2::new(self.input.screen_w, self.input.screen_h),
                         ));
-                        self.gfx.needs_first_upload = true;
-                    }
-                    if let Some(mut old_gp) = self.gfx.gui_painter.take() {
-                        old_gp.destroy(&self.gfx.render_ctx.context);
-                    }
+                        let format = s.info().format;
 
-                    self.gfx.gui_painter = Some(blade_egui::GuiPainter::new(
-                        s.info(),
-                        &self.gfx.render_ctx.context,
-                    ));
-                    self.gfx.surface = Some(s);
+                        if let Some(sp) = self.gfx.prev_sync_point.take() {
+                            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+                        }
+                        if let Some(mut old_mr) = self.gfx.map_renderer.take() {
+                            let old_terrain = old_mr.terrain.clone();
+                            old_mr.destroy(&self.gfx.render_ctx);
+                            self.gfx.map_renderer = Some(sow_render::MapRenderer::new(
+                                &self.gfx.render_ctx.context,
+                                self.sim.map_w,
+                                self.sim.map_h,
+                                format,
+                                &old_terrain,
+                            ));
+                            self.gfx.needs_first_upload = true;
+                        }
+                        if let Some(mut old_gp) = self.gfx.gui_painter.take() {
+                            old_gp.destroy(&self.gfx.render_ctx.context);
+                        }
 
-                    self.ui.egui_ctx = egui::Context::default();
-                    egui_extras::install_image_loaders(&self.ui.egui_ctx);
-                    sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
-                    log::info!("Successfully created surface on retry.");
-                }
-                Err(_) => {
-                    // Still unavailable
+                        self.gfx.gui_painter = Some(blade_egui::GuiPainter::new(
+                            s.info(),
+                            &self.gfx.render_ctx.context,
+                        ));
+                        self.gfx.surface = Some(s);
+
+                        self.ui.egui_ctx = egui::Context::default();
+                        egui_extras::install_image_loaders(&self.ui.egui_ctx);
+                        sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
+                        log::info!("Successfully created surface on retry.");
+                    }
+                    Err(_) => {
+                        // Still unavailable
+                    }
                 }
             }
         }

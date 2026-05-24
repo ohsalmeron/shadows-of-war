@@ -1,9 +1,14 @@
-use crate::UiAction;
-use egui::{Color32, CornerRadius, RichText, Stroke, Margin};
-use crate::ui::theme;
 use super::MainMenuState;
+use crate::ui::theme;
+use crate::UiAction;
+use egui::{Color32, CornerRadius, Margin, RichText, Stroke};
 
-fn setting_card(ui: &mut egui::Ui, title: &str, is_mobile: bool, content: impl FnOnce(&mut egui::Ui)) {
+fn setting_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    is_mobile: bool,
+    content: impl FnOnce(&mut egui::Ui),
+) {
     let frame = egui::Frame::NONE
         .fill(theme::nickname_field_bg())
         .stroke(egui::Stroke::new(1.0_f32, theme::nickname_field_border()))
@@ -13,7 +18,12 @@ fn setting_card(ui: &mut egui::Ui, title: &str, is_mobile: bool, content: impl F
     frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.vertical(|ui| {
-            crate::ui::theme::outlined_label(ui, title, egui::FontId::proportional(15.0), theme::text_secondary());
+            crate::ui::theme::outlined_label(
+                ui,
+                title,
+                egui::FontId::proportional(15.0),
+                theme::text_secondary(),
+            );
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 content(ui);
@@ -37,7 +47,7 @@ fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::Range
             ui.add(
                 egui::Slider::new(value, range)
                     .show_value(false)
-                    .trailing_fill(true)
+                    .trailing_fill(true),
             );
         });
 
@@ -57,7 +67,7 @@ fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::Range
                     egui::RichText::new(value.to_string())
                         .font(egui::FontId::proportional(16.0))
                         .color(Color32::WHITE)
-                        .strong()
+                        .strong(),
                 );
             });
         });
@@ -247,10 +257,10 @@ pub fn draw_modal(
                                      setting_card(ui, "ACTIVE LEADER & CIVILIZATION", is_mobile, |ui| {
                                          ui.vertical(|ui| {
                                              ui.spacing_mut().item_spacing.y = 4.0;
-                                             
+
                                              let leader = config.player_leader;
                                              let civ = config.player_civilization;
-                                             
+
                                              let emoji = match leader {
                                                  sow_core::player::Leader::Caesar => "🏛️",
                                                  sow_core::player::Leader::Cleopatra => "👑",
@@ -283,7 +293,7 @@ pub fn draw_modal(
                                         draw_custom_slider(ui, &mut config.nation_count, 0..=400);
                                     });
                                 };
-                                
+
                                 let draw_spawn = |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                                     setting_card(ui, &strings.random_spawning, is_mobile, |ui| {
                                         let btn_text = if config.random_spawn { "ON ✔" } else { "OFF ❌" };
@@ -291,13 +301,13 @@ pub fn draw_modal(
                                             .fill(if config.random_spawn { theme::accent_solo_cyan() } else { theme::menu_secondary_button() })
                                             .corner_radius(12.0)
                                             .min_size(egui::vec2(100.0, 36.0));
-                                        
+
                                         if ui.add(btn).clicked() {
                                             config.random_spawn = !config.random_spawn;
                                         }
                                     });
                                 };
-                                
+
                                 if is_mobile {
                                     // Single Column layout
                                     draw_leader_picker(ui, config);
@@ -342,12 +352,12 @@ pub fn draw_modal(
                                             let total_w = btn_w * 2.0 + spacing;
                                             let remaining = (ui.available_width() - total_w) / 2.0;
                                             ui.add_space(remaining);
-                                            
+
                                             let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
                                                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                                 .min_size(egui::vec2(btn_w, btn_h))
                                                 .text_size(18.0);
-                                            
+
                                             if ui.add(cancel_btn).clicked() {
                                                 close = true;
                                             }
@@ -358,7 +368,7 @@ pub fn draw_modal(
                                                 .style(crate::widgets::ThemeButtonStyle::Primary)
                                                 .min_size(egui::vec2(btn_w, btn_h))
                                                 .text_size(18.0);
-                                            
+
                                             if ui.add(start_btn).clicked() {
                                                 *action = Some(UiAction::StartSinglePlayer(Box::new(*state.single_player_config.clone())));
                                                 close = true;
@@ -369,7 +379,7 @@ pub fn draw_modal(
                                             .style(crate::widgets::ThemeButtonStyle::Primary)
                                             .min_size(egui::vec2(btn_w, btn_h))
                                             .text_size(18.0);
-                                        
+
                                         if ui.add(start_btn).clicked() {
                                             *action = Some(UiAction::StartSinglePlayer(Box::new(*state.single_player_config.clone())));
                                             close = true;
@@ -381,13 +391,13 @@ pub fn draw_modal(
                                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                             .min_size(egui::vec2(btn_w, btn_h))
                                             .text_size(18.0);
-                                        
+
                                         if ui.add(cancel_btn).clicked() {
                                             close = true;
                                         }
                                     }
                                 });
-                                
+
                                 ui.add_space(8.0);
                             });
                      });

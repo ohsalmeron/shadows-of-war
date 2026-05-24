@@ -96,7 +96,7 @@ impl AssetLoader {
     }
 
     pub fn has_map(&self, map_name: &str) -> bool {
-        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
+        let key = map_name.to_lowercase().replace([' ', '_'], "");
         key == "world"
             || key == "giantworldmap"
             || key == "tutorial"
@@ -104,7 +104,7 @@ impl AssetLoader {
     }
 
     pub fn take_map(&mut self, map_name: &str) -> Option<Vec<u8>> {
-        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
+        let key = map_name.to_lowercase().replace([' ', '_'], "");
         if key == "world" && !self.maps.contains_key("world") {
             self.maps.insert(
                 "world".to_string(),
@@ -125,7 +125,7 @@ impl AssetLoader {
     }
 
     pub fn thumbnail(&self, map_name: &str) -> Option<&TextureHandle> {
-        let key = map_name.to_lowercase().replace(' ', "").replace('_', "");
+        let key = map_name.to_lowercase().replace([' ', '_'], "");
         self.thumbnails.get(&key)
     }
 

@@ -21,7 +21,7 @@ pub(crate) fn render(
     };
 
     if let Some(snap) = &sim.current_snapshot {
-        let map_w = snap.players.first().map(|_| sim.map_w).unwrap_or(1) as u32;
+        let map_w = snap.players.first().map(|_| sim.map_w).unwrap_or(1);
 
         // --- Layer 6: Projectiles (Nukes, SAM Missiles) ---
         for proj in &snap.projectiles {

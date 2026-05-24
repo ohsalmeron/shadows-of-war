@@ -1,4 +1,3 @@
-pub mod layer1_railroads;
 pub mod layer2_fleets;
 pub mod layer3_buildings;
 pub mod layer4_5_effects;
@@ -6,8 +5,6 @@ pub mod layer6_projectiles;
 pub mod layer7_preview;
 pub mod layer8_nameplates;
 pub mod utils;
-
-pub use utils::*;
 
 use crate::app::SowApp;
 use crate::config::ClientVisualConfig;
@@ -177,14 +174,6 @@ impl SowApp {
                 sf,
             };
 
-            layer1_railroads::render(
-                &mut self.ui,
-                &self.sim,
-                &self.input,
-                &self.time,
-                &self.gfx,
-                &ctx_struct,
-            );
             layer2_fleets::render(
                 &mut self.ui,
                 &self.sim,

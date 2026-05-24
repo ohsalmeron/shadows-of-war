@@ -227,8 +227,6 @@ pub struct GameState {
     #[serde(default)]
     pub total_land_tiles: u32,
     #[serde(default)]
-    pub railroads: std::sync::Arc<Vec<crate::building::railroad::Railroad>>,
-    #[serde(default)]
     pub sea_lanes: std::sync::Arc<Vec<crate::sea_lane::SeaLane>>,
 }
 fn default_one() -> u64 {
@@ -258,7 +256,6 @@ impl GameState {
             next_attack_id: 1,
             next_projectile_id: 1,
             total_land_tiles: 0,
-            railroads: std::sync::Arc::new(Vec::new()),
             sea_lanes: std::sync::Arc::new(Vec::new()),
         }
     }

@@ -3,6 +3,7 @@ use crate::widgets::LobbyCard;
 use crate::UiAction;
 use egui::Ui;
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_left_column(
     ui: &mut Ui,
     state: &mut MainMenuState,

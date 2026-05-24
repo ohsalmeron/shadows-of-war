@@ -159,8 +159,8 @@ impl WaterAStar {
             self.width = map.width;
             self.height = map.height;
         }
-        let macro_cols = ((map.width + 15) / 16) as usize;
-        let macro_rows = ((map.height + 15) / 16) as usize;
+        let macro_cols = map.width.div_ceil(16) as usize;
+        let macro_rows = map.height.div_ceil(16) as usize;
         let mn = macro_cols * macro_rows;
         if self.allowed_chunks.len() != mn {
             self.allowed_chunks.resize(mn, false);
@@ -174,8 +174,8 @@ impl WaterAStar {
     fn find_macro_path(&mut self, map: &GameMap, starts: &[u32], goal: u32) -> bool {
         let width = map.width;
         let height = map.height;
-        let macro_cols = (width + 15) / 16;
-        let macro_rows = (height + 15) / 16;
+        let macro_cols = width.div_ceil(16);
+        let macro_rows = height.div_ceil(16);
         let num_macro_nodes = (macro_cols * macro_rows) as usize;
         if num_macro_nodes == 0 {
             return false;
@@ -376,7 +376,7 @@ impl WaterAStar {
         }
 
         let mut iterations = self.max_iterations;
-        let macro_cols = (width + 15) / 16;
+        let macro_cols = width.div_ceil(16);
 
         while let Some(node) = self.heap.pop() {
             if iterations == 0 {
@@ -398,7 +398,7 @@ impl WaterAStar {
             let current_x = node.idx % width;
             let current_y = node.idx / width;
 
-            let is_odd = (current_y % 2) != 0;
+            let is_odd = !current_y.is_multiple_of(2);
             let deltas = if is_odd {
                 [
                     (1, 0),  // East (0)
@@ -633,9 +633,9 @@ impl FlowField {
                 ]
             };
 
-            for i in 0..6 {
-                let nx = cx as i32 + deltas[i].0;
-                let ny = cy as i32 + deltas[i].1;
+            for (i, delta) in deltas.iter().enumerate() {
+                let nx = cx as i32 + delta.0;
+                let ny = cy as i32 + delta.1;
 
                 if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
                     let n_idx = (ny as u32 * self.width + nx as u32) as usize;

@@ -82,9 +82,7 @@ pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
             let mut lane_id = lanes.len() as u64;
             let (id_a, tile_a, comp_a) = port_components[i];
 
-            for j in (i + 1)..port_components.len() {
-                let (id_b, tile_b, comp_b) = port_components[j];
-
+            for &(id_b, tile_b, comp_b) in port_components.iter().skip(i + 1) {
                 // Must share the same water body
                 if comp_a != comp_b {
                     continue;

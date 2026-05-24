@@ -124,7 +124,7 @@ pub fn paint_glow_nameplate_galley(
         paint_glow_text(
             painter,
             pos,
-            &galley.text(),
+            galley.text(),
             font_id,
             base_color,
             galley.rect.size(),

@@ -4,9 +4,11 @@ use sow_core::game_config::GameConfig;
 use sow_core::water_components::WaterComponents;
 
 fn main() {
-    let mut config = GameConfig::default();
-    config.map_width = 2000;
-    config.map_height = 1000;
+    let config = GameConfig {
+        map_width: 2000,
+        map_height: 1000,
+        ..Default::default()
+    };
 
     let state = GameState::new(42, 2000, 1000, config.clone());
     let water = WaterComponents::default();

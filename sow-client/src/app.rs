@@ -111,6 +111,7 @@ pub struct ActiveUpgradeAnimation {
     pub level: u8,
 }
 
+#[allow(clippy::type_complexity)]
 pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
@@ -128,8 +129,6 @@ pub struct UiState {
     pub active_explosions: Vec<ActiveExplosion>,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
-    pub cached_railroads:
-        std::collections::HashMap<u64, (Vec<u32>, Vec<crate::render::world::RailTile>)>,
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
     pub nameplate_galleys: std::collections::HashMap<
         u16,
@@ -143,12 +142,9 @@ pub struct UiState {
     >,
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,
-    pub last_preview_tile: Option<u32>,
-    pub cached_preview_paths: Vec<Vec<u32>>,
     pub star_svg_registered: bool,
     pub handshake_svg_registered: bool,
     pub troops_webp_registered: bool,
-    pub cached_sea_lanes: std::collections::HashMap<u64, Vec<crate::render::world::RailTile>>,
 }
 
 pub struct TimeState {
@@ -445,17 +441,13 @@ impl SowApp {
                 active_explosions: Vec::new(),
                 fallout_zones: Vec::new(),
                 last_projectiles: std::collections::HashMap::new(),
-                cached_railroads: std::collections::HashMap::new(),
                 active_upgrades: Vec::new(),
                 nameplate_galleys: std::collections::HashMap::new(),
                 cached_player_colors: Vec::new(),
                 cached_player_count: 0,
-                last_preview_tile: None,
-                cached_preview_paths: Vec::new(),
                 star_svg_registered: false,
                 handshake_svg_registered: false,
                 troops_webp_registered: false,
-                cached_sea_lanes: std::collections::HashMap::new(),
             },
             time: TimeState {
                 last_tick,
@@ -495,7 +487,7 @@ impl SowApp {
         self.net.client = None;
         self.ui.app.main_menu_state.is_connected = false;
         self.ui.app.main_menu_state.is_connecting = false;
-        while let Ok(_) = self.net.connect_rx.try_recv() {}
+        while self.net.connect_rx.try_recv().is_ok() {}
         self.net.ws_connect_not_before = web_time::Instant::now();
 
         self.ui.app.main_menu_state.is_waiting = false;
@@ -594,12 +586,9 @@ impl SowApp {
             }
 
             #[cfg(not(any(target_os = "android", target_os = "ios", target_family = "wasm")))]
-            let attributes = {
-                let attrs = winit::window::WindowAttributes::default()
-                    .with_title("Shadows of War — Native")
-                    .with_surface_size(winit::dpi::LogicalSize::new(800.0, 800.0));
-                attrs
-            };
+            let attributes = winit::window::WindowAttributes::default()
+                .with_title("Shadows of War — Native")
+                .with_surface_size(winit::dpi::LogicalSize::new(800.0, 800.0));
 
             match event_loop.create_window(attributes) {
                 Ok(win) => self.gfx.window = Some(win),

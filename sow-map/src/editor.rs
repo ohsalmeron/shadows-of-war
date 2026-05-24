@@ -148,43 +148,39 @@ impl MapEditorSession {
         if self.surface.is_none() {
             if let Some(win) = self.window.as_ref() {
                 let sz = win.surface_size();
-                match self
-                    .render_ctx
-                    .create_surface(win, sz.width.max(1), sz.height.max(1))
+                if let Ok(s) =
+                    self.render_ctx
+                        .create_surface(win, sz.width.max(1), sz.height.max(1))
                 {
-                    Ok(s) => {
-                        self.screen_w = sz.width as f32;
-                        self.screen_h = sz.height as f32;
-                        self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            egui::Vec2::new(self.screen_w, self.screen_h),
-                        ));
+                    self.screen_w = sz.width as f32;
+                    self.screen_h = sz.height as f32;
+                    self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::Vec2::new(self.screen_w, self.screen_h),
+                    ));
 
-                        if let Some(sp) = self.prev_sync_point.take() {
-                            let _ = self.render_ctx.context.wait_for(&sp, !0);
-                        }
-
-                        if let Some(mut old_mr) = self.map_renderer.take() {
-                            old_mr.destroy(&self.render_ctx);
-                        }
-                        if let Some(mut old_gp) = self.gui_painter.take() {
-                            old_gp.destroy(&self.render_ctx.context);
-                        }
-
-                        self.map_renderer = Some(MapRenderer::new(
-                            &self.render_ctx.context,
-                            self.width,
-                            self.height,
-                            s.info().format,
-                            &self.terrain,
-                        ));
-                        self.needs_first_upload = true;
-                        self.gui_painter =
-                            Some(GuiPainter::new(s.info(), &self.render_ctx.context));
-                        self.surface = Some(s);
-                        log::info!("Successfully recreated editor surface.");
+                    if let Some(sp) = self.prev_sync_point.take() {
+                        let _ = self.render_ctx.context.wait_for(&sp, !0);
                     }
-                    Err(_) => {}
+
+                    if let Some(mut old_mr) = self.map_renderer.take() {
+                        old_mr.destroy(&self.render_ctx);
+                    }
+                    if let Some(mut old_gp) = self.gui_painter.take() {
+                        old_gp.destroy(&self.render_ctx.context);
+                    }
+
+                    self.map_renderer = Some(MapRenderer::new(
+                        &self.render_ctx.context,
+                        self.width,
+                        self.height,
+                        s.info().format,
+                        &self.terrain,
+                    ));
+                    self.needs_first_upload = true;
+                    self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
+                    self.surface = Some(s);
+                    log::info!("Successfully recreated editor surface.");
                 }
             }
         }
@@ -494,6 +490,11 @@ impl MapEditorSession {
 
         let lang = self.client_app.settings_state.language;
         let strings = &sow_lang::get(lang).map_editor;
+
+        static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
+        REGISTER_ONCE.call_once(|| {
+            sow_core::register_game_assets!(self.egui_ctx, "../../sow-client/assets/");
+        });
 
         let egui_ctx = self.egui_ctx.clone();
         let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ui| {
@@ -869,6 +870,7 @@ impl MapEditorSession {
         transition
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn destroy_and_reclaim(
         mut self,
     ) -> (

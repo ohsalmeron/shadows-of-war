@@ -26,7 +26,7 @@ impl SowApp {
                 }
                 // O(N log N) extremely fast sort for < 200 elements
                 // Sort descending by tile count
-                new_board.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+                new_board.sort_unstable_by_key(|b| std::cmp::Reverse(b.2));
                 self.ui.cached_leaderboard = new_board;
             }
         }

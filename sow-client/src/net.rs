@@ -646,7 +646,7 @@ impl SowApp {
                 ws_disconnected = false;
 
                 // Clear stale connections
-                while let Ok(_) = self.net.connect_rx.try_recv() {
+                while self.net.connect_rx.try_recv().is_ok() {
                     log::warn!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!");
                 }
 

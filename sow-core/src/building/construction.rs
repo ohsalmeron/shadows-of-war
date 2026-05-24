@@ -21,7 +21,6 @@ impl SowEngine {
                 b.under_construction = false;
                 self.building_aggregates_dirty = true;
                 if b.kind == BuildingKind::City {
-                    self.railroads_dirty = true;
                     self.sea_lanes_dirty = true;
                 }
                 if b.kind == BuildingKind::Bunker {

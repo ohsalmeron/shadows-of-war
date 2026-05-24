@@ -10,8 +10,8 @@ impl SowApp {
         let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
         let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
 
-        let q_f = world_x - world_y * 0.577350269;
-        let r_f = world_y * 1.154700538;
+        let q_f = world_x - world_y * 0.577_350_26;
+        let r_f = world_y * 1.154_700_5;
         let s_f = -q_f - r_f;
 
         let mut rq = q_f.round();
@@ -493,15 +493,14 @@ impl SowApp {
                         );
                     }
                     self.input.last_pinch_state = Some((distance, pinch_cx, pinch_cy));
-                } else if primary {
-                    if self.input.dragging
-                        && (!is_touch || !self.ui.egui_ctx.egui_wants_pointer_input())
-                    {
-                        let dx = position.x - self.input.last_mouse_x;
-                        let dy = position.y - self.input.last_mouse_y;
-                        self.input.camera_x += dx as f32;
-                        self.input.camera_y += dy as f32;
-                    }
+                } else if primary
+                    && self.input.dragging
+                    && (!is_touch || !self.ui.egui_ctx.egui_wants_pointer_input())
+                {
+                    let dx = position.x - self.input.last_mouse_x;
+                    let dy = position.y - self.input.last_mouse_y;
+                    self.input.camera_x += dx as f32;
+                    self.input.camera_y += dy as f32;
                 }
 
                 if primary {
@@ -697,14 +696,13 @@ impl SowApp {
                         let bx = (b.tile_idx % map_w) as i32;
                         let by = (b.tile_idx / map_w) as i32;
                         let d = (col - bx).abs() + (row - by).abs(); // Manhattan distance
-                        if d <= min_dist {
-                            if d < best_dist
+                        if d <= min_dist
+                            && (d < best_dist
                                 || (d == best_dist
-                                    && upgrade_target.map_or(true, |old_id| b.id < old_id))
-                            {
-                                best_dist = d;
-                                upgrade_target = Some(b.id);
-                            }
+                                    && upgrade_target.is_none_or(|old_id| b.id < old_id)))
+                        {
+                            best_dist = d;
+                            upgrade_target = Some(b.id);
                         }
                     }
                 }
@@ -853,6 +851,7 @@ impl SowApp {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_building_placement_tile(
     kind: sow_core::game::BuildingKind,
     click_x: i32,

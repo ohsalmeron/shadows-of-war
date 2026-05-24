@@ -5,20 +5,39 @@ impl SowApp {
     pub(crate) fn draw_context_menu(&mut self, ctx: &egui::Context) {
         if let Some((mx, my, tile_idx)) = self.input.map_context_menu_active {
             let my_id = self.sim.my_player_id.unwrap_or(1);
-            let owner_id = self.gfx.map_renderer.as_ref()
+            let owner_id = self
+                .gfx
+                .map_renderer
+                .as_ref()
                 .map(|mr| mr.owners[tile_idx as usize])
                 .unwrap_or(0);
 
             let is_own_territory = owner_id == my_id;
-            let has_completed_port = self.sim.current_snapshot.as_ref()
-                .map(|s| s.buildings.iter().any(|b| b.tile_idx == tile_idx && b.kind == sow_core::game::BuildingKind::City && b.modules.port > 0 && !b.under_construction))
+            let has_completed_port = self
+                .sim
+                .current_snapshot
+                .as_ref()
+                .map(|s| {
+                    s.buildings.iter().any(|b| {
+                        b.tile_idx == tile_idx
+                            && b.kind == sow_core::game::BuildingKind::City
+                            && b.modules.port > 0
+                            && !b.under_construction
+                    })
+                })
                 .unwrap_or(false);
             let is_friendly = owner_id != 0 && owner_id != my_id;
 
-            let owner_snapshot = self.sim.current_snapshot.as_ref()
+            let owner_snapshot = self
+                .sim
+                .current_snapshot
+                .as_ref()
                 .and_then(|s| s.players.iter().find(|p| p.id == owner_id));
 
-            let my_snapshot = self.sim.current_snapshot.as_ref()
+            let my_snapshot = self
+                .sim
+                .current_snapshot
+                .as_ref()
                 .and_then(|s| s.players.iter().find(|p| p.id == my_id));
 
             let is_betrayer = owner_snapshot
@@ -34,7 +53,11 @@ impl SowApp {
             let mut alliance_timer = 0;
             if is_allied {
                 if let Some(my_snap) = my_snapshot {
-                    alliance_timer = my_snap.alliance_timers.get(&owner_id).copied().unwrap_or(2400);
+                    alliance_timer = my_snap
+                        .alliance_timers
+                        .get(&owner_id)
+                        .copied()
+                        .unwrap_or(2400);
                 }
             }
             let is_in_renewal_window = is_allied && alliance_timer <= 600;
@@ -42,12 +65,15 @@ impl SowApp {
             let has_alliance_request = my_snapshot
                 .map(|p| p.alliance_requests.contains(&owner_id))
                 .unwrap_or(false);
-                
+
             let has_proposed_alliance = owner_snapshot
                 .map(|p| p.alliance_requests.contains(&my_id))
                 .unwrap_or(false);
 
-            let is_spawning = self.sim.current_snapshot.as_ref()
+            let is_spawning = self
+                .sim
+                .current_snapshot
+                .as_ref()
                 .map(|s| matches!(s.phase, sow_core::game::GamePhase::Spawning { .. }))
                 .unwrap_or(false);
 
@@ -56,14 +82,20 @@ impl SowApp {
 
             // Egui memory key ids for popovers
             let build_active_id = egui::Id::new("radial_build_active");
-            let radial_build_active: bool = ctx.data(|d| d.get_temp(build_active_id).unwrap_or(false));
+            let radial_build_active: bool =
+                ctx.data(|d| d.get_temp(build_active_id).unwrap_or(false));
 
             let missile_active_id = egui::Id::new("radial_missile_active");
-            let radial_missile_active: bool = ctx.data(|d| d.get_temp(missile_active_id).unwrap_or(false));
+            let radial_missile_active: bool =
+                ctx.data(|d| d.get_temp(missile_active_id).unwrap_or(false));
 
             // Animation scaling
             let is_open_target = self.input.map_context_menu.is_some();
-            let animation_id = egui::Id::new(("radial_menu_scale", tile_idx, self.input.map_context_menu_session));
+            let animation_id = egui::Id::new((
+                "radial_menu_scale",
+                tile_idx,
+                self.input.map_context_menu_session,
+            ));
             let duration = if is_open_target { 0.22 } else { 0.12 };
             let progress = ctx.animate_bool_with_time(animation_id, is_open_target, duration);
 
@@ -123,7 +155,8 @@ impl SowApp {
                 }
             };
 
-            let (hovered_center, hovered_sector) = pointer_pos.map(get_zone_at).unwrap_or((false, None));
+            let (hovered_center, hovered_sector) =
+                pointer_pos.map(get_zone_at).unwrap_or((false, None));
 
             egui::Area::new(egui::Id::new("map_context_menu_area"))
                 .fixed_pos(center - egui::vec2(150.0, 150.0))
@@ -200,14 +233,14 @@ impl SowApp {
                         } else {
                             Color32::from_rgb(251, 146, 60)
                         }
-                    } else if is_allied { 
-                        Color32::from_rgb(239, 68, 68) 
-                    } else if has_alliance_request { 
-                        Color32::from_rgb(74, 222, 128) 
-                    } else if has_proposed_alliance { 
-                        Color32::from_rgb(251, 191, 36) 
-                    } else { 
-                        Color32::from_rgb(74, 222, 128) 
+                    } else if is_allied {
+                        Color32::from_rgb(239, 68, 68)
+                    } else if has_alliance_request {
+                        Color32::from_rgb(74, 222, 128)
+                    } else if has_proposed_alliance {
+                        Color32::from_rgb(251, 191, 36)
+                    } else {
+                        Color32::from_rgb(74, 222, 128)
                     };
                     let b_pts = get_wedge_points(inner_r, b_outer, b_start, b_end);
                     let b_fill = if is_b_hovered { b_color.linear_multiply(0.20 + 0.15 * b_hover_t) } else { Color32::from_rgba_unmultiplied(15, 23, 42, (185.0 * progress) as u8) };
@@ -460,7 +493,7 @@ impl SowApp {
 
                                             for &(kind, label, cost, icon) in &ships {
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
-                                                
+
                                                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
                                                 let is_hovered = resp.hovered() && !is_disabled;
                                                 let hover_id = ui.make_persistent_id(("popover_hover", label));
@@ -545,14 +578,14 @@ impl SowApp {
                                                 .and_then(|mr| mr.terrain.get(tile_idx as usize).copied())
                                                 .unwrap_or(0b10000000);
                                             let map_tile = sow_core::map::MapTile::from_byte(tile_byte);
-                                            
+
                                             // Procedural resource extraction identical to map.rs
                                             let magnitude = map_tile.magnitude();
                                             let seed = (col as u64).wrapping_mul(374761393)
                                                 .wrapping_add((row as u64).wrapping_mul(668265263))
                                                 .wrapping_add(magnitude as u64);
                                             let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177) % 100;
-                                            
+
                                             let resource = if !map_tile.is_land() {
                                                 sow_core::map::TileResource::None
                                             } else if magnitude >= 20 {
@@ -671,7 +704,7 @@ impl SowApp {
                                             for &(kind, label, icon) in &buildings_list {
                                                 let cost = sow_core::building::cost::structure_build_cost_gold(kind, my_id, &temp_buildings);
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
-                                                
+
                                                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
                                                 let is_hovered = resp.hovered() && !is_disabled;
                                                 let hover_id = ui.make_persistent_id(("popover_hover", label));
@@ -781,7 +814,7 @@ impl SowApp {
                                         for &(kind, label, icon) in &nukes {
                                             let cost = kind.gold_cost(0);
                                             let is_disabled = self.ui.app.hud_state.gold < cost;
-                                            
+
                                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
                                             let is_hovered = resp.hovered() && !is_disabled;
                                             let hover_id = ui.make_persistent_id(("popover_hover", label));
@@ -848,29 +881,47 @@ impl SowApp {
                 });
 
             // Responsive modal backdrop dimmer
-            if compact && ((radial_build_active && is_own_territory) || (radial_missile_active && !is_own_territory)) {
-                ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("radial_sub_dim_bg")))
-                    .rect_filled(screen, 0.0, Color32::from_black_alpha(150));
+            if compact
+                && ((radial_build_active && is_own_territory)
+                    || (radial_missile_active && !is_own_territory))
+            {
+                ctx.layer_painter(egui::LayerId::new(
+                    egui::Order::Background,
+                    egui::Id::new("radial_sub_dim_bg"),
+                ))
+                .rect_filled(screen, 0.0, Color32::from_black_alpha(150));
             }
 
             // Auto-close on Primary left-click outside only — never on Secondary/right-click
             // Also require a grace period so the opening right-click doesn't immediately dismiss
-            let opened_duration = self.input.context_menu_open_time
+            let opened_duration = self
+                .input
+                .context_menu_open_time
                 .map(|t| t.elapsed().as_secs_f32())
                 .unwrap_or(0.0);
 
-            if is_open_target && progress > 0.15 && opened_duration > 0.1 && ctx.input(|i| i.pointer.primary_clicked()) {
-                if let Some(pos) = ctx.input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
+            if is_open_target
+                && progress > 0.15
+                && opened_duration > 0.1
+                && ctx.input(|i| i.pointer.primary_clicked())
+            {
+                if let Some(pos) =
+                    ctx.input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+                {
                     let mut click_absorbed = false;
                     if radial_build_active && is_own_territory {
-                        if let Some(r) = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("build_popover_rect"))) {
+                        if let Some(r) = ctx
+                            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("build_popover_rect")))
+                        {
                             if r.contains(pos) {
                                 click_absorbed = true;
                             }
                         }
                     }
                     if radial_missile_active && !is_own_territory {
-                        if let Some(r) = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("missile_popover_rect"))) {
+                        if let Some(r) = ctx.data(|d| {
+                            d.get_temp::<egui::Rect>(egui::Id::new("missile_popover_rect"))
+                        }) {
                             if r.contains(pos) {
                                 click_absorbed = true;
                             }

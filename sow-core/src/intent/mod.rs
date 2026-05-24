@@ -183,10 +183,7 @@ impl SowEngine {
                     if let Some(player) = self.state.player_mut(pid) {
                         if player.gold >= cost {
                             player.gold -= cost;
-                            let queue = self
-                                .port_queues
-                                .entry(port_id)
-                                .or_insert_with(std::collections::VecDeque::new);
+                            let queue = self.port_queues.entry(port_id).or_default();
                             queue.push_back(crate::game::ShipProduction {
                                 kind: *kind,
                                 ticks_until_complete: kind.build_duration_ticks(),

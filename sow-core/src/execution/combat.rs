@@ -211,7 +211,7 @@ impl SowEngine {
 
                             // How many tiles bordering (nx, ny) are owned by the attacker?
                             let mut num_owned_by_me = 0;
-                            let n_is_odd = (ny % 2) != 0;
+                            let n_is_odd = !ny.is_multiple_of(2);
                             let n_deltas = if n_is_odd {
                                 [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
                             } else {
@@ -220,13 +220,14 @@ impl SowEngine {
                             for &(ndx, ndy) in &n_deltas {
                                 let nnx = nx as i32 + ndx;
                                 let nny = ny as i32 + ndy;
-                                if nnx >= 0 && nnx < map_w as i32 && nny >= 0 && nny < map_h as i32
-                                {
-                                    if self.state.map.owner_id(nnx as u32, nny as u32)
+                                if nnx >= 0
+                                    && nnx < map_w as i32
+                                    && nny >= 0
+                                    && nny < map_h as i32
+                                    && self.state.map.owner_id(nnx as u32, nny as u32)
                                         == execution.owner_id
-                                    {
-                                        num_owned_by_me += 1;
-                                    }
+                                {
+                                    num_owned_by_me += 1;
                                 }
                             }
 

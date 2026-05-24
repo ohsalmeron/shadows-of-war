@@ -93,8 +93,7 @@ impl MapRenderer {
         // Fill terrain buffer with u8 terrain bytes
         let terrain_total = (terrain_bytes_per_row * height) as usize;
         let terrain_ptr = terrain_buffer.data();
-        let terrain_slice =
-            unsafe { std::slice::from_raw_parts_mut(terrain_ptr as *mut u8, terrain_total) };
+        let terrain_slice = unsafe { std::slice::from_raw_parts_mut(terrain_ptr, terrain_total) };
         for y in 0..height {
             for x in 0..width {
                 let src = (y * width + x) as usize;
@@ -173,7 +172,7 @@ impl MapRenderer {
         });
 
         let chunk_h = 64;
-        let num_chunks = (height + chunk_h - 1) / chunk_h;
+        let num_chunks = height.div_ceil(chunk_h);
 
         Self {
             terrain_texture,

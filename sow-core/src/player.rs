@@ -5,20 +5,15 @@ use wyrand::WyRand;
 
 pub type PlayerId = u16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Civilization {
+    #[default]
     Rome,
     Egypt,
     Vikings,
     China,
     Macedon,
     Mongols,
-}
-
-impl Default for Civilization {
-    fn default() -> Self {
-        Civilization::Rome
-    }
 }
 
 impl Civilization {
@@ -43,20 +38,15 @@ impl Civilization {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum Leader {
+    #[default]
     Caesar,
     Cleopatra,
     Ragnar,
     SunTzu,
     Alexander,
     GenghisKhan,
-}
-
-impl Default for Leader {
-    fn default() -> Self {
-        Leader::Caesar
-    }
 }
 
 impl Leader {
@@ -208,9 +198,9 @@ impl Player {
         config: &crate::game_config::GameConfig,
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
-        let iq = if id % 100 == 0 {
+        let iq = if id.is_multiple_of(100) {
             rng.next_int(130, 181) as u32 // 1% Smartest tribes (Nation disguise)
-        } else if id % 10 == 0 {
+        } else if id.is_multiple_of(10) {
             rng.next_int(100, 121) as u32 // 9% Advanced tribes
         } else if id % 10 == 1 {
             rng.next_int(60, 81) as u32 // 10% Stupidest tribes
@@ -226,7 +216,7 @@ impl Player {
             Civilization::Macedon => Leader::Alexander,
             Civilization::Mongols => Leader::GenghisKhan,
         };
-        let is_smart_tribe = id % 100 == 0;
+        let is_smart_tribe = id.is_multiple_of(100);
         let starting_troops = config.starting_troops;
         let starting_gold = if is_smart_tribe {
             config.starting_gold

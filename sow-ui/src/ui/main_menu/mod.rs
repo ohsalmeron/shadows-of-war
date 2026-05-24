@@ -87,10 +87,9 @@ impl Default for MainMenuState {
             map_download_progress: 0,
             show_leader_picker: false,
             show_single_player_setup: false,
-            single_player_config: Box::new({
-                let mut config = sow_core::game_config::GameConfig::default();
-                config.map_name = "World".to_string();
-                config
+            single_player_config: Box::new(sow_core::game_config::GameConfig {
+                map_name: "World".to_string(),
+                ..Default::default()
             }),
             error_message: None,
         }

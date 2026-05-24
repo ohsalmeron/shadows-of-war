@@ -40,6 +40,7 @@ impl Default for PlacementScratch {
 }
 
 #[derive(Clone)]
+#[allow(clippy::type_complexity)]
 pub struct SowEngine {
     pub state: GameState,
     pub attacks: Vec<AttackExecution>,
@@ -55,13 +56,7 @@ pub struct SowEngine {
     pub building_grid: BuildingGrid,
     pub building_aggregates: Vec<BuildingAggregate>,
     pub building_aggregates_dirty: bool,
-    pub railroads_dirty: bool,
     pub sea_lanes_dirty: bool,
-    pub railroad_calc: Option<(
-        usize,
-        Vec<crate::building::railroad::IncrementalRail>,
-        Vec<Building>,
-    )>,
     pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
 
     pub ai_events: std::collections::VecDeque<AiEvent>,
@@ -107,9 +102,7 @@ impl SowEngine {
             building_grid: BuildingGrid::default(),
             building_aggregates: Vec::with_capacity(256),
             building_aggregates_dirty: true,
-            railroads_dirty: true,
             sea_lanes_dirty: true,
-            railroad_calc: None,
             sea_lane_calc: None,
 
             ai_events: std::collections::VecDeque::new(),
@@ -158,11 +151,8 @@ impl SowEngine {
         self.buildings.insert(pos, b);
         self.building_grid.mark_dirty();
         self.building_aggregates_dirty = true;
-        if !b.under_construction {
-            if b.kind == crate::game::BuildingKind::City {
-                self.railroads_dirty = true;
-                self.sea_lanes_dirty = true;
-            }
+        if !b.under_construction && b.kind == crate::game::BuildingKind::City {
+            self.sea_lanes_dirty = true;
         }
         if is_ready_defense {
             self.defense_grid_dirty = true;
@@ -232,10 +222,6 @@ impl SowEngine {
         self.state.events.clear(); // Prevent unbounded memory leak (was growing infinitely on tile capture)
         self.state.tick();
 
-        // Run active incremental calculations on every tick to spread pathfinding workload
-        if self.railroad_calc.is_some() {
-            crate::building::railroad::update_railroads(self);
-        }
         if self.sea_lane_calc.is_some() {
             crate::sea_lane::update_sea_lanes(self);
         }
@@ -807,7 +793,6 @@ impl SowEngine {
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
             defense_dirty,
-            railroads: self.state.railroads.clone(),
             sea_lanes: self.state.sea_lanes.clone(),
             debug_mem_info: if cfg!(feature = "mem_profiler") {
                 format!(

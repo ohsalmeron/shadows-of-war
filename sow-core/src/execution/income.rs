@@ -21,11 +21,6 @@ impl SowEngine {
             self.building_aggregates_dirty = false;
         }
 
-        if self.railroads_dirty {
-            crate::building::railroad::update_railroads(self);
-            self.railroads_dirty = false;
-        }
-
         if self.sea_lanes_dirty {
             crate::sea_lane::update_sea_lanes(self);
             self.sea_lanes_dirty = false;
@@ -56,7 +51,7 @@ impl SowEngine {
 
             let is_standard_bot = self.state.players[idx].player_type
                 == crate::player::PlayerType::Bot
-                && player_id % 100 != 0;
+                && !player_id.is_multiple_of(100);
 
             let mut max_tr = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
@@ -120,7 +115,7 @@ impl SowEngine {
             let is_standard_bot = if pid_usize < p_lookup.len() {
                 p_lookup[pid_usize]
                     .and_then(|idx| p_list.get(idx))
-                    .map_or(false, |p| {
+                    .is_some_and(|p| {
                         p.player_type == crate::player::PlayerType::Bot && p.id % 100 != 0
                     })
             } else {

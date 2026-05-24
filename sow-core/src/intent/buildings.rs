@@ -176,10 +176,8 @@ impl SowEngine {
                     return;
                 }
             }
-            ModuleKind::Arsenal | ModuleKind::Shield => {
-                if city_level < 3 {
-                    return;
-                }
+            ModuleKind::Arsenal | ModuleKind::Shield if city_level < 3 => {
+                return;
             }
             _ => {}
         }

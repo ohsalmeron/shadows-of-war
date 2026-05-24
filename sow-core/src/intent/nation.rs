@@ -62,8 +62,8 @@ struct BotAiProfile {
 }
 
 fn get_bot_ai_profile(bot_id: u16, is_nation: bool) -> BotAiProfile {
-    let is_smart = is_nation || (bot_id % 100 == 0);
-    if is_smart && (bot_id % 8 == 0) {
+    let is_smart = is_nation || bot_id.is_multiple_of(100);
+    if is_smart && bot_id.is_multiple_of(8) {
         // Apex Dominator / MFO: hyper-aggressive, thinks every ~1-2s, zero hesitation
         BotAiProfile {
             interval_base: 10,
@@ -106,7 +106,7 @@ fn get_bot_ai_profile(bot_id: u16, is_nation: bool) -> BotAiProfile {
         }
     } else {
         // Tribes (bots): 5% Terminator rare aggro, 95% Vanilla split into Territorial, Standard, and Soft Expansionist
-        if bot_id % 20 == 0 {
+        if bot_id.is_multiple_of(20) {
             BotAiProfile {
                 interval_base: 60,
                 trigger_ratio: 0.45,
@@ -235,11 +235,9 @@ impl SowEngine {
         }
 
         // ── Process all scheduled bots (no global cap — same as OpenFront) ─────
-        let total = schedule.len();
         let mut decisions: Vec<BotDecision> = Vec::new();
 
-        for i in 0..total {
-            let slot = &schedule[i];
+        for slot in &schedule {
             let bot_id = slot.bot_id;
 
             let (bot_iq, _bot_iq_points) = {
@@ -380,12 +378,11 @@ impl SowEngine {
                                     {
                                         alliances_to_break.push(ally_id);
                                     }
-                                } else if bot_iq >= 100 {
-                                    if p_ally.troops < me_troops * 0.5
-                                        || p_ally.tile_count < (me_tiles as f64 * 0.5) as u32
-                                    {
-                                        alliances_to_break.push(ally_id);
-                                    }
+                                } else if bot_iq >= 100
+                                    && (p_ally.troops < me_troops * 0.5
+                                        || p_ally.tile_count < (me_tiles as f64 * 0.5) as u32)
+                                {
+                                    alliances_to_break.push(ally_id);
                                 }
                             }
                         }
@@ -754,7 +751,7 @@ impl SowEngine {
                         })
                         .collect();
 
-                    let is_mfo = slot.is_nation && (bot_id % 8 == 0);
+                    let is_mfo = slot.is_nation && bot_id.is_multiple_of(8);
                     let has_port =
                         crate::building::cost::player_has_completed_port(&self.buildings, bot_id);
                     let mut revenge_choice = None;
@@ -780,7 +777,7 @@ impl SowEngine {
                     if is_mfo
                         && has_port
                         && troops >= max_troops * 0.20
-                        && (targets.is_empty() || self.state.tick % 12 == 0)
+                        && (targets.is_empty() || self.state.tick.is_multiple_of(12))
                     {
                         let mut best_target_p_id = None;
                         let mut min_troops = f64::MAX;
@@ -808,8 +805,7 @@ impl SowEngine {
                                 let border_len = target_p.border_tiles.count_ones();
                                 if border_len > 0 {
                                     let pick_idx = (self.state.tick as usize) % border_len;
-                                    if let Some(t_tile) =
-                                        target_p.border_tiles.ones().nth(pick_idx).map(|t| t as u32)
+                                    if let Some(t_tile) = target_p.border_tiles.ones().nth(pick_idx)
                                     {
                                         let border_tiles =
                                             &self.state.player(bot_id).unwrap().border_tiles;
@@ -913,14 +909,12 @@ impl SowEngine {
                                         && t_id % 100 != 0;
                                     let b_is_tribe = p_b.player_type
                                         == crate::player::PlayerType::Bot
-                                        && best_target % 100 != 0;
+                                        && !best_target.is_multiple_of(100);
 
-                                    if t_is_tribe && !b_is_tribe {
+                                    if (t_is_tribe && !b_is_tribe)
+                                        || (t_is_tribe == b_is_tribe && p_t.troops < p_b.troops)
+                                    {
                                         best_target = t_id;
-                                    } else if t_is_tribe == b_is_tribe {
-                                        if p_t.troops < p_b.troops {
-                                            best_target = t_id;
-                                        }
                                     }
                                 }
                             }
@@ -968,7 +962,7 @@ impl SowEngine {
                             } else {
                                 reserve_ratio
                             };
-                        let is_standard_bot = !slot.is_nation && (bot_id % 100 != 0);
+                        let is_standard_bot = !slot.is_nation && !bot_id.is_multiple_of(100);
                         let p_send = if is_standard_bot && !is_neutral {
                             (troops / 4.0).max(0.0)
                         } else {

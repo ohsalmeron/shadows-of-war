@@ -382,21 +382,21 @@ fn get_thumbnail_color(t: &TerrainTile) -> [u8; 4] {
     if t.magnitude < 10.0 {
         // Plains
         let adj = 220.0 - 2.0 * t.magnitude;
-        return [190, adj.max(0.0).min(255.0) as u8, 138, 255];
+        [190, adj.max(0.0).min(255.0) as u8, 138, 255]
     } else if t.magnitude < 20.0 {
         // Highlands
         let adj = 2.0 * t.magnitude;
-        return [
+        [
             (200.0 + adj).max(0.0).min(255.0) as u8,
             (183.0 + adj).max(0.0).min(255.0) as u8,
             (138.0 + adj).max(0.0).min(255.0) as u8,
             255,
-        ];
+        ]
     } else {
         // Mountains
         let adj = (230.0 + t.magnitude / 2.0).floor();
         let adj_val = adj.max(0.0).min(255.0) as u8;
-        return [adj_val, adj_val, adj_val, 255];
+        [adj_val, adj_val, adj_val, 255]
     }
 }
 

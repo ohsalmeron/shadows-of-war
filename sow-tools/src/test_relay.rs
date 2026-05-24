@@ -280,7 +280,7 @@ async fn main() {
             Ok(Some(Ok(Message::Binary(data)))) => {
                 if let Ok(ServerMessage::Turn(t)) = bincode::deserialize::<ServerMessage>(&data) {
                     turn_count += 1;
-                    if turn_count <= 3 || turn_count % 20 == 0 {
+                    if turn_count <= 3 || turn_count.is_multiple_of(20) {
                         eprintln!(
                             "  📦 Turn #{} (intents: {})",
                             t.turn.turn_number,

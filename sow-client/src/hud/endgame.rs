@@ -171,7 +171,7 @@ impl SowApp {
                                 .sim
                                 .current_snapshot
                                 .as_ref()
-                                .map_or(false, |s| s.winner.is_none())
+                                .is_some_and(|s| s.winner.is_none())
                         {
                             ui.add_space(space_mid);
 

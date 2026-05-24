@@ -3,14 +3,12 @@ pub mod core;
 pub mod cost;
 pub mod hud;
 pub mod placement;
-pub mod railroad;
 pub mod upgrade;
 
 pub use core::*;
 pub use cost::*;
 pub use hud::*;
 pub use placement::*;
-pub use railroad::*;
 pub use upgrade::*;
 
 #[cfg(test)]

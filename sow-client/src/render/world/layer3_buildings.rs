@@ -262,7 +262,7 @@ pub(crate) fn render(
             if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
                 let tint = if b.under_construction {
                     if b.kind.asset().is_svg() {
-                        egui::Color32::from_black_alpha(128)
+                        egui::Color32::from_white_alpha(128)
                     } else if b.owner_id != 0 {
                         let player_color = player_colors
                             .get(b.owner_id as usize)
@@ -276,7 +276,7 @@ pub(crate) fn render(
                         egui::Color32::from_white_alpha(128)
                     }
                 } else if b.kind.asset().is_svg() {
-                    egui::Color32::BLACK
+                    egui::Color32::WHITE
                 } else if b.owner_id != 0 {
                     let player_color = player_colors
                         .get(b.owner_id as usize)

@@ -163,6 +163,7 @@ fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<
     primary_lobby_id(games, "FFA") // Default to FFA for play button
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn join_player(
     games: &mut Vec<ServerLobby>,
     next_id: &mut u64,
