@@ -154,9 +154,9 @@ impl Default for GameConfig {
     fn default() -> Self {
         Self {
             // Lobby & Match Setup
-            max_players: 120,
-            bot_count: 400,    // Tribes (Simple, static filler AI)
-            nation_count: 64, // Nations (Dynamic expanding AI)
+            max_players: 128,
+            bot_count: 420,    // Tribes (Simple, static filler AI)
+            nation_count: 128, // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
 
             // Map Generation & Spawning

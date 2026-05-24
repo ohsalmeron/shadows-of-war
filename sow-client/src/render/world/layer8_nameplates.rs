@@ -21,6 +21,14 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
     };
 
     if let Some(snap) = &sim.current_snapshot {
+            static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
+            REGISTER_STAR_ONCE.call_once(|| {
+                painter.ctx().include_bytes(
+                    "bytes://star.webp",
+                    include_bytes!("../../../assets/star.webp").as_slice(),
+                );
+            });
+
             // --- Layer 8: Player Nameplates & Leader Stars (Top-most) ---
             let mut sorted_players = visible_players.to_vec();
             sorted_players.sort_unstable_by(|a, b| {
@@ -119,7 +127,9 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                 if me.alliances.contains(&player.id) {
                                     is_allied = true;
                                     let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
-                                    if timer <= 600 {
+                                    let has_pending_proposal = me.alliance_requests.contains(&player.id)
+                                        || player.alliance_requests.contains(&my_id);
+                                    if timer <= 600 && !has_pending_proposal {
                                         is_heart_flashing = true;
                                     }
                                 } else if me.alliance_requests.contains(&player.id) {
@@ -265,8 +275,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                 ));
 
                                 let flash_alpha = if is_heart_flashing {
-                                    let is_flash_on = (wall_secs * 2.0) as u64 % 2 == 0;
-                                    if is_flash_on { 1.0 } else { 0.2 }
+                                    ((wall_secs * 12.0).cos() * 0.5 + 0.5) as f32
                                 } else {
                                     1.0
                                 };
@@ -315,13 +324,39 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                         egui::Order::Middle,
                                         egui::Id::new(("floating_express_emoji", player.id)),
                                     ));
-                                    emoji_painter.text(
-                                        egui::pos2(center.x, emoji_y),
-                                        egui::Align2::CENTER_CENTER,
-                                        emoji_str,
-                                        egui::FontId::proportional(final_emoji_size),
-                                        egui::Color32::WHITE,
-                                    );
+                                    if emoji_str.contains('⭐') {
+                                        let star_size = final_emoji_size * 1.25;
+                                        let star_rect = egui::Rect::from_center_size(
+                                            egui::pos2(center.x, emoji_y),
+                                            egui::vec2(star_size, star_size)
+                                        );
+                                        let size_hint = egui::load::SizeHint::Size {
+                                            width: star_size.round() as u32,
+                                            height: star_size.round() as u32,
+                                            maintain_aspect_ratio: true,
+                                        };
+                                        let load_res = emoji_painter.ctx().try_load_texture(
+                                            "bytes://star.webp",
+                                            egui::TextureOptions::default(),
+                                            size_hint,
+                                        );
+                                        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                            emoji_painter.image(
+                                                texture.id,
+                                                star_rect,
+                                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                                egui::Color32::WHITE,
+                                            );
+                                        }
+                                    } else {
+                                        emoji_painter.text(
+                                            egui::pos2(center.x, emoji_y),
+                                            egui::Align2::CENTER_CENTER,
+                                            emoji_str,
+                                            egui::FontId::proportional(final_emoji_size),
+                                            egui::Color32::WHITE,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -330,7 +365,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         egui::Area::new(area_id)
                             .fixed_pos(center)
                             .pivot(egui::Align2::CENTER_CENTER)
-                            .order(egui::Order::Background)
+                            .order(egui::Order::Middle)
                             .interactable(false)
                             .show(painter.ctx(), |area_ui| {
                                 let fill_color = egui::Color32::TRANSPARENT;
@@ -356,7 +391,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                              let has_status = !status_list.is_empty() || betrayal_flash;
                                              let show_row0 = is_me || has_status;
                                              if show_row0 {
-                                                 let star_size_icon = font_size * 1.1 * 3.0; // Sleek star next to emojis!
+                                                  let star_size_icon = font_size * 1.1 * 3.0 * 1.25; // Sleek star next to emojis!
                                                  
                                                  let mut disc_galley = None;
                                                  if has_status {
@@ -390,9 +425,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                                      disc_galley = Some(area_ui.painter().layout_job(job));
                                                  }
 
-                                                 let row_w = (if is_me { star_size_icon } else { 0.0 })
-                                                     + (if is_me && has_status { 18.0 * scale_factor } else { 0.0 })
-                                                     + (if let Some(dg) = &disc_galley { dg.rect.width() } else { 0.0 });
+                                                 let row_w = if let Some(dg) = &disc_galley { dg.rect.width() } else { 0.0 };
                                                  let avail_w = area_ui.available_width();
 
                                                  area_ui.horizontal(|area_ui| {
@@ -403,8 +436,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                                      }
 
                                                      // Star
-                                                     if is_me {
-                                                         let star_uri = sow_core::assets::Asset::Star.uri();
+                                                     if false {
+                                                          let star_uri = "bytes://star.webp";
                                                          let size_hint = egui::load::SizeHint::Size {
                                                              width: star_size_icon.round() as u32,
                                                              height: star_size_icon.round() as u32,
@@ -431,6 +464,26 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                              // Row 1 & 2: Avatar + Nickname Vertical container block next
                                              area_ui.horizontal(|area_ui| {
                                                  area_ui.spacing_mut().item_spacing.x = 6.0 * scale_factor;
+
+                                                 // 0. Star (if me) to the left of the avatar
+                                                 if is_me {
+                                                     let star_uri = "bytes://star.webp";
+                                                     let size_hint = egui::load::SizeHint::Size {
+                                                         width: avatar_size.round() as u32,
+                                                         height: avatar_size.round() as u32,
+                                                         maintain_aspect_ratio: true,
+                                                     };
+                                                     let load_res = area_ui.ctx().try_load_texture(
+                                                         star_uri,
+                                                         egui::TextureOptions::default(),
+                                                         size_hint,
+                                                     );
+                                                     if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                                         area_ui.add(egui::Image::new(texture)
+                                                             .fit_to_exact_size(egui::vec2(avatar_size, avatar_size))
+                                                             .sense(egui::Sense::empty()));
+                                                     }
+                                                 }
 
                                                  // 1. Avatar
                                                  let avatar_tex = ui.app.asset_loader.avatars.get(&player.leader).or(ui.app.asset_loader.avatar_fallback.as_ref());
@@ -620,7 +673,9 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             if me.alliances.contains(&player.id) {
                                 is_allied = true;
                                 let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
-                                if timer <= 600 {
+                                let has_pending_proposal = me.alliance_requests.contains(&player.id)
+                                    || player.alliance_requests.contains(&my_id);
+                                if timer <= 600 && !has_pending_proposal {
                                     is_heart_flashing = true;
                                 }
                             } else if me.alliance_requests.contains(&player.id) {
@@ -834,9 +889,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                 egui::vec2(size, size),
                             );
 
-                            let flash_alpha = if is_heart_flashing {
-                                let is_flash_on = (wall_secs * 2.0) as u64 % 2 == 0;
-                                if is_flash_on { 1.0 } else { 0.2 }
+                            let flash_alpha = if is_heart_flashing && !has_req {
+                                ((wall_secs * 12.0).cos() * 0.5 + 0.5) as f32
                             } else {
                                 1.0
                             };
@@ -872,13 +926,39 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             let emoji_y = current_y - disc_height - max_float_height - 18.0 * zoom_scale;
 
                             if final_emoji_size > 1.0 {
-                                painter.text(
-                                    egui::pos2(center.x, emoji_y),
-                                    egui::Align2::CENTER_CENTER,
-                                    emoji_str,
-                                    egui::FontId::proportional(final_emoji_size),
-                                    egui::Color32::WHITE,
-                                );
+                                if emoji_str.contains('⭐') {
+                                    let star_size = final_emoji_size * 1.25;
+                                    let star_rect = egui::Rect::from_center_size(
+                                        egui::pos2(center.x, emoji_y),
+                                        egui::vec2(star_size, star_size)
+                                    );
+                                    let size_hint = egui::load::SizeHint::Size {
+                                        width: star_size.round() as u32,
+                                        height: star_size.round() as u32,
+                                        maintain_aspect_ratio: true,
+                                    };
+                                    let load_res = painter.ctx().try_load_texture(
+                                        "bytes://star.webp",
+                                        egui::TextureOptions::default(),
+                                        size_hint,
+                                    );
+                                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                        painter.image(
+                                            texture.id,
+                                            star_rect,
+                                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                            egui::Color32::WHITE,
+                                        );
+                                    }
+                                } else {
+                                    painter.text(
+                                        egui::pos2(center.x, emoji_y),
+                                        egui::Align2::CENTER_CENTER,
+                                        emoji_str,
+                                        egui::FontId::proportional(final_emoji_size),
+                                        egui::Color32::WHITE,
+                                    );
+                                }
                             }
                         }
                     }
@@ -915,7 +995,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             current_y + (h_max - star_size) / 2.0,
                         );
                         let star_rect = egui::Rect::from_min_size(star_pos, egui::vec2(star_size, star_size));
-                        let star_uri = sow_core::assets::Asset::Star.uri();
+                        let star_uri = "bytes://star.webp";
                         let size_hint = egui::load::SizeHint::Size {
                             width: star_size.round() as u32,
                             height: star_size.round() as u32,

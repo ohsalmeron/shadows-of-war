@@ -96,15 +96,19 @@ pub fn find_rail_path(map: &GameMap, start: u32, goal: u32) -> Option<Vec<u32>> 
         let (cx, cy) = (position % w, position / w);
         let current_cost = dist[&position];
 
-        let neighbors = [
-            (cx.wrapping_sub(1), cy),
-            (cx + 1, cy),
-            (cx, cy.wrapping_sub(1)),
-            (cx, cy + 1),
-        ];
+        let is_odd = (cy % 2) != 0;
+        let deltas = if is_odd {
+            &[(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)][..]
+        } else {
+            &[(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)][..]
+        };
 
-        for &(nx, ny) in &neighbors {
-            if nx < map.width && ny < map.height {
+        for &(dx, dy) in deltas {
+            let nx = cx as i32 + dx;
+            let ny = cy as i32 + dy;
+            if nx >= 0 && nx < map.width as i32 && ny >= 0 && ny < map.height as i32 {
+                let nx = nx as u32;
+                let ny = ny as u32;
                 let next = ny * w + nx;
                 if !is_traversable(map, position, next) {
                     continue;
@@ -317,7 +321,7 @@ pub fn update_railroads(engine: &mut SowEngine) {
                     let dy = sy as i32 - y2 as i32;
                     let dist_sq = dx * dx + dy * dy;
 
-                    if dist_sq >= 225 && dist_sq <= 10000 {
+                    if dist_sq >= 4 && dist_sq <= 10000 {
                         neighbors.push((dist_sq, other_idx));
                     }
                 }

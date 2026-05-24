@@ -83,9 +83,9 @@ impl Leader {
     pub fn perk_description(self) -> &'static str {
         match self {
             Leader::Caesar => "Pax Romana: Starts match with a Level 2 Capital City.",
-            Leader::Cleopatra => "Gift of the Nile: Industry districts generate +50% Gold.",
+            Leader::Cleopatra => "Gift of the Nile: Factory districts generate +50% Gold.",
             Leader::Ragnar => "Longship Raid: Ports generate +50% Gold.",
-            Leader::SunTzu => "Art of War: Military districts produce troops 20% faster.",
+            Leader::SunTzu => "Art of War: Factory districts produce troops 20% faster.",
             Leader::Alexander => "Great Conquest: Territory-conquering troops expand 15% faster.",
             Leader::GenghisKhan => "Horde Momentum: Gain 10% of gold spent by defeated enemies.",
         }

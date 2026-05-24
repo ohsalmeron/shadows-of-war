@@ -71,11 +71,21 @@ impl SowApp {
                 self.input.map_context_menu_active = None;
             }
 
-            // Disney overshoot curve
+            // Disney overshoot curve (pop-in and bouncy pop-out)
             let spring_scale = if is_open_target {
-                1.0 - (progress * 7.5).cos() * (-3.5 * progress).exp()
+                let t = progress;
+                if t >= 1.0 {
+                    1.0
+                } else {
+                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                }
             } else {
-                progress
+                let t = 1.0 - progress;
+                if t < 0.25 {
+                    1.0 + (t * 6.0).sin() * 0.15
+                } else {
+                    progress * 1.15
+                }
             };
             let scale = spring_scale.clamp(0.0, 1.25);
             let screen = ctx.content_rect();

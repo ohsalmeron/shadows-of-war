@@ -4,7 +4,10 @@ use crate::render::world::utils::*;
 
 #[allow(unused_variables)]
 pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, input: &crate::app::InputState, time: &crate::app::TimeState, gfx: &crate::app::GraphicsState, ctx: &RenderContext) {
-    let painter = ctx.painter;
+    let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
+        egui::Order::Background,
+        egui::Id::new("world_buildings"),
+    ));
     let sf = ctx.sf;
     let zoom_scaled = ctx.zoom_scaled;
 
@@ -20,6 +23,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
             kind: sow_core::game::BuildingKind,
             level: u32,
             under_construction: bool,
+            ticks_until_complete: u32,
             count: usize,
         }
 
@@ -89,6 +93,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     kind: final_kind,
                     level: sum_level,
                     under_construction: false,
+                    ticks_until_complete: 0,
                     count,
                 });
             }
@@ -104,6 +109,7 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     kind: b.kind,
                     level: b.level as u32,
                     under_construction: b.under_construction,
+                    ticks_until_complete: b.ticks_until_complete,
                     count: 1,
                 });
             }
@@ -175,6 +181,73 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     tint,
                 );
+            }
+            
+            if b.under_construction && b.ticks_until_complete > 0 {
+                let total_ticks = b.kind.construction_duration_ticks();
+                if total_ticks > 0 {
+                    let progress = 1.0 - (b.ticks_until_complete as f32 / total_ticks as f32).clamp(0.0, 1.0);
+                    
+                    // Design: Sleek glassmorphic bar just below the building
+                    let bar_w = base_size * 0.95;
+                    let bar_h = (4.0 * zoom_scaled).clamp(3.0, 5.0);
+                    let bar_y = center.y + base_size * 0.55;
+                    let bar_rect = egui::Rect::from_center_size(
+                        egui::pos2(center.x, bar_y),
+                        egui::vec2(bar_w, bar_h)
+                    );
+                    
+                    // Glass background pill with border
+                    let bg_color = egui::Color32::from_black_alpha(160);
+                    let border_color = egui::Color32::from_white_alpha(40);
+                    painter.rect(
+                        bar_rect,
+                        2.0,
+                        bg_color,
+                        egui::Stroke::new(1.0_f32, border_color),
+                        egui::StrokeKind::Inside,
+                    );
+                    
+                    // Glowing cyan progress fill
+                    if progress > 0.0 {
+                        let fill_w = bar_w * progress;
+                        let fill_rect = egui::Rect::from_min_max(
+                            egui::pos2(bar_rect.min.x, bar_rect.min.y),
+                            egui::pos2(bar_rect.min.x + fill_w, bar_rect.max.y)
+                        );
+                        let fill_color = egui::Color32::from_rgb(0, 220, 255);
+                        painter.rect(
+                            fill_rect,
+                            2.0,
+                            fill_color,
+                            egui::Stroke::NONE,
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                    
+                    // Small, premium, highly legible micro-font tick label below the bar
+                    let font_size = (8.5 * zoom_scaled).clamp(8.0, 12.0).round();
+                    let text_y = bar_y + bar_h * 0.5 + font_size * 0.5 + 1.0;
+                    let label = format!("{} / {} t", total_ticks.saturating_sub(b.ticks_until_complete), total_ticks);
+                    
+                    // Subtle drop shadow for readability
+                    painter.text(
+                        egui::pos2(center.x + 1.0, text_y + 1.0),
+                        egui::Align2::CENTER_CENTER,
+                        &label,
+                        egui::FontId::proportional(font_size),
+                        egui::Color32::from_black_alpha(180),
+                    );
+                    
+                    // Main crisp text
+                    painter.text(
+                        egui::pos2(center.x, text_y),
+                        egui::Align2::CENTER_CENTER,
+                        &label,
+                        egui::FontId::proportional(font_size),
+                        egui::Color32::WHITE,
+                    );
+                }
             }
 
             // Level badge (no white plate background, no frame, larger text in black)

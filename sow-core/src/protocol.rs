@@ -308,6 +308,7 @@ pub struct BuildingSnapshot {
     pub kind: crate::game::BuildingKind,
     pub level: u8,
     pub under_construction: bool,
+    pub ticks_until_complete: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

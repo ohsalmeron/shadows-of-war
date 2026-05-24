@@ -87,13 +87,11 @@ impl ClientApp {
             }
         };
 
-        if self.is_settings_open {
-            let settings_action = crate::ui::settings::draw(ui, &mut self.settings_state);
-            if let Some(UiAction::ToggleSettings) = settings_action {
-                self.is_settings_open = false;
-            }
+        let settings_action = crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
+        if let Some(UiAction::ToggleSettings) = settings_action {
+            self.is_settings_open = !self.is_settings_open;
         } else if let Some(UiAction::ToggleSettings) = action {
-            self.is_settings_open = true;
+            self.is_settings_open = !self.is_settings_open;
             action = None;
         }
 

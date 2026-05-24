@@ -51,9 +51,6 @@ impl SowEngine {
             kind,
             BuildingKind::Factory
                 | BuildingKind::Port
-                | BuildingKind::Industry
-                | BuildingKind::Cultural
-                | BuildingKind::Science
         );
 
         if is_district {
@@ -82,9 +79,6 @@ impl SowEngine {
                         b.kind,
                         BuildingKind::Factory
                             | BuildingKind::Port
-                            | BuildingKind::Industry
-                            | BuildingKind::Cultural
-                            | BuildingKind::Science
                     )
                 {
                     let (dx, dy) = crate::building::idx_xy(b.tile_idx, w);

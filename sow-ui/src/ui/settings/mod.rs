@@ -32,7 +32,7 @@ impl Default for SettingsState {
     }
 }
 
-pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiAction> {
+pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) -> Option<UiAction> {
     let mut action = None;
     let compact = root_ui.ctx().content_rect().width() < 900.0;
     let panel_w = if compact {
@@ -43,20 +43,40 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
 
     let strings = &sow_lang::get(state.language).settings;
 
+    let progress = root_ui.ctx().animate_bool_with_time(egui::Id::new("settings_animation_progress"), is_open, 0.22);
+    if progress <= 0.01 && !is_open {
+        return None;
+    }
+
     // Dark scrim behind the modal
     let screen_rect = root_ui.ctx().content_rect();
     root_ui.ctx().layer_painter(egui::LayerId::new(
         egui::Order::Foreground,
         egui::Id::new("settings_scrim"),
     ))
-    .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(200));
+    .rect_filled(screen_rect, 0.0, Color32::from_black_alpha((200.0 * progress) as u8));
+
+    // Disney overshoot curve
+    let anim_scale = if is_open {
+        let t = progress;
+        if t >= 1.0 {
+            1.0
+        } else {
+            1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+        }
+    } else {
+        progress
+    };
+
+    // Slide down from above center (-300px) and bounce
+    let y_offset = -300.0 * (1.0 - anim_scale);
 
     egui::Window::new("settings_modal")
         .title_bar(false)
         .collapsible(false)
         .resizable(false)
         .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
         .fixed_size(egui::vec2(panel_w, 0.0))
         .frame(crate::ui::theme::standard_panel_frame(compact))
         .show(root_ui.ctx(), |ui| {

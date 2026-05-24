@@ -719,6 +719,7 @@ impl SowEngine {
                 kind: b.kind,
                 level: b.level,
                 under_construction: b.under_construction,
+                ticks_until_complete: b.ticks_until_complete,
             })
             .collect();
 

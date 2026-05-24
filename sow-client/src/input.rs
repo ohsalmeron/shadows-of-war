@@ -156,16 +156,15 @@ impl SowApp {
                         }
                     }
 
-                    // Building hotkeys 1-7, Nuke hotkeys 8-0 (Redesigned)
+                    // Building hotkeys 1-6, Nuke hotkeys 8-0 (Redesigned)
                     if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
                         let building = match code {
                             winit::keyboard::KeyCode::Digit1 | winit::keyboard::KeyCode::Numpad1 => Some(sow_core::game::BuildingKind::City),
                             winit::keyboard::KeyCode::Digit2 | winit::keyboard::KeyCode::Numpad2 => Some(sow_core::game::BuildingKind::Factory),
                             winit::keyboard::KeyCode::Digit3 | winit::keyboard::KeyCode::Numpad3 => Some(sow_core::game::BuildingKind::Port),
-                            winit::keyboard::KeyCode::Digit4 | winit::keyboard::KeyCode::Numpad4 => Some(sow_core::game::BuildingKind::Industry),
-                            winit::keyboard::KeyCode::Digit5 | winit::keyboard::KeyCode::Numpad5 => Some(sow_core::game::BuildingKind::DefensePost),
-                            winit::keyboard::KeyCode::Digit6 | winit::keyboard::KeyCode::Numpad6 => Some(sow_core::game::BuildingKind::SamLauncher),
-                            winit::keyboard::KeyCode::Digit7 | winit::keyboard::KeyCode::Numpad7 => Some(sow_core::game::BuildingKind::MissileSilo),
+                            winit::keyboard::KeyCode::Digit4 | winit::keyboard::KeyCode::Numpad4 => Some(sow_core::game::BuildingKind::DefensePost),
+                            winit::keyboard::KeyCode::Digit5 | winit::keyboard::KeyCode::Numpad5 => Some(sow_core::game::BuildingKind::SamLauncher),
+                            winit::keyboard::KeyCode::Digit6 | winit::keyboard::KeyCode::Numpad6 => Some(sow_core::game::BuildingKind::MissileSilo),
                             _ => None,
                         };
                         if let Some(kind) = building {
@@ -837,9 +836,6 @@ pub fn resolve_building_placement_tile(
         kind,
         sow_core::game::BuildingKind::Factory
             | sow_core::game::BuildingKind::Port
-            | sow_core::game::BuildingKind::Industry
-            | sow_core::game::BuildingKind::Cultural
-            | sow_core::game::BuildingKind::Science
     );
 
     // 1. Gather valid land structure tiles within pokayoke_dist of click target
@@ -918,9 +914,6 @@ pub fn resolve_building_placement_tile(
                             b.kind,
                             sow_core::game::BuildingKind::Factory
                                 | sow_core::game::BuildingKind::Port
-                                | sow_core::game::BuildingKind::Industry
-                                | sow_core::game::BuildingKind::Cultural
-                                | sow_core::game::BuildingKind::Science
                         )
                     {
                         let dx = (b.tile_idx % map_w) as i64;

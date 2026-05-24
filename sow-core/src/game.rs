@@ -20,22 +20,16 @@ pub enum BuildingKind {
     DefensePost,
     SamLauncher,
     MissileSilo,
-    Industry,
-    Cultural,
-    Science,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 9] = [
+    pub const ALL: [BuildingKind; 6] = [
         BuildingKind::City,
         BuildingKind::Factory,
         BuildingKind::Port,
         BuildingKind::DefensePost,
         BuildingKind::SamLauncher,
         BuildingKind::MissileSilo,
-        BuildingKind::Industry,
-        BuildingKind::Cultural,
-        BuildingKind::Science,
     ];
     #[inline]
     pub fn as_str(self) -> &'static str {
@@ -46,9 +40,6 @@ impl BuildingKind {
             BuildingKind::DefensePost => "DefensePost",
             BuildingKind::SamLauncher => "SAM",
             BuildingKind::MissileSilo => "Silo",
-            BuildingKind::Industry => "Industry",
-            BuildingKind::Cultural => "Cultural",
-            BuildingKind::Science => "Science",
         }
     }
     #[inline]
@@ -57,9 +48,6 @@ impl BuildingKind {
             BuildingKind::City => crate::assets::Asset::City,
             BuildingKind::Factory => crate::assets::Asset::Factory,
             BuildingKind::Port => crate::assets::Asset::Port,
-            BuildingKind::Industry => crate::assets::Asset::Factory,
-            BuildingKind::Cultural => crate::assets::Asset::City,
-            BuildingKind::Science => crate::assets::Asset::SamLauncher,
             BuildingKind::DefensePost => crate::assets::Asset::DefensePost,
             BuildingKind::SamLauncher => crate::assets::Asset::SamLauncher,
             BuildingKind::MissileSilo => crate::assets::Asset::MissileSilo,
@@ -72,10 +60,7 @@ impl BuildingKind {
         match self {
             BuildingKind::City
             | BuildingKind::Factory
-            | BuildingKind::Port
-            | BuildingKind::Industry
-            | BuildingKind::Cultural
-            | BuildingKind::Science => 20,
+            | BuildingKind::Port => 20,
             BuildingKind::DefensePost => 50,
             BuildingKind::SamLauncher => 300,
             BuildingKind::MissileSilo => 100,

@@ -164,10 +164,7 @@ impl SowEngine {
                     );
                     let dp_multiplier = 1.0 + (dp_bonus as f64 / 10.0); // Approximation of defense buff
 
-                    let defender_agg = self.building_aggregates.get(execution.target_owner as usize).copied().unwrap_or_default();
-                    let cultural_shield_mult = 1.0 + defender_agg.cultural_levels as f64 * 0.15; // +15% defense per level
-
-                    let atk_loss = self.state.config.attack_cost_enemy * terrain_multiplier * dp_multiplier * cultural_shield_mult;
+                    let atk_loss = self.state.config.attack_cost_enemy * terrain_multiplier * dp_multiplier;
 
                     execution.troops -= atk_loss;
 

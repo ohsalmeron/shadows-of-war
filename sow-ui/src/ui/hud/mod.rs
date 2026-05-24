@@ -59,29 +59,30 @@ fn draw_buildings_dock(
     state: &mut HudState,
     width: f32,
     compact: bool,
+    anim_scale: f32,
 ) {
-    let bg = crate::ui::theme::panel_bg_transparent();
+    let alpha = anim_scale.clamp(0.0, 1.0);
+    let bg = crate::ui::theme::panel_bg_transparent().linear_multiply(alpha);
     let border_stroke = if state.selected_building_kind.is_some() {
-        egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan())
+        egui::Stroke::new(1.5_f32 * anim_scale, crate::ui::theme::accent_solo_cyan().linear_multiply(alpha))
     } else {
-        egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border())
+        egui::Stroke::new(1.0_f32 * anim_scale, crate::ui::theme::nickname_field_border().linear_multiply(alpha))
     };
 
     egui::Frame::NONE
         .fill(bg)
         .stroke(border_stroke)
         .corner_radius(8)
-        .inner_margin(egui::Margin::symmetric(8, 6))
+        .inner_margin(egui::Margin::symmetric((8.0 * anim_scale) as i8, (6.0 * anim_scale) as i8))
         .show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = if compact { 4.0 } else { 12.0 };
+                ui.spacing_mut().item_spacing.x = (if compact { 4.0 } else { 12.0 }) * anim_scale;
                 
                 let active_kinds = [
                     sow_core::game::BuildingKind::City,
                     sow_core::game::BuildingKind::Factory,
                     sow_core::game::BuildingKind::Port,
-                    sow_core::game::BuildingKind::Industry,
                     sow_core::game::BuildingKind::DefensePost,
                     sow_core::game::BuildingKind::SamLauncher,
                     sow_core::game::BuildingKind::MissileSilo,
@@ -96,54 +97,48 @@ fn draw_buildings_dock(
                     let can_afford = state.gold >= cost;
                     
                     let tint = if is_selected {
-                        crate::ui::theme::accent_solo_cyan()
+                        crate::ui::theme::accent_solo_cyan().linear_multiply(alpha)
                     } else if !can_afford {
-                        egui::Color32::from_rgb(180, 50, 50)
+                        egui::Color32::from_rgb(180, 50, 50).linear_multiply(alpha)
                     } else {
-                        egui::Color32::WHITE
+                        egui::Color32::WHITE.linear_multiply(alpha)
                     };
                     
                     let bg_color = if is_selected {
-                        crate::ui::theme::accent_solo_cyan().linear_multiply(0.15)
+                        crate::ui::theme::accent_solo_cyan().linear_multiply(0.15 * alpha)
                     } else {
                         egui::Color32::TRANSPARENT
                     };
                     
                     let stroke = if is_selected {
-                        egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan())
+                        egui::Stroke::new(1.5_f32 * anim_scale, crate::ui::theme::accent_solo_cyan().linear_multiply(alpha))
                     } else if !can_afford {
-                        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(180, 50, 50))
+                        egui::Stroke::new(1.0_f32 * anim_scale, egui::Color32::from_rgb(180, 50, 50).linear_multiply(alpha))
                     } else {
-                        egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
+                        egui::Stroke::new(1.0_f32 * anim_scale, crate::ui::theme::nickname_field_border().linear_multiply(0.5 * alpha))
                     };
                     
                     let (rect, mut resp) = ui.allocate_exact_size(
-                        egui::vec2(col_w, if compact { 36.0 } else { 44.0 }),
+                        egui::vec2(col_w, (if compact { 36.0 } else { 44.0 }) * anim_scale),
                         egui::Sense::click(),
                     );
                     
                     resp = resp.on_hover_ui(|ui| {
                         let name = match kind {
                             sow_core::game::BuildingKind::City => "City Center",
-                            sow_core::game::BuildingKind::Factory => "Military District",
-                            sow_core::game::BuildingKind::Port => "Port District",
-                            sow_core::game::BuildingKind::Industry => "Industry District",
-                            sow_core::game::BuildingKind::Cultural => "Cultural District",
-                            sow_core::game::BuildingKind::Science => "Science District",
+                            sow_core::game::BuildingKind::Factory => "Factory",
+                            sow_core::game::BuildingKind::Port => "Port",
                             sow_core::game::BuildingKind::DefensePost => "Defense Post",
                             sow_core::game::BuildingKind::SamLauncher => "SAM Launcher",
-                            sow_core::game::BuildingKind::MissileSilo => "Nuclear Silo",
+                            sow_core::game::BuildingKind::MissileSilo => "Missile Silo",
                         };
                         let desc = match kind {
                             sow_core::game::BuildingKind::City => "Core of your empire. Levels up automatically with territory, unlocking district slots",
-                            sow_core::game::BuildingKind::Factory => "Speeds up troop production and unit capacity",
-                            sow_core::game::BuildingKind::Port => "Enables building and launching naval fleets. Generates Gold & Troops",
-                            sow_core::game::BuildingKind::Industry => "Generates passive Gold income",
-                            sow_core::game::BuildingKind::Cultural => "Generates passive defense: territory tiles cost +15% more for enemies to conquer per level",
-                            sow_core::game::BuildingKind::Science => "Unlocks advanced military structures (Nuclear Silo, SAM Launcher)",
-                            sow_core::game::BuildingKind::DefensePost => "Reveals fog of war in a large radius",
-                            sow_core::game::BuildingKind::SamLauncher => "Gated by Science. Automatically shoots down incoming missiles in range",
-                            sow_core::game::BuildingKind::MissileSilo => "Gated by Science. Allows production and launch of nuclear weapons",
+                            sow_core::game::BuildingKind::Factory => "Generates massive passive Gold (+100/level) and increases troop capacity (+500 Max Troops)",
+                            sow_core::game::BuildingKind::Port => "Enables Warships & Trade Ships. Generates passive Gold (+50/level)",
+                            sow_core::game::BuildingKind::DefensePost => "Frontline Anchor: Fortifies borders in an 8-tile radius, slowing enemy land grabs by 50%",
+                            sow_core::game::BuildingKind::SamLauncher => "Air defense: Automatically intercepts and shoots down incoming enemy missiles in range",
+                            sow_core::game::BuildingKind::MissileSilo => "Allows production and launching of atomic payloads (Atom Bombs, Hydrogen Bombs)",
                         };
                         
                         ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::accent_solo_cyan()));
@@ -158,7 +153,7 @@ fn draw_buildings_dock(
                     
                     let is_hovered = resp.hovered();
                     let final_bg = if is_hovered && !is_selected {
-                        crate::ui::theme::nickname_field_bg().linear_multiply(0.3)
+                        crate::ui::theme::nickname_field_bg().linear_multiply(0.3 * alpha)
                     } else {
                         bg_color
                     };
@@ -168,22 +163,22 @@ fn draw_buildings_dock(
                     // Hotkey badge (top-left corner)
                     if !compact {
                         let hotkey_color = if is_selected {
-                            crate::ui::theme::accent_solo_cyan()
+                            crate::ui::theme::accent_solo_cyan().linear_multiply(alpha)
                         } else {
-                            egui::Color32::from_white_alpha(120)
+                            egui::Color32::from_white_alpha((120.0 * alpha) as u8)
                         };
                         ui.painter().text(
                             egui::pos2(rect.left() + 5.0, rect.top() + 5.0),
                             egui::Align2::LEFT_TOP,
                             format!("{}", display_idx + 1),
-                            egui::FontId::proportional(7.0),
+                            egui::FontId::proportional(7.0 * anim_scale),
                             hotkey_color,
                         );
                     }
                     
-                    let icon_size = if compact { 16.0 } else { 22.0 };
+                    let icon_size = (if compact { 16.0 } else { 22.0 }) * anim_scale;
                     let icon_rect = egui::Rect::from_center_size(
-                        egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
+                        egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 }) * anim_scale),
                         egui::vec2(icon_size, icon_size),
                     );
                     
@@ -199,11 +194,11 @@ fn draw_buildings_dock(
                     };
                     
                     let text_color = if !can_afford {
-                        egui::Color32::from_rgb(239, 68, 68)
+                        egui::Color32::from_rgb(239, 68, 68).linear_multiply(alpha)
                     } else if is_selected {
-                        crate::ui::theme::accent_solo_cyan()
+                        crate::ui::theme::accent_solo_cyan().linear_multiply(alpha)
                     } else {
-                        egui::Color32::GRAY
+                        egui::Color32::GRAY.linear_multiply(alpha)
                     };
                     
                     let label_text = if compact {
@@ -212,9 +207,9 @@ fn draw_buildings_dock(
                         format!("{} - {}", kind.as_str(), cost_text)
                     };
                     
-                    let font_size = if compact { 8.0 } else { 9.0 };
+                    let font_size = (if compact { 8.0 } else { 9.0 }) * anim_scale;
                     ui.painter().text(
-                        egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
+                        egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 }) * anim_scale),
                         egui::Align2::CENTER_CENTER,
                         label_text,
                         egui::FontId::proportional(font_size),
@@ -232,9 +227,9 @@ fn draw_buildings_dock(
                 
                 // Nuke launch buttons (separator + icons)
                 if sow_core::config::ENABLE_MISSILE_STRUCTURES {
-                    ui.add_space(4.0);
+                    ui.add_space(4.0 * anim_scale);
                     ui.separator();
-                    ui.add_space(4.0);
+                    ui.add_space(4.0 * anim_scale);
                     
                     let nukes: [(sow_core::game::NukeKind, &str); 3] = [
                         (sow_core::game::NukeKind::AtomBomb, "Atom"),
@@ -248,25 +243,25 @@ fn draw_buildings_dock(
                         let nk_col_w = if compact { 28.0 } else { 36.0 };
                         
                         let tint = if is_selected {
-                            egui::Color32::from_rgb(239, 68, 68)
+                            egui::Color32::from_rgb(239, 68, 68).linear_multiply(alpha)
                         } else {
-                            egui::Color32::WHITE
+                            egui::Color32::WHITE.linear_multiply(alpha)
                         };
                         
                         let bg_color = if is_selected {
-                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30)
+                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, (30.0 * alpha) as u8)
                         } else {
                             egui::Color32::TRANSPARENT
                         };
                         
                         let stroke = if is_selected {
-                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(239, 68, 68))
+                            egui::Stroke::new(1.5_f32 * anim_scale, egui::Color32::from_rgb(239, 68, 68).linear_multiply(alpha))
                         } else {
-                            egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
+                            egui::Stroke::new(1.0_f32 * anim_scale, crate::ui::theme::nickname_field_border().linear_multiply(0.5 * alpha))
                         };
                         
                         let (rect, mut resp) = ui.allocate_exact_size(
-                            egui::vec2(nk_col_w, if compact { 36.0 } else { 44.0 }),
+                            egui::vec2(nk_col_w, (if compact { 36.0 } else { 44.0 }) * anim_scale),
                             egui::Sense::click(),
                         );
                         
@@ -282,7 +277,7 @@ fn draw_buildings_dock(
                         });
                         
                         let final_bg = if resp.hovered() && !is_selected {
-                            crate::ui::theme::nickname_field_bg().linear_multiply(0.3)
+                            crate::ui::theme::nickname_field_bg().linear_multiply(0.3 * alpha)
                         } else {
                             bg_color
                         };
@@ -292,34 +287,34 @@ fn draw_buildings_dock(
                         // Hotkey badge (top-left corner)
                         if !compact {
                             let hotkey_color = if is_selected {
-                                egui::Color32::from_rgb(239, 68, 68)
+                                egui::Color32::from_rgb(239, 68, 68).linear_multiply(alpha)
                             } else {
-                                egui::Color32::from_white_alpha(120)
+                                egui::Color32::from_white_alpha((120.0 * alpha) as u8)
                             };
                             ui.painter().text(
                                 egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
                                 egui::Align2::LEFT_TOP,
                                 format!("{}", ni + 7),
-                                egui::FontId::proportional(7.0),
+                                egui::FontId::proportional(7.0 * anim_scale),
                                 hotkey_color,
                             );
                         }
                         
-                        let icon_size = if compact { 16.0 } else { 20.0 };
+                        let icon_size = (if compact { 16.0 } else { 20.0 }) * anim_scale;
                         let icon_rect = egui::Rect::from_center_size(
-                            egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
+                            egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 }) * anim_scale),
                             egui::vec2(icon_size, icon_size),
                         );
                         let image = egui::Image::new(uri).tint(tint);
                         image.paint_at(ui, icon_rect);
                         
-                        let font_size = if compact { 7.0 } else { 8.0 };
+                        let font_size = (if compact { 7.0 } else { 8.0 }) * anim_scale;
                         ui.painter().text(
-                            egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
+                            egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 }) * anim_scale),
                             egui::Align2::CENTER_CENTER,
                             label,
                             egui::FontId::proportional(font_size),
-                            if is_selected { egui::Color32::from_rgb(239, 68, 68) } else { egui::Color32::GRAY },
+                            if is_selected { egui::Color32::from_rgb(239, 68, 68).linear_multiply(alpha) } else { egui::Color32::GRAY.linear_multiply(alpha) },
                         );
                         
                         if resp.clicked() {
@@ -368,9 +363,21 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                     });
 
                     // 1.5 Building Dock (middle in vertical stack)
-                    if state.spawn_timer_secs.is_none() {
+                    let is_dock_active = state.spawn_timer_secs.is_none();
+                    let dock_progress = ui.ctx().animate_bool_with_time(egui::Id::new("buildings_dock_animation"), is_dock_active, 0.22);
+                    if dock_progress > 0.01 {
+                        let anim_scale = if is_dock_active {
+                            let t = dock_progress;
+                            if t >= 1.0 {
+                                1.0
+                            } else {
+                                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                            }
+                        } else {
+                            dock_progress
+                        };
                         ui.push_id("building_dock", |ui| {
-                            draw_buildings_dock(ui, state, panel_w, compact);
+                            draw_buildings_dock(ui, state, panel_w, compact, anim_scale);
                         });
                     }
 
@@ -467,16 +474,32 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
         });
 
     // ── Floating Alliance Inbox Panel ─────────────────────────────────────────
-    if state.show_alliance_inbox {
+    // ── Floating Alliance Inbox Panel ─────────────────────────────────────────
+    let is_inbox_active = state.show_alliance_inbox;
+    let inbox_progress = ui.ctx().animate_bool_with_time(egui::Id::new("alliance_inbox_animation"), is_inbox_active, 0.22);
+    if inbox_progress > 0.01 {
+        let anim_scale = if is_inbox_active {
+            let t = inbox_progress;
+            if t >= 1.0 {
+                1.0
+            } else {
+                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+            }
+        } else {
+            inbox_progress
+        };
+        // Slide in horizontally from 320px off-screen on the right to -12px margin
+        let x_offset = -12.0 + 320.0 * (1.0 - anim_scale);
+
         egui::Area::new(egui::Id::new("floating_alliance_inbox"))
-            .anchor(Align2::RIGHT_TOP, vec2(-12.0, 56.0 + state.safe_area_top))
+            .anchor(Align2::RIGHT_TOP, vec2(x_offset, 56.0 + state.safe_area_top))
             .order(egui::Order::Foreground)
             .show(ui.ctx(), |ui| {
                 ui.set_max_width(300.0);
                 ui.vertical(|ui| {
                     let frame_res = egui::Frame::menu(&ui.ctx().global_style())
                         .fill(crate::ui::theme::panel_bg())
-                        .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan()))
+                        .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress)))
                         .corner_radius(12)
                         .inner_margin(egui::Margin::symmetric(10, 8))
                         .show(ui, |ui| {
@@ -488,7 +511,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                 ui.label(
                                     RichText::new(&sow_lang::get(lang).hud.inbox_title)
                                         .strong()
-                                        .color(crate::ui::theme::accent_solo_cyan())
+                                        .color(crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress))
                                         .size(12.0),
                                 );
                                 ui.add_space(4.0);
@@ -498,9 +521,9 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                     let w = (ui.available_width() - 6.0) / 2.0;
                                     ui.horizontal(|ui| {
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            egui::Button::new(RichText::new("REJECT ALL").strong().size(10.0).color(Color32::from_rgb(239, 68, 68)))
+                                            egui::Button::new(RichText::new("REJECT ALL").strong().size(10.0).color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress)))
                                                 .fill(crate::ui::theme::menu_secondary_button())
-                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3)))
+                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3 * inbox_progress)))
                                                 .corner_radius(6)
                                         ).clicked() {
                                             for &req in &requests {
@@ -509,9 +532,9 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                             state.show_alliance_inbox = false;
                                         }
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            egui::Button::new(RichText::new("ACCEPT ALL").strong().size(10.0).color(Color32::from_rgb(74, 222, 128)))
+                                            egui::Button::new(RichText::new("ACCEPT ALL").strong().size(10.0).color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress)))
                                                 .fill(crate::ui::theme::menu_secondary_button())
-                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3)))
+                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3 * inbox_progress)))
                                                 .corner_radius(6)
                                         ).clicked() {
                                             for &req in &requests {
@@ -525,10 +548,13 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
 
                                 // Request cards
                                 if requests.is_empty() {
-                                    ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_empty).color(Color32::GRAY));
+                                    ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_empty).color(Color32::GRAY.linear_multiply(inbox_progress)));
                                 }
                                 for &requester_id in &requests {
                                     let Some(requester) = state.players.iter().find(|p| p.id == requester_id) else { continue };
+                                    let is_renewal = my_snapshot
+                                        .map(|me| me.alliances.contains(&requester_id))
+                                        .unwrap_or(false);
                                     let rgb = if requester.player_type == sow_core::player::PlayerType::Human {
                                         sow_core::player::human_shader_territory_rgb(requester.id)
                                     } else {
@@ -538,7 +564,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                         (rgb[0] * 255.0) as u8,
                                         (rgb[1] * 255.0) as u8,
                                         (rgb[2] * 255.0) as u8,
-                                    );
+                                    ).linear_multiply(inbox_progress);
                                     let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
                                     let name = if requester.name.is_empty() {
                                         if requester.id >= 200 { format!("Tribe {}", requester.id - 199) }
@@ -547,48 +573,92 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                         requester.name.clone()
                                     };
 
-                                    egui::Frame::NONE
-                                        .fill(crate::ui::theme::nickname_field_bg().linear_multiply(0.5))
-                                        .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.4)))
-                                        .corner_radius(6)
-                                        .inner_margin(egui::Margin::symmetric(8, 6))
-                                        .show(ui, |ui| {
-                                            ui.vertical(|ui| {
-                                                // Name row
-                                                ui.horizontal(|ui| {
-                                                    ui.label(RichText::new(icon).color(pc).size(14.0));
-                                                    ui.vertical(|ui| {
-                                                        ui.spacing_mut().item_spacing.y = 0.0;
-                                                        ui.label(RichText::new(name).strong().color(pc).size(12.5));
-                                                        ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_wants_ally).size(10.5).color(Color32::LIGHT_GRAY));
+                                    // Animate individual card sliding horizontally with spring overshoot!
+                                    let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, 0.22);
+                                    let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
+                                    let card_offset = 30.0 * (1.0 - card_scale.max(0.0));
+
+                                    ui.horizontal(|ui| {
+                                        if card_offset > 0.01 {
+                                            ui.add_space(card_offset);
+                                        }
+
+                                        egui::Frame::NONE
+                                            .fill(crate::ui::theme::nickname_field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
+                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
+                                            .corner_radius(6)
+                                            .inner_margin(egui::Margin::symmetric(8, 6))
+                                            .show(ui, |ui| {
+                                                ui.vertical(|ui| {
+                                                    // Name row
+                                                    ui.horizontal(|ui| {
+                                                        if icon.contains('⭐') {
+                                                            static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
+                                                            REGISTER_STAR_ONCE.call_once(|| {
+                                                                ui.ctx().include_bytes(
+                                                                    "bytes://star.webp",
+                                                                    include_bytes!("../../../../sow-client/assets/star.webp").as_slice(),
+                                                                );
+                                                            });
+                                                            let star_size = 18.0_f32; // bigger size to compensate for native emoji
+                                                            let load_res = ui.ctx().try_load_texture(
+                                                                "bytes://star.webp",
+                                                                egui::TextureOptions::default(),
+                                                                egui::load::SizeHint::Size {
+                                                                    width: (star_size * 2.0).round() as u32,
+                                                                    height: (star_size * 2.0).round() as u32,
+                                                                    maintain_aspect_ratio: true,
+                                                                },
+                                                            );
+                                                            if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                                                ui.image((texture.id, egui::vec2(star_size, star_size)));
+                                                            } else {
+                                                                ui.label(RichText::new("⭐").color(pc).size(14.0));
+                                                            }
+                                                        } else {
+                                                            ui.label(RichText::new(icon).color(pc).size(14.0));
+                                                        }
+                                                        ui.vertical(|ui| {
+                                                            ui.spacing_mut().item_spacing.y = 0.0;
+                                                            ui.label(RichText::new(name).strong().color(pc).size(12.5));
+                                                            let prompt = if is_renewal {
+                                                                match lang {
+                                                                    sow_lang::Language::Spanish => "¡quiere renovar la alianza!".to_string(),
+                                                                    _ => "wants to renew your alliance!".to_string(),
+                                                                }
+                                                            } else {
+                                                                sow_lang::get(lang).hud.inbox_wants_ally.clone()
+                                                            };
+                                                            ui.label(RichText::new(&prompt).size(10.5).color(Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress)));
+                                                        });
+                                                    });
+                                                    ui.add_space(2.0);
+                                                    // Button row
+                                                    let bw = (ui.available_width() - 6.0) / 2.0;
+                                                    let is_last = requests.len() == 1;
+                                                    ui.horizontal(|ui| {
+                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                            egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_accept).size(11.0).color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress)))
+                                                                .fill(crate::ui::theme::menu_secondary_button())
+                                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3 * inbox_progress)))
+                                                                .corner_radius(6)
+                                                        ).clicked() {
+                                                            cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
+                                                            if is_last { state.show_alliance_inbox = false; }
+                                                        }
+                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                            egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_reject).size(11.0).color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress)))
+                                                                .fill(crate::ui::theme::menu_secondary_button())
+                                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3 * inbox_progress)))
+                                                                .corner_radius(6)
+                                                        ).clicked() {
+                                                            cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
+                                                            if is_last { state.show_alliance_inbox = false; }
+                                                        }
                                                     });
                                                 });
-                                                ui.add_space(2.0);
-                                                // Button row
-                                                let bw = (ui.available_width() - 6.0) / 2.0;
-                                                let is_last = requests.len() == 1;
-                                                ui.horizontal(|ui| {
-                                                    if ui.add_sized(egui::vec2(bw, 24.0),
-                                                        egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_accept).size(11.0).color(Color32::from_rgb(74, 222, 128)))
-                                                            .fill(crate::ui::theme::menu_secondary_button())
-                                                            .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3)))
-                                                            .corner_radius(6)
-                                                    ).clicked() {
-                                                        cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
-                                                        if is_last { state.show_alliance_inbox = false; }
-                                                    }
-                                                    if ui.add_sized(egui::vec2(bw, 24.0),
-                                                        egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_reject).size(11.0).color(Color32::from_rgb(239, 68, 68)))
-                                                            .fill(crate::ui::theme::menu_secondary_button())
-                                                            .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3)))
-                                                            .corner_radius(6)
-                                                    ).clicked() {
-                                                        cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
-                                                        if is_last { state.show_alliance_inbox = false; }
-                                                    }
-                                                });
                                             });
-                                        });
+                                    });
                                     ui.add_space(2.0);
                                 }
                             });
@@ -623,6 +693,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                 }
             }
         }
+        ui.ctx().request_repaint();
     }
 
     // ── Bottom-right Map Controls ──────────────────────────────────────────────
@@ -654,7 +725,20 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
             });
         });
 
-    if state.show_emoji_panel {
+    let is_emoji_active = state.show_emoji_panel;
+    let emoji_progress = ui.ctx().animate_bool_with_time(egui::Id::new("emoji_panel_animation"), is_emoji_active, 0.22);
+    if emoji_progress > 0.01 {
+        let anim_scale = if is_emoji_active {
+            let t = emoji_progress;
+            if t >= 1.0 {
+                1.0
+            } else {
+                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+            }
+        } else {
+            emoji_progress
+        };
+
         let screen_rect = ui.ctx().content_rect();
         let emojis = &[
             // Row 1: Happy / Expressive
@@ -674,39 +758,42 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
         if compact {
             // Mobile: Dim background backdrop
             ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("emoji_dim_bg")))
-                .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(150));
+                .rect_filled(screen_rect, 0.0, Color32::from_black_alpha((150.0 * emoji_progress) as u8));
         }
 
         let mut area = egui::Area::new(egui::Id::new("floating_emoji_panel"))
             .order(egui::Order::Foreground);
             
+        let y_offset = 120.0 * (1.0 - anim_scale);
         if compact {
-            area = area.pivot(Align2::CENTER_CENTER).fixed_pos(screen_rect.center());
+            let pos = screen_rect.center() + vec2(0.0, y_offset);
+            area = area.pivot(Align2::CENTER_CENTER).fixed_pos(pos);
         } else if let Some(pos) = state.emoji_panel_pos {
+            let pos = pos + vec2(0.0, y_offset);
             area = area.pivot(Align2::CENTER_CENTER).fixed_pos(pos);
         } else {
-            area = area.anchor(Align2::RIGHT_BOTTOM, vec2(-64.0, -100.0 - state.safe_area_bottom));
+            area = area.anchor(Align2::RIGHT_BOTTOM, vec2(-64.0, -100.0 - state.safe_area_bottom + y_offset));
         }
 
-        let border_glow = Color32::from_rgb(251, 191, 36);
+        let border_glow = Color32::from_rgb(251, 191, 36).linear_multiply(emoji_progress);
 
         area.show(ui.ctx(), |ui| {
             let frame_res = egui::Frame::window(&ui.ctx().global_style())
-                .fill(crate::ui::theme::panel_bg())
-                .stroke(egui::Stroke::new(1.8_f32, border_glow))
+                .fill(crate::ui::theme::panel_bg().linear_multiply(emoji_progress))
+                .stroke(egui::Stroke::new(1.8_f32 * anim_scale, border_glow))
                 .shadow(egui::Shadow {
                     blur: if compact { 12 } else { 16 },
                     spread: 0,
-                    color: border_glow.linear_multiply(0.25),
+                    color: border_glow.linear_multiply(0.25 * emoji_progress),
                     offset: [0, 0],
                 })
-                .inner_margin(egui::Margin::same(if compact { 10 } else { 12 }))
-                .corner_radius(if compact { 16 } else { 12 })
+                .inner_margin(egui::Margin::same(((if compact { 10.0 } else { 12.0 }) * anim_scale) as i8))
+                .corner_radius(((if compact { 16.0 } else { 12.0 }) * anim_scale) as u8)
                 .show(ui, |ui| {
                     let cols = 8;
-                    let btn_size = if compact { 38.0 } else { 42.0 };
-                    let emoji_size = if compact { 26.0 } else { 28.0 };
-                    let spacing = if compact { 2.0 } else { 3.0 };
+                    let btn_size = (if compact { 38.0 } else { 42.0 }) * anim_scale;
+                    let emoji_size = (if compact { 26.0 } else { 28.0 }) * anim_scale;
+                    let spacing = (if compact { 2.0 } else { 3.0 }) * anim_scale;
                     let grid_width = cols as f32 * btn_size + (cols as f32 - 1.0) * spacing;
 
                     ui.vertical(|ui| {
@@ -714,9 +801,9 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                         ui.spacing_mut().item_spacing.y = 0.0;
                         
                         ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("TACTICAL EXPRESSIONS").strong().size(13.0).color(border_glow));
+                            ui.label(RichText::new("TACTICAL EXPRESSIONS").strong().size(13.0 * anim_scale).color(border_glow));
                         });
-                        ui.add_space(8.0);
+                        ui.add_space(8.0 * anim_scale);
 
                         let mut emoji_idx = 0;
                         for chunk in emojis.chunks(cols) {
@@ -740,34 +827,74 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                                     };
 
                                     let bg_color = if is_hovered {
-                                        crate::ui::theme::menu_secondary_button_hover().linear_multiply(0.6 + 0.3 * hover_t)
+                                        crate::ui::theme::menu_secondary_button_hover().linear_multiply((0.6 + 0.3 * hover_t) * emoji_progress)
                                     } else {
-                                        crate::ui::theme::nickname_field_bg().linear_multiply(0.4)
+                                        crate::ui::theme::nickname_field_bg().linear_multiply(0.4 * emoji_progress)
                                     };
-                                    
                                     let stroke_color = border_glow.linear_multiply(0.3 + 0.7 * hover_t);
-                                    let active_stroke = egui::Stroke::new(1.0_f32 + 1.0_f32 * hover_t, stroke_color);
+                                    let active_stroke = egui::Stroke::new((1.0_f32 + 1.0_f32 * hover_t) * anim_scale, stroke_color);
 
                                     // Expand rect slightly on hover using spring_t for dynamic size popping
-                                    let active_rect = rect.expand(2.0 * spring_t);
+                                    let active_rect = rect.expand(2.0 * spring_t * anim_scale);
 
                                     ui.painter().rect(
                                         active_rect,
-                                        8.0, // rounded corners radius 8.0
+                                        8.0 * anim_scale, // rounded corners radius 8.0
                                         bg_color,
                                         active_stroke,
                                         egui::StrokeKind::Inside,
                                     );
                                     
                                     // Font size with spring scaling
-                                    let scaled_font_size = emoji_size + 6.0 * spring_t;
-                                    ui.painter().text(
-                                        active_rect.center(),
-                                        egui::Align2::CENTER_CENTER,
-                                        emoji,
-                                        egui::FontId::proportional(scaled_font_size),
-                                        Color32::WHITE,
-                                    );
+                                    let scaled_font_size = emoji_size + 6.0 * spring_t * anim_scale;
+                                    if emoji.contains('⭐') {
+                                        static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
+                                        REGISTER_STAR_ONCE.call_once(|| {
+                                            ui.ctx().include_bytes(
+                                                "bytes://star.webp",
+                                                include_bytes!("../../../../sow-client/assets/star.webp").as_slice(),
+                                            );
+                                        });
+                                        let star_size = scaled_font_size * 1.25;
+                                        let star_rect = egui::Rect::from_center_size(
+                                            active_rect.center(),
+                                            egui::vec2(star_size, star_size)
+                                        );
+                                        let size_hint = egui::load::SizeHint::Size {
+                                            width: star_size.round() as u32,
+                                            height: star_size.round() as u32,
+                                            maintain_aspect_ratio: true,
+                                        };
+                                        let load_res = ui.ctx().try_load_texture(
+                                            "bytes://star.webp",
+                                            egui::TextureOptions::default(),
+                                            size_hint,
+                                        );
+                                        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                            ui.painter().image(
+                                                texture.id,
+                                                star_rect,
+                                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                                egui::Color32::WHITE.linear_multiply(emoji_progress),
+                                            );
+                                        } else {
+                                            ui.painter().text(
+                                                active_rect.center(),
+                                                egui::Align2::CENTER_CENTER,
+                                                emoji,
+                                                egui::FontId::proportional(scaled_font_size),
+                                                Color32::WHITE.linear_multiply(emoji_progress),
+                                            );
+                                        }
+                                    } else {
+                                        ui.painter().text(
+                                            active_rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            emoji,
+                                            egui::FontId::proportional(scaled_font_size),
+                                            Color32::WHITE.linear_multiply(emoji_progress),
+                                        );
+                                    }
                                     
                                     emoji_idx += 1;
                                     
@@ -786,22 +913,22 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
                             ui.add_space(spacing);
                         }
                         
-                        ui.add_space(8.0);
+                        ui.add_space(8.0 * anim_scale);
                         
                         ui.horizontal(|ui| {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    ui.spacing_mut().item_spacing.x = 6.0 * anim_scale;
                                     
                                     let text_color = if state.pin_emoji {
-                                        crate::ui::theme::accent_ranked_gold()
+                                        crate::ui::theme::accent_ranked_gold().linear_multiply(emoji_progress)
                                     } else {
-                                        crate::ui::theme::text_secondary()
+                                        crate::ui::theme::text_secondary().linear_multiply(emoji_progress)
                                     };
                                     
                                     let label_resp = ui.label(
                                         RichText::new("PIN")
-                                            .size(13.0)
+                                            .size(13.0 * anim_scale)
                                             .strong()
                                             .color(text_color)
                                     );
@@ -1716,6 +1843,14 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
 }
 
 fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
+    let is_active = state.show_error.is_some();
+    let progress = ctx.animate_bool_with_time(egui::Id::new("error_toast_animation"), is_active, 0.22);
+
+    if progress <= 0.01 && !is_active {
+        state.last_error_message = None;
+        return;
+    }
+
     if let Some(err_msg) = state.show_error.clone() {
         let now = Instant::now();
         let display_duration = Duration::from_millis(2500);
@@ -1735,50 +1870,63 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
 
         if elapsed >= display_duration {
             state.show_error = None;
-            state.last_error_message = None;
             state.error_display_timer = None;
-            return;
         }
-
-        let remaining = display_duration.as_secs_f32() - elapsed.as_secs_f32();
-        let alpha = if remaining < 0.5 {
-            (remaining / 0.5).clamp(0.0, 1.0)
-        } else {
-            1.0
-        };
-
-        let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
-        let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
-        let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
-
-        egui::Area::new(egui::Id::new("error_toast_area"))
-            .anchor(egui::Align2::CENTER_TOP, vec2(0.0, 80.0 + state.safe_area_top))
-            .order(egui::Order::Tooltip)
-            .show(ctx, |ui| {
-                egui::Frame::new()
-                    .fill(bg_color)
-                    .stroke(egui::Stroke::new(1.0_f32, border_color))
-                    .corner_radius(6)
-                    .inner_margin(egui::Margin::symmetric(16, 8))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new("⚠️")
-                                    .color(border_color)
-                                    .size(12.0)
-                            );
-                            ui.add_space(6.0);
-                            ui.label(
-                                RichText::new(err_msg)
-                                    .color(text_color)
-                                    .size(12.0)
-                                    .strong()
-                            );
-                        });
-                    });
-            });
-
-        // Request repaint so the fade-out animation and auto-dismiss run smoothly
-        ctx.request_repaint();
     }
+
+    let err_msg = match &state.last_error_message {
+        Some(msg) => msg.clone(),
+        None => return,
+    };
+
+    // Disney overshoot curve (pop-in pop-out spring animation)
+    let anim_scale = if is_active {
+        let t = progress;
+        if t >= 1.0 {
+            1.0
+        } else {
+            1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+        }
+    } else {
+        progress
+    };
+
+    let alpha = progress;
+    let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
+    let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
+    let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
+
+    let target_y = 80.0 + state.safe_area_top;
+    // Slide down from above the screen (-120px) to target with a beautiful overshoot bounce
+    let current_y = target_y - 120.0 * (1.0 - anim_scale);
+
+    egui::Area::new(egui::Id::new("error_toast_area"))
+        .anchor(egui::Align2::CENTER_TOP, vec2(0.0, current_y))
+        .order(egui::Order::Tooltip)
+        .show(ctx, |ui| {
+            egui::Frame::new()
+                .fill(bg_color)
+                .stroke(egui::Stroke::new(1.0_f32, border_color))
+                .corner_radius(6)
+                .inner_margin(egui::Margin::symmetric(16, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("⚠️")
+                                .color(border_color)
+                                .size(12.0)
+                        );
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new(err_msg)
+                                .color(text_color)
+                                .size(12.0)
+                                .strong()
+                        );
+                    });
+                });
+        });
+
+    // Request repaint so the fade-out/pop-out animation runs smoothly
+    ctx.request_repaint();
 }

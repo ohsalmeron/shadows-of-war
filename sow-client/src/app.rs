@@ -746,7 +746,9 @@ impl SowApp {
 
                         // Determine victim from tile ownership in previous snapshot state
                         let tile_idx = alert.tile_y * self.sim.map_w + alert.tile_x;
-                        let victim_id = e.state.map.state.get(tile_idx as usize).copied().unwrap_or(0);
+                        let victim_id = self.gfx.map_renderer.as_ref()
+                            .and_then(|mr| mr.owners.get(tile_idx as usize).copied())
+                            .unwrap_or(0);
                         let victim_name = if victim_id == 0 {
                             "unclaimed territory".to_string()
                         } else {

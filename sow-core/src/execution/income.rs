@@ -90,12 +90,12 @@ impl SowEngine {
             let cleo_mult = if player.leader == crate::player::Leader::Cleopatra { 1.50 } else { 1.0 };
             let ragnar_mult = if player.leader == crate::player::Leader::Ragnar { 1.50 } else { 1.0 };
 
-            let industry_gold = agg.industry_levels as f64 * 100.0 * cleo_mult;
+            let factory_gold = agg.factory_levels as f64 * 100.0 * cleo_mult;
             let port_gold = agg.port_levels as f64 * 50.0 * ragnar_mult;
             let city_gold = agg.city_levels as f64 * config.gold_income_per_city_level;
 
             let gold_base = config.gold_base_income;
-            let mut gold_income = config.per_tick(gold_base + city_gold + industry_gold + port_gold);
+            let mut gold_income = config.per_tick(gold_base + city_gold + factory_gold + port_gold);
             if is_standard_bot {
                 gold_income *= 0.75;
             }

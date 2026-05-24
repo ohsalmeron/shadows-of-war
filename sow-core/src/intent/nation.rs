@@ -30,7 +30,6 @@ fn bot_structure_target_count(
         BuildingKind::SamLauncher => ((city_equivalent as f64) * sam_ratio).floor() as u32,
         BuildingKind::MissileSilo => ((city_equivalent as f64) * 0.2).floor() as u32,
         BuildingKind::City => city_equivalent.saturating_add(1),
-        _ => 0,
     }
 }
 
@@ -45,7 +44,6 @@ fn cheapest_gold_cost(kind: BuildingKind) -> f64 {
         BuildingKind::DefensePost => 50_000.0 / s,
         BuildingKind::SamLauncher => 1_500_000.0 / s,
         BuildingKind::MissileSilo => 1_000_000.0 / s,
-        _ => todo!(),
     }
 }
 
@@ -582,49 +580,58 @@ impl SowEngine {
                             if kind == BuildingKind::MissileSilo && owned >= 3 {
                                 continue;
                             }
-                            if owned >= target_count {
-                                let total_owned = agg.count_city + agg.count_factory + agg.count_port + agg.count_defense + agg.count_sam + agg.count_silo;
-                                if bot_iq >= 110 && total_owned as f32 / player_tile_count.max(1) as f32 > 1.0 / 1500.0 {
-                                    let mut upgrade_target = None;
-                                    let mut best_score = -1.0;
-                                    for b in &self.buildings {
-                                        if b.owner_id == bot_id && b.kind == kind && !b.under_construction && b.level < 5 {
-                                            let mut score = 1.0;
-                                            let mut has_sam = false;
-                                            let (bx, by) = (b.tile_idx % self.state.map.width, b.tile_idx / self.state.map.width);
-                                            for b2 in &self.buildings {
-                                                if b2.kind == crate::game::BuildingKind::SamLauncher && !b2.under_construction {
-                                                    let (sx, sy) = (b2.tile_idx % self.state.map.width, b2.tile_idx / self.state.map.width);
-                                                    if (bx as i32 - sx as i32).abs() + (by as i32 - sy as i32).abs() <= 48 {
-                                                        has_sam = true;
-                                                        break;
-                                                    }
+                            let total_owned = agg.count_city + agg.count_factory + agg.count_port + agg.count_defense + agg.count_sam + agg.count_silo;
+                            let density = total_owned as f32 / player_tile_count.max(1) as f32;
+                            let is_density_high = bot_iq >= 110 && density > 1.0 / 1500.0;
+
+                            let mut upgraded = false;
+                            if owned >= target_count || is_density_high {
+                                let mut upgrade_target = None;
+                                let mut best_score = -1.0;
+                                for b in &self.buildings {
+                                    if b.owner_id == bot_id && b.kind == kind && !b.under_construction && b.level < 5 {
+                                        let mut score = 1.0;
+                                        let mut has_sam = false;
+                                        let (bx, by) = (b.tile_idx % self.state.map.width, b.tile_idx / self.state.map.width);
+                                        for b2 in &self.buildings {
+                                            if b2.kind == crate::game::BuildingKind::SamLauncher && !b2.under_construction {
+                                                let (sx, sy) = (b2.tile_idx % self.state.map.width, b2.tile_idx / self.state.map.width);
+                                                if (bx as i32 - sx as i32).abs() + (by as i32 - sy as i32).abs() <= 48 {
+                                                    has_sam = true;
+                                                    break;
                                                 }
                                             }
-                                            if has_sam {
-                                                score += 10.0;
-                                            }
-                                            if score > best_score {
-                                                best_score = score;
-                                                upgrade_target = Some(b.id);
-                                            }
                                         }
-                                    }
-                                    if let Some(target_id) = upgrade_target {
-                                        let cost = structure_build_cost_gold(kind, bot_id, &self.buildings);
-                                        if player_gold >= cost {
-                                            if let Some(p_me) = self.state.player_mut(bot_id) {
-                                                p_me.iq_points -= build_cost;
-                                            }
-                                            decisions.push(BotDecision {
-                                                bot_id,
-                                                kind: BotDecisionKind::Build,
-                                                intent: GameplayIntent::UpgradeStructure { building_id: target_id },
-                                            });
-                                            break;
+                                        if has_sam {
+                                            score += 10.0;
+                                        }
+                                        if score > best_score {
+                                            best_score = score;
+                                            upgrade_target = Some(b.id);
                                         }
                                     }
                                 }
+                                if let Some(target_id) = upgrade_target {
+                                    let cost = structure_build_cost_gold(kind, bot_id, &self.buildings);
+                                    if player_gold >= cost {
+                                        if let Some(p_me) = self.state.player_mut(bot_id) {
+                                            p_me.iq_points -= build_cost;
+                                        }
+                                        decisions.push(BotDecision {
+                                            bot_id,
+                                            kind: BotDecisionKind::Build,
+                                            intent: GameplayIntent::UpgradeStructure { building_id: target_id },
+                                        });
+                                        upgraded = true;
+                                    }
+                                }
+                            }
+
+                            if upgraded {
+                                break;
+                            }
+
+                            if owned >= target_count {
                                 continue;
                             }
                             if player_gold < cheapest_gold_cost(kind) {
@@ -884,7 +891,6 @@ impl SowEngine {
                 BuildingKind::Factory | BuildingKind::Port => 15000.0,
                 BuildingKind::DefensePost => 5000.0 * (b.level as f64),
                 BuildingKind::SamLauncher => 10000.0 * (b.level as f64),
-                _ => 1000.0,
             };
 
             let bx = b.tile_idx % self.state.map.width;

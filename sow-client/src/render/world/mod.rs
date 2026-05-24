@@ -37,6 +37,12 @@ pub(crate) struct RenderContext<'a> {
 
 impl SowApp {
     pub(crate) fn render_world_overlays(&mut self, ctx: &egui::Context, sf: f32) {
+        // Register world_buildings layer first to draw behind world_overlays
+        let _ = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::new("world_buildings"),
+        ));
+
         let painter = ctx.layer_painter(egui::LayerId::new(
             egui::Order::Background,
             egui::Id::new("world_overlays"),

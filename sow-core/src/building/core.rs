@@ -22,9 +22,6 @@ pub struct BuildingAggregate {
     pub factory_levels: u32,
     pub port_levels: u32,
     pub defense_levels: u32,
-    pub industry_levels: u32,
-    pub cultural_levels: u32,
-    pub science_levels: u32,
     /// True if any ready Port exists (same as `port_levels > 0` when ports are never level-0 ready without existing).
     pub has_completed_port: bool,
     /// Ready cities only (for bot `city_equivalent` base).
@@ -36,9 +33,6 @@ pub struct BuildingAggregate {
     pub count_defense: u32,
     pub count_sam: u32,
     pub count_silo: u32,
-    pub count_industry: u32,
-    pub count_cultural: u32,
-    pub count_science: u32,
 }
 
 impl BuildingAggregate {
@@ -51,9 +45,6 @@ impl BuildingAggregate {
             BuildingKind::DefensePost => self.count_defense,
             BuildingKind::SamLauncher => self.count_sam,
             BuildingKind::MissileSilo => self.count_silo,
-            BuildingKind::Industry => self.count_industry,
-            BuildingKind::Cultural => self.count_cultural,
-            BuildingKind::Science => self.count_science,
         }
     }
 }
@@ -77,9 +68,6 @@ pub fn aggregate_buildings_per_player(
             BuildingKind::DefensePost => a.count_defense += 1,
             BuildingKind::SamLauncher => a.count_sam += 1,
             BuildingKind::MissileSilo => a.count_silo += 1,
-            BuildingKind::Industry => a.count_industry += 1,
-            BuildingKind::Cultural => a.count_cultural += 1,
-            BuildingKind::Science => a.count_science += 1,
         }
         if b.under_construction {
             continue;
@@ -96,9 +84,6 @@ pub fn aggregate_buildings_per_player(
                 a.has_completed_port = true;
             }
             BuildingKind::DefensePost => a.defense_levels += b.level as u32,
-            BuildingKind::Industry => a.industry_levels += b.level as u32,
-            BuildingKind::Cultural => a.cultural_levels += b.level as u32,
-            BuildingKind::Science => a.science_levels += b.level as u32,
             BuildingKind::SamLauncher | BuildingKind::MissileSilo => {}
         }
     }

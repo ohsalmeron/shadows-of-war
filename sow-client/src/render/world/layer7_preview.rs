@@ -224,8 +224,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                     let bridge_rects = get_bridge_rects(rt.rail_type);
                                     let bridge_color = egui::Color32::from_rgba_unmultiplied(197, 69, 72, 102);
                                     for &[dx, dy, w, h] in bridge_rects {
-                                        let world_x = c + 0.5 + (dx as f32) / 2.0;
-                                        let world_y = r + 0.5 + (dy as f32) / 2.0;
+                                        let world_x = c + 0.5 + (r as i32 % 2) as f32 * 0.5 + (dx as f32) / 2.0;
+                                        let world_y = (r + 0.5) * 0.8660254_f32 + (dy as f32) / 2.0;
                                         let world_w = w as f32 / 2.0;
                                         let world_h = h as f32 / 2.0;
 
@@ -245,8 +245,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                 let rail_rects = get_railroad_rects(rt.rail_type);
                                 let track_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 102);
                                 for &[dx, dy, w, h] in rail_rects {
-                                    let world_x = c + 0.5 + (dx as f32) / 2.0;
-                                    let world_y = r + 0.5 + (dy as f32) / 2.0;
+                                    let world_x = c + 0.5 + (r as i32 % 2) as f32 * 0.5 + (dx as f32) / 2.0;
+                                    let world_y = (r + 0.5) * 0.8660254_f32 + (dy as f32) / 2.0;
                                     let world_w = w as f32 / 2.0;
                                     let world_h = h as f32 / 2.0;
 
