@@ -542,7 +542,7 @@ impl SowApp {
         self.net.ws_reconnect_after_resume = true;
         if self.gfx.window.is_none() {
             #[cfg(any(target_os = "android", target_os = "ios"))]
-            let attributes =
+            let mut attributes =
                 winit::window::WindowAttributes::default().with_title("Shadows of War");
 
             #[cfg(target_os = "ios")]
