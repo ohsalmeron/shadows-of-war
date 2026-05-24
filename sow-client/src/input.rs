@@ -136,6 +136,7 @@ impl SowApp {
                                 .unwrap_or(false);
 
                             if owner != 0 && owner != my_id && is_allied {
+                                self.ui.app.hud_state.show_error = Some("You must break the alliance first to send the boat!".to_string());
                                 let mx = self.input.last_mouse_x;
                                 let my = self.input.last_mouse_y;
                                 self.open_context_menu_at(mx, my);

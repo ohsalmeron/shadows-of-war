@@ -235,7 +235,7 @@ impl SowApp {
                                         include_bytes!("../../../assets/handshake.svg").as_slice(),
                                     );
                                 }
-                                let size_val = (26.0 + 8.0 * hover_t) * scale;
+                                let size_val = (26.0 + 8.0 * hover_t) * scale * 2.0;
                                 let size_hint = egui::load::SizeHint::Size {
                                     width: size_val.round() as u32,
                                     height: size_val.round() as u32,
@@ -371,8 +371,12 @@ impl SowApp {
                                     self.input.map_context_menu = None;
                                 } else if sector == 1 {
                                     // Right Wedge (Boat) - Launch fleet
-                                    let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
-                                    self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: tile_idx, troops });
+                                    if is_allied {
+                                        self.ui.app.hud_state.show_error = Some("You must break the alliance first to send the boat!".to_string());
+                                    } else {
+                                        let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
+                                        self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: tile_idx, troops });
+                                    }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));
                                     ctx.data_mut(|d| d.insert_temp(missile_active_id, false));
                                     self.input.map_context_menu = None;

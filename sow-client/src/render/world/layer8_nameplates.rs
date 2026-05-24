@@ -139,20 +139,6 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             if has_betrayal {
                                 betrayal_flash = true;
                             }
-                            if is_allied {
-                                if is_heart_flashing {
-                                    let is_flash_red = (wall_secs * 2.0) as u64 % 2 == 0;
-                                    if is_flash_red {
-                                        status_list.push("❤️");
-                                    } else {
-                                        status_list.push("🤍");
-                                    }
-                                } else {
-                                    status_list.push("❤️");
-                                }
-                            } else if has_req {
-                                status_list.push("💕");
-                            }
                         }
 
                         // Retrieve or save persistent client-side state for the floating express emoji
@@ -169,6 +155,130 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                             }
                         } else {
                             painter.ctx().data_mut(|d| d.insert_temp(last_emoji_id, current_emoji.clone().unwrap()));
+                        }
+
+                        // Request WebP Icon Animation (Spring Overshoot)
+                        let request_anim_id = egui::Id::new(("request_anim_progress", player.id));
+                        let req_anim = painter.ctx().animate_bool_with_time(request_anim_id, has_req, 0.25);
+
+                        let mut req_offset = 0.0;
+                        if req_anim > 0.01 {
+                            static REGISTER_REQUEST_ONCE: std::sync::Once = std::sync::Once::new();
+                            REGISTER_REQUEST_ONCE.call_once(|| {
+                                painter.ctx().include_bytes(
+                                    "bytes://request.webp",
+                                    include_bytes!("../../../assets/request.webp").as_slice(),
+                                );
+                            });
+
+                            let request_icon_size = 28.0 * scale_factor * 2.0;
+                            let load_res = painter.ctx().try_load_texture(
+                                "bytes://request.webp",
+                                egui::TextureOptions::default(),
+                                egui::load::SizeHint::Size {
+                                    width: (request_icon_size * 2.0).round() as u32,
+                                    height: (request_icon_size * 2.0).round() as u32,
+                                    maintain_aspect_ratio: true,
+                                },
+                            );
+
+                            if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                let anim_scale = if has_req {
+                                    let t = req_anim;
+                                    if t >= 1.0 {
+                                        1.0
+                                    } else {
+                                        1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                    }
+                                } else {
+                                    req_anim
+                                };
+                                let size = request_icon_size * anim_scale;
+                                // Draw it floating centered above premium avatar
+                                let req_y = center.y - 34.0 * scale_factor - size / 2.0;
+                                let req_rect = egui::Rect::from_center_size(
+                                    egui::pos2(center.x, req_y),
+                                    egui::vec2(size, size),
+                                );
+
+                                let request_painter = painter.ctx().layer_painter(egui::LayerId::new(
+                                    egui::Order::Middle,
+                                    egui::Id::new(("floating_request_icon", player.id)),
+                                ));
+                                request_painter.image(
+                                    texture.id,
+                                    req_rect,
+                                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                    egui::Color32::WHITE.linear_multiply(req_anim),
+                                );
+                                req_offset = size + 4.0;
+                            }
+                        }
+
+                        // Allied WebP Icon Animation (Spring Overshoot)
+                        let allied_anim_id = egui::Id::new(("allied_anim_progress", player.id));
+                        let allied_anim = painter.ctx().animate_bool_with_time(allied_anim_id, is_allied, 0.25);
+
+                        let mut allied_offset = 0.0;
+                        if allied_anim > 0.01 {
+                            static REGISTER_HANDSHAKE_ONCE: std::sync::Once = std::sync::Once::new();
+                            REGISTER_HANDSHAKE_ONCE.call_once(|| {
+                                painter.ctx().include_bytes(
+                                    "bytes://handshake.webp",
+                                    include_bytes!("../../../assets/handshake.webp").as_slice(),
+                                );
+                            });
+
+                            let handshake_icon_size = 28.0 * scale_factor * 2.0;
+                            let load_res = painter.ctx().try_load_texture(
+                                "bytes://handshake.webp",
+                                egui::TextureOptions::default(),
+                                egui::load::SizeHint::Size {
+                                    width: (handshake_icon_size * 2.0).round() as u32,
+                                    height: (handshake_icon_size * 2.0).round() as u32,
+                                    maintain_aspect_ratio: true,
+                                },
+                            );
+
+                            if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                                let anim_scale = if is_allied {
+                                    let t = allied_anim;
+                                    if t >= 1.0 {
+                                        1.0
+                                    } else {
+                                        1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                    }
+                                } else {
+                                    allied_anim
+                                };
+                                let size = handshake_icon_size * anim_scale;
+                                // Draw it floating centered above premium avatar
+                                let req_y = center.y - 34.0 * scale_factor - size / 2.0;
+                                let req_rect = egui::Rect::from_center_size(
+                                    egui::pos2(center.x, req_y),
+                                    egui::vec2(size, size),
+                                );
+
+                                let handshake_painter = painter.ctx().layer_painter(egui::LayerId::new(
+                                    egui::Order::Middle,
+                                    egui::Id::new(("floating_handshake_icon", player.id)),
+                                ));
+
+                                let flash_alpha = if is_heart_flashing {
+                                    let is_flash_on = (wall_secs * 2.0) as u64 % 2 == 0;
+                                    if is_flash_on { 1.0 } else { 0.2 }
+                                } else {
+                                    1.0
+                                };
+
+                                handshake_painter.image(
+                                    texture.id,
+                                    req_rect,
+                                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                    egui::Color32::WHITE.linear_multiply(allied_anim * flash_alpha),
+                                );
+                                allied_offset = size + 4.0;
+                            }
                         }
 
                         // Render animated floating active express emoji ABOVE the nameplate
@@ -189,11 +299,15 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                                 let final_emoji_size = base_emoji_size * anim_scale;
                                 
                                 let has_status = !status_list.is_empty() || betrayal_flash;
-                                let base_y_offset = if has_status {
+                                let mut base_y_offset = if has_status {
                                      80.0 * scale_factor
                                  } else {
                                      34.0 * scale_factor
                                  };
+                                let max_float_offset = req_offset.max(allied_offset);
+                                if max_float_offset > 0.01 {
+                                    base_y_offset += max_float_offset;
+                                }
                                 let emoji_y = center.y - base_y_offset - 12.0 * zoom_scale;
 
                                 if final_emoji_size > 1.0 {
@@ -495,6 +609,26 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                     let mut status_list = Vec::new();
                     let mut betrayal_flash = false;
 
+                    let my_id = sim.my_player_id.unwrap_or(0);
+                    let mut is_allied = false;
+                    let mut is_heart_flashing = false;
+                    let mut has_req = false;
+                    if my_id != player.id {
+                        if let Some(me) = sim.current_snapshot.as_ref()
+                            .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                        {
+                            if me.alliances.contains(&player.id) {
+                                is_allied = true;
+                                let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
+                                if timer <= 600 {
+                                    is_heart_flashing = true;
+                                }
+                            } else if me.alliance_requests.contains(&player.id) {
+                                has_req = true;
+                            }
+                        }
+                    }
+
                     if player.disconnected {
                         status_list.push("🔌");
                     } else {
@@ -502,44 +636,6 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         if has_betrayal {
                             betrayal_flash = true;
                         }
-
-                        // Check alliance status with the player
-                        let mut is_allied = false;
-                        let mut is_heart_flashing = false;
-                        let mut has_req = false;
-                        if let Some(my_id) = sim.my_player_id {
-                            if my_id != player.id {
-                                if let Some(me) = sim.current_snapshot.as_ref()
-                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id))
-                                {
-                                    if me.alliances.contains(&player.id) {
-                                        is_allied = true;
-                                        let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
-                                        if timer <= 600 {
-                                            is_heart_flashing = true;
-                                        }
-                                    } else if me.alliance_requests.contains(&player.id) {
-                                        has_req = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        if is_allied {
-                            if is_heart_flashing {
-                                let is_flash_red = (wall_secs * 2.0) as u64 % 2 == 0;
-                                if is_flash_red {
-                                    status_list.push("❤️");
-                                } else {
-                                    status_list.push("🤍"); // Sleek alternating white heart (0 horizontal layout shifts)
-                                }
-                            } else {
-                                status_list.push("❤️");
-                            }
-                        } else if has_req {
-                            status_list.push("💕");
-                        }
-
                     }
 
                     let mut job = egui::text::LayoutJob {
@@ -592,7 +688,6 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         None
                     };
 
-                    let my_id = sim.my_player_id.unwrap_or(0);
                     let is_me = player.id == my_id;
 
                     let star_size = if is_me {
@@ -641,6 +736,121 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
                         0.0
                     };
 
+                    // Request WebP Icon Animation (Spring Overshoot)
+                    let request_anim_id = egui::Id::new(("request_anim_progress", player.id));
+                    let req_anim = painter.ctx().animate_bool_with_time(request_anim_id, has_req, 0.25);
+                    
+                    let mut req_height = 0.0;
+                    if req_anim > 0.01 {
+                        static REGISTER_REQUEST_ONCE: std::sync::Once = std::sync::Once::new();
+                        REGISTER_REQUEST_ONCE.call_once(|| {
+                            painter.ctx().include_bytes(
+                                "bytes://request.webp",
+                                include_bytes!("../../../assets/request.webp").as_slice(),
+                            );
+                        });
+
+                        let request_icon_size = font_size * 1.5 * 2.0;
+                        let load_res = painter.ctx().try_load_texture(
+                            "bytes://request.webp",
+                            egui::TextureOptions::default(),
+                            egui::load::SizeHint::Size {
+                                width: (request_icon_size * 2.0).round() as u32,
+                                height: (request_icon_size * 2.0).round() as u32,
+                                maintain_aspect_ratio: true,
+                            },
+                        );
+
+                        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                            let anim_scale = if has_req {
+                                let t = req_anim;
+                                if t >= 1.0 {
+                                    1.0
+                                } else {
+                                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                }
+                            } else {
+                                req_anim
+                            };
+                            let size = request_icon_size * anim_scale;
+                            // Draw it centered horizontally, above the other status icons!
+                            let req_y = current_y - disc_height - size / 2.0 - 4.0;
+                            let req_rect = egui::Rect::from_center_size(
+                                egui::pos2(center.x, req_y),
+                                egui::vec2(size, size),
+                            );
+
+                            painter.image(
+                                texture.id,
+                                req_rect,
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                egui::Color32::WHITE.linear_multiply(req_anim),
+                            );
+                            req_height = size + 4.0;
+                        }
+                    }
+
+                    // Allied WebP Icon Animation (Spring Overshoot)
+                    let allied_anim_id = egui::Id::new(("allied_anim_progress", player.id));
+                    let allied_anim = painter.ctx().animate_bool_with_time(allied_anim_id, is_allied, 0.25);
+
+                    let mut allied_height = 0.0;
+                    if allied_anim > 0.01 {
+                        static REGISTER_HANDSHAKE_ONCE: std::sync::Once = std::sync::Once::new();
+                        REGISTER_HANDSHAKE_ONCE.call_once(|| {
+                            painter.ctx().include_bytes(
+                                "bytes://handshake.webp",
+                                include_bytes!("../../../assets/handshake.webp").as_slice(),
+                            );
+                        });
+
+                        let handshake_icon_size = font_size * 1.5 * 2.0;
+                        let load_res = painter.ctx().try_load_texture(
+                            "bytes://handshake.webp",
+                            egui::TextureOptions::default(),
+                            egui::load::SizeHint::Size {
+                                width: (handshake_icon_size * 2.0).round() as u32,
+                                height: (handshake_icon_size * 2.0).round() as u32,
+                                maintain_aspect_ratio: true,
+                            },
+                        );
+
+                        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                            let anim_scale = if is_allied {
+                                let t = allied_anim;
+                                if t >= 1.0 {
+                                    1.0
+                                } else {
+                                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                }
+                            } else {
+                                allied_anim
+                            };
+                            let size = handshake_icon_size * anim_scale;
+                            // Draw it centered horizontally, above the other status icons!
+                            let req_y = current_y - disc_height - size / 2.0 - 4.0;
+                            let req_rect = egui::Rect::from_center_size(
+                                egui::pos2(center.x, req_y),
+                                egui::vec2(size, size),
+                            );
+
+                            let flash_alpha = if is_heart_flashing {
+                                let is_flash_on = (wall_secs * 2.0) as u64 % 2 == 0;
+                                if is_flash_on { 1.0 } else { 0.2 }
+                            } else {
+                                1.0
+                            };
+
+                            painter.image(
+                                texture.id,
+                                req_rect,
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                egui::Color32::WHITE.linear_multiply(allied_anim * flash_alpha),
+                            );
+                            allied_height = size + 4.0;
+                        }
+                    }
+
                     // Draw the giant animated floating express emoji above the status icons!
                     if anim_progress > 0.01 {
                         if let Some(emoji_str) = &current_emoji {
@@ -658,7 +868,8 @@ pub(crate) fn render(ui: &mut crate::app::UiState, sim: &crate::app::SimState, i
 
                             let base_emoji_size = font_size * 2.2; // 220% size! Extremely visible!
                             let final_emoji_size = base_emoji_size * anim_scale;
-                            let emoji_y = current_y - disc_height - 18.0 * zoom_scale;
+                            let max_float_height = req_height.max(allied_height);
+                            let emoji_y = current_y - disc_height - max_float_height - 18.0 * zoom_scale;
 
                             if final_emoji_size > 1.0 {
                                 painter.text(

@@ -351,55 +351,59 @@ pub fn draw(ui: &mut egui::Ui, state: &mut HudState, cancel_intents: &mut Vec<so
 
     let panel_margin = if compact { egui::Margin::ZERO } else { egui::Margin::symmetric(0, 8) };
     
-    egui::Panel::bottom("hud_bottom_panel")
-        .frame(egui::Frame::NONE.inner_margin(panel_margin))
-        .show_separator_line(false)
-        .show_inside(ui, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.set_max_width(panel_w);
-                ui.spacing_mut().item_spacing.y = 4.0;
-            
-                // 1. Attacks Display (top in vertical stack)
-                ui.push_id("attacks_display", |ui| {
-                    draw_attacks_display(ui, state, panel_w, compact, cancel_intents, &mut action, lang);
-                });
-
-                // 1.5 Building Dock (middle in vertical stack)
-                if state.spawn_timer_secs.is_none() {
-                    ui.push_id("building_dock", |ui| {
-                        draw_buildings_dock(ui, state, panel_w, compact);
+    egui::Area::new(egui::Id::new("hud_bottom_area"))
+        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -state.safe_area_bottom))
+        .order(egui::Order::Middle)
+        .interactable(true)
+        .show(ui.ctx(), |ui| {
+            ui.set_max_width(panel_w);
+            egui::Frame::NONE.inner_margin(panel_margin).show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.set_max_width(panel_w);
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                
+                    // 1. Attacks Display (top in vertical stack)
+                    ui.push_id("attacks_display", |ui| {
+                        draw_attacks_display(ui, state, panel_w, compact, cancel_intents, &mut action, lang);
                     });
-                }
 
-                // 2. Control Panel (bottom in vertical stack)
-                ui.push_id("control_panel_frame", |ui| {
-                    let panel_bg = crate::ui::theme::panel_bg_transparent();
-                    let frame = egui::Frame::NONE
-                        .fill(panel_bg)
-                        .corner_radius(if compact {
-                            egui::CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }
-                        } else {
-                            egui::CornerRadius::same(8)
-                        })
-                        .inner_margin(egui::Margin::symmetric(8, 6));
-                    
-                    frame.show(ui, |ui| {
-                        ui.set_width(panel_w);
-                        if let Some(secs) = state.spawn_timer_secs {
-                            draw_spawn_panel(ui, secs, compact, lang);
-                        } else {
-                            draw_control_panel(ui, state, compact, &mut action);
-                        }
+                    // 1.5 Building Dock (middle in vertical stack)
+                    if state.spawn_timer_secs.is_none() {
+                        ui.push_id("building_dock", |ui| {
+                            draw_buildings_dock(ui, state, panel_w, compact);
+                        });
+                    }
+
+                    // 2. Control Panel (bottom in vertical stack)
+                    ui.push_id("control_panel_frame", |ui| {
+                        let panel_bg = crate::ui::theme::panel_bg_transparent();
+                        let frame = egui::Frame::NONE
+                            .fill(panel_bg)
+                            .corner_radius(if compact {
+                                egui::CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }
+                            } else {
+                                egui::CornerRadius::same(8)
+                            })
+                            .inner_margin(egui::Margin::symmetric(8, 6));
                         
-                        // Mobile selection/actions inside the bottom panel
-                        if compact {
-                            draw_mobile_selection_bar(ui, state, cancel_intents, lang);
-                        }
+                        frame.show(ui, |ui| {
+                            ui.set_width(panel_w);
+                            if let Some(secs) = state.spawn_timer_secs {
+                                draw_spawn_panel(ui, secs, compact, lang);
+                            } else {
+                                draw_control_panel(ui, state, compact, &mut action);
+                            }
+                            
+                            // Mobile selection/actions inside the bottom panel
+                            if compact {
+                                draw_mobile_selection_bar(ui, state, cancel_intents, lang);
+                            }
 
-                        // Add mobile safe area space INSIDE the panel to seamlessly extend the background
-                        if state.safe_area_bottom > 0.0 {
-                            ui.add_space(state.safe_area_bottom);
-                        }
+                            // Add mobile safe area space INSIDE the panel to seamlessly extend the background
+                            if state.safe_area_bottom > 0.0 {
+                                ui.add_space(state.safe_area_bottom);
+                            }
+                        });
                     });
                 });
             });
