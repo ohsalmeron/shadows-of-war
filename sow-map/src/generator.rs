@@ -67,19 +67,19 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
     ];
 
     // Convert pixel colors to terrain types and magnitudes (matching Go / OpenFrontIO)
-    for x in 0..width as usize {
-        for y in 0..height as usize {
+    for (x, column) in grid.iter_mut().enumerate().take(width as usize) {
+        for (y, tile) in column.iter_mut().enumerate().take(height as usize) {
             let idx = y * args.width as usize + x;
             let rgba = args.pixels[idx];
             let blue = rgba[2];
             let alpha = rgba[3];
 
             if alpha < 20 || blue == 106 {
-                grid[x][y].tile_type = TerrainType::Water;
+                tile.tile_type = TerrainType::Water;
             } else {
-                grid[x][y].tile_type = TerrainType::Land;
+                tile.tile_type = TerrainType::Land;
                 let mag = (blue as f64).clamp(140.0, 200.0) - 140.0;
-                grid[x][y].magnitude = mag / 2.0;
+                tile.magnitude = mag / 2.0;
             }
         }
     }
@@ -118,7 +118,7 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
     })
 }
 
-fn remove_small_islands(grid: &mut Vec<Vec<TerrainTile>>) {
+fn remove_small_islands(grid: &mut [Vec<TerrainTile>]) {
     let width = grid.len();
     let height = grid[0].len();
     let mut visited = vec![vec![false; height]; width];
@@ -139,7 +139,7 @@ fn remove_small_islands(grid: &mut Vec<Vec<TerrainTile>>) {
     log::info!("Small island removal completed.");
 }
 
-fn process_water(grid: &mut Vec<Vec<TerrainTile>>, remove_small: bool) {
+fn process_water(grid: &mut [Vec<TerrainTile>], remove_small: bool) {
     let width = grid.len();
     let height = grid[0].len();
     let mut visited = vec![vec![false; height]; width];
@@ -155,7 +155,7 @@ fn process_water(grid: &mut Vec<Vec<TerrainTile>>, remove_small: bool) {
     }
 
     // Sort by size (largest first)
-    water_bodies.sort_by(|a, b| b.len().cmp(&a.len()));
+    water_bodies.sort_by_key(|b| std::cmp::Reverse(b.len()));
 
     if !water_bodies.is_empty() {
         // Mark largest water body as ocean
@@ -185,8 +185,8 @@ fn process_water(grid: &mut Vec<Vec<TerrainTile>>, remove_small: bool) {
 fn get_area(
     start_x: usize,
     start_y: usize,
-    grid: &Vec<Vec<TerrainTile>>,
-    visited: &mut Vec<Vec<bool>>,
+    grid: &[Vec<TerrainTile>],
+    visited: &mut [Vec<bool>],
     target_type: TerrainType,
 ) -> Vec<Coord> {
     let width = grid.len() as i32;
@@ -223,7 +223,7 @@ fn get_area(
     area
 }
 
-fn process_shore(grid: &mut Vec<Vec<TerrainTile>>) -> Vec<Coord> {
+fn process_shore(grid: &mut [Vec<TerrainTile>]) -> Vec<Coord> {
     let width = grid.len();
     let height = grid[0].len();
     let mut shoreline_waters = Vec::new();
@@ -262,7 +262,7 @@ fn process_shore(grid: &mut Vec<Vec<TerrainTile>>) -> Vec<Coord> {
     shoreline_waters
 }
 
-fn process_dist_to_land(shoreline_waters: Vec<Coord>, grid: &mut Vec<Vec<TerrainTile>>) {
+fn process_dist_to_land(shoreline_waters: Vec<Coord>, grid: &mut [Vec<TerrainTile>]) {
     let width = grid.len();
     let height = grid[0].len();
     let mut visited = vec![vec![false; height]; width];
@@ -295,7 +295,7 @@ fn process_dist_to_land(shoreline_waters: Vec<Coord>, grid: &mut Vec<Vec<Terrain
     }
 }
 
-fn create_mini_map(grid: &Vec<Vec<TerrainTile>>) -> Vec<Vec<TerrainTile>> {
+fn create_mini_map(grid: &[Vec<TerrainTile>]) -> Vec<Vec<TerrainTile>> {
     let width = grid.len();
     let height = grid[0].len();
     let mini_width = width / 2;
@@ -314,17 +314,17 @@ fn create_mini_map(grid: &Vec<Vec<TerrainTile>>) -> Vec<Vec<TerrainTile>> {
         mini_width
     ];
 
-    for x in 0..width {
-        for y in 0..height {
+    for (x, column) in grid.iter().enumerate().take(width) {
+        for (y, tile) in column.iter().enumerate().take(height) {
             let mx = x / 2;
             let my = y / 2;
 
             if mx < mini_width && my < mini_height {
-                if grid[x][y].tile_type == TerrainType::Water {
+                if tile.tile_type == TerrainType::Water {
                     mini_grid[mx][my].tile_type = TerrainType::Water;
-                    mini_grid[mx][my].ocean = grid[x][y].ocean || mini_grid[mx][my].ocean;
+                    mini_grid[mx][my].ocean = tile.ocean || mini_grid[mx][my].ocean;
                 } else if mini_grid[mx][my].tile_type != TerrainType::Water {
-                    mini_grid[mx][my] = grid[x][y].clone();
+                    mini_grid[mx][my] = tile.clone();
                 }
             }
         }
@@ -333,7 +333,7 @@ fn create_mini_map(grid: &Vec<Vec<TerrainTile>>) -> Vec<Vec<TerrainTile>> {
     mini_grid
 }
 
-fn create_map_thumbnail(terrain: &Vec<Vec<TerrainTile>>, quality: f64) -> Vec<u8> {
+fn create_map_thumbnail(terrain: &[Vec<TerrainTile>], quality: f64) -> Vec<u8> {
     let src_width = terrain.len();
     let src_height = terrain[0].len();
 
@@ -368,9 +368,9 @@ fn get_thumbnail_color(t: &TerrainTile) -> [u8; 4] {
         }
         let water_adj = (11.0 - (t.magnitude / 2.0).min(10.0) - 10.0) as i32;
         return [
-            (70 + water_adj).max(0).min(255) as u8,
-            (132 + water_adj).max(0).min(255) as u8,
-            (180 + water_adj).max(0).min(255) as u8,
+            (70 + water_adj).clamp(0, 255) as u8,
+            (132 + water_adj).clamp(0, 255) as u8,
+            (180 + water_adj).clamp(0, 255) as u8,
             255,
         ];
     }
@@ -382,25 +382,25 @@ fn get_thumbnail_color(t: &TerrainTile) -> [u8; 4] {
     if t.magnitude < 10.0 {
         // Plains
         let adj = 220.0 - 2.0 * t.magnitude;
-        [190, adj.max(0.0).min(255.0) as u8, 138, 255]
+        [190, adj.clamp(0.0, 255.0) as u8, 138, 255]
     } else if t.magnitude < 20.0 {
         // Highlands
         let adj = 2.0 * t.magnitude;
         [
-            (200.0 + adj).max(0.0).min(255.0) as u8,
-            (183.0 + adj).max(0.0).min(255.0) as u8,
-            (138.0 + adj).max(0.0).min(255.0) as u8,
+            (200.0 + adj).clamp(0.0, 255.0) as u8,
+            (183.0 + adj).clamp(0.0, 255.0) as u8,
+            (138.0 + adj).clamp(0.0, 255.0) as u8,
             255,
         ]
     } else {
         // Mountains
         let adj = (230.0 + t.magnitude / 2.0).floor();
-        let adj_val = adj.max(0.0).min(255.0) as u8;
+        let adj_val = adj.clamp(0.0, 255.0) as u8;
         [adj_val, adj_val, adj_val, 255]
     }
 }
 
-fn pack_terrain(terrain: &Vec<Vec<TerrainTile>>) -> (Vec<u8>, u32) {
+fn pack_terrain(terrain: &[Vec<TerrainTile>]) -> (Vec<u8>, u32) {
     let width = terrain.len();
     let height = terrain[0].len();
     let mut packed = vec![0u8; width * height];

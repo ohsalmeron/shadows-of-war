@@ -8,6 +8,11 @@ struct Globals {
     border_darkness: f32,
     shore_thickness: f32,
     shore_darkness: f32,
+    threat_slots: array<vec4<f32>, 4>,
+    effect_shockwave: f32,
+    effect_breathe: f32,
+    effect_energy_flow: f32,
+    _pad0: f32,
 }
 
 struct PlayerColors {
@@ -38,7 +43,7 @@ fn get_cell_owner(hex: vec2<i32>) -> u32 {
     if (hex.x < 0 || hex.y < 0 || hex.x >= i32(globals.map_size.x) || hex.y >= i32(globals.map_size.y)) {
         return 0u;
     }
-    return textureLoad(owner_texture, vec2<i32>(hex.x, hex.y), 0).x;
+    return textureLoad(owner_texture, vec2<i32>(hex.x, hex.y), 0).x & 0xFFFFu;
 }
 
 fn get_cell_terrain(hex: vec2<i32>) -> u32 {
@@ -134,7 +139,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let pixel_coords = vec2<i32>(cell_x, cell_y);
     let terrain_byte = textureLoad(terrain_texture, pixel_coords, 0).x;
-    let owner_id = textureLoad(owner_texture, pixel_coords, 0).x;
+    let owner_packed = textureLoad(owner_texture, pixel_coords, 0).x;
+    let owner_id = owner_packed & 0xFFFFu;
+    let flash_byte = (owner_packed >> 16u) & 0xFFu;
+    let flash_val = f32(flash_byte) / 255.0;
     let is_land = (terrain_byte & 0x80u) != 0u;
 
     var terrain_color = vec4<f32>(0.0);
@@ -251,7 +259,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var base_color = terrain_color.rgb;
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
-        base_color = mix(terrain_color.rgb, albedo, 0.75);
+
+        // Energy flow: animated diagonal stripes on interior
+        var interior_mod = 1.0;
+        if globals.effect_energy_flow > 0.0 {
+            let stripe = (sin((world_x + world_y) * 0.15 - globals.time * 2.5) + 1.0) * 0.5;
+            interior_mod = mix(1.0, 0.6 + 0.6 * stripe, globals.effect_energy_flow);
+        }
+
+        base_color = mix(terrain_color.rgb, albedo * interior_mod, 0.75);
+
+        // Conquest shockwave flash on interior
+        if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+            let shockwave = flash_val * globals.effect_shockwave;
+            let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), albedo, 1.0 - flash_val);
+            base_color = mix(base_color, flash_color, shockwave * 0.8);
+        }
     }
     let hex_center = hex_to_world(cell_hex);
     let local_pos = vec2<f32>(world_x, world_y) - hex_center;
@@ -260,10 +283,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var is_border = false;
     var is_green_border = false;
 
-    let thickness = globals.border_thickness;
+    var thickness = globals.border_thickness;
     let border_darkness = globals.border_darkness;
     let s_thickness = globals.shore_thickness;
     let s_darkness = globals.shore_darkness;
+
+    // Border breathe: subtle thickness pulse per owner
+    if globals.effect_breathe > 0.0 && owner_id > 0u {
+        let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5;
+        thickness += breathe * 0.05 * globals.effect_breathe;
+    }
+    // Shockwave border explosion
+    if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+        thickness += flash_val * 0.2 * globals.effect_shockwave;
+    }
 
     if is_land {
         let is_tribe = owner_id >= 200u;
@@ -317,9 +350,68 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             if is_green_border {
                 base_color = vec3<f32>(0.2, 0.8, 0.2) * border_darkness;
             } else {
-                let border_albedo = owner_albedo(owner_id) * border_darkness;
+                var border_albedo = owner_albedo(owner_id) * border_darkness;
+
+                // Energy flow on borders: faster, tighter wave
+                if globals.effect_energy_flow > 0.0 {
+                    let flow = (sin((world_x - world_y) * 2.0 - globals.time * 8.0) + 1.0) * 0.5;
+                    border_albedo += owner_albedo(owner_id) * flow * 0.6 * globals.effect_energy_flow;
+                }
+
+                // Shockwave flash on border
+                if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+                    border_albedo = mix(border_albedo, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave);
+                }
+
                 base_color = border_albedo;
             }
+        }
+    }
+
+    // ── WAR FOG: Attack Threat Visualization ──
+    // Multi-layered: desaturation → smoke gradient → ripple waves → corona front
+    if owner_id > 0u {
+        let world_pos_hex = hex_to_world(cell_hex);
+        for (var ti = 0; ti < 4; ti = ti + 1) {
+            let slot = globals.threat_slots[ti];
+            let radius = slot.z;
+            if radius <= 0.0 { continue; }
+            if u32(slot.w) != owner_id { continue; }
+            let front_world = vec2<f32>(
+                slot.x + 0.5 + f32(i32(slot.y) & 1) * 0.5,
+                (slot.y + 0.5) * 0.8660254
+            );
+            let dist = distance(world_pos_hex, front_world);
+            let threat = 1.0 - smoothstep(0.0, radius, dist);
+            if threat <= 0.0 { continue; }
+
+            // Layer 1: Desaturation — threatened territory looks drained/dying
+            let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
+            let desat = mix(base_color, vec3<f32>(lum), threat * 0.6);
+
+            // Layer 2: Smoke gradient — hot ember core fading to dark ash at edge
+            let ember = vec3<f32>(0.95, 0.15, 0.05);   // Bright red-orange core
+            let ash   = vec3<f32>(0.12, 0.04, 0.02);    // Dark smoke edge
+            let smoke_color = mix(ash, ember, threat * threat); // Quadratic falloff = sharp core
+            let smoke_blend = threat * 0.55;
+
+            // Layer 3: Ripple waves — directional pulses radiating from attack front
+            let wave_dir = normalize(world_pos_hex - front_world + vec2<f32>(0.001));
+            let wave_phase = dist * 3.0 - globals.time * 4.0;
+            let ripple = (sin(wave_phase) + 1.0) * 0.5;
+            let ripple_intensity = ripple * threat * threat * 0.25;
+
+            // Layer 4: Corona — bright hot line at the attack front edge
+            let corona_dist = abs(dist - radius * 0.15); // Ring near the front
+            let corona = smoothstep(1.5, 0.0, corona_dist) * 0.7;
+            let corona_color = vec3<f32>(1.0, 0.4, 0.1); // Hot orange-white
+
+            // Composite all layers
+            var war_color = mix(desat, smoke_color, smoke_blend);
+            war_color += corona_color * corona;
+            war_color += ember * ripple_intensity;
+
+            base_color = war_color;
         }
     }
 

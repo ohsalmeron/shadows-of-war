@@ -14,6 +14,15 @@ pub struct MapGlobals {
     pub border_darkness: f32,
     pub shore_thickness: f32,
     pub shore_darkness: f32,
+    /// Up to 4 attack threat slots: [front_x, front_y, radius, target_owner_id].
+    pub threat_slots: [[f32; 4]; 4],
+    /// Conquest shockwave intensity (0 = off, 1 = full).
+    pub effect_shockwave: f32,
+    /// Border breathing intensity (0 = off, 1 = full).
+    pub effect_breathe: f32,
+    /// Energy flow animation intensity (0 = off, 1 = full).
+    pub effect_energy_flow: f32,
+    pub _pad0: f32,
 }
 
 #[repr(C)]
@@ -42,6 +51,9 @@ pub struct MapRenderer {
     pub height: u32,
     pub terrain: Vec<u8>,
     pub owners: Vec<u16>,
+    pub conquest_flash: Vec<u8>,
+    /// Tiles with non-zero flash, for sparse decay (avoids scanning all tiles).
+    flash_active: Vec<u32>,
     pub terrain_bytes_per_row: u32,
     pub owner_bytes_per_row: u32,
     pub chunk_h: u32,
@@ -57,7 +69,8 @@ impl MapRenderer {
         initial_terrain: &[u8],
     ) -> Self {
         let terrain_bytes_per_row = (width + 255) & !255;
-        let owner_bytes_per_row = (width * 2 + 255) & !255;
+        // R32Uint: 4 bytes per texel, row alignment to 256 bytes
+        let owner_bytes_per_row = (width * 4 + 255) & !255;
 
         // --- Terrain texture (R8Uint, static) ---
         let terrain_texture = context.create_texture(gpu::TextureDesc {
@@ -103,10 +116,11 @@ impl MapRenderer {
         }
         context.sync_buffer(terrain_buffer);
 
-        // --- Owner texture (R16Uint, dynamic) ---
+        // --- Owner texture (R32Uint, dynamic) ---
+        // Bits 0..15 = owner_id, bits 16..23 = conquest flash
         let owner_texture = context.create_texture(gpu::TextureDesc {
             name: "owner_map",
-            format: gpu::TextureFormat::R16Uint,
+            format: gpu::TextureFormat::R32Uint,
             size: gpu::Extent {
                 width,
                 height,
@@ -123,7 +137,7 @@ impl MapRenderer {
             owner_texture,
             gpu::TextureViewDesc {
                 name: "owner_map_view",
-                format: gpu::TextureFormat::R16Uint,
+                format: gpu::TextureFormat::R32Uint,
                 dimension: gpu::ViewDimension::D2,
                 subresources: &gpu::TextureSubresources::default(),
             },
@@ -173,6 +187,7 @@ impl MapRenderer {
 
         let chunk_h = 64;
         let num_chunks = height.div_ceil(chunk_h);
+        let total = (width * height) as usize;
 
         Self {
             terrain_texture,
@@ -185,7 +200,9 @@ impl MapRenderer {
             width,
             height,
             terrain: initial_terrain.to_vec(),
-            owners: vec![0; (width * height) as usize],
+            owners: vec![0; total],
+            conquest_flash: vec![0; total],
+            flash_active: Vec::new(),
             terrain_bytes_per_row,
             owner_bytes_per_row,
             chunk_h,
@@ -218,56 +235,80 @@ impl MapRenderer {
         dirty_tiles: &[sow_core::protocol::DirtyTile],
     ) {
         let total = (self.width * self.height) as usize;
-        let u16_per_row = self.owner_bytes_per_row / 2;
-        let total_u16 = (u16_per_row * self.height) as usize;
-
-        if dirty_tiles.is_empty() {
-            return;
-        }
+        let u32_per_row = self.owner_bytes_per_row / 4;
+        let total_u32 = (u32_per_row * self.height) as usize;
+        let width = self.width;
+        let chunk_h = self.chunk_h;
 
         let dst_ptr = self.owner_buffer.data();
-        let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u16, total_u16) };
+        let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
 
+        // Helper: pack owner + flash into the GPU buffer
+        let pack = |slice: &mut [u32], owners: &[u16], flash: &[u8], tile_idx: u32| {
+            let i = tile_idx as usize;
+            let x = tile_idx % width;
+            let y = tile_idx / width;
+            let dst = (y * u32_per_row + x) as usize;
+            slice[dst] = owners[i] as u32 | ((flash[i] as u32) << 16);
+        };
+
+        // 1. Reset chunk tracking
         self.dirty_chunks.fill(false);
 
+        // 2. Decay existing flash (sparse — only active entries)
+        let mut decay_dirty = false;
+        self.flash_active.retain(|&tile_idx| {
+            let i = tile_idx as usize;
+            if i >= total {
+                return false;
+            }
+            let f = self.conquest_flash[i].saturating_sub(4);
+            self.conquest_flash[i] = f;
+            pack(slice, &self.owners, &self.conquest_flash, tile_idx);
+            let y = tile_idx / width;
+            self.dirty_chunks[(y / chunk_h) as usize] = true;
+            decay_dirty = true;
+            f > 0
+        });
+
+        // 3. Apply new dirty tiles
         for dt in dirty_tiles {
             let i = dt.index as usize;
             if i >= total {
                 continue;
             }
+            if self.owners[i] != dt.new_owner && dt.new_owner > 0 {
+                self.conquest_flash[i] = 255;
+                self.flash_active.push(dt.index);
+            }
             self.owners[i] = dt.new_owner;
 
-            let x = dt.index % self.width;
-            let y = dt.index / self.width;
-
-            let dst_i = (y * u16_per_row + x) as usize;
-            slice[dst_i] = dt.new_owner;
-
-            self.dirty_chunks[(y / self.chunk_h) as usize] = true;
+            pack(slice, &self.owners, &self.conquest_flash, dt.index);
+            let y = dt.index / width;
+            self.dirty_chunks[(y / chunk_h) as usize] = true;
         }
 
+        if dirty_tiles.is_empty() && !decay_dirty {
+            return;
+        }
+
+        // Upload dirty chunks
         let num_chunks = self.dirty_chunks.len();
         let mut start_chunk = None;
 
         let mut upload_range = |start: usize, end: usize| {
             let min_y = (start as u32) * self.chunk_h;
-            let mut max_y = ((end as u32) + 1) * self.chunk_h - 1;
-            if max_y >= self.height {
-                max_y = self.height - 1;
-            }
-            let aligned_min_x = 0;
-            let aligned_max_x = self.width - 1;
+            let max_y = (((end as u32) + 1) * self.chunk_h - 1).min(self.height - 1);
 
-            let offset_bytes = (min_y * self.owner_bytes_per_row + aligned_min_x * 2) as u64;
-            let width_bytes = ((aligned_max_x - aligned_min_x + 1) * 2) as u64;
-            let size_bytes = ((max_y - min_y) * self.owner_bytes_per_row) as u64 + width_bytes;
+            let offset_bytes = (min_y * self.owner_bytes_per_row) as u64;
+            let size_bytes =
+                ((max_y - min_y) * self.owner_bytes_per_row) as u64 + self.width as u64 * 4;
 
             context.sync_buffer_range(self.owner_buffer, offset_bytes, size_bytes);
 
             let src_piece: gpu::BufferPiece = self.owner_buffer.at(offset_bytes);
-
             let mut dst_piece: gpu::TexturePiece = self.owner_texture.into();
-            dst_piece.origin = [aligned_min_x, min_y, 0];
+            dst_piece.origin = [0, min_y, 0];
 
             let mut transfer = encoder.transfer("owner_upload");
             transfer.copy_buffer_to_texture(
@@ -275,7 +316,7 @@ impl MapRenderer {
                 self.owner_bytes_per_row,
                 dst_piece,
                 gpu::Extent {
-                    width: aligned_max_x - aligned_min_x + 1,
+                    width: self.width,
                     height: max_y - min_y + 1,
                     depth: 1,
                 },

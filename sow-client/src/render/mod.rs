@@ -121,6 +121,35 @@ impl SowApp {
                     }
                 }
 
+                let mut threat_slots = [[0.0f32; 4]; 4];
+                if let Some(snap) = &self.sim.current_snapshot {
+                    let my_id = self.sim.my_player_id.unwrap_or(0);
+                    let mut slot = 0usize;
+                    for attack in &snap.attacks {
+                        if slot >= 4 {
+                            break;
+                        }
+                        let involves_me = my_id != 0
+                            && (attack.target_owner == my_id || attack.owner_id == my_id);
+                        if !involves_me || attack.troops <= 0.0 {
+                            continue;
+                        }
+                        if attack.front_cx == 0.0 && attack.front_cy == 0.0 {
+                            continue;
+                        }
+                        let radius = (attack.troops as f32 / std::f32::consts::PI)
+                            .sqrt()
+                            .clamp(1.0, 200.0);
+                        threat_slots[slot] = [
+                            attack.front_cx,
+                            attack.front_cy,
+                            radius,
+                            attack.target_owner as f32,
+                        ];
+                        slot += 1;
+                    }
+                }
+
                 let globals = MapGlobals {
                     camera_pos: [self.input.camera_x, self.input.camera_y],
                     zoom: self.input.camera_zoom,
@@ -131,6 +160,11 @@ impl SowApp {
                     border_darkness,
                     shore_thickness,
                     shore_darkness,
+                    threat_slots,
+                    effect_shockwave: 1.0,
+                    effect_breathe: 1.0,
+                    effect_energy_flow: 1.0,
+                    _pad0: 0.0,
                 };
                 let colors_struct = sow_render::PlayerColors {
                     colors: player_colors,

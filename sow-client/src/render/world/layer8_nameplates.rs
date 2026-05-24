@@ -66,11 +66,11 @@ pub(crate) fn render(
         // Precompute scaled nameplate font sizes once per frame for 100% CPU/memory efficiency!
         // Round to whole point sizes to prevent egui glyph atlas invalidations.
         let font_size_my =
-            ((visual_config.nameplate_my_size * ui_text_scale * zoom_scale).round()).max(4.0);
+            ((visual_config.nameplate_my_size * ui_text_scale * zoom_scale).round()).max(2.0);
         let font_size_nation =
-            ((visual_config.nameplate_nation_size * ui_text_scale * zoom_scale).round()).max(4.0);
+            ((visual_config.nameplate_nation_size * ui_text_scale * zoom_scale).round()).max(2.0);
         let font_size_tribe =
-            ((visual_config.nameplate_tribe_size * ui_text_scale * zoom_scale).round()).max(6.0);
+            ((visual_config.nameplate_tribe_size * ui_text_scale * zoom_scale).round()).max(3.0);
 
         for vp in &sorted_players {
             let player = vp.player;
