@@ -1423,7 +1423,7 @@ fn draw_control_panel(
                 let alpha = ((1.0 - t / 2.5) * 255.0) as u8;
                 let slide = 8.0 * (1.0 - (t * 6.0).min(1.0));
                 let r = gold_frame_resp.response.rect;
-                let text = format!("🪙 +{}", crate::utils::format_number(amount));
+                let text = format!("💰 +{}", crate::utils::format_number(amount));
                 let p = pos2(r.center().x, r.top() - 10.0 - slide);
                 crate::ui::theme::outlined_text(
                     ui.painter(),
@@ -1552,7 +1552,7 @@ fn draw_control_panel(
                     let alpha = ((1.0 - t / 2.5) * 255.0) as u8;
                     let slide = 10.0 * (1.0 - (t * 6.0).min(1.0));
                     let r = gold_frame_resp.response.rect;
-                    let text = format!("🪙 +{}", crate::utils::format_number(amount));
+                    let text = format!("💰 +{}", crate::utils::format_number(amount));
                     let p = pos2(r.center().x, r.top() - 12.0 - slide);
                     crate::ui::theme::outlined_text(
                         ui.painter(),

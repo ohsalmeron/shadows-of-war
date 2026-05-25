@@ -151,6 +151,89 @@ impl SowApp {
                     }
                 }
 
+                let mut hover_hex = [0.0f32, 0.0f32];
+                let mut hover_building_kind = 0.0f32;
+                let mut nobuild_slots = [[0.0f32; 4]; 32];
+
+                if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
+                    let mx = self.input.last_mouse_x as f32;
+                    let my = self.input.last_mouse_y as f32;
+
+                    let world_x = (mx - self.input.camera_x) / self.input.camera_zoom;
+                    let world_y = (my - self.input.camera_y) / self.input.camera_zoom;
+
+                    let q_f = world_x - world_y * 0.577_350_26_f32;
+                    let r_f = world_y * 1.154_700_5_f32;
+                    let s_f = -q_f - r_f;
+
+                    let mut rq = q_f.round();
+                    let mut rr = r_f.round();
+                    let rs = s_f.round();
+
+                    let q_diff = (rq - q_f).abs();
+                    let r_diff = (rr - r_f).abs();
+                    let s_diff = (rs - s_f).abs();
+
+                    if q_diff > r_diff && q_diff > s_diff {
+                        rq = -rr - rs;
+                    } else if r_diff > s_diff {
+                        rr = -rq - rs;
+                    }
+
+                    let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
+                    let row = rr as i32;
+
+                    hover_hex = [col as f32, row as f32];
+                    hover_building_kind = match kind {
+                        sow_core::game::BuildingKind::City => 1.0,
+                        sow_core::game::BuildingKind::Bunker => 2.0,
+                    };
+
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        let mut list = Vec::new();
+                        for b in &snap.buildings {
+                            let bx = (b.tile_idx % self.sim.map_w) as i32;
+                            let by = (b.tile_idx / self.sim.map_w) as i32;
+
+                            let radius = match kind {
+                                sow_core::game::BuildingKind::City => {
+                                    if b.kind == sow_core::game::BuildingKind::City {
+                                        Some(12.0f32)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                sow_core::game::BuildingKind::Bunker => {
+                                    if b.kind == sow_core::game::BuildingKind::City {
+                                        Some(6.0f32)
+                                    } else if b.kind == sow_core::game::BuildingKind::Bunker {
+                                        Some(4.0f32)
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
+
+                            if let Some(r_val) = radius {
+                                let q1 = col - (row - (row & 1)) / 2;
+                                let r1 = row;
+                                let q2 = bx - (by - (by & 1)) / 2;
+                                let r2 = by;
+                                let dq = q2 - q1;
+                                let dr = r2 - r1;
+                                let hex_dist = (dq.abs() + dr.abs() + (dq + dr).abs()) / 2;
+
+                                list.push((bx, by, r_val, hex_dist));
+                            }
+                        }
+
+                        list.sort_unstable_by_key(|item| item.3);
+                        for (i, item) in list.iter().take(32).enumerate() {
+                            nobuild_slots[i] = [item.0 as f32, item.1 as f32, item.2, 1.0f32];
+                        }
+                    }
+                }
+
                 let globals = MapGlobals {
                     camera_pos: [self.input.camera_x, self.input.camera_y],
                     zoom: self.input.camera_zoom,
@@ -165,7 +248,11 @@ impl SowApp {
                     effect_shockwave: 1.0,
                     effect_breathe: 1.0,
                     effect_energy_flow: 1.0,
-                    _pad0: 0.0,
+                    my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
+                    hover_hex,
+                    hover_building_kind,
+                    _pad1: 0.0,
+                    nobuild_slots,
                 };
                 let colors_struct = sow_render::PlayerColors {
                     colors: player_colors,

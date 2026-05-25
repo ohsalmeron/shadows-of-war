@@ -747,17 +747,22 @@ impl SowApp {
                             player_id,
                             conqueror_id,
                             gold_bounty,
+                            elimination_x,
+                            elimination_y,
                         } = event
                         {
                             let mut wx = 0.5;
                             let mut wy = 0.5;
                             let mut target_name = format!("Player {}", player_id);
 
+                            let mut tile_found = false;
+                            if elimination_x > 0 || elimination_y > 0 {
+                                wx = elimination_x as f32 + 0.5 + (elimination_y % 2) as f32 * 0.5;
+                                wy = (elimination_y as f32 + 0.5) * 0.8660254_f32;
+                                tile_found = true;
+                            }
+
                             if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-                                wx = target.centroid_x
-                                    + 0.5
-                                    + (target.centroid_y as i32 % 2) as f32 * 0.5;
-                                wy = (target.centroid_y + 0.5) * 0.8660254_f32;
                                 target_name = if target.name.is_empty() {
                                     if target.id >= 200 {
                                         format!("Tribe {}", target.id - 199)
@@ -767,11 +772,33 @@ impl SowApp {
                                 } else {
                                     target.name.clone()
                                 };
+                                if !tile_found
+                                    && (target.centroid_x > 0.001 || target.centroid_y > 0.001)
+                                {
+                                    wx = target.centroid_x
+                                        + 0.5
+                                        + (target.centroid_y as i32 % 2) as f32 * 0.5;
+                                    wy = (target.centroid_y + 0.5) * 0.8660254_f32;
+                                    tile_found = true;
+                                }
+                            }
+
+                            if !tile_found {
+                                // Fallback: Use conqueror's position as the visual reward point,
+                                // since the conqueror just claimed the target's last tile.
+                                if let Some(conqueror) =
+                                    snap.players.iter().find(|p| p.id == conqueror_id)
+                                {
+                                    wx = conqueror.centroid_x
+                                        + 0.5
+                                        + (conqueror.centroid_y as i32 % 2) as f32 * 0.5;
+                                    wy = (conqueror.centroid_y + 0.5) * 0.8660254_f32;
+                                }
                             }
 
                             // Spawn floating notice!
                             let bounty_text =
-                                format!("🪙 +{}", sow_ui::utils::format_number(gold_bounty as f64));
+                                format!("💰 +{}", sow_ui::utils::format_number(gold_bounty as f64));
                             self.ui.floating_notices.push(crate::app::FloatingNotice {
                                 text: bounty_text,
                                 world_x: wx,

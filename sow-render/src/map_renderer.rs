@@ -16,13 +16,15 @@ pub struct MapGlobals {
     pub shore_darkness: f32,
     /// Up to 8 attack threat slots: [front_x, front_y, radius, packed_ids].
     pub threat_slots: [[f32; 4]; 8],
-    /// Conquest shockwave intensity (0 = off, 1 = full).
     pub effect_shockwave: f32,
-    /// Border breathing intensity (0 = off, 1 = full).
     pub effect_breathe: f32,
-    /// Energy flow animation intensity (0 = off, 1 = full).
     pub effect_energy_flow: f32,
-    pub _pad0: f32,
+    pub my_player_id: f32,
+    pub hover_hex: [f32; 2],
+    pub hover_building_kind: f32,
+    pub _pad1: f32,
+    /// Up to 32 nobuild exclusion zones: [center_col, center_row, radius, active].
+    pub nobuild_slots: [[f32; 4]; 32],
 }
 
 #[repr(C)]

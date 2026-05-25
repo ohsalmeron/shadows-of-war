@@ -392,7 +392,12 @@ pub(crate) fn render(
                         .collect();
                     painter.add(egui::Shape::convex_polygon(
                         points,
-                        egui::Color32::from_rgba_unmultiplied(player_color.r(), player_color.g(), player_color.b(), 35),
+                        egui::Color32::from_rgba_unmultiplied(
+                            player_color.r(),
+                            player_color.g(),
+                            player_color.b(),
+                            35,
+                        ),
                         egui::Stroke::new(2.0_f32, player_color),
                     ));
                 }

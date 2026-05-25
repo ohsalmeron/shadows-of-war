@@ -30,6 +30,7 @@ impl SowEngine {
 
         // attacks are sorted on insertion
 
+        let mut last_captured_tiles = std::collections::HashMap::new();
         let mut to_remove = Vec::new();
 
         for i in 0..self.attacks.len() {
@@ -260,6 +261,9 @@ impl SowEngine {
                     self.state
                         .set_tile_owner(target_tile.x, target_tile.y, execution.owner_id);
 
+                    last_captured_tiles
+                        .insert(execution.target_owner, (target_tile.x, target_tile.y));
+
                     // Send event
                     self.state.events.push(GameEvent::TileCaptured {
                         x: target_tile.x,
@@ -317,11 +321,18 @@ impl SowEngine {
                         attacker.gold += final_gold;
                     }
 
+                    let (ex, ey) = last_captured_tiles
+                        .get(&execution_ref.target_owner)
+                        .copied()
+                        .unwrap_or((0, 0));
+
                     // 3. Emit elimination event
                     self.state.events.push(GameEvent::PlayerEliminated {
                         player_id: execution_ref.target_owner,
                         conqueror_id: execution_ref.owner_id,
                         gold_bounty: final_gold as u32,
+                        elimination_x: ex,
+                        elimination_y: ey,
                     });
                 }
             }

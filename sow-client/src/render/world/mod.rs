@@ -237,7 +237,7 @@ impl SowApp {
                 }
 
                 let t = elapsed / duration;
-                let current_wy = notice.world_y - t * 1.8; // rise by 1.8 units
+                let current_wy = notice.world_y - t * 2.2; // rise by 2.2 units
                 let screen_x = (self.input.camera_x + notice.world_x * self.input.camera_zoom) / sf;
                 let screen_y = (self.input.camera_y + current_wy * self.input.camera_zoom) / sf;
 
@@ -264,7 +264,7 @@ impl SowApp {
                     } else {
                         1.0
                     };
-                    let font_size = (26.0 * bounce_scale).max(1.0);
+                    let font_size = (28.0 * bounce_scale).max(1.0);
 
                     // Draw outlined text
                     sow_ui::ui::theme::outlined_text(

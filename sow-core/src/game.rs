@@ -171,6 +171,8 @@ pub enum GameEvent {
         player_id: u16,
         conqueror_id: u16,
         gold_bounty: u32,
+        elimination_x: u32,
+        elimination_y: u32,
     },
     GameOver {
         winner_id: u16,

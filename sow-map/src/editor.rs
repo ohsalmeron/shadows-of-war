@@ -827,7 +827,11 @@ impl MapEditorSession {
                         effect_shockwave: 0.0,
                         effect_breathe: 0.0,
                         effect_energy_flow: 0.0,
-                        _pad0: 0.0,
+                        my_player_id: 0.0,
+                        hover_hex: [0.0, 0.0],
+                        hover_building_kind: 0.0,
+                        _pad1: 0.0,
+                        nobuild_slots: [[0.0; 4]; 32],
                     };
                     let colors_struct = sow_render::PlayerColors {
                         colors: player_colors,
