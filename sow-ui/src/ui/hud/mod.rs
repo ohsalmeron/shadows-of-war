@@ -43,6 +43,7 @@ pub struct HudState {
     pub pin_emoji: bool,
     pub show_alliance_inbox: bool,
     pub(crate) prev_requests: Vec<u16>,
+    pub(crate) last_request_time: Option<Instant>,
     pub show_betrayal_warning: Option<(u16, sow_core::protocol::GameplayIntent)>,
     pub show_error: Option<String>,
     pub(crate) last_error_message: Option<String>,
@@ -51,6 +52,19 @@ pub struct HudState {
     pub building_costs: [f64; 9],
     pub selected_nuke_kind: Option<sow_core::game::NukeKind>,
     pub nuke_alerts: Vec<NukeAlertDisplay>,
+    pub gold_gain: Option<f64>,
+    pub gold_gain_at: Option<Instant>,
+    pub prev_gold: f64,
+}
+
+impl HudState {
+    pub fn push_notification(&mut self, message: String, color: Color32) {
+        self.nuke_alerts.push(NukeAlertDisplay {
+            message,
+            color,
+            spawned_at: Instant::now(),
+        });
+    }
 }
 
 fn draw_buildings_dock_no_frame(
@@ -441,7 +455,7 @@ pub fn draw(
         .map(|p| p.alliance_requests.clone())
         .unwrap_or_default();
 
-    // Auto-open if a new request pops
+    // Auto-open if a new request pops (only if it is the first/only request)
     let mut has_new_request = false;
     for &req_id in &requests {
         if !state.prev_requests.contains(&req_id) {
@@ -450,7 +464,10 @@ pub fn draw(
         }
     }
     if has_new_request {
-        state.show_alliance_inbox = true;
+        state.last_request_time = Some(Instant::now());
+        if requests.len() <= 1 {
+            state.show_alliance_inbox = true;
+        }
     }
     state.prev_requests = requests.clone();
 
@@ -467,10 +484,24 @@ pub fn draw(
                         state.show_alliance_inbox = !state.show_alliance_inbox;
                     }
 
-                    // Render red badge with active notifications at all times
+                    // Render red badge with active notifications at all times (bounces/pops on new requests)
                     if !requests.is_empty() {
+                        let mut scale = 1.0_f32;
+                        if let Some(t) = state.last_request_time {
+                            let elapsed = t.elapsed().as_secs_f32();
+                            if elapsed < 0.6_f32 {
+                                let progress = elapsed / 0.6_f32;
+                                // Elastic bounce: pops up quickly, wobbles, and settles back to 1.0
+                                scale = 1.0_f32
+                                    + 0.8_f32
+                                        * (progress * std::f32::consts::PI).sin()
+                                        * (1.0_f32 - progress);
+                                ui.ctx().request_repaint(); // keep animating
+                            }
+                        }
+
                         let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
-                        let badge_radius = 8.0;
+                        let badge_radius = 8.0_f32 * scale;
                         ui.painter().circle_filled(
                             badge_center,
                             badge_radius,
@@ -480,7 +511,7 @@ pub fn draw(
                             badge_center,
                             egui::Align2::CENTER_CENTER,
                             requests.len().to_string(),
-                            egui::FontId::proportional(10.0),
+                            egui::FontId::proportional(10.0_f32 * scale),
                             Color32::WHITE,
                         );
                     }
@@ -545,11 +576,11 @@ pub fn draw(
                                 ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
 
                                 // Title "ALLIANCES"
-                                ui.label(
-                                    RichText::new(&sow_lang::get(lang).hud.inbox_title)
-                                        .strong()
-                                        .color(crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress))
-                                        .size(12.0),
+                                crate::ui::theme::outlined_label(
+                                    ui,
+                                    &sow_lang::get(lang).hud.inbox_title,
+                                    egui::FontId::proportional(12.0),
+                                    crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress),
                                 );
                                 ui.add_space(4.0);
 
@@ -558,10 +589,10 @@ pub fn draw(
                                     let w = (ui.available_width() - 6.0) / 2.0;
                                     ui.horizontal(|ui| {
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            egui::Button::new(RichText::new("REJECT ALL").strong().size(10.0).color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress)))
-                                                .fill(crate::ui::theme::menu_secondary_button())
-                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3 * inbox_progress)))
-                                                .corner_radius(6)
+                                            crate::widgets::ThemeButton::new("REJECT ALL")
+                                                .text_size(10.0)
+                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                         ).clicked() {
                                             for &req in &requests {
                                                 cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: req });
@@ -569,10 +600,10 @@ pub fn draw(
                                             state.show_alliance_inbox = false;
                                         }
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            egui::Button::new(RichText::new("ACCEPT ALL").strong().size(10.0).color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress)))
-                                                .fill(crate::ui::theme::menu_secondary_button())
-                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3 * inbox_progress)))
-                                                .corner_radius(6)
+                                            crate::widgets::ThemeButton::new("ACCEPT ALL")
+                                                .text_size(10.0)
+                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                         ).clicked() {
                                             for &req in &requests {
                                                 cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: req });
@@ -585,7 +616,12 @@ pub fn draw(
 
                                 // Request cards
                                 if requests.is_empty() {
-                                    ui.label(RichText::new(&sow_lang::get(lang).hud.inbox_empty).color(Color32::GRAY.linear_multiply(inbox_progress)));
+                                    crate::ui::theme::outlined_label(
+                                        ui,
+                                        &sow_lang::get(lang).hud.inbox_empty,
+                                        egui::FontId::proportional(11.0),
+                                        Color32::GRAY.linear_multiply(inbox_progress),
+                                    );
                                 }
                                 for &requester_id in &requests {
                                     let Some(requester) = state.players.iter().find(|p| p.id == requester_id) else { continue };
@@ -633,13 +669,13 @@ pub fn draw(
                                                             static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
                                                             REGISTER_STAR_ONCE.call_once(|| {
                                                                 ui.ctx().include_bytes(
-                                                                    "bytes://star.webp",
-                                                                    include_bytes!("../../../../sow-client/assets/star.webp").as_slice(),
+                                                                    "bytes://star.svg",
+                                                                    include_bytes!("../../../../sow-client/assets/star.svg").as_slice(),
                                                                 );
                                                             });
                                                             let star_size = 18.0_f32; // bigger size to compensate for native emoji
                                                             let load_res = ui.ctx().try_load_texture(
-                                                                "bytes://star.webp",
+                                                                "bytes://star.svg",
                                                                 egui::TextureOptions::default(),
                                                                 egui::load::SizeHint::Size {
                                                                     width: (star_size * 2.0).round() as u32,
@@ -650,14 +686,14 @@ pub fn draw(
                                                             if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
                                                                 ui.image((texture.id, egui::vec2(star_size, star_size)));
                                                             } else {
-                                                                ui.label(RichText::new("⭐").color(pc).size(14.0));
+                                                                crate::ui::theme::outlined_label(ui, "⭐", egui::FontId::proportional(14.0), pc);
                                                             }
                                                         } else {
-                                                            ui.label(RichText::new(icon).color(pc).size(14.0));
+                                                            crate::ui::theme::outlined_label(ui, icon, egui::FontId::proportional(14.0), pc);
                                                         }
                                                         ui.vertical(|ui| {
                                                             ui.spacing_mut().item_spacing.y = 0.0;
-                                                            ui.label(RichText::new(name).strong().color(pc).size(12.5));
+                                                            crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
                                                             let prompt = if is_renewal {
                                                                 match lang {
                                                                     sow_lang::Language::Spanish => "¡quiere renovar la alianza!".to_string(),
@@ -666,7 +702,7 @@ pub fn draw(
                                                             } else {
                                                                 sow_lang::get(lang).hud.inbox_wants_ally.clone()
                                                             };
-                                                            ui.label(RichText::new(&prompt).size(10.5).color(Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress)));
+                                                            crate::ui::theme::outlined_label(ui, &prompt, egui::FontId::proportional(10.5), Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress));
                                                         });
                                                     });
                                                     ui.add_space(2.0);
@@ -675,19 +711,19 @@ pub fn draw(
                                                     let is_last = requests.len() == 1;
                                                     ui.horizontal(|ui| {
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
-                                                            egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_accept).size(11.0).color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress)))
-                                                                .fill(crate::ui::theme::menu_secondary_button())
-                                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(74, 222, 128).linear_multiply(0.3 * inbox_progress)))
-                                                                .corner_radius(6)
+                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_accept)
+                                                                .text_size(11.0)
+                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
                                                             if is_last { state.show_alliance_inbox = false; }
                                                         }
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
-                                                            egui::Button::new(RichText::new(&sow_lang::get(lang).hud.btn_reject).size(11.0).color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress)))
-                                                                .fill(crate::ui::theme::menu_secondary_button())
-                                                                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68).linear_multiply(0.3 * inbox_progress)))
-                                                                .corner_radius(6)
+                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_reject)
+                                                                .text_size(11.0)
+                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
                                                             if is_last { state.show_alliance_inbox = false; }
@@ -739,7 +775,7 @@ pub fn draw(
         ui.ctx().request_repaint();
     }
 
-    // ── Bottom-right Map Controls ──────────────────────────────────────────────
+    // ── Floating Map Controls ──────────────────────────────────────────────
     egui::Area::new(egui::Id::new("hud_map_controls"))
         .anchor(
             Align2::RIGHT_BOTTOM,
@@ -748,6 +784,7 @@ pub fn draw(
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
             crate::ui::theme::hud_panel_frame().show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
                 ui.vertical_centered(|ui| {
                     if ui
                         .add(crate::widgets::HudButton::new("+"))
@@ -763,7 +800,6 @@ pub fn draw(
                     {
                         action = Some(UiAction::ZoomOut);
                     }
-                    ui.add_space(4.0);
                     if ui
                         .add(crate::widgets::HudButton::new("⌖"))
                         .on_hover_text(&sow_lang::get(lang).hud.hover_center_camera)
@@ -771,7 +807,6 @@ pub fn draw(
                     {
                         action = Some(UiAction::CenterCamera);
                     }
-                    ui.add_space(4.0);
                     if ui
                         .add(crate::widgets::HudButton::new("😀"))
                         .on_hover_text("Express Emoji")
@@ -944,9 +979,9 @@ pub fn draw(
                                             std::sync::Once::new();
                                         REGISTER_STAR_ONCE.call_once(|| {
                                             ui.ctx().include_bytes(
-                                                "bytes://star.webp",
+                                                "bytes://star.svg",
                                                 include_bytes!(
-                                                    "../../../../sow-client/assets/star.webp"
+                                                    "../../../../sow-client/assets/star.svg"
                                                 )
                                                 .as_slice(),
                                             );
@@ -962,7 +997,7 @@ pub fn draw(
                                             maintain_aspect_ratio: true,
                                         };
                                         let load_res = ui.ctx().try_load_texture(
-                                            "bytes://star.webp",
+                                            "bytes://star.svg",
                                             egui::TextureOptions::default(),
                                             size_hint,
                                         );
@@ -1366,7 +1401,7 @@ fn draw_control_panel(
             ui.spacing_mut().item_spacing.x = 8.0;
 
             // Gold
-            egui::Frame::NONE
+            let gold_frame_resp = egui::Frame::NONE
                 .stroke(Stroke::new(
                     1.0_f32,
                     crate::ui::theme::accent_ranked_gold_hover(),
@@ -1374,13 +1409,32 @@ fn draw_control_panel(
                 .corner_radius(6)
                 .inner_margin(egui::Margin::symmetric(4, 4))
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(format!("💰 {}", crate::utils::format_number(state.gold)))
-                            .strong()
-                            .size(12.0)
-                            .color(crate::ui::theme::accent_ranked_gold_hover()),
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        &format!("💰 {}", crate::utils::format_number(state.gold)),
+                        egui::FontId::proportional(12.0),
+                        crate::ui::theme::accent_ranked_gold_hover(),
                     );
                 });
+
+            // Gold gain popup
+            if let (Some(amount), Some(at)) = (state.gold_gain, state.gold_gain_at) {
+                let t = at.elapsed().as_secs_f32().min(2.5);
+                let alpha = ((1.0 - t / 2.5) * 255.0) as u8;
+                let slide = 8.0 * (1.0 - (t * 6.0).min(1.0));
+                let r = gold_frame_resp.response.rect;
+                let text = format!("🪙 +{}", crate::utils::format_number(amount));
+                let p = pos2(r.center().x, r.top() - 10.0 - slide);
+                crate::ui::theme::outlined_text(
+                    ui.painter(),
+                    p,
+                    Align2::CENTER_BOTTOM,
+                    &text,
+                    egui::FontId::proportional(13.0),
+                    Color32::from_rgba_unmultiplied(74, 222, 128, alpha),
+                    Color32::from_rgba_unmultiplied(0, 0, 0, alpha),
+                );
+            }
 
             // Troop Bar (Takes ~40%)
             let bar_w = ui.available_width() * 0.5;
@@ -1398,12 +1452,17 @@ fn draw_control_panel(
             // Attack Ratio + Slider
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("⚔").size(12.0));
-                    ui.label(
-                        RichText::new(format!("{:.0}%", state.attack_ratio * 100.0))
-                            .strong()
-                            .size(12.0)
-                            .color(Color32::from_rgb(220, 230, 220)),
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        "⚔",
+                        egui::FontId::proportional(12.0),
+                        Color32::WHITE,
+                    );
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        &format!("{:.0}%", state.attack_ratio * 100.0),
+                        egui::FontId::proportional(12.0),
+                        Color32::from_rgb(220, 230, 220),
                     );
                     let mut ratio = state.attack_ratio;
                     if ui
@@ -1441,15 +1500,17 @@ fn draw_control_panel(
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
-                            ui.label(RichText::new("⚔").size(14.0));
-                            ui.label(
-                                RichText::new(format!(
-                                    "+{}/s",
-                                    crate::utils::format_number(troop_rate)
-                                ))
-                                .strong()
-                                .size(14.0)
-                                .color(rate_color),
+                            crate::ui::theme::outlined_label(
+                                ui,
+                                "⚔",
+                                egui::FontId::proportional(14.0),
+                                Color32::WHITE,
+                            );
+                            crate::ui::theme::outlined_label(
+                                ui,
+                                &format!("+{}/s", crate::utils::format_number(troop_rate)),
+                                egui::FontId::proportional(14.0),
+                                rate_color,
                             );
                         });
                     });
@@ -1469,7 +1530,7 @@ fn draw_control_panel(
                 );
 
                 // Gold
-                egui::Frame::NONE
+                let gold_frame_resp = egui::Frame::NONE
                     .stroke(Stroke::new(
                         1.0_f32,
                         crate::ui::theme::accent_ranked_gold_hover(),
@@ -1477,16 +1538,32 @@ fn draw_control_panel(
                     .corner_radius(6)
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
-                        ui.label(
-                            RichText::new(format!(
-                                "💰 {}",
-                                crate::utils::format_number(state.gold)
-                            ))
-                            .strong()
-                            .size(14.0)
-                            .color(crate::ui::theme::accent_ranked_gold_hover()),
+                        crate::ui::theme::outlined_label(
+                            ui,
+                            &format!("💰 {}", crate::utils::format_number(state.gold)),
+                            egui::FontId::proportional(14.0),
+                            crate::ui::theme::accent_ranked_gold_hover(),
                         );
                     });
+
+                // Gold gain popup
+                if let (Some(amount), Some(at)) = (state.gold_gain, state.gold_gain_at) {
+                    let t = at.elapsed().as_secs_f32().min(2.5);
+                    let alpha = ((1.0 - t / 2.5) * 255.0) as u8;
+                    let slide = 10.0 * (1.0 - (t * 6.0).min(1.0));
+                    let r = gold_frame_resp.response.rect;
+                    let text = format!("🪙 +{}", crate::utils::format_number(amount));
+                    let p = pos2(r.center().x, r.top() - 12.0 - slide);
+                    crate::ui::theme::outlined_text(
+                        ui.painter(),
+                        p,
+                        Align2::CENTER_BOTTOM,
+                        &text,
+                        egui::FontId::proportional(16.0),
+                        Color32::from_rgba_unmultiplied(74, 222, 128, alpha),
+                        Color32::from_rgba_unmultiplied(0, 0, 0, alpha),
+                    );
+                }
             });
 
             ui.horizontal(|ui| {
@@ -1503,18 +1580,23 @@ fn draw_control_panel(
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
-                            ui.label(RichText::new("⚔").size(14.0));
+                            crate::ui::theme::outlined_label(
+                                ui,
+                                "⚔",
+                                egui::FontId::proportional(14.0),
+                                Color32::WHITE,
+                            );
                             let ratio_troops =
                                 (state.troops * (state.attack_ratio as f64)).max(0.0);
-                            ui.label(
-                                RichText::new(format!(
+                            crate::ui::theme::outlined_label(
+                                ui,
+                                &format!(
                                     "{:.0}% ({})",
                                     state.attack_ratio * 100.0,
                                     crate::utils::format_number(ratio_troops)
-                                ))
-                                .strong()
-                                .size(14.0)
-                                .color(Color32::from_rgb(220, 230, 220)),
+                                ),
+                                egui::FontId::proportional(14.0),
+                                Color32::from_rgb(220, 230, 220),
                             );
                         });
                     });
@@ -2104,11 +2186,17 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
     let start = state.nuke_alerts.len().saturating_sub(MAX_VISIBLE);
     let visible = &state.nuke_alerts[start..];
 
+    let (anchor, offset) = if cfg!(any(target_os = "android", target_os = "ios")) {
+        (Align2::CENTER_TOP, vec2(0.0, 12.0 + state.safe_area_top))
+    } else {
+        (Align2::LEFT_CENTER, vec2(16.0, 0.0))
+    };
+
     egui::Area::new(egui::Id::new("nuke_alerts_area"))
-        .anchor(Align2::CENTER_TOP, vec2(0.0, 12.0 + state.safe_area_top))
+        .anchor(anchor, offset)
         .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
+            let show_content = |ui: &mut egui::Ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
                 for alert in visible {
                     let elapsed = now.duration_since(alert.spawned_at).as_secs_f32();
@@ -2135,8 +2223,13 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
                         .inner_margin(egui::Margin::symmetric(14, 6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("☢").color(border).size(14.0).strong());
-                                ui.add_space(4.0);
+                                let is_nuke = alert.message.contains("☢")
+                                    || alert.message.to_lowercase().contains("nuke")
+                                    || alert.message.to_lowercase().contains("missile");
+                                if is_nuke {
+                                    ui.label(RichText::new("☢").color(border).size(14.0).strong());
+                                    ui.add_space(4.0);
+                                }
                                 ui.label(
                                     RichText::new(&alert.message)
                                         .color(Color32::from_rgba_unmultiplied(
@@ -2151,7 +2244,13 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
                             });
                         });
                 }
-            });
+            };
+
+            if cfg!(any(target_os = "android", target_os = "ios")) {
+                ui.vertical_centered(show_content);
+            } else {
+                ui.vertical(show_content);
+            }
         });
 
     ctx.request_repaint();

@@ -111,6 +111,16 @@ pub struct ActiveUpgradeAnimation {
     pub level: u8,
 }
 
+#[derive(Clone, Debug)]
+pub struct FloatingNotice {
+    pub text: String,
+    pub world_x: f32,
+    pub world_y: f32,
+    pub start_time: web_time::Instant,
+    pub duration: web_time::Duration,
+    pub color: egui::Color32,
+}
+
 #[allow(clippy::type_complexity)]
 pub struct UiState {
     pub app: sow_ui::ClientApp,
@@ -145,6 +155,7 @@ pub struct UiState {
     pub star_svg_registered: bool,
     pub handshake_svg_registered: bool,
     pub troops_webp_registered: bool,
+    pub floating_notices: Vec<FloatingNotice>,
 }
 
 pub struct TimeState {
@@ -448,6 +459,7 @@ impl SowApp {
                 star_svg_registered: false,
                 handshake_svg_registered: false,
                 troops_webp_registered: false,
+                floating_notices: Vec::new(),
             },
             time: TimeState {
                 last_tick,
@@ -534,6 +546,7 @@ impl SowApp {
         self.net.ws_reconnect_after_resume = true;
         if self.gfx.window.is_none() {
             #[cfg(any(target_os = "android", target_os = "ios"))]
+            #[allow(unused_mut)]
             let mut attributes =
                 winit::window::WindowAttributes::default().with_title("Shadows of War");
 
@@ -725,6 +738,72 @@ impl SowApp {
                     e.tick();
 
                     let mut snap = e.build_snapshot();
+
+                    // Process events produced by the engine during the tick!
+                    let my_id = self.sim.my_player_id.unwrap_or(0);
+                    let now_instant = web_time::Instant::now();
+                    for event in e.state.events.drain(..) {
+                        if let sow_core::game::GameEvent::PlayerEliminated {
+                            player_id,
+                            conqueror_id,
+                            gold_bounty,
+                        } = event
+                        {
+                            let mut wx = 0.5;
+                            let mut wy = 0.5;
+                            let mut target_name = format!("Player {}", player_id);
+
+                            if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
+                                wx = target.centroid_x
+                                    + 0.5
+                                    + (target.centroid_y as i32 % 2) as f32 * 0.5;
+                                wy = (target.centroid_y + 0.5) * 0.8660254_f32;
+                                target_name = if target.name.is_empty() {
+                                    if target.id >= 200 {
+                                        format!("Tribe {}", target.id - 199)
+                                    } else {
+                                        format!("Nation {}", target.id.saturating_sub(103))
+                                    }
+                                } else {
+                                    target.name.clone()
+                                };
+                            }
+
+                            // Spawn floating notice!
+                            let bounty_text =
+                                format!("🪙 +{}", sow_ui::utils::format_number(gold_bounty as f64));
+                            self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                text: bounty_text,
+                                world_x: wx,
+                                world_y: wy,
+                                start_time: now_instant,
+                                duration: web_time::Duration::from_millis(3000),
+                                color: egui::Color32::from_rgb(250, 204, 21), // Warm vibrant gold-yellow!
+                            });
+
+                            // Push notification message
+                            let msg = if conqueror_id == my_id && my_id != 0 {
+                                format!(
+                                    "🎉 You conquered {} and earned {} Gold!",
+                                    target_name,
+                                    sow_ui::utils::format_number(gold_bounty as f64)
+                                )
+                            } else {
+                                let conqueror_name = snap
+                                    .players
+                                    .iter()
+                                    .find(|p| p.id == conqueror_id)
+                                    .map(|p| p.name.clone())
+                                    .unwrap_or_else(|| format!("Player {}", conqueror_id));
+                                format!("💀 {} was eliminated by {}!", target_name, conqueror_name)
+                            };
+                            self.ui
+                                .app
+                                .hud_state
+                                .push_notification(msg, egui::Color32::from_rgb(255, 215, 0));
+                        }
+                    }
+
                     if let Some(mut existing) = self.sim.current_snapshot.take() {
                         // Detect building level upgrades and completions
                         let now = web_time::Instant::now();

@@ -146,13 +146,14 @@ pub fn draw_queue_overlay(
             // 3. Bottom Button Area
             ui.add_space(8.0);
             ui.vertical_centered(|ui| {
-                let cancel = crate::widgets::ThemeButton::new(&strings.leave_lobby)
+                let cancel = crate::widgets::ThemeButton::new("CANCEL")
                     .style(crate::widgets::ThemeButtonStyle::Danger)
                     .min_size(egui::vec2(200.0, action_min_h));
                 if ui.add(cancel).clicked() {
                     *action = Some(UiAction::LeaveLobby);
                 }
             });
+            ui.add_space(16.0);
         });
     });
 }

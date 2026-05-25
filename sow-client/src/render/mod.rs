@@ -145,8 +145,7 @@ impl SowApp {
                             attack.front_cx,
                             attack.front_cy,
                             radius,
-                            attack.target_owner as f32 * 1024.0
-                                + attack.owner_id as f32,
+                            attack.target_owner as f32 * 1024.0 + attack.owner_id as f32,
                         ];
                         slot += 1;
                     }
@@ -538,8 +537,8 @@ impl SowApp {
                         sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
                         log::info!("Successfully created surface on retry.");
                     }
-                    Err(_) => {
-                        // Still unavailable
+                    Err(e) => {
+                        log::warn!("Surface creation failed: {:?}", e);
                     }
                 }
             }

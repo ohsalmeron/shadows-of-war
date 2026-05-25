@@ -281,37 +281,48 @@ impl SowEngine {
             // Conquer Gold Mechanic: Check elimination ONCE per attack, outside the tile loop
             let execution_ref = &self.attacks[i];
             if execution_ref.target_owner != 0 {
-                let mut defeated_gold = 0.0;
+                let mut base_reward = 0.0;
                 let mut is_eliminated = false;
-                let mut transfer_ratio = 1.0;
 
                 if let Some(target_player) = self.state.player(execution_ref.target_owner) {
                     if target_player.tile_count == 0 && target_player.alive {
                         is_eliminated = true;
-                        defeated_gold = target_player.gold.max(0.0);
-                        if target_player.player_type == crate::player::PlayerType::Bot {
-                            defeated_gold += 25.0; // Fixed bounty for eating a Tribe
-                        }
-                        if target_player.is_human() {
-                            transfer_ratio = 0.5;
-                        }
+                        base_reward = match target_player.player_type {
+                            crate::player::PlayerType::Bot => 500.0,
+                            crate::player::PlayerType::Nation => 1250.0,
+                            crate::player::PlayerType::Human => 2500.0,
+                        };
                     }
                 }
 
                 if is_eliminated {
+                    let survived_ticks = self.state.tick;
+                    let bonus_percent = survived_ticks as f64 * 0.0001; // 0.01% per tick
+                    let total_reward = base_reward * (1.0 + bonus_percent);
+
                     // 1. Zero out defeated player
                     if let Some(target_player) = self.state.player_mut(execution_ref.target_owner) {
                         target_player.gold = 0.0;
                         target_player.alive = false;
                     }
+
                     // 2. Transfer gold to conqueror
+                    let mut final_gold = total_reward;
                     if let Some(attacker) = self.state.player_mut(execution_ref.owner_id) {
                         let mut bounty_mult = 1.0;
                         if attacker.leader == crate::player::Leader::GenghisKhan {
                             bounty_mult = 1.5; // +50% bounty gold!
                         }
-                        attacker.gold += defeated_gold * transfer_ratio * bounty_mult;
+                        final_gold = total_reward * bounty_mult;
+                        attacker.gold += final_gold;
                     }
+
+                    // 3. Emit elimination event
+                    self.state.events.push(GameEvent::PlayerEliminated {
+                        player_id: execution_ref.target_owner,
+                        conqueror_id: execution_ref.owner_id,
+                        gold_bounty: final_gold as u32,
+                    });
                 }
             }
         }

@@ -260,14 +260,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
 
-        // Energy flow: animated diagonal stripes on interior
-        var interior_mod = 1.0;
-        if globals.effect_energy_flow > 0.0 {
-            let stripe = (sin((world_x + world_y) * 0.15 - globals.time * 2.5) + 1.0) * 0.5;
-            interior_mod = mix(1.0, 0.6 + 0.6 * stripe, globals.effect_energy_flow);
-        }
-
-        base_color = mix(terrain_color.rgb, albedo * interior_mod, 0.75);
+        base_color = mix(terrain_color.rgb, albedo, 0.75);
 
         // Conquest shockwave flash on interior
         if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
@@ -352,12 +345,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 var border_albedo = owner_albedo(owner_id) * border_darkness;
 
-                // Energy flow on borders: faster, tighter wave
-                if globals.effect_energy_flow > 0.0 {
-                    let flow = (sin((world_x - world_y) * 2.0 - globals.time * 8.0) + 1.0) * 0.5;
-                    border_albedo += owner_albedo(owner_id) * flow * 0.6 * globals.effect_energy_flow;
-                }
-
                 // Shockwave flash on border
                 if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
                     border_albedo = mix(border_albedo, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave);
@@ -417,26 +404,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 // ── WAR FOG: PvP attack ──
                 let atk_color = owner_albedo(attacker_id);
-                let atk_bright = atk_color * 1.4 + vec3<f32>(0.3);
+                let atk_bright = atk_color * 1.1 + vec3<f32>(0.15);
                 let atk_dark = atk_color * 0.15;
 
                 // Desaturation — territory drains to grey
                 let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
-                let desat = mix(base_color, vec3<f32>(lum), threat * 0.6);
+                let desat = mix(base_color, vec3<f32>(lum), threat * 0.45);
 
                 // Attacker smoke
                 let smoke_color = mix(atk_dark, atk_bright, threat * threat);
-                let smoke_blend = threat * 0.55;
+                let smoke_blend = threat * 0.35;
 
                 // Ripple waves
                 let wave_phase = dist * 3.0 - globals.time * 4.0;
                 let ripple = (sin(wave_phase) + 1.0) * 0.5;
-                let ripple_intensity = ripple * threat * threat * 0.25;
+                let ripple_intensity = ripple * threat * threat * 0.12;
 
                 // Corona front
                 let corona_dist = abs(dist - radius * 0.15);
-                let corona = smoothstep(1.5, 0.0, corona_dist) * 0.7;
-                let corona_color = min(atk_color * 2.0 + vec3<f32>(0.5), vec3<f32>(1.0));
+                let corona = smoothstep(1.5, 0.0, corona_dist) * 0.4;
+                let corona_color = min(atk_color * 1.6 + vec3<f32>(0.3), vec3<f32>(1.0));
 
                 var war_color = mix(desat, smoke_color, smoke_blend);
                 war_color += corona_color * corona;

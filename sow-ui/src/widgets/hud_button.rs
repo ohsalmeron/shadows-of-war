@@ -43,14 +43,16 @@ impl Widget for HudButton {
                 .rect_filled(rect, 6.0, Color32::from_white_alpha(alpha));
         }
 
-        let galley =
-            ui.painter()
-                .layout_no_wrap(self.text, FontId::proportional(self.size), self.color);
-
-        let text_pos = Align2::CENTER_CENTER
-            .align_size_within_rect(galley.size(), rect)
-            .min;
-        ui.painter().galley(text_pos, galley, self.color);
+        let font_id = FontId::proportional(self.size);
+        crate::ui::theme::paint_premium_glow_text(
+            ui.painter(),
+            rect.center(),
+            Align2::CENTER_CENTER,
+            &self.text,
+            font_id,
+            self.color,
+            Color32::BLACK,
+        );
 
         response.on_hover_cursor(CursorIcon::PointingHand)
     }

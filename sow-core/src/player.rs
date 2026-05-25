@@ -373,12 +373,21 @@ pub fn bot_territory_color(game_seed: u64, bot_id: u16) -> [f32; 3] {
         ^ (bot_id as u64);
     let mut rng = WyRand::new(mix);
     let h = rng.next_int(0, 10_000) as f32 / 10_000.0;
-    let s = 0.28 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.18;
-    let v = 0.52 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.18;
+    let is_high_iq = bot_id % 100 == 0;
+    let (s, v) = if is_high_iq {
+        // Darker, richer colors — visually distinct as apex predators
+        let s = 0.65 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.20;
+        let v = 0.30 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.12;
+        (s, v)
+    } else {
+        let s = 0.28 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.18;
+        let v = 0.52 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.18;
+        (s, v)
+    };
     let [r, g, b] = hsv_to_rgb(h, s, v);
     [
-        r.clamp(0.16, 0.88),
-        g.clamp(0.16, 0.88),
-        b.clamp(0.16, 0.88),
+        r.clamp(0.08, 0.88),
+        g.clamp(0.08, 0.88),
+        b.clamp(0.08, 0.88),
     ]
 }

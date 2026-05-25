@@ -169,7 +169,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.25,
+            global_speed_multiplier: 0.55,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
@@ -184,15 +184,15 @@ impl Default for GameConfig {
 
             // Economy & Income Rates
             starting_troops: 1000.0,
-            starting_gold: 500_000_000.0, // TODO: revert to 1000.0 after testing
-            gold_base_income: 8.0,
-            troop_base_income: 250.0,
+            starting_gold: 100.0,
+            gold_base_income: 4.0,
+            troop_base_income: 100.0,
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
             city_max_troops_per_level: 1000.0,
-            factory_income_bonus_per_level: 8.0,
+            factory_income_bonus_per_level: 4.0,
             factory_income_bonus_cap: 100.0,
-            gold_income_per_city_level: 8.0,
+            gold_income_per_city_level: 4.0,
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,
         }

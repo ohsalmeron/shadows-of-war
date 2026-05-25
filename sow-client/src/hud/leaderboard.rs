@@ -34,35 +34,18 @@ impl SowApp {
         egui::Area::new(egui::Id::new("leaderboard_area"))
             .anchor(Align2::LEFT_TOP, Vec2::new(12.0, 12.0))
             .show(ctx, |ui| {
-                egui::Frame::new()
-                    .fill(sow_ui::ui::theme::panel_bg_transparent())
-                    .stroke(egui::Stroke::new(
-                        1.0_f32,
-                        sow_ui::ui::theme::nickname_field_border(),
-                    ))
-                    .corner_radius(12.0)
-                    .inner_margin(8.0)
-                    .show(ui, |ui| {
+                sow_ui::ui::theme::hud_panel_frame().show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 8.0;
                         // Toggle Button Row
                         ui.horizontal(|ui| {
-                            let toggle_btn = egui::Button::new(
-                                RichText::new("🏆")
-                                    .size(18.0)
-                                    .color(Color32::from_gray(200)),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE);
+                            ui.spacing_mut().item_spacing.x = 8.0;
+                            let toggle_btn = sow_ui::widgets::HudButton::new("🏆");
                             if ui.add(toggle_btn).on_hover_text("Leaderboard").clicked() {
                                 self.ui.show_leaderboard = !self.ui.show_leaderboard;
                             }
 
-                            ui.add_space(2.0);
-
-                            let dev_btn = egui::Button::new(
-                                RichText::new("🛠").size(18.0).color(Color32::from_gray(200)),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE);
+                            let dev_btn = sow_ui::widgets::HudButton::new("🛠");
                             if ui.add(dev_btn).on_hover_text("Dev Utils").clicked() {
                                 self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
                             }
@@ -214,7 +197,7 @@ impl SowApp {
                             let mut bscale = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_building_scale"),
-                                    || 1.0f32,
+                                    || 3.0f32,
                                 )
                             });
                             ui.add(
@@ -239,6 +222,7 @@ impl SowApp {
                             });
                         }
                     });
+                });
             });
     }
 }

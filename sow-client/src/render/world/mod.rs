@@ -223,6 +223,63 @@ impl SowApp {
                 &ctx_struct,
             );
 
+            // Render floating notices
+            let now = web_time::Instant::now();
+            let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new("floating_notices"),
+            ));
+            self.ui.floating_notices.retain(|notice| {
+                let elapsed = now.duration_since(notice.start_time).as_secs_f32();
+                let duration = notice.duration.as_secs_f32();
+                if elapsed >= duration {
+                    return false;
+                }
+
+                let t = elapsed / duration;
+                let current_wy = notice.world_y - t * 1.8; // rise by 1.8 units
+                let screen_x = (self.input.camera_x + notice.world_x * self.input.camera_zoom) / sf;
+                let screen_y = (self.input.camera_y + current_wy * self.input.camera_zoom) / sf;
+
+                if screen_x >= -150.0
+                    && screen_x <= self.input.screen_w + 150.0
+                    && screen_y >= -150.0
+                    && screen_y <= self.input.screen_h + 150.0
+                {
+                    let pos = egui::pos2(screen_x, screen_y);
+                    let alpha = ((1.0 - t) * 255.0) as u8;
+                    let text_color = egui::Color32::from_rgba_unmultiplied(
+                        notice.color.r(),
+                        notice.color.g(),
+                        notice.color.b(),
+                        alpha,
+                    );
+                    let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
+                    let bounce_scale = if elapsed < 0.5 {
+                        let anim_t = elapsed / 0.5;
+                        1.0 - (anim_t * 7.5).cos() * (-3.5 * anim_t).exp()
+                    } else if elapsed > duration - 0.5 {
+                        let anim_t = (duration - elapsed) / 0.5;
+                        (1.0 - (anim_t * 7.5).cos() * (-3.5 * anim_t).exp()).clamp(0.0, 1.2)
+                    } else {
+                        1.0
+                    };
+                    let font_size = (26.0 * bounce_scale).max(1.0);
+
+                    // Draw outlined text
+                    sow_ui::ui::theme::outlined_text(
+                        &middle_painter,
+                        pos,
+                        egui::Align2::CENTER_CENTER,
+                        &notice.text,
+                        egui::FontId::proportional(font_size),
+                        text_color,
+                        outline_color,
+                    );
+                }
+                true
+            });
+
             // Restore the player colors back to UI state to preserve the pre-allocated capacity
             self.ui.cached_player_colors = player_colors;
         }

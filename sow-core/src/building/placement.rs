@@ -130,34 +130,6 @@ pub fn valid_land_structure_indices(
                     }
                 }
             }
-            // Border constraints: must be adjacent to non-owned tile or map edge
-            if !too_close {
-                let mut is_border = false;
-                map.for_each_neighbor(x, y, |nx, ny| {
-                    if map.owner_id(nx, ny) != owner_id {
-                        is_border = true;
-                    }
-                });
-                if !is_border {
-                    let is_odd = (y % 2) != 0;
-                    let offsets = if is_odd {
-                        [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
-                    } else {
-                        [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
-                    };
-                    for &(dx, dy) in &offsets {
-                        let nx = x as i32 + dx;
-                        let ny = y as i32 + dy;
-                        if nx < 0 || nx >= map.width as i32 || ny < 0 || ny >= map.height as i32 {
-                            is_border = true;
-                            break;
-                        }
-                    }
-                }
-                if !is_border {
-                    too_close = true;
-                }
-            }
         }
 
         if !too_close {

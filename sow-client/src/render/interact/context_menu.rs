@@ -474,7 +474,7 @@ impl SowApp {
                                         // Header
                                         ui.vertical_centered(|ui| {
                                             ui.label(
-                                                egui::RichText::new(if has_completed_port { "SHIPYARD DISTRICT" } else { "CONSTRUCT DISTRICT" })
+                                                egui::RichText::new("CONSTRUCT")
                                                     .strong()
                                                     .color(theme_color)
                                                     .size(13.0)
@@ -484,19 +484,46 @@ impl SowApp {
 
                                         let card_w = if compact { 280.0 } else { 220.0 };
                                         let card_h = 50.0;
+                                        let city_opt = self.sim.current_snapshot.as_ref().and_then(|s| {
+                                            s.buildings.iter().find(|b| b.tile_idx == tile_idx && b.kind == sow_core::game::BuildingKind::City)
+                                                .map(|b| (b.id, b.modules, b.under_construction))
+                                        });
 
-                                        if has_completed_port {
-                                            let ships = [
-                                                (sow_core::game::UnitType::Warship, "Warship", 100_000.0, "🚢"),
-                                                (sow_core::game::UnitType::TradeShip, "Trade Ship", 10_000.0, "⛴️"),
+                                        if let Some((city_id, city_modules, city_under_construction)) = city_opt {
+                                            ui.vertical_centered(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new("CITY DISTRICTS")
+                                                        .strong()
+                                                        .color(theme_color)
+                                                        .size(13.0)
+                                                );
+                                            });
+                                            ui.add_space(8.0);
+
+                                            let card_w = if compact { 280.0 } else { 220.0 };
+                                            let card_h = 50.0;
+
+                                            // Draw City Module upgrades (Silo/Arsenal, Port, Foundry)
+                                            let modules_list = [
+                                                (sow_core::building::ModuleKind::Arsenal, "Silo District", "🚀"),
+                                                (sow_core::building::ModuleKind::Port, "Port District", "⚓"),
+                                                (sow_core::building::ModuleKind::Foundry, "Foundry District", "🏭"),
                                             ];
 
-                                            for &(kind, label, cost, icon) in &ships {
+                                            for &(mod_kind, mod_name, icon) in &modules_list {
+                                                let current_lvl = city_modules.get_level(mod_kind);
+                                                let cost = sow_core::building::cost::module_upgrade_cost_gold(mod_kind, current_lvl + 1);
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
+
+                                                let label = if current_lvl == 0 {
+                                                    format!("Build {}", mod_name)
+                                                } else {
+                                                    format!("Upgrade {}", mod_name)
+                                                };
 
                                                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
                                                 let is_hovered = resp.hovered() && !is_disabled;
-                                                let hover_id = ui.make_persistent_id(("popover_hover", label));
+                                                let hover_id = ui.make_persistent_id(("popover_hover_mod", mod_name));
                                                 let hover_t = ui.ctx().animate_bool_with_time(hover_id, is_hovered, 0.15);
 
                                                 let border_glow = theme_color.linear_multiply(0.3 + 0.7 * hover_t);
@@ -534,24 +561,109 @@ impl SowApp {
                                                     if is_disabled { Color32::GRAY } else { Color32::WHITE }
                                                 );
 
-                                                // Cost
+                                                // Cost & Level info
                                                 ui.painter().text(
                                                     rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
                                                     egui::Align2::LEFT_CENTER,
-                                                    format!("{}g", cost as u32),
+                                                    format!("Lvl {} ➔ {} | {}g", current_lvl, current_lvl + 1, cost as u32),
                                                     egui::FontId::proportional(10.5),
                                                     if is_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
                                                 );
 
                                                 if !is_disabled && resp.clicked() {
-                                                    self.send_intent(sow_core::protocol::GameplayIntent::BuildShip {
-                                                        port_tile: tile_idx,
-                                                        kind,
+                                                    self.send_intent(sow_core::protocol::GameplayIntent::UpgradeCityModule {
+                                                        building_id: city_id,
+                                                        module: mod_kind,
                                                     });
                                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));
                                                     self.input.map_context_menu = None;
                                                 }
                                                 ui.add_space(4.0);
+                                            }
+
+                                            // If Port module is completed, also show Shipyard options!
+                                            if city_modules.port > 0 && !city_under_construction {
+                                                ui.add_space(6.0);
+                                                ui.separator();
+                                                ui.add_space(6.0);
+
+                                                ui.vertical_centered(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("SHIPYARD")
+                                                            .strong()
+                                                            .color(theme_color)
+                                                            .size(13.0)
+                                                    );
+                                                });
+                                                ui.add_space(8.0);
+
+                                                let ships = [
+                                                    (sow_core::game::UnitType::Warship, "Warship", 100_000.0, "🚢"),
+                                                    (sow_core::game::UnitType::TradeShip, "Trade Ship", 10_000.0, "⛴️"),
+                                                ];
+
+                                                for &(kind, label, cost, icon) in &ships {
+                                                    let is_disabled = self.ui.app.hud_state.gold < cost;
+
+                                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+                                                    let is_hovered = resp.hovered() && !is_disabled;
+                                                    let hover_id = ui.make_persistent_id(("popover_hover", label));
+                                                    let hover_t = ui.ctx().animate_bool_with_time(hover_id, is_hovered, 0.15);
+
+                                                    let border_glow = theme_color.linear_multiply(0.3 + 0.7 * hover_t);
+                                                    let bg_fill = if is_disabled {
+                                                        Color32::from_rgba_unmultiplied(20, 20, 20, 180)
+                                                    } else if is_hovered {
+                                                        theme_color.linear_multiply(0.12)
+                                                    } else {
+                                                        Color32::from_rgba_unmultiplied(10, 15, 30, 220)
+                                                    };
+
+                                                    ui.painter().rect(
+                                                        rect,
+                                                        8.0,
+                                                        bg_fill,
+                                                        egui::Stroke::new(1.0_f32 + hover_t * 1.0_f32, border_glow),
+                                                        egui::StrokeKind::Inside,
+                                                    );
+
+                                                    // Icon
+                                                    ui.painter().text(
+                                                        rect.min + egui::vec2(20.0, card_h / 2.0),
+                                                        egui::Align2::CENTER_CENTER,
+                                                        icon,
+                                                        egui::FontId::proportional((22.0 + 4.0 * hover_t) * scale),
+                                                        if is_disabled { Color32::GRAY } else { Color32::WHITE }
+                                                    );
+
+                                                    // Label
+                                                    ui.painter().text(
+                                                        rect.min + egui::vec2(44.0, card_h / 2.0 - 8.0),
+                                                        egui::Align2::LEFT_CENTER,
+                                                        label,
+                                                        egui::FontId::proportional(13.0),
+                                                        if is_disabled { Color32::GRAY } else { Color32::WHITE }
+                                                    );
+
+                                                    // Cost
+                                                    ui.painter().text(
+                                                        rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
+                                                        egui::Align2::LEFT_CENTER,
+                                                        format!("{}g", cost as u32),
+                                                        egui::FontId::proportional(10.5),
+                                                        if is_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
+                                                    );
+
+                                                    if !is_disabled && resp.clicked() {
+                                                        self.send_intent(sow_core::protocol::GameplayIntent::BuildShip {
+                                                            port_tile: tile_idx,
+                                                            kind,
+                                                        });
+                                                        ctx.data_mut(|d| d.insert_temp(build_active_id, false));
+                                                        self.input.map_context_menu = None;
+                                                    }
+                                                    ui.add_space(4.0);
+                                                }
                                             }
                                         } else {
                                             let current_level = if (tile_idx as usize) < self.sim.tile_upgrades.len() {

@@ -186,9 +186,9 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     }
 
     // Now env_logger will write to the redirected stderr instead of logcat!
-    env_logger::builder()
+    let _ = env_logger::builder()
         .filter_level(log::LevelFilter::Info)
-        .init();
+        .try_init();
 
     log::info!("SOW ENGINE STARTING...");
 

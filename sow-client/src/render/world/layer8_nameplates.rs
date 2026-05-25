@@ -1,4 +1,55 @@
 use super::*;
+fn paint_glassmorphic_shield(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    vibrant_color: egui::Color32,
+) {
+    let top_left = rect.left_top();
+    let top_center = egui::pos2(rect.center().x, rect.top() + rect.height() * 0.12);
+    let top_right = rect.right_top();
+    let mid_right = egui::pos2(rect.right(), rect.top() + rect.height() * 0.50);
+    let bottom = egui::pos2(rect.center().x, rect.bottom() - rect.height() * 0.05);
+    let mid_left = egui::pos2(rect.left(), rect.top() + rect.height() * 0.50);
+
+    let points = vec![top_left, top_center, top_right, mid_right, bottom, mid_left];
+
+    // Shadow / Dark glassmorphic backdrop
+    let backdrop_color = egui::Color32::from_rgba_unmultiplied(15, 23, 42, 220);
+    painter.add(egui::Shape::convex_polygon(
+        points.clone(),
+        backdrop_color,
+        egui::Stroke::NONE,
+    ));
+
+    // Nation color tint overlay
+    let r = ((vibrant_color.r() as f32 * 0.6) + (255.0 * 0.4)) as u8;
+    let g = ((vibrant_color.g() as f32 * 0.6) + (255.0 * 0.4)) as u8;
+    let b = ((vibrant_color.b() as f32 * 0.6) + (255.0 * 0.4)) as u8;
+    let tint_color = egui::Color32::from_rgba_unmultiplied(r, g, b, 90);
+    painter.add(egui::Shape::convex_polygon(
+        points.clone(),
+        tint_color,
+        egui::Stroke::NONE,
+    ));
+
+    // Highlighted border
+    let stroke_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140);
+    painter.add(egui::Shape::closed_line(
+        points,
+        egui::Stroke::new(1.8_f32, stroke_color),
+    ));
+
+    // Center symbol (golden crown)
+    let symbol_size = (rect.height() * 0.52).round();
+    painter.text(
+        egui::pos2(rect.center().x, rect.center().y + rect.height() * 0.03),
+        egui::Align2::CENTER_CENTER,
+        "👑",
+        egui::FontId::proportional(symbol_size),
+        egui::Color32::WHITE,
+    );
+}
+
 #[allow(unused_variables)]
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
@@ -31,8 +82,8 @@ pub(crate) fn render(
         static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
         REGISTER_STAR_ONCE.call_once(|| {
             painter.ctx().include_bytes(
-                "bytes://star.webp",
-                include_bytes!("../../../assets/star.webp").as_slice(),
+                "bytes://star.svg",
+                include_bytes!("../../../assets/star.svg").as_slice(),
             );
         });
 
@@ -82,30 +133,31 @@ pub(crate) fn render(
                 || player.player_type == sow_core::player::PlayerType::Nation
             {
                 // --- LOD 3: Zoomed-out Avatar-only Gate ---
-                if zoom_scaled < 1.5 {
-                    if player.id < 200 {
-                        let avatar_tex = ui.app.asset_loader.avatars.get(&player.leader).or(ui
-                            .app
-                            .asset_loader
-                            .avatar_fallback
-                            .as_ref());
-                        if let Some(tex) = avatar_tex {
-                            let avatar_size = 24.0;
-                            let avatar_rect = egui::Rect::from_center_size(
-                                center,
-                                egui::vec2(avatar_size, avatar_size),
-                            );
-                            painter.image(
-                                tex.id(),
-                                avatar_rect,
-                                egui::Rect::from_min_max(
+                if zoom_scaled < 1.5 && player.player_type != sow_core::player::PlayerType::Human {
+                    if player.player_type == sow_core::player::PlayerType::Nation {
+                        let scale_factor = (zoom_scaled / 4.0).clamp(0.6, 1.2);
+                        let avatar_size = (visual_config.nameplate_premium_size * 2.736)
+                            * scale_factor
+                            * ui_text_scale;
+
+                        let area_id = egui::Id::new(("avatar_only", player.id));
+                        egui::Area::new(area_id)
+                            .fixed_pos(center)
+                            .pivot(egui::Align2::CENTER_CENTER)
+                            .order(egui::Order::Middle)
+                            .interactable(false)
+                            .show(painter.ctx(), |area_ui| {
+                                let rect = egui::Rect::from_min_size(
                                     egui::pos2(0.0, 0.0),
-                                    egui::pos2(1.0, 1.0),
-                                ),
-                                egui::Color32::WHITE,
-                            );
-                            continue;
-                        }
+                                    egui::vec2(avatar_size, avatar_size),
+                                );
+                                let (allocated_rect, _resp) = area_ui.allocate_exact_size(
+                                    egui::vec2(avatar_size, avatar_size),
+                                    egui::Sense::empty(),
+                                );
+                                paint_glassmorphic_shield(area_ui.painter(), allocated_rect, pc);
+                            });
+                        continue;
                     }
 
                     // Fallback to dot for Tribes or if avatar texture is not ready
@@ -119,19 +171,35 @@ pub(crate) fn render(
                 }
 
                 // --- premium human player drawing ---
-                let should_draw_premium = zoom_scale >= 0.18_f32 && premium_labels_drawn < 16;
+                let is_human = player.player_type == sow_core::player::PlayerType::Human;
+                let should_draw_premium =
+                    is_human || (zoom_scale >= 0.18_f32 && premium_labels_drawn < 16);
 
                 if should_draw_premium {
-                    premium_labels_drawn += 1;
+                    if !is_human {
+                        premium_labels_drawn += 1;
+                    }
 
                     let scale_factor = (zoom_scaled / 4.0).clamp(0.6, 1.2);
-                    let font_size = 18.0 * scale_factor; // Increased size of nickname
-                    let avatar_size = 49.25 * scale_factor; // Spans full height of nickname + troops row
+                    let font_size =
+                        visual_config.nameplate_premium_size * scale_factor * ui_text_scale;
+                    let avatar_size = (visual_config.nameplate_premium_size * 2.736)
+                        * scale_factor
+                        * ui_text_scale;
                     let inner_margin = egui::Margin::symmetric(
-                        (8.0 * scale_factor).round() as i8,
-                        (6.0 * scale_factor).round() as i8,
+                        ((visual_config.nameplate_premium_size * 0.444)
+                            * scale_factor
+                            * ui_text_scale)
+                            .round() as i8,
+                        ((visual_config.nameplate_premium_size * 0.333)
+                            * scale_factor
+                            * ui_text_scale)
+                            .round() as i8,
                     );
-                    let corner_radius = (8.0 * scale_factor).round() as u8;
+                    let corner_radius = ((visual_config.nameplate_premium_size * 0.444)
+                        * scale_factor
+                        * ui_text_scale)
+                        .round() as u8;
                     let avatar_corner = (avatar_size / 2.0).round() as u8;
 
                     let my_id = sim.my_player_id.unwrap_or(0);
@@ -206,7 +274,7 @@ pub(crate) fn render(
                             .ctx()
                             .animate_bool_with_time(request_anim_id, has_req, 0.25);
 
-                    let mut req_offset = 0.0;
+                    let mut req_offset = 0.0_f32;
                     if req_anim > 0.01 {
                         static REGISTER_REQUEST_ONCE: std::sync::Once = std::sync::Once::new();
                         REGISTER_REQUEST_ONCE.call_once(|| {
@@ -216,13 +284,13 @@ pub(crate) fn render(
                             );
                         });
 
-                        let request_icon_size = 28.0 * scale_factor * 2.0;
+                        let request_icon_size = font_size * 3.111;
                         let load_res = painter.ctx().try_load_texture(
                             "bytes://request.webp",
                             egui::TextureOptions::default(),
                             egui::load::SizeHint::Size {
-                                width: (request_icon_size * 2.0).round() as u32,
-                                height: (request_icon_size * 2.0).round() as u32,
+                                width: 128,
+                                height: 128,
                                 maintain_aspect_ratio: true,
                             },
                         );
@@ -240,7 +308,7 @@ pub(crate) fn render(
                             };
                             let size = request_icon_size * anim_scale;
                             // Draw it floating centered above premium avatar
-                            let req_y = center.y - 34.0 * scale_factor - size / 2.0;
+                            let req_y = center.y - (font_size * 1.889) - size / 2.0;
                             let req_rect = egui::Rect::from_center_size(
                                 egui::pos2(center.x, req_y),
                                 egui::vec2(size, size),
@@ -250,6 +318,30 @@ pub(crate) fn render(
                                 egui::Order::Middle,
                                 egui::Id::new(("floating_request_icon", player.id)),
                             ));
+                            if is_me {
+                                let glow_r = size * 0.8;
+                                let glow_a = req_anim * 0.35;
+                                request_painter.circle_filled(
+                                    req_rect.center(),
+                                    glow_r * 1.4,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        34,
+                                        211,
+                                        238,
+                                        (glow_a * 120.0) as u8,
+                                    ),
+                                );
+                                request_painter.circle_filled(
+                                    req_rect.center(),
+                                    glow_r,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        34,
+                                        211,
+                                        238,
+                                        (glow_a * 255.0) as u8,
+                                    ),
+                                );
+                            }
                             request_painter.image(
                                 texture.id,
                                 req_rect,
@@ -270,7 +362,7 @@ pub(crate) fn render(
                             .ctx()
                             .animate_bool_with_time(allied_anim_id, is_allied, 0.25);
 
-                    let mut allied_offset = 0.0;
+                    let mut allied_offset = 0.0_f32;
                     if allied_anim > 0.01 {
                         static REGISTER_HANDSHAKE_ONCE: std::sync::Once = std::sync::Once::new();
                         REGISTER_HANDSHAKE_ONCE.call_once(|| {
@@ -280,13 +372,13 @@ pub(crate) fn render(
                             );
                         });
 
-                        let handshake_icon_size = 28.0 * scale_factor * 2.0;
+                        let handshake_icon_size = font_size * 3.111;
                         let load_res = painter.ctx().try_load_texture(
                             "bytes://handshake.webp",
                             egui::TextureOptions::default(),
                             egui::load::SizeHint::Size {
-                                width: (handshake_icon_size * 2.0).round() as u32,
-                                height: (handshake_icon_size * 2.0).round() as u32,
+                                width: 128,
+                                height: 128,
                                 maintain_aspect_ratio: true,
                             },
                         );
@@ -304,7 +396,7 @@ pub(crate) fn render(
                             };
                             let size = handshake_icon_size * anim_scale;
                             // Draw it floating centered above premium avatar
-                            let req_y = center.y - 34.0 * scale_factor - size / 2.0;
+                            let req_y = center.y - (font_size * 1.889) - size / 2.0;
                             let req_rect = egui::Rect::from_center_size(
                                 egui::pos2(center.x, req_y),
                                 egui::vec2(size, size),
@@ -322,6 +414,30 @@ pub(crate) fn render(
                                 1.0
                             };
 
+                            if is_me {
+                                let glow_r = size * 0.8;
+                                let glow_a = allied_anim * flash_alpha * 0.35;
+                                handshake_painter.circle_filled(
+                                    req_rect.center(),
+                                    glow_r * 1.4,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        255,
+                                        200,
+                                        60,
+                                        (glow_a * 120.0) as u8,
+                                    ),
+                                );
+                                handshake_painter.circle_filled(
+                                    req_rect.center(),
+                                    glow_r,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        255,
+                                        200,
+                                        60,
+                                        (glow_a * 255.0) as u8,
+                                    ),
+                                );
+                            }
                             handshake_painter.image(
                                 texture.id,
                                 req_rect,
@@ -354,15 +470,16 @@ pub(crate) fn render(
 
                             let has_status = !status_list.is_empty() || betrayal_flash;
                             let mut base_y_offset = if has_status {
-                                80.0 * scale_factor
+                                font_size * 4.444
                             } else {
-                                34.0 * scale_factor
+                                font_size * 1.889
                             };
                             let max_float_offset = req_offset.max(allied_offset);
                             if max_float_offset > 0.01 {
                                 base_y_offset += max_float_offset;
                             }
-                            let emoji_y = center.y - base_y_offset - 12.0 * zoom_scale;
+                            let emoji_y =
+                                center.y - base_y_offset - (12.0 * zoom_scale * ui_text_scale);
 
                             if final_emoji_size > 1.0 {
                                 let emoji_painter =
@@ -370,6 +487,31 @@ pub(crate) fn render(
                                         egui::Order::Middle,
                                         egui::Id::new(("floating_express_emoji", player.id)),
                                     ));
+                                if is_me {
+                                    let glow_r = final_emoji_size * 0.7;
+                                    let glow_a = anim_progress * 0.30;
+                                    let emoji_center = egui::pos2(center.x, emoji_y);
+                                    emoji_painter.circle_filled(
+                                        emoji_center,
+                                        glow_r * 1.3,
+                                        egui::Color32::from_rgba_unmultiplied(
+                                            pc.r(),
+                                            pc.g(),
+                                            pc.b(),
+                                            (glow_a * 100.0) as u8,
+                                        ),
+                                    );
+                                    emoji_painter.circle_filled(
+                                        emoji_center,
+                                        glow_r,
+                                        egui::Color32::from_rgba_unmultiplied(
+                                            pc.r(),
+                                            pc.g(),
+                                            pc.b(),
+                                            (glow_a * 255.0) as u8,
+                                        ),
+                                    );
+                                }
                                 if emoji_str.contains('⭐') {
                                     let star_size = final_emoji_size * 1.25;
                                     let star_rect = egui::Rect::from_center_size(
@@ -377,12 +519,12 @@ pub(crate) fn render(
                                         egui::vec2(star_size, star_size),
                                     );
                                     let size_hint = egui::load::SizeHint::Size {
-                                        width: star_size.round() as u32,
-                                        height: star_size.round() as u32,
+                                        width: 128,
+                                        height: 128,
                                         maintain_aspect_ratio: true,
                                     };
                                     let load_res = emoji_painter.ctx().try_load_texture(
-                                        "bytes://star.webp",
+                                        "bytes://star.svg",
                                         egui::TextureOptions::default(),
                                         size_hint,
                                     );
@@ -434,8 +576,8 @@ pub(crate) fn render(
                                              (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
                                           );
 
-                                         area_ui.vertical(|area_ui| {
-                                             area_ui.spacing_mut().item_spacing.y = 4.0 * scale_factor;
+                                          area_ui.vertical(|area_ui| {
+                                              area_ui.spacing_mut().item_spacing.y = (font_size * 0.222).round();
 
                                              // Row 0: Star (if me) and Static Status Emojis (Disconnect, Betrayal, Heart)
                                              let has_status = !status_list.is_empty() || betrayal_flash;
@@ -483,16 +625,16 @@ pub(crate) fn render(
                                                  }
                                              }
 
-                                             // Row 1 & 2: Avatar + Nickname Vertical container block next
-                                             area_ui.horizontal(|area_ui| {
-                                                 area_ui.spacing_mut().item_spacing.x = 6.0 * scale_factor;
+                                              // Row 1 & 2: Avatar + Nickname Vertical container block next
+                                              area_ui.horizontal(|area_ui| {
+                                                  area_ui.spacing_mut().item_spacing.x = (font_size * 0.333).round();
 
                                                  // 0. Star (if me) to the left of the avatar
                                                  if is_me {
-                                                     let star_uri = "bytes://star.webp";
+                                                     let star_uri = "bytes://star.svg";
                                                      let size_hint = egui::load::SizeHint::Size {
-                                                         width: avatar_size.round() as u32,
-                                                         height: avatar_size.round() as u32,
+                                                         width: 128,
+                                                         height: 128,
                                                          maintain_aspect_ratio: true,
                                                      };
                                                      let load_res = area_ui.ctx().try_load_texture(
@@ -507,18 +649,26 @@ pub(crate) fn render(
                                                      }
                                                  }
 
-                                                 // 1. Avatar
-                                                 let avatar_tex = ui.app.asset_loader.avatars.get(&player.leader).or(ui.app.asset_loader.avatar_fallback.as_ref());
-                                                 if let Some(tex) = avatar_tex {
-                                                     area_ui.add(egui::Image::new(tex)
-                                                         .fit_to_exact_size(egui::vec2(avatar_size, avatar_size))
-                                                         .corner_radius(avatar_corner)
-                                                         .sense(egui::Sense::empty()));
+                                                 // 1. Avatar (or Glassmorphic Shield for Nations)
+                                                 if player.player_type == sow_core::player::PlayerType::Nation {
+                                                     let (allocated_rect, _resp) = area_ui.allocate_exact_size(
+                                                         egui::vec2(avatar_size, avatar_size),
+                                                         egui::Sense::empty(),
+                                                     );
+                                                     paint_glassmorphic_shield(area_ui.painter(), allocated_rect, vibrant_color);
+                                                 } else {
+                                                     let avatar_tex = ui.app.asset_loader.avatars.get(&player.leader).or(ui.app.asset_loader.avatar_fallback.as_ref());
+                                                     if let Some(tex) = avatar_tex {
+                                                         area_ui.add(egui::Image::new(tex)
+                                                             .fit_to_exact_size(egui::vec2(avatar_size, avatar_size))
+                                                             .corner_radius(avatar_corner)
+                                                             .sense(egui::Sense::empty()));
+                                                     }
                                                  }
 
-                                                 // 2. Right-side Vertical Block: Contains Nickname (Row 1) and Troops (Row 2) centered below Nickname
-                                                 area_ui.vertical(|area_ui| {
-                                                     area_ui.spacing_mut().item_spacing.y = 2.0 * scale_factor;
+                                                  // 2. Right-side Vertical Block: Contains Nickname (Row 1) and Troops (Row 2) centered below Nickname
+                                                  area_ui.vertical(|area_ui| {
+                                                      area_ui.spacing_mut().item_spacing.y = (font_size * 0.111).round();
 
                                                      // Nickname
                                                      let display_name = if player.name.is_empty() {
@@ -538,12 +688,12 @@ pub(crate) fn render(
                                                          false,
                                                      );
 
-                                                     // Troops
-                                                     area_ui.horizontal(|area_ui| {
-                                                         area_ui.spacing_mut().item_spacing.x = 4.0 * scale_factor;
+                                                      // Troops
+                                                      area_ui.horizontal(|area_ui| {
+                                                          area_ui.spacing_mut().item_spacing.x = (font_size * 0.222).round();
 
                                                          let troops_font_size = font_size * 1.30; // Significantly larger text for troops!
-                                                         let formatted_troops = format!("⚔{}", sow_ui::utils::format_number(player.troops));
+                                                         let formatted_troops = format!("⚔ {}", sow_ui::utils::format_number(player.troops));
                                                          let troops_font_id = egui::FontId::proportional(troops_font_size);
                                                          let troops_galley = area_ui.painter().layout_no_wrap(formatted_troops, troops_font_id.clone(), egui::Color32::WHITE);
 
@@ -810,7 +960,7 @@ pub(crate) fn render(
                     .ctx()
                     .animate_bool_with_time(request_anim_id, has_req, 0.25);
 
-                let mut req_height = 0.0;
+                let mut req_height = 0.0_f32;
                 if req_anim > 0.01 {
                     static REGISTER_REQUEST_ONCE: std::sync::Once = std::sync::Once::new();
                     REGISTER_REQUEST_ONCE.call_once(|| {
@@ -825,8 +975,8 @@ pub(crate) fn render(
                         "bytes://request.webp",
                         egui::TextureOptions::default(),
                         egui::load::SizeHint::Size {
-                            width: (request_icon_size * 2.0).round() as u32,
-                            height: (request_icon_size * 2.0).round() as u32,
+                            width: 128,
+                            height: 128,
                             maintain_aspect_ratio: true,
                         },
                     );
@@ -850,6 +1000,30 @@ pub(crate) fn render(
                             egui::vec2(size, size),
                         );
 
+                        if is_me {
+                            let glow_r = size * 0.8;
+                            let glow_a = req_anim * 0.35;
+                            painter.circle_filled(
+                                req_rect.center(),
+                                glow_r * 1.4,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    34,
+                                    211,
+                                    238,
+                                    (glow_a * 120.0) as u8,
+                                ),
+                            );
+                            painter.circle_filled(
+                                req_rect.center(),
+                                glow_r,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    34,
+                                    211,
+                                    238,
+                                    (glow_a * 255.0) as u8,
+                                ),
+                            );
+                        }
                         painter.image(
                             texture.id,
                             req_rect,
@@ -867,7 +1041,7 @@ pub(crate) fn render(
                         .ctx()
                         .animate_bool_with_time(allied_anim_id, is_allied, 0.25);
 
-                let mut allied_height = 0.0;
+                let mut allied_height = 0.0_f32;
                 if allied_anim > 0.01 {
                     static REGISTER_HANDSHAKE_ONCE: std::sync::Once = std::sync::Once::new();
                     REGISTER_HANDSHAKE_ONCE.call_once(|| {
@@ -882,8 +1056,8 @@ pub(crate) fn render(
                         "bytes://handshake.webp",
                         egui::TextureOptions::default(),
                         egui::load::SizeHint::Size {
-                            width: (handshake_icon_size * 2.0).round() as u32,
-                            height: (handshake_icon_size * 2.0).round() as u32,
+                            width: 128,
+                            height: 128,
                             maintain_aspect_ratio: true,
                         },
                     );
@@ -913,6 +1087,30 @@ pub(crate) fn render(
                             1.0
                         };
 
+                        if is_me {
+                            let glow_r = size * 0.8;
+                            let glow_a = allied_anim * flash_alpha * 0.35;
+                            painter.circle_filled(
+                                req_rect.center(),
+                                glow_r * 1.4,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    255,
+                                    200,
+                                    60,
+                                    (glow_a * 120.0) as u8,
+                                ),
+                            );
+                            painter.circle_filled(
+                                req_rect.center(),
+                                glow_r,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    255,
+                                    200,
+                                    60,
+                                    (glow_a * 255.0) as u8,
+                                ),
+                            );
+                        }
                         painter.image(
                             texture.id,
                             req_rect,
@@ -945,6 +1143,31 @@ pub(crate) fn render(
                             current_y - disc_height - max_float_height - 18.0 * zoom_scale;
 
                         if final_emoji_size > 1.0 {
+                            if is_me {
+                                let glow_r = final_emoji_size * 0.7;
+                                let glow_a = anim_progress * 0.30;
+                                let emoji_center = egui::pos2(center.x, emoji_y);
+                                painter.circle_filled(
+                                    emoji_center,
+                                    glow_r * 1.3,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        pc.r(),
+                                        pc.g(),
+                                        pc.b(),
+                                        (glow_a * 100.0) as u8,
+                                    ),
+                                );
+                                painter.circle_filled(
+                                    emoji_center,
+                                    glow_r,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        pc.r(),
+                                        pc.g(),
+                                        pc.b(),
+                                        (glow_a * 255.0) as u8,
+                                    ),
+                                );
+                            }
                             if emoji_str.contains('⭐') {
                                 let star_size = final_emoji_size * 1.25;
                                 let star_rect = egui::Rect::from_center_size(
@@ -952,12 +1175,12 @@ pub(crate) fn render(
                                     egui::vec2(star_size, star_size),
                                 );
                                 let size_hint = egui::load::SizeHint::Size {
-                                    width: star_size.round() as u32,
-                                    height: star_size.round() as u32,
+                                    width: 128,
+                                    height: 128,
                                     maintain_aspect_ratio: true,
                                 };
                                 let load_res = painter.ctx().try_load_texture(
-                                    "bytes://star.webp",
+                                    "bytes://star.svg",
                                     egui::TextureOptions::default(),
                                     size_hint,
                                 );
@@ -1016,10 +1239,10 @@ pub(crate) fn render(
                         egui::pos2(name_pos_start.x, current_y + (h_max - star_size) / 2.0);
                     let star_rect =
                         egui::Rect::from_min_size(star_pos, egui::vec2(star_size, star_size));
-                    let star_uri = "bytes://star.webp";
+                    let star_uri = "bytes://star.svg";
                     let size_hint = egui::load::SizeHint::Size {
-                        width: star_size.round() as u32,
-                        height: star_size.round() as u32,
+                        width: 128,
+                        height: 128,
                         maintain_aspect_ratio: true,
                     };
 

@@ -6,10 +6,10 @@ macro_rules! all_assets {
     ($macro:path $(, $extra:tt)*) => {
         $macro! {
             $($extra,)*
-            City => "city.webp",
+            City => "city.svg",
             Factory => "factory.webp",
             Port => "port.svg",
-            DefensePost => "defense_post.svg",
+            DefensePost => "bunker.webp",
             SamLauncher => "sam_launcher.svg",
             MissileSilo => "missile_silo.svg",
             TradeShip => "trade_ship.svg",

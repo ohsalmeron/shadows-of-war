@@ -16,6 +16,19 @@ pub(crate) fn render(
     let player_colors = ctx.player_colors;
     let terrain = ctx.terrain;
 
+    let building_scale = painter.ctx().data(|d| {
+        d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
+            .unwrap_or(3.0)
+    });
+    let zoom_factor = ((zoom_scaled - 0.6) / 9.4).clamp(0.0, 1.0);
+    let min_lod_scale = 0.5; // Scale when fully zoomed out
+    let max_lod_scale = 1.0; // Scale when fully zoomed in
+    let lod_scale = min_lod_scale + (max_lod_scale - min_lod_scale) * zoom_factor;
+    let mut final_scale = building_scale * lod_scale;
+    if zoom_scaled < 0.6 {
+        final_scale *= 0.35; // scale down LOD 3 so it doesn't get too big
+    }
+
     if let Some(snap) = &sim.current_snapshot {
         // --- Layer 7: Building Placement Preview (Ghost structures) ---
         if let Some(kind) = ui.app.hud_state.selected_building_kind {
@@ -133,14 +146,15 @@ pub(crate) fn render(
                             painter.circle_filled(
                                 s_pos,
                                 s_radius,
-                                egui::Color32::from_rgba_unmultiplied(239, 68, 68, 12),
+                                egui::Color32::from_rgba_unmultiplied(239, 68, 68, 90),
                             );
+
                             painter.circle_stroke(
                                 s_pos,
                                 s_radius,
                                 egui::Stroke::new(
                                     1.2_f32,
-                                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 150),
+                                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 120),
                                 ),
                             );
                         }
@@ -148,12 +162,25 @@ pub(crate) fn render(
                 }
 
                 // --- Render Organizational Hex Grid around hover target ---
+                let hovered_idx = (row * map_w as i32 + col) as u32;
                 let grid_radius = 12;
                 for dy in -grid_radius..=grid_radius {
                     for dx in -grid_radius..=grid_radius {
                         let tx = col + dx;
                         let ty = row + dy;
                         if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
+                            continue;
+                        }
+
+                        // Calculate standard hex distance to make the rendered grid circular
+                        let q1 = col - (row - (row & 1)) / 2;
+                        let r1 = row;
+                        let q2 = tx - (ty - (ty & 1)) / 2;
+                        let r2 = ty;
+                        let dq = q2 - q1;
+                        let dr = r2 - r1;
+                        let dist = (dq.abs() + dr.abs() + (dq + dr).abs()) / 2;
+                        if dist > grid_radius {
                             continue;
                         }
                         let tile_idx = (ty * map_w as i32 + tx) as u32;
@@ -164,24 +191,72 @@ pub(crate) fn render(
                             continue;
                         }
 
-                        // Color depending on ownership / hover
-                        let border_color = if tile_owner == my_id {
-                            if tx == col && ty == row {
-                                egui::Color32::from_rgb(34, 211, 238) // cyan highlight for hovered tile
-                            } else {
-                                egui::Color32::from_rgba_unmultiplied(74, 222, 128, 60)
-                                // soft green for owned territory
+                        let mut can_place_tile = false;
+                        if tile_owner == my_id && is_land {
+                            let mut too_close = false;
+                            if kind == sow_core::game::BuildingKind::City {
+                                for b in buildings {
+                                    if b.kind == sow_core::game::BuildingKind::City {
+                                        let bx = (b.tile_idx % map_w) as i32;
+                                        let by = (b.tile_idx / map_w) as i32;
+                                        let bdx = tx - bx;
+                                        let bdy = ty - by;
+                                        if (bdx * bdx + bdy * bdy) < 144 {
+                                            too_close = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } else if kind == sow_core::game::BuildingKind::Bunker {
+                                for b in buildings {
+                                    if b.kind == sow_core::game::BuildingKind::City {
+                                        let bx = (b.tile_idx % map_w) as i32;
+                                        let by = (b.tile_idx / map_w) as i32;
+                                        let bdx = tx - bx;
+                                        let bdy = ty - by;
+                                        if (bdx * bdx + bdy * bdy) < 36 {
+                                            too_close = true;
+                                            break;
+                                        }
+                                    } else if b.kind == sow_core::game::BuildingKind::Bunker {
+                                        let bx = (b.tile_idx % map_w) as i32;
+                                        let by = (b.tile_idx / map_w) as i32;
+                                        let bdx = tx - bx;
+                                        let bdy = ty - by;
+                                        if (bdx * bdx + bdy * bdy) < 16 {
+                                            too_close = true;
+                                            break;
+                                        }
+                                    }
+                                }
                             }
+                            if !too_close {
+                                can_place_tile = true;
+                            }
+                        }
+
+                        let fill_color = if can_place_tile {
+                            egui::Color32::from_rgba_unmultiplied(34, 211, 238, 35)
                         } else {
-                            egui::Color32::from_rgba_unmultiplied(156, 163, 175, 20)
-                            // very faint gray for others
+                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30)
                         };
 
-                        let thickness = if tx == col && ty == row {
-                            1.5_f32
+                        // Color depending on placement validity / hover
+                        let is_mine = tile_owner == my_id;
+                        let is_hovered = tx == col && ty == row;
+                        let border_color = if is_hovered {
+                            if snapped_idx == Some(hovered_idx) {
+                                egui::Color32::from_rgb(34, 211, 238) // cyan = building goes here
+                            } else {
+                                egui::Color32::from_rgb(239, 68, 68) // red = can't build here
+                            }
+                        } else if is_mine {
+                            egui::Color32::from_rgba_unmultiplied(74, 222, 128, 100)
                         } else {
-                            0.8_f32
+                            egui::Color32::from_rgba_unmultiplied(156, 163, 175, 40)
                         };
+
+                        let thickness = if is_hovered { 2.5_f32 } else { 1.2_f32 };
 
                         // Draw hex cell outline
                         let world_cx = tx as f32 + 0.5 + (ty % 2) as f32 * 0.5;
@@ -207,7 +282,7 @@ pub(crate) fn render(
 
                             painter.add(egui::Shape::convex_polygon(
                                 points,
-                                egui::Color32::TRANSPARENT,
+                                fill_color,
                                 egui::Stroke::new(thickness, border_color),
                             ));
                         }
@@ -234,9 +309,9 @@ pub(crate) fn render(
                 let tile_screen_y = (input.camera_y + world_cy * input.camera_zoom) / sf;
 
                 let fill_color = if is_valid {
-                    egui::Color32::from_rgba_unmultiplied(74, 222, 128, 80)
+                    egui::Color32::from_rgba_unmultiplied(74, 222, 128, 140)
                 } else {
-                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 80)
+                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 140)
                 };
                 let stroke_color = if is_valid {
                     egui::Color32::from_rgb(74, 222, 128)
@@ -245,22 +320,66 @@ pub(crate) fn render(
                 };
 
                 let tile_size = input.camera_zoom / sf;
-                let tile_rect = egui::Rect::from_center_size(
-                    egui::pos2(tile_screen_x, tile_screen_y),
-                    egui::vec2(tile_size, tile_size),
-                );
-                painter.rect(
-                    tile_rect,
-                    0.0,
+                let screen_r = 0.577_350_26_f32 * tile_size;
+                let points: Vec<egui::Pos2> = (0..6)
+                    .map(|i| {
+                        let angle = (i as f32 * 60.0 + 30.0).to_radians();
+                        egui::pos2(
+                            tile_screen_x + screen_r * angle.cos(),
+                            tile_screen_y + screen_r * angle.sin(),
+                        )
+                    })
+                    .collect();
+                painter.add(egui::Shape::convex_polygon(
+                    points,
                     fill_color,
-                    egui::Stroke::new(1.0_f32, stroke_color),
-                    egui::StrokeKind::Inside,
-                );
+                    egui::Stroke::new(3.0_f32, stroke_color),
+                ));
+
+                // Draw active range circle indicator for Bunker preview
+                if kind == sow_core::game::BuildingKind::Bunker {
+                    let radius_world = 8.0_f32; // config::DEFENSE_POST_RANGE
+                    let elapsed = time.start_time.elapsed().as_secs_f32();
+                    let pulse = (elapsed * 2.5).sin() * 0.04 + 0.96; // beautiful rapid scan pulse
+                    let s_radius = radius_world * input.camera_zoom / sf * pulse;
+                    let player_color = if my_id != 0 {
+                        player_colors
+                            .get(my_id as usize)
+                            .copied()
+                            .unwrap_or(egui::Color32::from_rgb(0, 220, 255))
+                    } else {
+                        egui::Color32::from_rgb(0, 220, 255)
+                    };
+                    let alpha = (90.0 * (1.0 - (zoom_scaled / 12.0).clamp(0.0, 0.7))).round() as u8;
+                    let stroke_color = egui::Color32::from_rgba_unmultiplied(
+                        player_color.r(),
+                        player_color.g(),
+                        player_color.b(),
+                        alpha,
+                    );
+                    let fill_color = egui::Color32::from_rgba_unmultiplied(
+                        player_color.r(),
+                        player_color.g(),
+                        player_color.b(),
+                        alpha / 4,
+                    );
+
+                    painter.circle_stroke(
+                        egui::pos2(tile_screen_x, tile_screen_y),
+                        s_radius,
+                        egui::Stroke::new(1.5_f32, stroke_color),
+                    );
+                    painter.circle_filled(
+                        egui::pos2(tile_screen_x, tile_screen_y),
+                        s_radius,
+                        fill_color,
+                    );
+                }
 
                 // Draw ghost SVG
                 {
                     let uri = kind.asset().uri();
-                    let base_size = get_building_icon_size(tile_size);
+                    let base_size = get_building_icon_size(tile_size) * final_scale;
                     let size_hint = egui::load::SizeHint::Size {
                         width: 64,
                         height: 64,
@@ -270,7 +389,17 @@ pub(crate) fn render(
                         .ctx()
                         .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint)
                     {
-                        let tint = egui::Color32::from_white_alpha(180);
+                        let (r_t, g_t, b_t) = if is_valid {
+                            (34, 211, 238)
+                        } else {
+                            (239, 68, 68)
+                        };
+                        let tint = egui::Color32::from_rgba_unmultiplied(
+                            ((r_t as f32 * 0.20) + (255.0 * 0.80)) as u8,
+                            ((g_t as f32 * 0.20) + (255.0 * 0.80)) as u8,
+                            ((b_t as f32 * 0.20) + (255.0 * 0.80)) as u8,
+                            166, // 0.65 opacity
+                        );
                         painter.image(
                             texture.id,
                             egui::Rect::from_center_size(
@@ -281,6 +410,48 @@ pub(crate) fn render(
                             tint,
                         );
                     }
+                }
+
+                // Render Upgrade Tooltip if upgrading
+                if let Some(b) = upgrade_building {
+                    let next_lvl = b.level + 1;
+                    let text = format!("Upgrade Lvl {}", next_lvl);
+                    let font_size = (8.5_f32 * input.camera_zoom / sf).clamp(8.0, 12.0).round();
+                    let font_id = egui::FontId::proportional(font_size);
+                    let galley =
+                        painter.layout_no_wrap(text.clone(), font_id.clone(), egui::Color32::WHITE);
+
+                    let padding_x = 6.0_f32;
+                    let padding_y = 3.0_f32;
+                    let rect_w = galley.rect.width() + padding_x * 2.0;
+                    let rect_h = galley.rect.height() + padding_y * 2.0;
+
+                    let tooltip_y = tile_screen_y - tile_size * 0.65;
+                    let tooltip_rect = egui::Rect::from_center_size(
+                        egui::pos2(tile_screen_x, tooltip_y),
+                        egui::vec2(rect_w, rect_h),
+                    );
+
+                    // Premium slate blue dark glassmorphic container with cyan outline
+                    painter.rect(
+                        tooltip_rect,
+                        4.0_f32,
+                        egui::Color32::from_rgba_unmultiplied(15, 23, 42, 220),
+                        egui::Stroke::new(
+                            1.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(34, 211, 238, 180),
+                        ),
+                        egui::StrokeKind::Inside,
+                    );
+
+                    // Glowing cyan text centered
+                    painter.text(
+                        egui::pos2(tile_screen_x, tooltip_y),
+                        egui::Align2::CENTER_CENTER,
+                        &text,
+                        font_id,
+                        egui::Color32::from_rgb(34, 211, 238),
+                    );
                 }
             }
         }

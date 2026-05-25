@@ -959,33 +959,6 @@ pub fn resolve_building_placement_tile(
                         }
                     }
                 }
-                // Border constraint: must be adjacent to non-owned tile or map edge
-                if !too_close {
-                    let mut is_border = false;
-                    let is_odd = (ty % 2) != 0;
-                    let offsets = if is_odd {
-                        [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
-                    } else {
-                        [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
-                    };
-                    for &(dx, dy) in &offsets {
-                        let nx = tx + dx;
-                        let ny = ty + dy;
-                        if nx >= 0 && nx < map_w as i32 && ny >= 0 && ny < map_h as i32 {
-                            let n_idx = (ny * map_w as i32 + nx) as usize;
-                            if owners.get(n_idx).copied().unwrap_or(0) != my_id {
-                                is_border = true;
-                                break;
-                            }
-                        } else {
-                            is_border = true;
-                            break;
-                        }
-                    }
-                    if !is_border {
-                        too_close = true;
-                    }
-                }
             }
             if too_close {
                 continue;
@@ -1007,7 +980,7 @@ pub fn resolve_building_placement_tile(
             if kind == sow_core::game::BuildingKind::City {
                 return Err("Too close to another City! Minimum spacing is 12 tiles.");
             } else {
-                return Err("Bunkers can only be built at border tiles (min spacing: 4 from Bunkers, 6 from Cities)!");
+                return Err("Too close to another Bunker or City! Minimum spacing is 4 from Bunkers, 6 from Cities.");
             }
         }
         return Err("No space nearby!");
