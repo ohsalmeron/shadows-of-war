@@ -223,12 +223,89 @@ impl SowApp {
                 &ctx_struct,
             );
 
-            // Render floating notices
-            let now = web_time::Instant::now();
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
-                egui::Order::Middle,
+                egui::Order::Background,
                 egui::Id::new("floating_notices"),
             ));
+
+            // Render death nameplate animations
+            self.ui.death_nameplates.retain(|anim| {
+                let elapsed = now.duration_since(anim.start_time).as_secs_f32();
+                let duration = anim.duration.as_secs_f32();
+                if elapsed >= duration {
+                    return false;
+                }
+
+                let t = elapsed / duration;
+
+                // Procedural variation from seed
+                let s = anim.seed as f32;
+                let wobble_freq = 4.0 + (s % 7.0);
+                let wobble_amp = 8.0 + (s % 12.0);
+                let fall_speed = 5.5 + (s % 5.0) * 0.5;
+                let drift_dir = if (anim.seed % 2) == 0 { -1.0 } else { 1.0 };
+                let drift_speed = 15.0 + (s % 15.0);
+
+                // Sink downward immediately with a large initial offset and instant linear velocity
+                let current_wy = anim.world_y + 2.5 + t * fall_speed;
+                let wobble_x = (elapsed * wobble_freq).sin() * wobble_amp * (1.0 - t)
+                    + drift_dir * drift_speed * t;
+                let tremble_y = (elapsed * 25.0).cos() * 2.0 * (1.0 - t);
+                let screen_x =
+                    (self.input.camera_x + anim.world_x * self.input.camera_zoom) / sf + wobble_x;
+                let screen_y =
+                    (self.input.camera_y + current_wy * self.input.camera_zoom) / sf + tremble_y;
+
+                if screen_x < -200.0
+                    || screen_x > self.input.screen_w + 200.0
+                    || screen_y < -200.0
+                    || screen_y > self.input.screen_h + 200.0
+                {
+                    return true;
+                }
+
+                let pos = egui::pos2(screen_x, screen_y);
+
+                // Spring bounce-in scale (overshoot then settle), then shrink out
+                let scale = if elapsed < 0.6 {
+                    let st = elapsed / 0.6;
+                    1.0 + 0.8 * (st * 8.0).sin() * (-4.0 * st).exp()
+                } else if elapsed > duration - 0.8 {
+                    let fade_t = (duration - elapsed) / 0.8;
+                    fade_t * fade_t
+                } else {
+                    1.0
+                };
+                let font_size = (20.0 * scale).max(1.0);
+
+                // Fade alpha
+                let alpha = if t < 0.15 {
+                    ((t / 0.15) * 255.0) as u8
+                } else {
+                    ((1.0 - t).powf(0.6) * 255.0).min(255.0) as u8
+                };
+
+                let text_color = egui::Color32::from_rgba_unmultiplied(
+                    anim.color.r(),
+                    anim.color.g(),
+                    anim.color.b(),
+                    alpha,
+                );
+                let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
+
+                sow_ui::ui::theme::outlined_text(
+                    &middle_painter,
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    &anim.name,
+                    egui::FontId::proportional(font_size),
+                    text_color,
+                    outline_color,
+                );
+                true
+            });
+
+            // Render floating notices (Gold rewards) on top
             self.ui.floating_notices.retain(|notice| {
                 let elapsed = now.duration_since(notice.start_time).as_secs_f32();
                 let duration = notice.duration.as_secs_f32();
@@ -237,7 +314,7 @@ impl SowApp {
                 }
 
                 let t = elapsed / duration;
-                let current_wy = notice.world_y - t * 2.2; // rise by 2.2 units
+                let current_wy = notice.world_y - t * 6.5; // rise by 6.5 units
                 let screen_x = (self.input.camera_x + notice.world_x * self.input.camera_zoom) / sf;
                 let screen_y = (self.input.camera_y + current_wy * self.input.camera_zoom) / sf;
 

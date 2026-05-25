@@ -3,6 +3,16 @@ use crate::config;
 use crate::game::BuildingKind;
 use serde::{Deserialize, Serialize};
 
+#[inline]
+pub fn upgrade_duration_ticks(kind: BuildingKind, target_level: u8) -> u32 {
+    let base_dur = kind.construction_duration_ticks();
+    let mut dur = base_dur;
+    for _ in 1..target_level {
+        dur = (dur as f64 * 1.1) as u32;
+    }
+    dur.max(1)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ModuleKind {
@@ -83,6 +93,45 @@ pub struct Building {
     pub modules: CityModules,
 }
 
+impl Building {
+    #[inline]
+    pub fn active_level(&self) -> u8 {
+        if !self.under_construction {
+            return self.level;
+        }
+        let mut ticks = self.ticks_until_complete;
+        let mut lvl = self.level;
+        while lvl > 1 {
+            let dur = upgrade_duration_ticks(self.kind, lvl);
+            if ticks > 0 {
+                ticks = ticks.saturating_sub(dur);
+                lvl -= 1;
+            } else {
+                break;
+            }
+        }
+        if lvl == 1 && ticks > 0 {
+            0
+        } else {
+            lvl
+        }
+    }
+
+    #[inline]
+    pub fn defense_range(&self) -> i32 {
+        if self.kind == BuildingKind::Bunker {
+            let active_lvl = self.active_level();
+            if active_lvl > 0 {
+                10 + (active_lvl as i32 - 1)
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+}
+
 /// Per-player totals for income / fleet gates (only **ready** structures count).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BuildingAggregate {
@@ -128,13 +177,14 @@ pub fn aggregate_buildings_per_player(
             BuildingKind::City => a.count_city += 1,
             BuildingKind::Bunker => a.count_bunker += 1,
         }
-        if b.under_construction {
+        let active_lvl = b.active_level();
+        if active_lvl == 0 {
             continue;
         }
         let a = &mut out[i];
         match b.kind {
             BuildingKind::City => {
-                a.city_levels += b.level as u32;
+                a.city_levels += active_lvl as u32;
                 a.ready_city_count += 1;
                 a.port_levels += b.modules.port as u32;
                 if b.modules.port > 0 {
@@ -147,7 +197,7 @@ pub fn aggregate_buildings_per_player(
                 a.shield_levels += b.modules.shield as u32;
             }
             BuildingKind::Bunker => {
-                a.bunker_levels += b.level as u32;
+                a.bunker_levels += active_lvl as u32;
             }
         }
     }
@@ -166,8 +216,8 @@ pub fn defense_post_priority_bonus(
     for b in buildings {
         let (bx, by) = idx_xy(b.tile_idx, map_width);
         let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
-        if d <= config::DEFENSE_POST_RANGE {
-            bonus += b.level as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
+        if d <= b.defense_range() {
+            bonus += b.active_level() as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
         }
     }
     bonus
@@ -210,7 +260,7 @@ impl DefenseGrid {
         }
 
         for &b in buildings {
-            if b.kind == BuildingKind::Bunker && !b.under_construction {
+            if b.kind == BuildingKind::Bunker && b.active_level() > 0 {
                 let bx = b.tile_idx % map_width;
                 let by = b.tile_idx / map_width;
                 let cx = bx / cell_size;
@@ -232,12 +282,12 @@ impl DefenseGrid {
         target_owner: u16,
     ) -> i64 {
         let mut bonus: i64 = 0;
-        let range = config::DEFENSE_POST_RANGE as u32;
+        let max_range = 15;
 
-        let cx_min = tile_x.saturating_sub(range) / self.cell_size;
-        let cx_max = (tile_x + range) / self.cell_size;
-        let cy_min = tile_y.saturating_sub(range) / self.cell_size;
-        let cy_max = (tile_y + range) / self.cell_size;
+        let cx_min = tile_x.saturating_sub(max_range) / self.cell_size;
+        let cx_max = (tile_x + max_range) / self.cell_size;
+        let cy_min = tile_y.saturating_sub(max_range) / self.cell_size;
+        let cy_max = (tile_y + max_range) / self.cell_size;
 
         let cx_max = cx_max.min(self.grid_w.saturating_sub(1));
         let cy_max = cy_max.min(self.grid_h.saturating_sub(1));
@@ -252,8 +302,8 @@ impl DefenseGrid {
                     let bx = b.tile_idx % map_width;
                     let by = b.tile_idx / map_width;
                     let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
-                    if d <= config::DEFENSE_POST_RANGE {
-                        bonus += b.level as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
+                    if d <= b.defense_range() {
+                        bonus += b.active_level() as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
                     }
                 }
             }

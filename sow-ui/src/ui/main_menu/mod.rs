@@ -350,7 +350,14 @@ pub fn draw(
     }
 
     if state.show_single_player_setup {
-        single_player_setup::draw_modal(root_ui.ctx(), state, asset_loader, &mut action, lang);
+        single_player_setup::draw_modal(
+            root_ui.ctx(),
+            state,
+            asset_loader,
+            &mut action,
+            lang,
+            compact,
+        );
     }
 
     if let Some(err_msg) = &state.error_message {

@@ -22,7 +22,7 @@ impl SowEngine {
             return;
         }
 
-        // Find the closest ready silo that's not on cooldown
+        // Find the closest ready city that's not on cooldown
         let tx = (target_tile % w) as i32;
         let ty = (target_tile / w) as i32;
 
@@ -33,7 +33,6 @@ impl SowEngine {
                 b.kind == BuildingKind::City
                     && b.owner_id == player_id
                     && !b.under_construction
-                    && b.modules.arsenal >= 1
                     && self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0
             })
             .min_by_key(|b| {
@@ -47,19 +46,7 @@ impl SowEngine {
         };
         let silo_id = silo.id;
         let silo_tile = silo.tile_idx;
-        let level = silo.modules.arsenal;
-
-        // Check gold based on the level of this arsenal
-        // Level 1 = 750k, Level 2 = 1.5M, Level 3 = 3.0M
-        let cost = 750_000.0 * 2.0f64.powi(level as i32 - 1);
-
-        let Some(player_mut) = self.state.player_mut(player_id) else {
-            return;
-        };
-        if player_mut.gold < cost {
-            return;
-        }
-        player_mut.gold -= cost;
+        let level = silo.modules.arsenal.max(1);
 
         // Set silo cooldown
         self.silo_cooldowns.insert(silo_id, SILO_COOLDOWN_TICKS);

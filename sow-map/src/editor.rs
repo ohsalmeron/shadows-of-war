@@ -289,20 +289,45 @@ impl MapEditorSession {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let scroll = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => y * 30.0,
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
-                };
-                let zoom_speed = 0.002f32;
-                let old_zoom = self.camera_zoom;
-                self.camera_zoom =
-                    (self.camera_zoom * (1.0 + scroll * zoom_speed)).clamp(0.2, 10.0);
+                if self.egui_ctx.egui_wants_pointer_input() {
+                    let (unit, vec_delta) = match delta {
+                        winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                            (egui::MouseWheelUnit::Line, egui::vec2(x, y))
+                        }
+                        winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                            let sf = self
+                                .window
+                                .as_ref()
+                                .map_or(1.0, |w| w.scale_factor() as f32);
+                            (
+                                egui::MouseWheelUnit::Point,
+                                egui::vec2(pos.x as f32 / sf, pos.y as f32 / sf),
+                            )
+                        }
+                    };
 
-                // Adjust camera position to zoom toward cursor
-                let mx = self.last_mouse_x as f32;
-                let my = self.last_mouse_y as f32;
-                self.camera_x = mx - (mx - self.camera_x) * (self.camera_zoom / old_zoom);
-                self.camera_y = my - (my - self.camera_y) * (self.camera_zoom / old_zoom);
+                    self.raw_input.events.push(egui::Event::MouseWheel {
+                        unit,
+                        delta: vec_delta,
+                        phase: egui::TouchPhase::Move,
+                        modifiers: self.raw_input.modifiers,
+                    });
+                } else {
+                    let scroll = match delta {
+                        winit::event::MouseScrollDelta::LineDelta(_, y) => y * 30.0,
+                        winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                    };
+                    let zoom_speed = 0.002f32;
+                    let old_zoom = self.camera_zoom;
+                    self.camera_zoom =
+                        (self.camera_zoom * (1.0 + scroll * zoom_speed)).clamp(0.2, 10.0);
+
+                    // Adjust camera position to zoom toward cursor
+                    let mx = self.last_mouse_x as f32;
+                    let my = self.last_mouse_y as f32;
+                    self.camera_x = mx - (mx - self.camera_x) * (self.camera_zoom / old_zoom);
+                    self.camera_y = my - (my - self.camera_y) * (self.camera_zoom / old_zoom);
+                }
             }
             _ => {}
         }
@@ -821,8 +846,8 @@ impl MapEditorSession {
                         map_size: [self.width as f32, self.height as f32],
                         border_thickness: 1.0,
                         border_darkness: 0.0,
-                        shore_thickness: 0.12,
-                        shore_darkness: 0.47,
+                        shore_thickness: 1.0,
+                        shore_darkness: 1.0,
                         threat_slots: [[0.0; 4]; 8],
                         effect_shockwave: 0.0,
                         effect_breathe: 0.0,

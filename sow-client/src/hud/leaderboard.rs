@@ -178,26 +178,26 @@ impl SowApp {
                             let mut dark = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_darkness"),
-                                    || 0.0f32,
+                                    || 0.35f32,
                                 )
                             });
                             let mut s_thick = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_shore_thickness"),
-                                    || 0.08f32,
+                                    || 1.0f32,
                                 )
                             });
                             let mut s_dark = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_shore_darkness"),
-                                    || 0.47f32,
+                                    || 1.0f32,
                                 )
                             });
 
                             let mut bscale = ctx.data_mut(|d| {
                                 *d.get_temp_mut_or_insert_with(
                                     egui::Id::new("dev_building_scale"),
-                                    || 3.0f32,
+                                    || 2.0f32,
                                 )
                             });
                             ui.add(

@@ -320,6 +320,31 @@ pub struct BuildingSnapshot {
     pub modules: crate::building::CityModules,
 }
 
+impl BuildingSnapshot {
+    #[inline]
+    pub fn active_level(&self) -> u8 {
+        if !self.under_construction {
+            return self.level;
+        }
+        let mut ticks = self.ticks_until_complete;
+        let mut lvl = self.level;
+        while lvl > 1 {
+            let dur = crate::building::core::upgrade_duration_ticks(self.kind, lvl);
+            if ticks > 0 {
+                ticks = ticks.saturating_sub(dur);
+                lvl -= 1;
+            } else {
+                break;
+            }
+        }
+        if lvl == 1 && ticks > 0 {
+            0
+        } else {
+            lvl
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FleetSnapshot {
     pub id: u64,

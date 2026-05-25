@@ -264,7 +264,7 @@ impl MapRenderer {
             if i >= total {
                 return false;
             }
-            let f = self.conquest_flash[i].saturating_sub(4);
+            let f = self.conquest_flash[i].saturating_sub(1);
             self.conquest_flash[i] = f;
             pack(slice, &self.owners, &self.conquest_flash, tile_idx);
             let y = tile_idx / width;

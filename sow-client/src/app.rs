@@ -121,6 +121,17 @@ pub struct FloatingNotice {
     pub color: egui::Color32,
 }
 
+#[derive(Clone, Debug)]
+pub struct DeathNameplateAnimation {
+    pub name: String,
+    pub color: egui::Color32,
+    pub world_x: f32,
+    pub world_y: f32,
+    pub start_time: web_time::Instant,
+    pub duration: web_time::Duration,
+    pub seed: u32,
+}
+
 #[allow(clippy::type_complexity)]
 pub struct UiState {
     pub app: sow_ui::ClientApp,
@@ -156,6 +167,7 @@ pub struct UiState {
     pub handshake_svg_registered: bool,
     pub troops_webp_registered: bool,
     pub floating_notices: Vec<FloatingNotice>,
+    pub death_nameplates: Vec<DeathNameplateAnimation>,
 }
 
 pub struct TimeState {
@@ -460,6 +472,7 @@ impl SowApp {
                 handshake_svg_registered: false,
                 troops_webp_registered: false,
                 floating_notices: Vec::new(),
+                death_nameplates: Vec::new(),
             },
             time: TimeState {
                 last_tick,
@@ -805,29 +818,63 @@ impl SowApp {
                                 world_y: wy,
                                 start_time: now_instant,
                                 duration: web_time::Duration::from_millis(3000),
-                                color: egui::Color32::from_rgb(250, 204, 21), // Warm vibrant gold-yellow!
+                                color: egui::Color32::from_rgb(250, 204, 21),
                             });
 
-                            // Push notification message
-                            let msg = if conqueror_id == my_id && my_id != 0 {
-                                format!(
-                                    "🎉 You conquered {} and earned {} Gold!",
-                                    target_name,
-                                    sow_ui::utils::format_number(gold_bounty as f64)
-                                )
-                            } else {
-                                let conqueror_name = snap
+                            // Spawn death nameplate animations and notification messages on desktop only
+                            if self.input.screen_w >= 600.0 {
+                                // Spawn death nameplate animation
+                                let player_color = snap
                                     .players
                                     .iter()
-                                    .find(|p| p.id == conqueror_id)
-                                    .map(|p| p.name.clone())
-                                    .unwrap_or_else(|| format!("Player {}", conqueror_id));
-                                format!("💀 {} was eliminated by {}!", target_name, conqueror_name)
-                            };
-                            self.ui
-                                .app
-                                .hud_state
-                                .push_notification(msg, egui::Color32::from_rgb(255, 215, 0));
+                                    .find(|p| p.id == player_id)
+                                    .map(|p| {
+                                        egui::Color32::from_rgb(
+                                            (p.color[0] * 255.0) as u8,
+                                            (p.color[1] * 255.0) as u8,
+                                            (p.color[2] * 255.0) as u8,
+                                        )
+                                    })
+                                    .unwrap_or(egui::Color32::WHITE);
+                                let seed = (player_id as u32)
+                                    .wrapping_mul(2654435761)
+                                    .wrapping_add(now_instant.elapsed().as_millis() as u32);
+                                self.ui.death_nameplates.push(
+                                    crate::app::DeathNameplateAnimation {
+                                        name: format!("💀 {}", target_name),
+                                        color: player_color,
+                                        world_x: wx,
+                                        world_y: wy,
+                                        start_time: now_instant,
+                                        duration: web_time::Duration::from_millis(3500),
+                                        seed,
+                                    },
+                                );
+
+                                // Push notification message
+                                let msg = if conqueror_id == my_id && my_id != 0 {
+                                    format!(
+                                        "🎉 You conquered {} and earned {} Gold!",
+                                        target_name,
+                                        sow_ui::utils::format_number(gold_bounty as f64)
+                                    )
+                                } else {
+                                    let conqueror_name = snap
+                                        .players
+                                        .iter()
+                                        .find(|p| p.id == conqueror_id)
+                                        .map(|p| p.name.clone())
+                                        .unwrap_or_else(|| format!("Player {}", conqueror_id));
+                                    format!(
+                                        "💀 {} was eliminated by {}!",
+                                        target_name, conqueror_name
+                                    )
+                                };
+                                self.ui
+                                    .app
+                                    .hud_state
+                                    .push_notification(msg, egui::Color32::from_rgb(255, 215, 0));
+                            }
                         }
                     }
 

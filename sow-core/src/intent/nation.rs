@@ -169,7 +169,21 @@ impl SowEngine {
             let bot_id = p.id;
 
             let profile = get_bot_ai_profile(bot_id, is_nation);
-            let interval_base = profile.interval_base;
+
+            // Fast defensive reaction if under attack by a non-ally
+            let is_under_attack = p.iq >= 100 && self.attacks.iter().any(|att| {
+                att.target_owner == bot_id && !p.alliances.contains(&att.owner_id)
+            });
+
+            let interval_base = if is_under_attack {
+                if p.iq >= 130 {
+                    5 // Elite: react in 0.5s - 1.0s (5 - 10 ticks)
+                } else {
+                    10 // Advanced: react in 1.0s - 2.0s (10 - 20 ticks)
+                }
+            } else {
+                profile.interval_base
+            };
 
             let mut sched_rng = WyRand::new(
                 self.state
@@ -955,15 +969,19 @@ impl SowEngine {
                         (target_owner, false)
                     };
 
-                    if is_neutral || troops >= max_troops * trigger_ratio {
+                    let is_defending = defender_target.is_some();
+                    if is_neutral || is_defending || troops >= max_troops * trigger_ratio {
                         let reserve = max_troops
                             * if is_neutral {
                                 expand_ratio
+                            } else if is_defending {
+                                // Desperate defense: keep only half of standard reserve ratio
+                                reserve_ratio * 0.5
                             } else {
                                 reserve_ratio
                             };
                         let is_standard_bot = !slot.is_nation && !bot_id.is_multiple_of(100);
-                        let p_send = if is_standard_bot && !is_neutral {
+                        let p_send = if is_standard_bot && !is_neutral && !is_defending {
                             (troops / 4.0).max(0.0)
                         } else {
                             (troops - reserve).max(0.0)

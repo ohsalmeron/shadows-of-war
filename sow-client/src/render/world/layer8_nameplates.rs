@@ -129,49 +129,15 @@ pub(crate) fn render(
             let pc = vp.pc;
             let lod_presence = vp.lod_presence;
 
-            if player.player_type == sow_core::player::PlayerType::Human
-                || player.player_type == sow_core::player::PlayerType::Nation
-            {
-                // --- LOD 3: Zoomed-out Avatar-only Gate ---
-                if zoom_scaled < 1.5 && player.player_type != sow_core::player::PlayerType::Human {
-                    if player.player_type == sow_core::player::PlayerType::Nation {
-                        let scale_factor = (zoom_scaled / 4.0).clamp(0.6, 1.2);
-                        let avatar_size = (visual_config.nameplate_premium_size * 2.736)
-                            * scale_factor
-                            * ui_text_scale;
+            let my_id = sim.my_player_id.unwrap_or(0);
+            let is_me = player.id == my_id;
+            let is_human = player.player_type == sow_core::player::PlayerType::Human;
+            let draw_as_premium = is_human
+                || (player.player_type == sow_core::player::PlayerType::Nation
+                    && zoom_scaled >= 1.5);
 
-                        let area_id = egui::Id::new(("avatar_only", player.id));
-                        egui::Area::new(area_id)
-                            .fixed_pos(center)
-                            .pivot(egui::Align2::CENTER_CENTER)
-                            .order(egui::Order::Middle)
-                            .interactable(false)
-                            .show(painter.ctx(), |area_ui| {
-                                let rect = egui::Rect::from_min_size(
-                                    egui::pos2(0.0, 0.0),
-                                    egui::vec2(avatar_size, avatar_size),
-                                );
-                                let (allocated_rect, _resp) = area_ui.allocate_exact_size(
-                                    egui::vec2(avatar_size, avatar_size),
-                                    egui::Sense::empty(),
-                                );
-                                paint_glassmorphic_shield(area_ui.painter(), allocated_rect, pc);
-                            });
-                        continue;
-                    }
-
-                    // Fallback to dot for Tribes or if avatar texture is not ready
-                    painter.circle_filled(center, dot_r, pc);
-                    painter.circle_stroke(
-                        center,
-                        dot_r,
-                        egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
-                    );
-                    continue;
-                }
-
+            if draw_as_premium {
                 // --- premium human player drawing ---
-                let is_human = player.player_type == sow_core::player::PlayerType::Human;
                 let should_draw_premium =
                     is_human || (zoom_scale >= 0.18_f32 && premium_labels_drawn < 16);
 
@@ -201,9 +167,6 @@ pub(crate) fn render(
                         * ui_text_scale)
                         .round() as u8;
                     let avatar_corner = (avatar_size / 2.0).round() as u8;
-
-                    let my_id = sim.my_player_id.unwrap_or(0);
-                    let is_me = player.id == my_id;
 
                     // Check alliance status with the player
                     let mut is_allied = false;
@@ -822,7 +785,6 @@ pub(crate) fn render(
                 let mut status_list = Vec::new();
                 let mut betrayal_flash = false;
 
-                let my_id = sim.my_player_id.unwrap_or(0);
                 let mut is_allied = false;
                 let mut is_heart_flashing = false;
                 let mut has_req = false;
@@ -912,8 +874,6 @@ pub(crate) fn render(
                 } else {
                     None
                 };
-
-                let is_me = player.id == my_id;
 
                 let star_size = if is_me {
                     name_galley.rect.height() * 1.35
@@ -1279,13 +1239,24 @@ pub(crate) fn render(
                     is_tribe,
                 );
             } else {
-                // Dot only — zero text layout, bare metal fast
-                painter.circle_filled(center, dot_r, pc);
-                painter.circle_stroke(
-                    center,
-                    dot_r,
-                    egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
-                );
+                // High-performance fallback: glassmorphic shield for Nations/Tribes, dot for regular bots
+                if player.player_type == sow_core::player::PlayerType::Nation {
+                    let scale_factor = (zoom_scaled / 4.0).clamp(0.6, 1.2);
+                    let avatar_size = (visual_config.nameplate_premium_size * 2.736)
+                        * scale_factor
+                        * ui_text_scale;
+                    let rect =
+                        egui::Rect::from_center_size(center, egui::vec2(avatar_size, avatar_size));
+                    paint_glassmorphic_shield(painter, rect, pc);
+                } else {
+                    // Dot only — zero text layout, bare metal fast
+                    painter.circle_filled(center, dot_r, pc);
+                    painter.circle_stroke(
+                        center,
+                        dot_r,
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
+                    );
+                }
             }
         }
     }

@@ -18,7 +18,7 @@ pub(crate) fn render(
 
     let building_scale = painter.ctx().data(|d| {
         d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
-            .unwrap_or(3.0)
+            .unwrap_or(2.0)
     });
     let zoom_factor = ((zoom_scaled - 0.6) / 9.4).clamp(0.0, 1.0);
     let min_lod_scale = 0.5; // Scale when fully zoomed out
@@ -128,6 +128,64 @@ pub(crate) fn render(
                 let tile_screen_x = (input.camera_x + world_cx * input.camera_zoom) / sf;
                 let tile_screen_y = (input.camera_y + world_cy * input.camera_zoom) / sf;
                 let tile_size = input.camera_zoom / sf;
+                let preview_center = egui::pos2(tile_screen_x, tile_screen_y);
+
+                // --- 1. Draw a strong, high-contrast snapped hex outline ---
+                let hex_r = (0.577_350_26_f32 * input.camera_zoom) / sf;
+                let snapped_points: Vec<egui::Pos2> = (0..6)
+                    .map(|i| {
+                        let angle = (i as f32 * 60.0 + 30.0).to_radians();
+                        egui::pos2(
+                            preview_center.x + hex_r * angle.cos(),
+                            preview_center.y + hex_r * angle.sin(),
+                        )
+                    })
+                    .collect();
+
+                let (outline_color, fill_color) = if is_valid {
+                    (
+                        egui::Color32::from_rgb(0, 255, 255), // Glowing neon cyan
+                        egui::Color32::from_rgba_unmultiplied(0, 255, 255, 30),
+                    )
+                } else {
+                    (
+                        egui::Color32::from_rgb(255, 30, 30), // Solid alarm red
+                        egui::Color32::from_rgba_unmultiplied(255, 30, 30, 45),
+                    )
+                };
+
+                painter.add(egui::Shape::convex_polygon(
+                    snapped_points,
+                    fill_color,
+                    egui::Stroke::new(3.0_f32, outline_color),
+                ));
+
+                // --- 2. Draw perfect range circle preview if placing a Bunker ---
+                if kind == sow_core::game::BuildingKind::Bunker {
+                    let preview_range_world = 10.0_f32;
+                    let p_radius = preview_range_world * input.camera_zoom / sf;
+                    let pulse = (time.start_time.elapsed().as_secs_f32() * 2.0).sin() * 0.03 + 0.97;
+                    let s_p_radius = p_radius * pulse;
+
+                    let (circle_stroke_col, circle_fill_col) = if is_valid {
+                        (
+                            egui::Color32::from_rgba_unmultiplied(0, 255, 255, 180),
+                            egui::Color32::from_rgba_unmultiplied(0, 255, 255, 35),
+                        )
+                    } else {
+                        (
+                            egui::Color32::from_rgba_unmultiplied(255, 30, 30, 180),
+                            egui::Color32::from_rgba_unmultiplied(255, 30, 30, 35),
+                        )
+                    };
+
+                    painter.circle_stroke(
+                        preview_center,
+                        s_p_radius,
+                        egui::Stroke::new(2.0_f32, circle_stroke_col),
+                    );
+                    painter.circle_filled(preview_center, s_p_radius, circle_fill_col);
+                }
 
                 // Draw ghost SVG
                 {

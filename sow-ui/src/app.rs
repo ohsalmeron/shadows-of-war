@@ -63,6 +63,7 @@ impl ClientApp {
                 building_costs: [0.0; 9],
                 selected_nuke_kind: None,
                 nuke_alerts: Vec::new(),
+                show_attacks_panel: false,
                 gold_gain: None,
                 gold_gain_at: None,
                 prev_gold: 0.0,

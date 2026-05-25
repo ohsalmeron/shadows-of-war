@@ -68,13 +68,15 @@ pub(crate) fn render(
             bx: f32,
             by: f32,
             kind: sow_core::game::BuildingKind,
-            level: u32,
+            active_level: u8,
+            target_level: u8,
             under_construction: bool,
             ticks_until_complete: u32,
             count: usize,
             owner_id: u16,
             id: Option<u64>,
             modules: Option<sow_core::building::CityModules>,
+            tile_idx: Option<u32>,
         }
 
         let cell_size = if zoom_scaled < 0.6 {
@@ -129,7 +131,7 @@ pub(crate) fn render(
                 };
 
                 let b_level = if b.under_construction {
-                    1
+                    b.active_level() as u32
                 } else {
                     b.level as u32
                 };
@@ -148,17 +150,20 @@ pub(crate) fn render(
                     .kind
                     .or(cluster_kind)
                     .unwrap_or(sow_core::game::BuildingKind::City);
+                let avg_level = (sum_level / count as u32) as u8;
                 rendered_buildings.push(RenderedBuilding {
                     bx: sum_bx / count as f32,
                     by: sum_by / count as f32,
                     kind: final_kind,
-                    level: sum_level,
+                    active_level: avg_level,
+                    target_level: avg_level,
                     under_construction: false,
                     ticks_until_complete: 0,
                     count,
                     owner_id: key.owner_id,
                     id: None,
                     modules: None,
+                    tile_idx: None,
                 });
             }
         } else {
@@ -171,13 +176,15 @@ pub(crate) fn render(
                     bx,
                     by,
                     kind: b.kind,
-                    level: b.level as u32,
+                    active_level: b.active_level(),
+                    target_level: b.level,
                     under_construction: b.under_construction,
                     ticks_until_complete: b.ticks_until_complete,
                     count: 1,
                     owner_id: b.owner_id,
                     id: Some(b.id),
                     modules: Some(b.modules),
+                    tile_idx: Some(b.tile_idx),
                 });
             }
         }
@@ -344,11 +351,34 @@ pub(crate) fn render(
                 }
 
                 // Render active Bunker range circle & glowing anchor border
-                if b.kind == sow_core::game::BuildingKind::Bunker && !b.under_construction {
-                    let radius_world = 8.0_f32; // config::DEFENSE_POST_RANGE
+                if b.kind == sow_core::game::BuildingKind::Bunker && b.active_level > 0 {
+                    let radius_world = 10.0_f32 + (b.active_level as f32 - 1.0);
                     let elapsed = time.start_time.elapsed().as_secs_f32();
                     let pulse = (elapsed * 2.0).sin() * 0.04 + 0.96; // soft continuous pulse
-                    let s_radius = radius_world * input.camera_zoom / sf * pulse;
+                    
+                    let bunker_start = painter.ctx().data_mut(|d| {
+                        let map = d.get_temp_mut_or_insert_with::<std::collections::HashMap<u64, f32>>(
+                            egui::Id::new("bunker_activation_times"),
+                            std::collections::HashMap::new,
+                        );
+                        if let Some(b_id) = b.id {
+                            *map.entry(b_id).or_insert(elapsed)
+                        } else {
+                            elapsed
+                        }
+                    });
+                    let age = elapsed - bunker_start;
+
+                    let current_range = if age < 1.5 {
+                        // Smooth cubic ease-out for a premium, heavy cybernetic launch feel
+                        let t = age / 1.5;
+                        let ease = 1.0 - (1.0 - t).powi(3);
+                        ease * radius_world
+                    } else {
+                        radius_world
+                    };
+
+                    let s_radius = current_range * input.camera_zoom / sf * pulse;
                     let player_color = if b.owner_id != 0 {
                         player_colors
                             .get(b.owner_id as usize)
@@ -358,19 +388,18 @@ pub(crate) fn render(
                         egui::Color32::from_rgb(0, 220, 255)
                     };
 
-                    // 1. Draw dynamic range scanning forcefield
-                    let alpha = (90.0 * (1.0 - (zoom_scaled / 12.0).clamp(0.0, 0.7))).round() as u8;
+                    // 1. Draw dynamic range scanning forcefield (zero-fade solid premium contrast)
                     let stroke_color = egui::Color32::from_rgba_unmultiplied(
                         player_color.r(),
                         player_color.g(),
                         player_color.b(),
-                        alpha,
+                        180,
                     );
                     let fill_color = egui::Color32::from_rgba_unmultiplied(
                         player_color.r(),
                         player_color.g(),
                         player_color.b(),
-                        alpha / 4,
+                        35,
                     );
                     painter.circle_stroke(
                         center,
@@ -378,6 +407,24 @@ pub(crate) fn render(
                         egui::Stroke::new(1.5_f32, stroke_color),
                     );
                     painter.circle_filled(center, s_radius, fill_color);
+
+                    // 1b. Draw expanding scanning radar pulse wave ripple
+                    let wave_t = (elapsed * 0.8) % 1.0;
+                    let wave_radius = s_radius * wave_t;
+                    let wave_alpha = ((1.0 - wave_t) * 140.0) as u8;
+                    painter.circle_stroke(
+                        center,
+                        wave_radius,
+                        egui::Stroke::new(
+                            1.5_f32,
+                            egui::Color32::from_rgba_unmultiplied(
+                                player_color.r(),
+                                player_color.g(),
+                                player_color.b(),
+                                wave_alpha,
+                            ),
+                        ),
+                    );
 
                     // 2. Draw solid glowing hex outline around the Bunker itself for visual confirmation
                     let hex_r = (0.577_350_26_f32 * input.camera_zoom) / sf;
@@ -398,60 +445,220 @@ pub(crate) fn render(
                             player_color.b(),
                             35,
                         ),
-                        egui::Stroke::new(2.0_f32, player_color),
+                        egui::Stroke::new(2.5_f32, player_color),
                     ));
-                }
-            }
 
-            if b.under_construction && b.ticks_until_complete > 0 {
-                let total_ticks = b.kind.construction_duration_ticks();
-                if total_ticks > 0 {
-                    let progress =
-                        1.0 - (b.ticks_until_complete as f32 / total_ticks as f32).clamp(0.0, 1.0);
+                    // 3. Draw glowing defended borders within range 8
+                    if let Some(t_idx) = b.tile_idx {
+                        let map_w = sim.map_w as i32;
+                        let map_h = sim.map_h as i32;
+                        let b_col = (t_idx as i32) % map_w;
+                        let b_row = (t_idx as i32) / map_w;
+                        let b_owner = b.owner_id;
 
-                    let radius = base_size * 0.28;
+                        let owners = gfx
+                            .map_renderer
+                            .as_ref()
+                            .map(|mr| mr.owners.as_slice())
+                            .unwrap_or(&[]);
+                        let terrain = ctx.terrain;
 
-                    // Black transparent circle panel behind the circle loader
-                    painter.circle_filled(
-                        center,
-                        radius + 2.0_f32,
-                        egui::Color32::from_black_alpha(150),
-                    );
+                        let get_owner = |col: i32, row: i32| -> u16 {
+                            if col >= 0 && row >= 0 && col < map_w && row < map_h {
+                                owners[(row as usize * map_w as usize) + col as usize]
+                            } else {
+                                0
+                            }
+                        };
 
-                    // Track outline
-                    painter.circle_stroke(
-                        center,
-                        radius,
-                        egui::Stroke::new(
-                            2.5_f32,
-                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 35),
-                        ),
-                    );
+                        let get_is_land = |col: i32, row: i32| -> bool {
+                            if col >= 0 && row >= 0 && col < map_w && row < map_h {
+                                let t_byte = terrain[(row as usize * map_w as usize) + col as usize];
+                                (t_byte & 0x80) != 0
+                            } else {
+                                false
+                            }
+                        };
 
-                    if progress > 0.0 {
-                        // Sharp glowing outer progress arc
-                        let num_points = (32.0 * progress).ceil().max(2.0) as usize;
-                        let mut arc_points = Vec::with_capacity(num_points);
-                        for i in 0..num_points {
-                            let t = i as f32 / (num_points - 1) as f32;
-                            let angle =
-                                -std::f32::consts::FRAC_PI_2 + t * progress * std::f32::consts::TAU;
-                            arc_points.push(egui::pos2(
-                                center.x + radius * angle.cos(),
-                                center.y + radius * angle.sin(),
-                            ));
+                        let hex_dist = |c1: i32, r1: i32, c2: i32, r2: i32| -> i32 {
+                            let q1 = c1 - (r1 - (r1 & 1)) / 2;
+                            let r1 = r1;
+                            let q2 = c2 - (r2 - (r2 & 1)) / 2;
+                            let r2 = r2;
+                            let dq = q2 - q1;
+                            let dr = r2 - r1;
+                            (dq.abs() + dr.abs() + (dq + dr).abs()) / 2
+                        };
+
+                        let border_pulse = (elapsed * 3.5).sin() * 0.15 + 0.85;
+
+                        let max_range = 10 + (b.active_level as i32 - 1);
+                        for r_offset in -max_range..=max_range {
+                            for c_offset in -max_range..=max_range {
+                                let c = b_col + c_offset;
+                                let r = b_row + r_offset;
+                                if c >= 0 && r >= 0 && c < map_w && r < map_h {
+                                    let dist = hex_dist(c, r, b_col, b_row);
+                                    if dist as f32 <= current_range {
+                                        if get_owner(c, r) == b_owner {
+                                            let cell_t = (current_range - dist as f32).clamp(0.0, 1.0);
+                                            for dir in 0..6 {
+                                                let is_odd = (r % 2) != 0;
+                                                let (nc, nr) = match dir {
+                                                    0 => (c + 1, r), // East
+                                                    1 => (c - 1, r), // West
+                                                    2 => if is_odd { (c, r - 1) } else { (c - 1, r - 1) }, // Northwest
+                                                    3 => if is_odd { (c + 1, r - 1) } else { (c, r - 1) }, // Northeast
+                                                    4 => if is_odd { (c, r + 1) } else { (c - 1, r + 1) }, // Southwest
+                                                    5 => if is_odd { (c + 1, r + 1) } else { (c, r + 1) }, // Southeast
+                                                    _ => (c, r),
+                                                };
+
+                                                let is_border_edge = if nc < 0 || nr < 0 || nc >= map_w || nr >= map_h {
+                                                    true
+                                                } else if !get_is_land(nc, nr) {
+                                                    true
+                                                } else {
+                                                    get_owner(nc, nr) != b_owner
+                                                };
+
+                                                if is_border_edge {
+                                                    let hex_w_cx = c as f32 + 0.5 + (r % 2) as f32 * 0.5;
+                                                    let hex_w_cy = (r as f32 + 0.5) * 0.8660254_f32;
+                                                    let edge_center_x = (input.camera_x + hex_w_cx * input.camera_zoom) / sf;
+                                                    let edge_center_y = (input.camera_y + hex_w_cy * input.camera_zoom) / sf;
+                                                    let edge_center = egui::pos2(edge_center_x, edge_center_y);
+
+                                                    let hex_r = (0.577_350_26_f32 * input.camera_zoom) / sf;
+                                                    let get_vertex = |v_idx: usize| -> egui::Pos2 {
+                                                        let angle = (v_idx as f32 * 60.0 + 30.0).to_radians();
+                                                        egui::pos2(
+                                                            edge_center.x + hex_r * angle.cos(),
+                                                            edge_center.y + hex_r * angle.sin(),
+                                                        )
+                                                    };
+
+                                                    let (v1, v2) = match dir {
+                                                        0 => (get_vertex(5), get_vertex(0)),
+                                                        1 => (get_vertex(2), get_vertex(3)),
+                                                        2 => (get_vertex(3), get_vertex(4)),
+                                                        3 => (get_vertex(4), get_vertex(5)),
+                                                        4 => (get_vertex(1), get_vertex(2)),
+                                                        5 => (get_vertex(0), get_vertex(1)),
+                                                        _ => (get_vertex(0), get_vertex(1)),
+                                                    };
+
+                                                    // Background neon glow line
+                                                    let glow_alpha = (90.0 * border_pulse * cell_t) as u8;
+                                                    painter.line_segment(
+                                                        [v1, v2],
+                                                        egui::Stroke::new(
+                                                            5.5_f32,
+                                                            egui::Color32::from_rgba_unmultiplied(
+                                                                player_color.r(),
+                                                                player_color.g(),
+                                                                player_color.b(),
+                                                                glow_alpha,
+                                                            ),
+                                                        ),
+                                                    );
+
+                                                    // Crisp core foreground neon line
+                                                    let core_alpha = (255.0 * cell_t) as u8;
+                                                    painter.line_segment(
+                                                        [v1, v2],
+                                                        egui::Stroke::new(
+                                                            2.0_f32,
+                                                            egui::Color32::from_rgba_unmultiplied(
+                                                                player_color.r(),
+                                                                player_color.g(),
+                                                                player_color.b(),
+                                                                core_alpha,
+                                                            ),
+                                                        ),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        painter.add(egui::Shape::line(
-                            arc_points,
-                            egui::Stroke::new(2.5_f32, egui::Color32::from_rgb(0, 220, 255)),
-                        ));
                     }
                 }
             }
 
+            if b.under_construction && b.ticks_until_complete > 0 {
+                let active_l = b.active_level;
+                let target_l = b.target_level;
+
+                let progress = if active_l > 0 {
+                    let mut queued_above_ticks = 0;
+                    for lvl in (active_l + 2)..=target_l {
+                        queued_above_ticks += sow_core::building::core::upgrade_duration_ticks(b.kind, lvl);
+                    }
+                    let ticks_current = b.ticks_until_complete.saturating_sub(queued_above_ticks);
+                    let dur_current = sow_core::building::core::upgrade_duration_ticks(b.kind, active_l + 1);
+                    1.0 - (ticks_current as f32 / dur_current as f32).clamp(0.0, 1.0)
+                } else {
+                    let total_ticks = b.kind.construction_duration_ticks();
+                    if total_ticks > 0 {
+                        1.0 - (b.ticks_until_complete as f32 / total_ticks as f32).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    }
+                };
+
+                let radius = base_size * 0.28;
+
+                // Black transparent circle panel behind the circle loader
+                painter.circle_filled(
+                    center,
+                    radius + 2.0_f32,
+                    egui::Color32::from_black_alpha(150),
+                );
+
+                // Track outline
+                painter.circle_stroke(
+                    center,
+                    radius,
+                    egui::Stroke::new(
+                        2.5_f32,
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 35),
+                    ),
+                );
+
+                if progress > 0.0 {
+                    // Sharp glowing outer progress arc
+                    let num_points = (32.0 * progress).ceil().max(2.0) as usize;
+                    let mut arc_points = Vec::with_capacity(num_points);
+                    for i in 0..num_points {
+                        let t = i as f32 / (num_points - 1) as f32;
+                        let angle =
+                            -std::f32::consts::FRAC_PI_2 + t * progress * std::f32::consts::TAU;
+                        arc_points.push(egui::pos2(
+                            center.x + radius * angle.cos(),
+                            center.y + radius * angle.sin(),
+                        ));
+                    }
+
+                    // Golden glowing arc for upgrade, cyan for initial construction
+                    let arc_color = if active_l > 0 {
+                        egui::Color32::from_rgb(250, 204, 21) // Amber / Gold
+                    } else {
+                        egui::Color32::from_rgb(0, 220, 255) // Cyan
+                    };
+
+                    painter.add(egui::Shape::line(
+                        arc_points,
+                        egui::Stroke::new(2.5_f32, arc_color),
+                    ));
+                }
+            }
+
             // Level badge (no white plate background, no frame, larger text in black)
-            if b.level != 1 && zoom_scaled >= 0.6 {
-                let text_val = get_level_str(b.level as u8);
+            if b.active_level != 1 && b.active_level != 0 && zoom_scaled >= 0.6 {
+                let text_val = get_level_str(b.active_level);
                 let font_size = (zoom_scaled * 0.65 * final_scale).clamp(8.0, 18.0).round();
                 let bg_center =
                     egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
@@ -475,9 +682,69 @@ pub(crate) fn render(
                 );
             }
 
+            // Render premium golden glassmorphic floating egui badge above upgrading building
+            if b.under_construction && b.ticks_until_complete > 0 && b.active_level > 0 && b.count == 1 {
+                let active_l = b.active_level;
+                let target_l = b.target_level;
+                let queued_count = (target_l as i32 - active_l as i32).max(0) as u32;
+
+                let text = if queued_count > 1 {
+                    format!("🏗️ Lvl {} ➔ {} (+{} queued)", active_l, active_l + 1, queued_count - 1)
+                } else {
+                    format!("🏗️ Lvl {} ➔ {}", active_l, active_l + 1)
+                };
+
+                let elapsed = time.start_time.elapsed().as_secs_f32();
+                let bobbing = (elapsed * 3.0).sin() * 1.5;
+
+                let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
+                let font_id = egui::FontId::proportional(font_size);
+                let galley = painter.layout_no_wrap(
+                    text.clone(),
+                    font_id.clone(),
+                    egui::Color32::WHITE,
+                );
+
+                let padding_x = 8.0_f32;
+                let padding_y = 4.0_f32;
+                let rect_w = galley.rect.width() + padding_x * 2.0;
+                let rect_h = galley.rect.height() + padding_y * 2.0;
+
+                let badge_y = center.y - base_size * 0.7 + bobbing;
+                let badge_rect = egui::Rect::from_center_size(
+                    egui::pos2(center.x, badge_y),
+                    egui::vec2(rect_w, rect_h),
+                );
+
+                let border_color = egui::Color32::from_rgb(250, 204, 21); // Amber / Gold
+                painter.rect(
+                    badge_rect,
+                    6.0_f32,
+                    egui::Color32::from_rgba_unmultiplied(15, 23, 42, 210), // Glass slate dark
+                    egui::Stroke::new(
+                        1.2_f32,
+                        egui::Color32::from_rgba_unmultiplied(
+                            border_color.r(),
+                            border_color.g(),
+                            border_color.b(),
+                            180,
+                        ),
+                    ),
+                    egui::StrokeKind::Inside,
+                );
+
+                painter.text(
+                    egui::pos2(center.x, badge_y),
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font_id,
+                    egui::Color32::from_rgb(254, 240, 138), // Very soft warm golden text
+                );
+            }
+
             // Render Bunker floating stats tooltip on hover
             if b.kind == sow_core::game::BuildingKind::Bunker
-                && !b.under_construction
+                && b.active_level > 0
                 && b.count == 1
             {
                 let is_hovered = if let Some(snap_b) =
@@ -489,9 +756,9 @@ pub(crate) fn render(
                 };
 
                 if is_hovered {
-                    let penalty_prio = b.level * 4;
-                    let extra_loss = b.level * 40;
-                    let title = format!("🛡️ Defense Bunker (Lvl {})", b.level);
+                    let penalty_prio = b.active_level * 4;
+                    let extra_loss = b.active_level * 40;
+                    let title = format!("🛡️ Defense Bunker (Lvl {})", b.active_level);
                     let stat1 = "Coverage: 8 Hex Radius";
                     let stat2 = format!("Atk Delay Penalty: +{}", penalty_prio);
                     let stat3 = format!("Atk Loss Penalty: +{}%", extra_loss);

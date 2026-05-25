@@ -85,9 +85,6 @@ impl SowEngine {
             if b.owner_id != player_id {
                 return;
             }
-            if b.under_construction {
-                return;
-            }
             found = Some((idx, b.kind, b.tile_idx, b.level));
         }
         let Some((idx, kind, tile_idx, current_level)) = found else {
@@ -123,6 +120,10 @@ impl SowEngine {
 
         let b = &mut self.buildings[idx];
         b.level = new_level;
+        let dur = crate::building::core::upgrade_duration_ticks(kind, new_level);
+        b.ticks_until_complete += dur;
+        b.under_construction = true;
+
         self.building_aggregates_dirty = true;
         if kind == BuildingKind::Bunker {
             self.defense_grid_dirty = true;

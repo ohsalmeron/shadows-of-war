@@ -158,7 +158,7 @@ mod tests {
                 owner_id: 1,
                 tile_idx: 0,
                 kind: BuildingKind::City,
-                level: 5,
+                level: 1,
                 under_construction: true,
                 ticks_until_complete: 3,
                 modules: crate::building::CityModules::default(),

@@ -76,7 +76,7 @@ impl NukeKind {
         crate::assets::Asset::AtomBomb
     }
     pub fn gold_cost(self, _prev_launches: u32) -> f64 {
-        750_000.0
+        0.0
     }
     pub fn inner_radius(self) -> u32 {
         12

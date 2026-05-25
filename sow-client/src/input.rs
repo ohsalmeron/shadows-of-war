@@ -195,8 +195,8 @@ impl SowApp {
                         }
 
                         let nuke = match code {
-                            winit::keyboard::KeyCode::Digit8
-                            | winit::keyboard::KeyCode::Numpad8 => {
+                            winit::keyboard::KeyCode::Digit3
+                            | winit::keyboard::KeyCode::Numpad3 => {
                                 Some(sow_core::game::NukeKind::AtomBomb)
                             }
                             _ => None,
@@ -519,29 +519,59 @@ impl SowApp {
                 if !self.input.active_touches.is_empty() {
                     return;
                 }
-                let scroll = match delta {
-                    MouseScrollDelta::LineDelta(x, y) => {
-                        if y.abs() >= x.abs() {
-                            y
-                        } else {
-                            x
+
+                let wants_pointer = self.ui.egui_ctx.egui_wants_pointer_input();
+                let in_game = self.ui.app.phase == ClientPhase::Playing;
+
+                if wants_pointer || !in_game {
+                    let (unit, vec_delta) = match delta {
+                        MouseScrollDelta::LineDelta(x, y) => {
+                            (egui::MouseWheelUnit::Line, egui::vec2(x, y))
                         }
-                    }
-                    MouseScrollDelta::PixelDelta(pos) => {
-                        let x = pos.x as f32 / 50.0;
-                        let y = pos.y as f32 / 50.0;
-                        if y.abs() >= x.abs() {
-                            y
-                        } else {
-                            x
+                        MouseScrollDelta::PixelDelta(pos) => {
+                            let sf = self
+                                .gfx
+                                .window
+                                .as_ref()
+                                .map_or(1.0, |w| w.scale_factor() as f32);
+                            (
+                                egui::MouseWheelUnit::Point,
+                                egui::vec2(pos.x as f32 / sf, pos.y as f32 / sf),
+                            )
                         }
-                    }
-                };
-                self.process_camera_zoom(
-                    1.0 + scroll * 0.15,
-                    self.input.last_mouse_x as f32,
-                    self.input.last_mouse_y as f32,
-                );
+                    };
+
+                    self.ui.raw_input.events.push(egui::Event::MouseWheel {
+                        unit,
+                        delta: vec_delta,
+                        phase: egui::TouchPhase::Move,
+                        modifiers: self.ui.raw_input.modifiers,
+                    });
+                } else {
+                    let scroll = match delta {
+                        MouseScrollDelta::LineDelta(x, y) => {
+                            if y.abs() >= x.abs() {
+                                y
+                            } else {
+                                x
+                            }
+                        }
+                        MouseScrollDelta::PixelDelta(pos) => {
+                            let x = pos.x as f32 / 50.0;
+                            let y = pos.y as f32 / 50.0;
+                            if y.abs() >= x.abs() {
+                                y
+                            } else {
+                                x
+                            }
+                        }
+                    };
+                    self.process_camera_zoom(
+                        1.0 + scroll * 0.15,
+                        self.input.last_mouse_x as f32,
+                        self.input.last_mouse_y as f32,
+                    );
+                }
             }
 
             _ => {}
