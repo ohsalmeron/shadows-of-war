@@ -104,17 +104,17 @@ fn get_hex_neighbor(hex: vec2<i32>, direction: i32) -> vec2<i32> {
     let is_odd = (hex.y % 2) != 0;
     var offset = vec2<i32>(0, 0);
     if (direction == 0) {
-        offset = vec2<i32>(1, 0); // East
+        offset = vec2<i32>(1, 0);
     } else if (direction == 1) {
-        offset = vec2<i32>(-1, 0); // West
+        offset = vec2<i32>(-1, 0);
     } else if (direction == 2) {
-        if (is_odd) { offset = vec2<i32>(0, -1); } else { offset = vec2<i32>(-1, -1); } // Northwest
+        if (is_odd) { offset = vec2<i32>(0, -1); } else { offset = vec2<i32>(-1, -1); }
     } else if (direction == 3) {
-        if (is_odd) { offset = vec2<i32>(1, -1); } else { offset = vec2<i32>(0, -1); } // Northeast
+        if (is_odd) { offset = vec2<i32>(1, -1); } else { offset = vec2<i32>(0, -1); }
     } else if (direction == 4) {
-        if (is_odd) { offset = vec2<i32>(0, 1); } else { offset = vec2<i32>(-1, 1); } // Southwest
+        if (is_odd) { offset = vec2<i32>(0, 1); } else { offset = vec2<i32>(-1, 1); }
     } else if (direction == 5) {
-        if (is_odd) { offset = vec2<i32>(1, 1); } else { offset = vec2<i32>(0, 1); } // Southeast
+        if (is_odd) { offset = vec2<i32>(1, 1); } else { offset = vec2<i32>(0, 1); }
     }
     return hex + offset;
 }
@@ -138,7 +138,7 @@ fn get_elevation(cx: i32, cy: i32) -> f32 {
     return 0.0;
 }
 
-// ── FBM Noise (4-octave layered noise for organic terrain variation) ──
+// ── Noise primitives ──
 fn hash2d(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
 }
@@ -146,7 +146,7 @@ fn hash2d(p: vec2<f32>) -> f32 {
 fn value_noise(p: vec2<f32>) -> f32 {
     let i = floor(p);
     let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f); // smoothstep interpolation
+    let u = f * f * (3.0 - 2.0 * f);
     let a = hash2d(i);
     let b = hash2d(i + vec2<f32>(1.0, 0.0));
     let c = hash2d(i + vec2<f32>(0.0, 1.0));
@@ -154,11 +154,12 @@ fn value_noise(p: vec2<f32>) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-fn fbm(p: vec2<f32>) -> f32 {
+// Zoom-adaptive FBM: fewer octaves when zoomed out (tiles are tiny, detail invisible)
+fn fbm_lod(p: vec2<f32>, octaves: i32) -> f32 {
     var val = 0.0;
     var amp = 0.5;
     var pos = p;
-    for (var i = 0; i < 4; i = i + 1) {
+    for (var i = 0; i < octaves; i = i + 1) {
         val += amp * value_noise(pos);
         pos = pos * 2.17 + vec2<f32>(1.7, 4.6);
         amp *= 0.5;
@@ -166,7 +167,6 @@ fn fbm(p: vec2<f32>) -> f32 {
     return val;
 }
 
-// ── Hex direction helper ──
 fn hex_dir(i: i32) -> vec2<f32> {
     if (i == 0) { return vec2<f32>(1.0, 0.0); }
     if (i == 1) { return vec2<f32>(-1.0, 0.0); }
@@ -174,6 +174,52 @@ fn hex_dir(i: i32) -> vec2<f32> {
     if (i == 3) { return vec2<f32>(0.5, -0.8660254); }
     if (i == 4) { return vec2<f32>(-0.5, 0.8660254); }
     return vec2<f32>(0.5, 0.8660254);
+}
+
+// Terrain color from raw byte — shared between center tile and neighbors for cross-blending
+fn terrain_biome_color(tb: u32, wp: vec2<f32>, octaves: i32) -> vec3<f32> {
+    let is_shoreline = (tb & 0x40u) != 0u;
+    let mag = f32(tb & 0x1Fu);
+    let n1 = fbm_lod(wp * 6.0, octaves);
+    let detail = (n1 - 0.5) * 0.06;
+
+    if is_shoreline {
+        let base_sand = vec3<f32>(0.84, 0.80, 0.63);
+        let wet_sand = vec3<f32>(0.75, 0.71, 0.54);
+        let blend = fbm_lod(wp * 10.0 + vec2<f32>(30.0, 70.0), octaves);
+        return mix(base_sand, wet_sand, blend) + detail * 0.5;
+    }
+    if mag < 10.0 {
+        let grass_a = vec3<f32>(0.55, 0.74, 0.40);
+        let grass_b = vec3<f32>(0.62, 0.78, 0.45);
+        let grass_c = vec3<f32>(0.48, 0.65, 0.35);
+        let blend = fbm_lod(wp * 4.0 + vec2<f32>(100.0, 200.0), octaves);
+        var grass = mix(grass_a, grass_b, blend);
+        grass = mix(grass, grass_c, smoothstep(0.55, 0.75, n1));
+        grass = grass * (1.0 - mag * 0.010);
+        return grass + detail;
+    }
+    if mag < 20.0 {
+        let hg = vec3<f32>(0.53, 0.60, 0.38);
+        let hc = vec3<f32>(0.64, 0.55, 0.40);
+        let hr = vec3<f32>(0.58, 0.50, 0.42);
+        let t = (mag - 10.0) / 10.0;
+        var h = mix(hg, hc, t);
+        h = mix(h, hr, smoothstep(0.4, 0.8, n1));
+        return h + detail;
+    }
+    // Mountains
+    let rock_base = vec3<f32>(0.55, 0.53, 0.50);
+    let rock_light = vec3<f32>(0.65, 0.63, 0.60);
+    let snowy_peak = vec3<f32>(0.93, 0.94, 0.96);
+    let t = clamp((mag - 20.0) / 11.0, 0.0, 1.0);
+    var mtn = mix(rock_base, rock_light, n1);
+    mtn = mix(mtn, snowy_peak, t * t);
+    let snow = fbm_lod(wp * 8.0 + vec2<f32>(200.0, 300.0), octaves);
+    if snow > (1.0 - t * 0.6) {
+        mtn = mix(mtn, snowy_peak, 0.6);
+    }
+    return mtn + detail * 0.5;
 }
 
 @fragment
@@ -190,6 +236,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.015, 0.015, 0.02, 1.0);
     }
 
+    // Zoom-adaptive LOD: 2 octaves when zoomed out, 4 when close
+    let lod_octaves = select(2, 4, globals.zoom > 12.0);
+
     let pixel_coords = vec2<i32>(cell_x, cell_y);
     let terrain_byte = textureLoad(terrain_texture, pixel_coords, 0).x;
     let owner_packed = textureLoad(owner_texture, pixel_coords, 0).x;
@@ -201,61 +250,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var terrain_color = vec4<f32>(0.0);
     var normal = vec3<f32>(0.0, 0.0, 1.0);
     var is_specular = false;
-
-    // FBM noise sampled at world coords for organic sub-tile variation
     let world_p = vec2<f32>(world_x, world_y);
-    let n1 = fbm(world_p * 6.0);
-    let n2 = fbm(world_p * 12.0 + vec2<f32>(50.0, 80.0));
-    let noise_detail = (n1 - 0.5) * 0.08 + (n2 - 0.5) * 0.03;
 
     if is_land {
-        let is_shoreline = (terrain_byte & 0x40u) != 0u;
-        let mag_center = f32(terrain_byte & 0x1Fu);
+        let center_col = terrain_biome_color(terrain_byte, world_p, lod_octaves);
+        terrain_color = vec4<f32>(center_col, 1.0);
 
-        if is_shoreline {
-            // Warm sandy shore with slight color variation
-            let base_sand = vec3<f32>(0.82, 0.78, 0.60);
-            let wet_sand = vec3<f32>(0.72, 0.68, 0.50);
-            let shore_blend = fbm(world_p * 10.0 + vec2<f32>(30.0, 70.0));
-            let shore_col = mix(base_sand, wet_sand, shore_blend);
-            terrain_color = vec4<f32>(shore_col + noise_detail * 0.6, 1.0);
-        } else if mag_center < 10.0 {
-            // Plains — lush greens with subtle biome tinting
-            let grass_a = vec3<f32>(0.52, 0.72, 0.38); // Fresh green
-            let grass_b = vec3<f32>(0.60, 0.76, 0.42); // Lighter meadow
-            let grass_c = vec3<f32>(0.45, 0.62, 0.32); // Deeper forest-edge green
-            let blend_t = fbm(world_p * 4.0 + vec2<f32>(100.0, 200.0));
-            var grass = mix(grass_a, grass_b, blend_t);
-            grass = mix(grass, grass_c, smoothstep(0.55, 0.75, n1));
-            // Darken slightly with elevation within plains range
-            grass = grass * (1.0 - mag_center * 0.012);
-            terrain_color = vec4<f32>(grass + noise_detail, 1.0);
-        } else if mag_center < 20.0 {
-            // Highlands — earthy clay/ochre tones blending from green
-            let highland_green = vec3<f32>(0.50, 0.58, 0.35);
-            let highland_clay  = vec3<f32>(0.62, 0.52, 0.38);
-            let highland_rock  = vec3<f32>(0.55, 0.48, 0.40);
-            let elev_t = (mag_center - 10.0) / 10.0;
-            var highland = mix(highland_green, highland_clay, elev_t);
-            highland = mix(highland, highland_rock, smoothstep(0.4, 0.8, n1));
-            terrain_color = vec4<f32>(highland + noise_detail * 1.2, 1.0);
-        } else {
-            // Mountains — rocky grey to snowy peaks
-            let rock_base = vec3<f32>(0.52, 0.50, 0.48);
-            let rock_light = vec3<f32>(0.62, 0.60, 0.58);
-            let snowy_peak = vec3<f32>(0.92, 0.93, 0.95);
-            let elev_t = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
-            var mountain = mix(rock_base, rock_light, n1);
-            mountain = mix(mountain, snowy_peak, elev_t * elev_t);
-            // Snow dusting — higher elevations get more white patches
-            let snow_chance = fbm(world_p * 8.0 + vec2<f32>(200.0, 300.0));
-            if snow_chance > (1.0 - elev_t * 0.6) {
-                mountain = mix(mountain, snowy_peak, 0.7);
-            }
-            terrain_color = vec4<f32>(mountain + noise_detail * 0.6, 1.0);
-        }
-
-        // Procedural 6-Directional Normal Mapping from adjacent elevation gradient
+        // Procedural 6-Directional Normal Mapping
         let is_odd = (cell_y % 2) != 0;
         let h_right = get_elevation(cell_x + 1, cell_y);
         let h_left  = get_elevation(cell_x - 1, cell_y);
@@ -297,19 +298,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let sparkle_hash = fract(sin(px * 12.9898 + py * 78.233 + sparkle_t) * 43758.5453);
         let has_sparkle = sparkle_hash > 0.988;
 
-        var color_deep = vec3<f32>(0.16, 0.30, 0.52);
-        var color_mid  = vec3<f32>(0.22, 0.40, 0.62);
-        var color_foam = vec3<f32>(0.32, 0.50, 0.75);
+        var color_deep = vec3<f32>(0.18, 0.33, 0.55);
+        var color_mid  = vec3<f32>(0.25, 0.43, 0.65);
+        var color_foam = vec3<f32>(0.35, 0.53, 0.78);
 
         if !is_ocean_water {
-            color_deep = vec3<f32>(0.18, 0.42, 0.52);
-            color_mid  = vec3<f32>(0.24, 0.50, 0.60);
-            color_foam = vec3<f32>(0.32, 0.58, 0.68);
+            color_deep = vec3<f32>(0.20, 0.45, 0.55);
+            color_mid  = vec3<f32>(0.27, 0.53, 0.63);
+            color_foam = vec3<f32>(0.35, 0.60, 0.70);
         }
 
-        // FBM-driven depth variation for water
-        let water_fbm = fbm(world_p * 3.0 + vec2<f32>(400.0, 500.0));
-        color_deep = mix(color_deep, color_deep * 0.85, water_fbm);
+        // Subtle depth variation via cheap hash (no FBM on water when zoomed out)
+        let water_var = hash2d(vec2<f32>(f32(cell_x), f32(cell_y)) * 0.37);
+        color_deep = color_deep * (0.92 + 0.08 * water_var);
 
         var final_water_color = color_deep;
         if has_sparkle {
@@ -328,34 +329,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         is_specular = true;
     }
 
-    // Convert sRGB palette input to linear space
+    // sRGB → linear
     terrain_color = vec4<f32>(pow(terrain_color.rgb, vec3<f32>(2.2)), terrain_color.a);
 
-    // ── Valley Ambient Occlusion ──
-    // Low-elevation land tiles surrounded by higher terrain get darkened
-    var ao_factor = 1.0;
-    if is_land {
-        let mag_center = f32(terrain_byte & 0x1Fu);
-        var avg_neighbor_elev = 0.0;
-        var neighbor_count = 0.0;
-        for (var i = 0; i < 6; i = i + 1) {
-            let nh = get_hex_neighbor(cell_hex, i);
-            let ne = get_elevation(nh.x, nh.y);
-            avg_neighbor_elev += ne;
-            neighbor_count += 1.0;
-        }
-        avg_neighbor_elev = avg_neighbor_elev / neighbor_count;
-        let height_diff = avg_neighbor_elev - mag_center;
-        // Only darken when neighbors are higher (valley)
-        ao_factor = 1.0 - clamp(height_diff * 0.025, 0.0, 0.15);
-    }
+    var base_color = terrain_color.rgb;
 
-    var base_color = terrain_color.rgb * ao_factor;
-
-    // ── Territory overlay — reduced blend lets terrain detail show through ──
+    // ── Territory overlay (0.50 blend — terrain detail shows through) ──
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
-        base_color = mix(terrain_color.rgb * ao_factor, albedo, 0.50);
+        base_color = mix(terrain_color.rgb, albedo, 0.50);
 
         if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
             let shockwave = flash_val * globals.effect_shockwave;
@@ -367,18 +349,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hex_center = hex_to_world(cell_hex);
     let local_pos = vec2<f32>(world_x, world_y) - hex_center;
 
-    // ── Compute min distance to hex edge (used for borders, bevel, grid) ──
+    // ── SINGLE UNIFIED LOOP: borders + bevel + AO + cross-blend ──
     var min_dist_to_edge = 0.5;
-    for (var i = 0; i < 6; i = i + 1) {
-        let dist_to_edge = 0.5 - dot(local_pos, hex_dir(i));
-        min_dist_to_edge = min(min_dist_to_edge, dist_to_edge);
-    }
+    var ao_sum = 0.0;
+    var cross_blend_color = vec3<f32>(0.0);
+    var cross_blend_weight = 0.0;
 
-    // ── Anti-aliased borders with outer glow ──
     var thickness = globals.border_thickness;
     let border_darkness = globals.border_darkness;
     let s_thickness = globals.shore_thickness;
-    let s_darkness = globals.shore_darkness;
 
     if globals.effect_breathe > 0.0 && owner_id > 0u {
         let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5;
@@ -387,62 +366,74 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
         thickness += flash_val * 0.2 * globals.effect_shockwave;
     }
-
-    // Glow extend zone beyond the hard border
     let glow_extent = thickness * 1.8;
+    let is_tribe = owner_id >= 200u;
+    let mag_center = f32(terrain_byte & 0x1Fu);
 
-    if is_land {
-        let is_tribe = owner_id >= 200u;
+    for (var i = 0; i < 6; i = i + 1) {
+        let dir = hex_dir(i);
+        let dist_to_edge = 0.5 - dot(local_pos, dir);
+        min_dist_to_edge = min(min_dist_to_edge, dist_to_edge);
 
-        for (var i = 0; i < 6; i = i + 1) {
-            let neighbor_hex = get_hex_neighbor(cell_hex, i);
-            let neighbor_terrain = get_cell_terrain(neighbor_hex);
-            let neighbor_owner = get_cell_owner(neighbor_hex);
-            let neighbor_is_land = (neighbor_terrain & 0x80u) != 0u;
+        let neighbor_hex = get_hex_neighbor(cell_hex, i);
+        let neighbor_terrain = get_cell_terrain(neighbor_hex);
+        let neighbor_owner = get_cell_owner(neighbor_hex);
+        let neighbor_is_land = (neighbor_terrain & 0x80u) != 0u;
 
-            let dir = hex_dir(i);
-            let dist_to_edge = 0.5 - dot(local_pos, dir);
+        // AO: accumulate neighbor elevation (merged into this loop, zero extra texture fetches)
+        if is_land {
+            let ne = f32(neighbor_terrain & 0x1Fu);
+            let n_is_land = (neighbor_terrain & 0x80u) != 0u;
+            if n_is_land {
+                ao_sum += ne;
 
+                // Cross-blend: near hex edges, blend toward neighbor's biome color
+                // Uses edge proximity we already computed — completely free data
+                let edge_blend = smoothstep(0.18, 0.02, dist_to_edge);
+                if edge_blend > 0.0 {
+                    let n_col = terrain_biome_color(neighbor_terrain, world_p, select(1, 2, globals.zoom > 12.0));
+                    cross_blend_color += n_col * edge_blend;
+                    cross_blend_weight += edge_blend;
+                }
+            } else {
+                ao_sum += 0.0; // Water neighbors count as elevation 0
+            }
+        }
+
+        // Borders (anti-aliased with glow)
+        if is_land {
             if !neighbor_is_land {
-                // Shore border — dark coastline edge
                 if dist_to_edge < s_thickness {
                     let shore_t = 1.0 - smoothstep(0.0, s_thickness, dist_to_edge);
                     if owner_id > 0u {
-                        let border_albedo = owner_albedo(owner_id) * border_darkness;
-                        let shore_col = mix(border_albedo, vec3<f32>(0.015, 0.012, 0.010), 0.50);
+                        let ba = owner_albedo(owner_id) * border_darkness;
+                        let shore_col = mix(ba, vec3<f32>(0.02, 0.015, 0.012), 0.45);
                         base_color = mix(base_color, shore_col, shore_t);
                     } else {
-                        base_color = mix(base_color, vec3<f32>(0.025, 0.020, 0.015), shore_t);
+                        base_color = mix(base_color, vec3<f32>(0.03, 0.025, 0.02), shore_t);
                     }
                 }
-                // Political border on coast
                 if owner_id > 0u && dist_to_edge < thickness {
                     let border_t = 1.0 - smoothstep(0.0, thickness, dist_to_edge);
-                    var border_albedo = owner_albedo(owner_id) * border_darkness;
+                    var ba = owner_albedo(owner_id) * border_darkness;
                     if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
-                        border_albedo = mix(border_albedo, vec3<f32>(1.0), flash_val * globals.effect_shockwave);
+                        ba = mix(ba, vec3<f32>(1.0), flash_val * globals.effect_shockwave);
                     }
-                    base_color = mix(base_color, border_albedo, border_t);
+                    base_color = mix(base_color, ba, border_t);
                 }
             } else if owner_id > 0u && neighbor_owner != owner_id {
-                // Political border — anti-aliased with outer glow
                 if dist_to_edge < glow_extent {
                     var border_col = owner_albedo(owner_id) * border_darkness;
-                    let green_exists = is_tribe && (neighbor_owner >= 200u);
-                    if green_exists {
+                    if is_tribe && (neighbor_owner >= 200u) {
                         border_col = vec3<f32>(0.2, 0.8, 0.2) * border_darkness;
                     }
-
                     if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
                         border_col = mix(border_col, vec3<f32>(1.0), flash_val * globals.effect_shockwave);
                     }
-
                     if dist_to_edge < thickness {
-                        // Hard border core — smooth anti-aliased falloff
                         let core_t = 1.0 - smoothstep(0.0, thickness * 0.3, dist_to_edge);
                         base_color = mix(base_color, border_col, 0.6 + 0.4 * core_t);
                     } else {
-                        // Outer glow — soft feathered light beyond the hard line
                         let glow_t = 1.0 - smoothstep(thickness, glow_extent, dist_to_edge);
                         let glow_col = mix(border_col, base_color, 0.5);
                         base_color = mix(base_color, glow_col, glow_t * 0.35);
@@ -450,6 +441,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 }
             }
         }
+    }
+
+    // Apply AO (merged data from loop above — no extra cost)
+    if is_land {
+        let avg_ne = ao_sum / 6.0;
+        let height_diff = avg_ne - mag_center;
+        let ao = 1.0 - clamp(height_diff * 0.02, 0.0, 0.12);
+        base_color = base_color * ao;
+    }
+
+    // Apply terrain cross-blend at hex boundaries (free — uses loop data)
+    if cross_blend_weight > 0.0 {
+        let blend_col = pow(cross_blend_color / cross_blend_weight, vec3<f32>(2.2));
+        let blend_t = min(cross_blend_weight * 0.4, 0.35);
+        base_color = mix(base_color, blend_col, blend_t);
     }
 
     // ── WAR FOG + FRONTIER GLOW ──
@@ -520,10 +526,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    // ── Directional Lighting (diffuse + specular) ──
+    // ── Directional Lighting ──
     let light_dir = normalize(vec3<f32>(-1.0, -1.0, 1.6));
-    let diffuse = max(0.68, dot(normal, light_dir));
-    base_color = base_color * (diffuse * 1.12);
+    let diffuse = max(0.70, dot(normal, light_dir));
+    base_color = base_color * (diffuse * 1.10);
 
     if is_specular {
         let view_dir = vec3<f32>(0.0, 0.0, 1.0);
@@ -534,23 +540,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // ── Embossed Cell Bevel ──
     let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
-    base_color = base_color * (0.86 + 0.14 * cell_bevel);
+    base_color = base_color * (0.88 + 0.12 * cell_bevel);
 
     // ── Tactile Canvas Paper Overlay ──
     let px_screen = in.uv.x * 2400.0;
     let py_screen = in.uv.y * 2400.0;
     let paper_noise = fract(sin(px_screen * 12.9898 + py_screen * 78.233) * 43758.5453);
-    let paper_grain = 0.95 + 0.05 * paper_noise;
+    let paper_grain = 0.96 + 0.04 * paper_noise;
     base_color = base_color * paper_grain;
 
     // ── Screen Vignette ──
     let d_center = length(in.uv - 0.5);
     let vignette = smoothstep(0.8, 0.45, d_center);
-    base_color = base_color * (0.82 + 0.18 * vignette);
+    base_color = base_color * (0.84 + 0.16 * vignette);
 
     // ── Building Placement Holographic Grid ──
     if (globals.hover_building_kind > 0.0) {
-        // 1. Check if this cell is inside any active no-build exclusion zones (scanning all 32 slots)
         var cell_in_nobuild_zone = false;
         for (var i = 0; i < 32; i = i + 1) {
             let slot = globals.nobuild_slots[i];
@@ -569,38 +574,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let dist = hex_distance(cell_hex, hover_center);
 
         if (dist <= 12) {
-            // --- CURSOR ACTIVE SCAN FIELD ---
             let is_mine = owner_id == u32(globals.my_player_id);
             if (is_land && is_mine) {
-                var overlay_color = vec3<f32>(0.0, 0.85, 1.0); // Neon Cyan
+                var overlay_color = vec3<f32>(0.0, 0.85, 1.0);
                 var fill_intensity = 0.28;
                 if (cell_in_nobuild_zone) {
-                    overlay_color = vec3<f32>(1.0, 0.15, 0.15); // Vibrant Red
+                    overlay_color = vec3<f32>(1.0, 0.15, 0.15);
                     fill_intensity = 0.38;
                 }
 
-                // Holographic scan pulse ripples outward from the hover center
                 let scan_fade = 1.0 - smoothstep(8.0, 12.0, f32(dist));
-
-                // Slow, elegant radial waves rippling outward
                 let wave = sin(globals.time * 1.5 - f32(dist) * 0.35) * 0.5 + 0.5;
                 let border_pulse = 0.75 + 0.25 * wave;
                 let fill_pulse = 0.85 + 0.15 * wave;
 
-                // Mix self-illuminated fill
                 let fill_alpha = fill_intensity * scan_fade * fill_pulse;
                 base_color = mix(base_color, overlay_color, fill_alpha);
 
-                // Emissive neon border line
                 let line_intensity = smoothstep(0.045, 0.005, min_dist_to_edge);
                 let border_alpha = line_intensity * border_pulse * scan_fade * 0.85;
                 base_color = mix(base_color, overlay_color * 1.5, border_alpha);
             } else {
-                // Highly visible red overlay for invalid water/enemy tiles
                 let overlay_color = vec3<f32>(1.0, 0.12, 0.12);
                 let scan_fade = 1.0 - smoothstep(8.0, 12.0, f32(dist));
 
-                // Mix subtle unbuildable border lines to show hex grid shapes in water/enemy land
                 let line_intensity = smoothstep(0.035, 0.0, min_dist_to_edge);
                 let line_alpha = line_intensity * scan_fade * 0.25;
                 base_color = mix(base_color, overlay_color, line_alpha);
@@ -609,22 +606,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 base_color = mix(base_color, overlay_color, fill_alpha);
             }
         } else if (cell_in_nobuild_zone) {
-            // --- CONSTANT BACKGROUND EXCLUSION ZONE INDICATORS ---
-            let overlay_color = vec3<f32>(1.0, 0.12, 0.12); // Soft holographic red
+            let overlay_color = vec3<f32>(1.0, 0.12, 0.12);
 
-            // Faint breathing fill to keep it alive but unobtrusive
             let fill_pulse = 0.88 + 0.12 * sin(globals.time * 1.5);
             let fill_alpha = 0.15 * fill_pulse;
             base_color = mix(base_color, overlay_color, fill_alpha);
 
-            // Subtle background grid wireframe
             let line_intensity = smoothstep(0.035, 0.0, min_dist_to_edge);
             let line_alpha = line_intensity * 0.35;
             base_color = mix(base_color, overlay_color * 1.2, line_alpha);
         }
     }
 
-    // Convert from linear to sRGB
+    // linear → sRGB
     let final_color = pow(base_color, vec3<f32>(1.0 / 2.2));
     return vec4<f32>(final_color, 1.0);
 }

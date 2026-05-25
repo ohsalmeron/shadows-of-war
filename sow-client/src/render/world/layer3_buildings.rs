@@ -20,7 +20,7 @@ pub(crate) fn render(
     let player_colors = ctx.player_colors;
     let building_scale = ctx.painter.ctx().data(|d| {
         d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
-            .unwrap_or(3.0)
+            .unwrap_or(2.0)
     });
     let zoom_factor = ((zoom_scaled - 0.6) / 9.4).clamp(0.0, 1.0);
     let min_lod_scale = 0.5; // Scale when fully zoomed out

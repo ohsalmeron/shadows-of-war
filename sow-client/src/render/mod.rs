@@ -92,7 +92,7 @@ impl SowApp {
                     snap.dirty_tiles.clear();
                 }
                 let mut border_thickness = 1.0f32;
-                let mut border_darkness = 0.40f32;
+                let mut border_darkness = 0.0f32;
                 let mut shore_thickness = 0.12f32;
                 let mut shore_darkness = 0.47f32;
 
@@ -100,7 +100,7 @@ impl SowApp {
                     border_thickness =
                         *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 1.0f32);
                     border_darkness =
-                        *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.40f32);
+                        *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.0f32);
                     shore_thickness = *d
                         .get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || {
                             0.12f32

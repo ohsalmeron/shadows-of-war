@@ -820,7 +820,7 @@ impl MapEditorSession {
                         screen_size: [self.screen_w, self.screen_h],
                         map_size: [self.width as f32, self.height as f32],
                         border_thickness: 1.0,
-                        border_darkness: 0.40,
+                        border_darkness: 0.0,
                         shore_thickness: 0.12,
                         shore_darkness: 0.47,
                         threat_slots: [[0.0; 4]; 8],
