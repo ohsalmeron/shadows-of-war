@@ -23,24 +23,6 @@ pub enum BotDifficulty {
     Terminator,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BotProfile {
-    pub attack_interval_ticks: u64,
-    pub trigger_ratio: f64,
-    pub reserve_ratio: f64,
-    pub expand_ratio: f64,
-}
-
-impl Default for BotProfile {
-    fn default() -> Self {
-        Self {
-            attack_interval_ticks: 240, // 4 seconds by default
-            trigger_ratio: 0.6,
-            reserve_ratio: 0.3,
-            expand_ratio: 0.15,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GameConfig {
@@ -181,7 +163,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.55,
+            global_speed_multiplier: 0.1,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,

@@ -1,4 +1,3 @@
-pub mod bot;
 pub mod buildings;
 pub mod combat;
 pub mod fleet;

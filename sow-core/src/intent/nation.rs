@@ -9,11 +9,7 @@ use crate::protocol::{AttackIntent, GameplayIntent, StampedIntent};
 use crate::rng::NextIntExt;
 use wyrand::WyRand;
 
-fn bot_structure_target_count(
-    kind: BuildingKind,
-    city_equivalent: u32,
-    _difficulty: crate::game_config::BotDifficulty,
-) -> u32 {
+fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32) -> u32 {
     match kind {
         BuildingKind::Bunker => ((city_equivalent as f64) * 0.25).floor() as u32,
         BuildingKind::City => city_equivalent.saturating_add(1),
@@ -55,8 +51,10 @@ struct AiSlot {
     is_nation: bool,
     do_attack: bool,
     do_structures: bool,
+    profile: BotAiProfile,
 }
 
+#[derive(Clone, Copy)]
 struct BotAiProfile {
     interval_base: u64,
     trigger_ratio: f64,
@@ -229,6 +227,7 @@ impl SowEngine {
                 is_nation: is_smart,
                 do_attack,
                 do_structures,
+                profile,
             });
         }
 
@@ -260,11 +259,11 @@ impl SowEngine {
         for slot in &schedule {
             let bot_id = slot.bot_id;
 
-            let (bot_iq, _bot_iq_points) = {
+            let bot_iq = {
                 let Some(player) = self.state.player(bot_id) else {
                     continue;
                 };
-                (player.iq, player.iq_points)
+                player.iq
             };
 
             // Smarter AIs are highly efficient and have much lower action costs!
@@ -607,11 +606,8 @@ impl SowEngine {
                                 continue;
                             }
                             let owned = agg.total_structures_of_kind(kind);
-                            let mut target_count = bot_structure_target_count(
-                                kind,
-                                city_equivalent,
-                                crate::game_config::BotDifficulty::Terminator,
-                            );
+                            let mut target_count =
+                                bot_structure_target_count(kind, city_equivalent);
                             if kind == BuildingKind::Bunker && bot_iq >= 110 {
                                 let mut under_attack = false;
                                 for att in &self.attacks {
@@ -756,11 +752,10 @@ impl SowEngine {
             if slot.do_attack {
                 let current_points = self.state.player(bot_id).unwrap().iq_points;
                 if current_points >= attack_cost {
-                    let profile = get_bot_ai_profile(bot_id, slot.is_nation);
-                    let trigger_ratio = profile.trigger_ratio;
-                    let reserve_ratio = profile.reserve_ratio;
-                    let expand_ratio = profile.expand_ratio;
-                    let refuse_human_chance = profile.refuse_human_chance;
+                    let trigger_ratio = slot.profile.trigger_ratio;
+                    let reserve_ratio = slot.profile.reserve_ratio;
+                    let expand_ratio = slot.profile.expand_ratio;
+                    let refuse_human_chance = slot.profile.refuse_human_chance;
 
                     let (troops, max_troops) = {
                         let player = self.state.player(bot_id).unwrap();
@@ -882,17 +877,11 @@ impl SowEngine {
                     if bot_iq >= 100 {
                         let mut largest_attack = 0.0;
                         for att in &self.attacks {
+                            // targets already excludes allies and teammates
                             if att.target_owner == bot_id && targets.contains(&att.owner_id) {
-                                let attacker_id = att.owner_id;
-                                let is_friendly = {
-                                    let p_me = self.state.player(bot_id).unwrap();
-                                    let p_att = self.state.player(attacker_id).unwrap();
-                                    p_me.alliances.contains(&attacker_id)
-                                        || (p_me.team.is_some() && p_me.team == p_att.team)
-                                };
-                                if !is_friendly && att.troops > largest_attack {
+                                if att.troops > largest_attack {
                                     largest_attack = att.troops;
-                                    defender_target = Some(attacker_id);
+                                    defender_target = Some(att.owner_id);
                                 }
                             }
                         }

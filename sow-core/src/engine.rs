@@ -5,20 +5,6 @@ use crate::pathfinding::WaterPathfinderScratch;
 use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
 
-#[derive(Debug, Clone)]
-pub enum AiEvent {
-    IncomeTick(u16),
-    UnderAttack {
-        target: u16,
-        attacker: u16,
-        tile: u32,
-    },
-    BuildingCompleted {
-        owner: u16,
-        tile: u32,
-        kind: crate::game::BuildingKind,
-    },
-}
 
 #[derive(Clone)]
 pub struct PlacementScratch {
@@ -59,7 +45,6 @@ pub struct SowEngine {
     pub sea_lanes_dirty: bool,
     pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
 
-    pub ai_events: std::collections::VecDeque<AiEvent>,
     pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
     pub port_queues:
         std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
@@ -105,7 +90,6 @@ impl SowEngine {
             sea_lanes_dirty: true,
             sea_lane_calc: None,
 
-            ai_events: std::collections::VecDeque::new(),
             alliances_proposed: Vec::new(),
             port_queues: std::collections::HashMap::new(),
             projectiles: Vec::new(),
