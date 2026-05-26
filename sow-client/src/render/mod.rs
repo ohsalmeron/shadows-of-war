@@ -187,6 +187,8 @@ impl SowApp {
                     hover_building_kind = match kind {
                         sow_core::game::BuildingKind::City => 1.0,
                         sow_core::game::BuildingKind::Bunker => 2.0,
+                        sow_core::game::BuildingKind::Factory => 3.0,
+                        sow_core::game::BuildingKind::Port => 4.0,
                     };
 
                     if let Some(snap) = &self.sim.current_snapshot {
@@ -195,24 +197,13 @@ impl SowApp {
                             let bx = (b.tile_idx % self.sim.map_w) as i32;
                             let by = (b.tile_idx / self.sim.map_w) as i32;
 
-                            let radius = match kind {
-                                sow_core::game::BuildingKind::City => {
-                                    if b.kind == sow_core::game::BuildingKind::City {
-                                        Some(12.0f32)
-                                    } else {
-                                        None
-                                    }
+                            let mut radius = None;
+                            for rule in kind.spacing_rules() {
+                                if b.kind == rule.target_kind {
+                                    radius = Some(rule.min_distance as f32);
+                                    break;
                                 }
-                                sow_core::game::BuildingKind::Bunker => {
-                                    if b.kind == sow_core::game::BuildingKind::City {
-                                        Some(6.0f32)
-                                    } else if b.kind == sow_core::game::BuildingKind::Bunker {
-                                        Some(4.0f32)
-                                    } else {
-                                        None
-                                    }
-                                }
-                            };
+                            }
 
                             if let Some(r_val) = radius {
                                 let q1 = col - (row - (row & 1)) / 2;
@@ -237,7 +228,7 @@ impl SowApp {
                 let globals = MapGlobals {
                     camera_pos: [self.input.camera_x, self.input.camera_y],
                     zoom: self.input.camera_zoom,
-                    time: self.time.start_time.elapsed().as_secs_f32(),
+                    time: self.time.start_time.elapsed().as_secs_f32() % 1000.0,
                     screen_size: [self.input.screen_w, self.input.screen_h],
                     map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
                     border_thickness,

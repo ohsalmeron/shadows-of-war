@@ -175,8 +175,15 @@ impl SowEngine {
                             target_tile.y,
                             map_w,
                             execution.target_owner,
+                            &self.state.config,
                         );
-                        let dp_multiplier = 1.0 + (dp_bonus as f64 / 10.0); // Approximation of defense buff
+                        let scale = if self.state.config.bunker_priority_per_level > 0.0 {
+                            self.state.config.bunker_strength_per_level
+                                / self.state.config.bunker_priority_per_level
+                        } else {
+                            0.0
+                        };
+                        let dp_multiplier = 1.0 + (dp_bonus as f64 * scale);
 
                         let atk_loss = self.state.config.attack_cost_enemy
                             * terrain_multiplier
@@ -240,6 +247,7 @@ impl SowEngine {
                                 ny,
                                 map_w,
                                 execution.target_owner,
+                                &self.state.config,
                             );
                             let seq = execution.insert_seq_counter;
                             execution.insert_seq_counter =

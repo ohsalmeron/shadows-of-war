@@ -155,35 +155,33 @@ pub(crate) fn render(
             let exp_world_y = (exp.y + 0.5) * 0.8660254_f32;
             let screen_x = (input.camera_x + exp_world_x * input.camera_zoom) / sf;
             let screen_y = (input.camera_y + exp_world_y * input.camera_zoom) / sf;
-            let center = egui::pos2(screen_x, screen_y);
-
-            // Initial blinding white-hot flash (first 15% of duration)
-            if p < 0.15 {
-                let flash_alpha = ((1.0 - p / 0.15) * 220.0) as u8;
+            let center = egui::pos2(screen_x, screen_y); // 1. Blinding white-hot flash (first 12% of duration, soft and clean)
+            if p < 0.12 {
+                let flash_alpha = ((1.0 - p / 0.12) * 160.0) as u8;
                 painter.circle_filled(
                     center,
-                    exp.max_radius * 2.2 * zoom_scaled,
+                    exp.max_radius * 2.0 * zoom_scaled,
                     egui::Color32::from_rgba_unmultiplied(255, 255, 255, flash_alpha),
                 );
             }
 
-            // 1. Expanding Shockwave Circle (fast ease-out)
-            let shockwave_max = exp.max_radius * 1.6;
+            // 2. Expanding Shockwave Circle (fast ease-out, thin and clean)
+            let shockwave_max = exp.max_radius * 1.5;
             let shockwave_radius = (1.0 - (1.0 - p).powi(3)) * shockwave_max * zoom_scaled;
-            let shockwave_alpha = (1.0 - p).max(0.0);
+            let shockwave_alpha = 1.0 - p;
             let shockwave_color = egui::Color32::from_rgba_unmultiplied(
                 255,
                 255,
                 255,
-                (shockwave_alpha * 190.0) as u8,
+                (shockwave_alpha * 150.0) as u8,
             );
             painter.circle_stroke(
                 center,
                 shockwave_radius,
-                egui::Stroke::new(1.5f32, shockwave_color),
+                egui::Stroke::new(1.2_f32, shockwave_color),
             );
 
-            // 2. Rising Mushroom Cloud / Fireball caps (explosive non-linear expansion and rise)
+            // 3. Rising Mushroom Cloud / Fireball Cap (clean, semi-transparent concentric layers)
             let cloud_scale = match exp.kind {
                 crate::app::ExplosionKind::Hydrogen => 1.0,
                 crate::app::ExplosionKind::Atom => 0.45,
@@ -197,32 +195,33 @@ pub(crate) fn render(
             let cap_scale = 1.0 - (1.0 - p).powi(4);
             let cap_radius = cap_scale * exp.max_radius * zoom_scaled;
 
-            let smoke_alpha = ((1.0 - p) * 195.0) as u8;
-            let fire_alpha = ((1.0 - p) * 240.0) as u8;
-            let core_alpha = (((1.0 - p).powi(2)) * 255.0) as u8;
+            // Highly translucent alpha colors to make sure we can see through the explosions!
+            let smoke_alpha = ((1.0 - p) * 110.0) as u8;
+            let fire_alpha = ((1.0 - p) * 150.0) as u8;
+            let core_alpha = (((1.0 - p).powi(2)) * 180.0) as u8;
 
             // Cap layers:
-            // Outer dark fire-smoke
+            // Outer dark fire-smoke (translucent)
             painter.circle_filled(
                 cap_center,
                 cap_radius,
-                egui::Color32::from_rgba_unmultiplied(225, 50, 0, smoke_alpha),
+                egui::Color32::from_rgba_unmultiplied(225, 45, 0, smoke_alpha),
             );
-            // Middle glowing orange
+            // Middle glowing orange (translucent)
             painter.circle_filled(
                 cap_center,
                 cap_radius * 0.75,
-                egui::Color32::from_rgba_unmultiplied(255, 130, 0, fire_alpha),
+                egui::Color32::from_rgba_unmultiplied(255, 120, 0, fire_alpha),
             );
-            // Inner white-hot blast core
+            // Inner white-hot blast core (translucent)
             painter.circle_filled(
                 cap_center,
                 cap_radius * 0.45,
                 egui::Color32::from_rgba_unmultiplied(255, 255, 190, core_alpha),
             );
 
-            // Mushroom Stem
-            let stem_w = cap_radius * 0.22;
+            // 4. Mushroom Stem (simple, clean semi-transparent pill/rect)
+            let stem_w = cap_radius * 0.20;
             let stem_rect = egui::Rect::from_min_max(
                 egui::pos2(center.x - stem_w, cap_center.y),
                 egui::pos2(center.x + stem_w, center.y),
@@ -232,12 +231,11 @@ pub(crate) fn render(
                 2.0,
                 egui::Color32::from_rgba_unmultiplied(
                     255,
-                    90,
+                    80,
                     0,
-                    (smoke_alpha as f32 * 0.75) as u8,
+                    (smoke_alpha as f32 * 0.65) as u8,
                 ),
             );
-
             true
         });
     }

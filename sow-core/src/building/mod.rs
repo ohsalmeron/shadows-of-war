@@ -193,9 +193,10 @@ mod tests {
             ticks_until_complete: 0,
             modules: crate::building::CityModules::default(),
         };
-        let bonus = defense_post_priority_bonus(&[b], 10, 10, w);
-        assert_eq!(bonus, 2 * crate::config::DEFENSE_POST_PRIORITY_PER_LEVEL);
-        let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w);
+        let cfg = crate::game_config::GameConfig::default();
+        let bonus = defense_post_priority_bonus(&[b], 10, 10, w, &cfg);
+        assert_eq!(bonus, 2 * cfg.bunker_priority_per_level as i64);
+        let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w, &cfg);
         assert_eq!(bonus_far, 0);
     }
 }

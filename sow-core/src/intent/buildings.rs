@@ -103,11 +103,23 @@ impl SowEngine {
                     return;
                 }
             }
+            BuildingKind::Factory => {
+                if new_level > 5 {
+                    return;
+                }
+            }
+            BuildingKind::Port => {
+                if new_level > 5 {
+                    return;
+                }
+            }
         }
 
         let cost = match kind {
             BuildingKind::City => crate::building::city_upgrade_cost_gold(new_level),
             BuildingKind::Bunker => crate::building::bunker_upgrade_cost_gold(new_level),
+            BuildingKind::Factory => crate::building::factory_upgrade_cost_gold(new_level),
+            BuildingKind::Port => crate::building::port_upgrade_cost_gold(new_level),
         };
 
         let Some(player_mut) = self.state.player_mut(player_id) else {

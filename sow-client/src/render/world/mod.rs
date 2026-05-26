@@ -1,9 +1,8 @@
-pub mod layer2_fleets;
-pub mod layer3_buildings;
-pub mod layer4_5_effects;
-pub mod layer6_projectiles;
-pub mod layer7_preview;
-pub mod layer8_nameplates;
+pub mod buildings;
+pub mod effects;
+pub mod fleets;
+pub mod nameplates;
+pub mod projectiles;
 pub mod utils;
 
 use crate::app::SowApp;
@@ -41,6 +40,12 @@ impl SowApp {
         let painter = ctx.layer_painter(egui::LayerId::new(
             egui::Order::Background,
             egui::Id::new("world_overlays"),
+        ));
+
+        // Register world_nameplates layer third so it draws on top of buildings and overlays
+        let _ = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::new("world_nameplates"),
         ));
         let wall_secs = self.time.start_time.elapsed().as_secs_f64();
         let current_tick = self
@@ -174,7 +179,7 @@ impl SowApp {
                 sf,
             };
 
-            layer2_fleets::render(
+            fleets::render(
                 &mut self.ui,
                 &self.sim,
                 &self.input,
@@ -182,7 +187,7 @@ impl SowApp {
                 &self.gfx,
                 &ctx_struct,
             );
-            layer3_buildings::render(
+            buildings::render(
                 &mut self.ui,
                 &self.sim,
                 &self.input,
@@ -190,7 +195,7 @@ impl SowApp {
                 &self.gfx,
                 &ctx_struct,
             );
-            layer4_5_effects::render(
+            effects::render(
                 &mut self.ui,
                 &self.sim,
                 &self.input,
@@ -198,7 +203,7 @@ impl SowApp {
                 &self.gfx,
                 &ctx_struct,
             );
-            layer6_projectiles::render(
+            projectiles::render(
                 &mut self.ui,
                 &self.sim,
                 &self.input,
@@ -206,15 +211,7 @@ impl SowApp {
                 &self.gfx,
                 &ctx_struct,
             );
-            layer7_preview::render(
-                &mut self.ui,
-                &self.sim,
-                &self.input,
-                &self.time,
-                &self.gfx,
-                &ctx_struct,
-            );
-            layer8_nameplates::render(
+            nameplates::render(
                 &mut self.ui,
                 &self.sim,
                 &self.input,
@@ -341,7 +338,7 @@ impl SowApp {
                     } else {
                         1.0
                     };
-                    let font_size = (28.0 * bounce_scale).max(1.0);
+                    let font_size = (16.0 * bounce_scale).max(1.0);
 
                     // Draw outlined text
                     sow_ui::ui::theme::outlined_text(

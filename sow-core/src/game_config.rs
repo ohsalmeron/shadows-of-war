@@ -129,12 +129,24 @@ pub struct GameConfig {
     pub max_troops_scale: f64,
     /// Additional maximum troop capacity provided per level of an owned city.
     pub city_max_troops_per_level: f64,
-    /// Percentage multiplier bonus to overall income provided per factory level.
-    pub factory_income_bonus_per_level: f64,
-    /// Maximum allowable income multiplier from all factories combined.
-    pub factory_income_bonus_cap: f64,
     /// Flat gold income generated per level of an owned city.
     pub gold_income_per_city_level: f64,
+    /// The base defense range/radius of a Level 1 Bunker.
+    pub bunker_base_range: f64,
+    /// The increment in defense range/radius per level above 1.
+    pub bunker_range_scale: f64,
+    /// Extra attack frontier priority per combined DefensePost level near the defender tile.
+    pub bunker_priority_per_level: f64,
+    /// Defensive troop loss multiplier scaling per bunker level.
+    pub bunker_strength_per_level: f64,
+    /// Base gold income generated per second by a Level 1 Factory.
+    pub factory_base_income: f64,
+    /// Increment in gold income generated per second per Factory level above 1.
+    pub factory_income_scale: f64,
+    /// Base troop income generated per second by a Port.
+    pub port_base_troop_income: f64,
+    /// Base gold income generated per second by a Port.
+    pub port_base_gold_income: f64,
     #[serde(default)]
     pub player_civilization: crate::player::Civilization,
     #[serde(default)]
@@ -190,9 +202,15 @@ impl Default for GameConfig {
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
             city_max_troops_per_level: 1000.0,
-            factory_income_bonus_per_level: 4.0,
-            factory_income_bonus_cap: 100.0,
-            gold_income_per_city_level: 4.0,
+            gold_income_per_city_level: 8.0,
+            bunker_base_range: 10.0,
+            bunker_range_scale: 2.5,
+            bunker_priority_per_level: 120.0,
+            bunker_strength_per_level: 4.0,
+            factory_base_income: 12.0,
+            factory_income_scale: 8.0,
+            port_base_troop_income: 25.0,
+            port_base_gold_income: 50.0,
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,
         }

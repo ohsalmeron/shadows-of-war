@@ -118,8 +118,105 @@ let flash_val = f32((owner_packed >> 16u) & 0xFFu) / 255.0;
 
 This is for per-tile effects (conquest shockwave). The radial slot system is for area effects.
 
+## CPU canvas-Based Hybrid VFX (egui overlay)
+
+While GPU fragment shaders handle massive per-pixel background effects (e.g. War Fog, territory glows), the CPU egui canvas layer (`painter`) is perfect for rendering localized, high-fidelity dynamic visual overlays like plasma laser beams, particle bursts, and volumetric mushroom clouds.
+
+By combining the two layers, we achieve spectacular premium fidelity with **zero performance degradation**:
+1. **GPU Shader**: Renders wide radial area distortions, fog-of-war coverage, and background flashes.
+2. **CPU Canvas Overlay**: Stretches custom vector shapes, crackling lightning segment lines, and moving physics particle sprays on top.
+
+---
+
+## Custom Premium Visual Recipes
+
+Below are the key visual algorithms implemented in our codebase to create "AAA-feel" premium visual feedback.
+
+### 1. Volumetric Lobe Billowing (Fluffy Volumetric Clouds)
+Instead of drawing a single flat circle for a cloud or explosion fireball, construct it by drawing a cluster of **overlapping circular lobes** offset in a staggered ring around the center and animated over time.
+
+```rust
+let num_lobes = 7;
+for i in 0..num_lobes {
+    // Stagger lobe angles symmetrically
+    let angle = (i as f32 * (360.0 / num_lobes as f32) + elapsed * 60.0).to_radians();
+    // Ease-out expansion outward from core
+    let lobe_dist = cap_radius * 0.26 * (1.0 - (1.0 - p).powi(2));
+    let lobe_center = cap_center + egui::vec2(angle.cos(), angle.sin()) * lobe_dist;
+    let lobe_radius = cap_radius * (0.65 + (i % 3) as f32 * 0.08);
+
+    // Layer 1: Outer dark billowing smoke
+    painter.circle_filled(lobe_center, lobe_radius, smoke_color);
+}
+```
+* **Visual Result**: High-density volumetric shape with natural irregular billowing curves that feel alive.
+* **Tiers of Depth**: Draw three concentric layered passes (dark outer smoke, bright middle fireball, white-hot core) using this lobe cluster strategy.
+
+### 2. High-Frequency Crackling Electrical Conduit (Lightning/Plasma Arcs)
+To make laser/plasma beams feel high-energy and unstable, divide the linear segment into a series of steps and apply a dynamic perpendicular offset to each step using high-frequency sine/cosine wave overlays.
+
+```rust
+let steps = 8;
+let dir = end_point - start_point;
+let length = dir.length();
+let perp = egui::vec2(-dir.y, dir.x) / length;
+let mut prev_pt = start_point;
+
+for step in 1..=steps {
+    let t = step as f32 / steps as f32;
+    let mut pt = start_point + dir * t;
+    if step < steps {
+        // Double-frequency sine offset crackle
+        let offset_mag = (elapsed * 45.0 + step as f32 * 1.6).sin() * 5.0
+            + (elapsed * 95.0 - step as f32 * 2.3).cos() * 2.5;
+        pt += perp * offset_mag;
+    }
+    // Draw segmented laser line (Glowing outer stroke + thin white core)
+    painter.line_segment([prev_pt, pt], egui::Stroke::new(6.0, glow_color));
+    painter.line_segment([prev_pt, pt], egui::Stroke::new(1.2, egui::Color32::WHITE));
+    prev_pt = pt;
+}
+```
+
+### 3. Multi-Spiked Blinding Lens Flares
+Give initial tactical detonations instant impact by drawing a blinding white flash overlaid with high-contrast screen-aligned horizontal, vertical, and diagonal needle-thin lens spikes.
+
+```rust
+let flare_len = max_radius * 5.0 * zoom_scaled * (1.0 - p / 0.15);
+let flare_stroke = egui::Stroke::new(4.5 * (1.0 - p / 0.15), egui::Color32::WHITE);
+// Horizontal needle
+painter.line_segment([pos2(cx - flare_len, cy), pos2(cx + flare_len, cy)], flare_stroke);
+// Diagonal needle
+let diag = flare_len * 0.7;
+painter.line_segment([pos2(cx - diag, cy - diag), pos2(cx + diag, cy + diag)], flare_stroke);
+```
+
+### 4. Parabolic Physics Spark/Ember Sprays
+Create rich debris feedback by spraying glowing sparks from the impact site. Simulate gravity-driven parabolic arcs directly in coordinate space without maintaining a complex particle heap.
+
+```rust
+let num_sparks = 18;
+for i in 0..num_sparks {
+    let spark_angle = (i as f32 * (360.0 / num_sparks as f32)).to_radians();
+    let speed = 35.0 + (i % 4) as f32 * 18.0;
+    let t_sec = elapsed * 1.6;
+    
+    // Parabolic trajectory (x = horizontal drift, y = vertical speed + gravity pull)
+    let spark_x = center.x + spark_angle.cos() * speed * t_sec * zoom_scaled;
+    let spark_y = center.y + (spark_angle.sin() * speed * t_sec + 22.0 * t_sec * t_sec) * zoom_scaled;
+    
+    painter.circle_filled(pos2(spark_x, spark_y), 2.2, egui::Color32::WHITE);
+    painter.circle_filled(pos2(spark_x, spark_y), 4.0, glow_color);
+}
+```
+
+---
+
 ## Key Files
 
 - [map.wgsl](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-render/src/shaders/map.wgsl) — all shader effects
 - [map_renderer.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-render/src/map_renderer.rs) — MapGlobals struct, R32Uint packing, flash decay
 - [render/mod.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-client/src/render/mod.rs) — slot filling from game state
+- [layer4_5_effects.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-client/src/render/world/layer4_5_effects.rs) — Mushroom clouds, lens flares, spark physics
+- [layer3_buildings.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-client/src/render/world/layer3_buildings.rs) — Bunker crackling plasma laser weapons
+

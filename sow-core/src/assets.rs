@@ -7,9 +7,9 @@ macro_rules! all_assets {
         $macro! {
             $($extra,)*
             City => "city.svg",
-            Factory => "factory.webp",
+            Factory => "factory.svg",
             Port => "port.svg",
-            DefensePost => "bunker.webp",
+            DefensePost => "defense_post.svg",
             SamLauncher => "sam_launcher.svg",
             MissileSilo => "missile_silo.svg",
             TradeShip => "trade_ship.svg",
@@ -17,7 +17,6 @@ macro_rules! all_assets {
             Battleship => "battleship.svg",
             Star => "star.svg",
             Handshake => "handshake.svg",
-            Troops => "troops.webp",
             AtomBomb => "atombomb.png",
             HydrogenBomb => "hydrogenbomb.png",
             Mirv => "mirv.png",

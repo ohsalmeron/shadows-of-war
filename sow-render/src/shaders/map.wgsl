@@ -25,7 +25,7 @@ struct PlayerColors {
 
 var<uniform> globals: Globals;
 var<uniform> player_colors: PlayerColors;
-var terrain_texture: texture_2d<u32>;
+var terrain_texture: texture_2d<f32>;
 var owner_texture: texture_2d<u32>;
 
 struct VertexOutput {
@@ -54,7 +54,7 @@ fn get_cell_terrain(hex: vec2<i32>) -> u32 {
     if (hex.x < 0 || hex.y < 0 || hex.x >= i32(globals.map_size.x) || hex.y >= i32(globals.map_size.y)) {
         return 0u;
     }
-    return textureLoad(terrain_texture, vec2<i32>(hex.x, hex.y), 0).x;
+    return u32(textureLoad(terrain_texture, vec2<i32>(hex.x, hex.y), 0).x * 255.0 + 0.5);
 }
 
 fn world_to_hex(world_pos: vec2<f32>) -> vec2<i32> {
@@ -126,18 +126,6 @@ fn owner_albedo(owner_id: u32) -> vec3<f32> {
     return vec3<f32>(0.5, 0.5, 0.5); // Fallback if out of bounds
 }
 
-fn get_elevation(cx: i32, cy: i32) -> f32 {
-    if (cx < 0 || cy < 0 || cx >= i32(globals.map_size.x) || cy >= i32(globals.map_size.y)) {
-        return 0.0;
-    }
-    let terrain_byte = textureLoad(terrain_texture, vec2<i32>(cx, cy), 0).x;
-    let is_land = (terrain_byte & 0x80u) != 0u;
-    if (is_land) {
-        return f32(terrain_byte & 0x1Fu);
-    }
-    return 0.0;
-}
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let screen_pixel = in.uv * globals.screen_size;
@@ -153,7 +141,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     let pixel_coords = vec2<i32>(cell_x, cell_y);
-    let terrain_byte = textureLoad(terrain_texture, pixel_coords, 0).x;
+    let terrain_rgba = textureLoad(terrain_texture, pixel_coords, 0);
+    let terrain_byte = u32(terrain_rgba.x * 255.0 + 0.5);
     let owner_packed = textureLoad(owner_texture, pixel_coords, 0).x;
     let owner_id = owner_packed & 0xFFFFu;
     let flash_byte = (owner_packed >> 16u) & 0xFFu;
@@ -168,10 +157,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let is_shoreline = (terrain_byte & 0x40u) != 0u;
         let mag_center = f32(terrain_byte & 0x1Fu);
         
-        let px = floor(world_x * 8.0);
-        let py = floor(world_y * 8.0);
-        let land_noise = fract(sin(px * 12.9898 + py * 78.233) * 43758.5453);
-        let noise_offset = (land_noise - 0.5) * 0.03; // Gentle ±1.5% color variation
+        let land_noise = terrain_rgba.w;
+        let organic_wave = sin(world_x * 0.20) * cos(world_y * 0.20) * 0.04;
+        let noise_offset = (land_noise - 0.5) * 0.03 + organic_wave; // Gentle organic landscape variation
 
         if is_shoreline {
             let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);
@@ -195,28 +183,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // Mountains
         }
 
-        // Procedural 6-Directional Normal Mapping from Adjacent elevation gradient
-        let is_odd = (cell_y % 2) != 0;
-        let h_right = get_elevation(cell_x + 1, cell_y);
-        let h_left  = get_elevation(cell_x - 1, cell_y);
-        var h_up_l = 0.0;
-        var h_up_r = 0.0;
-        var h_dn_l = 0.0;
-        var h_dn_r = 0.0;
-        if is_odd {
-            h_up_l = get_elevation(cell_x, cell_y - 1);
-            h_up_r = get_elevation(cell_x + 1, cell_y - 1);
-            h_dn_l = get_elevation(cell_x, cell_y + 1);
-            h_dn_r = get_elevation(cell_x + 1, cell_y + 1);
-        } else {
-            h_up_l = get_elevation(cell_x - 1, cell_y - 1);
-            h_up_r = get_elevation(cell_x, cell_y - 1);
-            h_dn_l = get_elevation(cell_x - 1, cell_y + 1);
-            h_dn_r = get_elevation(cell_x, cell_y + 1);
-        }
-        
-        let dx = ((h_right + 0.5 * h_up_r + 0.5 * h_dn_r) - (h_left + 0.5 * h_up_l + 0.5 * h_dn_l)) * 0.10;
-        let dy = ((0.866 * h_dn_l + 0.866 * h_dn_r) - (0.866 * h_up_l + 0.866 * h_up_r)) * 0.10;
+        // Unpack procedural 6-directional elevation normals directly from G/B channels in O(1) time
+        let dx = (terrain_rgba.y * 16.0) - 8.0;
+        let dy = (terrain_rgba.z * 16.0) - 8.0;
         normal = normalize(vec3<f32>(-dx, -dy, 1.0));
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
@@ -224,8 +193,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let px = world_x * 8.0;
         let py = world_y * 8.0;
         
-        // Procedural stable seed per tile for unique regional wave properties
-        let tile_seed = fract(sin(f32(cell_x) * 12.9898 + f32(cell_y) * 78.233) * 43758.5453);
+        // Procedural stable seed per tile for unique regional wave properties (retrieved in O(1) from CPU)
+        let tile_seed = terrain_rgba.w;
         let wave_speed = 0.8 + tile_seed * 1.4;
         let wave_phase = tile_seed * 6.28318;
         let freq_x = 0.12 + tile_seed * 0.06;
@@ -259,6 +228,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             final_water_color = color_mid;
         }
 
+        // ── Water Caustics (diamond light refractions) ──
+        let c1 = sin(px * 0.3 + globals.time * 1.2) * cos(py * 0.4 - globals.time * 0.9);
+        let c2 = sin(px * 0.25 - py * 0.35 + globals.time * 0.7);
+        let caustic = max(0.0, c1 + c2 - 0.6) * 0.15;
+        final_water_color = final_water_color + vec3<f32>(caustic * 0.6, caustic * 0.8, caustic);
+
+        // ── River Current Flow Lines (directional streaks on non-ocean water) ──
+        if !is_ocean_water {
+            let flow_dir = 0.7 * world_x + 0.3 * world_y;
+            let flow = sin(flow_dir * 12.0 - globals.time * 3.5) * 0.5 + 0.5;
+            let streak = smoothstep(0.7, 0.95, flow) * 0.12;
+            final_water_color = final_water_color + vec3<f32>(streak * 0.5, streak * 0.8, streak);
+        }
+
         terrain_color = vec4<f32>(final_water_color, 1.0);
 
         // Water Wave Normal Shading
@@ -272,10 +255,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     terrain_color = vec4<f32>(pow(terrain_color.rgb, vec3<f32>(2.2)), terrain_color.a);
 
     var base_color = terrain_color.rgb;
+
+    // ── Peak/Valley Elevation Shading (Premium 3D Relief) ──
+    if is_land {
+        let mag_center = f32(terrain_byte & 0x1Fu);
+        let height_factor = mag_center / 32.0;
+        let elevation_shading = 0.82 + 0.28 * height_factor; // Brighten peaks, shadow valleys
+        base_color = base_color * elevation_shading;
+    }
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
+        let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
+        base_color = albedo * (0.3 + 1.0 * lum);
 
-        base_color = mix(terrain_color.rgb, albedo, 0.75);
+        // ── Territory Heartbeat Pulse (living empire breathe) ──
+        let heartbeat = 0.97 + 0.03 * sin(globals.time * 1.8 + f32(owner_id) * 2.3);
+        base_color = base_color * heartbeat;
 
         // Conquest shockwave flash on interior
         if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
@@ -283,18 +278,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), albedo, 1.0 - flash_val);
             base_color = mix(base_color, flash_color, shockwave * 0.8);
         }
+    } else if is_land {
+        // ── Wilderness Atmosphere Haze (unclaimed land fog) ──
+        let haze_color = vec3<f32>(0.55, 0.58, 0.68);
+        let haze_amount = 0.08 + 0.04 * sin(world_x * 0.05 + world_y * 0.07);
+        base_color = mix(base_color, haze_color, haze_amount);
     }
     let hex_center = hex_to_world(cell_hex);
     let local_pos = vec2<f32>(world_x, world_y) - hex_center;
 
-    var is_shore = false;
     var is_border = false;
     var is_green_border = false;
+    var min_border_dist = 99.0;
 
     var thickness = globals.border_thickness;
     let border_darkness = globals.border_darkness;
-    let s_thickness = globals.shore_thickness;
-    let s_darkness = globals.shore_darkness;
 
     // Border breathe: subtle thickness pulse per owner
     if globals.effect_breathe > 0.0 && owner_id > 0u {
@@ -307,65 +305,76 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     if is_land {
-        let is_tribe = owner_id >= 200u;
+        let has_border = ((owner_packed >> 24u) & 1u) != 0u;
+        let has_water_neighbor = ((owner_packed >> 25u) & 1u) != 0u;
 
-        for (var i = 0; i < 6; i = i + 1) {
-            let neighbor_hex = get_hex_neighbor(cell_hex, i);
-            let neighbor_terrain = get_cell_terrain(neighbor_hex);
-            let neighbor_owner = get_cell_owner(neighbor_hex);
-            let neighbor_is_land = (neighbor_terrain & 0x80u) != 0u;
+        if has_border || has_water_neighbor {
+            let is_tribe = owner_id >= 200u;
+            const neighbor_dirs = array<vec2<f32>, 6>(
+                vec2<f32>(1.0, 0.0),
+                vec2<f32>(-1.0, 0.0),
+                vec2<f32>(-0.5, -0.86602540378),
+                vec2<f32>(0.5, -0.86602540378),
+                vec2<f32>(-0.5, 0.86602540378),
+                vec2<f32>(0.5, 0.86602540378)
+            );
 
-            var dir = vec2<f32>(0.0, 0.0);
-            if (i == 0) { dir = vec2<f32>(1.0, 0.0); }
-            else if (i == 1) { dir = vec2<f32>(-1.0, 0.0); }
-            else if (i == 2) { dir = vec2<f32>(-0.5, -0.8660254); }
-            else if (i == 3) { dir = vec2<f32>(0.5, -0.8660254); }
-            else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
-            else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
+            for (var i = 0; i < 6; i = i + 1) {
+                let neighbor_hex = get_hex_neighbor(cell_hex, i);
+                let neighbor_terrain = get_cell_terrain(neighbor_hex);
+                let neighbor_owner = get_cell_owner(neighbor_hex);
+                let neighbor_is_land = (neighbor_terrain & 0x80u) != 0u;
 
-            let dist_to_edge = 0.5 - dot(local_pos, dir);
+                let dir = neighbor_dirs[i];
+                let dist_to_edge = 0.5 - dot(local_pos, dir);
 
-            if !neighbor_is_land {
-                if dist_to_edge < s_thickness {
-                    is_shore = true;
-                }
-                if owner_id > 0u {
+                if !neighbor_is_land {
                     if dist_to_edge < thickness {
                         is_border = true;
+                        min_border_dist = min(min_border_dist, dist_to_edge);
                     }
-                }
-            } else {
-                if owner_id > 0u && neighbor_owner != owner_id {
-                    if dist_to_edge < thickness {
-                        is_border = true;
-                        let green_exists = is_tribe && (neighbor_owner >= 200u);
-                        if green_exists {
-                            is_green_border = true;
+                } else {
+                    if owner_id > 0u && neighbor_owner != owner_id {
+                        if dist_to_edge < thickness {
+                            is_border = true;
+                            min_border_dist = min(min_border_dist, dist_to_edge);
+                            let green_exists = is_tribe && (neighbor_owner >= 200u);
+                            if green_exists {
+                                is_green_border = true;
+                            }
                         }
                     }
                 }
             }
         }
 
-        if is_shore {
-            if owner_id > 0u {
-                let border_albedo = owner_albedo(owner_id) * border_darkness;
-                base_color = mix(border_albedo, vec3<f32>(0.015, 0.012, 0.010), 0.50);
-            } else {
-                base_color = vec3<f32>(0.025, 0.020, 0.015);
-            }
-        } else if is_border {
+        if is_border {
+            let border_t = 1.0 - smoothstep(thickness - 0.04, thickness, min_border_dist);
             if is_green_border {
-                base_color = vec3<f32>(0.2, 0.8, 0.2) * border_darkness;
+                let border_col = vec3<f32>(0.2, 0.8, 0.2) * border_darkness;
+                base_color = mix(base_color, border_col, border_t);
             } else {
-                var border_albedo = owner_albedo(owner_id) * border_darkness;
+                var border_albedo = vec3<f32>(0.025, 0.020, 0.015) * border_darkness; // Dark neutral water border line
+                if owner_id > 0u {
+                    border_albedo = owner_albedo(owner_id) * border_darkness;
 
-                // Shockwave flash on border
-                if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
-                    border_albedo = mix(border_albedo, vec3<f32>(1.0, 1.0, 1.0), flash_val * globals.effect_shockwave);
+                    // ── Dynamic Conquest Border Shockwave Pulse ──
+                    if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+                        let pulse = sin(globals.time * 20.0 - min_border_dist * 50.0) * 0.5 + 0.5;
+                        border_albedo = mix(border_albedo, vec3<f32>(1.5, 1.5, 1.5), flash_val * globals.effect_shockwave * pulse);
+                    }
+
+                    // ── Contested Border Energy Crackling (PvP shimmer) ──
+                    let neighbor_hex_0 = get_hex_neighbor(cell_hex, 0);
+                    let contested_owner = get_cell_owner(neighbor_hex_0);
+                    if contested_owner > 0u && contested_owner != owner_id {
+                        let enemy_albedo = owner_albedo(contested_owner);
+                        let energy_t = sin(globals.time * 8.0 + min_border_dist * 40.0) * 0.5 + 0.5;
+                        border_albedo = mix(border_albedo, enemy_albedo * border_darkness, energy_t * 0.4);
+                    }
                 }
 
-                base_color = border_albedo;
+                base_color = mix(base_color, border_albedo, border_t);
             }
         }
     }
@@ -378,13 +387,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let radius = slot.z;
             if radius <= 0.0 { continue; }
 
-            let packed = u32(slot.w);
+            let packed = u32(slot.w + 0.5);
             let target_id = packed / 1024u;
             let attacker_id = packed % 1024u;
             if target_id != owner_id { continue; }
 
             let front_world = vec2<f32>(
-                slot.x + 0.5 + f32(i32(slot.y) & 1) * 0.5,
+                slot.x + 0.5 + f32(i32(slot.y) % 2) * 0.5,
                 (slot.y + 0.5) * 0.8660254
             );
             let dist = distance(world_pos_hex, front_world);
@@ -460,29 +469,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_color = base_color + vec3<f32>(0.15 * spec);
     }
 
-    // ── Embossed Cell Vignette (Real board game physical tile borders) ──
-    var min_dist_to_edge = 0.5;
-    for (var i = 0; i < 6; i = i + 1) {
-        var dir = vec2<f32>(0.0, 0.0);
-        if (i == 0) { dir = vec2<f32>(1.0, 0.0); }
-        else if (i == 1) { dir = vec2<f32>(-1.0, 0.0); }
-        else if (i == 2) { dir = vec2<f32>(-0.5, -0.8660254); }
-        else if (i == 3) { dir = vec2<f32>(0.5, -0.8660254); }
-        else if (i == 4) { dir = vec2<f32>(-0.5, 0.8660254); }
-        else if (i == 5) { dir = vec2<f32>(0.5, 0.8660254); }
+    // ── Golden Hour Sun Sweep (slow warm-cool color temperature cycle) ──
+    let sun_phase = sin(globals.time * 0.08) * 0.5 + 0.5;
+    let warm_tint = vec3<f32>(1.02 + 0.03 * sun_phase, 1.0 + 0.01 * sun_phase, 1.0 - 0.02 * sun_phase);
+    base_color = base_color * warm_tint;
 
-        let dist_to_edge = 0.5 - dot(local_pos, dir);
-        min_dist_to_edge = min(min_dist_to_edge, dist_to_edge);
-    }
+    // ── Embossed Cell Vignette (Closed-form Hex SDF - 100% Zero-Loop) ──
+    let min_dist_to_edge = 0.5 - max(abs(local_pos.x), 0.5 * abs(local_pos.x) + 0.86602540378 * abs(local_pos.y));
     let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
     base_color = base_color * (0.86 + 0.14 * cell_bevel); // Emphasizes 3D depth of individual tiles
 
-    // ── Tactile Canvas/Matte Paper Texture Overlay ──
-    let px_screen = in.uv.x * 2400.0;
-    let py_screen = in.uv.y * 2400.0;
-    let paper_noise = fract(sin(px_screen * 12.9898 + py_screen * 78.233) * 43758.5453);
-    let paper_grain = 0.95 + 0.05 * paper_noise;
-    base_color = base_color * paper_grain;
+    // ── Tactile Canvas/Matte Paper Texture Overlay (Zoom-dependent LOD) ──
+    if globals.zoom >= 2.0 {
+        let px_screen = in.uv.x * 2400.0;
+        let py_screen = in.uv.y * 2400.0;
+        let paper_noise = fract(sin(px_screen * 12.9898 + py_screen * 78.233) * 43758.5453);
+        let grain_scale = clamp((globals.zoom - 2.0) / 3.0, 0.0, 1.0);
+        let paper_grain = 1.0 + (paper_noise - 0.5) * 0.08 * grain_scale;
+        base_color = base_color * paper_grain;
+    }
 
     // ── Screen Vignetting (Soft shading at screen edges) ──
     let d_center = length(in.uv - 0.5);
@@ -510,7 +515,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let cell_w = hex_to_world(cell_hex);
         let dist_w = distance(hover_w, cell_w);
 
-        if (dist_w <= 12.0) {
+        if (dist_w <= 6.0) {
             let is_mine = owner_id == u32(globals.my_player_id);
             if (is_land && is_mine) {
                 var overlay_color = vec3<f32>(0.0, 0.85, 1.0);
@@ -520,7 +525,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     fill_intensity = 0.38;
                 }
 
-                let scan_fade = 1.0 - smoothstep(9.5, 12.0, dist_w);
+                // ── Cybernetic Placement Scan Lines ──
+                let scanline = sin(screen_pixel.y * 0.9 + globals.time * 15.0) * 0.22 + 0.78;
+                overlay_color = overlay_color * scanline;
+
+                let scan_fade = 1.0 - smoothstep(4.5, 6.0, dist_w);
                 let wave = sin(globals.time * 1.5 - dist_w * 0.35) * 0.5 + 0.5;
                 let border_pulse = 0.75 + 0.25 * wave;
                 let fill_pulse = 0.85 + 0.15 * wave;
@@ -532,8 +541,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 let border_alpha = line_intensity * border_pulse * scan_fade * 0.85;
                 base_color = mix(base_color, overlay_color * 1.5, border_alpha);
             } else {
-                let overlay_color = vec3<f32>(1.0, 0.12, 0.12);
-                let scan_fade = 1.0 - smoothstep(9.5, 12.0, dist_w);
+                var overlay_color = vec3<f32>(1.0, 0.12, 0.12);
+                let scan_fade = 1.0 - smoothstep(4.5, 6.0, dist_w);
+
+                // ── Cybernetic Placement Scan Lines ──
+                let scanline = sin(screen_pixel.y * 0.9 + globals.time * 15.0) * 0.22 + 0.78;
+                overlay_color = overlay_color * scanline;
 
                 let line_intensity = smoothstep(0.080, 0.0, min_dist_to_edge);
                 let line_alpha = line_intensity * scan_fade * 0.25;
@@ -543,7 +556,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 base_color = mix(base_color, overlay_color, fill_alpha);
             }
         } else if (cell_in_nobuild_zone) {
-            let overlay_color = vec3<f32>(1.0, 0.12, 0.12);
+            var overlay_color = vec3<f32>(1.0, 0.12, 0.12);
+
+            // ── Cybernetic Placement Scan Lines ──
+            let scanline = sin(screen_pixel.y * 0.9 + globals.time * 15.0) * 0.22 + 0.78;
+            overlay_color = overlay_color * scanline;
 
             let fill_pulse = 0.88 + 0.12 * sin(globals.time * 1.5);
             let fill_alpha = 0.15 * fill_pulse;

@@ -75,7 +75,7 @@ pub fn draw_leader_picker_modal(
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(ctx, |ui| {
             let screen_rect = ctx.content_rect();
-            let is_mobile = screen_rect.width() < 720.0;
+            let is_mobile = screen_rect.width() < 900.0 || screen_rect.height() < 600.0;
 
             let content_rect = if is_mobile {
                 let mut rect = screen_rect;

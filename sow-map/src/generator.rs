@@ -89,7 +89,12 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
     }
     process_water(&mut grid, args.remove_small);
 
-    let mini_grid = create_mini_map(&grid);
+    let mut mini_grid = create_mini_map(&grid);
+    if args.remove_small {
+        remove_small_islands(&mut mini_grid);
+    }
+    process_water(&mut mini_grid, false);
+
     let thumbnail_rgba = create_map_thumbnail(&mini_grid, 0.5);
 
     let mut thumbnail_data = Vec::new();
@@ -118,16 +123,29 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
     })
 }
 
+fn get_scaled_min_island_size(width: usize, height: usize) -> usize {
+    let area = width * height;
+    let scaled = (30 * area) / 2_600_000;
+    scaled.max(1)
+}
+
+fn get_scaled_min_lake_size(width: usize, height: usize) -> usize {
+    let area = width * height;
+    let scaled = (200 * area) / 2_600_000;
+    scaled.max(1)
+}
+
 fn remove_small_islands(grid: &mut [Vec<TerrainTile>]) {
     let width = grid.len();
     let height = grid[0].len();
+    let min_size = get_scaled_min_island_size(width, height);
     let mut visited = vec![vec![false; height]; width];
 
     for x in 0..width {
         for y in 0..height {
             if grid[x][y].tile_type == TerrainType::Land && !visited[x][y] {
                 let coords = get_area(x, y, grid, &mut visited, TerrainType::Land);
-                if coords.len() < 30 {
+                if coords.len() < min_size {
                     for coord in coords {
                         grid[coord.x as usize][coord.y as usize].tile_type = TerrainType::Water;
                         grid[coord.x as usize][coord.y as usize].magnitude = 0.0;
@@ -142,6 +160,15 @@ fn remove_small_islands(grid: &mut [Vec<TerrainTile>]) {
 fn process_water(grid: &mut [Vec<TerrainTile>], remove_small: bool) {
     let width = grid.len();
     let height = grid[0].len();
+
+    // Clear ocean flags first!
+    for x in 0..width {
+        for y in 0..height {
+            grid[x][y].ocean = false;
+        }
+    }
+
+    let min_lake_size = get_scaled_min_lake_size(width, height);
     let mut visited = vec![vec![false; height]; width];
     let mut water_bodies = Vec::new();
 
@@ -166,7 +193,7 @@ fn process_water(grid: &mut [Vec<TerrainTile>], remove_small: bool) {
         if remove_small {
             let mut small_lakes = 0;
             for body in water_bodies.iter().skip(1) {
-                if body.len() < 200 {
+                if body.len() < min_lake_size {
                     small_lakes += 1;
                     for coord in body {
                         grid[coord.x as usize][coord.y as usize].tile_type = TerrainType::Land;
@@ -174,7 +201,11 @@ fn process_water(grid: &mut [Vec<TerrainTile>], remove_small: bool) {
                     }
                 }
             }
-            log::info!("Removed {} small lakes (< 200 tiles).", small_lakes);
+            log::info!(
+                "Removed {} small lakes (< {} tiles).",
+                small_lakes,
+                min_lake_size
+            );
         }
 
         let shoreline_waters = process_shore(grid);
@@ -228,6 +259,12 @@ fn process_shore(grid: &mut [Vec<TerrainTile>]) -> Vec<Coord> {
     let height = grid[0].len();
     let mut shoreline_waters = Vec::new();
     let directions = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+
+    for x in 0..width {
+        for y in 0..height {
+            grid[x][y].shoreline = false;
+        }
+    }
 
     for x in 0..width {
         for y in 0..height {

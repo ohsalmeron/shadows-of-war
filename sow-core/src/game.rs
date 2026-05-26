@@ -16,15 +16,24 @@ pub enum GamePhase {
 pub enum BuildingKind {
     City,
     Bunker,
+    Factory,
+    Port,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 2] = [BuildingKind::City, BuildingKind::Bunker];
+    pub const ALL: [BuildingKind; 4] = [
+        BuildingKind::City,
+        BuildingKind::Bunker,
+        BuildingKind::Factory,
+        BuildingKind::Port,
+    ];
     #[inline]
     pub fn as_str(self) -> &'static str {
         match self {
             BuildingKind::City => "City",
-            BuildingKind::Bunker => "Bunker",
+            BuildingKind::Bunker => "Defense Tower",
+            BuildingKind::Factory => "Factory",
+            BuildingKind::Port => "Port",
         }
     }
     #[inline]
@@ -32,6 +41,8 @@ impl BuildingKind {
         match self {
             BuildingKind::City => crate::assets::Asset::City,
             BuildingKind::Bunker => crate::assets::Asset::DefensePost,
+            BuildingKind::Factory => crate::assets::Asset::Factory,
+            BuildingKind::Port => crate::assets::Asset::Port,
         }
     }
     pub fn upgradable(self) -> bool {
@@ -41,6 +52,8 @@ impl BuildingKind {
         match self {
             BuildingKind::City => 20,
             BuildingKind::Bunker => 50,
+            BuildingKind::Factory => 35,
+            BuildingKind::Port => 30,
         }
     }
 }

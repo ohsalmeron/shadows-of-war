@@ -17,6 +17,8 @@ fn bot_structure_target_count(
     match kind {
         BuildingKind::Bunker => ((city_equivalent as f64) * 0.25).floor() as u32,
         BuildingKind::City => city_equivalent.saturating_add(1),
+        BuildingKind::Factory => ((city_equivalent as f64) * 0.50).floor() as u32,
+        BuildingKind::Port => ((city_equivalent as f64) * 0.20).floor() as u32,
     }
 }
 
@@ -29,6 +31,8 @@ fn cheapest_gold_cost(kind: BuildingKind) -> f64 {
     match kind {
         BuildingKind::City => 125_000.0 / s,
         BuildingKind::Bunker => 50_000.0 / s,
+        BuildingKind::Factory => 75_000.0 / s,
+        BuildingKind::Port => 60_000.0 / s,
     }
 }
 
@@ -171,9 +175,11 @@ impl SowEngine {
             let profile = get_bot_ai_profile(bot_id, is_nation);
 
             // Fast defensive reaction if under attack by a non-ally
-            let is_under_attack = p.iq >= 100 && self.attacks.iter().any(|att| {
-                att.target_owner == bot_id && !p.alliances.contains(&att.owner_id)
-            });
+            let is_under_attack = p.iq >= 100
+                && self
+                    .attacks
+                    .iter()
+                    .any(|att| att.target_owner == bot_id && !p.alliances.contains(&att.owner_id));
 
             let interval_base = if is_under_attack {
                 if p.iq >= 130 {
@@ -590,7 +596,12 @@ impl SowEngine {
                             .unwrap_or_default();
                         let city_equivalent =
                             agg.ready_city_count.max((player_tile_count / 2000).max(1));
-                        let build_order = [BuildingKind::Bunker, BuildingKind::City];
+                        let build_order = [
+                            BuildingKind::Bunker,
+                            BuildingKind::City,
+                            BuildingKind::Factory,
+                            BuildingKind::Port,
+                        ];
                         for kind in build_order {
                             if !structure_kind_enabled(kind) {
                                 continue;
@@ -613,7 +624,10 @@ impl SowEngine {
                                     target_count += 3;
                                 }
                             }
-                            let total_owned = agg.count_city + agg.count_bunker;
+                            let total_owned = agg.count_city
+                                + agg.count_bunker
+                                + agg.count_factory
+                                + agg.count_port;
                             let density = total_owned as f32 / player_tile_count.max(1) as f32;
                             let is_density_high = bot_iq >= 110 && density > 1.0 / 1500.0;
 
@@ -1114,6 +1128,8 @@ impl SowEngine {
                     val
                 }
                 BuildingKind::Bunker => 5000.0 * (b.level as f64),
+                BuildingKind::Factory => 15000.0 * (b.level as f64),
+                BuildingKind::Port => 10000.0 * (b.level as f64),
             };
 
             let bx = b.tile_idx % self.state.map.width;

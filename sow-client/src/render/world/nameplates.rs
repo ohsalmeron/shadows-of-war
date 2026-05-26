@@ -59,7 +59,11 @@ pub(crate) fn render(
     gfx: &crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
-    let painter = ctx.painter;
+    let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
+        egui::Order::Background,
+        egui::Id::new("world_nameplates"),
+    ));
+    let painter = &painter;
     let sf = ctx.sf;
     let zoom_scaled = ctx.zoom_scaled;
     let player_colors = ctx.player_colors;
@@ -278,7 +282,7 @@ pub(crate) fn render(
                             );
 
                             let request_painter = painter.ctx().layer_painter(egui::LayerId::new(
-                                egui::Order::Middle,
+                                egui::Order::Background,
                                 egui::Id::new(("floating_request_icon", player.id)),
                             ));
                             if is_me {
@@ -367,7 +371,7 @@ pub(crate) fn render(
 
                             let handshake_painter =
                                 painter.ctx().layer_painter(egui::LayerId::new(
-                                    egui::Order::Middle,
+                                    egui::Order::Background,
                                     egui::Id::new(("floating_handshake_icon", player.id)),
                                 ));
 
@@ -447,7 +451,7 @@ pub(crate) fn render(
                             if final_emoji_size > 1.0 {
                                 let emoji_painter =
                                     painter.ctx().layer_painter(egui::LayerId::new(
-                                        egui::Order::Middle,
+                                        egui::Order::Background,
                                         egui::Id::new(("floating_express_emoji", player.id)),
                                     ));
                                 if is_me {
@@ -520,7 +524,7 @@ pub(crate) fn render(
                     egui::Area::new(area_id)
                             .fixed_pos(center)
                             .pivot(egui::Align2::CENTER_CENTER)
-                            .order(egui::Order::Middle)
+                            .order(egui::Order::Background)
                             .interactable(false)
                             .show(painter.ctx(), |area_ui| {
                                 let fill_color = egui::Color32::TRANSPARENT;

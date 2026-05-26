@@ -375,7 +375,7 @@ pub fn draw(
 
         // 2. Draw responsive centered window on top
         let screen_rect = root_ui.ctx().content_rect();
-        let is_mobile = screen_rect.width() < 600.0;
+        let is_mobile = compact;
         let modal_w = if is_mobile {
             screen_rect.width() - 32.0
         } else {

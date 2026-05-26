@@ -1,5 +1,4 @@
 use super::placement::{idx_xy, manhattan};
-use crate::config;
 use crate::game::BuildingKind;
 use serde::{Deserialize, Serialize};
 
@@ -118,11 +117,12 @@ impl Building {
     }
 
     #[inline]
-    pub fn defense_range(&self) -> i32 {
+    pub fn defense_range_cfg(&self, cfg: &crate::game_config::GameConfig) -> i32 {
         if self.kind == BuildingKind::Bunker {
             let active_lvl = self.active_level();
             if active_lvl > 0 {
-                10 + (active_lvl as i32 - 1)
+                (cfg.bunker_base_range + (active_lvl as f64 - 1.0) * cfg.bunker_range_scale).round()
+                    as i32
             } else {
                 0
             }
@@ -137,6 +137,7 @@ impl Building {
 pub struct BuildingAggregate {
     pub city_levels: u32,
     pub bunker_levels: u32,
+    pub factory_levels: u32,
     pub port_levels: u32,
     pub foundry_levels: u32,
     pub armory_levels: u32,
@@ -146,9 +147,13 @@ pub struct BuildingAggregate {
     pub has_completed_port: bool,
     /// Ready cities only (for bot `city_equivalent` base).
     pub ready_city_count: u32,
+    /// Ready factories only.
+    pub ready_factory_count: u32,
     /// Total instances per kind, **including** under construction (for bot build quotas).
     pub count_city: u32,
     pub count_bunker: u32,
+    pub count_factory: u32,
+    pub count_port: u32,
 }
 
 impl BuildingAggregate {
@@ -157,6 +162,8 @@ impl BuildingAggregate {
         match kind {
             BuildingKind::City => self.count_city,
             BuildingKind::Bunker => self.count_bunker,
+            BuildingKind::Factory => self.count_factory,
+            BuildingKind::Port => self.count_port,
         }
     }
 }
@@ -176,6 +183,8 @@ pub fn aggregate_buildings_per_player(
         match b.kind {
             BuildingKind::City => a.count_city += 1,
             BuildingKind::Bunker => a.count_bunker += 1,
+            BuildingKind::Factory => a.count_factory += 1,
+            BuildingKind::Port => a.count_port += 1,
         }
         let active_lvl = b.active_level();
         if active_lvl == 0 {
@@ -199,6 +208,14 @@ pub fn aggregate_buildings_per_player(
             BuildingKind::Bunker => {
                 a.bunker_levels += active_lvl as u32;
             }
+            BuildingKind::Factory => {
+                a.factory_levels += active_lvl as u32;
+                a.ready_factory_count += 1;
+            }
+            BuildingKind::Port => {
+                a.port_levels += active_lvl as u32;
+                a.has_completed_port = true;
+            }
         }
     }
     out
@@ -211,13 +228,14 @@ pub fn defense_post_priority_bonus(
     tile_x: u32,
     tile_y: u32,
     map_width: u32,
+    cfg: &crate::game_config::GameConfig,
 ) -> i64 {
     let mut bonus: i64 = 0;
     for b in buildings {
         let (bx, by) = idx_xy(b.tile_idx, map_width);
         let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
-        if d <= b.defense_range() {
-            bonus += b.active_level() as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
+        if d <= b.defense_range_cfg(cfg) {
+            bonus += b.active_level() as i64 * cfg.bunker_priority_per_level as i64;
         }
     }
     bonus
@@ -280,6 +298,7 @@ impl DefenseGrid {
         tile_y: u32,
         map_width: u32,
         target_owner: u16,
+        cfg: &crate::game_config::GameConfig,
     ) -> i64 {
         let mut bonus: i64 = 0;
         let max_range = 15;
@@ -302,8 +321,8 @@ impl DefenseGrid {
                     let bx = b.tile_idx % map_width;
                     let by = b.tile_idx / map_width;
                     let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
-                    if d <= b.defense_range() {
-                        bonus += b.active_level() as i64 * config::DEFENSE_POST_PRIORITY_PER_LEVEL;
+                    if d <= b.defense_range_cfg(cfg) {
+                        bonus += b.active_level() as i64 * cfg.bunker_priority_per_level as i64;
                     }
                 }
             }
@@ -313,7 +332,7 @@ impl DefenseGrid {
 }
 
 /// Cell side length for spatial indexing of structure centers. Must match `STRUCTURE_MIN_DIST` in `placement.rs`.
-pub const BUILDING_GRID_CELL_SIZE: u32 = 15;
+pub const BUILDING_GRID_CELL_SIZE: u32 = 6;
 
 /// Spatial grid of structure tile coordinates `(x, y)` for O(local) minimum-distance checks during placement.
 #[derive(Clone)]

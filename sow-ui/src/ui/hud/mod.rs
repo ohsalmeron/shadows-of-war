@@ -12,6 +12,15 @@ pub struct NukeAlertDisplay {
 }
 
 #[derive(Clone, Debug)]
+pub struct SliderVfxParticle {
+    pub x: f32,
+    pub y: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub alpha: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct SelectedTileInfo {
     pub tile_idx: u32,
     pub owner_id: u16,
@@ -80,13 +89,15 @@ fn draw_buildings_dock_no_frame(
 
         let active_kinds = [
             sow_core::game::BuildingKind::City,
+            sow_core::game::BuildingKind::Factory,
+            sow_core::game::BuildingKind::Port,
             sow_core::game::BuildingKind::Bunker,
         ];
         let num_items = active_kinds.len() as f32;
 
         let mut available_width = width;
         if sow_core::config::ENABLE_MISSILE_STRUCTURES {
-            let nuke_w = if compact { 28.0 } else { 36.0 };
+            let nuke_w = if compact { 32.0 } else { 36.0 };
             let extra_w = 4.0 + 8.0 + 4.0 + nuke_w + (if compact { 4.0 } else { 12.0 });
             available_width = (available_width - extra_w).max(50.0);
         }
@@ -122,18 +133,22 @@ fn draw_buildings_dock_no_frame(
             };
 
             let (rect, mut resp) = ui.allocate_exact_size(
-                egui::vec2(col_w, if compact { 36.0 } else { 44.0 }),
+                egui::vec2(col_w, if compact { 38.0 } else { 44.0 }),
                 egui::Sense::click(),
             );
 
             resp = resp.on_hover_ui(|ui| {
                 let name = match kind {
                     sow_core::game::BuildingKind::City => "City Center",
-                    sow_core::game::BuildingKind::Bunker => "Bunker",
+                    sow_core::game::BuildingKind::Bunker => "Defense Tower",
+                    sow_core::game::BuildingKind::Factory => "Industrial Factory",
+                    sow_core::game::BuildingKind::Port => "Maritime Port",
                 };
                 let desc = match kind {
                     sow_core::game::BuildingKind::City => "Core of your empire. Increases troop generation, gold generation, and max troops. Can be upgraded with 6 powerful modules (Port, Foundry, Armory, Intel, Arsenal, Shield)!",
                     sow_core::game::BuildingKind::Bunker => "Frontline Anchor: Fortifies borders, slowing enemy land grabs. Naturally strong on mountains (3x) and highlands (2x), upgradable with gold!",
+                    sow_core::game::BuildingKind::Factory => "Economic Engine: A specialized pure gold generator. Upgradable up to Level 5 to progressively multiply gold income. Must be spaced from other structures.",
+                    sow_core::game::BuildingKind::Port => "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
                 };
 
                 ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::accent_solo_cyan()));
@@ -173,7 +188,7 @@ fn draw_buildings_dock_no_frame(
 
             let icon_size = if compact { 16.0 } else { 22.0 };
             let icon_rect = egui::Rect::from_center_size(
-                egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
+                egui::pos2(rect.center().x, rect.top() + (if compact { 11.0 } else { 14.0 })),
                 egui::vec2(icon_size, icon_size),
             );
 
@@ -204,7 +219,7 @@ fn draw_buildings_dock_no_frame(
 
             let font_size = if compact { 8.0 } else { 9.0 };
             ui.painter().text(
-                egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
+                egui::pos2(rect.center().x, rect.bottom() - (if compact { 5.0 } else { 8.0 })),
                 egui::Align2::CENTER_CENTER,
                 label_text,
                 egui::FontId::proportional(font_size),
@@ -234,7 +249,7 @@ fn draw_buildings_dock_no_frame(
             for &(nuke_kind, label) in &nukes {
                 let uri = nuke_kind.asset().uri();
                 let is_selected = state.selected_nuke_kind == Some(nuke_kind);
-                let nk_col_w = if compact { 28.0 } else { 36.0 };
+                let nk_col_w = if compact { 32.0 } else { 36.0 };
 
                 let tint = if is_selected {
                     egui::Color32::from_rgb(239, 68, 68)
@@ -255,7 +270,7 @@ fn draw_buildings_dock_no_frame(
                 };
 
                 let (rect, mut resp) = ui.allocate_exact_size(
-                    egui::vec2(nk_col_w, if compact { 36.0 } else { 44.0 }),
+                    egui::vec2(nk_col_w, if compact { 38.0 } else { 44.0 }),
                     egui::Sense::click(),
                 );
 
@@ -292,7 +307,7 @@ fn draw_buildings_dock_no_frame(
 
                 let icon_size = if compact { 16.0 } else { 20.0 };
                 let icon_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, rect.top() + (if compact { 10.0 } else { 14.0 })),
+                    egui::pos2(rect.center().x, rect.top() + (if compact { 11.0 } else { 14.0 })),
                     egui::vec2(icon_size, icon_size),
                 );
                 let image = egui::Image::new(uri).tint(tint);
@@ -300,7 +315,7 @@ fn draw_buildings_dock_no_frame(
 
                 let font_size = if compact { 7.0 } else { 8.0 };
                 ui.painter().text(
-                    egui::pos2(rect.center().x, rect.bottom() - (if compact { 6.0 } else { 8.0 })),
+                    egui::pos2(rect.center().x, rect.bottom() - (if compact { 5.0 } else { 8.0 })),
                     egui::Align2::CENTER_CENTER,
                     label,
                     egui::FontId::proportional(font_size),
@@ -342,12 +357,15 @@ pub fn draw(
         500.0
     };
 
-    egui::Area::new(egui::Id::new("hud_bottom_area_v7"))
+    egui::Area::new(egui::Id::new("hud_bottom_area_v8"))
         .anchor(
             egui::Align2::CENTER_BOTTOM,
-            egui::vec2(0.0, -state.safe_area_bottom),
+            egui::vec2(
+                0.0,
+                -state.safe_area_bottom - if compact { 10.0 } else { 0.0 },
+            ),
         )
-        .order(egui::Order::Middle)
+        .order(egui::Order::Foreground)
         .movable(false)
         .show(ui.ctx(), |ui| {
             ui.set_max_width(panel_w);
@@ -357,25 +375,29 @@ pub fn draw(
             } else {
                 crate::ui::theme::panel_bg_transparent()
             };
-            let border_color = if state.selected_building_kind.is_some()
-                || state.selected_nuke_kind.is_some()
-            {
-                crate::ui::theme::accent_solo_cyan()
+            let border_color =
+                if state.selected_building_kind.is_some() || state.selected_nuke_kind.is_some() {
+                    crate::ui::theme::accent_solo_cyan()
+                } else {
+                    crate::ui::theme::nickname_field_border().linear_multiply(0.4)
+                };
+
+            let frame_margin = if compact {
+                egui::Margin::symmetric(14, 22)
             } else {
-                crate::ui::theme::nickname_field_border().linear_multiply(0.4)
+                egui::Margin::symmetric(10, 8)
             };
 
             let unified_frame = egui::Frame::NONE
                 .fill(panel_bg)
                 .stroke(egui::Stroke::new(1.0_f32, border_color))
                 .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::symmetric(10, 8));
+                .inner_margin(frame_margin);
 
             unified_frame.show(ui, |ui| {
                 ui.set_width(panel_w - 20.0);
                 ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 8.0;
-
+                    ui.spacing_mut().item_spacing.y = if compact { 14.0 } else { 8.0 };
 
                     // 2. Attacks Display
                     let my_pid = state.my_player_id;
@@ -389,49 +411,10 @@ pub fn draw(
                         .iter()
                         .filter(|a| a.owner_id == my_pid)
                         .count();
-                    let fleet_count =
-                        state.fleets.iter().filter(|f| f.owner_id == my_pid).count();
+                    let fleet_count = state.fleets.iter().filter(|f| f.owner_id == my_pid).count();
                     let total_attacks = incoming_count + outgoing_count + fleet_count;
 
-                    if compact {
-                        // Mobile: toggle button only when attacks exist
-                        if my_pid != 0 && total_attacks > 0 {
-                            ui.horizontal(|ui| {
-                                let label = if state.show_attacks_panel {
-                                    format!("⚔ {} ▾", total_attacks)
-                                } else {
-                                    format!("⚔ {} ▸", total_attacks)
-                                };
-                                let btn = egui::Button::new(
-                                    RichText::new(label)
-                                        .size(12.0)
-                                        .color(crate::ui::theme::accent_danger_border()),
-                                )
-                                .fill(crate::ui::theme::accent_danger().linear_multiply(0.15))
-                                .stroke(egui::Stroke::new(
-                                    1.0_f32,
-                                    crate::ui::theme::accent_danger().linear_multiply(0.4),
-                                ))
-                                .corner_radius(6);
-                                if ui.add(btn).clicked() {
-                                    state.show_attacks_panel = !state.show_attacks_panel;
-                                }
-                            });
-                            if state.show_attacks_panel {
-                                ui.push_id("attacks_display_compact", |ui| {
-                                    draw_attacks_display(
-                                        ui,
-                                        state,
-                                        panel_w - 40.0,
-                                        compact,
-                                        cancel_intents,
-                                        &mut action,
-                                        lang,
-                                    );
-                                });
-                            }
-                        }
-                    } else if my_pid != 0 && total_attacks > 0 {
+                    if !compact && my_pid != 0 && total_attacks > 0 {
                         // Desktop: always show attacks inline
                         ui.push_id("attacks_display", |ui| {
                             draw_attacks_display(
@@ -447,16 +430,51 @@ pub fn draw(
                         ui.separator();
                     }
 
-                    // 3. Main Gameplay dock (Building Dock)
+                    // 3. Main Gameplay dock (Building Dock + Slider side-by-side on mobile)
                     if state.spawn_timer_secs.is_none() {
-                        ui.push_id("building_dock", |ui| {
-                            draw_buildings_dock_no_frame(
-                                ui,
-                                state,
-                                panel_w - 40.0,
-                                compact,
-                            );
-                        });
+                        if compact {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 12.0;
+                                let half_w = (panel_w - 52.0) * 0.5;
+
+                                // Left half: Building Dock
+                                ui.push_id("building_dock_compact", |ui| {
+                                    draw_buildings_dock_no_frame(ui, state, half_w, compact);
+                                });
+
+                                // Right half: Attack Ratio Custom Slider
+                                ui.push_id("attack_ratio_slider_compact", |ui| {
+                                    ui.vertical(|ui| {
+                                        ui.spacing_mut().item_spacing.y = 2.0;
+                                        ui.horizontal(|ui| {
+                                            crate::ui::theme::outlined_label(
+                                                ui,
+                                                "⚔",
+                                                egui::FontId::proportional(11.0),
+                                                egui::Color32::from_rgb(0, 220, 255),
+                                            );
+                                            crate::ui::theme::outlined_label(
+                                                ui,
+                                                &format!("{:.0}%", state.attack_ratio * 100.0),
+                                                egui::FontId::proportional(11.0),
+                                                egui::Color32::WHITE,
+                                            );
+                                            crate::ui::theme::outlined_label(
+                                                ui,
+                                                "Attack Ratio",
+                                                egui::FontId::proportional(9.0),
+                                                egui::Color32::GRAY,
+                                            );
+                                        });
+                                        draw_custom_ratio_slider(ui, state, half_w, &mut action);
+                                    });
+                                });
+                            });
+                        } else {
+                            ui.push_id("building_dock", |ui| {
+                                draw_buildings_dock_no_frame(ui, state, panel_w - 40.0, compact);
+                            });
+                        }
                         ui.separator();
                     }
 
@@ -569,8 +587,6 @@ pub fn draw(
                 });
             });
         });
-
-    // ── Floating Alliance Inbox Panel ─────────────────────────────────────────
     // ── Floating Alliance Inbox Panel ─────────────────────────────────────────
     let is_inbox_active = state.show_alliance_inbox;
     let inbox_progress = ui.ctx().animate_bool_with_time(
@@ -851,9 +867,193 @@ pub fn draw(
                             state.emoji_panel_just_opened = true;
                         }
                     }
+                    let my_pid = state.my_player_id;
+                    let total_attacks = if my_pid != 0 {
+                        state
+                            .attacks
+                            .iter()
+                            .filter(|a| a.target_owner == my_pid || a.owner_id == my_pid)
+                            .count()
+                            + state.fleets.iter().filter(|f| f.owner_id == my_pid).count()
+                    } else {
+                        0
+                    };
+
+                    let attacks_btn = ui
+                        .add(crate::widgets::HudButton::new("⚔"))
+                        .on_hover_text("Active Dispatches");
+                    if attacks_btn.clicked() {
+                        state.show_attacks_panel = !state.show_attacks_panel;
+                    }
+
+                    if total_attacks > 0 {
+                        let badge_center = attacks_btn.rect.right_top() + egui::vec2(-2.0, 2.0);
+                        ui.painter().circle_filled(
+                            badge_center,
+                            6.5,
+                            Color32::from_rgb(239, 68, 68),
+                        );
+                        ui.painter().text(
+                            badge_center,
+                            egui::Align2::CENTER_CENTER,
+                            total_attacks.to_string(),
+                            egui::FontId::proportional(8.5),
+                            Color32::WHITE,
+                        );
+                    }
                 });
             });
         });
+
+    let is_attacks_active = state.show_attacks_panel;
+    let attacks_progress = ui.ctx().animate_bool_with_time(
+        egui::Id::new("attacks_panel_animation"),
+        is_attacks_active,
+        0.22,
+    );
+    if attacks_progress > 0.01 {
+        let anim_scale = if is_attacks_active {
+            let t = attacks_progress;
+            if t >= 1.0 {
+                1.0
+            } else {
+                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+            }
+        } else {
+            attacks_progress
+        };
+
+        let screen_rect = ui.ctx().content_rect();
+        if compact {
+            ui.ctx()
+                .layer_painter(egui::LayerId::new(
+                    egui::Order::Background,
+                    egui::Id::new("attacks_dim_bg"),
+                ))
+                .rect_filled(
+                    screen_rect,
+                    0.0,
+                    Color32::from_black_alpha((150.0 * attacks_progress) as u8),
+                );
+        }
+
+        let mut area =
+            egui::Area::new(egui::Id::new("floating_attacks_panel")).order(egui::Order::Foreground);
+
+        let y_offset = 120.0 * (1.0 - anim_scale);
+        if compact {
+            let pos = screen_rect.center() + vec2(0.0, y_offset);
+            area = area.pivot(Align2::CENTER_CENTER).fixed_pos(pos);
+        } else {
+            area = area.anchor(
+                Align2::RIGHT_BOTTOM,
+                vec2(-64.0, -100.0 - state.safe_area_bottom + y_offset),
+            );
+        }
+
+        let border_glow = crate::ui::theme::accent_danger().linear_multiply(attacks_progress);
+
+        area.show(ui.ctx(), |ui| {
+            let panel_w = if compact {
+                (screen_rect.width() - 32.0).min(340.0)
+            } else {
+                320.0
+            };
+            ui.set_max_width(panel_w);
+
+            egui::Frame::window(&ui.ctx().global_style())
+                .fill(crate::ui::theme::panel_bg().linear_multiply(attacks_progress))
+                .stroke(egui::Stroke::new(1.8_f32 * anim_scale, border_glow))
+                .shadow(egui::Shadow {
+                    blur: if compact { 12 } else { 16 },
+                    spread: 0,
+                    color: border_glow.linear_multiply(0.25 * attacks_progress),
+                    offset: [0, 0],
+                })
+                .inner_margin(egui::Margin::symmetric(14, 12))
+                .corner_radius(12)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 8.0;
+
+                        ui.horizontal(|ui| {
+                            crate::ui::theme::outlined_label(
+                                ui,
+                                "⚔ ACTIVE DISPATCHES",
+                                egui::FontId::proportional(14.0),
+                                crate::ui::theme::accent_danger_border()
+                                    .linear_multiply(attacks_progress),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.button("✖").clicked() {
+                                        state.show_attacks_panel = false;
+                                    }
+                                },
+                            );
+                        });
+                        ui.separator();
+
+                        draw_attacks_display(
+                            ui,
+                            state,
+                            panel_w - 28.0,
+                            compact,
+                            cancel_intents,
+                            &mut action,
+                            lang,
+                        );
+                    });
+                });
+        });
+
+        if ui.ctx().input(|i| i.pointer.any_pressed()) {
+            if let Some(pos) = ui
+                .ctx()
+                .input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+            {
+                let mut click_absorbed = false;
+                let screen_size = ui.ctx().content_rect();
+
+                let controls_rect = egui::Rect::from_min_max(
+                    pos2(screen_size.right() - 80.0, screen_size.bottom() - 320.0),
+                    screen_size.right_bottom(),
+                );
+                if controls_rect.contains(pos) {
+                    click_absorbed = true;
+                }
+
+                if compact {
+                    let modal_w = (screen_size.width() - 32.0).min(340.0);
+                    let modal_h = 240.0;
+                    let modal_rect =
+                        egui::Rect::from_center_size(screen_size.center(), vec2(modal_w, modal_h));
+                    if modal_rect.contains(pos) {
+                        click_absorbed = true;
+                    }
+                } else {
+                    let modal_w = 320.0;
+                    let modal_h = 240.0;
+                    let modal_rect = egui::Rect::from_min_max(
+                        pos2(
+                            screen_size.right() - modal_w - 76.0,
+                            screen_size.bottom() - modal_h - 108.0,
+                        ),
+                        pos2(screen_size.right() - 64.0, screen_size.bottom() - 100.0),
+                    );
+                    if modal_rect.contains(pos) {
+                        click_absorbed = true;
+                    }
+                }
+
+                if !click_absorbed {
+                    state.show_attacks_panel = false;
+                }
+            }
+        }
+        ui.ctx().request_repaint();
+    }
 
     let is_emoji_active = state.show_emoji_panel;
     let emoji_progress = ui.ctx().animate_bool_with_time(
@@ -1242,7 +1442,7 @@ fn draw_attacks_display(
     ui: &mut egui::Ui,
     state: &HudState,
     width: f32,
-    _compact: bool,
+    compact: bool,
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     action: &mut Option<UiAction>,
     lang: Language,
@@ -1273,7 +1473,7 @@ fn draw_attacks_display(
     }
 
     // Fixed-height container prevents layout reflow when items change
-    let cols = 2;
+    let cols = if compact { 1 } else { 2 };
     let rows = total.div_ceil(cols).min(4);
     let row_h = 30.0;
     let fixed_h = rows as f32 * row_h + (rows as f32 - 1.0) * 4.0;
@@ -1429,6 +1629,171 @@ fn draw_attacks_display(
      });
 }
 
+fn draw_custom_ratio_slider(
+    ui: &mut egui::Ui,
+    state: &mut HudState,
+    width: f32,
+    action: &mut Option<UiAction>,
+) {
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(width, 48.0), egui::Sense::click_and_drag());
+    let mut ratio = state.attack_ratio;
+
+    if resp.clicked() || resp.dragged() {
+        if let Some(pos) = resp.interact_pointer_pos() {
+            let t = ((pos.x - (rect.min.x + 8.0)) / (rect.width() - 16.0)).clamp(0.01, 1.0);
+            ratio = t;
+            if ratio != state.attack_ratio {
+                *action = Some(UiAction::SetAttackRatio(ratio));
+            }
+        }
+    }
+
+    let elapsed = ui.ctx().input(|i| i.time as f32);
+
+    let track_rect =
+        egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width() - 16.0, 6.0));
+
+    // Draw track background (inner shadow / dark pill)
+    ui.painter().rect(
+        track_rect,
+        3.0,
+        egui::Color32::from_rgb(18, 18, 20),
+        egui::Stroke::new(
+            1.0_f32,
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 15),
+        ),
+        egui::StrokeKind::Inside,
+    );
+
+    // Draw filled portion (cyan glow track)
+    let handle_x = track_rect.left() + (ratio * track_rect.width());
+    let filled_rect = egui::Rect::from_min_max(
+        egui::pos2(track_rect.left(), track_rect.top()),
+        egui::pos2(handle_x, track_rect.bottom()),
+    );
+    ui.painter()
+        .rect_filled(filled_rect, 3.0, egui::Color32::from_rgb(0, 220, 255));
+
+    // Draw electric/plasma ripples flowing along the filled track
+    if ratio > 0.05 {
+        let num_waves = 4;
+        let wave_w = filled_rect.width() / num_waves as f32;
+        for i in 0..num_waves {
+            let phase = (elapsed * 5.5 + i as f32 * 1.5) % std::f32::consts::TAU;
+            let wave_x =
+                filled_rect.left() + i as f32 * wave_w + (phase.cos() * 0.5 + 0.5) * wave_w;
+            if wave_x < filled_rect.right() - 2.0 {
+                let ripple_pos = egui::pos2(wave_x, rect.center().y);
+                ui.painter().circle_filled(
+                    ripple_pos,
+                    2.8_f32,
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 130),
+                );
+            }
+        }
+    }
+
+    // Retrieve or initialize particles from egui temp storage
+    let mut particles: Vec<SliderVfxParticle> = ui.ctx().data_mut(|d| {
+        d.get_temp_mut_or_insert_with(egui::Id::new("slider_particles"), Vec::new)
+            .clone()
+    });
+
+    // Update and decelerate existing particles
+    for p in &mut particles {
+        p.x += p.vx * 0.016;
+        p.y += p.vy * 0.016;
+        p.vx *= 0.94;
+        p.vy *= 0.94;
+        p.alpha -= 0.016 / 0.45; // ~0.45s lifetime
+    }
+    particles.retain(|p| p.alpha > 0.0);
+
+    let handle_pos = egui::pos2(handle_x, rect.center().y);
+
+    // Spawn sparks if hovered or dragged
+    if resp.hovered() || resp.dragged() {
+        let mut seed = elapsed;
+        for _ in 0..2 {
+            let angle = (seed * 123.456).sin() * std::f32::consts::TAU;
+            let speed = 25.0 + (seed * 456.789).cos().abs() * 60.0;
+            particles.push(SliderVfxParticle {
+                x: handle_pos.x,
+                y: handle_pos.y,
+                vx: angle.cos() * speed,
+                vy: angle.sin() * speed,
+                alpha: 1.0,
+            });
+            seed += 0.17;
+        }
+    }
+
+    // Save particles back to context
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(egui::Id::new("slider_particles"), particles.clone()));
+
+    // Draw particle sparks
+    for p in &particles {
+        let size = 1.0 + p.alpha * 1.5;
+        let col = egui::Color32::from_rgba_unmultiplied(0, 220, 255, (p.alpha * 200.0) as u8);
+        ui.painter().circle_filled(egui::pos2(p.x, p.y), size, col);
+    }
+
+    // Draw handle with premium cybernetic styling (glow halo + core)
+    let selected_troops = state.troops * ratio as f64;
+    let charge = if state.max_troops > 0.0 {
+        (selected_troops / state.max_troops).clamp(0.0, 1.0) as f32
+    } else {
+        0.0
+    };
+
+    let pulse_speed = 3.5 + charge * 14.0; // Pulses faster based on troops quantity
+    let wave = (elapsed * pulse_speed).sin() * 0.5 + 0.5;
+
+    // Glowing halo expands and intensifies with selected troops quantity
+    let halo_radius = 10.5 + charge * 6.5 + wave * 2.0;
+    let halo_alpha = (55.0 + charge * 65.0 + wave * 25.0) as u8;
+    ui.painter().circle_filled(
+        handle_pos,
+        halo_radius,
+        egui::Color32::from_rgba_unmultiplied(0, 220, 255, halo_alpha),
+    );
+
+    // Glowing resonance rings at high charges
+    if charge > 0.05 {
+        let ring_radius = 13.5 + wave * 4.5 * charge;
+        let ring_alpha = (charge * (1.0 - wave) * 110.0) as u8;
+        ui.painter().circle(
+            handle_pos,
+            ring_radius,
+            egui::Color32::TRANSPARENT,
+            egui::Stroke::new(
+                1.0_f32,
+                egui::Color32::from_rgba_unmultiplied(0, 220, 255, ring_alpha),
+            ),
+        );
+    }
+
+    // Bezel (dark bezel ring with a neon stroke)
+    ui.painter().circle(
+        handle_pos,
+        7.5,
+        egui::Color32::from_rgb(12, 12, 14),
+        egui::Stroke::new(
+            1.0_f32,
+            egui::Color32::from_rgba_unmultiplied(0, 220, 255, 120),
+        ),
+    );
+
+    // Inner cyan core (solid glowing cyan core)
+    ui.painter()
+        .circle_filled(handle_pos, 4.5, egui::Color32::from_rgb(0, 220, 255));
+
+    // Force egui to request repaint to keep animations running smoothly
+    ui.ctx().request_repaint();
+}
+
 fn draw_control_panel(
     ui: &mut egui::Ui,
     state: &HudState,
@@ -1439,9 +1804,9 @@ fn draw_control_panel(
     let is_increasing = true; // Simplified
 
     if compact {
-        // Mobile Layout: 1 Row [Gold] [Troop Bar] [Ratio] [Slider]
+        // Mobile Layout: 1 Row [Gold] [Troop Bar (Expanded to full width)]
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.spacing_mut().item_spacing.x = 12.0;
 
             // Gold
             let gold_frame_resp = egui::Frame::NONE
@@ -1450,12 +1815,12 @@ fn draw_control_panel(
                     crate::ui::theme::accent_ranked_gold_hover(),
                 ))
                 .corner_radius(6)
-                .inner_margin(egui::Margin::symmetric(4, 4))
+                .inner_margin(egui::Margin::symmetric(10, 14))
                 .show(ui, |ui| {
                     crate::ui::theme::outlined_label(
                         ui,
                         &format!("💰 {}", crate::utils::format_number(state.gold)),
-                        egui::FontId::proportional(12.0),
+                        egui::FontId::proportional(13.0),
                         crate::ui::theme::accent_ranked_gold_hover(),
                     );
                 });
@@ -1479,14 +1844,9 @@ fn draw_control_panel(
                 );
             }
 
-            let total_w = ui.available_width();
-            let gold_w = gold_frame_resp.response.rect.width();
-            let remaining_w = (total_w - gold_w - 16.0).max(100.0);
-            let bar_w = remaining_w * 0.45;
-            let slider_container_w = remaining_w - bar_w;
-
-            // Troop Bar (Takes ~45% of remaining)
-            let (rect, _resp) = ui.allocate_exact_size(vec2(bar_w, 24.0), egui::Sense::hover());
+            // Troop Bar (Takes 100% of the remaining full width!)
+            let bar_w = ui.available_width().max(100.0);
+            let (rect, _resp) = ui.allocate_exact_size(vec2(bar_w, 48.0), egui::Sense::hover());
             draw_troop_bar(
                 ui,
                 rect,
@@ -1496,36 +1856,6 @@ fn draw_control_panel(
                 true,
                 is_increasing,
             );
-
-            // Attack Ratio + Slider
-            ui.vertical(|ui| {
-                ui.set_width(slider_container_w);
-                ui.horizontal(|ui| {
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        "⚔",
-                        egui::FontId::proportional(12.0),
-                        Color32::WHITE,
-                    );
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &format!("{:.0}%", state.attack_ratio * 100.0),
-                        egui::FontId::proportional(12.0),
-                        Color32::from_rgb(220, 230, 220),
-                    );
-                    let mut ratio = state.attack_ratio;
-                    let slider_w = ui.available_width().max(40.0);
-                    if ui
-                        .add_sized(
-                            vec2(slider_w, 16.0),
-                            Slider::new(&mut ratio, 0.01..=1.0).show_value(false),
-                        )
-                        .changed()
-                    {
-                        *action = Some(UiAction::SetAttackRatio(ratio));
-                    }
-                });
-            });
         });
     } else {
         // Desktop Layout:
@@ -1725,20 +2055,20 @@ fn draw_troop_bar(
         let troop_text = crate::utils::format_number(troops);
         crate::ui::theme::outlined_text(
             ui.painter(),
-            pos2(rect.left() + 4.0, rect.center().y),
+            pos2(rect.left() + 6.0, rect.center().y),
             Align2::LEFT_CENTER,
             &troop_text,
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(12.5),
             Color32::from_rgb(220, 230, 220),
             shadow,
         );
         let max_text = crate::utils::format_number(max_troops);
         crate::ui::theme::outlined_text(
             ui.painter(),
-            pos2(rect.right() - 4.0, rect.center().y),
+            pos2(rect.right() - 6.0, rect.center().y),
             Align2::RIGHT_CENTER,
             &max_text,
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(12.5),
             Color32::from_rgb(220, 230, 220),
             shadow,
         );
@@ -1749,11 +2079,11 @@ fn draw_troop_bar(
         };
         let rate_text = format!("+{}/s", crate::utils::format_number(troop_rate));
 
-        let font_id = egui::FontId::proportional(11.0);
+        let font_id = egui::FontId::proportional(12.5);
         let galley = ui
             .painter()
             .layout_no_wrap(rate_text.clone(), font_id.clone(), rate_color);
-        let icon_size = 10.0;
+        let icon_size = 11.0;
         let total_w = icon_size + 4.0 + galley.rect.width();
         let mut start_x = rect.center().x - total_w / 2.0;
 
@@ -1814,6 +2144,9 @@ fn draw_troop_bar(
 
 fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool, lang: Language) {
     ui.vertical_centered(|ui| {
+        if compact {
+            ui.add_space(8.0);
+        }
         crate::ui::theme::outlined_label(
             ui,
             &sow_lang::get(lang).hud.spawn_choose_location,
@@ -1829,6 +2162,9 @@ fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool, lang: Language)
             .size(14.0)
             .color(Color32::from_rgb(220, 230, 220)),
         );
+        if compact {
+            ui.add_space(8.0);
+        }
     });
 }
 
@@ -2108,14 +2444,15 @@ fn draw_mobile_selection_bar(
                 ui.spacing_mut().item_spacing.x = 4.0;
 
                 let btn_w = (ui.available_width() - 12.0) / 4.0;
+                let btn_h = 48.0;
 
                 // 1. Info Button
                 let info_btn =
-                    egui::Button::new(RichText::new(&strings.btn_info).strong().size(12.0))
+                    egui::Button::new(RichText::new(&strings.btn_info).strong().size(13.0))
                         .fill(palette::button_inactive())
                         .stroke(egui::Stroke::new(1.0_f32, palette::text_muted()))
                         .corner_radius(6);
-                let _ = ui.add_sized(egui::vec2(btn_w, 32.0), info_btn);
+                let _ = ui.add_sized(egui::vec2(btn_w, btn_h), info_btn);
 
                 // 2. Fleet / Delete Button
                 let right_fill = if tile_info.is_own_territory {
@@ -2134,12 +2471,12 @@ fn draw_mobile_selection_bar(
                     &strings.btn_fleft
                 };
 
-                let fleet_btn = egui::Button::new(RichText::new(right_label).strong().size(12.0))
+                let fleet_btn = egui::Button::new(RichText::new(right_label).strong().size(13.0))
                     .fill(right_fill.linear_multiply(0.3))
                     .stroke(egui::Stroke::new(1.2_f32, right_glow))
                     .corner_radius(6);
 
-                if ui.add_sized(egui::vec2(btn_w, 32.0), fleet_btn).clicked() {
+                if ui.add_sized(egui::vec2(btn_w, btn_h), fleet_btn).clicked() {
                     let troops = Some(state.troops * (state.attack_ratio as f64));
                     cancel_intents.push(sow_core::protocol::GameplayIntent::LaunchFleet {
                         target_tile: tile_info.tile_idx,
@@ -2149,11 +2486,11 @@ fn draw_mobile_selection_bar(
 
                 // 3. Ally Button
                 let ally_btn =
-                    egui::Button::new(RichText::new(&strings.btn_ally).strong().size(12.0))
+                    egui::Button::new(RichText::new(&strings.btn_ally).strong().size(13.0))
                         .fill(palette::button_inactive())
                         .stroke(egui::Stroke::new(1.0_f32, palette::neon_cyan()))
                         .corner_radius(6);
-                let _ = ui.add_sized(egui::vec2(btn_w, 32.0), ally_btn);
+                let _ = ui.add_sized(egui::vec2(btn_w, btn_h), ally_btn);
 
                 // 4. Build / Attack Button
                 let left_fill = if tile_info.is_own_territory {
@@ -2173,7 +2510,7 @@ fn draw_mobile_selection_bar(
                 };
 
                 let (rect, resp) =
-                    ui.allocate_exact_size(egui::vec2(btn_w, 32.0), egui::Sense::click());
+                    ui.allocate_exact_size(egui::vec2(btn_w, btn_h), egui::Sense::click());
                 let is_hovered = resp.hovered();
                 let fill = if is_hovered {
                     left_fill.linear_multiply(0.4)
@@ -2188,7 +2525,7 @@ fn draw_mobile_selection_bar(
                     egui::StrokeKind::Inside,
                 );
 
-                let font_id = egui::FontId::proportional(12.0);
+                let font_id = egui::FontId::proportional(13.0);
                 let galley = ui.painter().layout_no_wrap(
                     left_label.to_owned(),
                     font_id.clone(),
@@ -2237,19 +2574,19 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
     let visible = &state.nuke_alerts[start..];
 
     let area_id = if compact {
-        egui::Id::new("nuke_alerts_compact_area_v1")
+        egui::Id::new("nuke_alerts_compact_area_v2")
     } else {
         egui::Id::new("nuke_alerts_desktop_area_v3")
     };
 
     let anchor = if compact {
-        egui::Align2::CENTER_TOP
+        egui::Align2::CENTER_BOTTOM
     } else {
         egui::Align2::LEFT_CENTER
     };
 
     let offset = if compact {
-        egui::vec2(0.0, 16.0 + state.safe_area_top)
+        egui::vec2(0.0, -185.0 - state.safe_area_bottom)
     } else {
         egui::vec2(16.0, 0.0)
     };
@@ -2264,7 +2601,7 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
                 let mut max_w = None;
                 if compact {
                     let screen_w = ui.ctx().content_rect().width();
-                    max_w = Some((screen_w - 32.0).max(200.0));
+                    max_w = Some(screen_w - 24.0);
                 }
 
                 for alert in visible {
@@ -2296,7 +2633,7 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
                         .inner_margin(egui::Margin::symmetric(14, 6))
                         .show(ui, |ui| {
                             if let Some(w) = max_w {
-                                ui.set_max_width(w - 28.0);
+                                ui.set_width(w - 28.0);
                             }
                             ui.horizontal_wrapped(|ui| {
                                 let is_nuke = alert.message.contains("☢")
@@ -2304,7 +2641,9 @@ fn draw_nuke_alerts(ctx: &Context, state: &mut HudState) {
                                     || alert.message.to_lowercase().contains("missile");
                                 if is_nuke {
                                     let icon_size = if compact { 12.0 } else { 14.0 };
-                                    ui.label(RichText::new("☢").color(border).size(icon_size).strong());
+                                    ui.label(
+                                        RichText::new("☢").color(border).size(icon_size).strong(),
+                                    );
                                     ui.add_space(4.0);
                                 }
                                 ui.label(

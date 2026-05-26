@@ -809,15 +809,33 @@ impl SowApp {
                                             ui.add_space(4.0);
 
                                             let buildings_list = [
-                                                (sow_core::game::BuildingKind::City, "City District", "🏛️"),
-                                                (sow_core::game::BuildingKind::Bunker, "Defense Bunker", "🛡️"),
+                                                (
+                                                    sow_core::game::BuildingKind::City,
+                                                    "City Center",
+                                                    "Core of your empire. Increases troop generation, gold generation, and max troops. Can be upgraded with 6 powerful modules (Port, Foundry, Armory, Intel, Arsenal, Shield)!",
+                                                ),
+                                                (
+                                                    sow_core::game::BuildingKind::Factory,
+                                                    "Industrial Factory",
+                                                    "Economic Engine: A specialized pure gold generator. Upgradable up to Level 5 to progressively multiply gold income. Must be spaced from other structures.",
+                                                ),
+                                                (
+                                                    sow_core::game::BuildingKind::Port,
+                                                    "Maritime Port",
+                                                    "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
+                                                ),
+                                                (
+                                                    sow_core::game::BuildingKind::Bunker,
+                                                    "Defense Tower",
+                                                    "Frontline Anchor: Fortifies borders, slowing enemy land grabs. Naturally strong on mountains (3x) and highlands (2x), upgradable with gold!",
+                                                ),
                                             ];
 
-                                            for &(kind, label, icon) in &buildings_list {
+                                            for &(kind, label, desc) in &buildings_list {
                                                 let cost = sow_core::building::cost::structure_build_cost_gold(kind, my_id, &temp_buildings);
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
 
-                                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+                                                let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
                                                 let is_hovered = resp.hovered() && !is_disabled;
                                                 let hover_id = ui.make_persistent_id(("popover_hover", label));
                                                 let hover_t = ui.ctx().animate_bool_with_time(hover_id, is_hovered, 0.15);
@@ -839,14 +857,16 @@ impl SowApp {
                                                     egui::StrokeKind::Inside,
                                                 );
 
-                                                // Icon
-                                                ui.painter().text(
+                                                // Icon (Premium building image asset)
+                                                let icon_size = 24.0 * scale;
+                                                let icon_rect = egui::Rect::from_center_size(
                                                     rect.min + egui::vec2(20.0, card_h / 2.0),
-                                                    egui::Align2::CENTER_CENTER,
-                                                    icon,
-                                                    egui::FontId::proportional((22.0 + 4.0 * hover_t) * scale),
-                                                    if is_disabled { Color32::GRAY } else { Color32::WHITE }
+                                                    egui::vec2(icon_size, icon_size),
                                                 );
+                                                let tint = if is_disabled { Color32::GRAY } else { Color32::WHITE };
+                                                egui::Image::new(kind.asset().uri())
+                                                    .tint(tint)
+                                                    .paint_at(ui, icon_rect);
 
                                                 // Label
                                                 ui.painter().text(
@@ -858,13 +878,23 @@ impl SowApp {
                                                 );
 
                                                 // Cost
+                                                let cost_text = if cost.is_infinite() { "N/A".to_string() } else { format!("{}", cost as u32) };
                                                 ui.painter().text(
                                                     rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
                                                     egui::Align2::LEFT_CENTER,
-                                                    format!("{}g", cost as u32),
+                                                    format!("{}g", cost_text),
                                                     egui::FontId::proportional(10.5),
                                                     if is_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
                                                 );
+
+                                                resp = resp.on_hover_ui(|ui| {
+                                                    ui.label(egui::RichText::new(label).strong().size(14.0).color(theme_color));
+                                                    ui.add_space(4.0);
+                                                    ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
+                                                    ui.add_space(6.0);
+                                                    let cost_color = if !is_disabled { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
+                                                    ui.label(egui::RichText::new(format!("Cost: 🪙 {} Gold", cost_text)).strong().size(13.0).color(cost_color));
+                                                });
 
                                                 if !is_disabled && resp.clicked() {
                                                     self.send_intent(sow_core::protocol::GameplayIntent::BuildStructure {

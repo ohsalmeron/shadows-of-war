@@ -3,9 +3,56 @@ use crate::game::BuildingKind;
 use crate::map::{GameMap, TerrainType};
 
 /// Min spacing distance between Cities.
-pub const STRUCTURE_MIN_DIST: i32 = 12;
+pub const STRUCTURE_MIN_DIST: i32 = 6;
 const STRUCTURE_MIN_DIST_SQ: i64 = (STRUCTURE_MIN_DIST as i64) * (STRUCTURE_MIN_DIST as i64);
 const STRUCTURE_SEARCH_RADIUS_SQ: i64 = STRUCTURE_MIN_DIST_SQ;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpacingRule {
+    pub target_kind: BuildingKind,
+    pub min_distance: i32,
+}
+
+impl BuildingKind {
+    pub fn spacing_rules(self) -> &'static [SpacingRule] {
+        match self {
+            BuildingKind::City => &[SpacingRule {
+                target_kind: BuildingKind::City,
+                min_distance: STRUCTURE_MIN_DIST,
+            }],
+            BuildingKind::Bunker => &[
+                SpacingRule {
+                    target_kind: BuildingKind::City,
+                    min_distance: 6,
+                },
+                SpacingRule {
+                    target_kind: BuildingKind::Bunker,
+                    min_distance: 4,
+                },
+            ],
+            BuildingKind::Factory => &[
+                SpacingRule {
+                    target_kind: BuildingKind::City,
+                    min_distance: 6,
+                },
+                SpacingRule {
+                    target_kind: BuildingKind::Factory,
+                    min_distance: 4,
+                },
+            ],
+            BuildingKind::Port => &[
+                SpacingRule {
+                    target_kind: BuildingKind::City,
+                    min_distance: 6,
+                },
+                SpacingRule {
+                    target_kind: BuildingKind::Port,
+                    min_distance: 4,
+                },
+            ],
+        }
+    }
+}
 
 #[inline]
 pub fn idx_xy(idx: u32, w: u32) -> (u32, u32) {
@@ -80,12 +127,6 @@ pub fn valid_land_structure_indices(
 
     let mut out: Vec<u32> = Vec::new();
 
-    let bunker_tiles: Vec<u32> = buildings
-        .iter()
-        .filter(|b| b.kind == BuildingKind::Bunker)
-        .map(|b| b.tile_idx)
-        .collect();
-
     let mut qi = 0usize;
     while qi < scratch.queue.len() {
         let idx = scratch.queue[qi];
@@ -104,31 +145,55 @@ pub fn valid_land_structure_indices(
         }
 
         let mut too_close = false;
-        if kind == BuildingKind::City {
-            for (bx, by) in existing.iter_in_range(x, y, STRUCTURE_MIN_DIST as u32) {
-                if euclid_sq(xi, yi, bx as i64, by as i64) < STRUCTURE_MIN_DIST_SQ {
-                    too_close = true;
-                    break;
-                }
-            }
-        } else if kind == BuildingKind::Bunker {
-            // Spacing from Cities: cannot be within radius 6 (dist sq = 36)
-            for (bx, by) in existing.iter_in_range(x, y, 6) {
-                if euclid_sq(xi, yi, bx as i64, by as i64) < 36 {
-                    too_close = true;
-                    break;
-                }
-            }
-            // Spacing from other Bunkers: cannot be within radius 4 (dist sq = 16)
-            if !too_close {
-                for &b_tile in &bunker_tiles {
-                    let bx = b_tile % w;
-                    let by = b_tile / w;
-                    if euclid_sq(xi, yi, bx as i64, by as i64) < 16 {
+        for rule in kind.spacing_rules() {
+            let min_d = rule.min_distance;
+            let min_d_sq = (min_d as i64) * (min_d as i64);
+
+            if rule.target_kind == BuildingKind::City {
+                for (bx, by) in existing.iter_in_range(x, y, min_d as u32) {
+                    if euclid_sq(xi, yi, bx as i64, by as i64) < min_d_sq {
                         too_close = true;
                         break;
                     }
                 }
+            } else {
+                for b in buildings {
+                    if b.kind == rule.target_kind {
+                        let bx = b.tile_idx % w;
+                        let by = b.tile_idx / w;
+                        if euclid_sq(xi, yi, bx as i64, by as i64) < min_d_sq {
+                            too_close = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if too_close {
+                break;
+            }
+        }
+
+        if !too_close && kind == BuildingKind::Port {
+            let mut near_water = false;
+            for dy in -2..=2 {
+                for dx in -2..=2 {
+                    let nx = xi + dx;
+                    let ny = yi + dy;
+                    if nx >= 0 && nx < w as i64 && ny >= 0 && ny < map.height as i64 {
+                        let t = map.terrain[map.ref_id(nx as u32, ny as u32)];
+                        if !t.is_land() {
+                            near_water = true;
+                            break;
+                        }
+                    }
+                }
+                if near_water {
+                    break;
+                }
+            }
+            if !near_water {
+                too_close = true;
             }
         }
 

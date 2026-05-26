@@ -41,6 +41,107 @@ pub struct MapShaderData {
     owner_texture: gpu::TextureView,
 }
 
+fn get_neighbors(idx: u32, width: u32, height: u32) -> [Option<u32>; 6] {
+    let x = idx % width;
+    let y = idx / width;
+    let is_odd = y % 2 != 0;
+    let deltas = if is_odd {
+        [
+            (1, 0),  // East
+            (-1, 0), // West
+            (0, -1), // Northwest
+            (1, -1), // Northeast
+            (0, 1),  // Southwest
+            (1, 1),  // Southeast
+        ]
+    } else {
+        [
+            (1, 0),   // East
+            (-1, 0),  // West
+            (-1, -1), // Northwest
+            (0, -1),  // Northeast
+            (-1, 1),  // Southwest
+            (0, 1),   // Southeast
+        ]
+    };
+    let mut neighbors = [None; 6];
+    for (i, &(dx, dy)) in deltas.iter().enumerate() {
+        let nx = x as i32 + dx;
+        let ny = y as i32 + dy;
+        if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+            neighbors[i] = Some((ny as u32) * width + (nx as u32));
+        }
+    }
+    neighbors
+}
+
+fn compute_has_border(idx: u32, owners: &[u16], width: u32, height: u32) -> bool {
+    let owner = owners[idx as usize];
+    if owner == 0 {
+        return false;
+    }
+    let neighbors = get_neighbors(idx, width, height);
+    for &n_idx in &neighbors {
+        if let Some(n) = n_idx {
+            if owners[n as usize] != owner {
+                return true;
+            }
+        } else {
+            // Out of bounds owner is 0
+            if owner != 0 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn get_elevation_cpu(x: i32, y: i32, width: u32, height: u32, terrain: &[u8]) -> f32 {
+    if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+        return 0.0;
+    }
+    let terrain_byte = terrain[(y as u32 * width + x as u32) as usize];
+    let is_land = (terrain_byte & 0x80) != 0;
+    if is_land {
+        (terrain_byte & 0x1F) as f32
+    } else {
+        0.0
+    }
+}
+
+fn compute_terrain_gradient(x: u32, y: u32, width: u32, height: u32, terrain: &[u8]) -> (f32, f32) {
+    let cell_x = x as i32;
+    let cell_y = y as i32;
+    let is_odd = cell_y % 2 != 0;
+
+    let h_right = get_elevation_cpu(cell_x + 1, cell_y, width, height, terrain);
+    let h_left = get_elevation_cpu(cell_x - 1, cell_y, width, height, terrain);
+
+    let h_up_l;
+    let h_up_r;
+    let h_dn_l;
+    let h_dn_r;
+
+    if is_odd {
+        h_up_l = get_elevation_cpu(cell_x, cell_y - 1, width, height, terrain);
+        h_up_r = get_elevation_cpu(cell_x + 1, cell_y - 1, width, height, terrain);
+        h_dn_l = get_elevation_cpu(cell_x, cell_y + 1, width, height, terrain);
+        h_dn_r = get_elevation_cpu(cell_x + 1, cell_y + 1, width, height, terrain);
+    } else {
+        h_up_l = get_elevation_cpu(cell_x - 1, cell_y - 1, width, height, terrain);
+        h_up_r = get_elevation_cpu(cell_x, cell_y - 1, width, height, terrain);
+        h_dn_l = get_elevation_cpu(cell_x - 1, cell_y + 1, width, height, terrain);
+        h_dn_r = get_elevation_cpu(cell_x, cell_y + 1, width, height, terrain);
+    }
+
+    let dx =
+        ((h_right + 0.5 * h_up_r + 0.5 * h_dn_r) - (h_left + 0.5 * h_up_l + 0.5 * h_dn_l)) * 0.10;
+    let dy = ((0.86602540378 * h_dn_l + 0.86602540378 * h_dn_r)
+        - (0.86602540378 * h_up_l + 0.86602540378 * h_up_r))
+        * 0.10;
+    (dx, dy)
+}
+
 pub struct MapRenderer {
     pub terrain_texture: gpu::Texture,
     pub terrain_view: gpu::TextureView,
@@ -60,6 +161,8 @@ pub struct MapRenderer {
     pub owner_bytes_per_row: u32,
     pub chunk_h: u32,
     pub dirty_chunks: Vec<bool>,
+    pub last_update: Option<web_time::Instant>,
+    pub has_water_neighbor: Vec<bool>,
 }
 
 impl MapRenderer {
@@ -70,14 +173,15 @@ impl MapRenderer {
         surface_format: gpu::TextureFormat,
         initial_terrain: &[u8],
     ) -> Self {
-        let terrain_bytes_per_row = (width + 255) & !255;
+        // Rgba8Unorm: 4 bytes per texel, row alignment to 256 bytes
+        let terrain_bytes_per_row = (width * 4 + 255) & !255;
         // R32Uint: 4 bytes per texel, row alignment to 256 bytes
         let owner_bytes_per_row = (width * 4 + 255) & !255;
 
-        // --- Terrain texture (R8Uint, static) ---
+        // --- Terrain texture (Rgba8Unorm, static) ---
         let terrain_texture = context.create_texture(gpu::TextureDesc {
             name: "terrain_map",
-            format: gpu::TextureFormat::R8Uint,
+            format: gpu::TextureFormat::Rgba8Unorm,
             size: gpu::Extent {
                 width,
                 height,
@@ -94,7 +198,7 @@ impl MapRenderer {
             terrain_texture,
             gpu::TextureViewDesc {
                 name: "terrain_map_view",
-                format: gpu::TextureFormat::R8Uint,
+                format: gpu::TextureFormat::Rgba8Unorm,
                 dimension: gpu::ViewDimension::D2,
                 subresources: &gpu::TextureSubresources::default(),
             },
@@ -105,15 +209,59 @@ impl MapRenderer {
             memory: gpu::Memory::Upload,
         });
 
-        // Fill terrain buffer with u8 terrain bytes
+        // Compute static has_water_neighbor list
+        let total = (width * height) as usize;
+        let mut has_water_neighbor = vec![false; total];
+        for idx in 0..total as u32 {
+            let terrain_byte = initial_terrain[idx as usize];
+            let is_land = (terrain_byte & 0x80) != 0;
+            if is_land {
+                let neighbors = get_neighbors(idx, width, height);
+                let mut water = false;
+                for &n_opt in &neighbors {
+                    if let Some(n) = n_opt {
+                        let n_terrain = initial_terrain[n as usize];
+                        let n_is_land = (n_terrain & 0x80) != 0;
+                        if !n_is_land {
+                            water = true;
+                            break;
+                        }
+                    } else {
+                        // Map edge has out-of-bounds neighbor (treated as water/non-land)
+                        water = true;
+                        break;
+                    }
+                }
+                has_water_neighbor[idx as usize] = water;
+            }
+        }
+
+        // Fill terrain buffer with RGBA8 terrain bytes (R: terrain, G: normal dx, B: normal dy, A: CPU noise seed)
         let terrain_total = (terrain_bytes_per_row * height) as usize;
         let terrain_ptr = terrain_buffer.data();
         let terrain_slice = unsafe { std::slice::from_raw_parts_mut(terrain_ptr, terrain_total) };
         for y in 0..height {
             for x in 0..width {
                 let src = (y * width + x) as usize;
-                let dst = (y * terrain_bytes_per_row + x) as usize;
-                terrain_slice[dst] = initial_terrain[src];
+                let dst = (y * terrain_bytes_per_row + x * 4) as usize;
+
+                let terrain_byte = initial_terrain[src];
+                let (dx, dy) = compute_terrain_gradient(x, y, width, height, initial_terrain);
+
+                let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+                let packed_dy = (((dy + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+
+                // High-entropy LCG hash for deterministic CPU noise seed per cell
+                let seed = (x as u64)
+                    .wrapping_mul(374761393)
+                    .wrapping_add((y as u64).wrapping_mul(668265263));
+                let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177);
+                let noise_byte = (hash & 0xFF) as u8;
+
+                terrain_slice[dst] = terrain_byte;
+                terrain_slice[dst + 1] = packed_dx;
+                terrain_slice[dst + 2] = packed_dy;
+                terrain_slice[dst + 3] = noise_byte;
             }
         }
         context.sync_buffer(terrain_buffer);
@@ -189,7 +337,6 @@ impl MapRenderer {
 
         let chunk_h = 64;
         let num_chunks = height.div_ceil(chunk_h);
-        let total = (width * height) as usize;
 
         Self {
             terrain_texture,
@@ -209,6 +356,8 @@ impl MapRenderer {
             owner_bytes_per_row,
             chunk_h,
             dirty_chunks: vec![false; num_chunks as usize],
+            last_update: None,
+            has_water_neighbor,
         }
     }
 
@@ -236,37 +385,67 @@ impl MapRenderer {
         context: &gpu::Context,
         dirty_tiles: &[sow_core::protocol::DirtyTile],
     ) {
+        let now = web_time::Instant::now();
+        let dt = match self.last_update {
+            Some(last) => now.duration_since(last).as_secs_f32(),
+            None => 0.016,
+        };
+        self.last_update = Some(now);
+
+        // Scale decay based on elapsed time so it completes in exactly 0.5s on all frame rates
+        let decay_amount = (dt * 510.0).round() as u32;
+        let decay_amount = decay_amount.max(1);
+
         let total = (self.width * self.height) as usize;
         let u32_per_row = self.owner_bytes_per_row / 4;
         let total_u32 = (u32_per_row * self.height) as usize;
         let width = self.width;
+        let height = self.height;
         let chunk_h = self.chunk_h;
 
         let dst_ptr = self.owner_buffer.data();
         let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
 
-        // Helper: pack owner + flash into the GPU buffer
-        let pack = |slice: &mut [u32], owners: &[u16], flash: &[u8], tile_idx: u32| {
-            let i = tile_idx as usize;
-            let x = tile_idx % width;
-            let y = tile_idx / width;
-            let dst = (y * u32_per_row + x) as usize;
-            slice[dst] = owners[i] as u32 | ((flash[i] as u32) << 16);
-        };
+        // Helper: pack owner + flash + border/water flags into the GPU buffer
+        let pack =
+            |slice: &mut [u32], owners: &[u16], flash: &[u8], tile_idx: u32, has_water: bool| {
+                let i = tile_idx as usize;
+                let x = tile_idx % width;
+                let y = tile_idx / width;
+                let dst = (y * u32_per_row + x) as usize;
+
+                let has_border = compute_has_border(tile_idx, owners, width, height);
+
+                let mut val = owners[i] as u32 | ((flash[i] as u32) << 16);
+                if has_border {
+                    val |= 1 << 24;
+                }
+                if has_water {
+                    val |= 1 << 25;
+                }
+                slice[dst] = val;
+            };
 
         // 1. Reset chunk tracking
         self.dirty_chunks.fill(false);
 
         // 2. Decay existing flash (sparse — only active entries)
         let mut decay_dirty = false;
+        let has_water = &self.has_water_neighbor;
         self.flash_active.retain(|&tile_idx| {
             let i = tile_idx as usize;
             if i >= total {
                 return false;
             }
-            let f = self.conquest_flash[i].saturating_sub(1);
+            let f = self.conquest_flash[i].saturating_sub(decay_amount.min(255) as u8);
             self.conquest_flash[i] = f;
-            pack(slice, &self.owners, &self.conquest_flash, tile_idx);
+            pack(
+                slice,
+                &self.owners,
+                &self.conquest_flash,
+                tile_idx,
+                has_water[i],
+            );
             let y = tile_idx / width;
             self.dirty_chunks[(y / chunk_h) as usize] = true;
             decay_dirty = true;
@@ -279,15 +458,40 @@ impl MapRenderer {
             if i >= total {
                 continue;
             }
-            if self.owners[i] != dt.new_owner && dt.new_owner > 0 {
-                self.conquest_flash[i] = 255;
-                self.flash_active.push(dt.index);
-            }
-            self.owners[i] = dt.new_owner;
+            let old_owner = self.owners[i];
+            if old_owner != dt.new_owner {
+                if dt.new_owner > 0 {
+                    self.conquest_flash[i] = 255;
+                    self.flash_active.push(dt.index);
+                }
+                self.owners[i] = dt.new_owner;
 
-            pack(slice, &self.owners, &self.conquest_flash, dt.index);
-            let y = dt.index / width;
-            self.dirty_chunks[(y / chunk_h) as usize] = true;
+                pack(
+                    slice,
+                    &self.owners,
+                    &self.conquest_flash,
+                    dt.index,
+                    self.has_water_neighbor[i],
+                );
+                let y = dt.index / width;
+                self.dirty_chunks[(y / chunk_h) as usize] = true;
+
+                // Also update and dirty all neighbors since their border status changes
+                let neighbors = get_neighbors(dt.index, width, height);
+                for &n_opt in &neighbors {
+                    if let Some(n_idx) = n_opt {
+                        pack(
+                            slice,
+                            &self.owners,
+                            &self.conquest_flash,
+                            n_idx,
+                            self.has_water_neighbor[n_idx as usize],
+                        );
+                        let n_y = n_idx / width;
+                        self.dirty_chunks[(n_y / chunk_h) as usize] = true;
+                    }
+                }
+            }
         }
 
         if dirty_tiles.is_empty() && !decay_dirty {

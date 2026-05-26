@@ -57,7 +57,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
     root_ui
         .ctx()
         .layer_painter(egui::LayerId::new(
-            egui::Order::Foreground,
+            egui::Order::Middle,
             egui::Id::new("settings_scrim"),
         ))
         .rect_filled(
