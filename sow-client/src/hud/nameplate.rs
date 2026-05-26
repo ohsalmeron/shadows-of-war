@@ -28,7 +28,6 @@ pub fn paint_glow_text(
     text: &str,
     font_id: egui::FontId,
     base_color: egui::Color32,
-    rect_size: egui::Vec2,
     is_tribe: bool,
 ) {
     if text.is_empty() {
@@ -38,29 +37,24 @@ pub fn paint_glow_text(
     // Opaque Matte Black for outline and 3D dragged shadow (Supercell style!)
     let black = egui::Color32::BLACK;
 
-    // 1. Dragged-down 3D Opaque Black Shadow (shallower 2px depth for Tribes to tune it down; full 4px depth for Players/Nations)
-    let shadow_offsets = if is_tribe {
-        &[1.0, 2.0][..]
-    } else {
-        &[1.0, 2.0, 3.0, 4.0][..]
-    };
-    for dy in shadow_offsets {
+    if is_tribe {
+        // Optimized zero-cost pristine 2-pass shadow for Tribes!
+        let shadow_pos = pos + egui::vec2(1.0, 1.0);
         painter.text(
-            pos + egui::vec2(-1.5, *dy),
+            shadow_pos,
             egui::Align2::LEFT_TOP,
             text,
             font_id.clone(),
             black,
         );
+        painter.text(pos, egui::Align2::LEFT_TOP, text, font_id, base_color);
+        return;
+    }
+
+    // 1. Optimized dragged-down 3D Opaque Black Shadow (2 passes instead of 12!)
+    for &dy in &[2.0, 4.0] {
         painter.text(
-            pos + egui::vec2(1.5, *dy),
-            egui::Align2::LEFT_TOP,
-            text,
-            font_id.clone(),
-            black,
-        );
-        painter.text(
-            pos + egui::vec2(0.0, *dy),
+            pos + egui::vec2(0.0, dy),
             egui::Align2::LEFT_TOP,
             text,
             font_id.clone(),
@@ -68,48 +62,19 @@ pub fn paint_glow_text(
         );
     }
 
-    // 2. Thick Opaque Black Outline (8-way 1.5px offset for bold strategic style)
-    for dx in &[-1.5, 0.0, 1.5] {
-        for dy in &[-1.5, 0.0, 1.5] {
-            if *dx != 0.0 || *dy != 0.0 {
-                painter.text(
-                    pos + egui::vec2(*dx, *dy),
-                    egui::Align2::LEFT_TOP,
-                    text,
-                    font_id.clone(),
-                    black,
-                );
-            }
-        }
+    // 2. Optimized 4-way diagonal outline (4 passes instead of 8!)
+    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+        painter.text(
+            pos + egui::vec2(dx, dy),
+            egui::Align2::LEFT_TOP,
+            text,
+            font_id.clone(),
+            black,
+        );
     }
 
-    // 3. Top-to-Bottom Gradient Core: top is the pure base color (brightest), bottom is 50% brightness of the base color
-    let bright_top = base_color;
-
-    // Dark bottom: 72% brightness of the base color (less dark, more pastel/vibrant!)
-    let dark_bottom = egui::Color32::from_rgb(
-        (base_color.r() as u32 * 72 / 100) as u8,
-        (base_color.g() as u32 * 72 / 100) as u8,
-        (base_color.b() as u32 * 72 / 100) as u8,
-    );
-
-    // Draw the bright top layer first
-    painter.text(
-        pos,
-        egui::Align2::LEFT_TOP,
-        text,
-        font_id.clone(),
-        bright_top,
-    );
-
-    // Draw the dark bottom layer clipped to the bottom half of the text rect
-    let text_rect = egui::Rect::from_min_size(pos, rect_size);
-    let bottom_clip = egui::Rect::from_min_max(
-        egui::pos2(text_rect.min.x - 10.0, text_rect.center().y),
-        egui::pos2(text_rect.max.x + 10.0, text_rect.max.y + 10.0),
-    );
-    let clipped_painter = painter.with_clip_rect(bottom_clip);
-    clipped_painter.text(pos, egui::Align2::LEFT_TOP, text, font_id, dark_bottom);
+    // 3. Core text (1 pass)
+    painter.text(pos, egui::Align2::LEFT_TOP, text, font_id, base_color);
 }
 
 pub fn paint_glow_nameplate_galley(
@@ -121,15 +86,7 @@ pub fn paint_glow_nameplate_galley(
     is_tribe: bool,
 ) {
     if !galley.is_empty() {
-        paint_glow_text(
-            painter,
-            pos,
-            galley.text(),
-            font_id,
-            base_color,
-            galley.rect.size(),
-            is_tribe,
-        );
+        paint_glow_text(painter, pos, galley.text(), font_id, base_color, is_tribe);
     }
 }
 

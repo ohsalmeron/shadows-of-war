@@ -360,8 +360,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
                     // ── Dynamic Conquest Border Shockwave Pulse ──
                     if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
-                        let pulse = sin(globals.time * 20.0 - min_border_dist * 50.0) * 0.5 + 0.5;
-                        border_albedo = mix(border_albedo, vec3<f32>(1.5, 1.5, 1.5), flash_val * globals.effect_shockwave * pulse);
+                        let pulse = 1.0 - min_border_dist / globals.border_thickness;
+                        border_albedo = mix(border_albedo, vec3<f32>(1.2, 1.2, 1.2), flash_val * globals.effect_shockwave * pulse * 0.5);
                     }
 
                     // ── Contested Border Energy Crackling (PvP shimmer) ──
@@ -369,8 +369,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     let contested_owner = get_cell_owner(neighbor_hex_0);
                     if contested_owner > 0u && contested_owner != owner_id {
                         let enemy_albedo = owner_albedo(contested_owner);
-                        let energy_t = sin(globals.time * 8.0 + min_border_dist * 40.0) * 0.5 + 0.5;
-                        border_albedo = mix(border_albedo, enemy_albedo * border_darkness, energy_t * 0.4);
+                        let energy_t = sin(globals.time * 2.5) * 0.5 + 0.5;
+                        border_albedo = mix(border_albedo, enemy_albedo * border_darkness, energy_t * 0.22);
                     }
                 }
 
@@ -428,31 +428,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 // ── WAR FOG: PvP attack ──
                 let atk_color = owner_albedo(attacker_id);
-                let atk_bright = atk_color * 1.1 + vec3<f32>(0.15);
-                let atk_dark = atk_color * 0.15;
 
-                // Desaturation — territory drains to grey
-                let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
-                let desat = mix(base_color, vec3<f32>(lum), threat * 0.45);
+                // Clean, elegant, and highly performant threat glow (no high-frequency noise)
+                let slow_breathe = 0.92 + 0.08 * sin(globals.time * 2.0);
+                let intensity = threat * slow_breathe;
 
-                // Attacker smoke
-                let smoke_color = mix(atk_dark, atk_bright, threat * threat);
-                let smoke_blend = threat * 0.35;
+                // Softly tint base color with attacker color
+                base_color = mix(base_color, atk_color * 0.22, intensity * 0.45);
 
-                // Ripple waves
-                let wave_phase = dist * 3.0 - globals.time * 4.0;
-                let ripple = (sin(wave_phase) + 1.0) * 0.5;
-                let ripple_intensity = ripple * threat * threat * 0.12;
-
-                // Corona front
-                let corona_dist = abs(dist - radius * 0.15);
-                let corona = smoothstep(1.5, 0.0, corona_dist) * 0.4;
-                let corona_color = min(atk_color * 1.6 + vec3<f32>(0.3), vec3<f32>(1.0));
-
-                var war_color = mix(desat, smoke_color, smoke_blend);
-                war_color += corona_color * corona;
-                war_color += atk_bright * ripple_intensity;
-                base_color = war_color;
+                // A subtle highlight towards the center of attack
+                base_color += atk_color * (intensity * intensity * 0.12);
             }
         }
     }

@@ -256,7 +256,7 @@ pub(crate) fn render(
                 } else {
                     egui::Color32::from_rgba_unmultiplied(255, 255, 255, 100) // soft neutral white glow
                 };
-                
+
                 // Draw concentric filled circles for a premium soft glow
                 for i in 1..=4 {
                     let glow_radius = base_size * 0.45 + (i as f32 * 3.5);
@@ -660,15 +660,22 @@ pub(crate) fn render(
 
                     // 2. Draw solid glowing hex outline around the Bunker itself for visual confirmation
                     let hex_r = (0.577_350_26_f32 * input.camera_zoom) / sf;
-                    let points: Vec<egui::Pos2> = (0..6)
-                        .map(|i| {
-                            let angle = (i as f32 * 60.0 + 30.0).to_radians();
-                            egui::pos2(
-                                center.x + hex_r * angle.cos(),
-                                center.y + hex_r * angle.sin(),
-                            )
-                        })
-                        .collect();
+                    const HEX_OFFSETS: [egui::Vec2; 6] = [
+                        egui::vec2(0.8660254, 0.5),
+                        egui::vec2(0.0, 1.0),
+                        egui::vec2(-0.8660254, 0.5),
+                        egui::vec2(-0.8660254, -0.5),
+                        egui::vec2(0.0, -1.0),
+                        egui::vec2(0.8660254, -0.5),
+                    ];
+                    let points = vec![
+                        center + HEX_OFFSETS[0] * hex_r,
+                        center + HEX_OFFSETS[1] * hex_r,
+                        center + HEX_OFFSETS[2] * hex_r,
+                        center + HEX_OFFSETS[3] * hex_r,
+                        center + HEX_OFFSETS[4] * hex_r,
+                        center + HEX_OFFSETS[5] * hex_r,
+                    ];
                     painter.add(egui::Shape::convex_polygon(
                         points,
                         egui::Color32::from_rgba_unmultiplied(
@@ -799,12 +806,19 @@ pub(crate) fn render(
 
                                                     let hex_r =
                                                         (0.577_350_26_f32 * input.camera_zoom) / sf;
+                                                    const HEX_OFFSETS: [egui::Vec2; 6] = [
+                                                        egui::vec2(0.8660254, 0.5),
+                                                        egui::vec2(0.0, 1.0),
+                                                        egui::vec2(-0.8660254, 0.5),
+                                                        egui::vec2(-0.8660254, -0.5),
+                                                        egui::vec2(0.0, -1.0),
+                                                        egui::vec2(0.8660254, -0.5),
+                                                    ];
                                                     let get_vertex = |v_idx: usize| -> egui::Pos2 {
-                                                        let angle = (v_idx as f32 * 60.0 + 30.0)
-                                                            .to_radians();
+                                                        let offset = HEX_OFFSETS[v_idx % 6];
                                                         egui::pos2(
-                                                            edge_center.x + hex_r * angle.cos(),
-                                                            edge_center.y + hex_r * angle.sin(),
+                                                            edge_center.x + hex_r * offset.x,
+                                                            edge_center.y + hex_r * offset.y,
                                                         )
                                                     };
 
@@ -950,7 +964,6 @@ pub(crate) fn render(
                     text_val,
                     font_id,
                     egui::Color32::WHITE,
-                    galley.rect.size(),
                     false,
                 );
             }

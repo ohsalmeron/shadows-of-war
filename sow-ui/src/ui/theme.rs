@@ -312,9 +312,8 @@ pub fn hud_button_text_size() -> f32 {
 
 /// Draw text with a crisp black outline and heavy bottom drop shadow.
 ///
-/// Uses 5 shadow passes (L/R/T/B + extra bottom) for a bold, game-style look.
-/// Only use on important, low-count text (titles, overlays, loading status).
-/// For bulk text (hundreds of bot labels), use a simple 1-pass drop shadow instead.
+/// Uses an optimized 7-pass style (2 dragged shadow passes, 4 diagonal outline passes, 1 core pass)
+/// for a bold, game-style look with maximum rendering performance.
 pub fn paint_premium_glow_text(
     painter: &egui::Painter,
     pos: egui::Pos2,
@@ -329,24 +328,10 @@ pub fn paint_premium_glow_text(
     }
     let black = shadow_color;
 
-    // 1. Dragged-down 3D Opaque Black Shadow
-    for dy in &[1.0, 2.0, 3.0, 4.0] {
+    // 1. Dragged-down 3D Opaque Black Shadow (2 passes)
+    for &dy in &[2.0, 4.0] {
         painter.text(
-            pos + egui::vec2(-1.5, *dy),
-            anchor,
-            text,
-            font_id.clone(),
-            black,
-        );
-        painter.text(
-            pos + egui::vec2(1.5, *dy),
-            anchor,
-            text,
-            font_id.clone(),
-            black,
-        );
-        painter.text(
-            pos + egui::vec2(0.0, *dy),
+            pos + egui::vec2(0.0, dy),
             anchor,
             text,
             font_id.clone(),
@@ -354,53 +339,19 @@ pub fn paint_premium_glow_text(
         );
     }
 
-    // 2. Thick Opaque Black Outline (8-way 1.5px offset)
-    for dx in &[-1.5, 0.0, 1.5] {
-        for dy in &[-1.5, 0.0, 1.5] {
-            if *dx != 0.0 || *dy != 0.0 {
-                painter.text(
-                    pos + egui::vec2(*dx, *dy),
-                    anchor,
-                    text,
-                    font_id.clone(),
-                    black,
-                );
-            }
-        }
+    // 2. 4-way diagonal outline (4 passes)
+    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+        painter.text(
+            pos + egui::vec2(dx, dy),
+            anchor,
+            text,
+            font_id.clone(),
+            black,
+        );
     }
 
-    // 3. Top-to-Bottom Gradient Core: top is pure base color, bottom is 72% brightness
-    let bright_top = base_color;
-    let dark_bottom = egui::Color32::from_rgb(
-        (base_color.r() as u32 * 72 / 100) as u8,
-        (base_color.g() as u32 * 72 / 100) as u8,
-        (base_color.b() as u32 * 72 / 100) as u8,
-    );
-
-    // Draw the bright top layer first
-    painter.text(pos, anchor, text, font_id.clone(), bright_top);
-
-    // Clip the dark bottom layer to the bottom half of the text rect
-    let galley = painter.layout_no_wrap(text.to_owned(), font_id.clone(), base_color);
-    let size = galley.rect.size();
-    let min = match anchor {
-        egui::Align2::LEFT_TOP => pos,
-        egui::Align2::CENTER_TOP => pos - egui::vec2(size.x / 2.0, 0.0),
-        egui::Align2::RIGHT_TOP => pos - egui::vec2(size.x, 0.0),
-        egui::Align2::LEFT_CENTER => pos - egui::vec2(0.0, size.y / 2.0),
-        egui::Align2::CENTER_CENTER => pos - size / 2.0,
-        egui::Align2::RIGHT_CENTER => pos - egui::vec2(size.x, size.y / 2.0),
-        egui::Align2::LEFT_BOTTOM => pos - egui::vec2(0.0, size.y),
-        egui::Align2::CENTER_BOTTOM => pos - egui::vec2(size.x / 2.0, size.y),
-        egui::Align2::RIGHT_BOTTOM => pos - size,
-    };
-    let text_rect = egui::Rect::from_min_size(min, size);
-    let bottom_clip = egui::Rect::from_min_max(
-        egui::pos2(text_rect.min.x - 10.0, text_rect.center().y),
-        egui::pos2(text_rect.max.x + 10.0, text_rect.max.y + 10.0),
-    );
-    let clipped_painter = painter.with_clip_rect(bottom_clip);
-    clipped_painter.text(pos, anchor, text, font_id, dark_bottom);
+    // 3. Core text (1 pass)
+    painter.text(pos, anchor, text, font_id, base_color);
 }
 
 /// Draw text with a crisp black outline and heavy bottom drop shadow.

@@ -342,16 +342,28 @@ pub(crate) fn render(
 
             let pos = egui::pos2(screen_x, screen_y);
 
-            // Supercell style text: solid black outline + heavy bottom shadow
-            sow_ui::ui::theme::outlined_text(
-                &middle_painter,
-                pos,
-                egui::Align2::CENTER_CENTER,
-                &label,
-                egui::FontId::proportional(13.0),
-                color,
-                egui::Color32::BLACK,
-            );
+            // Premium 7-pass high-contrast outline & dragged-down shadow
+            let outline_color = egui::Color32::BLACK;
+            let font_id = egui::FontId::proportional(13.0);
+            for &dy in &[2.0, 4.0] {
+                middle_painter.text(
+                    pos + egui::vec2(0.0, dy),
+                    egui::Align2::CENTER_CENTER,
+                    &label,
+                    font_id.clone(),
+                    outline_color,
+                );
+            }
+            for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+                middle_painter.text(
+                    pos + egui::vec2(dx, dy),
+                    egui::Align2::CENTER_CENTER,
+                    &label,
+                    font_id.clone(),
+                    outline_color,
+                );
+            }
+            middle_painter.text(pos, egui::Align2::CENTER_CENTER, &label, font_id, color);
         }
     }
 }

@@ -290,14 +290,31 @@ impl SowApp {
                 );
                 let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
 
-                sow_ui::ui::theme::outlined_text(
-                    &middle_painter,
+                // Premium 7-pass high-contrast outline & dragged-down shadow
+                for &dy in &[2.0, 4.0] {
+                    middle_painter.text(
+                        pos + egui::vec2(0.0, dy),
+                        egui::Align2::CENTER_CENTER,
+                        &anim.name,
+                        egui::FontId::proportional(font_size),
+                        outline_color,
+                    );
+                }
+                for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+                    middle_painter.text(
+                        pos + egui::vec2(dx, dy),
+                        egui::Align2::CENTER_CENTER,
+                        &anim.name,
+                        egui::FontId::proportional(font_size),
+                        outline_color,
+                    );
+                }
+                middle_painter.text(
                     pos,
                     egui::Align2::CENTER_CENTER,
                     &anim.name,
                     egui::FontId::proportional(font_size),
                     text_color,
-                    outline_color,
                 );
                 true
             });
@@ -340,15 +357,31 @@ impl SowApp {
                     };
                     let font_size = (16.0 * bounce_scale).max(1.0);
 
-                    // Draw outlined text
-                    sow_ui::ui::theme::outlined_text(
-                        &middle_painter,
+                    // Premium 7-pass high-contrast outline & dragged-down shadow
+                    for &dy in &[2.0, 4.0] {
+                        middle_painter.text(
+                            pos + egui::vec2(0.0, dy),
+                            egui::Align2::CENTER_CENTER,
+                            &notice.text,
+                            egui::FontId::proportional(font_size),
+                            outline_color,
+                        );
+                    }
+                    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+                        middle_painter.text(
+                            pos + egui::vec2(dx, dy),
+                            egui::Align2::CENTER_CENTER,
+                            &notice.text,
+                            egui::FontId::proportional(font_size),
+                            outline_color,
+                        );
+                    }
+                    middle_painter.text(
                         pos,
                         egui::Align2::CENTER_CENTER,
                         &notice.text,
                         egui::FontId::proportional(font_size),
                         text_color,
-                        outline_color,
                     );
                 }
                 true

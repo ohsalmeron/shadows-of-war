@@ -554,7 +554,7 @@ impl SowApp {
                 .submit(&mut self.gfx.render_ctx.command_encoder);
 
             if let Some(ref mut gp) = self.gfx.gui_painter {
-                gp.after_submit(&sync_point, &self.gfx.render_ctx.context);
+                gp.after_submit(&sync_point);
             }
 
             self.gfx.prev_sync_point = Some(sync_point);
