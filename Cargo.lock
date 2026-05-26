@@ -358,6 +358,9 @@ name = "bitflags"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "blade-egui"
@@ -413,6 +416,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "blade-particle"
+version = "0.1.0"
+dependencies = [
+ "blade-graphics",
+ "blade-macros",
+ "bytemuck",
+ "ron",
+ "serde",
 ]
 
 [[package]]
@@ -3009,6 +3023,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839"
 
 [[package]]
+name = "ron"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b91f7eff05f748767f183df4320a63d6936e9c6107d97c9e6bdd9784f4289c94"
+dependencies = [
+ "base64 0.21.7",
+ "bitflags 2.11.1",
+ "serde",
+ "serde_derive",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3460,6 +3486,7 @@ dependencies = [
  "bincode",
  "blade-egui",
  "blade-graphics",
+ "blade-particle",
  "brotli",
  "console_error_panic_hook",
  "console_log",
@@ -3584,6 +3611,7 @@ version = "0.1.0"
 dependencies = [
  "blade-graphics",
  "blade-macros",
+ "blade-particle",
  "bytemuck",
  "env_logger",
  "log",

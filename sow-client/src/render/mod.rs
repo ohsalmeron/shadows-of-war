@@ -70,13 +70,70 @@ impl SowApp {
                     mr.upload_terrain(&mut self.gfx.render_ctx.command_encoder);
                 }
 
-                // Perform CPU-side update of the map
+                // --- Layer 4: Track and Spawn Detonations ---
+                let mut new_detonations = Vec::new();
+                if let Some(snap) = &self.sim.current_snapshot {
+                    for (id, prev_proj) in &self.ui.last_projectiles {
+                        if !snap.projectiles.iter().any(|p| p.id == *id) {
+                            let at_end = prev_proj.path_cursor + (prev_proj.steps_per_tick as usize)
+                                >= prev_proj.path.len();
+                            if at_end {
+                                let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
+                                let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
+                                new_detonations.push((dst_x, dst_y, prev_proj.kind));
+                            }
+                        }
+                    }
+                }
+
+                // Spawns and tracks active explosions/fallout zones
+                let current_time = web_time::Instant::now();
+                for (dx, dy, kind) in new_detonations {
+                    if let sow_core::game::ProjectileKind::Nuke { level } = kind {
+                        let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
+                        let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
+                        let exp_kind = if level >= 2 {
+                            crate::app::ExplosionKind::Hydrogen
+                        } else {
+                            crate::app::ExplosionKind::Atom
+                        };
+
+                        self.ui.active_explosions.push(crate::app::ActiveExplosion {
+                            x: dx,
+                            y: dy,
+                            start_time: current_time,
+                            max_radius,
+                            kind: exp_kind,
+                        });
+                        self.ui.fallout_zones.push(crate::app::FalloutZone {
+                            x: dx,
+                            y: dy,
+                            radius: fallout_radius,
+                            start_time: current_time,
+                        });
+
+                        // Trigger spectacular GPU-driven billboard particle burst!
+                        let exp_world_x = dx + 0.5 + (dy as i32 % 2) as f32 * 0.5;
+                        let exp_world_y = (dy + 0.5) * 0.8660254_f32;
+                        mr.spawn_nuke_explosion(exp_world_x, exp_world_y, level, &self.gfx.render_ctx.context);
+                    }
+                }
+
+                // Sync last_projectiles
+                if let Some(snap) = &self.sim.current_snapshot {
+                    self.ui.last_projectiles.clear();
+                    for proj in &snap.projectiles {
+                        self.ui.last_projectiles.insert(proj.id, proj.clone());
+                    }
+                }
+
                 let dirty = self
                     .sim
                     .current_snapshot
                     .as_ref()
                     .map(|s| s.dirty_tiles.as_slice())
                     .unwrap_or(&[]);
+
                 mr.update(
                     &mut self.gfx.render_ctx.command_encoder,
                     &self.gfx.render_ctx.context,

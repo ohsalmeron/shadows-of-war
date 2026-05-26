@@ -11,6 +11,7 @@ log = { workspace = true }
 
 blade-graphics = { workspace = true }
 blade-macros = { workspace = true }
+blade-particle = { workspace = true }
 raw-window-handle = { workspace = true }
 web-time = { workspace = true }
 

@@ -142,6 +142,12 @@ fn compute_terrain_gradient(x: u32, y: u32, width: u32, height: u32, terrain: &[
     (dx, dy)
 }
 
+pub struct ActiveParticleSystem {
+    pub system: blade_particle::ParticleSystem,
+    pub elapsed: f32,
+    pub max_duration: f32,
+}
+
 pub struct MapRenderer {
     pub terrain_texture: gpu::Texture,
     pub terrain_view: gpu::TextureView,
@@ -163,6 +169,8 @@ pub struct MapRenderer {
     pub dirty_chunks: Vec<bool>,
     pub last_update: Option<web_time::Instant>,
     pub has_water_neighbor: Vec<bool>,
+    pub active_explosions: Vec<ActiveParticleSystem>,
+    pub particle_pipeline: blade_particle::ParticlePipeline,
 }
 
 impl MapRenderer {
@@ -338,6 +346,16 @@ impl MapRenderer {
         let chunk_h = 64;
         let num_chunks = height.div_ceil(chunk_h);
 
+        let particle_pipeline = blade_particle::ParticlePipeline::new(
+            context,
+            blade_particle::PipelineDesc {
+                name: "nuke_particles",
+                draw_format: surface_format,
+                depth_format: None,
+                sample_count: 1,
+            },
+        );
+
         Self {
             terrain_texture,
             terrain_view,
@@ -358,6 +376,8 @@ impl MapRenderer {
             dirty_chunks: vec![false; num_chunks as usize],
             last_update: None,
             has_water_neighbor,
+            active_explosions: Vec::new(),
+            particle_pipeline,
         }
     }
 
@@ -378,6 +398,56 @@ impl MapRenderer {
         );
     }
 
+    pub fn spawn_nuke_explosion(
+        &mut self,
+        x: f32,
+        y: f32,
+        level: u8,
+        context: &gpu::Context,
+    ) {
+        // Volumetric fireball/smoke palette for modern industry-standard feel
+        let color = blade_particle::ColorConfig::Palette(vec![
+            [255, 255, 255, 255], // White hot core
+            [255, 180, 40, 240],  // Yellow-orange flame
+            [255, 90, 10, 200],   // Deep red-orange flame
+            [110, 105, 105, 180], // Volumetric dark grey smoke
+            [70, 68, 68, 140],    // Volumetric shadow smoke
+        ]);
+
+        let is_hydrogen = level >= 2;
+        let capacity = if is_hydrogen { 2000 } else { 1200 };
+        let burst_count = if is_hydrogen { 1500 } else { 800 };
+        let life = if is_hydrogen { [0.8, 1.8] } else { [0.6, 1.4] };
+        let speed = if is_hydrogen { [1.2, 7.5] } else { [0.8, 5.0] };
+        let scale = if is_hydrogen { [0.12, 0.8] } else { [0.08, 0.5] };
+        let radius = if is_hydrogen { 0.25 } else { 0.15 };
+
+        let effect = blade_particle::ParticleEffect {
+            capacity,
+            emitter: blade_particle::Emitter {
+                rate: 0.0,
+                burst_count,
+                shape: blade_particle::EmitterShape::Sphere { radius },
+                cone_angle: std::f32::consts::PI,
+            },
+            particle: blade_particle::ParticleConfig {
+                life,
+                speed,
+                scale,
+                color,
+            },
+        };
+
+        let mut system = self.particle_pipeline.create_system(context, "nuke_explosion", &effect);
+        system.burst(burst_count, [x, y, 0.0]);
+
+        self.active_explosions.push(ActiveParticleSystem {
+            system,
+            elapsed: 0.0,
+            max_duration: life[1] + 0.1,
+        });
+    }
+
     /// Write dirty ownership tiles to the upload buffer and copy to GPU.
     pub fn update(
         &mut self,
@@ -391,6 +461,19 @@ impl MapRenderer {
             None => 0.016,
         };
         self.last_update = Some(now);
+
+        // --- Update and simulate active nuke particles ---
+        let mut i = 0;
+        while i < self.active_explosions.len() {
+            self.active_explosions[i].elapsed += dt;
+            if self.active_explosions[i].elapsed >= self.active_explosions[i].max_duration {
+                let mut aps = self.active_explosions.remove(i);
+                aps.system.destroy(context);
+            } else {
+                self.active_explosions[i].system.update(&self.particle_pipeline, encoder, dt);
+                i += 1;
+            }
+        }
 
         // Scale decay based on elapsed time so it completes in exactly 0.5s on all frame rates
         let decay_amount = (dt * 510.0).round() as u32;
@@ -573,6 +656,23 @@ impl MapRenderer {
             },
         );
         rc.draw(0, 3, 0, 1);
+
+        // --- GPU Particle Drawing ---
+        let view_proj = [
+            2.0 * globals.zoom / globals.screen_size[0], 0.0, 0.0, 0.0,
+            0.0, -2.0 * globals.zoom / globals.screen_size[1], 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            (2.0 * globals.camera_pos[0] / globals.screen_size[0]) - 1.0,
+            1.0 - (2.0 * globals.camera_pos[1] / globals.screen_size[1]), 0.0, 1.0,
+        ];
+        let camera_params = blade_particle::CameraParams {
+            view_proj,
+            camera_right: [1.0, 0.0, 0.0, 0.0],
+            camera_up: [0.0, 1.0, 0.0, 0.0],
+        };
+        for aps in &self.active_explosions {
+            aps.system.draw(&self.particle_pipeline, &mut pass, &camera_params);
+        }
     }
 
     pub fn destroy(&mut self, render_ctx: &RenderContext) {
@@ -585,5 +685,10 @@ impl MapRenderer {
         render_ctx
             .context
             .destroy_render_pipeline(&mut self.pipeline);
+
+        for mut aps in self.active_explosions.drain(..) {
+            aps.system.destroy(&render_ctx.context);
+        }
+        self.particle_pipeline.destroy(&render_ctx.context);
     }
 }

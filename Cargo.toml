@@ -67,6 +67,9 @@ path = "blade/blade-graphics"
 [workspace.dependencies.blade-macros]
 path = "blade/blade-macros"
 
+[workspace.dependencies.blade-particle]
+path = "blade/blade-particle"
+
 [workspace.dependencies.bytemuck]
 version = "1"
 features = ["derive"]

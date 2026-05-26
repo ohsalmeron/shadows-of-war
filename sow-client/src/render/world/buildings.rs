@@ -287,47 +287,18 @@ pub(crate) fn render(
                     egui::Color32::WHITE
                 };
 
-                // Draw a soft glowing halo behind the building
-                let glow_color = if b.owner_id != 0 {
-                    player_color
-                } else {
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 100) // soft neutral white glow
-                };
-
-                // Draw concentric filled circles for a premium soft glow (1-loop on low-end)
-                if input.screen_w < 900.0 || sf > 1.5 {
-                    let glow_radius = base_size * 0.45 + 5.0;
-                    painter.circle_filled(
-                        center,
-                        glow_radius,
-                        egui::Color32::from_rgba_unmultiplied(
-                            glow_color.r(),
-                            glow_color.g(),
-                            glow_color.b(),
-                            20,
-                        ),
-                    );
-                } else {
-                    for i in 1..=4 {
-                        let glow_radius = base_size * 0.45 + (i as f32 * 3.5);
-                        let glow_alpha = (45 - (i * 10)) as u8;
-                        painter.circle_filled(
-                            center,
-                            glow_radius,
-                            egui::Color32::from_rgba_unmultiplied(
-                                glow_color.r(),
-                                glow_color.g(),
-                                glow_color.b(),
-                                glow_alpha,
-                            ),
-                        );
+                let tint = if b.owner_id != 0 {
+                    let mut color = player_color;
+                    if b.under_construction {
+                        color = color.gamma_multiply(0.5);
                     }
-                }
-
-                let tint = if b.under_construction {
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128) // semi-transparent under construction
+                    color
                 } else {
-                    egui::Color32::WHITE // full albedo
+                    if b.under_construction {
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128)
+                    } else {
+                        egui::Color32::WHITE
+                    }
                 };
 
                 painter.image(
@@ -380,41 +351,6 @@ pub(crate) fn render(
                                     egui::Color32::WHITE
                                 };
 
-                                // Draw soft glow behind district
-                                let glow_color = if b.owner_id != 0 {
-                                    player_color
-                                } else {
-                                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 100)
-                                };
-                                if input.screen_w < 900.0 || sf > 1.5 {
-                                    let glow_radius = district_size * 0.45 + 3.0;
-                                    painter.circle_filled(
-                                        dist_center,
-                                        glow_radius,
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            glow_color.r(),
-                                            glow_color.g(),
-                                            glow_color.b(),
-                                            15,
-                                        ),
-                                    );
-                                } else {
-                                    for i in 1..=3 {
-                                        let glow_radius = district_size * 0.45 + (i as f32 * 2.0);
-                                        let glow_alpha = (40 - (i * 10)) as u8;
-                                        painter.circle_filled(
-                                            dist_center,
-                                            glow_radius,
-                                            egui::Color32::from_rgba_unmultiplied(
-                                                glow_color.r(),
-                                                glow_color.g(),
-                                                glow_color.b(),
-                                                glow_alpha,
-                                            ),
-                                        );
-                                    }
-                                }
-
                                 // Draw connector line
                                 painter.line_segment(
                                     [center, dist_center],
@@ -435,8 +371,8 @@ pub(crate) fn render(
                                     egui::Rect::from_min_max(
                                         egui::pos2(0.0, 0.0),
                                         egui::pos2(1.0, 1.0),
-                                    ),
-                                    egui::Color32::WHITE, // full albedo
+                                     ),
+                                    player_color,
                                 );
                             }
                         };

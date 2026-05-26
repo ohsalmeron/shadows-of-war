@@ -37,54 +37,7 @@ pub(crate) fn render(
     };
 
     if let Some(snap) = &sim.current_snapshot {
-        // --- Layer 4: Track and Spawn Detonations ---
-        let mut new_detonations = Vec::new();
-        for (id, prev_proj) in &ui.last_projectiles {
-            if !snap.projectiles.iter().any(|p| p.id == *id) {
-                // Projectile vanished → detonated (path_cursor was at end)
-                let at_end = prev_proj.path_cursor + (prev_proj.steps_per_tick as usize)
-                    >= prev_proj.path.len();
-                if at_end {
-                    let dst_x = (prev_proj.dst_tile % sim.map_w) as f32;
-                    let dst_y = (prev_proj.dst_tile / sim.map_w) as f32;
-                    new_detonations.push((dst_x, dst_y, prev_proj.kind));
-                }
-            }
-        }
-
-        // Sync last_projectiles
-        ui.last_projectiles.clear();
-        for proj in &snap.projectiles {
-            ui.last_projectiles.insert(proj.id, proj.clone());
-        }
-
-        // Spawn active explosions and fallout zones for new detonations
         let current_time = web_time::Instant::now();
-        for (dx, dy, kind) in new_detonations {
-            if let sow_core::game::ProjectileKind::Nuke { level } = kind {
-                let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
-                let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
-                let exp_kind = if level >= 2 {
-                    crate::app::ExplosionKind::Hydrogen
-                } else {
-                    crate::app::ExplosionKind::Atom
-                };
-
-                ui.active_explosions.push(crate::app::ActiveExplosion {
-                    x: dx,
-                    y: dy,
-                    start_time: current_time,
-                    max_radius,
-                    kind: exp_kind,
-                });
-                ui.fallout_zones.push(crate::app::FalloutZone {
-                    x: dx,
-                    y: dy,
-                    radius: fallout_radius,
-                    start_time: current_time,
-                });
-            }
-        }
 
         // --- Layer 5: Fallout Zones & Explosions ---
         ui.fallout_zones.retain(|fz| {
@@ -210,61 +163,6 @@ pub(crate) fn render(
                 egui::Stroke::new(1.2_f32, shockwave_color),
             );
 
-            // 3. Rising Mushroom Cloud / Fireball Cap (clean, semi-transparent concentric layers)
-            let cloud_scale = match exp.kind {
-                crate::app::ExplosionKind::Hydrogen => 1.0,
-                crate::app::ExplosionKind::Atom => 0.45,
-                crate::app::ExplosionKind::MIRVWarhead => 0.18,
-            };
-
-            let rise_scale = 1.0 - (1.0 - p).powi(2);
-            let cap_rise = rise_scale * 45.0 * cloud_scale * zoom_scaled;
-            let cap_center = egui::pos2(center.x, center.y - cap_rise);
-
-            let cap_scale = 1.0 - (1.0 - p).powi(4);
-            let cap_radius = cap_scale * exp.max_radius * zoom_scaled;
-
-            // Highly translucent alpha colors to make sure we can see through the explosions!
-            let smoke_alpha = ((1.0 - p) * 110.0) as u8;
-            let fire_alpha = ((1.0 - p) * 150.0) as u8;
-            let core_alpha = (((1.0 - p).powi(2)) * 180.0) as u8;
-
-            // Cap layers:
-            // Outer dark fire-smoke (translucent)
-            painter.circle_filled(
-                cap_center,
-                cap_radius,
-                egui::Color32::from_rgba_unmultiplied(225, 45, 0, smoke_alpha),
-            );
-            // Middle glowing orange (translucent)
-            painter.circle_filled(
-                cap_center,
-                cap_radius * 0.75,
-                egui::Color32::from_rgba_unmultiplied(255, 120, 0, fire_alpha),
-            );
-            // Inner white-hot blast core (translucent)
-            painter.circle_filled(
-                cap_center,
-                cap_radius * 0.45,
-                egui::Color32::from_rgba_unmultiplied(255, 255, 190, core_alpha),
-            );
-
-            // 4. Mushroom Stem (simple, clean semi-transparent pill/rect)
-            let stem_w = cap_radius * 0.20;
-            let stem_rect = egui::Rect::from_min_max(
-                egui::pos2(center.x - stem_w, cap_center.y),
-                egui::pos2(center.x + stem_w, center.y),
-            );
-            painter.rect_filled(
-                stem_rect,
-                2.0,
-                egui::Color32::from_rgba_unmultiplied(
-                    255,
-                    80,
-                    0,
-                    (smoke_alpha as f32 * 0.65) as u8,
-                ),
-            );
             true
         });
     }
