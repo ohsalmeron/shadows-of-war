@@ -187,11 +187,11 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.35,
+            global_speed_multiplier: 1.0,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
-            attack_cost_neutral: 0.25,
+            attack_cost_neutral: 1.0,
             terrain_multiplier_highland: 2.5,
             terrain_multiplier_mountain: 5.0,
 
@@ -217,10 +217,10 @@ impl Default for GameConfig {
             factory_gold_income: 4.0,
             port_troop_income: 150.0,
             port_gold_income: 5.0,
-            cost_city: 50.0,
-            cost_bunker: 25.0,
-            cost_factory: 40.0,
-            cost_port: 45.0,
+            cost_city: 250.0,
+            cost_bunker: 75.0,
+            cost_factory: 125.0,
+            cost_port: 150.0,
             nuke_cost: 5.0,
 
             player_civilization: crate::player::Civilization::Rome,

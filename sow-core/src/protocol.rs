@@ -417,6 +417,12 @@ pub struct ResourceTransfer {
     pub troops: f64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResourceRejection {
+    pub rejector_id: u16,
+    pub requester_id: u16,
+}
+
 /// Snapshot sent from the simulation thread to the main thread every tick.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimSnapshot {
@@ -433,6 +439,8 @@ pub struct SimSnapshot {
     pub nuke_alerts: Vec<NukeAlert>,
     #[serde(default)]
     pub resource_transfers: Vec<ResourceTransfer>,
+    #[serde(default)]
+    pub resource_rejections: Vec<ResourceRejection>,
     pub winner: Option<u16>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,

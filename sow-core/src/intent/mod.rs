@@ -558,6 +558,12 @@ impl SowEngine {
                 let target = *target_player; // target here is the proposer
                 if let Some(pos) = self.resource_requests_proposed.iter().position(|r| r.proposer == target && r.target == rejector) {
                     self.resource_requests_proposed.remove(pos);
+                    self.state.events.push(
+                        crate::game::GameEvent::ResourceRequestRejected {
+                            rejector_id: rejector,
+                            requester_id: target,
+                        }
+                    );
                 }
             }
         }

@@ -936,7 +936,7 @@ impl SowApp {
                                     ui.vertical(|ui| {
                                         ui.vertical_centered(|ui| {
                                             ui.label(
-                                                egui::RichText::new("TACTICAL STRIKE")
+                                                egui::RichText::new("NUCLEAR STRIKE")
                                                     .strong()
                                                     .color(theme_color)
                                                     .size(13.0)

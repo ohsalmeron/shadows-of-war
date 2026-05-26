@@ -199,6 +199,10 @@ pub enum GameEvent {
         gold: f64,
         troops: f64,
     },
+    ResourceRequestRejected {
+        rejector_id: u16,
+        requester_id: u16,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -53,6 +53,16 @@ impl SowApp {
                                 self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
                             }
                         }
+                        for rej in &snap.resource_rejections {
+                            if rej.requester_id == my_id {
+                                let rejector_name = snap.players.iter()
+                                    .find(|p| p.id == rej.rejector_id)
+                                    .map(|p| p.name.as_str())
+                                    .unwrap_or("Ally");
+                                let msg = format!("❌ {} rejected your request for help!", rejector_name);
+                                self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(239, 68, 68));
+                            }
+                        }
                     }
                     self.sync_building_costs();
 
@@ -118,6 +128,16 @@ impl SowApp {
                                 _ => continue,
                             };
                             self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+                        }
+                    }
+                    for rej in &snap.resource_rejections {
+                        if rej.requester_id == my_id {
+                            let rejector_name = snap.players.iter()
+                                .find(|p| p.id == rej.rejector_id)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or("Ally");
+                            let msg = format!("❌ {} rejected your request for help!", rejector_name);
+                            self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(239, 68, 68));
                         }
                     }
                 }
@@ -250,7 +270,8 @@ impl SowApp {
                     b_list
                         .iter()
                         .filter(|b| b.owner_id == my_player_id && b.kind == kind)
-                        .count() as u32
+                        .map(|b| b.level as u32)
+                        .sum()
                 } else {
                     0
                 };

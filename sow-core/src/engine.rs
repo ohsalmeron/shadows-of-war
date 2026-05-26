@@ -493,53 +493,33 @@ impl SowEngine {
         for i in 0..tribe_count {
             let bot_id = tribe_start_id + i as u16;
 
-            let manifest_nation = json_iter.next();
-            let mut spawn_point = None;
             let mut name = String::new();
+            let mut found_name = false;
+            let mut attempts = 0;
 
-            if let Some(n) = &manifest_nation {
-                let nx = n.coordinates[0];
-                let ny = n.coordinates[1];
-                if self.state.map.is_valid_coord(nx as i32, ny as i32)
-                    && self.state.map.owner_id(nx, ny) == 0
-                    && self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land()
-                {
-                    spawn_point = Some((nx, ny));
+            while !found_name && attempts < 100 {
+                if fallback_indices.is_empty() {
+                    fallback_indices = (0..fallback_pool.len()).collect();
                 }
-                name = n.name.clone();
-                used_names.insert(name.clone());
-            } else {
-                let mut found_name = false;
-                let mut attempts = 0;
-
-                while !found_name && attempts < 100 {
-                    if fallback_indices.is_empty() {
-                        fallback_indices = (0..fallback_pool.len()).collect();
-                    }
-                    let idx = (rng.rand() as usize) % fallback_indices.len();
-                    let pool_idx = fallback_indices[idx];
-                    let potential_name = fallback_pool[pool_idx].to_string();
-                    if !used_names.contains(&potential_name) {
-                        name = potential_name;
-                        used_names.insert(name.clone());
-                        fallback_indices.swap_remove(idx);
-                        found_name = true;
-                    } else {
-                        fallback_indices.swap_remove(idx);
-                    }
-                    attempts += 1;
+                let idx = (rng.rand() as usize) % fallback_indices.len();
+                let pool_idx = fallback_indices[idx];
+                let potential_name = fallback_pool[pool_idx].to_string();
+                if !used_names.contains(&potential_name) {
+                    name = potential_name;
+                    used_names.insert(name.clone());
+                    fallback_indices.swap_remove(idx);
+                    found_name = true;
+                } else {
+                    fallback_indices.swap_remove(idx);
                 }
-
-                if !found_name {
-                    name = format!("Tribe {}", bot_id);
-                }
+                attempts += 1;
             }
 
-            if spawn_point.is_none() {
-                spawn_point = self.find_valid_spawn(&mut rng);
+            if !found_name {
+                name = format!("Tribe {}", bot_id);
             }
 
-            if let Some((sx, sy)) = spawn_point {
+            if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
                 let color = crate::player::bot_territory_color(self.state.seed, bot_id);
                 let player = Player::new_bot(bot_id, name, color, &config);
                 self.state.spawn_player(player, sx, sy);
@@ -867,6 +847,25 @@ impl SowEngine {
                     }
                 })
                 .collect(),
+            resource_rejections: self
+                .state
+                .events
+                .iter()
+                .filter_map(|e| {
+                    if let crate::game::GameEvent::ResourceRequestRejected {
+                        rejector_id,
+                        requester_id,
+                    } = e
+                    {
+                        Some(crate::protocol::ResourceRejection {
+                            rejector_id: *rejector_id,
+                            requester_id: *requester_id,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             winner: self.state.winner,
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
@@ -893,5 +892,65 @@ impl SowEngine {
                 String::new()
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_config::GameConfig;
+    use crate::game::GameState;
+    use crate::water_components::WaterComponents;
+    use crate::map_legacy::Nation;
+
+    #[test]
+    fn test_spawn_ai_nations() {
+        let config = GameConfig {
+            map_width: 200,
+            map_height: 200,
+            ..Default::default()
+        };
+        // 1. nation_count = 0, manifest_nations = 3 nations.
+        // Should spawn 0 nations.
+        let mut state = GameState::new(42, 200, 200, config.clone());
+        for t in &mut state.map.terrain {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+        let mut engine = SowEngine::new(state, WaterComponents::default());
+        let manifest_nations = vec![
+            Nation { name: "Ireland".to_string(), flag: None, coordinates: [20, 20] },
+            Nation { name: "England".to_string(), flag: None, coordinates: [60, 60] },
+            Nation { name: "Spain".to_string(), flag: None, coordinates: [100, 100] },
+        ];
+        engine.spawn_ai(0, 0, Some(manifest_nations.clone()));
+        assert_eq!(engine.state.players.len(), 0);
+
+        // 2. nation_count = 5, manifest_nations = 3.
+        // Should spawn 5 nations: 3 from manifest, 2 from fallback.
+        let mut state = GameState::new(42, 200, 200, config.clone());
+        for t in &mut state.map.terrain {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+        let mut engine = SowEngine::new(state, WaterComponents::default());
+        engine.spawn_ai(5, 0, Some(manifest_nations.clone()));
+        assert_eq!(engine.state.players.len(), 5);
+        let player_names: Vec<String> = engine.state.players.iter().map(|p| p.name.clone()).collect();
+        assert!(player_names.contains(&"Ireland".to_string()));
+        assert!(player_names.contains(&"England".to_string()));
+        assert!(player_names.contains(&"Spain".to_string()));
+
+        // 3. nation_count = 2, manifest_nations = 3.
+        // Should spawn 2 nations, both from manifest.
+        let mut state = GameState::new(42, 200, 200, config.clone());
+        for t in &mut state.map.terrain {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+        let mut engine = SowEngine::new(state, WaterComponents::default());
+        engine.spawn_ai(2, 0, Some(manifest_nations.clone()));
+        assert_eq!(engine.state.players.len(), 2);
+        let player_names: Vec<String> = engine.state.players.iter().map(|p| p.name.clone()).collect();
+        assert!(player_names.contains(&"Ireland".to_string()));
+        assert!(player_names.contains(&"England".to_string()));
+        assert!(!player_names.contains(&"Spain".to_string()));
     }
 }

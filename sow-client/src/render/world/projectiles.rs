@@ -404,7 +404,7 @@ pub(crate) fn render(
                         (bx - tx).abs() + (by - ty).abs()
                     });
 
-                // Show cooldown rings on cities that recently fired
+                // Show cooldown arc loaders on cities that recently fired
                 for b in snap.buildings.iter().filter(|b| {
                     b.kind == sow_core::game::BuildingKind::City
                         && b.owner_id == my_id
@@ -413,20 +413,51 @@ pub(crate) fn render(
                     let (bwx, bwy) = tile_to_world(b.tile_idx, map_w);
                     let bsx = (input.camera_x + bwx * input.camera_zoom) / sf;
                     let bsy = (input.camera_y + bwy * input.camera_zoom) / sf;
-                    let ring_r = (0.7 * input.camera_zoom) / sf;
-                    // Cooldown progress: 1.0 = just fired, 0.0 = ready
+                    let center = egui::pos2(bsx, bsy);
+                    let radius = (0.35 * input.camera_zoom) / sf;
+
                     let expires = ui.silo_cooldowns[&b.id];
                     let remaining = expires.saturating_sub(current_tick) as f32;
                     let progress = (remaining / 90.0).clamp(0.0, 1.0);
-                    let alpha = (progress * 160.0) as u8;
+
+                    // Black transparent circle panel behind
+                    painter.circle_filled(
+                        center,
+                        radius + 2.0_f32,
+                        egui::Color32::from_black_alpha(150),
+                    );
+
+                    // Dim track outline
                     painter.circle_stroke(
-                        egui::pos2(bsx, bsy),
-                        ring_r,
+                        center,
+                        radius,
                         egui::Stroke::new(
-                            2.0_f32,
-                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, alpha),
+                            2.5_f32,
+                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 35),
                         ),
                     );
+
+                    if progress > 0.0 {
+                        let num_points = (32.0 * progress).ceil().max(2.0) as usize;
+                        let mut arc_points = Vec::with_capacity(num_points);
+                        for i in 0..num_points {
+                            let t = i as f32 / (num_points - 1) as f32;
+                            let angle = -std::f32::consts::FRAC_PI_2
+                                + t * progress * std::f32::consts::TAU;
+                            arc_points.push(egui::pos2(
+                                center.x + radius * angle.cos(),
+                                center.y + radius * angle.sin(),
+                            ));
+                        }
+
+                        painter.add(egui::Shape::line(
+                            arc_points,
+                            egui::Stroke::new(
+                                2.5_f32,
+                                egui::Color32::from_rgb(239, 68, 68), // Red arc
+                            ),
+                        ));
+                    }
                 }
 
                 if let Some(silo) = best_silo {
