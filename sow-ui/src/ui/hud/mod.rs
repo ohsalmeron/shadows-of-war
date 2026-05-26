@@ -833,6 +833,12 @@ pub fn draw(
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
             crate::ui::theme::hud_panel_frame().show(ui, |ui| {
+                let btn_w = if cfg!(target_os = "android") {
+                    48.0
+                } else {
+                    32.0
+                };
+                ui.set_width(btn_w);
                 ui.spacing_mut().item_spacing.y = 6.0;
                 ui.vertical_centered(|ui| {
                     if ui
