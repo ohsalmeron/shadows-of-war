@@ -108,7 +108,7 @@ mod tests {
 
         b1.under_construction = true;
         let id2 = find_upgrade_target_id(&map, 1, BuildingKind::City, click, &[b1, b2]);
-        assert_eq!(id2, Some(2));
+        assert_eq!(id2, Some(1));
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn defense_post_bonus_flat_stacking() {
+    fn defense_post_bonus_scales_with_level() {
         let w = 20u32;
         let b = Building {
             id: 1,
@@ -195,7 +195,7 @@ mod tests {
         };
         let cfg = crate::game_config::GameConfig::default();
         let bonus = defense_post_priority_bonus(&[b], 10, 10, w, &cfg);
-        assert_eq!(bonus, cfg.bunker_priority as i64);
+        assert_eq!(bonus, cfg.bunker_priority as i64 * 2);
         let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w, &cfg);
         assert_eq!(bonus_far, 0);
     }

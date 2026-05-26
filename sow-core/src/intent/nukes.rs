@@ -12,7 +12,7 @@ impl SowEngine {
         let Some(player) = self.state.player(player_id) else {
             return;
         };
-        if !player.alive {
+        if !player.alive || player.gold < self.state.config.nuke_cost {
             return;
         }
 
@@ -47,6 +47,13 @@ impl SowEngine {
         let silo_id = silo.id;
         let silo_tile = silo.tile_idx;
         let level = silo.modules.arsenal.max(1);
+
+        // Deduct gold cost
+        let nuke_cost = self.state.config.nuke_cost;
+        let Some(player_mut) = self.state.player_mut(player_id) else {
+            return;
+        };
+        player_mut.gold = (player_mut.gold - nuke_cost).max(0.0);
 
         // Set silo cooldown
         self.silo_cooldowns.insert(silo_id, SILO_COOLDOWN_TICKS);

@@ -18,9 +18,6 @@ pub fn find_upgrade_target_id(
         if b.owner_id != owner_id || b.kind != kind {
             continue;
         }
-        if b.under_construction {
-            continue;
-        }
         let (bx, by) = idx_xy(b.tile_idx, w);
         let d = manhattan(cx as i32, cy as i32, bx as i32, by as i32);
         if d > STRUCTURE_MIN_DIST {

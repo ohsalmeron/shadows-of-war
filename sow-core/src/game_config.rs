@@ -1,8 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+fn default_seed() -> u64 {
+    42
+}
+
 fn default_game_mode() -> String {
     "FFA".to_string()
 }
+
+
 
 fn default_max_tiles_per_tick_reference_troops() -> f64 {
     1000.0
@@ -37,6 +43,11 @@ pub struct GameConfig {
     pub nation_count: u32,
     /// Determines how aggressively the AI bots expand and behave.
     pub bot_difficulty: BotDifficulty,
+    /// Seed used for procedural random number generation.
+    #[serde(default = "default_seed")]
+    pub seed: u64,
+
+
 
     // ==========================================
     // Map Generation & Spawning
@@ -129,8 +140,16 @@ pub struct GameConfig {
     pub port_troop_income: f64,
     /// Gold income per second added per Port.
     pub port_gold_income: f64,
-    /// Gold cost to place a building (flat, same for all kinds).
-    pub building_cost: f64,
+    /// Gold cost to place a City.
+    pub cost_city: f64,
+    /// Gold cost to place a Bunker.
+    pub cost_bunker: f64,
+    /// Gold cost to place a Factory.
+    pub cost_factory: f64,
+    /// Gold cost to place a Port.
+    pub cost_port: f64,
+    /// Gold cost to launch a nuke.
+    pub nuke_cost: f64,
 
     #[serde(default)]
     pub player_civilization: crate::player::Civilization,
@@ -155,6 +174,8 @@ impl Default for GameConfig {
             bot_count: 420,    // Tribes (Simple, static filler AI)
             nation_count: 128, // Nations (Dynamic expanding AI)
             bot_difficulty: BotDifficulty::Vanilla,
+            seed: 42,
+
 
             // Map Generation & Spawning
             map_name: "world".to_string(),
@@ -183,20 +204,24 @@ impl Default for GameConfig {
             starting_troops: 1000.0,
             starting_gold: 100.0,
             gold_base_income: 4.0,
-            troop_base_income: 100.0,
+            troop_base_income: 250.0,
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
 
             // Buildings (stacking)
-            city_max_troops: 1000.0,
-            city_gold_income: 8.0,
-            bunker_range: 10.0,
+            city_max_troops: 2500.0,
+            city_gold_income: 4.0,
+            bunker_range: 12.0,
             bunker_priority: 120.0,
             bunker_strength: 4.0,
-            factory_gold_income: 12.0,
-            port_troop_income: 25.0,
-            port_gold_income: 50.0,
-            building_cost: 100.0,
+            factory_gold_income: 4.0,
+            port_troop_income: 150.0,
+            port_gold_income: 5.0,
+            cost_city: 50.0,
+            cost_bunker: 25.0,
+            cost_factory: 40.0,
+            cost_port: 45.0,
+            nuke_cost: 5.0,
 
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,

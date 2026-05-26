@@ -2,18 +2,26 @@ use super::core::Building;
 use crate::config;
 use crate::game::BuildingKind;
 
-/// Count buildings owned by `owner` of exact `kind`.
+/// Total effective building count (sum of levels) owned by `owner` of exact `kind`.
+/// A stacked level-3 building counts as 3 for cost scaling.
 pub fn count_kind(buildings: &[Building], owner_id: u16, kind: BuildingKind) -> u32 {
     buildings
         .iter()
         .filter(|b| b.owner_id == owner_id && b.kind == kind)
-        .count() as u32
+        .map(|b| b.level as u32)
+        .sum()
 }
 
 /// Gold price for a new structure.
 #[inline]
-pub fn structure_build_cost_gold() -> f64 {
-    1000.0
+pub fn structure_build_cost_gold(kind: BuildingKind, count: u32, cfg: &crate::game_config::GameConfig) -> f64 {
+    let base_cost = match kind {
+        BuildingKind::City => cfg.cost_city,
+        BuildingKind::Bunker => cfg.cost_bunker,
+        BuildingKind::Factory => cfg.cost_factory,
+        BuildingKind::Port => cfg.cost_port,
+    };
+    base_cost * 1.1f64.powi(count as i32)
 }
 
 #[inline]

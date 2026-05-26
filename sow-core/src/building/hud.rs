@@ -67,6 +67,7 @@ pub fn compute_buildables_for_player(
     buildings: &[Building],
     grid: &super::core::BuildingGrid,
     scratch: &mut crate::engine::PlacementScratch,
+    cfg: &crate::game_config::GameConfig,
 ) -> [BuildableEntry; 2] {
     let mut out = [BuildableEntry {
         kind: BuildingKind::City,
@@ -77,8 +78,8 @@ pub fn compute_buildables_for_player(
     }; 2];
     for (i, &kind) in BuildingKind::ALL.iter().enumerate() {
         let enabled = structure_kind_enabled(kind);
-        let cost = structure_build_cost_gold();
         let count = count_kind(buildings, owner_id, kind);
+        let cost = structure_build_cost_gold(kind, count, cfg);
         let placement_feasible = player_has_valid_placement_sampled(
             map,
             owner_id,
@@ -106,11 +107,13 @@ pub fn patch_buildable_entries_gold_and_counts(
     owner_id: u16,
     player_gold: f64,
     buildings: &[Building],
+    cfg: &crate::game_config::GameConfig,
 ) {
     for e in entries.iter_mut() {
         let kind = e.kind;
-        e.cost = structure_build_cost_gold();
-        e.count = count_kind(buildings, owner_id, kind);
+        let count = count_kind(buildings, owner_id, kind);
+        e.cost = structure_build_cost_gold(kind, count, cfg);
+        e.count = count;
         let afford = player_gold >= e.cost && e.cost.is_finite();
         let enabled = structure_kind_enabled(kind);
         e.can_build = enabled && afford && e.placement_feasible;

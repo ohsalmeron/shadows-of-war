@@ -112,11 +112,32 @@ impl SowApp {
                             start_time: current_time,
                         });
 
-                        // Trigger spectacular GPU-driven billboard particle burst!
-                        let exp_world_x = dx + 0.5 + (dy as i32 % 2) as f32 * 0.5;
-                        let exp_world_y = (dy + 0.5) * 0.8660254_f32;
-                        mr.spawn_nuke_explosion(exp_world_x, exp_world_y, level, &self.gfx.render_ctx.context);
                     }
+                }
+
+                // Detect new nuke launches and set client-side silo cooldowns
+                if let Some(snap) = &self.sim.current_snapshot {
+                    let current_tick = snap.tick;
+                    const SILO_COOLDOWN_TICKS: u64 = 90;
+
+                    for proj in &snap.projectiles {
+                        if matches!(proj.kind, sow_core::game::ProjectileKind::Nuke { .. })
+                            && !self.ui.last_projectiles.contains_key(&proj.id)
+                        {
+                            // New nuke — find source building by src_tile
+                            if let Some(b) = snap.buildings.iter().find(|b| {
+                                b.kind == sow_core::game::BuildingKind::City
+                                    && b.tile_idx == proj.src_tile
+                            }) {
+                                self.ui
+                                    .silo_cooldowns
+                                    .insert(b.id, current_tick + SILO_COOLDOWN_TICKS);
+                            }
+                        }
+                    }
+
+                    // Prune expired cooldowns
+                    self.ui.silo_cooldowns.retain(|_, expires| *expires > current_tick);
                 }
 
                 // Sync last_projectiles
@@ -282,6 +303,25 @@ impl SowApp {
                     }
                 }
 
+                let current_time = web_time::Instant::now();
+                let mut fallout_slots = [[0.0f32; 4]; 8];
+                {
+                    let mut slot = 0usize;
+                    self.ui.fallout_zones.retain(|fz| {
+                        let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
+                        let duration = 15.0;
+                        if elapsed >= duration {
+                            return false;
+                        }
+                        if slot < 8 {
+                            let alpha_p = (1.0 - elapsed / duration).max(0.0);
+                            fallout_slots[slot] = [fz.x, fz.y, fz.radius, alpha_p];
+                            slot += 1;
+                        }
+                        true
+                    });
+                }
+
                 let globals = MapGlobals {
                     camera_pos: [self.input.camera_x, self.input.camera_y],
                     zoom: self.input.camera_zoom,
@@ -300,6 +340,7 @@ impl SowApp {
                     hover_hex,
                     hover_building_kind,
                     _pad1: 0.0,
+                    fallout_slots,
                     nobuild_slots,
                 };
                 let colors_struct = sow_render::PlayerColors {

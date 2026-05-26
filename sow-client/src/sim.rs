@@ -35,6 +35,25 @@ impl SowApp {
                         self.ui.app.hud_state.troops = player.troops;
                         self.ui.app.hud_state.max_troops = player.max_troops;
                     }
+                    // Show notifications for actual resource transfers only
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        let my_id = self.sim.my_player_id.unwrap_or(1);
+                        for tx in &snap.resource_transfers {
+                            if tx.receiver_id == my_id {
+                                let sender_name = snap.players.iter()
+                                    .find(|p| p.id == tx.sender_id)
+                                    .map(|p| p.name.as_str())
+                                    .unwrap_or("Ally");
+                                let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
+                                    (true, true) => format!("🎁 {} sent 💰{} & 🛡️{}!", sender_name, sow_ui::utils::format_number(tx.gold), sow_ui::utils::format_number(tx.troops)),
+                                    (true, false) => format!("💰 {} sent +{} Gold!", sender_name, sow_ui::utils::format_number(tx.gold)),
+                                    (false, true) => format!("🛡️ {} sent +{} Troops!", sender_name, sow_ui::utils::format_number(tx.troops)),
+                                    _ => continue,
+                                };
+                                self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+                            }
+                        }
+                    }
                     self.sync_building_costs();
 
                     ticks_processed += 1;
@@ -82,6 +101,25 @@ impl SowApp {
                     self.ui.app.hud_state.gold = player.gold;
                     self.ui.app.hud_state.troops = player.troops;
                     self.ui.app.hud_state.max_troops = player.max_troops;
+                }
+                // Show notifications for actual resource transfers only
+                if let Some(snap) = &self.sim.current_snapshot {
+                    let my_id = self.sim.my_player_id.unwrap_or(1);
+                    for tx in &snap.resource_transfers {
+                        if tx.receiver_id == my_id {
+                            let sender_name = snap.players.iter()
+                                .find(|p| p.id == tx.sender_id)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or("Ally");
+                            let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
+                                (true, true) => format!("🎁 {} sent 💰{} & 🛡️{}!", sender_name, sow_ui::utils::format_number(tx.gold), sow_ui::utils::format_number(tx.troops)),
+                                (true, false) => format!("💰 {} sent +{} Gold!", sender_name, sow_ui::utils::format_number(tx.gold)),
+                                (false, true) => format!("🛡️ {} sent +{} Troops!", sender_name, sow_ui::utils::format_number(tx.troops)),
+                                _ => continue,
+                            };
+                            self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+                        }
+                    }
                 }
                 self.sync_building_costs();
             }
@@ -203,9 +241,24 @@ impl SowApp {
         }
         self.sim.last_synced_cost_tick = snap_tick;
 
+        let my_player_id = self.sim.my_player_id.unwrap_or(1);
+        let buildings = self.sim.current_snapshot.as_ref().map(|s| &s.buildings);
+
         for i in 0..self.ui.app.hud_state.building_costs.len() {
-            self.ui.app.hud_state.building_costs[i] =
-                sow_core::building::structure_build_cost_gold();
+            if let Some(&kind) = sow_core::game::BuildingKind::ALL.get(i) {
+                let count = if let Some(b_list) = buildings {
+                    b_list
+                        .iter()
+                        .filter(|b| b.owner_id == my_player_id && b.kind == kind)
+                        .count() as u32
+                } else {
+                    0
+                };
+                self.ui.app.hud_state.building_costs[i] =
+                    sow_core::building::structure_build_cost_gold(kind, count, &self.sim.config);
+            } else {
+                self.ui.app.hud_state.building_costs[i] = self.sim.config.cost_city;
+            }
         }
     }
 }

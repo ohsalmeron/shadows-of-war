@@ -35,12 +35,19 @@ impl SowApp {
                     let map_name = "tutorial".to_string();
                     self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
 
+                    let tutorial_seed = web_time::SystemTime::now()
+                        .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+
+
                     let config = sow_core::game_config::GameConfig {
                         map_name: map_name.clone(),
                         map_width: 1000,
                         map_height: 800,
                         bot_count: 2,
                         nation_count: 1,
+                        seed: tutorial_seed,
                         ..Default::default()
                     };
 
@@ -48,7 +55,7 @@ impl SowApp {
                         lobby_id: None,
                         config,
                         my_player_id: Some(1),
-                        seed: 42,
+                        seed: tutorial_seed,
                         players: vec![sow_core::protocol::PlayerInfo {
                             id: 1,
                             name: {
@@ -74,6 +81,7 @@ impl SowApp {
                         nations: None,
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
+
 
                     if self.ui.app.asset_loader.has_map(&map_name) {
                         self.ui.app.main_menu_state.cached_map =
@@ -179,11 +187,11 @@ impl SowApp {
                         config.map_height = 400;
                     }
 
-                    let start_msg = sow_core::protocol::ServerStartMessage {
+                     let start_msg = sow_core::protocol::ServerStartMessage {
                         lobby_id: None,
-                        config,
+                        config: config.clone(),
                         my_player_id: Some(1),
-                        seed: 42,
+                        seed: config.seed,
                         players: vec![sow_core::protocol::PlayerInfo {
                             id: 1,
                             name: {
@@ -209,6 +217,7 @@ impl SowApp {
                         nations: None,
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
+
 
                     if self.ui.app.asset_loader.has_map(&map_id) {
                         self.ui.app.main_menu_state.cached_map =

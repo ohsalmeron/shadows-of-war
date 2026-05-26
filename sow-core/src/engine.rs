@@ -367,32 +367,36 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
 
-        let n_queue = manifest_nations.unwrap_or_default();
-        if nation_count > 0 || tribe_count > 0 {
-            log::info!("spawn_ai: n_queue len is {}", n_queue.len());
+        let json_nations = manifest_nations.unwrap_or_default();
+        if json_nations.len() > 0 || nation_count > 0 || tribe_count > 0 {
+            log::info!(
+                "spawn_ai: json_nations len is {}, nation_count is {}, tribe_count is {}",
+                json_nations.len(),
+                nation_count,
+                tribe_count
+            );
         }
-        let mut n_iter = n_queue.into_iter();
 
-        let fallback_pool = crate::tribes::FALLBACK_TRIBES;
-        let mut fallback_indices: Vec<usize> = (0..fallback_pool.len()).collect();
+        // The total number of Nations we spawn is exactly what was requested by the user.
+        let total_nations_to_spawn = nation_count;
 
-        // Spawn Nations (IDs 104 to 199)
-        for i in 0..nation_count {
+        // Keep track of names already used to prevent duplicates
+        let mut used_names = std::collections::HashSet::new();
+
+        // 1. First, prepare the list of JSON nations
+        let mut json_iter = json_nations.into_iter();
+
+        // 2. Prepare the fallback historical civilizations pool for extra nations
+        let extra_nations_pool = crate::tribes::HISTORICAL_CIVILIZATIONS;
+        let mut extra_nations_indices: Vec<usize> = (0..extra_nations_pool.len()).collect();
+
+        // 3. Spawn Nations
+        for i in 0..total_nations_to_spawn {
             let bot_id = 104 + i as u16;
 
-            let manifest_nation = n_iter.next();
+            let manifest_nation = json_iter.next();
             let mut spawn_point = None;
-
-            let mut name = if fallback_indices.is_empty() {
-                fallback_indices = (0..fallback_pool.len()).collect();
-                let idx = (rng.rand() as usize) % fallback_indices.len();
-                let pool_idx = fallback_indices.swap_remove(idx);
-                fallback_pool[pool_idx].to_string()
-            } else {
-                let idx = (rng.rand() as usize) % fallback_indices.len();
-                let pool_idx = fallback_indices.swap_remove(idx);
-                fallback_pool[pool_idx].to_string()
-            };
+            let mut name = String::new();
 
             if let Some(n) = &manifest_nation {
                 let nx = n.coordinates[0];
@@ -404,6 +408,30 @@ impl SowEngine {
                     spawn_point = Some((nx, ny));
                 }
                 name = n.name.clone();
+                used_names.insert(name.clone());
+            } else {
+                // We need extra nations! Grab from HISTORICAL_CIVILIZATIONS and ensure no duplicate of any used name
+                let mut found_name = false;
+                let mut attempts = 0;
+                while !found_name && attempts < 100 && !extra_nations_indices.is_empty() {
+                    let idx = (rng.rand() as usize) % extra_nations_indices.len();
+                    let pool_idx = extra_nations_indices[idx];
+                    let potential_name = extra_nations_pool[pool_idx].to_string();
+                    if !used_names.contains(&potential_name) {
+                        name = potential_name;
+                        used_names.insert(name.clone());
+                        extra_nations_indices.swap_remove(idx);
+                        found_name = true;
+                    } else {
+                        // Remove from indices since it's already used
+                        extra_nations_indices.swap_remove(idx);
+                    }
+                    attempts += 1;
+                }
+
+                if !found_name {
+                    name = format!("Empire {}", bot_id);
+                }
             }
 
             if i < 5 {
@@ -457,24 +485,17 @@ impl SowEngine {
             }
         }
 
-        // Spawn Tribes (IDs above nations)
-        let tribe_start_id = 104 + nation_count as u16;
+        // 4. Spawn Tribes (IDs above nations)
+        let tribe_start_id = 104 + total_nations_to_spawn as u16;
+        let fallback_pool = crate::tribes::FALLBACK_TRIBES;
+        let mut fallback_indices: Vec<usize> = (0..fallback_pool.len()).collect();
+
         for i in 0..tribe_count {
             let bot_id = tribe_start_id + i as u16;
 
-            let manifest_nation = n_iter.next();
+            let manifest_nation = json_iter.next();
             let mut spawn_point = None;
-
-            let mut name = if fallback_indices.is_empty() {
-                fallback_indices = (0..fallback_pool.len()).collect();
-                let idx = (rng.rand() as usize) % fallback_indices.len();
-                let pool_idx = fallback_indices.swap_remove(idx);
-                fallback_pool[pool_idx].to_string()
-            } else {
-                let idx = (rng.rand() as usize) % fallback_indices.len();
-                let pool_idx = fallback_indices.swap_remove(idx);
-                fallback_pool[pool_idx].to_string()
-            };
+            let mut name = String::new();
 
             if let Some(n) = &manifest_nation {
                 let nx = n.coordinates[0];
@@ -486,6 +507,32 @@ impl SowEngine {
                     spawn_point = Some((nx, ny));
                 }
                 name = n.name.clone();
+                used_names.insert(name.clone());
+            } else {
+                let mut found_name = false;
+                let mut attempts = 0;
+
+                while !found_name && attempts < 100 {
+                    if fallback_indices.is_empty() {
+                        fallback_indices = (0..fallback_pool.len()).collect();
+                    }
+                    let idx = (rng.rand() as usize) % fallback_indices.len();
+                    let pool_idx = fallback_indices[idx];
+                    let potential_name = fallback_pool[pool_idx].to_string();
+                    if !used_names.contains(&potential_name) {
+                        name = potential_name;
+                        used_names.insert(name.clone());
+                        fallback_indices.swap_remove(idx);
+                        found_name = true;
+                    } else {
+                        fallback_indices.swap_remove(idx);
+                    }
+                    attempts += 1;
+                }
+
+                if !found_name {
+                    name = format!("Tribe {}", bot_id);
+                }
             }
 
             if spawn_point.is_none() {
@@ -499,7 +546,8 @@ impl SowEngine {
                 spawned_tribes += 1;
             }
         }
-        if nation_count > 0 || tribe_count > 0 {
+
+        if total_nations_to_spawn > 0 || tribe_count > 0 {
             log::info!(
                 "Spawned {} nations and {} tribes successfully.",
                 spawned_nations,
@@ -790,6 +838,29 @@ impl SowEngine {
                             kind,
                             tile_x: *tile_x,
                             tile_y: *tile_y,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            resource_transfers: self
+                .state
+                .events
+                .iter()
+                .filter_map(|e| {
+                    if let crate::game::GameEvent::ResourceTransferred {
+                        sender_id,
+                        receiver_id,
+                        gold,
+                        troops,
+                    } = e
+                    {
+                        Some(crate::protocol::ResourceTransfer {
+                            sender_id: *sender_id,
+                            receiver_id: *receiver_id,
+                            gold: *gold,
+                            troops: *troops,
                         })
                     } else {
                         None

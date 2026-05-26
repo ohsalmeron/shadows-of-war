@@ -250,10 +250,8 @@ fn add_building(
         return;
     }
 
-    // Gather nearby candidates
-    let mut nearest_connected: Option<(u64, f32)> = None;
-    let mut nearest_any: Option<(u64, f32)> = None;
-    let mut lonely: Vec<(u64, f32)> = Vec::new();
+    // Gather all nearby valid buildings within range
+    let mut candidates = Vec::new();
 
     for dx in -1..=1 {
         for dy in -1..=1 {
@@ -266,19 +264,11 @@ fn add_building(
                         let d2 = dtx * dtx + dty * dty;
                         if d2 >= MAX_RAIL_DIST_SQ { continue; }
 
-                        let on_network = state.seg_indices.get(&other_id)
-                            .map_or(false, |v| !v.is_empty());
+                        let has_path = !l_crosses_water(tx as i32, ty as i32, other.tile_x as i32, other.tile_y as i32, true, terrain, map_w, map_h)
+                            || !l_crosses_water(tx as i32, ty as i32, other.tile_x as i32, other.tile_y as i32, false, terrain, map_w, map_h);
 
-                        if on_network {
-                            if nearest_connected.map_or(true, |(_, bd)| d2 < bd) {
-                                nearest_connected = Some((other_id, d2));
-                            }
-                        } else {
-                            lonely.push((other_id, d2));
-                        }
-
-                        if nearest_any.map_or(true, |(_, bd)| d2 < bd) {
-                            nearest_any = Some((other_id, d2));
+                        if has_path {
+                            candidates.push((other_id, d2));
                         }
                     }
                 }
@@ -286,19 +276,14 @@ fn add_building(
         }
     }
 
-    // Priority 2: join the network via nearest connected building
-    // Priority 3: fallback to nearest building
-    let primary = nearest_connected.or(nearest_any);
-    if let Some((target_id, _)) = primary {
-        try_connect(state, id, target_id, terrain, map_w, map_h, now);
-    }
+    // Sort by distance ascending
+    candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Priority 4: pull nearest lonely neighbor toward us
-    lonely.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    if let Some((lonely_id, _)) = lonely.first() {
-        let already = primary.map_or(false, |(t, _)| t == *lonely_id);
-        if !already {
-            try_connect(state, *lonely_id, id, terrain, map_w, map_h, now);
+    // Connect to up to two closest buildings to act as a bridge
+    if let Some(&(first_id, _)) = candidates.first() {
+        try_connect(state, id, first_id, terrain, map_w, map_h, now);
+        if let Some(&(second_id, _)) = candidates.get(1) {
+            try_connect(state, id, second_id, terrain, map_w, map_h, now);
         }
     }
 }

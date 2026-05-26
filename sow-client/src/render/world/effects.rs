@@ -39,86 +39,7 @@ pub(crate) fn render(
     if let Some(snap) = &sim.current_snapshot {
         let current_time = web_time::Instant::now();
 
-        // --- Layer 5: Fallout Zones & Explosions ---
-        ui.fallout_zones.retain(|fz| {
-            let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
-            let duration = 15.0; // Contamination duration
-            if elapsed >= duration {
-                return false;
-            }
-
-            let p = elapsed / duration;
-            let alpha_p = (1.0 - p).max(0.0);
-
-            let pulse = (wall_secs * 3.0).sin() as f32 * 0.15 + 0.85;
-            let base_alpha = 45.0 * alpha_p * pulse;
-
-            let fz_world_x = fz.x + 0.5 + (fz.y as i32 % 2) as f32 * 0.5;
-            let fz_world_y = (fz.y + 0.5) * 0.8660254_f32;
-            let screen_x = (input.camera_x + fz_world_x * input.camera_zoom) / sf;
-            let screen_y = (input.camera_y + fz_world_y * input.camera_zoom) / sf;
-            let center = egui::pos2(screen_x, screen_y);
-            let radius = fz.radius * zoom_scaled;
-
-            // Glowing green contaminated aura
-            painter.circle_filled(
-                center,
-                radius,
-                egui::Color32::from_rgba_unmultiplied(60, 220, 90, base_alpha as u8),
-            );
-
-            // CRISP high-contrast radioactive outer border
-            let border_color =
-                egui::Color32::from_rgba_unmultiplied(100, 255, 140, (base_alpha * 2.0) as u8);
-            painter.circle_stroke(center, radius, egui::Stroke::new(1.0f32, border_color));
-
-            // Deterministic floating glowing radioactive green dust particles!
-            let seed = (fz.x * 123.45 + fz.y * 678.9) as i32;
-            let particle_count = (fz.radius * 0.5) as i32;
-            for i in 0..particle_count {
-                let h1 =
-                    hash_xorshift(seed as u32 ^ (i as u32).wrapping_mul(2654435761)) * 2.0 - 1.0;
-                let h2 = hash_xorshift(
-                    (seed as u32)
-                        .wrapping_add(i as u32)
-                        .wrapping_mul(3405691582),
-                ) * 2.0
-                    - 1.0;
-                let h3 =
-                    hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(123456789));
-
-                let mut dx = h1;
-                let mut dy = h2;
-                let len_sq = dx * dx + dy * dy;
-                if len_sq > 1.0 {
-                    let len = len_sq.sqrt();
-                    dx /= len;
-                    dy /= len;
-                }
-
-                let px = fz.x + dx * fz.radius;
-                let py = fz.y + dy * fz.radius;
-
-                let speed = 0.4 + h3 * 0.8;
-                let drift_y = (wall_secs as f32 * speed) % 6.0;
-                let py_drifted = py - drift_y;
-
-                let p_world_x = px + 0.5 + (py_drifted as i32 % 2) as f32 * 0.5;
-                let p_world_y = (py_drifted + 0.5) * 0.8660254_f32;
-                let p_screen_x = (input.camera_x + p_world_x * input.camera_zoom) / sf;
-                let p_screen_y = (input.camera_y + p_world_y * input.camera_zoom) / sf;
-
-                let particle_alpha = (base_alpha * (1.0 - drift_y / 6.0)).max(0.0) as u8;
-
-                painter.circle_filled(
-                    egui::pos2(p_screen_x, p_screen_y),
-                    (1.2_f32 * zoom_scaled).max(1.0_f32),
-                    egui::Color32::from_rgba_unmultiplied(120, 255, 150, particle_alpha),
-                );
-            }
-
-            true
-        });
+        // Fallout zones are rendered GPU-side in the map shader (fallout_slots).
 
         ui.active_explosions.retain(|exp| {
             let elapsed = current_time.duration_since(exp.start_time).as_secs_f32();
@@ -162,6 +83,97 @@ pub(crate) fn render(
                 shockwave_radius,
                 egui::Stroke::new(1.2_f32, shockwave_color),
             );
+
+            // 3. Volumetric Fireball & Rising Mushroom Cloud (Deterministic egui particle burst)
+            let seed = (exp.x * 374.0 + exp.y * 668.0) as i32;
+            let num_particles = match exp.kind {
+                crate::app::ExplosionKind::Hydrogen => 60,
+                crate::app::ExplosionKind::Atom => 36,
+                crate::app::ExplosionKind::MIRVWarhead => 16,
+            };
+
+            for i in 0..num_particles {
+                let h1 = hash_xorshift(seed as u32 ^ (i as u32).wrapping_mul(2654435761)) * 2.0 - 1.0;
+                let h2 = hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(3405691582)) * 2.0 - 1.0;
+                let h3 = hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(123456789));
+                let h4 = hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(987654321));
+
+                let mut dx = h1;
+                let mut dy = h2;
+                let len_sq = dx * dx + dy * dy;
+                if len_sq > 1.0 {
+                    let len = len_sq.sqrt();
+                    dx /= len;
+                    dy /= len;
+                }
+
+                // Easing for smooth expansion
+                let expansion = 1.0 - (1.0 - p).powi(2);
+                let speed = 0.4 + h3 * 1.2;
+                let size_mult = 0.5 + h4 * 0.7;
+
+                // Create stem vs cap particles for mushroom cloud silhouette
+                let is_stem = i % 3 == 0;
+                let (p_dist_x, p_dist_y, rise_mult) = if is_stem {
+                    // Stem particles stay close to center horizontally, rise vertically
+                    (dx * expansion * speed * exp.max_radius * 0.25, dy * expansion * speed * exp.max_radius * 0.1, 1.2)
+                } else {
+                    // Cap particles expand outward horizontally and vertically
+                    (dx * expansion * speed * exp.max_radius * 0.9, dy * expansion * speed * exp.max_radius * 0.7 - (expansion * exp.max_radius * 0.25), 1.0)
+                };
+
+                let rise = p * (1.1 + h3 * 0.9) * exp.max_radius * 0.4 * rise_mult;
+
+                let px = exp.x + p_dist_x;
+                let py = exp.y + p_dist_y - rise;
+
+                let p_world_x = px + 0.5 + (py as i32 % 2) as f32 * 0.5;
+                let p_world_y = (py + 0.5) * 0.8660254_f32;
+                let p_screen_x = (input.camera_x + p_world_x * input.camera_zoom) / sf;
+                let p_screen_y = (input.camera_y + p_world_y * input.camera_zoom) / sf;
+
+                // Fireball color stage transitions
+                let (r, g, b, alpha) = if p < 0.15 {
+                    let t = p / 0.15;
+                    (
+                        255,
+                        (255.0 - t * 75.0) as u8,
+                        (255.0 - t * 215.0) as u8,
+                        (220.0 * (1.0 - p)) as u8,
+                    )
+                } else if p < 0.4 {
+                    let t = (p - 0.15) / 0.25;
+                    (
+                        255,
+                        (180.0 - t * 120.0) as u8,
+                        40,
+                        (200.0 * (1.0 - p)) as u8,
+                    )
+                } else if p < 0.7 {
+                    let t = (p - 0.4) / 0.3;
+                    (
+                        (255.0 - t * 175.0) as u8,
+                        (60.0 + t * 20.0) as u8,
+                        (40.0 + t * 40.0) as u8,
+                        (160.0 * (1.0 - p)) as u8,
+                    )
+                } else {
+                    (
+                        80,
+                        80,
+                        80,
+                        (120.0 * (1.0 - p)) as u8,
+                    )
+                };
+
+                // Radius starts small, swells up volumetric, and scales down slightly as it fades into smoke
+                let particle_radius = exp.max_radius * 0.25 * size_mult * (0.8 + expansion * 0.6) * zoom_scaled;
+                painter.circle_filled(
+                    egui::pos2(p_screen_x, p_screen_y),
+                    particle_radius.max(1.5),
+                    egui::Color32::from_rgba_unmultiplied(r, g, b, alpha),
+                );
+            }
 
             true
         });

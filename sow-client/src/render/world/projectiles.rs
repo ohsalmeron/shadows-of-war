@@ -195,10 +195,10 @@ pub(crate) fn render(
                 continue;
             }
             let my_id = sim.my_player_id.unwrap_or(0);
-            let is_outgoing = attack.owner_id == my_id && my_id != 0;
             let is_incoming = attack.target_owner == my_id && my_id != 0;
 
-            if !is_outgoing && !is_incoming {
+            // Only draw threat lines and pointing fingers for incoming attacks on us
+            if !is_incoming || attack.troops <= 0.0 {
                 continue;
             }
 
@@ -206,34 +206,30 @@ pub(crate) fn render(
             let mut ry = 0.5;
             let mut tx = 0.5;
             let mut ty = 0.5;
-            let mut r = 0.5;
-            let mut g = 0.5;
-            let mut b = 0.5;
 
             if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
                 rx = attacker.centroid_x + 0.5 + (attacker.centroid_y as i32 % 2) as f32 * 0.5;
                 ry = (attacker.centroid_y + 0.5) * 0.8660254_f32;
-                let rgb = attacker.color;
-                r = rgb[0];
-                g = rgb[1];
-                b = rgb[2];
             }
             if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
                 tx = target.centroid_x + 0.5 + (target.centroid_y as i32 % 2) as f32 * 0.5;
                 ty = (target.centroid_y + 0.5) * 0.8660254_f32;
             }
 
-            let start_x = (input.camera_x + rx * input.camera_zoom) / sf;
-            let start_y = (input.camera_y + ry * input.camera_zoom) / sf;
-            let end_x = (input.camera_x + tx * input.camera_zoom) / sf;
-            let end_y = (input.camera_y + ty * input.camera_zoom) / sf;
-
-            let mut color =
-                egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
-
-            if is_incoming {
-                color = egui::Color32::from_rgb(255, 60, 60); // Bright warning red for incoming
+            // Start at the battlefront (or fall back to target centroid if front_cx/front_cy is 0)
+            let mut fx = tx;
+            let mut fy = ty;
+            if attack.front_cx != 0.0 || attack.front_cy != 0.0 {
+                fx = attack.front_cx + 0.5 + (attack.front_cy as i32 % 2) as f32 * 0.5;
+                fy = (attack.front_cy + 0.5) * 0.8660254_f32;
             }
+
+            let start_x = (input.camera_x + fx * input.camera_zoom) / sf;
+            let start_y = (input.camera_y + fy * input.camera_zoom) / sf;
+            let end_x = (input.camera_x + rx * input.camera_zoom) / sf;
+            let end_y = (input.camera_y + ry * input.camera_zoom) / sf;
+
+            let color = egui::Color32::from_rgb(255, 60, 60); // Bright warning red for incoming threat source
 
             let start_pos = egui::pos2(start_x, start_y);
             let end_pos = egui::pos2(end_x, end_y);
@@ -248,7 +244,7 @@ pub(crate) fn render(
                 egui::Stroke::new(1.0_f32, color.linear_multiply(0.35)),
             );
 
-            // 2. Render beautiful flowing dots sliding towards the target
+            // 2. Render beautiful flowing dots sliding from the battlefront to the aggressor
             let elapsed = time.start_time.elapsed().as_secs_f32();
             let num_dots = 4;
             for i in 0..num_dots {
@@ -261,7 +257,7 @@ pub(crate) fn render(
                     start_pos.y + (end_pos.y - start_pos.y) * t,
                 );
 
-                // Fade out as it reaches the target destination
+                // Fade out as it reaches the aggressor destination
                 let alpha = ((1.0 - t) * 255.0) as u8;
                 let outer_glow = egui::Color32::from_rgba_unmultiplied(
                     color.r(),
@@ -356,5 +352,234 @@ pub(crate) fn render(
                 &middle_painter, anchor, galley, color, false,
             );
         }
+
+        // ── Nuke Placement Preview ──────────────────────────────────────
+        if ui.app.hud_state.selected_nuke_kind.is_some() {
+            // Resolve hovered tile from mouse (same hex math as buildings.rs)
+            let mx = input.last_mouse_x as f32;
+            let my = input.last_mouse_y as f32;
+            let world_x = (mx - input.camera_x) / input.camera_zoom;
+            let world_y = (my - input.camera_y) / input.camera_zoom;
+            let q_f = world_x - world_y * 0.577_350_26_f32;
+            let r_f = world_y * 1.154_700_5_f32;
+            let s_f = -q_f - r_f;
+            let mut rq = q_f.round();
+            let mut rr = r_f.round();
+            let rs = s_f.round();
+            let q_diff = (rq - q_f).abs();
+            let r_diff = (rr - r_f).abs();
+            let s_diff = (rs - s_f).abs();
+            if q_diff > r_diff && q_diff > s_diff {
+                rq = -rr - rs;
+            } else if r_diff > s_diff {
+                rr = -rq - rs;
+            }
+            let h_col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
+            let h_row = rr as i32;
+
+            if h_col >= 0
+                && h_row >= 0
+                && h_col < sim.map_w as i32
+                && h_row < sim.map_h as i32
+            {
+                let target_tile = (h_row * sim.map_w as i32 + h_col) as u32;
+                let my_id = sim.my_player_id.unwrap_or(0);
+                let current_tick = snap.tick;
+
+                // Find nearest owned completed City not on cooldown
+                let best_silo = snap
+                    .buildings
+                    .iter()
+                    .filter(|b| {
+                        b.kind == sow_core::game::BuildingKind::City
+                            && b.owner_id == my_id
+                            && !b.under_construction
+                            && ui.silo_cooldowns.get(&b.id).map_or(true, |&exp| current_tick >= exp)
+                    })
+                    .min_by_key(|b| {
+                        let bx = (b.tile_idx % sim.map_w) as i32;
+                        let by = (b.tile_idx / sim.map_w) as i32;
+                        let tx = target_tile as i32 % sim.map_w as i32;
+                        let ty = target_tile as i32 / sim.map_w as i32;
+                        (bx - tx).abs() + (by - ty).abs()
+                    });
+
+                // Show cooldown rings on cities that recently fired
+                for b in snap.buildings.iter().filter(|b| {
+                    b.kind == sow_core::game::BuildingKind::City
+                        && b.owner_id == my_id
+                        && ui.silo_cooldowns.get(&b.id).map_or(false, |&exp| current_tick < exp)
+                }) {
+                    let (bwx, bwy) = tile_to_world(b.tile_idx, map_w);
+                    let bsx = (input.camera_x + bwx * input.camera_zoom) / sf;
+                    let bsy = (input.camera_y + bwy * input.camera_zoom) / sf;
+                    let ring_r = (0.7 * input.camera_zoom) / sf;
+                    // Cooldown progress: 1.0 = just fired, 0.0 = ready
+                    let expires = ui.silo_cooldowns[&b.id];
+                    let remaining = expires.saturating_sub(current_tick) as f32;
+                    let progress = (remaining / 90.0).clamp(0.0, 1.0);
+                    let alpha = (progress * 160.0) as u8;
+                    painter.circle_stroke(
+                        egui::pos2(bsx, bsy),
+                        ring_r,
+                        egui::Stroke::new(
+                            2.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, alpha),
+                        ),
+                    );
+                }
+
+                if let Some(silo) = best_silo {
+                    let level = silo.modules.arsenal.max(1);
+                    let silo_tile = silo.tile_idx;
+                    let path =
+                        sow_core::pathfinding::bresenham_line(silo_tile, target_tile, sim.map_w);
+                    let path_len = path.len().max(1);
+
+                    // ── 1. Source city pulsing highlight ─────────────────
+                    let (silo_wx, silo_wy) = tile_to_world(silo_tile, map_w);
+                    let silo_sx = (input.camera_x + silo_wx * input.camera_zoom) / sf;
+                    let silo_sy = (input.camera_y + silo_wy * input.camera_zoom) / sf;
+                    let silo_center = egui::pos2(silo_sx, silo_sy);
+
+                    let pulse = ((time.start_time.elapsed().as_secs_f32() * 3.0).sin() * 0.3 + 0.7)
+                        .clamp(0.4, 1.0);
+                    let pulse_alpha = (pulse * 120.0) as u8;
+                    let silo_ring_r = (0.8 * input.camera_zoom) / sf;
+                    painter.circle_stroke(
+                        silo_center,
+                        silo_ring_r,
+                        egui::Stroke::new(
+                            2.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(34, 211, 238, pulse_alpha),
+                        ),
+                    );
+
+                    // ── 2. Trajectory arc ────────────────────────────────
+                    let num_samples = 24.min(path_len);
+                    let step = if num_samples > 1 {
+                        (path_len - 1) as f32 / (num_samples - 1) as f32
+                    } else {
+                        1.0
+                    };
+
+                    let mut arc_points = Vec::with_capacity(num_samples + 1);
+                    for i in 0..num_samples {
+                        let idx = (i as f32 * step) as usize;
+                        let idx = idx.min(path_len - 1);
+                        let p = idx as f32 / (path_len - 1).max(1) as f32;
+                        let (twx, twy) = tile_to_world(path[idx], map_w);
+                        let height = 4.0 * p * (1.0 - p) * 20.0;
+                        let sx = (input.camera_x + twx * input.camera_zoom) / sf;
+                        let sy = (input.camera_y + (twy - height) * input.camera_zoom) / sf;
+                        arc_points.push(egui::pos2(sx, sy));
+                    }
+
+                    // Draw dark outline behind for contrast
+                    for win in arc_points.windows(2) {
+                        painter.line_segment(
+                            [win[0], win[1]],
+                            egui::Stroke::new(3.0_f32, egui::Color32::from_black_alpha(80)),
+                        );
+                    }
+
+                    // Draw dashed arc segments (alternating visible/gap)
+                    let arc_color = if level >= 2 {
+                        egui::Color32::from_rgba_unmultiplied(255, 170, 50, 200)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(255, 220, 130, 200)
+                    };
+                    for (seg_i, win) in arc_points.windows(2).enumerate() {
+                        if seg_i % 3 != 2 {
+                            painter.line_segment(
+                                [win[0], win[1]],
+                                egui::Stroke::new(1.8_f32, arc_color),
+                            );
+                        }
+                    }
+
+                    // ── 3. Blast radius circles at target ────────────────
+                    let (tgt_wx, tgt_wy) = tile_to_world(target_tile, map_w);
+                    let tgt_sx = (input.camera_x + tgt_wx * input.camera_zoom) / sf;
+                    let tgt_sy = (input.camera_y + tgt_wy * input.camera_zoom) / sf;
+                    let tgt_center = egui::pos2(tgt_sx, tgt_sy);
+
+                    let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
+                    let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
+
+                    // Inner destruction zone
+                    let inner_r = (max_radius * input.camera_zoom) / sf;
+                    painter.circle_filled(
+                        tgt_center,
+                        inner_r,
+                        egui::Color32::from_rgba_unmultiplied(255, 80, 30, 15),
+                    );
+                    painter.circle_stroke(
+                        tgt_center,
+                        inner_r,
+                        egui::Stroke::new(
+                            1.5_f32,
+                            egui::Color32::from_rgba_unmultiplied(255, 90, 40, 140),
+                        ),
+                    );
+
+                    // Outer fallout zone
+                    let outer_r = (fallout_radius * input.camera_zoom) / sf;
+                    painter.circle_filled(
+                        tgt_center,
+                        outer_r,
+                        egui::Color32::from_rgba_unmultiplied(120, 200, 60, 10),
+                    );
+                    painter.circle_stroke(
+                        tgt_center,
+                        outer_r,
+                        egui::Stroke::new(
+                            1.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(120, 200, 60, 80),
+                        ),
+                    );
+
+                    // ── 4. Ghost nuke icon at target ─────────────────────
+                    let size_hint = egui::load::SizeHint::Size {
+                        width: 64,
+                        height: 64,
+                        maintain_aspect_ratio: true,
+                    };
+                    let uri = sow_core::assets::Asset::AtomBomb.uri();
+                    if let Ok(egui::load::TexturePoll::Ready { texture }) = painter
+                        .ctx()
+                        .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint)
+                    {
+                        let ghost_size = 18.0 + level as f32 * 4.0;
+                        let rect = egui::Rect::from_center_size(
+                            tgt_center,
+                            egui::vec2(ghost_size, ghost_size),
+                        );
+                        painter.image(
+                            texture.id,
+                            rect,
+                            egui::Rect::from_min_max(
+                                egui::pos2(0.0, 0.0),
+                                egui::pos2(1.0, 1.0),
+                            ),
+                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140),
+                        );
+                    }
+                } else {
+                    // No city available (all on cooldown or none owned)
+                    let (tgt_wx, tgt_wy) = tile_to_world(target_tile, map_w);
+                    let tgt_sx = (input.camera_x + tgt_wx * input.camera_zoom) / sf;
+                    let tgt_sy = (input.camera_y + tgt_wy * input.camera_zoom) / sf;
+                    painter.text(
+                        egui::pos2(tgt_sx, tgt_sy),
+                        egui::Align2::CENTER_CENTER,
+                        "⏳ Cooldown",
+                        egui::FontId::proportional(14.0),
+                        egui::Color32::from_rgb(255, 160, 60),
+                    );
+                }
+            }
+        }
     }
 }
+

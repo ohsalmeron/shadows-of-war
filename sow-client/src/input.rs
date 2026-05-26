@@ -757,21 +757,11 @@ impl SowApp {
                     self.ui.app.hud_state.show_error = Some(err_msg);
                 } else {
                     let target_tile = snapped_res.unwrap();
-                    let existing_b = snap.buildings.iter().find(|b| b.tile_idx == target_tile);
-                    if let Some(b) = existing_b {
-                        if b.kind == kind && b.owner_id == my_id {
-                            let intent = sow_core::protocol::GameplayIntent::UpgradeStructure {
-                                building_id: b.id,
-                            };
-                            self.send_intent(intent);
-                        }
-                    } else {
-                        let intent = sow_core::protocol::GameplayIntent::BuildStructure {
-                            kind,
-                            target_tile,
-                        };
-                        self.send_intent(intent);
-                    }
+                    let intent = sow_core::protocol::GameplayIntent::BuildStructure {
+                        kind,
+                        target_tile,
+                    };
+                    self.send_intent(intent);
                 }
             }
             self.ui.app.hud_state.selected_building_kind = None;

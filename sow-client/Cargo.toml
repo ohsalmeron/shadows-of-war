@@ -14,7 +14,6 @@ sow-core = { workspace = true }
 sow-render = { workspace = true }
 sow-map = { workspace = true }
 blade-graphics = { workspace = true }
-blade-particle = { workspace = true }
 
 log = { workspace = true }
 env_logger = { workspace = true }

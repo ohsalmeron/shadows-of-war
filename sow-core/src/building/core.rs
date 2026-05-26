@@ -229,7 +229,7 @@ pub fn defense_post_priority_bonus(
         let (bx, by) = idx_xy(b.tile_idx, map_width);
         let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
         if d <= b.defense_range_cfg(cfg) {
-            bonus += cfg.bunker_priority as i64;
+            bonus += cfg.bunker_priority as i64 * b.active_level() as i64;
         }
     }
     bonus
@@ -316,7 +316,7 @@ impl DefenseGrid {
                     let by = b.tile_idx / map_width;
                     let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
                     if d <= b.defense_range_cfg(cfg) {
-                        bonus += cfg.bunker_priority as i64;
+                        bonus += cfg.bunker_priority as i64 * b.active_level() as i64;
                     }
                 }
             }

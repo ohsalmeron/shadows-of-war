@@ -856,6 +856,7 @@ impl MapEditorSession {
                         hover_hex: [0.0, 0.0],
                         hover_building_kind: 0.0,
                         _pad1: 0.0,
+                        fallout_slots: [[0.0; 4]; 8],
                         nobuild_slots: [[0.0; 4]; 32],
                     };
                     let colors_struct = sow_render::PlayerColors {

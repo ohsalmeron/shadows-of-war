@@ -385,9 +385,15 @@ impl SowApp {
                                 if sector == 0 {
                                     if is_friendly {
                                         if is_allied {
+                                            // Default to Request tab with 10% of ally's resources
+                                            let (ally_gold, ally_troops) = self.sim.current_snapshot.as_ref()
+                                                .and_then(|s| s.players.iter().find(|p| p.id == owner_id))
+                                                .map(|p| (p.gold, p.troops))
+                                                .unwrap_or((0.0, 0.0));
                                             self.ui.app.hud_state.show_ask_panel = Some(owner_id);
-                                            self.ui.app.hud_state.ask_gold = 0.0;
-                                            self.ui.app.hud_state.ask_troops = 0.0;
+                                            self.ui.app.hud_state.ask_gold = (ally_gold * 0.10).floor();
+                                            self.ui.app.hud_state.ask_troops = (ally_troops * 0.10).floor();
+                                            ctx.data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 1_usize));
                                         } else {
                                             self.ui.app.hud_state.show_error = Some("You can only ask resources from allies!".to_string());
                                         }
@@ -567,7 +573,7 @@ impl SowApp {
                                                 ui.painter().text(
                                                     rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
                                                     egui::Align2::LEFT_CENTER,
-                                                    format!("Lvl {} ➔ {} | {}g", current_lvl, current_lvl + 1, cost as u32),
+                                                    format!("Lvl {} -> {} | {}g", current_lvl, current_lvl + 1, cost as u32),
                                                     egui::FontId::proportional(10.5),
                                                     if is_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
                                                 );
@@ -781,7 +787,7 @@ impl SowApp {
                                             ui.painter().text(
                                                 upgrade_rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
                                                 egui::Align2::LEFT_CENTER,
-                                                format!("Lvl {} ➔ {} | {}g", current_level, current_level + 1, upgrade_cost as u32),
+                                                format!("Lvl {} -> {} | {}g", current_level, current_level + 1, upgrade_cost as u32),
                                                 egui::FontId::proportional(10.5),
                                                 if is_upgrade_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
                                             );
@@ -820,7 +826,11 @@ impl SowApp {
                                             ];
 
                                             for &(kind, label, desc) in &buildings_list {
-                                                let cost = sow_core::building::cost::structure_build_cost_gold();
+                                                let my_player_id = self.sim.my_player_id.unwrap_or(1);
+                                                let count = self.sim.current_snapshot.as_ref()
+                                                    .map(|s| s.buildings.iter().filter(|b| b.owner_id == my_player_id && b.kind == kind).count() as u32)
+                                                    .unwrap_or(0);
+                                                let cost = sow_core::building::structure_build_cost_gold(kind, count, &self.sim.config);
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
 
                                                 let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());

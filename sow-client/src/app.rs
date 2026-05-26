@@ -50,6 +50,7 @@ pub struct SimState {
     pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
     pub last_synced_cost_tick: Option<u64>,
     pub tile_upgrades: Vec<u32>,
+    pub config: sow_core::game_config::GameConfig,
 }
 
 pub struct InputState {
@@ -175,6 +176,8 @@ pub struct UiState {
     pub attack_troop_labels: std::collections::HashMap<u64, (f64, String)>,
     pub edge_mask_cache: Vec<u8>,
     pub rail_state: crate::render::world::railways::RailState,
+    /// Client-side nuke silo cooldown tracking: building id → tick when ready.
+    pub silo_cooldowns: std::collections::HashMap<u64, u64>,
 }
 
 pub struct TimeState {
@@ -429,6 +432,7 @@ impl SowApp {
                 offline_intents: Vec::new(),
                 last_synced_cost_tick: None,
                 tile_upgrades: Vec::new(),
+                config: sow_core::game_config::GameConfig::default(),
             },
             input: InputState {
                 camera_x,
@@ -487,6 +491,7 @@ impl SowApp {
                 attack_troop_labels: std::collections::HashMap::new(),
                 edge_mask_cache: Vec::new(),
                 rail_state: crate::render::world::railways::RailState::new(),
+                silo_cooldowns: std::collections::HashMap::new(),
             },
             time: TimeState {
                 last_tick,
@@ -703,6 +708,7 @@ impl SowApp {
                 players,
                 nations,
             } => {
+                self.sim.config = (*config).clone();
                 let map_w = config.map_width;
                 let map_h = config.map_height;
                 let mut state = sow_core::game::GameState::new(seed, map_w, map_h, *config);

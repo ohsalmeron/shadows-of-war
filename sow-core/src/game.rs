@@ -193,6 +193,12 @@ pub enum GameEvent {
         tile_idx: u32,
         level: u32,
     },
+    ResourceTransferred {
+        sender_id: u16,
+        receiver_id: u16,
+        gold: f64,
+        troops: f64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

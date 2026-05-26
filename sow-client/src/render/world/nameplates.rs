@@ -6,55 +6,64 @@ pub(crate) fn spring_overshoot(t: f32) -> f32 {
     1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
 }
 
-fn paint_glassmorphic_shield(
+/// Paints a circular avatar with a decorative ring frame.
+/// For textured avatars, clips to a circle via a triangle-fan mesh.
+/// For solid-color avatars (nations), fills a circle.
+fn paint_circular_avatar(
     painter: &egui::Painter,
-    rect: egui::Rect,
-    vibrant_color: egui::Color32,
+    center: egui::Pos2,
+    radius: f32,
+    texture: Option<egui::TextureId>,
+    fill_color: egui::Color32,
+    frame_color: egui::Color32,
 ) {
-    let top_left = rect.left_top();
-    let top_center = egui::pos2(rect.center().x, rect.top() + rect.height() * 0.12);
-    let top_right = rect.right_top();
-    let mid_right = egui::pos2(rect.right(), rect.top() + rect.height() * 0.50);
-    let bottom = egui::pos2(rect.center().x, rect.bottom() - rect.height() * 0.05);
-    let mid_left = egui::pos2(rect.left(), rect.top() + rect.height() * 0.50);
+    const SEGMENTS: usize = 32;
 
-    let points = [top_left, top_center, top_right, mid_right, bottom, mid_left];
+    if let Some(tex_id) = texture {
+        // Build a triangle-fan mesh clipped to a circle
+        let mut mesh = egui::Mesh::with_texture(tex_id);
+        // Center vertex
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: center,
+            uv: egui::pos2(0.5, 0.5),
+            color: egui::Color32::WHITE,
+        });
+        for i in 0..=SEGMENTS {
+            let angle = (i as f32 / SEGMENTS as f32) * std::f32::consts::TAU;
+            let (sin, cos) = angle.sin_cos();
+            mesh.vertices.push(egui::epaint::Vertex {
+                pos: egui::pos2(center.x + cos * radius, center.y + sin * radius),
+                uv: egui::pos2(0.5 + cos * 0.5, 0.5 + sin * 0.5),
+                color: egui::Color32::WHITE,
+            });
+        }
+        for i in 1..=SEGMENTS {
+            mesh.indices.push(0);
+            mesh.indices.push(i as u32);
+            mesh.indices.push(i as u32 + 1);
+        }
+        painter.add(egui::Shape::mesh(mesh));
+    } else {
+        painter.circle_filled(center, radius, fill_color);
+    }
 
-    // Shadow / Dark glassmorphic backdrop
-    let backdrop_color = egui::Color32::from_rgba_unmultiplied(15, 23, 42, 220);
-    painter.add(egui::Shape::convex_polygon(
-        points.to_vec(),
-        backdrop_color,
-        egui::Stroke::NONE,
-    ));
-
-    // Nation color tint overlay
-    let r = ((vibrant_color.r() as f32 * 0.6) + (255.0 * 0.4)) as u8;
-    let g = ((vibrant_color.g() as f32 * 0.6) + (255.0 * 0.4)) as u8;
-    let b = ((vibrant_color.b() as f32 * 0.6) + (255.0 * 0.4)) as u8;
-    let tint_color = egui::Color32::from_rgba_unmultiplied(r, g, b, 90);
-    painter.add(egui::Shape::convex_polygon(
-        points.to_vec(),
-        tint_color,
-        egui::Stroke::NONE,
-    ));
-
-    // Highlighted border
-    let stroke_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140);
-    painter.add(egui::Shape::closed_line(
-        points.to_vec(),
-        egui::Stroke::new(1.8_f32, stroke_color),
-    ));
-
-    // Center symbol (golden crown)
-    let symbol_size = (rect.height() * 0.52).round();
-    let crown_galley =
-        painter.layout_no_wrap("👑".into(), egui::FontId::proportional(symbol_size), egui::Color32::WHITE);
-    let crown_pos = egui::pos2(
-        rect.center().x - crown_galley.size().x / 2.0,
-        rect.center().y + rect.height() * 0.03 - crown_galley.size().y / 2.0,
+    // Frame rings: dark backdrop → color ring → white highlight
+    let border = (radius * 0.12).max(1.0);
+    painter.circle_stroke(
+        center,
+        radius + border * 0.3,
+        egui::Stroke::new(border, egui::Color32::from_black_alpha(160)),
     );
-    painter.galley(crown_pos, crown_galley, egui::Color32::WHITE);
+    painter.circle_stroke(
+        center,
+        radius,
+        egui::Stroke::new(border * 0.8, frame_color),
+    );
+    painter.circle_stroke(
+        center,
+        radius - border * 0.15,
+        egui::Stroke::new(border * 0.35, egui::Color32::from_white_alpha(80)),
+    );
 }
 
 #[allow(unused_variables)]
@@ -116,7 +125,7 @@ pub(crate) fn render(
             ((visual_config.nameplate_tribe_size * ui_text_scale * zoom_scale).round()).max(3.0);
 
         // Frame-constant trig — computed once, reused by every player
-        let betrayal_pulse = (wall_secs * std::f64::consts::TAU).sin() * 0.5 + 0.5;
+
         let heart_flash_alpha = ((wall_secs * 12.0).cos() * 0.5 + 0.5) as f32;
 
         // Hoist my_player lookup — avoids O(n) scan per player
@@ -407,6 +416,87 @@ pub(crate) fn render(
                         }
                     }
 
+                    // Betrayal WebP Icon Animation (Spring Overshoot)
+                    let betrayal_anim_id = egui::Id::new(("betrayal_anim_progress", player.id));
+                    let betrayal_anim =
+                        painter
+                            .ctx()
+                            .animate_bool_with_time(betrayal_anim_id, betrayal_flash, 0.25);
+
+                    let mut betrayal_offset = 0.0_f32;
+                    if betrayal_anim > 0.01 {
+                        static REGISTER_BETRAY_ONCE: std::sync::Once = std::sync::Once::new();
+                        REGISTER_BETRAY_ONCE.call_once(|| {
+                            painter.ctx().include_bytes(
+                                "bytes://betray.webp",
+                                include_bytes!("../../../assets/betray.webp").as_slice(),
+                            );
+                        });
+
+                        let betray_icon_size = font_size * 3.111;
+                        let load_res = painter.ctx().try_load_texture(
+                            "bytes://betray.webp",
+                            egui::TextureOptions::default(),
+                            egui::load::SizeHint::Size {
+                                width: 128,
+                                height: 128,
+                                maintain_aspect_ratio: true,
+                            },
+                        );
+
+                        if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                            let anim_scale = if betrayal_flash {
+                                let t = betrayal_anim;
+                                if t >= 1.0 { 1.0 } else { spring_overshoot(t) }
+                            } else {
+                                betrayal_anim
+                            };
+                            let size = betray_icon_size * anim_scale;
+                            let betray_y = center.y - (font_size * 1.889) - size / 2.0;
+                            let betray_rect = egui::Rect::from_center_size(
+                                egui::pos2(center.x, betray_y),
+                                egui::vec2(size, size),
+                            );
+
+                            let betray_painter =
+                                painter.ctx().layer_painter(egui::LayerId::new(
+                                    egui::Order::Middle,
+                                    egui::Id::new(("floating_betray_icon", player.id)),
+                                ));
+
+                            // Red danger glow
+                            let glow_r = size * 0.8;
+                            let glow_a = betrayal_anim * 0.4;
+                            betray_painter.circle_filled(
+                                betray_rect.center(),
+                                glow_r * 1.4,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    220, 38, 38,
+                                    (glow_a * 120.0) as u8,
+                                ),
+                            );
+                            betray_painter.circle_filled(
+                                betray_rect.center(),
+                                glow_r,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    220, 38, 38,
+                                    (glow_a * 255.0) as u8,
+                                ),
+                            );
+
+                            betray_painter.image(
+                                texture.id,
+                                betray_rect,
+                                egui::Rect::from_min_max(
+                                    egui::pos2(0.0, 0.0),
+                                    egui::pos2(1.0, 1.0),
+                                ),
+                                egui::Color32::WHITE.linear_multiply(betrayal_anim),
+                            );
+                            betrayal_offset = size + 4.0;
+                        }
+                    }
+
                     // Render animated floating active express emoji ABOVE the nameplate
                     if anim_progress > 0.01 {
                         if let Some(emoji_str) = &current_emoji {
@@ -424,13 +514,8 @@ pub(crate) fn render(
                             let base_emoji_size = font_size * 2.2;
                             let final_emoji_size = base_emoji_size * anim_scale;
 
-                            let has_status = is_disconnected || betrayal_flash;
-                            let mut base_y_offset = if has_status {
-                                font_size * 4.444
-                            } else {
-                                font_size * 1.889
-                            };
-                            let max_float_offset = req_offset.max(allied_offset);
+                            let mut base_y_offset = font_size * 1.889;
+                            let max_float_offset = req_offset.max(allied_offset).max(betrayal_offset);
                             if max_float_offset > 0.01 {
                                 base_y_offset += max_float_offset;
                             }
@@ -518,35 +603,21 @@ pub(crate) fn render(
                         (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
                     );
 
-                    let has_status = is_disconnected || betrayal_flash;
                     let mut disc_galley = None;
-                    if has_status {
+                    if is_disconnected {
                         let disc_font_id = egui::FontId::proportional(font_size * 0.95 * 3.0);
                         let mut job = egui::text::LayoutJob {
                             break_on_newline: false,
                             ..Default::default()
                         };
-                        if betrayal_flash {
-                            let alpha = (betrayal_pulse * 200.0 + 55.0) as u8;
-                            let flash_color =
-                                egui::Color32::from_rgba_unmultiplied(220, 38, 38, alpha);
-                            job.append(
-                                "🗡️",
-                                0.0,
-                                egui::text::TextFormat::simple(disc_font_id.clone(), flash_color),
-                            );
-                        }
-                        if is_disconnected {
-                            let text = if betrayal_flash { " 🔌" } else { "🔌" };
-                            job.append(
-                                text,
-                                0.0,
-                                egui::text::TextFormat::simple(
-                                    disc_font_id,
-                                    egui::Color32::from_rgb(239, 68, 68),
-                                ),
-                            );
-                        }
+                        job.append(
+                            "🔌",
+                            0.0,
+                            egui::text::TextFormat::simple(
+                                disc_font_id,
+                                egui::Color32::from_rgb(239, 68, 68),
+                            ),
+                        );
                         disc_galley = Some(painter.layout_job(job));
                     }
 
@@ -664,30 +735,28 @@ pub(crate) fn render(
                         cur_x += avatar_size + spacing_x;
                     }
 
-                    // 1. Avatar (or Glassmorphic Shield for Nations)
-                    let avatar_rect = egui::Rect::from_min_size(
-                        egui::pos2(cur_x, row12_y + (total_h - avatar_size) / 2.0),
-                        egui::vec2(avatar_size, avatar_size),
+                    // 1. Circular avatar with decorative frame
+                    let avatar_center = egui::pos2(
+                        cur_x + avatar_size / 2.0,
+                        row12_y + total_h / 2.0,
                     );
+                    let avatar_r = avatar_size / 2.0;
                     if player.player_type == sow_core::player::PlayerType::Nation {
-                        paint_glassmorphic_shield(&painter, avatar_rect, vibrant_color);
+                        paint_circular_avatar(
+                            painter, avatar_center, avatar_r,
+                            None, vibrant_color, vibrant_color,
+                        );
                     } else {
                         let avatar_tex = ui.app.asset_loader.avatars.get(&player.leader).or(ui
                             .app
                             .asset_loader
                             .avatar_fallback
                             .as_ref());
-                        if let Some(tex) = avatar_tex {
-                            painter.image(
-                                tex.id(),
-                                avatar_rect,
-                                egui::Rect::from_min_max(
-                                    egui::pos2(0.0, 0.0),
-                                    egui::pos2(1.0, 1.0),
-                                ),
-                                egui::Color32::WHITE,
-                            );
-                        }
+                        let tex_id = avatar_tex.map(|t| t.id());
+                        paint_circular_avatar(
+                            painter, avatar_center, avatar_r,
+                            tex_id, vibrant_color, vibrant_color,
+                        );
                     }
                     cur_x += avatar_size + spacing_x;
 
@@ -727,13 +796,15 @@ pub(crate) fn render(
                 }
             }
 
-            // Small nations require zooming in to appear.
-            let threshold = if player.id >= 200 {
-                1.00 // Tribes need to be much closer/bigger to show text
-            } else {
-                0.5 // Nations can show text further away
-            };
-            let show_full = lod_presence >= threshold && full_labels_drawn < 100;
+            // Show nameplate if the player's territory is large enough at this zoom.
+            // Uses tile count directly (normalized to a 200×200 reference map) so
+            // visibility is purely size-based — no arbitrary sorting artifacts.
+            let map_area = (sim.map_w * sim.map_h).max(1) as f32;
+            let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
+            let zoom_scaled_local = input.camera_zoom / sf;
+            let min_tiles = if player.id >= 200 { 8.0 } else { 2.0 };
+            let show_full = (normalized_tiles * zoom_scaled_local) >= min_tiles
+                && full_labels_drawn < 100;
 
             if show_full {
                 full_labels_drawn += 1;
@@ -849,22 +920,9 @@ pub(crate) fn render(
                     ..Default::default()
                 };
 
-                // Betrayal emoji with 1-second fade-in/out pulse
-                if betrayal_flash {
-                    let t = betrayal_pulse;
-                    let alpha = (t * 200.0 + 55.0) as u8; // range 55..255
-                    let flash_color = egui::Color32::from_rgba_unmultiplied(220, 38, 38, alpha);
-                    job.append(
-                        "🗡️",
-                        0.0,
-                        egui::text::TextFormat::simple(disc_font_id.clone(), flash_color),
-                    );
-                }
-
                 if is_disconnected {
-                    let text = if betrayal_flash { " 🔌" } else { "🔌" };
                     job.append(
-                        text,
+                        "🔌",
                         0.0,
                         egui::text::TextFormat::simple(
                             disc_font_id.clone(),
@@ -894,7 +952,7 @@ pub(crate) fn render(
                         .data_mut(|d| d.insert_temp(last_emoji_id, current_emoji.clone().unwrap()));
                 }
 
-                let disc_galley = if is_disconnected || betrayal_flash {
+                let disc_galley = if is_disconnected {
                     Some(painter.layout_job(job))
                 } else {
                     None
@@ -1106,6 +1164,77 @@ pub(crate) fn render(
                     }
                 }
 
+                // Betrayal WebP Icon Animation (Spring Overshoot)
+                let betrayal_anim_id = egui::Id::new(("betrayal_anim_progress", player.id));
+                let betrayal_anim = painter
+                    .ctx()
+                    .animate_bool_with_time(betrayal_anim_id, betrayal_flash, 0.25);
+
+                let mut betrayal_height = 0.0_f32;
+                if betrayal_anim > 0.01 {
+                    static REGISTER_BETRAY_ONCE: std::sync::Once = std::sync::Once::new();
+                    REGISTER_BETRAY_ONCE.call_once(|| {
+                        painter.ctx().include_bytes(
+                            "bytes://betray.webp",
+                            include_bytes!("../../../assets/betray.webp").as_slice(),
+                        );
+                    });
+
+                    let betray_icon_size = font_size * 1.5 * 2.0;
+                    let load_res = painter.ctx().try_load_texture(
+                        "bytes://betray.webp",
+                        egui::TextureOptions::default(),
+                        egui::load::SizeHint::Size {
+                            width: 128,
+                            height: 128,
+                            maintain_aspect_ratio: true,
+                        },
+                    );
+
+                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+                        let anim_scale = if betrayal_flash {
+                            let t = betrayal_anim;
+                            if t >= 1.0 { 1.0 } else { spring_overshoot(t) }
+                        } else {
+                            betrayal_anim
+                        };
+                        let size = betray_icon_size * anim_scale;
+                        let betray_y = current_y - disc_height - size / 2.0 - 4.0;
+                        let betray_rect = egui::Rect::from_center_size(
+                            egui::pos2(center.x, betray_y),
+                            egui::vec2(size, size),
+                        );
+
+                        // Red danger glow
+                        let glow_r = size * 0.8;
+                        let glow_a = betrayal_anim * 0.4;
+                        painter.circle_filled(
+                            betray_rect.center(),
+                            glow_r * 1.4,
+                            egui::Color32::from_rgba_unmultiplied(
+                                220, 38, 38,
+                                (glow_a * 120.0) as u8,
+                            ),
+                        );
+                        painter.circle_filled(
+                            betray_rect.center(),
+                            glow_r,
+                            egui::Color32::from_rgba_unmultiplied(
+                                220, 38, 38,
+                                (glow_a * 255.0) as u8,
+                            ),
+                        );
+
+                        painter.image(
+                            texture.id,
+                            betray_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE.linear_multiply(betrayal_anim),
+                        );
+                        betrayal_height = size + 4.0;
+                    }
+                }
+
                 // Draw the giant animated floating express emoji above the status icons!
                 if anim_progress > 0.01 {
                     if let Some(emoji_str) = &current_emoji {
@@ -1123,7 +1252,7 @@ pub(crate) fn render(
 
                         let base_emoji_size = font_size * 2.2; // 220% size! Extremely visible!
                         let final_emoji_size = base_emoji_size * anim_scale;
-                        let max_float_height = req_height.max(allied_height);
+                        let max_float_height = req_height.max(allied_height).max(betrayal_height);
                         let emoji_y =
                             current_y - disc_height - max_float_height - 18.0 * zoom_scale;
 
@@ -1265,24 +1394,13 @@ pub(crate) fn render(
                     is_tribe,
                 );
             } else {
-                // High-performance fallback: glassmorphic shield for Nations/Tribes, dot for regular bots
-                if player.player_type == sow_core::player::PlayerType::Nation {
-                    let scale_factor = (zoom_scaled / 4.0).clamp(0.6, 1.2);
-                    let avatar_size = (visual_config.nameplate_premium_size * 2.736)
-                        * scale_factor
-                        * ui_text_scale;
-                    let rect =
-                        egui::Rect::from_center_size(center, egui::vec2(avatar_size, avatar_size));
-                    paint_glassmorphic_shield(painter, rect, pc);
-                } else {
-                    // Dot only — zero text layout, bare metal fast
-                    painter.circle_filled(center, dot_r, pc);
-                    painter.circle_stroke(
-                        center,
-                        dot_r,
-                        egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
-                    );
-                }
+                // Dot only — zero text layout, bare metal fast
+                painter.circle_filled(center, dot_r, pc);
+                painter.circle_stroke(
+                    center,
+                    dot_r,
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
+                );
             }
         }
     }

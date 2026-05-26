@@ -89,8 +89,14 @@ impl Default for MainMenuState {
             show_single_player_setup: false,
             single_player_config: Box::new(sow_core::game_config::GameConfig {
                 map_name: "World".to_string(),
+                seed: web_time::SystemTime::now()
+                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
                 ..Default::default()
             }),
+
+
             error_message: None,
         }
     }

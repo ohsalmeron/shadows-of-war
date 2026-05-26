@@ -152,7 +152,7 @@ impl SowEngine {
                 self.apply_build_structure_intent(stamped.player_id, *kind, *target_tile);
             }
             GameplayIntent::UpgradeStructure { .. } => {
-                // Stacking model: buildings don't upgrade, place a new one instead.
+                // Stacking is handled inside BuildStructure; this intent is unused.
             }
             GameplayIntent::UpgradeCityModule {
                 building_id,
@@ -456,7 +456,17 @@ impl SowEngine {
                 let target = *target_player;
                 let g = *gold;
                 let t = *troops;
-                if sender != target && (g > 0.0 || t > 0.0) && !g.is_nan() && !t.is_nan() {
+                let is_allied = self
+                    .state
+                    .player(sender)
+                    .map(|p| {
+                        p.alliances.contains(&target)
+                            || (p.team.is_some()
+                                && p.team
+                                    == self.state.player(target).and_then(|t| t.team))
+                    })
+                    .unwrap_or(false);
+                if sender != target && is_allied && (g > 0.0 || t > 0.0) && !g.is_nan() && !t.is_nan() {
                     let mut actual_g = 0.0;
                     let mut actual_t = 0.0;
                     let mut sender_ok = false;
@@ -478,6 +488,14 @@ impl SowEngine {
                                     (t_player.troops + actual_t).min(t_player.max_troops);
                             }
                         }
+                        self.state.events.push(
+                            crate::game::GameEvent::ResourceTransferred {
+                                sender_id: sender,
+                                receiver_id: target,
+                                gold: actual_g,
+                                troops: actual_t,
+                            },
+                        );
                     }
                 }
             }

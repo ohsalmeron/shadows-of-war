@@ -55,7 +55,7 @@ mod config;
 /// Allow very wide map views (scroll / pinch clamp to this minimum).
 const CAMERA_MIN_ZOOM: f32 = 0.75;
 /// Hard ceiling so zoom stays finite and GPU paths stay well-behaved.
-const CAMERA_MAX_ZOOM_CAP: f32 = 50.0;
+const CAMERA_MAX_ZOOM_CAP: f32 = 100.0;
 
 /// Pixels-per-world-unit zoom max scales with window size so you can fill ~one hex tile
 /// across the long screen axis (hex neighbor spacing ≈ 1 world unit in the map shader).

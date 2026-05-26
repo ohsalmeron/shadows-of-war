@@ -409,6 +409,14 @@ pub struct NukeAlert {
     pub tile_y: u32,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResourceTransfer {
+    pub sender_id: u16,
+    pub receiver_id: u16,
+    pub gold: f64,
+    pub troops: f64,
+}
+
 /// Snapshot sent from the simulation thread to the main thread every tick.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimSnapshot {
@@ -423,6 +431,8 @@ pub struct SimSnapshot {
     pub projectiles: Vec<ProjectileSnapshot>,
     #[serde(default)]
     pub nuke_alerts: Vec<NukeAlert>,
+    #[serde(default)]
+    pub resource_transfers: Vec<ResourceTransfer>,
     pub winner: Option<u16>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,

@@ -30,6 +30,38 @@ impl SowEngine {
             return;
         }
 
+        // Check for a nearby same-kind building to stack onto.
+        if let Some(target_id) = crate::building::find_upgrade_target_id(
+            &self.state.map, player_id, kind, target_tile, &self.buildings,
+        ) {
+            let count = crate::building::count_kind(&self.buildings, player_id, kind);
+            let cost = structure_build_cost_gold(kind, count, &self.state.config);
+            let Some(player_mut) = self.state.player_mut(player_id) else {
+                return;
+            };
+            if player_mut.gold < cost || !cost.is_finite() {
+                return;
+            }
+            player_mut.gold = (player_mut.gold - cost).max(0.0);
+
+            let idx = self.buildings.binary_search_by_key(&target_id, |b| b.id).unwrap();
+            let b = &mut self.buildings[idx];
+            b.level = b.level.saturating_add(1);
+            let dur = crate::building::core::upgrade_duration_ticks(b.kind, b.level);
+            b.under_construction = true;
+            b.ticks_until_complete = b.ticks_until_complete.saturating_add(dur);
+            self.building_aggregates_dirty = true;
+
+            self.state.events.push(GameEvent::StructureUpgraded {
+                id: b.id,
+                tile_idx: b.tile_idx,
+                kind: b.kind,
+                level: b.level,
+            });
+            return;
+        }
+
+        // No stackable candidate — normal placement.
         self.refresh_building_grid();
         let Some(spawn_idx) = resolve_structure_spawn_tile(
             &self.state.map,
@@ -43,7 +75,8 @@ impl SowEngine {
             return;
         };
 
-        let cost = structure_build_cost_gold();
+        let count = crate::building::count_kind(&self.buildings, player_id, kind);
+        let cost = structure_build_cost_gold(kind, count, &self.state.config);
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
         };

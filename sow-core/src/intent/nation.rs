@@ -20,8 +20,8 @@ fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32) -> u32 {
 
 /// Cheapest possible gold cost for a building.
 #[inline]
-fn cheapest_gold_cost() -> f64 {
-    1000.0
+fn cheapest_gold_cost(cfg: &crate::game_config::GameConfig) -> f64 {
+    cfg.cost_city.min(cfg.cost_bunker).min(cfg.cost_factory).min(cfg.cost_port)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -210,7 +210,7 @@ impl SowEngine {
                 continue; // Nothing to do this tick for this entity
             }
 
-            if do_structures && p.gold >= cheapest_gold_cost() {
+            if do_structures && p.gold >= cheapest_gold_cost(&self.state.config) {
                 any_structures = true;
             }
 
@@ -336,92 +336,132 @@ impl SowEngine {
                 });
             }
 
-            // ── Respond to Resource Requests ─────────────────────────────
-            for req in &self.resource_requests_proposed {
-                if req.target != bot_id {
-                    continue;
-                }
-                let requester = req.proposer;
-                let is_ally = self
-                    .state
-                    .player(bot_id)
-                    .map(|p| p.alliances.contains(&requester))
-                    .unwrap_or(false);
-                if !is_ally {
-                    continue;
-                }
-
-                let accept = if bot_iq >= 130 {
-                    // High IQ: only if we vastly outpower them (2x troops)
-                    if let (Some(p_me), Some(p_req)) =
-                        (self.state.player(bot_id), self.state.player(requester))
-                    {
-                        p_me.troops >= p_req.troops * 2.0
-                    } else {
-                        false
-                    }
-                } else if bot_iq >= 100 {
-                    // Mid IQ: accept if we have decent surplus
-                    self.state
-                        .player(bot_id)
-                        .map(|p| p.troops > p.max_troops * 0.4 || p.gold > 100_000.0)
-                        .unwrap_or(false)
-                } else {
-                    // Low IQ: always accept, even if it bleeds them dry
-                    true
+            // ── Respond to Resource Requests ─────────────────────────
+            // Same cooldown window as proactive sharing — no spam
+            {
+                let share_interval = {
+                    let mut rng = WyRand::new(
+                        self.state.seed.wrapping_add(bot_id as u64).wrapping_add(7919),
+                    );
+                    rng.next_int(400, 1200) as u64
                 };
-
-                if accept {
-                    let current_points = self.state.player(bot_id).unwrap().iq_points;
-                    if current_points >= send_cost {
-                        if let Some(p_me) = self.state.player_mut(bot_id) {
-                            p_me.iq_points -= send_cost;
+                if self.state.tick > share_interval
+                    && self.state.tick % share_interval < 2
+                {
+                    for req in &self.resource_requests_proposed {
+                        if req.target != bot_id {
+                            continue;
                         }
-                        decisions.push(BotDecision {
-                            bot_id,
-                            kind: BotDecisionKind::Build,
-                            intent: GameplayIntent::AcceptResourceRequest {
-                                target_player: requester,
-                            },
-                        });
+                        let requester = req.proposer;
+                        let is_ally = self
+                            .state
+                            .player(bot_id)
+                            .map(|p| p.alliances.contains(&requester))
+                            .unwrap_or(false);
+                        if !is_ally {
+                            continue;
+                        }
+
+                        let accept = if bot_iq >= 130 {
+                            if let (Some(p_me), Some(p_req)) =
+                                (self.state.player(bot_id), self.state.player(requester))
+                            {
+                                p_me.troops >= p_req.troops * 2.0
+                            } else {
+                                false
+                            }
+                        } else if bot_iq >= 100 {
+                            self.state
+                                .player(bot_id)
+                                .map(|p| p.troops > p.max_troops * 0.4 || p.gold > 100_000.0)
+                                .unwrap_or(false)
+                        } else {
+                            // Low IQ: always accept
+                            true
+                        };
+
+                        if accept {
+                            let current_points = self.state.player(bot_id).unwrap().iq_points;
+                            if current_points >= send_cost {
+                                if let Some(p_me) = self.state.player_mut(bot_id) {
+                                    p_me.iq_points -= send_cost;
+                                }
+                                decisions.push(BotDecision {
+                                    bot_id,
+                                    kind: BotDecisionKind::Build,
+                                    intent: GameplayIntent::AcceptResourceRequest {
+                                        target_player: requester,
+                                    },
+                                });
+                            }
+                        }
+                        break;
                     }
                 }
-                break; // one request per tick
             }
 
-            // ── Resource Sharing (High IQ only) ───────────────────────────
-            if bot_iq >= 130 {
-                let current_points = self.state.player(bot_id).unwrap().iq_points;
-                if current_points >= send_cost {
-                    let mut ally_to_help = None;
-                    if let Some(p_me) = self.state.player(bot_id) {
-                        if p_me.gold > 200_000.0 && p_me.troops > p_me.max_troops * 0.5 {
-                            for &ally_id in &p_me.alliances {
-                                if let Some(p_ally) = self.state.player(ally_id) {
-                                    if p_ally.alive
-                                        && (p_ally.troops < p_ally.max_troops * 0.3
-                                            || p_ally.troops <= 500.0)
-                                    {
-                                        ally_to_help = Some(ally_id);
-                                        break;
+            // ── Proactive Resource Sharing (IQ 120+, every 20-60s) ────
+            if bot_iq >= 120 {
+                let share_interval = {
+                    let mut rng = WyRand::new(
+                        self.state.seed.wrapping_add(bot_id as u64).wrapping_add(7919),
+                    );
+                    rng.next_int(400, 1200) as u64
+                };
+                if self.state.tick > share_interval
+                    && self.state.tick % share_interval == 0
+                {
+                    let share_chance = (60i32 - bot_iq as i32 / 3).clamp(10, 50);
+                    let roll = self
+                        .state
+                        .player_mut(bot_id)
+                        .unwrap()
+                        .bot_rng
+                        .next_int(0, 100);
+                    if roll < share_chance {
+                        let current_points = self.state.player(bot_id).unwrap().iq_points;
+                        if current_points >= send_cost {
+                            let mut ally_to_help = None;
+                            if let Some(p_me) = self.state.player(bot_id) {
+                                let has_surplus =
+                                    p_me.gold > 100_000.0 || p_me.troops > p_me.max_troops * 0.4;
+                                if has_surplus {
+                                    for &ally_id in &p_me.alliances {
+                                        if let Some(p_ally) = self.state.player(ally_id) {
+                                            if p_ally.alive
+                                                && (p_ally.troops < p_ally.max_troops * 0.3
+                                                    || p_ally.troops <= 500.0)
+                                            {
+                                                ally_to_help = Some(ally_id);
+                                                break;
+                                            }
+                                        }
                                     }
                                 }
                             }
+                            if let Some(ally_id) = ally_to_help {
+                                // Random % of troops (5-15%) and gold (10-25%)
+                                let p_me = self.state.player_mut(bot_id).unwrap();
+                                let troop_pct =
+                                    p_me.bot_rng.next_int(5, 15) as f64 / 100.0;
+                                let gold_pct =
+                                    p_me.bot_rng.next_int(10, 25) as f64 / 100.0;
+                                let troops_avail = p_me.troops;
+                                let gold_avail = p_me.gold;
+                                p_me.iq_points -= send_cost;
+                                let send_troops = (troops_avail * troop_pct).floor().max(50.0);
+                                let send_gold = (gold_avail * gold_pct).floor();
+                                decisions.push(BotDecision {
+                                    bot_id,
+                                    kind: BotDecisionKind::Build,
+                                    intent: GameplayIntent::SendResources {
+                                        target_player: ally_id,
+                                        gold: send_gold,
+                                        troops: send_troops,
+                                    },
+                                });
+                            }
                         }
-                    }
-                    if let Some(ally_id) = ally_to_help {
-                        if let Some(p_me) = self.state.player_mut(bot_id) {
-                            p_me.iq_points -= send_cost;
-                        }
-                        decisions.push(BotDecision {
-                            bot_id,
-                            kind: BotDecisionKind::Build,
-                            intent: GameplayIntent::SendResources {
-                                target_player: ally_id,
-                                gold: 50_000.0,
-                                troops: 200.0,
-                            },
-                        });
                     }
                 }
             }
@@ -632,7 +672,7 @@ impl SowEngine {
                             continue;
                         }
                     };
-                    if player_gold >= cheapest_gold_cost() {
+                    if player_gold >= cheapest_gold_cost(&self.state.config) {
                         let agg = self
                             .building_aggregates
                             .get(bot_id as usize)
@@ -717,7 +757,7 @@ impl SowEngine {
                                 }
                                 if let Some(target_id) = upgrade_target {
                                     let cost =
-                                        structure_build_cost_gold();
+                                        structure_build_cost_gold(kind, owned, &self.state.config);
                                     if player_gold >= cost {
                                         if let Some(p_me) = self.state.player_mut(bot_id) {
                                             p_me.iq_points -= build_cost;
@@ -741,10 +781,10 @@ impl SowEngine {
                             if owned >= target_count {
                                 continue;
                             }
-                            if player_gold < cheapest_gold_cost() {
+                            if player_gold < cheapest_gold_cost(&self.state.config) {
                                 continue;
                             }
-                            let cost = structure_build_cost_gold();
+                            let cost = structure_build_cost_gold(kind, owned, &self.state.config);
                             let map_w = self.state.map.width;
                             let Some(bot_now) = self.state.player_mut(bot_id) else {
                                 continue;
@@ -1094,7 +1134,6 @@ impl SowEngine {
         }
 
         let mut has_silo = false;
-        let mut total_silos = 0;
         for b in &self.buildings {
             if b.owner_id == bot_id
                 && b.kind == BuildingKind::City
@@ -1104,7 +1143,6 @@ impl SowEngine {
                 if self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0 {
                     has_silo = true;
                 }
-                total_silos += 1;
             }
         }
         if !has_silo {
@@ -1114,8 +1152,8 @@ impl SowEngine {
         let Some(player) = self.state.player(bot_id) else {
             return;
         };
-        let cost = NukeKind::AtomBomb.gold_cost(0);
-        let perceived_cost = cost * (1.0 + 0.5 * total_silos as f64);
+        let cost = self.state.config.nuke_cost;
+        let perceived_cost = cost;
 
         if player.gold < perceived_cost {
             return;

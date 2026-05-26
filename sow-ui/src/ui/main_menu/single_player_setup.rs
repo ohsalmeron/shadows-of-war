@@ -74,6 +74,49 @@ fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::Range
     });
 }
 
+fn draw_custom_slider_u64(ui: &mut egui::Ui, value: &mut u64, range: std::ops::RangeInclusive<u64>) {
+    ui.horizontal_centered(|ui| {
+        let total_w = ui.available_width();
+        let qty_w = 64.0;
+        let spacing = 12.0;
+        let slider_w = (total_w - qty_w - spacing - 8.0).max(50.0);
+
+        ui.scope(|ui| {
+            ui.spacing_mut().slider_rail_height = 16.0;
+            ui.spacing_mut().slider_width = slider_w;
+            ui.spacing_mut().interact_size.y = 32.0;
+
+            ui.add(
+                egui::Slider::new(value, range)
+                    .show_value(false)
+                    .trailing_fill(true),
+            );
+        });
+
+        ui.add_space(spacing);
+
+        let frame = egui::Frame::NONE
+            .fill(theme::nickname_field_bg())
+            .stroke(egui::Stroke::new(1.0_f32, theme::nickname_field_border()))
+            .corner_radius(CornerRadius::same(8))
+            .inner_margin(Margin::symmetric(10, 6));
+
+        frame.show(ui, |ui| {
+            ui.set_min_size(egui::vec2(qty_w, 32.0));
+            ui.vertical_centered(|ui| {
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new(value.to_string())
+                        .font(egui::FontId::proportional(16.0))
+                        .color(Color32::WHITE)
+                        .strong(),
+                );
+            });
+        });
+    });
+}
+
+
 pub fn draw_modal(
     ctx: &egui::Context,
     state: &mut MainMenuState,
@@ -332,6 +375,14 @@ pub fn draw_modal(
                             });
                         };
 
+                    let draw_seed_picker =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, "WORLD SEED", is_mobile, |ui| {
+                                draw_custom_slider_u64(ui, &mut config.seed, 1..=9999);
+                            });
+                        };
+
+
                     if is_mobile {
                         // Single Column layout
                         draw_leader_picker(ui, config);
@@ -341,13 +392,14 @@ pub fn draw_modal(
                         draw_bots(ui, config);
                         draw_nations(ui, config);
                         draw_spawn(ui, config);
+                        draw_seed_picker(ui, config);
                     } else {
                         // Two columns on Desktop using a robust side-by-side flex layout to prevent ScrollArea clipping
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 24.0; // Column gap
                             let col_w = (ui.available_width() - 24.0) / 2.0;
 
-                            // Left Column: Map Preview and Selectors (3 items)
+                            // Left Column: Map Preview and Selectors (4 items)
                             ui.allocate_ui_with_layout(
                                 egui::vec2(col_w, ui.available_height()),
                                 egui::Layout::top_down(egui::Align::Min),
@@ -356,6 +408,7 @@ pub fn draw_modal(
                                     draw_preview(ui, config);
                                     draw_map_picker(ui, config);
                                     draw_diff(ui, config);
+                                    draw_seed_picker(ui, config);
                                 },
                             );
 
@@ -373,6 +426,7 @@ pub fn draw_modal(
                             );
                         });
                     }
+
 
                     ui.add_space(12.0);
 

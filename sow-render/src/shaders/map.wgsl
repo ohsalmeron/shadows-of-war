@@ -16,6 +16,7 @@ struct Globals {
     hover_hex: vec2<f32>,
     hover_building_kind: f32,
     _pad1: f32,
+    fallout_slots: array<vec4<f32>, 8>,
     nobuild_slots: array<vec4<f32>, 32>,
 }
 
@@ -447,6 +448,46 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 // A subtle highlight towards the center of attack
                 base_color += atk_color * (intensity * intensity * 0.12);
             }
+        }
+    }
+
+    // ── NUCLEAR FALLOUT CONTAMINATION ZONES ──
+    {
+        let cell_world = hex_to_world(cell_hex);
+        for (var fi = 0; fi < 8; fi = fi + 1) {
+            let slot = globals.fallout_slots[fi];
+            let f_radius = slot.z;
+            if f_radius <= 0.0 { continue; }
+
+            let alpha_p = slot.w;
+            let f_center = vec2<f32>(
+                slot.x + 0.5 + f32(i32(slot.y) % 2) * 0.5,
+                (slot.y + 0.5) * 0.8660254
+            );
+            let dist = distance(cell_world, f_center);
+            if dist > f_radius { continue; }
+
+            let falloff = 1.0 - dist / f_radius;
+            let pulse = sin(globals.time * 3.0) * 0.15 + 0.85;
+
+            // Cheap procedural toxic noise — two octaves of fract-sin hash
+            let n1 = fract(sin(world_x * 7.3 + world_y * 13.7 + globals.time * 0.8) * 43758.5453);
+            let n2 = fract(sin(world_x * 19.1 - world_y * 11.3 + globals.time * 1.3) * 23421.631);
+            let noise = (n1 + n2) * 0.5;
+
+            // Toxic green glow with noise variation
+            let toxic_green = vec3<f32>(0.15, 0.85, 0.25);
+            let toxic_bright = vec3<f32>(0.3, 1.0, 0.45);
+            let glow_color = mix(toxic_green, toxic_bright, noise * 0.6);
+
+            let intensity = falloff * falloff * alpha_p * pulse;
+
+            // Additive blend — makes terrain glow without washing it out
+            base_color = base_color + glow_color * intensity * 0.35;
+
+            // Inner core is brighter
+            let core = smoothstep(0.7, 1.0, falloff);
+            base_color = base_color + toxic_bright * core * alpha_p * 0.15 * pulse;
         }
     }
 

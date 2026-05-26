@@ -4,36 +4,36 @@ use crate::render::world::utils::*;
 
 pub(crate) fn get_upgrade_str(level: u8) -> &'static str {
     match level {
-        1 => "🏗️ Lvl 1 ➔ 2",
-        2 => "🏗️ Lvl 2 ➔ 3",
-        3 => "🏗️ Lvl 3 ➔ 4",
-        4 => "🏗️ Lvl 4 ➔ 5",
-        5 => "🏗️ Lvl 5 ➔ 6",
-        6 => "🏗️ Lvl 6 ➔ 7",
-        7 => "🏗️ Lvl 7 ➔ 8",
-        8 => "🏗️ Lvl 8 ➔ 9",
-        9 => "🏗️ Lvl 9 ➔ 10",
-        10 => "🏗️ Lvl 10 ➔ 11",
-        11 => "🏗️ Lvl 11 ➔ 12",
-        12 => "🏗️ Lvl 12 ➔ 13",
-        13 => "🏗️ Lvl 13 ➔ 14",
-        14 => "🏗️ Lvl 14 ➔ 15",
-        15 => "🏗️ Lvl 15 ➔ 16",
-        16 => "🏗️ Lvl 16 ➔ 17",
-        17 => "🏗️ Lvl 17 ➔ 18",
-        18 => "🏗️ Lvl 18 ➔ 19",
-        19 => "🏗️ Lvl 19 ➔ 20",
-        20 => "🏗️ Lvl 20 ➔ 21",
-        21 => "🏗️ Lvl 21 ➔ 22",
-        22 => "🏗️ Lvl 22 ➔ 23",
-        23 => "🏗️ Lvl 23 ➔ 24",
-        24 => "🏗️ Lvl 24 ➔ 25",
-        25 => "🏗️ Lvl 25 ➔ 26",
-        26 => "🏗️ Lvl 26 ➔ 27",
-        27 => "🏗️ Lvl 27 ➔ 28",
-        28 => "🏗️ Lvl 28 ➔ 29",
-        29 => "🏗️ Lvl 29 ➔ 30",
-        30 => "🏗️ Lvl 30 ➔ 31",
+        1 => "🏗️ Lvl 1 -> 2",
+        2 => "🏗️ Lvl 2 -> 3",
+        3 => "🏗️ Lvl 3 -> 4",
+        4 => "🏗️ Lvl 4 -> 5",
+        5 => "🏗️ Lvl 5 -> 6",
+        6 => "🏗️ Lvl 6 -> 7",
+        7 => "🏗️ Lvl 7 -> 8",
+        8 => "🏗️ Lvl 8 -> 9",
+        9 => "🏗️ Lvl 9 -> 10",
+        10 => "🏗️ Lvl 10 -> 11",
+        11 => "🏗️ Lvl 11 -> 12",
+        12 => "🏗️ Lvl 12 -> 13",
+        13 => "🏗️ Lvl 13 -> 14",
+        14 => "🏗️ Lvl 14 -> 15",
+        15 => "🏗️ Lvl 15 -> 16",
+        16 => "🏗️ Lvl 16 -> 17",
+        17 => "🏗️ Lvl 17 -> 18",
+        18 => "🏗️ Lvl 18 -> 19",
+        19 => "🏗️ Lvl 19 -> 20",
+        20 => "🏗️ Lvl 20 -> 21",
+        21 => "🏗️ Lvl 21 -> 22",
+        22 => "🏗️ Lvl 22 -> 23",
+        23 => "🏗️ Lvl 23 -> 24",
+        24 => "🏗️ Lvl 24 -> 25",
+        25 => "🏗️ Lvl 25 -> 26",
+        26 => "🏗️ Lvl 26 -> 27",
+        27 => "🏗️ Lvl 27 -> 28",
+        28 => "🏗️ Lvl 28 -> 29",
+        29 => "🏗️ Lvl 29 -> 30",
+        30 => "🏗️ Lvl 30 -> 31",
         _ => "🏗️ Lvl Upgrade",
     }
 }
@@ -1035,7 +1035,7 @@ pub(crate) fn render(
 
                 let text = if queued_count > 1 {
                     std::borrow::Cow::Owned(format!(
-                        "🏗️ Lvl {} ➔ {} (+{} queued)",
+                        "🏗️ Lvl {} -> {} (+{} queued)",
                         active_l,
                         active_l + 1,
                         queued_count - 1
@@ -1214,9 +1214,22 @@ pub(crate) fn render(
                     &snap.buildings,
                 );
 
+                // Detect stackable building nearby (same kind, same owner, not under construction).
+                let stack_dist = sow_core::building::placement::STRUCTURE_MIN_DIST;
+                let stack_target = snap.buildings.iter().find(|b| {
+                    if b.owner_id != my_id || b.kind != kind {
+                        return false;
+                    }
+                    let bx = (b.tile_idx % sim.map_w) as i32;
+                    let by = (b.tile_idx / sim.map_w) as i32;
+                    let dx = h_col - bx;
+                    let dy = h_row - by;
+                    (dx.abs() + dy.abs()) <= stack_dist
+                });
+
                 let (target_tile, is_valid) = match snapped_res {
                     Ok(t) => (t, true),
-                    Err(_) => (hovered_t, false),
+                    Err(_) => (hovered_t, stack_target.is_some()),
                 };
 
                 let cost = {
@@ -1229,8 +1242,14 @@ pub(crate) fn render(
 
                 let has_gold = ui.app.hud_state.gold >= cost;
 
-                let tx = (target_tile % sim.map_w) as f32;
-                let ty = (target_tile / sim.map_w) as f32;
+                // If stacking, draw the preview on the existing building's tile.
+                let preview_tile = if let Some(sb) = stack_target {
+                    sb.tile_idx
+                } else {
+                    target_tile
+                };
+                let tx = (preview_tile % sim.map_w) as f32;
+                let ty = (preview_tile / sim.map_w) as f32;
                 let hex_w_cx = tx + 0.5 + (ty as i32 % 2) as f32 * 0.5;
                 let hex_w_cy = (ty + 0.5) * 0.8660254_f32;
                 let center_x = (input.camera_x + hex_w_cx * input.camera_zoom) / sf;
@@ -1256,10 +1275,13 @@ pub(crate) fn render(
                     preview_center + HEX_OFFSETS[5] * hex_r,
                 ];
 
-                let outline_color = if is_valid && has_gold {
-                    egui::Color32::from_rgb(34, 211, 238) // Glowing Cyan
+                let is_stack = stack_target.is_some();
+                let outline_color = if !is_valid || !has_gold {
+                    egui::Color32::from_rgb(239, 68, 68) // Red
+                } else if is_stack {
+                    egui::Color32::from_rgb(250, 204, 21) // Gold for upgrade
                 } else {
-                    egui::Color32::from_rgb(239, 68, 68) // Glowing Red
+                    egui::Color32::from_rgb(34, 211, 238) // Cyan for new
                 };
 
                 painter.add(egui::Shape::convex_polygon(
@@ -1304,7 +1326,12 @@ pub(crate) fn render(
 
                 if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
                     let ghost_alpha = if is_valid && has_gold { 140 } else { 80 };
-                    let tint = egui::Color32::from_rgba_unmultiplied(255, 255, 255, ghost_alpha);
+                    let tint = egui::Color32::from_rgba_unmultiplied(
+                        outline_color.r(),
+                        outline_color.g(),
+                        outline_color.b(),
+                        ghost_alpha,
+                    );
                     painter.image(
                         texture.id,
                         rect,
@@ -1313,12 +1340,101 @@ pub(crate) fn render(
                     );
                 }
 
-                // If player cannot afford the structure, render the unified red deficit circular panel
-                if !has_gold {
+                // Upgrade badge for stacking
+                if let Some(sb) = stack_target {
+                    let current_lvl = sb.active_level();
+                    let target_lvl = sb.level;
+                    let base_size = get_building_icon_size(zoom_scaled) * final_scale;
+                    let elapsed = time.start_time.elapsed().as_secs_f32();
+                    let bobbing = (elapsed * 3.0).sin() * 1.5;
+
+                    let badge_text = if target_lvl > current_lvl {
+                        format!(
+                            "Lvl {} -> {} (+{} queued)",
+                            current_lvl,
+                            target_lvl + 1,
+                            target_lvl - current_lvl
+                        )
+                    } else {
+                        format!("Lvl {} -> {}", current_lvl, current_lvl + 1)
+                    };
+                    let cost_text = format!("{}g", cost as u32);
+
+                    let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
+                    let font_id = egui::FontId::proportional(font_size);
+                    let galley = painter.layout_no_wrap(
+                        badge_text.clone(),
+                        font_id.clone(),
+                        egui::Color32::WHITE,
+                    );
+                    let cost_galley = painter.layout_no_wrap(
+                        cost_text.clone(),
+                        egui::FontId::proportional(font_size * 0.85),
+                        egui::Color32::WHITE,
+                    );
+
+                    let padding_x = 8.0_f32;
+                    let padding_y = 4.0_f32;
+                    let rect_w = galley.rect.width().max(cost_galley.rect.width()) + padding_x * 2.0;
+                    let line_h = galley.rect.height();
+                    let rect_h = line_h * 2.0 + padding_y * 3.0;
+
+                    let badge_y = preview_center.y - base_size * 0.75 + bobbing;
+                    let badge_rect = egui::Rect::from_center_size(
+                        egui::pos2(preview_center.x, badge_y),
+                        egui::vec2(rect_w, rect_h),
+                    );
+
+                    let border_color = if has_gold {
+                        egui::Color32::from_rgb(250, 204, 21)
+                    } else {
+                        egui::Color32::from_rgb(239, 68, 68)
+                    };
+                    painter.rect(
+                        badge_rect,
+                        6.0_f32,
+                        egui::Color32::from_rgba_unmultiplied(15, 23, 42, 220),
+                        egui::Stroke::new(
+                            1.2_f32,
+                            egui::Color32::from_rgba_unmultiplied(
+                                border_color.r(),
+                                border_color.g(),
+                                border_color.b(),
+                                200,
+                            ),
+                        ),
+                        egui::StrokeKind::Inside,
+                    );
+
+                    // Level text
+                    painter.text(
+                        egui::pos2(preview_center.x, badge_y - line_h * 0.35),
+                        egui::Align2::CENTER_CENTER,
+                        &badge_text,
+                        font_id.clone(),
+                        egui::Color32::from_rgb(254, 240, 138),
+                    );
+                    // Cost text
+                    let cost_color = if has_gold {
+                        egui::Color32::from_rgb(74, 222, 128) // Green
+                    } else {
+                        egui::Color32::from_rgb(248, 113, 113) // Red
+                    };
+                    painter.text(
+                        egui::pos2(preview_center.x, badge_y + line_h * 0.45),
+                        egui::Align2::CENTER_CENTER,
+                        &cost_text,
+                        egui::FontId::proportional(font_size * 0.85),
+                        cost_color,
+                    );
+                }
+
+                // If player cannot afford the structure, render the red deficit circular panel
+                if !has_gold && !is_stack {
+                    let base_size = get_building_icon_size(zoom_scaled) * final_scale;
                     let deficit = cost - ui.app.hud_state.gold;
                     let radius = base_size * 0.28;
 
-                    // Black transparent circular backing panel with red deficit tint
                     painter.circle_filled(
                         preview_center,
                         radius + 2.0_f32,
@@ -1330,7 +1446,6 @@ pub(crate) fn render(
                         egui::Color32::from_rgba_unmultiplied(220, 38, 38, 35),
                     );
 
-                    // Red glowing border
                     painter.circle_stroke(
                         preview_center,
                         radius,
@@ -1340,7 +1455,6 @@ pub(crate) fn render(
                         ),
                     );
 
-                    // Render negative cost text formatted centered inside circle
                     let text_val = format!("-{}", deficit);
                     let font_size = (zoom_scaled * 0.65 * final_scale).clamp(10.0, 20.0).round();
                     let font_id = egui::FontId::proportional(font_size);
