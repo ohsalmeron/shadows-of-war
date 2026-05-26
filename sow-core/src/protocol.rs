@@ -83,6 +83,17 @@ pub enum GameplayIntent {
         gold: f64,
         troops: f64,
     },
+    RequestResources {
+        target_player: crate::player::PlayerId,
+        gold: f64,
+        troops: f64,
+    },
+    AcceptResourceRequest {
+        target_player: crate::player::PlayerId,
+    },
+    RejectResourceRequest {
+        target_player: crate::player::PlayerId,
+    },
     LaunchNuke {
         kind: crate::game::NukeKind,
         target_tile: u32,
@@ -294,10 +305,19 @@ pub struct PlayerSnapshot {
     #[serde(default)]
     pub alliance_timers: std::collections::HashMap<crate::player::PlayerId, u32>,
     pub alliance_requests: Vec<crate::player::PlayerId>,
+    #[serde(default)]
+    pub resource_requests: Vec<ResourceRequest>,
     pub disconnected: bool,
     pub active_emoji: Option<String>,
     pub civilization: crate::player::Civilization,
     pub leader: crate::player::Leader,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ResourceRequest {
+    pub requester: crate::player::PlayerId,
+    pub gold: f64,
+    pub troops: f64,
 }
 
 /// A single tile whose owner changed during a tick.

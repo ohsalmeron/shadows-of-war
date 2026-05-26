@@ -310,7 +310,8 @@ impl SowApp {
                         }
                     };
 
-                    draw_big_icon(-pi / 2.0, "😀", t_hover_t, false, &mut handshake_registered);
+                    let is_top_disabled = !is_friendly;
+                    draw_big_icon(-pi / 2.0, "🙋", t_hover_t, is_top_disabled, &mut handshake_registered);
                     draw_big_icon(0.0, "⛵", r_hover_t, false, &mut handshake_registered);
                     draw_big_icon(pi / 2.0, "🤝", b_hover_t, has_proposed_alliance, &mut handshake_registered);
 
@@ -382,13 +383,14 @@ impl SowApp {
                                 self.input.map_context_menu = None;
                             } else if let Some(sector) = clicked_sector {
                                 if sector == 0 {
-                                    // Top Wedge (Emojis) - Toggle bottom right panel
-                                    self.ui.app.hud_state.show_emoji_panel = !self.ui.app.hud_state.show_emoji_panel;
-                                    if self.ui.app.hud_state.show_emoji_panel {
-                                        self.ui.app.hud_state.emoji_panel_pos = Some(center);
-                                        self.ui.app.hud_state.emoji_panel_just_opened = true;
-                                    } else {
-                                        self.ui.app.hud_state.emoji_panel_pos = None;
+                                    if is_friendly {
+                                        if is_allied {
+                                            self.ui.app.hud_state.show_ask_panel = Some(owner_id);
+                                            self.ui.app.hud_state.ask_gold = 0.0;
+                                            self.ui.app.hud_state.ask_troops = 0.0;
+                                        } else {
+                                            self.ui.app.hud_state.show_error = Some("You can only ask resources from allies!".to_string());
+                                        }
                                     }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));
                                     ctx.data_mut(|d| d.insert_temp(missile_active_id, false));
@@ -672,21 +674,6 @@ impl SowApp {
                                                 0
                                             };
 
-                                            let current_buildings = self.sim.current_snapshot.as_ref().map(|s| &s.buildings[..]).unwrap_or(&[]);
-                                            self.ui.temp_buildings.clear();
-                                            self.ui.temp_buildings.extend(current_buildings.iter().map(|b| {
-                                                sow_core::building::Building {
-                                                    id: b.id,
-                                                    tile_idx: b.tile_idx,
-                                                    owner_id: b.owner_id,
-                                                    kind: b.kind,
-                                                    level: b.level,
-                                                    under_construction: b.under_construction,
-                                                    ticks_until_complete: 0,
-                                                    modules: b.modules,
-                                                }
-                                            }));
-
                                             let tile_byte = self.gfx.map_renderer.as_ref()
                                                 .and_then(|mr| mr.terrain.get(tile_idx as usize).copied())
                                                 .unwrap_or(0b10000000);
@@ -833,7 +820,7 @@ impl SowApp {
                                             ];
 
                                             for &(kind, label, desc) in &buildings_list {
-                                                let cost = sow_core::building::cost::structure_build_cost_gold(kind, my_id, &self.ui.temp_buildings);
+                                                let cost = sow_core::building::cost::structure_build_cost_gold();
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
 
                                                 let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());

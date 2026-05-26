@@ -109,26 +109,29 @@ pub struct GameConfig {
     pub max_troops_base: f64,
     /// How much extra troop capacity is gained based on total territory owned.
     pub max_troops_scale: f64,
-    /// Additional maximum troop capacity provided per level of an owned city.
-    pub city_max_troops_per_level: f64,
-    /// Flat gold income generated per level of an owned city.
-    pub gold_income_per_city_level: f64,
-    /// The base defense range/radius of a Level 1 Bunker.
-    pub bunker_base_range: f64,
-    /// The increment in defense range/radius per level above 1.
-    pub bunker_range_scale: f64,
-    /// Extra attack frontier priority per combined DefensePost level near the defender tile.
-    pub bunker_priority_per_level: f64,
-    /// Defensive troop loss multiplier scaling per bunker level.
-    pub bunker_strength_per_level: f64,
-    /// Base gold income generated per second by a Level 1 Factory.
-    pub factory_base_income: f64,
-    /// Increment in gold income generated per second per Factory level above 1.
-    pub factory_income_scale: f64,
-    /// Base troop income generated per second by a Port.
-    pub port_base_troop_income: f64,
-    /// Base gold income generated per second by a Port.
-    pub port_base_gold_income: f64,
+
+    // ==========================================
+    // Buildings (stacking model — each placed building adds its flat bonus)
+    // ==========================================
+    /// Max troop capacity added per City.
+    pub city_max_troops: f64,
+    /// Gold income per second added per City.
+    pub city_gold_income: f64,
+    /// Defense range/radius of each Bunker.
+    pub bunker_range: f64,
+    /// Extra attack frontier priority per Bunker within range.
+    pub bunker_priority: f64,
+    /// Defensive troop loss multiplier per Bunker within range.
+    pub bunker_strength: f64,
+    /// Gold income per second added per Factory.
+    pub factory_gold_income: f64,
+    /// Troop income per second added per Port.
+    pub port_troop_income: f64,
+    /// Gold income per second added per Port.
+    pub port_gold_income: f64,
+    /// Gold cost to place a building (flat, same for all kinds).
+    pub building_cost: f64,
+
     #[serde(default)]
     pub player_civilization: crate::player::Civilization,
     #[serde(default)]
@@ -163,7 +166,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.1,
+            global_speed_multiplier: 0.35,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
@@ -183,16 +186,18 @@ impl Default for GameConfig {
             troop_base_income: 100.0,
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
-            city_max_troops_per_level: 1000.0,
-            gold_income_per_city_level: 8.0,
-            bunker_base_range: 10.0,
-            bunker_range_scale: 2.5,
-            bunker_priority_per_level: 120.0,
-            bunker_strength_per_level: 4.0,
-            factory_base_income: 12.0,
-            factory_income_scale: 8.0,
-            port_base_troop_income: 25.0,
-            port_base_gold_income: 50.0,
+
+            // Buildings (stacking)
+            city_max_troops: 1000.0,
+            city_gold_income: 8.0,
+            bunker_range: 10.0,
+            bunker_priority: 120.0,
+            bunker_strength: 4.0,
+            factory_gold_income: 12.0,
+            port_troop_income: 25.0,
+            port_gold_income: 50.0,
+            building_cost: 100.0,
+
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,
         }

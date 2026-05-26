@@ -4,6 +4,7 @@ use crate::game::GameState;
 use crate::pathfinding::WaterPathfinderScratch;
 use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
+use serde::{Serialize, Deserialize};
 
 
 #[derive(Clone)]
@@ -23,6 +24,14 @@ impl Default for PlacementScratch {
             border_scratch: Vec::new(),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ResourceRequestProposed {
+    pub proposer: crate::player::PlayerId,
+    pub target: crate::player::PlayerId,
+    pub gold: f64,
+    pub troops: f64,
 }
 
 #[derive(Clone)]
@@ -46,6 +55,7 @@ pub struct SowEngine {
     pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
 
     pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
+    pub resource_requests_proposed: Vec<ResourceRequestProposed>,
     pub port_queues:
         std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
     pub projectiles: Vec<crate::game::Projectile>,
@@ -91,6 +101,7 @@ impl SowEngine {
             sea_lane_calc: None,
 
             alliances_proposed: Vec::new(),
+            resource_requests_proposed: Vec::new(),
             port_queues: std::collections::HashMap::new(),
             projectiles: Vec::new(),
             silo_cooldowns: std::collections::HashMap::new(),
@@ -604,6 +615,7 @@ impl SowEngine {
             .collect();
 
         let proposed = &self.alliances_proposed;
+        let proposed_resources = &self.resource_requests_proposed;
         let players = self
             .state
             .players
@@ -626,6 +638,16 @@ impl SowEngine {
                     .map(|pair| pair.0)
                     .collect();
 
+                let resource_requests = proposed_resources
+                    .iter()
+                    .filter(|r| r.target == p.id)
+                    .map(|r| crate::protocol::ResourceRequest {
+                        requester: r.proposer,
+                        gold: r.gold,
+                        troops: r.troops,
+                    })
+                    .collect();
+
                 crate::protocol::PlayerSnapshot {
                     id: p.id,
                     name,
@@ -644,6 +666,7 @@ impl SowEngine {
                     alliances: p.alliances.clone(),
                     alliance_timers: p.alliance_timers.clone(),
                     alliance_requests,
+                    resource_requests,
                     disconnected: p.disconnected,
                     active_emoji: p.active_emoji.clone(),
                     civilization: p.civilization,

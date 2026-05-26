@@ -151,8 +151,8 @@ impl SowEngine {
             GameplayIntent::BuildStructure { kind, target_tile } => {
                 self.apply_build_structure_intent(stamped.player_id, *kind, *target_tile);
             }
-            GameplayIntent::UpgradeStructure { building_id } => {
-                self.apply_upgrade_structure_intent(stamped.player_id, *building_id);
+            GameplayIntent::UpgradeStructure { .. } => {
+                // Stacking model: buildings don't upgrade, place a new one instead.
             }
             GameplayIntent::UpgradeCityModule {
                 building_id,
@@ -258,8 +258,8 @@ impl SowEngine {
                     }
                 }
             }
-            GameplayIntent::LaunchNuke { kind, target_tile } => {
-                self.apply_launch_nuke_intent(stamped.player_id, *kind, *target_tile);
+            GameplayIntent::LaunchNuke { target_tile, .. } => {
+                self.apply_launch_nuke_intent(stamped.player_id, *target_tile);
             }
             GameplayIntent::Spawn { x, y } => {
                 if let crate::game::GamePhase::Spawning { .. } = self.state.phase {
@@ -456,15 +456,15 @@ impl SowEngine {
                 let target = *target_player;
                 let g = *gold;
                 let t = *troops;
-                if sender != target && g > 0.0 && t > 0.0 && !g.is_nan() && !t.is_nan() {
+                if sender != target && (g > 0.0 || t > 0.0) && !g.is_nan() && !t.is_nan() {
                     let mut actual_g = 0.0;
                     let mut actual_t = 0.0;
                     let mut sender_ok = false;
                     if let Some(s_player) = self.state.player_mut(sender) {
                         if s_player.alive {
-                            actual_g = g.min(s_player.gold);
+                            actual_g = if g > 0.0 { g.min(s_player.gold) } else { 0.0 };
                             let max_t_to_send = (s_player.troops - 1.0).max(0.0);
-                            actual_t = t.min(max_t_to_send);
+                            actual_t = if t > 0.0 { t.min(max_t_to_send) } else { 0.0 };
                             s_player.gold -= actual_g;
                             s_player.troops -= actual_t;
                             sender_ok = true;
@@ -479,6 +479,67 @@ impl SowEngine {
                             }
                         }
                     }
+                }
+            }
+            GameplayIntent::RequestResources {
+                target_player,
+                gold,
+                troops,
+            } => {
+                let proposer = stamped.player_id;
+                let target = *target_player;
+                let g = *gold;
+                let t = *troops;
+                if proposer != target && (g > 0.0 || t > 0.0) && !g.is_nan() && !t.is_nan() {
+                    let proposer_alive = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
+                    let target_alive = self.state.player(target).map(|p| p.alive).unwrap_or(false);
+                    if proposer_alive && target_alive {
+                        // Clear any existing request between these two
+                        self.resource_requests_proposed.retain(|r| !(r.proposer == proposer && r.target == target));
+                        self.resource_requests_proposed.push(crate::engine::ResourceRequestProposed {
+                            proposer,
+                            target,
+                            gold: g,
+                            troops: t,
+                        });
+                    }
+                }
+            }
+            GameplayIntent::AcceptResourceRequest { target_player } => {
+                let acceptor = stamped.player_id;
+                let target = *target_player; // target here is the proposer
+                if let Some(pos) = self.resource_requests_proposed.iter().position(|r| r.proposer == target && r.target == acceptor) {
+                    let req = self.resource_requests_proposed.remove(pos);
+                    let mut actual_g = 0.0;
+                    let mut actual_t = 0.0;
+                    let mut acceptor_ok = false;
+                    // Acceptor pays the resources
+                    if let Some(acc_player) = self.state.player_mut(acceptor) {
+                        if acc_player.alive {
+                            actual_g = if req.gold > 0.0 { req.gold.min(acc_player.gold) } else { 0.0 };
+                            let max_t_to_send = (acc_player.troops - 1.0).max(0.0);
+                            actual_t = if req.troops > 0.0 { req.troops.min(max_t_to_send) } else { 0.0 };
+                            acc_player.gold -= actual_g;
+                            acc_player.troops -= actual_t;
+                            acceptor_ok = true;
+                        }
+                    }
+                    // Proposer receives the resources
+                    if acceptor_ok && (actual_g > 0.0 || actual_t > 0.0) {
+                        if let Some(prop_player) = self.state.player_mut(target) {
+                            if prop_player.alive {
+                                prop_player.gold += actual_g;
+                                prop_player.troops = (prop_player.troops + actual_t).min(prop_player.max_troops);
+                            }
+                        }
+                    }
+                }
+            }
+            GameplayIntent::RejectResourceRequest { target_player } => {
+                let rejector = stamped.player_id;
+                let target = *target_player; // target here is the proposer
+                if let Some(pos) = self.resource_requests_proposed.iter().position(|r| r.proposer == target && r.target == rejector) {
+                    self.resource_requests_proposed.remove(pos);
                 }
             }
         }

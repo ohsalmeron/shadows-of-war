@@ -3,6 +3,7 @@ pub mod effects;
 pub mod fleets;
 pub mod nameplates;
 pub mod projectiles;
+pub mod railways;
 pub mod utils;
 
 use crate::app::SowApp;
@@ -59,7 +60,10 @@ impl SowApp {
         // Configuration variables removed from GameConfig
         let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
 
-        let mut visible_players = Vec::new();
+        let player_count = self.sim.current_snapshot.as_ref().map_or(0, |s| s.players.len());
+        let mut visible_players = Vec::with_capacity(player_count);
+        let dt = self.ui.raw_input.predicted_dt;
+        let smooth_factor = 1.0 - (-10.0 * dt).exp();
         if let Some(snap) = &self.sim.current_snapshot {
             for player in &snap.players {
                 if player.tile_count == 0 || !player.alive {
@@ -81,8 +85,6 @@ impl SowApp {
                 let dx = target_cx - pos.0;
                 let dy = target_cy - pos.1;
                 let dist = (dx * dx + dy * dy).sqrt();
-                let dt = self.ui.raw_input.predicted_dt;
-                let smooth_factor = 1.0 - (-10.0 * dt).exp(); // Frame-rate independent
                 if dist > 50.0 {
                     pos.0 = target_cx;
                     pos.1 = target_cy;
@@ -128,6 +130,23 @@ impl SowApp {
                     lod_presence,
                 });
             }
+
+            // Sort once: humans first, then nations, then by presence (descending)
+            visible_players.sort_unstable_by(|a, b| {
+                let a_is_human = a.player.player_type == sow_core::player::PlayerType::Human;
+                let b_is_human = b.player.player_type == sow_core::player::PlayerType::Human;
+                if a_is_human != b_is_human {
+                    return b_is_human.cmp(&a_is_human);
+                }
+                let a_is_nation = a.player.id < 200;
+                let b_is_nation = b.player.id < 200;
+                if a_is_nation != b_is_nation {
+                    return b_is_nation.cmp(&a_is_nation);
+                }
+                b.lod_presence
+                    .partial_cmp(&a.lod_presence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             let zoom_scaled = self.input.camera_zoom / sf;
 
@@ -181,6 +200,14 @@ impl SowApp {
             };
 
             fleets::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &self.gfx,
+                &ctx_struct,
+            );
+            railways::render(
                 &mut self.ui,
                 &self.sim,
                 &self.input,
@@ -357,10 +384,10 @@ impl SowApp {
                     let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
                     let bounce_scale = if elapsed < 0.5 {
                         let anim_t = elapsed / 0.5;
-                        1.0 - (anim_t * 7.5).cos() * (-3.5 * anim_t).exp()
+                        nameplates::spring_overshoot(anim_t)
                     } else if elapsed > duration - 0.5 {
                         let anim_t = (duration - elapsed) / 0.5;
-                        (1.0 - (anim_t * 7.5).cos() * (-3.5 * anim_t).exp()).clamp(0.0, 1.2)
+                        nameplates::spring_overshoot(anim_t).clamp(0.0, 1.2)
                     } else {
                         1.0
                     };

@@ -53,37 +53,13 @@ pub fn player_has_valid_placement_scan(
 pub struct BuildableEntry {
     pub kind: BuildingKind,
     pub cost: f64,
-    pub level_total: u32,
     pub count: u32,
     /// Sampled map check — independent of current gold balance.
     pub placement_feasible: bool,
     pub can_build: bool,
-    pub can_upgrade: bool,
 }
 
-pub fn player_can_upgrade_kind(
-    buildings: &[Building],
-    owner_id: u16,
-    kind: BuildingKind,
-    player_gold: f64,
-) -> bool {
-    if !structure_kind_enabled(kind) {
-        return false;
-    }
-    if !kind.upgradable() {
-        return false;
-    }
-    let has_target = buildings
-        .iter()
-        .any(|b| b.owner_id == owner_id && b.kind == kind && !b.under_construction);
-    if !has_target {
-        return false;
-    }
-    let cost = structure_build_cost_gold(kind, owner_id, buildings);
-    player_gold >= cost && cost.is_finite()
-}
-
-/// One HUD row per structure kind (LegacyEngine `buildableUnits` subset).
+/// One HUD row per structure kind.
 pub fn compute_buildables_for_player(
     map: &GameMap,
     owner_id: u16,
@@ -95,16 +71,13 @@ pub fn compute_buildables_for_player(
     let mut out = [BuildableEntry {
         kind: BuildingKind::City,
         cost: 0.0,
-        level_total: 0,
         count: 0,
         placement_feasible: false,
         can_build: false,
-        can_upgrade: false,
     }; 2];
     for (i, &kind) in BuildingKind::ALL.iter().enumerate() {
         let enabled = structure_kind_enabled(kind);
-        let cost = structure_build_cost_gold(kind, owner_id, buildings);
-        let level_total = count_kind_levels(buildings, owner_id, kind);
+        let cost = structure_build_cost_gold();
         let count = count_kind(buildings, owner_id, kind);
         let placement_feasible = player_has_valid_placement_sampled(
             map,
@@ -116,15 +89,12 @@ pub fn compute_buildables_for_player(
             PLACEMENT_HUD_MAX_SAMPLES,
         );
         let can_build = enabled && player_gold >= cost && cost.is_finite() && placement_feasible;
-        let can_upgrade = player_can_upgrade_kind(buildings, owner_id, kind, player_gold);
         out[i] = BuildableEntry {
             kind,
             cost,
-            level_total,
             count,
             placement_feasible,
             can_build,
-            can_upgrade,
         };
     }
     out
@@ -139,12 +109,11 @@ pub fn patch_buildable_entries_gold_and_counts(
 ) {
     for e in entries.iter_mut() {
         let kind = e.kind;
-        e.cost = structure_build_cost_gold(kind, owner_id, buildings);
-        e.level_total = count_kind_levels(buildings, owner_id, kind);
+        e.cost = structure_build_cost_gold();
         e.count = count_kind(buildings, owner_id, kind);
         let afford = player_gold >= e.cost && e.cost.is_finite();
         let enabled = structure_kind_enabled(kind);
         e.can_build = enabled && afford && e.placement_feasible;
-        e.can_upgrade = player_can_upgrade_kind(buildings, owner_id, kind, player_gold);
     }
 }
+

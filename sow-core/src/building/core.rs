@@ -118,14 +118,8 @@ impl Building {
 
     #[inline]
     pub fn defense_range_cfg(&self, cfg: &crate::game_config::GameConfig) -> i32 {
-        if self.kind == BuildingKind::Bunker {
-            let active_lvl = self.active_level();
-            if active_lvl > 0 {
-                (cfg.bunker_base_range + (active_lvl as f64 - 1.0) * cfg.bunker_range_scale).round()
-                    as i32
-            } else {
-                0
-            }
+        if self.kind == BuildingKind::Bunker && !self.under_construction {
+            cfg.bunker_range.round() as i32
         } else {
             0
         }
@@ -235,7 +229,7 @@ pub fn defense_post_priority_bonus(
         let (bx, by) = idx_xy(b.tile_idx, map_width);
         let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
         if d <= b.defense_range_cfg(cfg) {
-            bonus += b.active_level() as i64 * cfg.bunker_priority_per_level as i64;
+            bonus += cfg.bunker_priority as i64;
         }
     }
     bonus
@@ -322,7 +316,7 @@ impl DefenseGrid {
                     let by = b.tile_idx / map_width;
                     let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
                     if d <= b.defense_range_cfg(cfg) {
-                        bonus += b.active_level() as i64 * cfg.bunker_priority_per_level as i64;
+                        bonus += cfg.bunker_priority as i64;
                     }
                 }
             }

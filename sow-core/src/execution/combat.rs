@@ -177,9 +177,9 @@ impl SowEngine {
                             execution.target_owner,
                             &self.state.config,
                         );
-                        let scale = if self.state.config.bunker_priority_per_level > 0.0 {
-                            self.state.config.bunker_strength_per_level
-                                / self.state.config.bunker_priority_per_level
+                        let scale = if self.state.config.bunker_priority > 0.0 {
+                            self.state.config.bunker_strength
+                                / self.state.config.bunker_priority
                         } else {
                             0.0
                         };

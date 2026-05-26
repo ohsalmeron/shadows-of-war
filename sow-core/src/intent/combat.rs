@@ -121,7 +121,6 @@ pub fn spawn_or_merge_attack_for_fleet_arrival_pure(
     if let Some(i) = merge_idx {
         let ex = &mut engine.attacks[i];
         ex.troops += troops;
-        ex.initial_troops += troops;
         let merged = merge_frontiers(std::mem::take(&mut ex.to_conquer), fresh);
         ex.to_conquer = merged;
         return;
@@ -135,7 +134,6 @@ pub fn spawn_or_merge_attack_for_fleet_arrival_pure(
         owner_id,
         target_owner,
         troops,
-        initial_troops: troops,
         to_conquer: fresh,
         insert_seq_counter: initial_seq,
         rng,
@@ -272,7 +270,6 @@ impl SowEngine {
         if let Some(i) = merge_idx {
             let ex = &mut self.attacks[i];
             ex.troops += remaining;
-            ex.initial_troops += remaining;
             let merged = merge_frontiers(std::mem::take(&mut ex.to_conquer), fresh);
             ex.to_conquer = merged;
             return;
@@ -285,7 +282,6 @@ impl SowEngine {
             owner_id: player_id,
             target_owner,
             troops: remaining,
-            initial_troops: remaining,
             to_conquer: fresh,
             insert_seq_counter: initial_seq,
             rng,

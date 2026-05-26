@@ -203,30 +203,9 @@ impl SowApp {
         }
         self.sim.last_synced_cost_tick = snap_tick;
 
-        let pid = self.sim.my_player_id.unwrap_or(1);
-        let buildings: Vec<sow_core::building::Building> = self
-            .sim
-            .current_snapshot
-            .as_ref()
-            .map(|s| {
-                s.buildings
-                    .iter()
-                    .map(|b| sow_core::building::Building {
-                        id: 0,
-                        owner_id: b.owner_id,
-                        tile_idx: b.tile_idx,
-                        kind: b.kind,
-                        level: b.level,
-                        under_construction: b.under_construction,
-                        ticks_until_complete: 0,
-                        modules: b.modules,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        for (i, &kind) in sow_core::game::BuildingKind::ALL.iter().enumerate() {
+        for i in 0..self.ui.app.hud_state.building_costs.len() {
             self.ui.app.hud_state.building_costs[i] =
-                sow_core::building::structure_build_cost_gold(kind, pid, &buildings);
+                sow_core::building::structure_build_cost_gold();
         }
     }
 }

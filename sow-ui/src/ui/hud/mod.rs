@@ -65,6 +65,10 @@ pub struct HudState {
     pub gold_gain: Option<f64>,
     pub gold_gain_at: Option<Instant>,
     pub prev_gold: f64,
+    pub show_ask_panel: Option<u16>,
+    pub ask_gold: f64,
+    pub ask_troops: f64,
+    pub prev_resource_requests: Vec<u16>,
 }
 
 impl HudState {
@@ -505,6 +509,11 @@ pub fn draw(
     let requests = my_snapshot
         .map(|p| p.alliance_requests.clone())
         .unwrap_or_default();
+    let resource_requests = my_snapshot
+        .map(|p| p.resource_requests.clone())
+        .unwrap_or_default();
+
+    let total_notifications = requests.len() + resource_requests.len();
 
     // Auto-open if a new request pops (only if it is the first/only request)
     let mut has_new_request = false;
@@ -514,13 +523,20 @@ pub fn draw(
             break;
         }
     }
+    for req in &resource_requests {
+        if !state.prev_resource_requests.contains(&req.requester) {
+            has_new_request = true;
+            break;
+        }
+    }
     if has_new_request {
         state.last_request_time = Some(Instant::now());
-        if requests.len() <= 1 {
+        if total_notifications <= 1 {
             state.show_alliance_inbox = true;
         }
     }
     state.prev_requests = requests.clone();
+    state.prev_resource_requests = resource_requests.iter().map(|r| r.requester).collect();
 
     egui::Area::new(egui::Id::new("hud_exit_button"))
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
@@ -536,7 +552,7 @@ pub fn draw(
                     }
 
                     // Render red badge with active notifications at all times (bounces/pops on new requests)
-                    if !requests.is_empty() {
+                    if total_notifications > 0 {
                         let mut scale = 1.0_f32;
                         if let Some(t) = state.last_request_time {
                             let elapsed = t.elapsed().as_secs_f32();
@@ -561,7 +577,7 @@ pub fn draw(
                         ui.painter().text(
                             badge_center,
                             egui::Align2::CENTER_CENTER,
-                            requests.len().to_string(),
+                            total_notifications.to_string(),
                             egui::FontId::proportional(10.0_f32 * scale),
                             Color32::WHITE,
                         );
@@ -664,7 +680,7 @@ pub fn draw(
                                 }
 
                                 // Request cards
-                                if requests.is_empty() {
+                                if requests.is_empty() && resource_requests.is_empty() {
                                     crate::ui::theme::outlined_label(
                                         ui,
                                         &sow_lang::get(lang).hud.inbox_empty,
@@ -757,7 +773,7 @@ pub fn draw(
                                                     ui.add_space(2.0);
                                                     // Button row
                                                     let bw = (ui.available_width() - 6.0) / 2.0;
-                                                    let is_last = requests.len() == 1;
+                                                    let is_last = total_notifications == 1;
                                                     ui.horizontal(|ui| {
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
                                                             crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_accept)
@@ -775,6 +791,88 @@ pub fn draw(
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
+                                                            if is_last { state.show_alliance_inbox = false; }
+                                                        }
+                                                    });
+                                                });
+                                            });
+                                    });
+                                    ui.add_space(2.0);
+                                }
+
+                                for req in &resource_requests {
+                                    let requester_id = req.requester;
+                                    let Some(requester) = state.players.iter().find(|p| p.id == requester_id) else { continue };
+                                    let rgb = if requester.player_type == sow_core::player::PlayerType::Human {
+                                        sow_core::player::human_shader_territory_rgb(requester.id)
+                                    } else {
+                                        requester.color
+                                    };
+                                    let pc = Color32::from_rgb(
+                                        (rgb[0] * 255.0) as u8,
+                                        (rgb[1] * 255.0) as u8,
+                                        (rgb[2] * 255.0) as u8,
+                                    ).linear_multiply(inbox_progress);
+                                    let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
+                                    let name = if requester.name.is_empty() {
+                                        if requester.id >= 200 { format!("Tribe {}", requester.id - 199) }
+                                        else { format!("Nation {}", requester.id - 103) }
+                                    } else {
+                                        requester.name.clone()
+                                    };
+
+                                    let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, 0.22);
+                                    let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
+                                    let card_offset = 30.0 * (1.0 - card_scale.max(0.0));
+
+                                    ui.horizontal(|ui| {
+                                        if card_offset > 0.01 {
+                                            ui.add_space(card_offset);
+                                        }
+
+                                        egui::Frame::NONE
+                                            .fill(crate::ui::theme::nickname_field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
+                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
+                                            .corner_radius(6)
+                                            .inner_margin(egui::Margin::symmetric(8, 6))
+                                            .show(ui, |ui| {
+                                                ui.vertical(|ui| {
+                                                    // Name row
+                                                    ui.horizontal(|ui| {
+                                                        crate::ui::theme::outlined_label(ui, icon, egui::FontId::proportional(14.0), pc);
+                                                        ui.vertical(|ui| {
+                                                            ui.spacing_mut().item_spacing.y = 0.0;
+                                                            crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
+                                                            let prompt = match (req.gold > 0.0, req.troops > 0.0) {
+                                                                (true, true) => format!("asks for 💰{} & 🛡️{}", crate::utils::format_number(req.gold), crate::utils::format_number(req.troops)),
+                                                                (true, false) => format!("asks for 💰{}", crate::utils::format_number(req.gold)),
+                                                                (false, true) => format!("asks for 🛡️{}", crate::utils::format_number(req.troops)),
+                                                                _ => "asks for resources".to_string(),
+                                                            };
+                                                            crate::ui::theme::outlined_label(ui, &prompt, egui::FontId::proportional(10.5), Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress));
+                                                        });
+                                                    });
+                                                    ui.add_space(2.0);
+                                                    // Button row
+                                                    let bw = (ui.available_width() - 6.0) / 2.0;
+                                                    let is_last = total_notifications == 1;
+                                                    ui.horizontal(|ui| {
+                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_accept)
+                                                                .text_size(11.0)
+                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
+                                                        ).clicked() {
+                                                            cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptResourceRequest { target_player: requester.id });
+                                                            if is_last { state.show_alliance_inbox = false; }
+                                                        }
+                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_reject)
+                                                                .text_size(11.0)
+                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
+                                                        ).clicked() {
+                                                            cancel_intents.push(sow_core::protocol::GameplayIntent::RejectResourceRequest { target_player: requester.id });
                                                             if is_last { state.show_alliance_inbox = false; }
                                                         }
                                                     });
@@ -1418,6 +1516,7 @@ pub fn draw(
         state.emoji_panel_just_opened = false;
     }
 
+    draw_transfer_panel(ui, state, cancel_intents);
     draw_sync_overlay(ui.ctx(), state, lang);
     draw_betrayal_overlay(ui.ctx(), state, cancel_intents);
     draw_nuke_alerts(ui.ctx(), state);
@@ -2179,7 +2278,7 @@ fn draw_sync_overlay(ctx: &Context, state: &HudState, lang: Language) {
         let strings = &sow_lang::get(lang).hud;
         let screen_rect = ctx.content_rect();
         ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Background,
+            egui::Order::Foreground,
             egui::Id::new("sync_overlay"),
         ))
         .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
@@ -2270,7 +2369,7 @@ fn draw_betrayal_overlay(
             screen_rect.width() < 1024.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
         ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Background,
+            egui::Order::Foreground,
             egui::Id::new("betrayal_overlay_bg"),
         ))
         .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
@@ -2278,12 +2377,19 @@ fn draw_betrayal_overlay(
         let window = egui::Window::new("betrayal_warning_modal")
             .collapsible(false)
             .resizable(false)
-            .title_bar(false);
+            .title_bar(false)
+            .order(egui::Order::Foreground);
+
+        let panel_w = if compact {
+            (screen_rect.width() - 32.0).min(400.0)
+        } else {
+            0.0 // auto-sized on desktop
+        };
 
         let window = if compact {
             window
-                .fixed_size(screen_rect.size())
-                .anchor(egui::Align2::LEFT_TOP, [0.0, 0.0])
+                .fixed_size(vec2(panel_w, 0.0))
+                .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
         } else {
             window.anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
         };
@@ -2292,19 +2398,12 @@ fn draw_betrayal_overlay(
             .frame(
                 egui::Frame::window(&ctx.global_style())
                     .fill(crate::ui::theme::panel_bg())
-                    .stroke(if compact {
-                        egui::Stroke::NONE
-                    } else {
-                        egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger())
-                    })
+                    .stroke(egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()))
                     .inner_margin(if compact { 16.0 } else { 24.0 })
-                    .corner_radius(if compact { 0 } else { 12 }),
+                    .corner_radius(12),
             )
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    if compact {
-                        ui.add_space(screen_rect.height() * 0.15); // Push down a bit on mobile
-                    }
 
                     let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
 
@@ -2748,4 +2847,386 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
 
     // Request repaint so the fade-out/pop-out animation runs smoothly
     ctx.request_repaint();
+}
+
+fn draw_transfer_panel(
+    ui: &mut egui::Ui,
+    state: &mut HudState,
+    cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
+) {
+    let is_active = state.show_ask_panel.is_some();
+    let progress = ui.ctx().animate_bool_with_time(
+        egui::Id::new("transfer_panel_animation"),
+        is_active,
+        0.22,
+    );
+
+    if progress <= 0.01 && !is_active {
+        return;
+    }
+
+    let target_id = if let Some(id) = state.show_ask_panel {
+        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_active_target"), id));
+        id
+    } else {
+        ui.ctx().data(|d| d.get_temp::<u16>(egui::Id::new("transfer_panel_active_target"))).unwrap_or(0)
+    };
+
+    if target_id == 0 {
+        return;
+    }
+
+    let target_player = state.players.iter().find(|p| p.id == target_id);
+    let target_name = target_player
+        .map(|p| {
+            if p.name.is_empty() {
+                if p.id >= 200 {
+                    format!("Tribe {}", p.id - 199)
+                } else {
+                    format!("Nation {}", p.id - 103)
+                }
+            } else {
+                p.name.clone()
+            }
+        })
+        .unwrap_or_else(|| format!("Ally {}", target_id));
+
+    // Active Tab: 0 = Send, 1 = Request
+    let mut active_tab = ui.ctx().data(|d| d.get_temp::<usize>(egui::Id::new("transfer_active_tab"))).unwrap_or(0);
+
+    // Dynamic max bounds based on tab
+    let (max_gold, max_troops, balance_label, accent_color) = if active_tab == 0 {
+        (state.gold, state.troops, "Your Balance", crate::ui::theme::accent_solo_cyan())
+    } else {
+        let ally_gold = target_player.map(|p| p.gold).unwrap_or(0.0);
+        let ally_troops = target_player.map(|p| p.troops).unwrap_or(0.0);
+        (ally_gold, ally_troops, "Ally Balance", crate::ui::theme::accent_ranked_gold())
+    };
+
+    // Clamp values if tab switches and current value exceeds new bounds
+    if state.ask_gold > max_gold {
+        state.ask_gold = max_gold;
+    }
+    if state.ask_troops > max_troops {
+        state.ask_troops = max_troops;
+    }
+
+    // Disney overshoot curve (pop-in pop-out spring animation)
+    let anim_scale = if is_active {
+        let t = progress;
+        if t >= 1.0 {
+            1.0
+        } else {
+            1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+        }
+    } else {
+        progress
+    };
+
+    let alpha = progress;
+
+    // Backdrop
+    let backdrop_color = Color32::from_black_alpha((100.0 * alpha) as u8);
+    let screen_rect = ui.ctx().content_rect();
+    ui.ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::new("transfer_panel_backdrop"),
+        ))
+        .rect_filled(screen_rect, 0.0, backdrop_color);
+
+    let target_y = screen_rect.center().y;
+    // Slide up with overshoot bounce from below screen
+    let current_y = target_y + (screen_rect.height() / 2.0 + 200.0) * (1.0 - anim_scale);
+
+    egui::Area::new(egui::Id::new("transfer_panel_modal"))
+        .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, current_y - target_y))
+        .order(egui::Order::Foreground)
+        .show(ui.ctx(), |ui| {
+            ui.set_width(320.0);
+
+            let frame = crate::ui::theme::standard_panel_frame(false)
+                .fill(crate::ui::theme::panel_bg().linear_multiply(alpha));
+
+            let frame_res = frame.show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 10.0);
+
+                    // Title
+                    ui.vertical_centered(|ui| {
+                        crate::ui::theme::outlined_label(
+                            ui,
+                            "🤝 Resource Transfer",
+                            egui::FontId::proportional(20.0),
+                            Color32::WHITE,
+                        );
+                        ui.add_space(2.0);
+                        ui.label(
+                            RichText::new(format!("with {}", target_name))
+                                .size(14.0)
+                                .color(crate::ui::theme::text_secondary().linear_multiply(alpha))
+                                .strong(),
+                        );
+                    });
+
+                    ui.add_space(6.0);
+
+                    // --- DEFI TABS ---
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        let tab_w = (ui.available_width() - 8.0) / 2.0;
+
+                        // Send Tab Button
+                        let is_send = active_tab == 0;
+                        let send_btn = egui::Button::new(
+                            RichText::new("📤 SEND")
+                                .strong()
+                                .size(14.0)
+                                .color(if is_send { Color32::WHITE } else { Color32::GRAY }),
+                        )
+                        .fill(if is_send {
+                            crate::ui::theme::accent_solo_cyan().linear_multiply(0.4)
+                        } else {
+                            crate::ui::theme::menu_secondary_button()
+                        })
+                        .stroke(egui::Stroke::new(
+                            1.5_f32,
+                            if is_send { crate::ui::theme::accent_solo_cyan() } else { Color32::TRANSPARENT },
+                        ))
+                        .corner_radius(8);
+
+                        if ui.add_sized(vec2(tab_w, 32.0), send_btn).clicked() {
+                            active_tab = 0;
+                            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 0));
+                        }
+
+                        // Request Tab Button
+                        let is_req = active_tab == 1;
+                        let req_btn = egui::Button::new(
+                            RichText::new("📥 REQUEST")
+                                .strong()
+                                .size(14.0)
+                                .color(if is_req { Color32::WHITE } else { Color32::GRAY }),
+                        )
+                        .fill(if is_req {
+                            crate::ui::theme::accent_ranked_gold().linear_multiply(0.4)
+                        } else {
+                            crate::ui::theme::menu_secondary_button()
+                        })
+                        .stroke(egui::Stroke::new(
+                            1.5_f32,
+                            if is_req { crate::ui::theme::accent_ranked_gold() } else { Color32::TRANSPARENT },
+                        ))
+                        .corner_radius(8);
+
+                        if ui.add_sized(vec2(tab_w, 32.0), req_btn).clicked() {
+                            active_tab = 1;
+                            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 1));
+                        }
+                    });
+
+                    ui.add_space(4.0);
+
+                    // --- GOLD SECTION ---
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("💰 Gold").strong().size(15.0));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(
+                                        RichText::new(format!("{}", crate::utils::format_number(state.ask_gold)))
+                                            .color(crate::ui::theme::accent_ranked_gold())
+                                            .strong()
+                                            .size(15.0),
+                                    );
+                                });
+                            });
+
+                            ui.add_space(2.0);
+
+                            // Balance label
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(balance_label).size(11.0).color(crate::ui::theme::text_secondary()));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(
+                                        RichText::new(crate::utils::format_number(max_gold))
+                                            .size(11.0)
+                                            .color(Color32::LIGHT_GRAY)
+                                            .strong(),
+                                    );
+                                });
+                            });
+
+                            ui.add_space(4.0);
+
+                            // Gold slider
+                            ui.add(
+                                Slider::new(&mut state.ask_gold, 0.0..=max_gold.max(1.0))
+                                    .show_value(false)
+                                    .integer(),
+                            );
+
+                            ui.add_space(4.0);
+
+                            // Presets Row
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                let percentages = [0.25, 0.50, 0.75, 1.0];
+                                for &pct in &percentages {
+                                    let val = (max_gold * pct).floor();
+                                    let btn_label = format!("{:.0}%", pct * 100.0);
+                                    if ui.button(RichText::new(btn_label).size(12.0)).clicked() {
+                                        state.ask_gold = val;
+                                    }
+                                }
+                            });
+                        });
+                    });
+
+                    ui.add_space(4.0);
+
+                    // --- TROOPS SECTION ---
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("🛡️ Troops").strong().size(15.0));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(
+                                        RichText::new(format!("{}", crate::utils::format_number(state.ask_troops)))
+                                            .color(crate::ui::theme::accent_solo_cyan())
+                                            .strong()
+                                            .size(15.0),
+                                    );
+                                });
+                            });
+
+                            ui.add_space(2.0);
+
+                            // Balance label
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(balance_label).size(11.0).color(crate::ui::theme::text_secondary()));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(
+                                        RichText::new(crate::utils::format_number(max_troops))
+                                            .size(11.0)
+                                            .color(Color32::LIGHT_GRAY)
+                                            .strong(),
+                                    );
+                                });
+                            });
+
+                            ui.add_space(4.0);
+
+                            // Troops slider
+                            ui.add(
+                                Slider::new(&mut state.ask_troops, 0.0..=max_troops.max(1.0))
+                                    .show_value(false)
+                                    .integer(),
+                            );
+
+                            ui.add_space(4.0);
+
+                            // Presets Row
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                let percentages = [0.25, 0.50, 0.75, 1.0];
+                                for &pct in &percentages {
+                                    let val = (max_troops * pct).floor();
+                                    let btn_label = format!("{:.0}%", pct * 100.0);
+                                    if ui.button(RichText::new(btn_label).size(12.0)).clicked() {
+                                        state.ask_troops = val;
+                                    }
+                                }
+                            });
+                        });
+                    });
+
+                    ui.add_space(10.0);
+
+                    // --- ACTION BUTTONS ---
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 10.0;
+
+                        // Cancel Button
+                        let cancel_btn = egui::Button::new(
+                            RichText::new("CANCEL")
+                                .strong()
+                                .size(14.0)
+                                .color(Color32::LIGHT_GRAY),
+                        )
+                        .fill(crate::ui::theme::menu_secondary_button())
+                        .corner_radius(8);
+
+                        if ui.add_sized(vec2(120.0, 36.0), cancel_btn).clicked() {
+                            state.show_ask_panel = None;
+                        }
+
+                        // Submit Button
+                        let is_valid = state.ask_gold > 0.0 || state.ask_troops > 0.0;
+                        let btn_text = if active_tab == 0 { "SEND" } else { "REQUEST" };
+
+                        let submit_btn = egui::Button::new(
+                            RichText::new(btn_text)
+                                .strong()
+                                .size(14.0)
+                                .color(if is_valid { Color32::WHITE } else { Color32::GRAY }),
+                        )
+                        .fill(if is_valid {
+                            accent_color
+                        } else {
+                            crate::ui::theme::menu_secondary_button()
+                        })
+                        .corner_radius(8);
+
+                        let submit_resp = ui.add_sized(vec2(120.0, 36.0), submit_btn);
+                        if is_valid && submit_resp.clicked() {
+                            if active_tab == 0 {
+                                cancel_intents.push(sow_core::protocol::GameplayIntent::SendResources {
+                                    target_player: target_id,
+                                    gold: state.ask_gold,
+                                    troops: state.ask_troops,
+                                });
+                            } else {
+                                cancel_intents.push(sow_core::protocol::GameplayIntent::RequestResources {
+                                    target_player: target_id,
+                                    gold: state.ask_gold,
+                                    troops: state.ask_troops,
+                                });
+                            }
+
+                            // Reset values and close panel
+                            state.ask_gold = 0.0;
+                            state.ask_troops = 0.0;
+                            state.show_ask_panel = None;
+                        }
+                    });
+                });
+            });
+
+            let response_rect = frame_res.response.rect;
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_rect"), response_rect));
+        });
+
+    // Click outside the ask panel closes it
+    if ui.ctx().input(|i| i.pointer.any_pressed()) {
+        if let Some(pos) = ui
+            .ctx()
+            .input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+        {
+            let mut click_absorbed = false;
+            if let Some(rect) = ui
+                .ctx()
+                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("transfer_panel_rect")))
+            {
+                if rect.contains(pos) {
+                    click_absorbed = true;
+                }
+            }
+            if !click_absorbed && is_active {
+                state.show_ask_panel = None;
+            }
+        }
+    }
+
+    ui.ctx().request_repaint();
 }

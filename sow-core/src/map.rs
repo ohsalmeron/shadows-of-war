@@ -64,22 +64,7 @@ pub enum TileResource {
     Salt = 9,
 }
 
-impl TileResource {
-    pub fn name(self) -> &'static str {
-        match self {
-            TileResource::None => "None",
-            TileResource::Corn => "Corn",
-            TileResource::Rice => "Rice",
-            TileResource::Wheat => "Wheat",
-            TileResource::Copper => "Copper",
-            TileResource::Stone => "Stone",
-            TileResource::Iron => "Iron",
-            TileResource::Jade => "Jade",
-            TileResource::Diamonds => "Diamonds",
-            TileResource::Salt => "Salt",
-        }
-    }
-}
+
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GameMap {
@@ -114,49 +99,6 @@ impl GameMap {
         }
     }
 
-    #[inline]
-    pub fn get_tile_resource(&self, x: u32, y: u32) -> TileResource {
-        let ri = self.ref_id(x, y);
-        let t = self.terrain[ri];
-        if !t.is_land() {
-            return TileResource::None;
-        }
-        let magnitude = t.magnitude();
-
-        let seed = (x as u64)
-            .wrapping_mul(374761393)
-            .wrapping_add((y as u64).wrapping_mul(668265263))
-            .wrapping_add(magnitude as u64);
-        let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177) % 100;
-
-        if magnitude >= 20 {
-            match hash % 5 {
-                0 => TileResource::Copper,
-                1 => TileResource::Stone,
-                2 => TileResource::Iron,
-                3 => TileResource::Diamonds,
-                _ => TileResource::None,
-            }
-        } else if magnitude >= 10 {
-            match hash % 8 {
-                0 => TileResource::Wheat,
-                1 => TileResource::Stone,
-                2 => TileResource::Copper,
-                3 => TileResource::Iron,
-                4 => TileResource::Jade,
-                _ => TileResource::None,
-            }
-        } else {
-            match hash % 10 {
-                0 => TileResource::Corn,
-                1 => TileResource::Rice,
-                2 => TileResource::Wheat,
-                3 => TileResource::Jade,
-                4 => TileResource::Salt,
-                _ => TileResource::None,
-            }
-        }
-    }
     #[inline(always)]
     pub fn ref_id(&self, x: u32, y: u32) -> usize {
         (y * self.width + x) as usize
@@ -243,12 +185,6 @@ impl GameMap {
             }
         }
         false
-    }
-    pub fn tiles_owned_by(&self, player_id: u16) -> u32 {
-        self.state
-            .iter()
-            .filter(|&&s| (s & Self::PLAYER_ID_MASK) == player_id)
-            .count() as u32
     }
     #[inline(always)]
     pub fn is_adjacent_to_player(&self, x: u32, y: u32, player_id: u16) -> bool {

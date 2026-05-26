@@ -47,12 +47,17 @@ pub(crate) fn render(
     gfx: &crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
-    let config = sim
-        .engine
+    let default_config;
+    let config = if let Some(e) = sim.engine.as_ref() {
+        &e.state.config
+    } else {
+        default_config = sow_core::game_config::GameConfig::default();
+        &default_config
+    };
+    let edge_cache_stale = sim
+        .current_snapshot
         .as_ref()
-        .map(|e| e.state.config.clone())
-        .unwrap_or_default();
-    let mut edge_cache: Option<Vec<u8>> = None;
+        .map_or(false, |s| !s.dirty_tiles.is_empty());
     let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
         egui::Order::Background,
         egui::Id::new("world_buildings"),
@@ -131,7 +136,8 @@ pub(crate) fn render(
             1.0 // No clustering
         };
 
-        let mut rendered_buildings = Vec::new();
+        let building_count = snap.buildings.len();
+        let mut rendered_buildings = Vec::with_capacity(building_count);
 
         if cell_size > 1.0 {
             #[derive(Hash, PartialEq, Eq)]
@@ -145,7 +151,7 @@ pub(crate) fn render(
             let mut clusters: std::collections::HashMap<
                 ClusterKey,
                 (f32, f32, usize, u32, Option<sow_core::game::BuildingKind>),
-            > = std::collections::HashMap::new();
+            > = std::collections::HashMap::with_capacity(building_count / 4);
 
             for b in &snap.buildings {
                 let tile_x = (b.tile_idx % sim.map_w) as f32;
@@ -403,8 +409,7 @@ pub(crate) fn render(
                     && b.kind == sow_core::game::BuildingKind::Bunker
                     && b.active_level > 0
                 {
-                    let radius_world = config.bunker_base_range as f32
-                        + (b.active_level as f32 - 1.0) * config.bunker_range_scale as f32;
+                    let radius_world = config.bunker_range as f32;
                     let elapsed = time.start_time.elapsed().as_secs_f32();
 
                     let player_color = if b.owner_id != 0 {
@@ -609,8 +614,7 @@ pub(crate) fn render(
                     && b.active_level > 0
                     && painter.ctx().input(|i| i.modifiers.alt)
                 {
-                    let radius_world = config.bunker_base_range as f32
-                        + (b.active_level as f32 - 1.0) * config.bunker_range_scale as f32;
+                    let radius_world = config.bunker_range as f32;
                     let elapsed = time.start_time.elapsed().as_secs_f32();
                     let pulse = (elapsed * 2.0).sin() * 0.04 + 0.96; // soft continuous pulse
 
@@ -759,8 +763,9 @@ pub(crate) fn render(
 
                         let border_pulse = (elapsed * 3.5).sin() * 0.15 + 0.85;
 
-                        let edge_mask_cache = edge_cache.get_or_insert_with(|| {
-                            let mut c_cache = vec![0u8; (map_w * map_h) as usize];
+                        if ui.edge_mask_cache.is_empty() || edge_cache_stale {
+                            ui.edge_mask_cache.resize((map_w * map_h) as usize, 0u8);
+                            ui.edge_mask_cache.fill(0);
                             for row_idx in 0..map_h {
                                 for col_idx in 0..map_w {
                                     let tile_idx = (row_idx * map_w + col_idx) as usize;
@@ -822,11 +827,11 @@ pub(crate) fn render(
                                             mask |= 1 << dir;
                                         }
                                     }
-                                    c_cache[tile_idx] = mask;
+                                    ui.edge_mask_cache[tile_idx] = mask;
                                 }
                             }
-                            c_cache
-                        });
+                        }
+                        let edge_mask_cache = &ui.edge_mask_cache;
 
                         let max_range = radius_world.ceil() as i32;
                         for r_offset in -max_range..=max_range {
@@ -1101,24 +1106,16 @@ pub(crate) fn render(
                         ui.cached_hovered_building_level = b.active_level;
                         ui.cached_hovered_building_tooltip = match b.kind {
                             sow_core::game::BuildingKind::Bunker => {
-                                let penalty_prio = b.active_level * 4;
-                                let extra_loss = b.active_level * 40;
-                                let title = format!("🛡️ Defense Tower (Lvl {})", b.active_level);
+                                let title = "🛡️ Defense Tower";
                                 let stat1 = format!(
                                     "Coverage: {} Hex Radius",
-                                    (config.bunker_base_range
-                                        + (b.active_level as f64 - 1.0) * config.bunker_range_scale)
-                                        .round() as i32
+                                    config.bunker_range.round() as i32
                                 );
-                                let stat2 = format!("Atk Delay Penalty: +{}", penalty_prio);
-                                let stat3 = format!("Atk Loss Penalty: +{}%", extra_loss);
-                                format!("{}\n{}\n{}\n{}", title, stat1, stat2, stat3)
+                                format!("{}\n{}", title, stat1)
                             }
                             sow_core::game::BuildingKind::Factory => {
-                                let title = format!("🏭 Industrial Factory (Lvl {})", b.active_level);
-                                let income_val = config.factory_base_income
-                                    + (b.active_level as f64 - 1.0) * config.factory_income_scale;
-                                let stat1 = format!("Gold Generation: +{:.1}/s", income_val);
+                                let title = "🏭 Industrial Factory";
+                                let stat1 = format!("Gold Generation: +{:.1}/s", config.factory_gold_income);
                                 format!("{}\n{}", title, stat1)
                             }
                             sow_core::game::BuildingKind::Port => {
@@ -1278,7 +1275,7 @@ pub(crate) fn render(
 
                 // Draw Bunker range circle preview if Bunker
                 if kind == sow_core::game::BuildingKind::Bunker {
-                    let current_range = config.bunker_base_range as f32;
+                    let current_range = config.bunker_range as f32;
                     let s_radius = (current_range * input.camera_zoom) / sf;
                     let range_color = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 120);
                     let range_fill = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 10);

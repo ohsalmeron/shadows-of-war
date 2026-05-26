@@ -45,9 +45,6 @@ impl BuildingKind {
             BuildingKind::Port => crate::assets::Asset::Port,
         }
     }
-    pub fn upgradable(self) -> bool {
-        true
-    }
     pub fn construction_duration_ticks(self) -> u32 {
         match self {
             BuildingKind::City => 20,
@@ -91,15 +88,6 @@ impl NukeKind {
     pub fn gold_cost(self, _prev_launches: u32) -> f64 {
         0.0
     }
-    pub fn inner_radius(self) -> u32 {
-        12
-    }
-    pub fn outer_radius(self) -> u32 {
-        30
-    }
-    pub fn steps_per_tick(self) -> u8 {
-        2
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -123,20 +111,6 @@ pub struct Projectile {
 }
 
 impl UnitType {
-    pub const ALL: [UnitType; 3] = [
-        UnitType::TransportShip,
-        UnitType::TradeShip,
-        UnitType::Warship,
-    ];
-    #[inline]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            UnitType::TransportShip => "Transport Ship",
-            UnitType::TradeShip => "Trade Ship",
-            UnitType::Warship => "Warship",
-        }
-    }
-
     pub fn gold_cost(self) -> f64 {
         match self {
             UnitType::TransportShip => 0.0, // Free, converted from land troops

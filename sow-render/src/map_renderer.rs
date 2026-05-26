@@ -656,6 +656,7 @@ impl MapRenderer {
             },
         );
         rc.draw(0, 3, 0, 1);
+        drop(rc);
 
         // --- GPU Particle Drawing ---
         let view_proj = [

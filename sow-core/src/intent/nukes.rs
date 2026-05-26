@@ -1,11 +1,11 @@
 use crate::engine::SowEngine;
-use crate::game::{BuildingKind, GamePhase, NukeKind, ProjectileKind};
+use crate::game::{BuildingKind, GamePhase, ProjectileKind};
 
 /// Silo cooldown after launching (must match execution/nukes.rs).
 const SILO_COOLDOWN_TICKS: u32 = 90;
 
 impl SowEngine {
-    pub fn apply_launch_nuke_intent(&mut self, player_id: u16, _kind: NukeKind, target_tile: u32) {
+    pub fn apply_launch_nuke_intent(&mut self, player_id: u16, target_tile: u32) {
         if self.state.phase != GamePhase::Playing {
             return;
         }

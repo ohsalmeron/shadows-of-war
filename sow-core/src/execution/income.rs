@@ -55,7 +55,7 @@ impl SowEngine {
 
             let mut max_tr = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
-                + agg.city_levels as f64 * config.city_max_troops_per_level
+                + agg.city_levels as f64 * config.city_max_troops
                 + agg.armory_levels as f64 * 500.0;
             if is_standard_bot {
                 max_tr /= 1.5;
@@ -77,7 +77,7 @@ impl SowEngine {
             let mut troop_income = config.per_tick(config.troop_base_income)
                 + config.per_tick(50.0) * agg.city_levels as f64
                 + config.per_tick(80.0) * agg.armory_levels as f64 * sun_tzu_mult
-                + config.per_tick(config.port_base_troop_income)
+                + config.per_tick(config.port_troop_income)
                     * agg.port_levels as f64
                     * ragnar_mult;
 
@@ -93,19 +93,12 @@ impl SowEngine {
                 1.0
             };
 
-            let factory_gold_income = if agg.ready_factory_count > 0 {
-                let count_f = agg.ready_factory_count as f64;
-                let levels_f = agg.factory_levels as f64;
-                count_f * config.factory_base_income
-                    + (levels_f - count_f) * config.factory_income_scale
-            } else {
-                0.0
-            };
+            let factory_gold_income = agg.factory_levels as f64 * config.factory_gold_income;
 
             let mut gold_income = config.per_tick(config.gold_base_income)
-                + config.per_tick(config.gold_income_per_city_level) * agg.city_levels as f64
+                + config.per_tick(config.city_gold_income) * agg.city_levels as f64
                 + config.per_tick(100.0) * agg.foundry_levels as f64 * cleo_mult
-                + config.per_tick(config.port_base_gold_income)
+                + config.per_tick(config.port_gold_income)
                     * agg.port_levels as f64
                     * ragnar_mult
                 + config.per_tick(factory_gold_income);

@@ -66,7 +66,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
             Color32::from_black_alpha((200.0 * progress) as u8),
         );
 
-    // Disney overshoot curve
+    // Disney overshoot curve (open) / cubic ease-out (close)
     let anim_scale = if is_open {
         let t = progress;
         if t >= 1.0 {
@@ -75,7 +75,9 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
             1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
         }
     } else {
-        progress
+        // Cubic ease-out: fast start, smooth deceleration to zero
+        let t = progress.clamp(0.0, 1.0);
+        t * t * t
     };
 
     // Slide down from above center (-300px) and bounce

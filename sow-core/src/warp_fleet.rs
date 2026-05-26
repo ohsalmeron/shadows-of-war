@@ -78,7 +78,6 @@ pub fn resolve_fleet_route(
     target_tile: u32,
     border_tiles: &crate::bitset::DenseBitSet,
     target_border: Option<&crate::bitset::DenseBitSet>,
-    _has_completed_port: bool,
 ) -> Result<FleetRoute, FleetLaunchError> {
     let map_area = map.width.saturating_mul(map.height);
     if map_area == 0 || target_tile >= map_area {
@@ -87,9 +86,6 @@ pub fn resolve_fleet_route(
     if target_owner == player_id {
         return Err(FleetLaunchError::SelfTarget);
     }
-    // if !has_completed_port {
-    //     return Err(FleetLaunchError::NoPort);
-    // }
 
     let my_comps = player_water_components(map, water_components, player_id, border_tiles);
     if my_comps.is_empty() {
@@ -175,152 +171,6 @@ pub fn player_water_components(
     }
     out.sort_unstable();
     out
-}
-
-/// LegacyEngine `canBuildTransportShip` gate: does this player have any shoreline
-/// on at least one water component? Kept as a convenience wrapper around
-/// [`player_water_components`] for callers that only need a boolean.
-pub fn player_has_water_access(
-    map: &GameMap,
-    components: &WaterComponents,
-    player_id: u16,
-    border_tiles: &crate::bitset::DenseBitSet,
-) -> bool {
-    let w = map.width;
-    for idx in border_tiles.ones() {
-        let x = idx % w;
-        let y = idx / w;
-        if map.owner_id(x, y) != player_id {
-            continue;
-        }
-        let t = map.terrain[idx as usize];
-        if !t.is_land() || !t.is_shoreline() {
-            continue;
-        }
-        if components.component_of(idx) != 0 {
-            return true;
-        }
-    }
-    false
-}
-
-/// LegacyEngine `Player.sharesBorderWith(other)`: scan my border tiles; return true if **any**
-/// 4-neighbor is owned by `target_owner`. This is the correct gate for a land `Attack`
-/// intent — a click on a far-away enemy interior still ground-attacks as long as we
-/// touch them somewhere on the map.
-pub fn shares_border_with(
-    map: &GameMap,
-    border_tiles: &crate::bitset::DenseBitSet,
-    target_owner: u16,
-) -> bool {
-    let w = map.width;
-    for idx in border_tiles.ones() {
-        let x = idx % w;
-        let y = idx / w;
-        let mut found = false;
-        map.for_each_neighbor(x, y, |nx, ny| {
-            if !found && map.owner_id(nx, ny) == target_owner {
-                found = true;
-            }
-        });
-        if found {
-            return true;
-        }
-    }
-    false
-}
-
-/// LegacyEngine `canAttack` neutral branch (`PlayerImpl.canAttack`, TerraNullius case):
-/// BFS from `click_tile` through contiguous neutral-land tiles (Manhattan ≤ 200).
-/// Returns `true` if any visited tile has a 4-neighbor owned by `player_id` —
-/// i.e. the clicked patch of no-man's-land is walk-adjacent to my territory.
-///
-/// Uses stamp-based scratch buffers to avoid per-click allocations; `queue` is
-/// cleared on entry. N/S/W/E neighbor order matches `closest_neutral_shore_on_components`.
-pub fn can_ground_attack_neutral(
-    map: &GameMap,
-    player_id: u16,
-    click_tile: u32,
-    max_dist: u32,
-    queue: &mut VecDeque<u32>,
-    visited: &mut Vec<u32>,
-    visit_stamp: &mut u32,
-) -> bool {
-    let w = map.width;
-    let h = map.height;
-    let area = w.saturating_mul(h);
-    if area == 0 || click_tile >= area {
-        return false;
-    }
-    let cx = click_tile % w;
-    let cy = click_tile / w;
-    let click_t = map.terrain[click_tile as usize];
-    if !click_t.is_land() || map.owner_id(cx, cy) != 0 {
-        return false;
-    }
-
-    let need = area as usize;
-    if visited.len() < need {
-        visited.resize(need, 0);
-    }
-    *visit_stamp = visit_stamp.wrapping_add(1);
-    if *visit_stamp == 0 {
-        visited.fill(0);
-        *visit_stamp = 1;
-    }
-    let stamp = *visit_stamp;
-
-    queue.clear();
-    visited[click_tile as usize] = stamp;
-    queue.push_back(click_tile);
-
-    while let Some(idx) = queue.pop_front() {
-        let x = idx % w;
-        let y = idx / w;
-        // Found if any 4-neighbor is owned by me.
-        let mut hit = false;
-        map.for_each_neighbor(x, y, |nx, ny| {
-            if !hit && map.owner_id(nx, ny) == player_id {
-                hit = true;
-            }
-        });
-        if hit {
-            return true;
-        }
-
-        let is_odd = !y.is_multiple_of(2);
-        let deltas: [(i32, i32); 6] = if is_odd {
-            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
-        } else {
-            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
-        };
-        let neighbors = deltas.iter().filter_map(|&(dx, dy)| {
-            let nx = x as i32 + dx;
-            let ny = y as i32 + dy;
-            if nx >= 0 && nx < w as i32 && ny >= 0 && ny < h as i32 {
-                Some((nx as u32, ny as u32))
-            } else {
-                None
-            }
-        });
-        for (nx, ny) in neighbors {
-            if cx.abs_diff(nx) + cy.abs_diff(ny) > max_dist {
-                continue;
-            }
-            let nidx = ny * w + nx;
-            let vi = nidx as usize;
-            if visited[vi] == stamp {
-                continue;
-            }
-            let nt = map.terrain[vi];
-            if !nt.is_land() || map.owner_id(nx, ny) != 0 {
-                continue;
-            }
-            visited[vi] = stamp;
-            queue.push_back(nidx);
-        }
-    }
-    false
 }
 
 #[inline]

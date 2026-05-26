@@ -57,7 +57,6 @@ pub struct AttackExecution {
     pub owner_id: u16,
     pub target_owner: u16,
     pub troops: f64,
-    pub initial_troops: f64,
     pub to_conquer: BinaryHeap<PrioritizedTile>,
     pub insert_seq_counter: u32,
     pub rng: WyRand,

@@ -1,4 +1,11 @@
 use super::*;
+
+/// Damped spring overshoot: approaches 1.0 with a single bounce.
+#[inline]
+pub(crate) fn spring_overshoot(t: f32) -> f32 {
+    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+}
+
 fn paint_glassmorphic_shield(
     painter: &egui::Painter,
     rect: egui::Rect,
@@ -11,12 +18,12 @@ fn paint_glassmorphic_shield(
     let bottom = egui::pos2(rect.center().x, rect.bottom() - rect.height() * 0.05);
     let mid_left = egui::pos2(rect.left(), rect.top() + rect.height() * 0.50);
 
-    let points = vec![top_left, top_center, top_right, mid_right, bottom, mid_left];
+    let points = [top_left, top_center, top_right, mid_right, bottom, mid_left];
 
     // Shadow / Dark glassmorphic backdrop
     let backdrop_color = egui::Color32::from_rgba_unmultiplied(15, 23, 42, 220);
     painter.add(egui::Shape::convex_polygon(
-        points.clone(),
+        points.to_vec(),
         backdrop_color,
         egui::Stroke::NONE,
     ));
@@ -27,7 +34,7 @@ fn paint_glassmorphic_shield(
     let b = ((vibrant_color.b() as f32 * 0.6) + (255.0 * 0.4)) as u8;
     let tint_color = egui::Color32::from_rgba_unmultiplied(r, g, b, 90);
     painter.add(egui::Shape::convex_polygon(
-        points.clone(),
+        points.to_vec(),
         tint_color,
         egui::Stroke::NONE,
     ));
@@ -35,7 +42,7 @@ fn paint_glassmorphic_shield(
     // Highlighted border
     let stroke_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140);
     painter.add(egui::Shape::closed_line(
-        points,
+        points.to_vec(),
         egui::Stroke::new(1.8_f32, stroke_color),
     ));
 
@@ -91,26 +98,7 @@ pub(crate) fn render(
             );
         });
 
-        // --- Layer 8: Player Nameplates & Leader Stars (Top-most) ---
-        let mut sorted_players = visible_players.to_vec();
-        sorted_players.sort_unstable_by(|a, b| {
-            let a_is_human = a.player.player_type == sow_core::player::PlayerType::Human;
-            let b_is_human = b.player.player_type == sow_core::player::PlayerType::Human;
-            if a_is_human != b_is_human {
-                return b_is_human.cmp(&a_is_human); // true > false
-            }
-
-            let a_is_nation = a.player.id < 200;
-            let b_is_nation = b.player.id < 200;
-            if a_is_nation != b_is_nation {
-                return b_is_nation.cmp(&a_is_nation); // true > false
-            }
-
-            b.lod_presence
-                .partial_cmp(&a.lod_presence)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
+        // visible_players is pre-sorted in mod.rs (humans first, nations, by presence desc)
         let mut full_labels_drawn = 0;
         let mut premium_labels_drawn = 0;
 
@@ -135,7 +123,7 @@ pub(crate) fn render(
         let my_id = sim.my_player_id.unwrap_or(0);
         let my_player = snap.players.iter().find(|p| p.id == my_id);
 
-        for vp in &sorted_players {
+        for vp in visible_players {
             let player = vp.player;
             let center = vp.center;
             let pc = vp.pc;
@@ -269,7 +257,7 @@ pub(crate) fn render(
                                 if t >= 1.0 {
                                     1.0
                                 } else {
-                                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                    spring_overshoot(t)
                                 }
                             } else {
                                 req_anim
@@ -357,7 +345,7 @@ pub(crate) fn render(
                                 if t >= 1.0 {
                                     1.0
                                 } else {
-                                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                    spring_overshoot(t)
                                 }
                             } else {
                                 allied_anim
@@ -427,7 +415,7 @@ pub(crate) fn render(
                                 if t >= 1.0 {
                                     1.0
                                 } else {
-                                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                    spring_overshoot(t)
                                 }
                             } else {
                                 anim_progress
@@ -984,7 +972,7 @@ pub(crate) fn render(
                             if t >= 1.0 {
                                 1.0
                             } else {
-                                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                spring_overshoot(t)
                             }
                         } else {
                             req_anim
@@ -1065,7 +1053,7 @@ pub(crate) fn render(
                             if t >= 1.0 {
                                 1.0
                             } else {
-                                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                spring_overshoot(t)
                             }
                         } else {
                             allied_anim
@@ -1127,7 +1115,7 @@ pub(crate) fn render(
                             if t >= 1.0 {
                                 1.0
                             } else {
-                                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                                spring_overshoot(t)
                             }
                         } else {
                             anim_progress

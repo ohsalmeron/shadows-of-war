@@ -150,6 +150,18 @@ else
     mkdir -p "${ROOT}/android/gradle/wrapper"
     curl -sSLo "${ROOT}/android/gradle/wrapper/gradle-wrapper.jar" https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradle/wrapper/gradle-wrapper.jar
   fi
+  if [[ ! -f "${ROOT}/android/gradle/wrapper/gradle-wrapper.properties" ]]; then
+    mkdir -p "${ROOT}/android/gradle/wrapper"
+    cat << 'EOF' > "${ROOT}/android/gradle/wrapper/gradle-wrapper.properties"
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+EOF
+  fi
 
   cyan "📦 Compiling shadows-of-war for WASM..."
   RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown

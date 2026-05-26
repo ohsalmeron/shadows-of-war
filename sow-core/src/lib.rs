@@ -9,7 +9,6 @@
 
 pub mod bitset;
 pub mod building;
-pub mod checksum;
 pub mod config;
 pub mod engine;
 pub mod execution;

@@ -17,19 +17,6 @@ impl DenseBitSet {
         Self::default()
     }
 
-    /// Creates a BitSet pre-sized for the given capacity (e.g., total map tiles).
-    pub fn with_capacity(capacity: usize) -> Self {
-        let block_count = capacity.div_ceil(64);
-        Self {
-            blocks: vec![0; block_count],
-        }
-    }
-
-    /// Clears all bits.
-    pub fn clear(&mut self) {
-        self.blocks.fill(0);
-    }
-
     /// Sets the bit at `idx` to 1. Returns `true` if it was not already set.
     #[inline]
     pub fn insert(&mut self, idx: u32) -> bool {
@@ -105,13 +92,6 @@ impl DenseBitSet {
     /// Returns true if no bits are set.
     pub fn is_empty(&self) -> bool {
         self.blocks.iter().all(|&b| b == 0)
-    }
-
-    /// Extends the set from an iterator of indices.
-    pub fn extend(&mut self, iter: impl IntoIterator<Item = u32>) {
-        for idx in iter {
-            self.insert(idx);
-        }
     }
 }
 

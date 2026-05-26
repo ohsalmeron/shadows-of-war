@@ -43,7 +43,7 @@ impl SowEngine {
             return;
         };
 
-        let cost = structure_build_cost_gold(kind, player_id, &self.buildings);
+        let cost = structure_build_cost_gold();
         let Some(player_mut) = self.state.player_mut(player_id) else {
             return;
         };
@@ -75,78 +75,8 @@ impl SowEngine {
         });
     }
 
-    pub(super) fn apply_upgrade_structure_intent(&mut self, player_id: u16, building_id: u64) {
-        if self.state.phase != GamePhase::Playing {
-            return;
-        }
-        let mut found: Option<(usize, BuildingKind, u32, u8)> = None;
-        if let Ok(idx) = self.buildings.binary_search_by_key(&building_id, |b| b.id) {
-            let b = &self.buildings[idx];
-            if b.owner_id != player_id {
-                return;
-            }
-            found = Some((idx, b.kind, b.tile_idx, b.level));
-        }
-        let Some((idx, kind, tile_idx, current_level)) = found else {
-            return;
-        };
 
-        let new_level = current_level.saturating_add(1);
-        match kind {
-            BuildingKind::City => {
-                if new_level > 5 {
-                    return;
-                }
-            }
-            BuildingKind::Bunker => {
-                if new_level > 3 {
-                    return;
-                }
-            }
-            BuildingKind::Factory => {
-                if new_level > 5 {
-                    return;
-                }
-            }
-            BuildingKind::Port => {
-                if new_level > 5 {
-                    return;
-                }
-            }
-        }
 
-        let cost = match kind {
-            BuildingKind::City => crate::building::city_upgrade_cost_gold(new_level),
-            BuildingKind::Bunker => crate::building::bunker_upgrade_cost_gold(new_level),
-            BuildingKind::Factory => crate::building::factory_upgrade_cost_gold(new_level),
-            BuildingKind::Port => crate::building::port_upgrade_cost_gold(new_level),
-        };
-
-        let Some(player_mut) = self.state.player_mut(player_id) else {
-            return;
-        };
-        if player_mut.gold < cost || !cost.is_finite() {
-            return;
-        }
-        player_mut.gold = (player_mut.gold - cost).max(0.0);
-
-        let b = &mut self.buildings[idx];
-        b.level = new_level;
-        let dur = crate::building::core::upgrade_duration_ticks(kind, new_level);
-        b.ticks_until_complete += dur;
-        b.under_construction = true;
-
-        self.building_aggregates_dirty = true;
-        if kind == BuildingKind::Bunker {
-            self.defense_grid_dirty = true;
-        }
-        self.state.events.push(GameEvent::StructureUpgraded {
-            id: building_id,
-            tile_idx,
-            kind,
-            level: new_level,
-        });
-    }
 
     pub(super) fn apply_upgrade_city_module_intent(
         &mut self,

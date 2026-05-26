@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn defense_post_bonus_scales_with_level() {
+    fn defense_post_bonus_flat_stacking() {
         let w = 20u32;
         let b = Building {
             id: 1,
@@ -195,7 +195,7 @@ mod tests {
         };
         let cfg = crate::game_config::GameConfig::default();
         let bonus = defense_post_priority_bonus(&[b], 10, 10, w, &cfg);
-        assert_eq!(bonus, 2 * cfg.bunker_priority_per_level as i64);
+        assert_eq!(bonus, cfg.bunker_priority as i64);
         let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w, &cfg);
         assert_eq!(bonus_far, 0);
     }

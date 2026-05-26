@@ -18,18 +18,10 @@ fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32) -> u32 {
     }
 }
 
-/// Cheapest possible gold cost for a building kind (count=0, no scaling).
-/// Used as a fast pre-check to skip expensive placement logic when the bot
-/// clearly cannot afford any building of this type.
+/// Cheapest possible gold cost for a building.
 #[inline]
-fn cheapest_gold_cost(kind: BuildingKind) -> f64 {
-    let s = crate::config::GOLD_SCALE.max(1.0);
-    match kind {
-        BuildingKind::City => 125_000.0 / s,
-        BuildingKind::Bunker => 50_000.0 / s,
-        BuildingKind::Factory => 75_000.0 / s,
-        BuildingKind::Port => 60_000.0 / s,
-    }
+fn cheapest_gold_cost() -> f64 {
+    1000.0
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -218,7 +210,7 @@ impl SowEngine {
                 continue; // Nothing to do this tick for this entity
             }
 
-            if do_structures && p.gold >= cheapest_gold_cost(BuildingKind::Bunker) {
+            if do_structures && p.gold >= cheapest_gold_cost() {
                 any_structures = true;
             }
 
@@ -342,6 +334,59 @@ impl SowEngine {
                         target_player: proposer,
                     },
                 });
+            }
+
+            // ── Respond to Resource Requests ─────────────────────────────
+            for req in &self.resource_requests_proposed {
+                if req.target != bot_id {
+                    continue;
+                }
+                let requester = req.proposer;
+                let is_ally = self
+                    .state
+                    .player(bot_id)
+                    .map(|p| p.alliances.contains(&requester))
+                    .unwrap_or(false);
+                if !is_ally {
+                    continue;
+                }
+
+                let accept = if bot_iq >= 130 {
+                    // High IQ: only if we vastly outpower them (2x troops)
+                    if let (Some(p_me), Some(p_req)) =
+                        (self.state.player(bot_id), self.state.player(requester))
+                    {
+                        p_me.troops >= p_req.troops * 2.0
+                    } else {
+                        false
+                    }
+                } else if bot_iq >= 100 {
+                    // Mid IQ: accept if we have decent surplus
+                    self.state
+                        .player(bot_id)
+                        .map(|p| p.troops > p.max_troops * 0.4 || p.gold > 100_000.0)
+                        .unwrap_or(false)
+                } else {
+                    // Low IQ: always accept, even if it bleeds them dry
+                    true
+                };
+
+                if accept {
+                    let current_points = self.state.player(bot_id).unwrap().iq_points;
+                    if current_points >= send_cost {
+                        if let Some(p_me) = self.state.player_mut(bot_id) {
+                            p_me.iq_points -= send_cost;
+                        }
+                        decisions.push(BotDecision {
+                            bot_id,
+                            kind: BotDecisionKind::Build,
+                            intent: GameplayIntent::AcceptResourceRequest {
+                                target_player: requester,
+                            },
+                        });
+                    }
+                }
+                break; // one request per tick
             }
 
             // ── Resource Sharing (High IQ only) ───────────────────────────
@@ -587,7 +632,7 @@ impl SowEngine {
                             continue;
                         }
                     };
-                    if player_gold >= cheapest_gold_cost(BuildingKind::Bunker) {
+                    if player_gold >= cheapest_gold_cost() {
                         let agg = self
                             .building_aggregates
                             .get(bot_id as usize)
@@ -672,7 +717,7 @@ impl SowEngine {
                                 }
                                 if let Some(target_id) = upgrade_target {
                                     let cost =
-                                        structure_build_cost_gold(kind, bot_id, &self.buildings);
+                                        structure_build_cost_gold();
                                     if player_gold >= cost {
                                         if let Some(p_me) = self.state.player_mut(bot_id) {
                                             p_me.iq_points -= build_cost;
@@ -696,10 +741,10 @@ impl SowEngine {
                             if owned >= target_count {
                                 continue;
                             }
-                            if player_gold < cheapest_gold_cost(kind) {
+                            if player_gold < cheapest_gold_cost() {
                                 continue;
                             }
-                            let cost = structure_build_cost_gold(kind, bot_id, &self.buildings);
+                            let cost = structure_build_cost_gold();
                             let map_w = self.state.map.width;
                             let Some(bot_now) = self.state.player_mut(bot_id) else {
                                 continue;
@@ -841,7 +886,6 @@ impl SowEngine {
                                             t_tile,
                                             border_tiles,
                                             Some(&target_p.border_tiles),
-                                            has_port,
                                         ) {
                                             route_resolved = true;
                                             target_tile_opt = Some(t_tile);
@@ -1341,7 +1385,6 @@ mod bot_iq_alliance_tests {
             owner_id: 2,
             target_owner: 1,
             troops: 5000.0,
-            initial_troops: 5000.0,
             to_conquer: Default::default(),
             insert_seq_counter: 0,
             rng: wyrand::WyRand::new(42),

@@ -527,8 +527,6 @@ pub fn bresenham_line(src: u32, dst: u32, width: u32) -> Vec<u32> {
 
     let mut cx = sx;
     let mut cy = sy;
-    let height = width; // square-ish maps; caller must ensure in-bounds
-    let _ = height;
 
     let mut path = Vec::with_capacity((dx + dy + 1) as usize);
     loop {
@@ -582,7 +580,6 @@ pub struct FlowField {
     pub width: u32,
     pub height: u32,
     pub directions: Vec<u8>, // 0-7: N, NE, E, SE, S, SW, W, NW. 255: Unreachable/Obstacle
-    pub stamp: u32,
 }
 
 impl FlowField {
@@ -592,7 +589,6 @@ impl FlowField {
             width,
             height,
             directions: vec![255; (width * height) as usize],
-            stamp: 0,
         }
     }
 
