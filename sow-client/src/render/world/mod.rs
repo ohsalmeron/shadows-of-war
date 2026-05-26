@@ -42,9 +42,10 @@ impl SowApp {
             egui::Id::new("world_overlays"),
         ));
 
-        // Register world_nameplates layer third so it draws on top of buildings and overlays
+        // Register world_nameplates in Middle order so it is above ALL Background layers
+        // (buildings, effects, projectiles) but below Foreground (GUI/HUD panels).
         let _ = ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Background,
+            egui::Order::Middle,
             egui::Id::new("world_nameplates"),
         ));
         let wall_secs = self.time.start_time.elapsed().as_secs_f64();
@@ -221,7 +222,7 @@ impl SowApp {
             );
 
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
-                egui::Order::Background,
+                egui::Order::Middle,
                 egui::Id::new("floating_notices"),
             ));
 
@@ -273,13 +274,16 @@ impl SowApp {
                 } else {
                     1.0
                 };
-                let font_size = (20.0 * scale).max(1.0);
+                // Quantize to whole pixels so egui's glyph atlas cache is reused across frames
+                let font_size = (20.0 * scale).round().max(1.0);
 
-                // Fade alpha
+                // Fade alpha (linear approximation of powf(0.6))
                 let alpha = if t < 0.15 {
                     ((t / 0.15) * 255.0) as u8
                 } else {
-                    ((1.0 - t).powf(0.6) * 255.0).min(255.0) as u8
+                    let inv = 1.0 - t;
+                    // Fast approximation: x^0.6 ≈ sqrt(x) * x^0.1 ≈ sqrt(x) (close enough)
+                    (inv.sqrt() * 255.0).min(255.0) as u8
                 };
 
                 let text_color = egui::Color32::from_rgba_unmultiplied(
@@ -290,32 +294,37 @@ impl SowApp {
                 );
                 let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
 
-                // Premium 7-pass high-contrast outline & dragged-down shadow
-                for &dy in &[2.0, 4.0] {
-                    middle_painter.text(
-                        pos + egui::vec2(0.0, dy),
-                        egui::Align2::CENTER_CENTER,
-                        &anim.name,
-                        egui::FontId::proportional(font_size),
+                // Layout text ONCE, then paint the galley 7 times (avoids 6 redundant layout+shape passes)
+                let font_id = egui::FontId::proportional(font_size);
+                let galley = middle_painter.layout_no_wrap(anim.name.clone(), font_id, text_color);
+                let half = galley.size() / 2.0;
+                let anchor = pos - half;
+
+                let is_low_end = self.input.screen_w < 900.0 || sf > 1.5;
+                if is_low_end {
+                    middle_painter.galley_with_override_text_color(
+                        anchor + egui::vec2(1.5, 1.5),
+                        galley.clone(),
                         outline_color,
                     );
+                } else {
+                    // 7-pass outline: 2 dragged shadows + 4 diagonal + 1 core
+                    for &dy in &[2.0, 4.0] {
+                        middle_painter.galley_with_override_text_color(
+                            anchor + egui::vec2(0.0, dy),
+                            galley.clone(),
+                            outline_color,
+                        );
+                    }
+                    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+                        middle_painter.galley_with_override_text_color(
+                            anchor + egui::vec2(dx, dy),
+                            galley.clone(),
+                            outline_color,
+                        );
+                    }
                 }
-                for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-                    middle_painter.text(
-                        pos + egui::vec2(dx, dy),
-                        egui::Align2::CENTER_CENTER,
-                        &anim.name,
-                        egui::FontId::proportional(font_size),
-                        outline_color,
-                    );
-                }
-                middle_painter.text(
-                    pos,
-                    egui::Align2::CENTER_CENTER,
-                    &anim.name,
-                    egui::FontId::proportional(font_size),
-                    text_color,
-                );
+                middle_painter.galley_with_override_text_color(anchor, galley, text_color);
                 true
             });
 
@@ -355,34 +364,41 @@ impl SowApp {
                     } else {
                         1.0
                     };
-                    let font_size = (16.0 * bounce_scale).max(1.0);
+                    // Quantize to whole pixels for egui glyph atlas cache reuse
+                    let font_size = (16.0 * bounce_scale).round().max(1.0);
 
-                    // Premium 7-pass high-contrast outline & dragged-down shadow
-                    for &dy in &[2.0, 4.0] {
-                        middle_painter.text(
-                            pos + egui::vec2(0.0, dy),
-                            egui::Align2::CENTER_CENTER,
-                            &notice.text,
-                            egui::FontId::proportional(font_size),
+                    // Layout text ONCE, then paint the galley 7 times
+                    let font_id = egui::FontId::proportional(font_size);
+                    let galley =
+                        middle_painter.layout_no_wrap(notice.text.clone(), font_id, text_color);
+                    let half = galley.size() / 2.0;
+                    let anchor = pos - half;
+
+                    let is_low_end = self.input.screen_w < 900.0 || sf > 1.5;
+                    if is_low_end {
+                        middle_painter.galley_with_override_text_color(
+                            anchor + egui::vec2(1.5, 1.5),
+                            galley.clone(),
                             outline_color,
                         );
+                    } else {
+                        // 7-pass outline: 2 dragged shadows + 4 diagonal + 1 core
+                        for &dy in &[2.0, 4.0] {
+                            middle_painter.galley_with_override_text_color(
+                                anchor + egui::vec2(0.0, dy),
+                                galley.clone(),
+                                outline_color,
+                            );
+                        }
+                        for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+                            middle_painter.galley_with_override_text_color(
+                                anchor + egui::vec2(dx, dy),
+                                galley.clone(),
+                                outline_color,
+                            );
+                        }
                     }
-                    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-                        middle_painter.text(
-                            pos + egui::vec2(dx, dy),
-                            egui::Align2::CENTER_CENTER,
-                            &notice.text,
-                            egui::FontId::proportional(font_size),
-                            outline_color,
-                        );
-                    }
-                    middle_painter.text(
-                        pos,
-                        egui::Align2::CENTER_CENTER,
-                        &notice.text,
-                        egui::FontId::proportional(font_size),
-                        text_color,
-                    );
+                    middle_painter.galley_with_override_text_color(anchor, galley, text_color);
                 }
                 true
             });

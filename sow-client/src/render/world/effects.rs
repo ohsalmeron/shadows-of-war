@@ -1,4 +1,17 @@
 use super::*;
+
+#[inline]
+fn hash_xorshift(val: u32) -> f32 {
+    let mut x = val;
+    if x == 0 {
+        x = 1;
+    }
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    (x as f32) / (u32::MAX as f32)
+}
+
 #[allow(unused_variables)]
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
@@ -110,14 +123,30 @@ pub(crate) fn render(
             let seed = (fz.x * 123.45 + fz.y * 678.9) as i32;
             let particle_count = (fz.radius * 0.5) as i32;
             for i in 0..particle_count {
-                let angle = ((seed + i * 37) as f32).sin() * std::f32::consts::TAU;
-                let dist_ratio = (((seed + i * 19) as f32).cos() * 0.5 + 0.5).sqrt();
-                let dist = dist_ratio * fz.radius;
+                let h1 =
+                    hash_xorshift(seed as u32 ^ (i as u32).wrapping_mul(2654435761)) * 2.0 - 1.0;
+                let h2 = hash_xorshift(
+                    (seed as u32)
+                        .wrapping_add(i as u32)
+                        .wrapping_mul(3405691582),
+                ) * 2.0
+                    - 1.0;
+                let h3 =
+                    hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(123456789));
 
-                let px = fz.x + angle.cos() * dist;
-                let py = fz.y + angle.sin() * dist;
+                let mut dx = h1;
+                let mut dy = h2;
+                let len_sq = dx * dx + dy * dy;
+                if len_sq > 1.0 {
+                    let len = len_sq.sqrt();
+                    dx /= len;
+                    dy /= len;
+                }
 
-                let speed = 0.4 + ((seed + i * 13) as f32).sin().abs() * 0.8;
+                let px = fz.x + dx * fz.radius;
+                let py = fz.y + dy * fz.radius;
+
+                let speed = 0.4 + h3 * 0.8;
                 let drift_y = (wall_secs as f32 * speed) % 6.0;
                 let py_drifted = py - drift_y;
 

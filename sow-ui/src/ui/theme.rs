@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use egui::{
     style::{Selection, WidgetVisuals, Widgets},
-    Color32, Context, CornerRadius, FontId, Margin, Stroke, Style, TextStyle, Visuals,
+    Align2, Color32, Context, CornerRadius, FontId, Galley, Margin, Stroke, Style, TextStyle,
+    Visuals,
 };
 
 /// Cosmic Rush palette
@@ -310,88 +313,102 @@ pub fn hud_button_text_size() -> f32 {
     }
 }
 
+/// Paint a pre-laid-out galley with premium 7-pass glow (zero layout cost).
+///
+/// `pos` is the top-left anchor of the galley.
+pub fn paint_premium_glow_galley(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    galley: Arc<Galley>,
+    base_color: Color32,
+    shadow_color: Color32,
+) {
+    // 1. Dragged-down shadow (2 passes)
+    for &dy in &[2.0, 4.0] {
+        painter.galley_with_override_text_color(
+            pos + egui::vec2(0.0, dy),
+            galley.clone(),
+            shadow_color,
+        );
+    }
+    // 2. Diagonal outline (4 passes)
+    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+        painter.galley_with_override_text_color(
+            pos + egui::vec2(dx, dy),
+            galley.clone(),
+            shadow_color,
+        );
+    }
+    // 3. Core text (1 pass)
+    painter.galley_with_override_text_color(pos, galley, base_color);
+}
+
 /// Draw text with a crisp black outline and heavy bottom drop shadow.
 ///
-/// Uses an optimized 7-pass style (2 dragged shadow passes, 4 diagonal outline passes, 1 core pass)
-/// for a bold, game-style look with maximum rendering performance.
+/// Layout-once + 7× galley paint. For callers that already have a galley,
+/// use [`paint_premium_glow_galley`] directly.
 pub fn paint_premium_glow_text(
     painter: &egui::Painter,
     pos: egui::Pos2,
-    anchor: egui::Align2,
+    anchor: Align2,
     text: &str,
-    font_id: egui::FontId,
+    font_id: FontId,
     base_color: Color32,
     shadow_color: Color32,
 ) {
     if text.is_empty() {
         return;
     }
-    let black = shadow_color;
+    let galley = painter.layout_no_wrap(text.to_owned(), font_id, base_color);
+    let anchor_pos = anchor_top_left(pos, anchor, galley.size());
+    paint_premium_glow_galley(painter, anchor_pos, galley, base_color, shadow_color);
+}
 
-    // 1. Dragged-down 3D Opaque Black Shadow (2 passes)
-    for &dy in &[2.0, 4.0] {
-        painter.text(
-            pos + egui::vec2(0.0, dy),
-            anchor,
-            text,
-            font_id.clone(),
-            black,
-        );
-    }
-
-    // 2. 4-way diagonal outline (4 passes)
-    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-        painter.text(
-            pos + egui::vec2(dx, dy),
-            anchor,
-            text,
-            font_id.clone(),
-            black,
-        );
-    }
-
-    // 3. Core text (1 pass)
-    painter.text(pos, anchor, text, font_id, base_color);
+/// Resolve an `Align2` anchor + size into the top-left position egui galley expects.
+#[inline]
+fn anchor_top_left(pos: egui::Pos2, anchor: Align2, size: egui::Vec2) -> egui::Pos2 {
+    let x = match anchor.0[0] {
+        egui::Align::Min => pos.x,
+        egui::Align::Center => pos.x - size.x * 0.5,
+        egui::Align::Max => pos.x - size.x,
+    };
+    let y = match anchor.0[1] {
+        egui::Align::Min => pos.y,
+        egui::Align::Center => pos.y - size.y * 0.5,
+        egui::Align::Max => pos.y - size.y,
+    };
+    egui::pos2(x, y)
 }
 
 /// Draw text with a crisp black outline and heavy bottom drop shadow.
 ///
-/// Uses 5 shadow passes (L/R/T/B + extra bottom) for a bold, game-style look.
-/// Only use on important, low-count text (titles, overlays, loading status).
-/// For bulk text (hundreds of bot labels), use a simple 1-pass drop shadow instead.
+/// Convenience wrapper — delegates to [`paint_premium_glow_text`].
 pub fn outlined_text(
     painter: &egui::Painter,
     pos: egui::Pos2,
-    anchor: egui::Align2,
+    anchor: Align2,
     text: &str,
-    font_id: egui::FontId,
+    font_id: FontId,
     color: Color32,
     shadow_color: Color32,
 ) {
     paint_premium_glow_text(painter, pos, anchor, text, font_id, color, shadow_color);
 }
 
-/// A UI widget that draws text with an outline. Use this instead of `ui.label()` for important titles.
+/// A UI widget that draws text with an outline. Lays out once, paints 7×.
 pub fn outlined_label(
     ui: &mut egui::Ui,
     text: &str,
-    font_id: egui::FontId,
+    font_id: FontId,
     color: Color32,
 ) -> egui::Response {
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_string(), font_id.clone(), color);
+        .layout_no_wrap(text.to_owned(), font_id, color);
     let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
-        outlined_text(
-            ui.painter(),
-            rect.left_top(),
-            egui::Align2::LEFT_TOP,
-            text,
-            font_id,
-            color,
-            Color32::BLACK,
-        );
+        paint_premium_glow_galley(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
     }
     response
 }
+

@@ -22,59 +22,30 @@ pub fn paint_nameplate_galley(painter: &egui::Painter, pos: egui::Pos2, galley: 
     }
 }
 
-pub fn paint_glow_text(
+/// Paint a pre-laid-out galley with premium outline. Zero layout cost.
+fn paint_glow_galley(
     painter: &egui::Painter,
     pos: egui::Pos2,
-    text: &str,
-    font_id: egui::FontId,
+    galley: Arc<egui::Galley>,
     base_color: egui::Color32,
     is_tribe: bool,
 ) {
-    if text.is_empty() {
-        return;
-    }
-
-    // Opaque Matte Black for outline and 3D dragged shadow (Supercell style!)
     let black = egui::Color32::BLACK;
 
     if is_tribe {
-        // Optimized zero-cost pristine 2-pass shadow for Tribes!
-        let shadow_pos = pos + egui::vec2(1.0, 1.0);
-        painter.text(
-            shadow_pos,
-            egui::Align2::LEFT_TOP,
-            text,
-            font_id.clone(),
-            black,
-        );
-        painter.text(pos, egui::Align2::LEFT_TOP, text, font_id, base_color);
+        painter.galley_with_override_text_color(pos + egui::vec2(1.0, 1.0), galley.clone(), black);
+        painter.galley_with_override_text_color(pos, galley, base_color);
         return;
     }
 
-    // 1. Optimized dragged-down 3D Opaque Black Shadow (2 passes instead of 12!)
+    // 2 dragged shadows + 4 diagonal outline + 1 core = 7 passes, zero layout cost
     for &dy in &[2.0, 4.0] {
-        painter.text(
-            pos + egui::vec2(0.0, dy),
-            egui::Align2::LEFT_TOP,
-            text,
-            font_id.clone(),
-            black,
-        );
+        painter.galley_with_override_text_color(pos + egui::vec2(0.0, dy), galley.clone(), black);
     }
-
-    // 2. Optimized 4-way diagonal outline (4 passes instead of 8!)
     for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-        painter.text(
-            pos + egui::vec2(dx, dy),
-            egui::Align2::LEFT_TOP,
-            text,
-            font_id.clone(),
-            black,
-        );
+        painter.galley_with_override_text_color(pos + egui::vec2(dx, dy), galley.clone(), black);
     }
-
-    // 3. Core text (1 pass)
-    painter.text(pos, egui::Align2::LEFT_TOP, text, font_id, base_color);
+    painter.galley_with_override_text_color(pos, galley, base_color);
 }
 
 pub fn paint_glow_nameplate_galley(
@@ -82,11 +53,10 @@ pub fn paint_glow_nameplate_galley(
     pos: egui::Pos2,
     galley: Arc<egui::Galley>,
     base_color: egui::Color32,
-    font_id: egui::FontId,
     is_tribe: bool,
 ) {
     if !galley.is_empty() {
-        paint_glow_text(painter, pos, galley.text(), font_id, base_color, is_tribe);
+        paint_glow_galley(painter, pos, galley, base_color, is_tribe);
     }
 }
 

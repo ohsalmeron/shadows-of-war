@@ -1,7 +1,7 @@
 use super::*;
 
 pub(crate) fn render(
-    _ui: &mut crate::app::UiState,
+    ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     time: &crate::app::TimeState,
@@ -333,37 +333,28 @@ pub(crate) fn render(
                 continue;
             }
 
-            let label = format!("⚔ {}", sow_ui::utils::format_number(attack.troops));
+            let troops_val = attack.troops;
+            let entry = ui.attack_troop_labels.entry(attack.id).or_insert_with(|| {
+                (troops_val, format!("⚔ {}", sow_ui::utils::format_number(troops_val)))
+            });
+            if (entry.0 - troops_val).abs() > 0.0001 {
+                *entry = (troops_val, format!("⚔ {}", sow_ui::utils::format_number(troops_val)));
+            }
+            let label = &entry.1;
             let color = if is_incoming {
                 egui::Color32::from_rgb(255, 90, 90) // Red for incoming
             } else {
                 sow_ui::ui::theme::accent_solo_cyan_hover() // Cyan for outgoing
             };
 
-            let pos = egui::pos2(screen_x, screen_y);
-
-            // Premium 7-pass high-contrast outline & dragged-down shadow
-            let outline_color = egui::Color32::BLACK;
+            // Layout once, paint 7 passes with zero additional layout cost
             let font_id = egui::FontId::proportional(13.0);
-            for &dy in &[2.0, 4.0] {
-                middle_painter.text(
-                    pos + egui::vec2(0.0, dy),
-                    egui::Align2::CENTER_CENTER,
-                    &label,
-                    font_id.clone(),
-                    outline_color,
-                );
-            }
-            for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-                middle_painter.text(
-                    pos + egui::vec2(dx, dy),
-                    egui::Align2::CENTER_CENTER,
-                    &label,
-                    font_id.clone(),
-                    outline_color,
-                );
-            }
-            middle_painter.text(pos, egui::Align2::CENTER_CENTER, &label, font_id, color);
+            let galley = middle_painter.layout_no_wrap(label.to_owned(), font_id, color);
+            let half = galley.size() / 2.0;
+            let anchor = egui::pos2(screen_x, screen_y) - half;
+            crate::hud::nameplate::paint_glow_nameplate_galley(
+                &middle_painter, anchor, galley, color, false,
+            );
         }
     }
 }

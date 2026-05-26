@@ -357,7 +357,9 @@ impl SowEngine {
                         }
 
                         if is_allied && !can_renew {
-                            log::warn!("ABERRATION: Player {} tried to propose alliance to active ally {} outside renewal window", proposer, target);
+                            // Benign race: another bot's AcceptAlliance in the same
+                            // tick batch already created this alliance before our
+                            // ProposeAlliance was applied. Silently skip.
                             return;
                         }
 

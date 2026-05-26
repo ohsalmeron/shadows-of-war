@@ -673,7 +673,8 @@ impl SowApp {
                                             };
 
                                             let current_buildings = self.sim.current_snapshot.as_ref().map(|s| &s.buildings[..]).unwrap_or(&[]);
-                                            let temp_buildings: Vec<sow_core::building::Building> = current_buildings.iter().map(|b| {
+                                            self.ui.temp_buildings.clear();
+                                            self.ui.temp_buildings.extend(current_buildings.iter().map(|b| {
                                                 sow_core::building::Building {
                                                     id: b.id,
                                                     tile_idx: b.tile_idx,
@@ -684,7 +685,7 @@ impl SowApp {
                                                     ticks_until_complete: 0,
                                                     modules: b.modules,
                                                 }
-                                            }).collect();
+                                            }));
 
                                             let tile_byte = self.gfx.map_renderer.as_ref()
                                                 .and_then(|mr| mr.terrain.get(tile_idx as usize).copied())
@@ -832,7 +833,7 @@ impl SowApp {
                                             ];
 
                                             for &(kind, label, desc) in &buildings_list {
-                                                let cost = sow_core::building::cost::structure_build_cost_gold(kind, my_id, &temp_buildings);
+                                                let cost = sow_core::building::cost::structure_build_cost_gold(kind, my_id, &self.ui.temp_buildings);
                                                 let is_disabled = self.ui.app.hud_state.gold < cost;
 
                                                 let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());

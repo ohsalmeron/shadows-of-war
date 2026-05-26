@@ -701,6 +701,80 @@ impl SowApp {
             };
             self.send_intent(intent);
             self.ui.app.hud_state.selected_nuke_kind = None;
+        } else if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
+            if let Some(snap) = &self.sim.current_snapshot {
+                let my_id = self.sim.my_player_id.unwrap_or(0);
+                let owners = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.owners.as_slice())
+                    .unwrap_or(&[]);
+                let terrain = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.terrain.as_slice())
+                    .unwrap_or(&[]);
+
+                let snapped_res = resolve_building_placement_tile(
+                    kind,
+                    col,
+                    row,
+                    self.sim.map_w,
+                    self.sim.map_h,
+                    owners,
+                    terrain,
+                    my_id,
+                    &snap.buildings,
+                );
+
+                let cost = {
+                    let i = sow_core::game::BuildingKind::ALL
+                        .iter()
+                        .position(|&k| k == kind)
+                        .unwrap_or(0);
+                    self.ui.app.hud_state.building_costs[i]
+                };
+
+                let mut valid = true;
+                let mut err_msg = String::new();
+
+                if self.ui.app.hud_state.gold < cost {
+                    valid = false;
+                    err_msg = format!("Need {} Gold!", cost);
+                } else {
+                    match snapped_res {
+                        Ok(_) => {}
+                        Err(msg) => {
+                            valid = false;
+                            err_msg = msg.to_string();
+                        }
+                    }
+                }
+
+                if !valid {
+                    self.ui.app.hud_state.show_error = Some(err_msg);
+                } else {
+                    let target_tile = snapped_res.unwrap();
+                    let existing_b = snap.buildings.iter().find(|b| b.tile_idx == target_tile);
+                    if let Some(b) = existing_b {
+                        if b.kind == kind && b.owner_id == my_id {
+                            let intent = sow_core::protocol::GameplayIntent::UpgradeStructure {
+                                building_id: b.id,
+                            };
+                            self.send_intent(intent);
+                        }
+                    } else {
+                        let intent = sow_core::protocol::GameplayIntent::BuildStructure {
+                            kind,
+                            target_tile,
+                        };
+                        self.send_intent(intent);
+                    }
+                }
+            }
+            self.ui.app.hud_state.selected_building_kind = None;
         } else {
             // Check if we clicked on a Warship we own
             let mut clicked_warships = Vec::new();
@@ -781,4 +855,128 @@ impl SowApp {
         self.input.camera_x = cx - map_x * self.input.camera_zoom;
         self.input.camera_y = cy - map_y * self.input.camera_zoom;
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_building_placement_tile(
+    kind: sow_core::game::BuildingKind,
+    click_x: i32,
+    click_y: i32,
+    map_w: u32,
+    map_h: u32,
+    owners: &[u16],
+    terrain: &[u8],
+    my_id: u16,
+    buildings: &[sow_core::protocol::BuildingSnapshot],
+) -> Result<u32, &'static str> {
+    let pokayoke_dist = 25;
+    let pokayoke_dist_sq = pokayoke_dist * pokayoke_dist;
+
+    let mut found_any_owned = false;
+    let mut found_any_land = false;
+    let mut found_any_far_enough = false;
+
+    let mut valid_land_tiles = Vec::new();
+    for dy in -pokayoke_dist..=pokayoke_dist {
+        for dx in -pokayoke_dist..=pokayoke_dist {
+            let tx = click_x + dx;
+            let ty = click_y + dy;
+            if tx < 0 || tx >= map_w as i32 || ty < 0 || ty >= map_h as i32 {
+                continue;
+            }
+            if (dx * dx + dy * dy) >= pokayoke_dist_sq {
+                continue;
+            }
+            let tile_idx = (ty * map_w as i32 + tx) as u32;
+
+            if owners.get(tile_idx as usize).copied().unwrap_or(0) != my_id {
+                continue;
+            }
+            found_any_owned = true;
+
+            let tile_terrain = terrain.get(tile_idx as usize).copied().unwrap_or(0);
+            let is_land = (tile_terrain & 0x80) != 0;
+            if !is_land {
+                continue;
+            }
+            found_any_land = true;
+
+            let mut too_close = false;
+            for rule in kind.spacing_rules() {
+                let min_d = rule.min_distance;
+                let min_d_sq = min_d * min_d;
+                for b in buildings {
+                    if b.kind == rule.target_kind {
+                        let bx = (b.tile_idx % map_w) as i32;
+                        let by = (b.tile_idx / map_w) as i32;
+                        let bdx = tx - bx;
+                        let bdy = ty - by;
+                        if (bdx * bdx + bdy * bdy) < min_d_sq {
+                            too_close = true;
+                            break;
+                        }
+                    }
+                }
+                if too_close {
+                    break;
+                }
+            }
+
+            if too_close {
+                continue;
+            }
+            found_any_far_enough = true;
+
+            if kind == sow_core::game::BuildingKind::Port {
+                let mut near_water = false;
+                for wdy in -2..=2 {
+                    for wdx in -2..=2 {
+                        let nx = tx + wdx;
+                        let ny = ty + wdy;
+                        if nx >= 0 && nx < map_w as i32 && ny >= 0 && ny < map_h as i32 {
+                            let n_idx = (ny * map_w as i32 + nx) as usize;
+                            let n_terr = terrain.get(n_idx).copied().unwrap_or(0);
+                            let n_is_land = (n_terr & 0x80) != 0;
+                            if !n_is_land {
+                                near_water = true;
+                                break;
+                            }
+                        }
+                    }
+                    if near_water {
+                        break;
+                    }
+                }
+                if !near_water {
+                    continue;
+                }
+            }
+
+            valid_land_tiles.push((tx, ty, tile_idx));
+        }
+    }
+
+    if valid_land_tiles.is_empty() {
+        if !found_any_owned {
+            return Err("Target area must be inside your owned territory!");
+        }
+        if !found_any_land {
+            return Err("Structures can only be built on land territory!");
+        }
+        if !found_any_far_enough {
+            if kind == sow_core::game::BuildingKind::City {
+                return Err("Too close to another City! Minimum spacing is 6 tiles.");
+            } else {
+                return Err("Too close to another structure! Spacing rules: City requires 6, other structures require 4.");
+            }
+        }
+        return Err("No space nearby!");
+    }
+
+    valid_land_tiles.sort_unstable_by(|a, b| {
+        let da = (a.0 - click_x) * (a.0 - click_x) + (a.1 - click_y) * (a.1 - click_y);
+        let db = (b.0 - click_x) * (b.0 - click_x) + (b.1 - click_y) * (b.1 - click_y);
+        da.cmp(&db).then_with(|| a.2.cmp(&b.2))
+    });
+    Ok(valid_land_tiles.first().map(|&(_, _, idx)| idx).unwrap())
 }

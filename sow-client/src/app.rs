@@ -168,6 +168,11 @@ pub struct UiState {
     pub troops_webp_registered: bool,
     pub floating_notices: Vec<FloatingNotice>,
     pub death_nameplates: Vec<DeathNameplateAnimation>,
+    pub temp_buildings: Vec<sow_core::building::Building>,
+    pub cached_hovered_building_id: Option<u64>,
+    pub cached_hovered_building_level: u8,
+    pub cached_hovered_building_tooltip: String,
+    pub attack_troop_labels: std::collections::HashMap<u64, (f64, String)>,
 }
 
 pub struct TimeState {
@@ -473,6 +478,11 @@ impl SowApp {
                 troops_webp_registered: false,
                 floating_notices: Vec::new(),
                 death_nameplates: Vec::new(),
+                temp_buildings: Vec::new(),
+                cached_hovered_building_id: None,
+                cached_hovered_building_level: 0,
+                cached_hovered_building_tooltip: String::new(),
+                attack_troop_labels: std::collections::HashMap::new(),
             },
             time: TimeState {
                 last_tick,
