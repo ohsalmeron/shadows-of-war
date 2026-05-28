@@ -93,10 +93,18 @@ pub(crate) fn render(
             };
 
             for i in 0..num_particles {
-                let h1 = hash_xorshift(seed as u32 ^ (i as u32).wrapping_mul(2654435761)) * 2.0 - 1.0;
-                let h2 = hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(3405691582)) * 2.0 - 1.0;
-                let h3 = hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(123456789));
-                let h4 = hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(987654321));
+                let h1 =
+                    hash_xorshift(seed as u32 ^ (i as u32).wrapping_mul(2654435761)) * 2.0 - 1.0;
+                let h2 = hash_xorshift(
+                    (seed as u32)
+                        .wrapping_add(i as u32)
+                        .wrapping_mul(3405691582),
+                ) * 2.0
+                    - 1.0;
+                let h3 =
+                    hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(123456789));
+                let h4 =
+                    hash_xorshift((seed as u32).wrapping_add(i as u32).wrapping_mul(987654321));
 
                 let mut dx = h1;
                 let mut dy = h2;
@@ -116,10 +124,19 @@ pub(crate) fn render(
                 let is_stem = i % 3 == 0;
                 let (p_dist_x, p_dist_y, rise_mult) = if is_stem {
                     // Stem particles stay close to center horizontally, rise vertically
-                    (dx * expansion * speed * exp.max_radius * 0.25, dy * expansion * speed * exp.max_radius * 0.1, 1.2)
+                    (
+                        dx * expansion * speed * exp.max_radius * 0.25,
+                        dy * expansion * speed * exp.max_radius * 0.1,
+                        1.2,
+                    )
                 } else {
                     // Cap particles expand outward horizontally and vertically
-                    (dx * expansion * speed * exp.max_radius * 0.9, dy * expansion * speed * exp.max_radius * 0.7 - (expansion * exp.max_radius * 0.25), 1.0)
+                    (
+                        dx * expansion * speed * exp.max_radius * 0.9,
+                        dy * expansion * speed * exp.max_radius * 0.7
+                            - (expansion * exp.max_radius * 0.25),
+                        1.0,
+                    )
                 };
 
                 let rise = p * (1.1 + h3 * 0.9) * exp.max_radius * 0.4 * rise_mult;
@@ -158,16 +175,12 @@ pub(crate) fn render(
                         (160.0 * (1.0 - p)) as u8,
                     )
                 } else {
-                    (
-                        80,
-                        80,
-                        80,
-                        (120.0 * (1.0 - p)) as u8,
-                    )
+                    (80, 80, 80, (120.0 * (1.0 - p)) as u8)
                 };
 
                 // Radius starts small, swells up volumetric, and scales down slightly as it fades into smoke
-                let particle_radius = exp.max_radius * 0.25 * size_mult * (0.8 + expansion * 0.6) * zoom_scaled;
+                let particle_radius =
+                    exp.max_radius * 0.25 * size_mult * (0.8 + expansion * 0.6) * zoom_scaled;
                 painter.circle_filled(
                     egui::pos2(p_screen_x, p_screen_y),
                     particle_radius.max(1.5),

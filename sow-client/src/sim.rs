@@ -40,27 +40,51 @@ impl SowApp {
                         let my_id = self.sim.my_player_id.unwrap_or(1);
                         for tx in &snap.resource_transfers {
                             if tx.receiver_id == my_id {
-                                let sender_name = snap.players.iter()
+                                let sender_name = snap
+                                    .players
+                                    .iter()
                                     .find(|p| p.id == tx.sender_id)
                                     .map(|p| p.name.as_str())
                                     .unwrap_or("Ally");
                                 let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
-                                    (true, true) => format!("🎁 {} sent 💰{} & 🛡️{}!", sender_name, sow_ui::utils::format_number(tx.gold), sow_ui::utils::format_number(tx.troops)),
-                                    (true, false) => format!("💰 {} sent +{} Gold!", sender_name, sow_ui::utils::format_number(tx.gold)),
-                                    (false, true) => format!("🛡️ {} sent +{} Troops!", sender_name, sow_ui::utils::format_number(tx.troops)),
+                                    (true, true) => format!(
+                                        "🎁 {} sent 💰{} & 🛡️{}!",
+                                        sender_name,
+                                        sow_ui::utils::format_number(tx.gold),
+                                        sow_ui::utils::format_number(tx.troops)
+                                    ),
+                                    (true, false) => format!(
+                                        "💰 {} sent +{} Gold!",
+                                        sender_name,
+                                        sow_ui::utils::format_number(tx.gold)
+                                    ),
+                                    (false, true) => format!(
+                                        "🛡️ {} sent +{} Troops!",
+                                        sender_name,
+                                        sow_ui::utils::format_number(tx.troops)
+                                    ),
                                     _ => continue,
                                 };
-                                self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+                                self.ui
+                                    .app
+                                    .hud_state
+                                    .push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
                             }
                         }
                         for rej in &snap.resource_rejections {
                             if rej.requester_id == my_id {
-                                let rejector_name = snap.players.iter()
+                                let rejector_name = snap
+                                    .players
+                                    .iter()
                                     .find(|p| p.id == rej.rejector_id)
                                     .map(|p| p.name.as_str())
                                     .unwrap_or("Ally");
-                                let msg = format!("❌ {} rejected your request for help!", rejector_name);
-                                self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(239, 68, 68));
+                                let msg =
+                                    format!("❌ {} rejected your request for help!", rejector_name);
+                                self.ui
+                                    .app
+                                    .hud_state
+                                    .push_notification(msg, egui::Color32::from_rgb(239, 68, 68));
                             }
                         }
                     }
@@ -117,27 +141,51 @@ impl SowApp {
                     let my_id = self.sim.my_player_id.unwrap_or(1);
                     for tx in &snap.resource_transfers {
                         if tx.receiver_id == my_id {
-                            let sender_name = snap.players.iter()
+                            let sender_name = snap
+                                .players
+                                .iter()
                                 .find(|p| p.id == tx.sender_id)
                                 .map(|p| p.name.as_str())
                                 .unwrap_or("Ally");
                             let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
-                                (true, true) => format!("🎁 {} sent 💰{} & 🛡️{}!", sender_name, sow_ui::utils::format_number(tx.gold), sow_ui::utils::format_number(tx.troops)),
-                                (true, false) => format!("💰 {} sent +{} Gold!", sender_name, sow_ui::utils::format_number(tx.gold)),
-                                (false, true) => format!("🛡️ {} sent +{} Troops!", sender_name, sow_ui::utils::format_number(tx.troops)),
+                                (true, true) => format!(
+                                    "🎁 {} sent 💰{} & 🛡️{}!",
+                                    sender_name,
+                                    sow_ui::utils::format_number(tx.gold),
+                                    sow_ui::utils::format_number(tx.troops)
+                                ),
+                                (true, false) => format!(
+                                    "💰 {} sent +{} Gold!",
+                                    sender_name,
+                                    sow_ui::utils::format_number(tx.gold)
+                                ),
+                                (false, true) => format!(
+                                    "🛡️ {} sent +{} Troops!",
+                                    sender_name,
+                                    sow_ui::utils::format_number(tx.troops)
+                                ),
                                 _ => continue,
                             };
-                            self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+                            self.ui
+                                .app
+                                .hud_state
+                                .push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
                         }
                     }
                     for rej in &snap.resource_rejections {
                         if rej.requester_id == my_id {
-                            let rejector_name = snap.players.iter()
+                            let rejector_name = snap
+                                .players
+                                .iter()
                                 .find(|p| p.id == rej.rejector_id)
                                 .map(|p| p.name.as_str())
                                 .unwrap_or("Ally");
-                            let msg = format!("❌ {} rejected your request for help!", rejector_name);
-                            self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(239, 68, 68));
+                            let msg =
+                                format!("❌ {} rejected your request for help!", rejector_name);
+                            self.ui
+                                .app
+                                .hud_state
+                                .push_notification(msg, egui::Color32::from_rgb(239, 68, 68));
                         }
                     }
                 }

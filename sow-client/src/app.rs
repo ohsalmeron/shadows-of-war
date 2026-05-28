@@ -166,7 +166,6 @@ pub struct UiState {
     pub cached_player_count: usize,
     pub star_svg_registered: bool,
     pub handshake_svg_registered: bool,
-    pub troops_webp_registered: bool,
     pub floating_notices: Vec<FloatingNotice>,
     pub death_nameplates: Vec<DeathNameplateAnimation>,
 
@@ -218,6 +217,8 @@ pub struct SowApp {
     #[cfg(target_arch = "wasm32")]
     pub wasm_doc_was_visible: bool,
     #[cfg(target_arch = "wasm32")]
+    pub(crate) web_loader_hidden: bool,
+    #[cfg(target_arch = "wasm32")]
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
     pub map_editor: Option<sow_map::MapEditorSession>,
 }
@@ -241,7 +242,7 @@ impl SowApp {
                 log::error!("PANIC: {}", info);
             }));
         }
-        #[cfg(not(target_os = "android"))]
+        #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
         {
             let _ = env_logger::builder()
                 .filter_level(log::LevelFilter::Info)
@@ -296,6 +297,8 @@ impl SowApp {
         let ws_reconnect_after_resume: bool = false;
         #[cfg(target_arch = "wasm32")]
         let wasm_doc_was_visible: bool = true;
+        #[cfg(target_arch = "wasm32")]
+        let web_loader_hidden: bool = false;
         #[cfg(target_arch = "wasm32")]
         let ime_bridge = crate::ime::WasmImeBridge::new();
 
@@ -481,7 +484,6 @@ impl SowApp {
                 cached_player_count: 0,
                 star_svg_registered: false,
                 handshake_svg_registered: false,
-                troops_webp_registered: false,
                 floating_notices: Vec::new(),
                 death_nameplates: Vec::new(),
 
@@ -515,6 +517,8 @@ impl SowApp {
             tokio_rt,
             #[cfg(target_arch = "wasm32")]
             wasm_doc_was_visible,
+            #[cfg(target_arch = "wasm32")]
+            web_loader_hidden,
             #[cfg(target_arch = "wasm32")]
             ime_bridge,
             map_editor: None,

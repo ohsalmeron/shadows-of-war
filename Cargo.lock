@@ -3495,6 +3495,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "bytemuck",
+ "egui",
  "libm",
  "log",
  "serde",

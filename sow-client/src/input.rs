@@ -757,10 +757,8 @@ impl SowApp {
                     self.ui.app.hud_state.show_error = Some(err_msg);
                 } else {
                     let target_tile = snapped_res.unwrap();
-                    let intent = sow_core::protocol::GameplayIntent::BuildStructure {
-                        kind,
-                        target_tile,
-                    };
+                    let intent =
+                        sow_core::protocol::GameplayIntent::BuildStructure { kind, target_tile };
                     self.send_intent(intent);
                 }
             }

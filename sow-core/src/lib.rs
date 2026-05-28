@@ -23,6 +23,7 @@ pub mod sea_lane;
 pub mod warp_fleet;
 
 pub mod assets;
+pub use assets::register_game_assets;
 pub mod map_legacy;
 pub mod protocol;
 pub mod tribes;

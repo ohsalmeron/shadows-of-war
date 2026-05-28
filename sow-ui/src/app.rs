@@ -92,7 +92,7 @@ impl ClientApp {
                 main_menu::draw(
                     ui,
                     &mut self.main_menu_state,
-                    &self.asset_loader,
+                    &mut self.asset_loader,
                     self.settings_state.language,
                 )
             }

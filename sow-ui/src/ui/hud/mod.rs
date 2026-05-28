@@ -340,7 +340,7 @@ pub fn draw(
 ) -> Option<UiAction> {
     static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
     REGISTER_ONCE.call_once(|| {
-        sow_core::register_game_assets!(ui.ctx(), "../../../../sow-client/assets/");
+        sow_core::register_game_assets(ui.ctx());
     });
 
     let mut action = None;
@@ -355,12 +355,12 @@ pub fn draw(
     };
 
     let bottom_anchor = if compact {
-        egui::Align2::RIGHT_BOTTOM
+        egui::Align2::CENTER_BOTTOM
     } else {
         egui::Align2::CENTER_BOTTOM
     };
     let bottom_offset = if compact {
-        egui::vec2(-12.0, -10.0 - state.safe_area_bottom)
+        egui::vec2(0.0, -state.safe_area_bottom)
     } else {
         egui::vec2(0.0, -state.safe_area_bottom)
     };
@@ -372,11 +372,7 @@ pub fn draw(
         .show(ui.ctx(), |ui| {
             ui.set_max_width(panel_w);
 
-            let panel_bg = if compact {
-                egui::Color32::from_rgb(12, 12, 14)
-            } else {
-                crate::ui::theme::panel_bg_transparent()
-            };
+            let panel_bg = crate::ui::theme::panel_bg_transparent();
             let border_color =
                 if state.selected_building_kind.is_some() || state.selected_nuke_kind.is_some() {
                     crate::ui::theme::accent_solo_cyan()
@@ -1058,7 +1054,7 @@ pub fn draw(
         } else {
             area = area.anchor(
                 Align2::RIGHT_BOTTOM,
-                vec2(-64.0, -100.0 - state.safe_area_bottom + y_offset),
+                vec2(-64.0, -140.0 - state.safe_area_bottom + y_offset),
             );
         }
 

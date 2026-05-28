@@ -32,16 +32,21 @@ impl SowApp {
             let request = ehttp::Request::get(&url);
             let tx = self.tasks.map_tx.clone();
             ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-                if let Ok(res) = result {
-                    if res.ok {
-                        if let Ok(catalog) = serde_json::from_slice::<
-                            Vec<sow_core::map_legacy::MapManifest>,
-                        >(&res.bytes)
-                        {
-                            let _ = tx.send(crate::MapDownloadEvent::CatalogReady(catalog));
-                        }
+                let catalog = match result {
+                    Ok(res) if res.ok => serde_json::from_slice::<
+                        Vec<sow_core::map_legacy::MapManifest>,
+                    >(&res.bytes)
+                    .unwrap_or_default(),
+                    Ok(res) => {
+                        log::warn!("maps.json fetch failed: HTTP {}", res.status);
+                        Vec::new()
                     }
-                }
+                    Err(e) => {
+                        log::warn!("maps.json fetch error: {}", e);
+                        Vec::new()
+                    }
+                };
+                let _ = tx.send(crate::MapDownloadEvent::CatalogReady(catalog));
             });
         }
 

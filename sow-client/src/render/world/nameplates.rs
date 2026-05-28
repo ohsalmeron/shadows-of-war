@@ -1,5 +1,9 @@
 use super::*;
 
+const REQUEST_WEBP: &[u8] = include_bytes!("../../../assets/request.webp");
+const HANDSHAKE_WEBP: &[u8] = include_bytes!("../../../assets/handshake.webp");
+const BETRAY_WEBP: &[u8] = include_bytes!("../../../assets/betray.webp");
+
 /// Damped spring overshoot: approaches 1.0 with a single bounce.
 #[inline]
 pub(crate) fn spring_overshoot(t: f32) -> f32 {
@@ -54,11 +58,7 @@ fn paint_circular_avatar(
         radius + border * 0.3,
         egui::Stroke::new(border, egui::Color32::from_black_alpha(160)),
     );
-    painter.circle_stroke(
-        center,
-        radius,
-        egui::Stroke::new(border * 0.8, frame_color),
-    );
+    painter.circle_stroke(center, radius, egui::Stroke::new(border * 0.8, frame_color));
     painter.circle_stroke(
         center,
         radius - border * 0.15,
@@ -117,12 +117,18 @@ pub(crate) fn render(
 
         // Precompute scaled nameplate font sizes once per frame for 100% CPU/memory efficiency!
         // Round to whole point sizes to prevent egui glyph atlas invalidations.
-        let font_size_my =
+        let mut font_size_my =
             ((visual_config.nameplate_my_size * ui_text_scale * zoom_scale).round()).max(2.0);
-        let font_size_nation =
+        let mut font_size_nation =
             ((visual_config.nameplate_nation_size * ui_text_scale * zoom_scale).round()).max(2.0);
-        let font_size_tribe =
+        let mut font_size_tribe =
             ((visual_config.nameplate_tribe_size * ui_text_scale * zoom_scale).round()).max(3.0);
+
+        if zoom_scaled < 0.6 {
+            font_size_my *= 0.5;
+            font_size_nation *= 0.5;
+            font_size_tribe *= 0.5;
+        }
 
         // Frame-constant trig — computed once, reused by every player
 
@@ -140,6 +146,89 @@ pub(crate) fn render(
 
             let is_me = player.id == my_id;
             let is_human = player.player_type == sow_core::player::PlayerType::Human;
+
+            // LOD 3 optimization: Simplify visuals, no avatars, flat text, dot fallbacks
+            if zoom_scaled < 0.6 {
+                let map_area = (sim.map_w * sim.map_h).max(1) as f32;
+                let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
+                // Stricter threshold for nameplate text on LOD 3
+                let min_tiles = if player.id >= 200 { 24.0 } else { 6.0 };
+                let show_full =
+                    (normalized_tiles * zoom_scale) >= min_tiles && full_labels_drawn < 50;
+
+                if show_full {
+                    full_labels_drawn += 1;
+                    let font_size = if is_me {
+                        font_size_my
+                    } else if player.id < 200 {
+                        font_size_nation
+                    } else {
+                        font_size_tribe
+                    };
+                    let font_id = egui::FontId::proportional(font_size);
+
+                    let display_name = if player.name.is_empty() {
+                        if is_human {
+                            format!("Player {}", player.id)
+                        } else if player.id >= 200 {
+                            format!("Tribe {}", player.id - 199)
+                        } else {
+                            format!("Nation {}", player.id - 103)
+                        }
+                    } else {
+                        player.name.clone()
+                    };
+
+                    let mut cached_name = None;
+                    if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
+                        if entry.0 == display_name && entry.2 == font_id {
+                            cached_name = Some(entry.3.clone());
+                        }
+                    }
+
+                    let name_galley = if let Some(ng) = cached_name {
+                        ng
+                    } else {
+                        let ng =
+                            layout_nameplate_name_galley(painter, font_id.clone(), &display_name);
+                        ui.nameplate_galleys.insert(
+                            player.id,
+                            (
+                                display_name,
+                                String::new(),
+                                font_id.clone(),
+                                ng.clone(),
+                                ng.clone(),
+                            ),
+                        );
+                        ng
+                    };
+
+                    let name_pos = egui::pos2(
+                        center.x - name_galley.rect.width() / 2.0,
+                        center.y - name_galley.rect.height() / 2.0,
+                    );
+                    let rgb = player.color;
+                    let text_color = egui::Color32::from_rgb(
+                        (rgb[0] * 255.0).clamp(0.0, 255.0) as u8,
+                        (rgb[1] * 255.0).clamp(0.0, 255.0) as u8,
+                        (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
+                    );
+
+                    // Simple flat text without shadows for high performance LOD 3
+                    painter.galley_with_override_text_color(name_pos, name_galley, text_color);
+                } else {
+                    // High-performance dot fallback
+                    painter.circle_filled(center, dot_r * 0.8, pc);
+                    painter.circle_stroke(
+                        center,
+                        dot_r * 0.8,
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
+                    );
+                }
+                continue;
+            }
+
             let draw_as_premium = is_human
                 || (player.player_type == sow_core::player::PlayerType::Nation
                     && zoom_scaled >= 1.5);
@@ -201,7 +290,7 @@ pub(crate) fn render(
                     // Build status flags for the premium static emojis
                     let is_disconnected = player.disconnected;
                     let mut betrayal_flash = false;
- 
+
                     if !is_disconnected {
                         let has_betrayal = player.active_emoji.as_deref() == Some("🗡️");
                         if has_betrayal {
@@ -245,7 +334,7 @@ pub(crate) fn render(
                         REGISTER_REQUEST_ONCE.call_once(|| {
                             painter.ctx().include_bytes(
                                 "bytes://request.webp",
-                                include_bytes!("../../../assets/request.webp").as_slice(),
+                                REQUEST_WEBP,
                             );
                         });
 
@@ -333,7 +422,7 @@ pub(crate) fn render(
                         REGISTER_HANDSHAKE_ONCE.call_once(|| {
                             painter.ctx().include_bytes(
                                 "bytes://handshake.webp",
-                                include_bytes!("../../../assets/handshake.webp").as_slice(),
+                                HANDSHAKE_WEBP,
                             );
                         });
 
@@ -418,10 +507,11 @@ pub(crate) fn render(
 
                     // Betrayal WebP Icon Animation (Spring Overshoot)
                     let betrayal_anim_id = egui::Id::new(("betrayal_anim_progress", player.id));
-                    let betrayal_anim =
-                        painter
-                            .ctx()
-                            .animate_bool_with_time(betrayal_anim_id, betrayal_flash, 0.25);
+                    let betrayal_anim = painter.ctx().animate_bool_with_time(
+                        betrayal_anim_id,
+                        betrayal_flash,
+                        0.25,
+                    );
 
                     let mut betrayal_offset = 0.0_f32;
                     if betrayal_anim > 0.01 {
@@ -429,7 +519,7 @@ pub(crate) fn render(
                         REGISTER_BETRAY_ONCE.call_once(|| {
                             painter.ctx().include_bytes(
                                 "bytes://betray.webp",
-                                include_bytes!("../../../assets/betray.webp").as_slice(),
+                                BETRAY_WEBP,
                             );
                         });
 
@@ -447,7 +537,11 @@ pub(crate) fn render(
                         if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
                             let anim_scale = if betrayal_flash {
                                 let t = betrayal_anim;
-                                if t >= 1.0 { 1.0 } else { spring_overshoot(t) }
+                                if t >= 1.0 {
+                                    1.0
+                                } else {
+                                    spring_overshoot(t)
+                                }
                             } else {
                                 betrayal_anim
                             };
@@ -458,11 +552,10 @@ pub(crate) fn render(
                                 egui::vec2(size, size),
                             );
 
-                            let betray_painter =
-                                painter.ctx().layer_painter(egui::LayerId::new(
-                                    egui::Order::Middle,
-                                    egui::Id::new(("floating_betray_icon", player.id)),
-                                ));
+                            let betray_painter = painter.ctx().layer_painter(egui::LayerId::new(
+                                egui::Order::Middle,
+                                egui::Id::new(("floating_betray_icon", player.id)),
+                            ));
 
                             // Red danger glow
                             let glow_r = size * 0.8;
@@ -471,7 +564,9 @@ pub(crate) fn render(
                                 betray_rect.center(),
                                 glow_r * 1.4,
                                 egui::Color32::from_rgba_unmultiplied(
-                                    220, 38, 38,
+                                    220,
+                                    38,
+                                    38,
                                     (glow_a * 120.0) as u8,
                                 ),
                             );
@@ -479,7 +574,9 @@ pub(crate) fn render(
                                 betray_rect.center(),
                                 glow_r,
                                 egui::Color32::from_rgba_unmultiplied(
-                                    220, 38, 38,
+                                    220,
+                                    38,
+                                    38,
                                     (glow_a * 255.0) as u8,
                                 ),
                             );
@@ -515,7 +612,8 @@ pub(crate) fn render(
                             let final_emoji_size = base_emoji_size * anim_scale;
 
                             let mut base_y_offset = font_size * 1.889;
-                            let max_float_offset = req_offset.max(allied_offset).max(betrayal_offset);
+                            let max_float_offset =
+                                req_offset.max(allied_offset).max(betrayal_offset);
                             if max_float_offset > 0.01 {
                                 base_y_offset += max_float_offset;
                             }
@@ -591,7 +689,11 @@ pub(crate) fn render(
                                         center.x - emoji_galley.size().x / 2.0,
                                         emoji_y - emoji_galley.size().y / 2.0,
                                     );
-                                    emoji_painter.galley(emoji_pos, emoji_galley, egui::Color32::WHITE);
+                                    emoji_painter.galley(
+                                        emoji_pos,
+                                        emoji_galley,
+                                        egui::Color32::WHITE,
+                                    );
                                 }
                             }
                         }
@@ -623,10 +725,10 @@ pub(crate) fn render(
 
                     let troops_str = sow_ui::utils::format_number(player.troops);
                     let font_id = egui::FontId::proportional(font_size);
- 
+
                     let mut cached_name = None;
                     let mut cached_troops = None;
- 
+
                     if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
                         let name_matches = if player.name.is_empty() {
                             entry.0.starts_with("Player ")
@@ -634,13 +736,13 @@ pub(crate) fn render(
                         } else {
                             entry.0 == player.name
                         };
- 
+
                         if name_matches && entry.1 == troops_str && entry.2 == font_id {
                             cached_name = Some(entry.3.clone());
                             cached_troops = Some(entry.4.clone());
                         }
                     }
- 
+
                     let (name_galley, troops_galley) = if let (Some(ng), Some(tg)) =
                         (cached_name, cached_troops)
                     {
@@ -651,9 +753,10 @@ pub(crate) fn render(
                         } else {
                             player.name.clone()
                         };
- 
-                        let ng = layout_nameplate_name_galley(painter, font_id.clone(), &display_name);
- 
+
+                        let ng =
+                            layout_nameplate_name_galley(painter, font_id.clone(), &display_name);
+
                         let troops_font_size = font_size * 1.30;
                         let troops_font_id = egui::FontId::proportional(troops_font_size);
                         let tg = crate::hud::nameplate::layout_nameplate_troops_galley(
@@ -661,7 +764,7 @@ pub(crate) fn render(
                             troops_font_id,
                             &troops_str,
                         );
- 
+
                         ui.nameplate_galleys.insert(
                             player.id,
                             (
@@ -672,7 +775,7 @@ pub(crate) fn render(
                                 tg.clone(),
                             ),
                         );
- 
+
                         (ng, tg)
                     };
 
@@ -736,15 +839,17 @@ pub(crate) fn render(
                     }
 
                     // 1. Circular avatar with decorative frame
-                    let avatar_center = egui::pos2(
-                        cur_x + avatar_size / 2.0,
-                        row12_y + total_h / 2.0,
-                    );
+                    let avatar_center =
+                        egui::pos2(cur_x + avatar_size / 2.0, row12_y + total_h / 2.0);
                     let avatar_r = avatar_size / 2.0;
                     if player.player_type == sow_core::player::PlayerType::Nation {
                         paint_circular_avatar(
-                            painter, avatar_center, avatar_r,
-                            None, vibrant_color, vibrant_color,
+                            painter,
+                            avatar_center,
+                            avatar_r,
+                            None,
+                            vibrant_color,
+                            vibrant_color,
                         );
                     } else {
                         let avatar_tex = ui.app.asset_loader.avatars.get(&player.leader).or(ui
@@ -754,8 +859,12 @@ pub(crate) fn render(
                             .as_ref());
                         let tex_id = avatar_tex.map(|t| t.id());
                         paint_circular_avatar(
-                            painter, avatar_center, avatar_r,
-                            tex_id, vibrant_color, vibrant_color,
+                            painter,
+                            avatar_center,
+                            avatar_r,
+                            tex_id,
+                            vibrant_color,
+                            vibrant_color,
                         );
                     }
                     cur_x += avatar_size + spacing_x;
@@ -803,8 +912,8 @@ pub(crate) fn render(
             let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
             let zoom_scaled_local = input.camera_zoom / sf;
             let min_tiles = if player.id >= 200 { 8.0 } else { 2.0 };
-            let show_full = (normalized_tiles * zoom_scaled_local) >= min_tiles
-                && full_labels_drawn < 100;
+            let show_full =
+                (normalized_tiles * zoom_scaled_local) >= min_tiles && full_labels_drawn < 100;
 
             if show_full {
                 full_labels_drawn += 1;
@@ -1009,7 +1118,7 @@ pub(crate) fn render(
                     REGISTER_REQUEST_ONCE.call_once(|| {
                         painter.ctx().include_bytes(
                             "bytes://request.webp",
-                            include_bytes!("../../../assets/request.webp").as_slice(),
+                            REQUEST_WEBP,
                         );
                     });
 
@@ -1090,7 +1199,7 @@ pub(crate) fn render(
                     REGISTER_HANDSHAKE_ONCE.call_once(|| {
                         painter.ctx().include_bytes(
                             "bytes://handshake.webp",
-                            include_bytes!("../../../assets/handshake.webp").as_slice(),
+                            HANDSHAKE_WEBP,
                         );
                     });
 
@@ -1166,9 +1275,10 @@ pub(crate) fn render(
 
                 // Betrayal WebP Icon Animation (Spring Overshoot)
                 let betrayal_anim_id = egui::Id::new(("betrayal_anim_progress", player.id));
-                let betrayal_anim = painter
-                    .ctx()
-                    .animate_bool_with_time(betrayal_anim_id, betrayal_flash, 0.25);
+                let betrayal_anim =
+                    painter
+                        .ctx()
+                        .animate_bool_with_time(betrayal_anim_id, betrayal_flash, 0.25);
 
                 let mut betrayal_height = 0.0_f32;
                 if betrayal_anim > 0.01 {
@@ -1176,7 +1286,7 @@ pub(crate) fn render(
                     REGISTER_BETRAY_ONCE.call_once(|| {
                         painter.ctx().include_bytes(
                             "bytes://betray.webp",
-                            include_bytes!("../../../assets/betray.webp").as_slice(),
+                            BETRAY_WEBP,
                         );
                     });
 
@@ -1194,7 +1304,11 @@ pub(crate) fn render(
                     if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
                         let anim_scale = if betrayal_flash {
                             let t = betrayal_anim;
-                            if t >= 1.0 { 1.0 } else { spring_overshoot(t) }
+                            if t >= 1.0 {
+                                1.0
+                            } else {
+                                spring_overshoot(t)
+                            }
                         } else {
                             betrayal_anim
                         };
@@ -1212,7 +1326,9 @@ pub(crate) fn render(
                             betray_rect.center(),
                             glow_r * 1.4,
                             egui::Color32::from_rgba_unmultiplied(
-                                220, 38, 38,
+                                220,
+                                38,
+                                38,
                                 (glow_a * 120.0) as u8,
                             ),
                         );
@@ -1220,7 +1336,9 @@ pub(crate) fn render(
                             betray_rect.center(),
                             glow_r,
                             egui::Color32::from_rgba_unmultiplied(
-                                220, 38, 38,
+                                220,
+                                38,
+                                38,
                                 (glow_a * 255.0) as u8,
                             ),
                         );

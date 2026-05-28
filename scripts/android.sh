@@ -9,6 +9,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+# shellcheck source=web-assets.sh
+source "${ROOT}/scripts/web-assets.sh"
 
 green() { echo -e "\e[32m$1\e[0m"; }
 cyan()  { echo -e "\e[36m$1\e[0m"; }
@@ -189,7 +191,21 @@ EOF
       -e "s/__BUILD_TS__/${BUILD_TS}/g" \
       "${LOADER_TEMPLATE}" > "${ASSETS_DIR}/index.html"
 
+  python3 - "${ROOT}/web/loader.js" "${ASSETS_DIR}/index.html" <<'PY'
+import sys
+from pathlib import Path
+loader = Path(sys.argv[1])
+html_path = Path(sys.argv[2])
+js = loader.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
+html = html_path.read_text(encoding="utf-8")
+marker = "/* __INLINE_LOADER_JS__ */"
+if marker not in html:
+    raise SystemExit("index.html: no loader injection point")
+html_path.write_text(html.replace(marker, js, 1), encoding="utf-8")
+PY
+
   rsync -a "${ROOT}/assets/" "${ASSETS_DIR}/assets/" || true
+  copy_web_loader_assets "${ASSETS_DIR}/assets/ui"
   cp "${ROOT}/web/sow.svg" "${ASSETS_DIR}/sow.svg" || true
 
   cyan "📦 Compiling Android WebView App..."

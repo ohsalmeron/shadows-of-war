@@ -518,7 +518,7 @@ impl MapEditorSession {
 
         static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
         REGISTER_ONCE.call_once(|| {
-            sow_core::register_game_assets!(self.egui_ctx, "../../sow-client/assets/");
+            sow_core::register_game_assets(&self.egui_ctx);
         });
 
         let egui_ctx = self.egui_ctx.clone();

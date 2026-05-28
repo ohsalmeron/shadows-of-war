@@ -50,6 +50,21 @@ fn get_maps_url() -> String {
     url
 }
 
+fn get_assets_url() -> String {
+    #[allow(unused_mut)]
+    let mut url =
+        std::env::var("SOW_ASSETS_URL").unwrap_or_else(|_| "https://shadowsofwar.io/assets".to_string());
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(window) = web_sys::window() {
+            if let Ok(origin) = window.location().origin() {
+                url = format!("{}/assets", origin);
+            }
+        }
+    }
+    url
+}
+
 mod config;
 
 /// Allow very wide map views (scroll / pinch clamp to this minimum).
@@ -91,6 +106,11 @@ pub enum MapDownloadEvent {
     ThumbnailReady(String, Vec<u8>),
     ManifestReady(String, sow_core::map_legacy::MapManifest),
     CatalogReady(Vec<sow_core::map_legacy::MapManifest>),
+    LeaderPortraitReady {
+        leader: sow_core::player::Leader,
+        mobile: bool,
+        bytes: Vec<u8>,
+    },
     Progress(String, u8),
     Error(String),
 }

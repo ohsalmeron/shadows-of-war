@@ -187,23 +187,23 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 1.0,
+            global_speed_multiplier: 1.00,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
             attack_cost_neutral: 1.0,
-            terrain_multiplier_highland: 2.5,
-            terrain_multiplier_mountain: 5.0,
+            terrain_multiplier_highland: 4.0,
+            terrain_multiplier_mountain: 8.0,
 
-            max_tiles_per_tick: 256.0,
-            max_tiles_per_tick_reference_troops: 10000.0,
+            max_tiles_per_tick: 2048.0,
+            max_tiles_per_tick_reference_troops: 50000.0,
             max_tiles_per_tick_at_reference: 64.0,
-            momentum_divisor: 125.0,
+            momentum_divisor: 1250.0,
 
             // Economy & Income Rates
             starting_troops: 1000.0,
             starting_gold: 100.0,
-            gold_base_income: 4.0,
+            gold_base_income: 1.0,
             troop_base_income: 250.0,
             max_troops_base: 10.0,
             max_troops_scale: 100.0,
@@ -215,8 +215,8 @@ impl Default for GameConfig {
             bunker_priority: 120.0,
             bunker_strength: 4.0,
             factory_gold_income: 4.0,
-            port_troop_income: 150.0,
-            port_gold_income: 5.0,
+            port_troop_income: 50.0,
+            port_gold_income: 4.0,
             cost_city: 250.0,
             cost_bunker: 75.0,
             cost_factory: 125.0,

@@ -141,8 +141,18 @@ impl SowEngine {
 
         let mut tribes_needing_city = Vec::new();
         for player in self.state.players.iter().filter(|p| p.alive) {
+            let has_city = aggs
+                .get(player.id as usize)
+                .is_some_and(|a| a.city_levels > 0);
+            let is_standard_bot = player.player_type == crate::player::PlayerType::Bot
+                && !player.id.is_multiple_of(100);
+            let needs_city = if is_standard_bot {
+                player.cities == 0
+            } else {
+                !has_city
+            };
             if player.player_type == crate::player::PlayerType::Bot
-                && player.cities == 0
+                && needs_city
                 && player.tile_count >= 150
             {
                 tribes_needing_city.push((
@@ -194,7 +204,6 @@ impl SowEngine {
                 if let Some(p) = self.state.player_mut(tid) {
                     p.cities += 1;
                 }
-                log::info!("Tribe {} established City Center at tile {}", tid, tile_idx);
             }
         }
     }

@@ -66,7 +66,7 @@ pub fn draw_leader_picker_modal(
     ctx: &egui::Context,
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
 ) -> bool {
     let mut close = false;
 
@@ -76,6 +76,11 @@ pub fn draw_leader_picker_modal(
         .show(ctx, |ui| {
             let screen_rect = ctx.content_rect();
             let is_mobile = screen_rect.width() < 900.0 || screen_rect.height() < 600.0;
+
+            for &leader in &sow_core::player::Leader::ALL {
+                asset_loader.request_leader_portrait(leader, is_mobile);
+            }
+            asset_loader.request_leader_portrait(*selected_leader, is_mobile);
 
             let content_rect = if is_mobile {
                 let mut rect = screen_rect;

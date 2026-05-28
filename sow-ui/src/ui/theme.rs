@@ -20,7 +20,7 @@ pub mod palette {
     } // Translucent glass base
     #[inline]
     pub fn surface_transparent() -> Color32 {
-        Color32::from_rgba_unmultiplied(12, 12, 14, 100)
+        Color32::from_rgba_unmultiplied(12, 12, 14, 50)
     }
 
     #[inline]

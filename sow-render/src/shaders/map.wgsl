@@ -299,9 +299,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var is_border = false;
     var is_green_border = false;
     var min_border_dist = 99.0;
+    var is_shore_edge = false;
+    var min_shore_dist = 99.0;
 
     var thickness = globals.border_thickness;
     let border_darkness = globals.border_darkness;
+    let shore_thickness = globals.shore_thickness;
+    let shore_darkness = globals.shore_darkness;
 
     // Border breathe: subtle thickness pulse per owner
     if globals.effect_breathe > 0.0 && owner_id > 0u {
@@ -338,16 +342,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 let dist_to_edge = 0.5 - dot(local_pos, dir);
 
                 if !neighbor_is_land {
-                    if dist_to_edge < thickness {
-                        is_border = true;
-                        min_border_dist = min(min_border_dist, dist_to_edge);
+                    if dist_to_edge < shore_thickness {
+                        is_shore_edge = true;
+                        min_shore_dist = min(min_shore_dist, dist_to_edge);
                     }
                 } else {
                     if owner_id > 0u && neighbor_owner != owner_id {
+                        let green_exists = is_tribe && (neighbor_owner >= 200u);
+                        // LOD 3 Optimization: Skip drawing borders between minor tribes to reduce macro noise
+                        if globals.zoom < 0.6 && green_exists {
+                            continue;
+                        }
+                        
                         if dist_to_edge < thickness {
                             is_border = true;
                             min_border_dist = min(min_border_dist, dist_to_edge);
-                            let green_exists = is_tribe && (neighbor_owner >= 200u);
                             if green_exists {
                                 is_green_border = true;
                             }
@@ -355,6 +364,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     }
                 }
             }
+        }
+
+        if is_shore_edge {
+            let shore_t = 1.0 - smoothstep(shore_thickness - 0.04, shore_thickness, min_shore_dist);
+            // Sandy coast tint — not the near-black political border line
+            var shore_col = vec3<f32>(0.55, 0.50, 0.32) * shore_darkness;
+            if (terrain_byte & 0x40u) != 0u {
+                shore_col = vec3<f32>(0.72, 0.68, 0.42) * shore_darkness;
+            }
+            base_color = mix(base_color, shore_col, shore_t * 0.65);
         }
 
         if is_border {
@@ -510,8 +529,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // ── Embossed Cell Vignette (Closed-form Hex SDF - 100% Zero-Loop) ──
     let min_dist_to_edge = 0.5 - max(abs(local_pos.x), 0.5 * abs(local_pos.x) + 0.86602540378 * abs(local_pos.y));
-    let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
-    base_color = base_color * (0.86 + 0.14 * cell_bevel); // Emphasizes 3D depth of individual tiles
+    if globals.zoom >= 0.6 {
+        let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
+        base_color = base_color * (0.86 + 0.14 * cell_bevel); // Emphasizes 3D depth of individual tiles
+    }
 
     // ── Tactile Canvas/Matte Paper Texture Overlay (Zoom-dependent LOD) ──
     if globals.zoom >= 2.0 {

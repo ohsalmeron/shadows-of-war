@@ -14,7 +14,7 @@ impl SowApp {
     pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
         REGISTER_ONCE.call_once(|| {
-            sow_core::register_game_assets!(self.ui.egui_ctx, "../../../sow-client/assets/");
+            sow_core::register_game_assets(&self.ui.egui_ctx);
         });
 
         if self.map_editor.is_some() {
@@ -75,7 +75,8 @@ impl SowApp {
                 if let Some(snap) = &self.sim.current_snapshot {
                     for (id, prev_proj) in &self.ui.last_projectiles {
                         if !snap.projectiles.iter().any(|p| p.id == *id) {
-                            let at_end = prev_proj.path_cursor + (prev_proj.steps_per_tick as usize)
+                            let at_end = prev_proj.path_cursor
+                                + (prev_proj.steps_per_tick as usize)
                                 >= prev_proj.path.len();
                             if at_end {
                                 let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
@@ -111,7 +112,6 @@ impl SowApp {
                             radius: fallout_radius,
                             start_time: current_time,
                         });
-
                     }
                 }
 
@@ -137,7 +137,9 @@ impl SowApp {
                     }
 
                     // Prune expired cooldowns
-                    self.ui.silo_cooldowns.retain(|_, expires| *expires > current_tick);
+                    self.ui
+                        .silo_cooldowns
+                        .retain(|_, expires| *expires > current_tick);
                 }
 
                 // Sync last_projectiles
@@ -535,6 +537,15 @@ impl SowApp {
 
                 self.process_ui_actions(ctx, ui_action);
             });
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                use sow_ui::app::ClientPhase;
+                if !self.web_loader_hidden && self.ui.app.phase != ClientPhase::Splash {
+                    crate::loader::hide_web_loader();
+                    self.web_loader_hidden = true;
+                }
+            }
 
             for intent in local_cancel_intents {
                 if self.net.is_offline {

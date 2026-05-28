@@ -63,8 +63,13 @@ fn grid_cell(tx: f32, ty: f32) -> (i32, i32) {
 
 /// Walk an axis-aligned line, return true if any tile is water.
 fn walk_axis_water(
-    x0: i32, y0: i32, x1: i32, y1: i32,
-    terrain: &[u8], map_w: u32, map_h: u32,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    terrain: &[u8],
+    map_w: u32,
+    map_h: u32,
 ) -> bool {
     let mut x = x0;
     let mut y = y0;
@@ -77,7 +82,9 @@ fn walk_axis_water(
                 return true;
             }
         }
-        if x == x1 && y == y1 { break; }
+        if x == x1 && y == y1 {
+            break;
+        }
         x += sx;
         y += sy;
     }
@@ -86,8 +93,14 @@ fn walk_axis_water(
 
 /// Check if an L-shaped path crosses water.
 fn l_crosses_water(
-    ax: i32, ay: i32, bx: i32, by: i32,
-    h_first: bool, terrain: &[u8], map_w: u32, map_h: u32,
+    ax: i32,
+    ay: i32,
+    bx: i32,
+    by: i32,
+    h_first: bool,
+    terrain: &[u8],
+    map_w: u32,
+    map_h: u32,
 ) -> bool {
     let (mx, my) = if h_first { (bx, ay) } else { (ax, by) };
     walk_axis_water(ax, ay, mx, my, terrain, map_w, map_h)
@@ -139,9 +152,27 @@ fn find_snap_point(
                 continue;
             }
 
-            let h_first = if !l_crosses_water(p_tx as i32, p_ty as i32, q_tx as i32, q_ty as i32, true, terrain, map_w, map_h) {
+            let h_first = if !l_crosses_water(
+                p_tx as i32,
+                p_ty as i32,
+                q_tx as i32,
+                q_ty as i32,
+                true,
+                terrain,
+                map_w,
+                map_h,
+            ) {
                 Some(true)
-            } else if !l_crosses_water(p_tx as i32, p_ty as i32, q_tx as i32, q_ty as i32, false, terrain, map_w, map_h) {
+            } else if !l_crosses_water(
+                p_tx as i32,
+                p_ty as i32,
+                q_tx as i32,
+                q_ty as i32,
+                false,
+                terrain,
+                map_w,
+                map_h,
+            ) {
                 Some(false)
             } else {
                 None
@@ -161,8 +192,11 @@ fn find_snap_point(
 /// Create an L-shaped segment between two known buildings.
 fn try_connect(
     state: &mut RailState,
-    id_a: u64, id_b: u64,
-    terrain: &[u8], map_w: u32, map_h: u32,
+    id_a: u64,
+    id_b: u64,
+    terrain: &[u8],
+    map_w: u32,
+    map_h: u32,
     now: f32,
 ) -> bool {
     let (a_tx, a_ty, a_wx, a_wy) = match state.known.get(&id_a) {
@@ -174,9 +208,27 @@ fn try_connect(
         None => return false,
     };
 
-    let h_first = if !l_crosses_water(a_tx as i32, a_ty as i32, b_tx as i32, b_ty as i32, true, terrain, map_w, map_h) {
+    let h_first = if !l_crosses_water(
+        a_tx as i32,
+        a_ty as i32,
+        b_tx as i32,
+        b_ty as i32,
+        true,
+        terrain,
+        map_w,
+        map_h,
+    ) {
         true
-    } else if !l_crosses_water(a_tx as i32, a_ty as i32, b_tx as i32, b_ty as i32, false, terrain, map_w, map_h) {
+    } else if !l_crosses_water(
+        a_tx as i32,
+        a_ty as i32,
+        b_tx as i32,
+        b_ty as i32,
+        false,
+        terrain,
+        map_w,
+        map_h,
+    ) {
         false
     } else {
         return false;
@@ -191,9 +243,12 @@ fn try_connect(
 
     let seg_idx = state.segments.len();
     state.segments.push(RailSegment {
-        ax: a_wx, ay: a_wy,
-        cx, cy,
-        bx: b_wx, by: b_wy,
+        ax: a_wx,
+        ay: a_wy,
+        cx,
+        cy,
+        bx: b_wx,
+        by: b_wy,
         birth: now,
         dead: false,
         b1: id_a,
@@ -209,9 +264,12 @@ fn try_connect(
 /// 2) nearest building, 3) pull lonely neighbors toward us.
 fn add_building(
     state: &mut RailState,
-    id: u64, tile_idx: u32,
-    map_w: u32, map_h: u32,
-    terrain: &[u8], now: f32,
+    id: u64,
+    tile_idx: u32,
+    map_w: u32,
+    map_h: u32,
+    terrain: &[u8],
+    now: f32,
 ) {
     let tx = (tile_idx % map_w) as f32;
     let ty = (tile_idx / map_w) as f32;
@@ -219,25 +277,32 @@ fn add_building(
     let gc = grid_cell(tx, ty);
 
     state.grid.entry(gc).or_default().push(id);
-    state.known.insert(id, TrackedBuilding {
-        world_x: wx, world_y: wy, tile_x: tx, tile_y: ty,
-    });
+    state.known.insert(
+        id,
+        TrackedBuilding {
+            world_x: wx,
+            world_y: wy,
+            tile_x: tx,
+            tile_y: ty,
+        },
+    );
 
     // Priority 1: Connect to nearest existing active railway segment (snapping)
-    if let Some((qx, qy, h_first, parent_idx)) = find_snap_point(state, tx, ty, wx, wy, terrain, map_w, map_h) {
-        let (cx, cy) = if h_first {
-            (qx, wy)
-        } else {
-            (wx, qy)
-        };
+    if let Some((qx, qy, h_first, parent_idx)) =
+        find_snap_point(state, tx, ty, wx, wy, terrain, map_w, map_h)
+    {
+        let (cx, cy) = if h_first { (qx, wy) } else { (wx, qy) };
         let parent_b1 = state.segments[parent_idx].b1;
         let parent_b2 = state.segments[parent_idx].b2;
 
         let seg_idx = state.segments.len();
         state.segments.push(RailSegment {
-            ax: wx, ay: wy,
-            cx, cy,
-            bx: qx, by: qy,
+            ax: wx,
+            ay: wy,
+            cx,
+            cy,
+            bx: qx,
+            by: qy,
             birth: now,
             dead: false,
             b1: id,
@@ -245,8 +310,16 @@ fn add_building(
         });
 
         state.seg_indices.entry(id).or_default().push(seg_idx);
-        state.seg_indices.entry(parent_b1).or_default().push(seg_idx);
-        state.seg_indices.entry(parent_b2).or_default().push(seg_idx);
+        state
+            .seg_indices
+            .entry(parent_b1)
+            .or_default()
+            .push(seg_idx);
+        state
+            .seg_indices
+            .entry(parent_b2)
+            .or_default()
+            .push(seg_idx);
         return;
     }
 
@@ -257,15 +330,36 @@ fn add_building(
         for dy in -1..=1 {
             if let Some(cell) = state.grid.get(&(gc.0 + dx, gc.1 + dy)) {
                 for &other_id in cell {
-                    if other_id == id { continue; }
+                    if other_id == id {
+                        continue;
+                    }
                     if let Some(other) = state.known.get(&other_id) {
                         let dtx = tx - other.tile_x;
                         let dty = ty - other.tile_y;
                         let d2 = dtx * dtx + dty * dty;
-                        if d2 >= MAX_RAIL_DIST_SQ { continue; }
+                        if d2 >= MAX_RAIL_DIST_SQ {
+                            continue;
+                        }
 
-                        let has_path = !l_crosses_water(tx as i32, ty as i32, other.tile_x as i32, other.tile_y as i32, true, terrain, map_w, map_h)
-                            || !l_crosses_water(tx as i32, ty as i32, other.tile_x as i32, other.tile_y as i32, false, terrain, map_w, map_h);
+                        let has_path = !l_crosses_water(
+                            tx as i32,
+                            ty as i32,
+                            other.tile_x as i32,
+                            other.tile_y as i32,
+                            true,
+                            terrain,
+                            map_w,
+                            map_h,
+                        ) || !l_crosses_water(
+                            tx as i32,
+                            ty as i32,
+                            other.tile_x as i32,
+                            other.tile_y as i32,
+                            false,
+                            terrain,
+                            map_w,
+                            map_h,
+                        );
 
                         if has_path {
                             candidates.push((other_id, d2));
@@ -293,7 +387,9 @@ fn remove_building(state: &mut RailState, id: u64) {
         let gc = grid_cell(tracked.tile_x, tracked.tile_y);
         if let Some(cell) = state.grid.get_mut(&gc) {
             cell.retain(|&x| x != id);
-            if cell.is_empty() { state.grid.remove(&gc); }
+            if cell.is_empty() {
+                state.grid.remove(&gc);
+            }
         }
     }
     if let Some(indices) = state.seg_indices.remove(&id) {
@@ -318,18 +414,28 @@ fn hash_buildings(buildings: &[sow_core::protocol::BuildingSnapshot]) -> u64 {
 fn sync(
     state: &mut RailState,
     buildings: &[sow_core::protocol::BuildingSnapshot],
-    terrain: &[u8], map_w: u32, map_h: u32, now: f32,
+    terrain: &[u8],
+    map_w: u32,
+    map_h: u32,
+    now: f32,
 ) {
     let mut current: std::collections::HashSet<u64> =
         std::collections::HashSet::with_capacity(buildings.len());
     for b in buildings {
-        if is_eligible(b) { current.insert(b.id); }
+        if is_eligible(b) {
+            current.insert(b.id);
+        }
     }
 
-    let removed: Vec<u64> = state.known.keys()
+    let removed: Vec<u64> = state
+        .known
+        .keys()
         .filter(|id| !current.contains(id))
-        .copied().collect();
-    for id in removed { remove_building(state, id); }
+        .copied()
+        .collect();
+    for id in removed {
+        remove_building(state, id);
+    }
 
     for b in buildings {
         if is_eligible(b) && !state.known.contains_key(&b.id) {
@@ -347,7 +453,9 @@ pub(crate) fn render(
     ctx: &RenderContext,
 ) {
     let zoom_scaled = ctx.zoom_scaled;
-    if zoom_scaled < 0.4 { return; }
+    if zoom_scaled < 0.4 {
+        return;
+    }
 
     let snap = match &sim.current_snapshot {
         Some(s) => s,
@@ -358,10 +466,19 @@ pub(crate) fn render(
     if h != ui.rail_state.prev_hash {
         ui.rail_state.prev_hash = h;
         let now = time.start_time.elapsed().as_secs_f32();
-        sync(&mut ui.rail_state, &snap.buildings, ctx.terrain, sim.map_w, sim.map_h, now);
+        sync(
+            &mut ui.rail_state,
+            &snap.buildings,
+            ctx.terrain,
+            sim.map_w,
+            sim.map_h,
+            now,
+        );
     }
 
-    if ui.rail_state.segments.is_empty() { return; }
+    if ui.rail_state.segments.is_empty() {
+        return;
+    }
 
     let sf = ctx.sf;
     let now = time.start_time.elapsed().as_secs_f32();
@@ -380,7 +497,9 @@ pub(crate) fn render(
     let rail_stroke = egui::Stroke::new(1.5_f32, rail_color);
 
     for seg in &ui.rail_state.segments {
-        if seg.dead { continue; }
+        if seg.dead {
+            continue;
+        }
 
         let s_ax = (input.camera_x + seg.ax * input.camera_zoom) / sf;
         let s_ay = (input.camera_y + seg.ay * input.camera_zoom) / sf;
@@ -405,20 +524,14 @@ pub(crate) fn render(
         let t1 = (progress * 2.0).clamp(0.0, 1.0);
         let l1x = s_ax + (s_cx - s_ax) * t1;
         let l1y = s_ay + (s_cy - s_ay) * t1;
-        painter.line_segment(
-            [egui::pos2(s_ax, s_ay), egui::pos2(l1x, l1y)],
-            rail_stroke,
-        );
+        painter.line_segment([egui::pos2(s_ax, s_ay), egui::pos2(l1x, l1y)], rail_stroke);
 
         // Leg 2: C → B
         if progress > 0.5 {
             let t2 = ((progress - 0.5) * 2.0).clamp(0.0, 1.0);
             let l2x = s_cx + (s_bx - s_cx) * t2;
             let l2y = s_cy + (s_by - s_cy) * t2;
-            painter.line_segment(
-                [egui::pos2(s_cx, s_cy), egui::pos2(l2x, l2y)],
-                rail_stroke,
-            );
+            painter.line_segment([egui::pos2(s_cx, s_cy), egui::pos2(l2x, l2y)], rail_stroke);
         }
     }
 }

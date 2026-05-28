@@ -1,9 +1,12 @@
 use crate::app::SowApp;
-use crate::MapDownloadEvent;
+use crate::{get_assets_url, MapDownloadEvent};
 use sow_ui::app::ClientPhase;
 
 impl SowApp {
     pub fn update_assets(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        self.poll_leader_portrait_fetches();
+
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
             match res {
@@ -133,7 +136,20 @@ impl SowApp {
                     }
                 }
                 MapDownloadEvent::CatalogReady(catalog) => {
+                    self.ui.app.asset_loader.catalog_in_flight = false;
                     self.ui.app.asset_loader.map_catalog = Some(catalog);
+                }
+                MapDownloadEvent::LeaderPortraitReady {
+                    leader,
+                    mobile,
+                    bytes,
+                } => {
+                    self.ui.app.asset_loader.ingest_leader_portrait(
+                        &self.ui.egui_ctx,
+                        leader,
+                        mobile,
+                        &bytes,
+                    );
                 }
                 MapDownloadEvent::Error(e) => {
                     log::error!("Map download aborted: {}", e);
@@ -146,6 +162,44 @@ impl SowApp {
                     self.tasks.engine_init_queued_msg = None;
                 }
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn poll_leader_portrait_fetches(&mut self) {
+        let pending = self.ui.app.asset_loader.drain_leader_fetch_pending();
+        if pending.is_empty() {
+            return;
+        }
+        let assets_base = get_assets_url();
+        for key in pending {
+            let url = format!(
+                "{}/ui/leaders/{}",
+                assets_base.trim_end_matches('/'),
+                sow_ui::ui::asset_loader::AssetLoader::leader_portrait_filename(key)
+            );
+            let tx = self.tasks.map_tx.clone();
+            let leader = key.leader;
+            let mobile = key.mobile;
+            let request = ehttp::Request::get(&url);
+            ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+                if let Ok(res) = result {
+                    if res.ok {
+                        let _ = tx.send(MapDownloadEvent::LeaderPortraitReady {
+                            leader,
+                            mobile,
+                            bytes: res.bytes,
+                        });
+                    } else {
+                        log::warn!(
+                            "Leader portrait fetch failed for {:?} mobile={}: HTTP {}",
+                            leader,
+                            mobile,
+                            res.status
+                        );
+                    }
+                }
+            });
         }
     }
 }

@@ -4,6 +4,23 @@ use sow_core::game_config::GameConfig;
 use sow_core::protocol::SimCommand;
 use sow_ui::app::ClientPhase;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn hide_web_loader() {
+    if let Some(window) = web_sys::window() {
+        let _ = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("hideWebLoader"))
+            .and_then(|f| {
+                if f.is_function() {
+                    let func: js_sys::Function = f.unchecked_into();
+                    let _ = func.call0(&wasm_bindgen::JsValue::NULL);
+                }
+                Ok(wasm_bindgen::JsValue::NULL)
+            });
+    }
+}
+
 impl SowApp {
     pub fn update_loader(&mut self) {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
@@ -157,13 +174,28 @@ impl SowApp {
                         .asset_loader
                         .ensure_ui_assets_loaded(&self.ui.egui_ctx);
 
-                    let catalog_ready = self.ui.app.asset_loader.map_catalog.is_some();
                     let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
-                    let leaders_ready = !self.ui.app.asset_loader.leader_desktop_images.is_empty();
-                    let ui_ready = self.ui.app.asset_loader.ui_loader_empty.is_some();
+                    #[cfg(target_arch = "wasm32")]
+                    let boot_ready = avatars_ready;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let boot_ready = {
+                        let catalog_ready = self.ui.app.asset_loader.map_catalog.is_some();
+                        let leaders_ready =
+                            !self.ui.app.asset_loader.leader_desktop_images.is_empty();
+                        let ui_ready = self.ui.app.asset_loader.ui_loader_empty.is_some();
+                        catalog_ready && avatars_ready && leaders_ready && ui_ready
+                    };
 
-                    if catalog_ready && avatars_ready && leaders_ready && ui_ready {
+                    if boot_ready {
                         self.ui.app.splash_state.done = true;
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            // HTML overlay owns boot; map catalog streams in background.
+                            self.ui.app.phase = ClientPhase::MainMenu;
+                            hide_web_loader();
+                            self.web_loader_hidden = true;
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
                         if self.ui.app.splash_state.target_phase.is_none() {
                             self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
                         }

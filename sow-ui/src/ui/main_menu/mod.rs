@@ -124,11 +124,12 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
 pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     lang: sow_lang::Language,
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
+    asset_loader.request_leader_portrait(state.selected_leader, compact);
     let outer_pad = if compact { 0.0 } else { 16.0 };
     let section_gap = if compact { 12.0 } else { 16.0 };
 

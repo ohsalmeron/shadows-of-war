@@ -29,15 +29,15 @@ impl Default for ClientVisualConfig {
 
             // Nameplates
             ui_text_scale: 1.0,
-            nameplate_my_size: 21.0,
-            nameplate_nation_size: 18.0,
-            nameplate_tribe_size: 14.0,
-            nameplate_premium_size: 16.0,
-            nameplate_disconnected_emoji_scale: 2.0,
+            nameplate_my_size: 12.0,
+            nameplate_nation_size: 12.0,
+            nameplate_tribe_size: 12.0,
+            nameplate_premium_size: 12.0,
+            nameplate_disconnected_emoji_scale: 3.0,
 
             // Android UI Theme Settings (Main Menu)
             top_bar_color: [15, 15, 20, 255],    // Dark gray
-            bottom_bar_color: [15, 15, 20, 255], // Dark gray
+            bottom_bar_color: [15, 15, 20, 0], // Fully transparent
         }
     }
 }

@@ -60,7 +60,11 @@ impl SowApp {
         // Configuration variables removed from GameConfig
         let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
 
-        let player_count = self.sim.current_snapshot.as_ref().map_or(0, |s| s.players.len());
+        let player_count = self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .map_or(0, |s| s.players.len());
         let mut visible_players = Vec::with_capacity(player_count);
         let dt = self.ui.raw_input.predicted_dt;
         let smooth_factor = 1.0 - (-10.0 * dt).exp();
@@ -302,7 +306,7 @@ impl SowApp {
                     1.0
                 };
                 // Quantize to whole pixels so egui's glyph atlas cache is reused across frames
-                let font_size = (20.0 * scale).round().max(1.0);
+                let font_size = (40.0 * scale).round().max(1.0);
 
                 // Fade alpha (linear approximation of powf(0.6))
                 let alpha = if t < 0.15 {
@@ -392,7 +396,7 @@ impl SowApp {
                         1.0
                     };
                     // Quantize to whole pixels for egui glyph atlas cache reuse
-                    let font_size = (16.0 * bounce_scale).round().max(1.0);
+                    let font_size = (32.0 * bounce_scale).round().max(1.0);
 
                     // Layout text ONCE, then paint the galley 7 times
                     let font_id = egui::FontId::proportional(font_size);

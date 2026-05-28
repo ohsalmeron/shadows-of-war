@@ -1,3 +1,4 @@
+use egui::Context;
 use serde::{Deserialize, Serialize};
 
 // 1. Single source of truth for all assets and their filenames.
@@ -54,22 +55,23 @@ macro_rules! define_enum_and_methods {
     };
 }
 
-// Expand the enum and methods!
 all_assets!(define_enum_and_methods);
 
-// 3. Registering assets macro.
-#[macro_export]
-macro_rules! register_game_assets {
-    ($ctx:expr, $prefix:expr) => {
-        $crate::all_assets!($crate::register_single_asset, $ctx, $prefix);
+// 3. One static table of icon bytes (linked once) instead of per-caller include_bytes!.
+macro_rules! define_game_icon_table {
+    ($($variant:ident => $file:expr),* $(,)?) => {
+        const GAME_ICON_FILES: &[(&str, &[u8])] = &[
+            $(($file, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../sow-client/assets/", $file)))),*
+        ];
     };
 }
 
-#[macro_export]
-macro_rules! register_single_asset {
-    ($ctx:expr, $prefix:expr, $($variant:ident => $file:expr),* $(,)?) => {
-        $(
-            $ctx.include_bytes(concat!("bytes://", $file), include_bytes!(concat!($prefix, $file)).as_slice());
-        )*
-    };
+all_assets!(define_game_icon_table);
+
+/// Register all game SVG/PNG icons into egui's bytes:// loader (single copy in .rodata).
+pub fn register_game_assets(ctx: &Context) {
+    for &(file, bytes) in GAME_ICON_FILES {
+        let uri = format!("bytes://{file}");
+        ctx.include_bytes(uri, bytes);
+    }
 }

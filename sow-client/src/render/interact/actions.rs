@@ -40,7 +40,6 @@ impl SowApp {
                         .unwrap_or_default()
                         .as_millis() as u64;
 
-
                     let config = sow_core::game_config::GameConfig {
                         map_name: map_name.clone(),
                         map_width: 1000,
@@ -81,7 +80,6 @@ impl SowApp {
                         nations: None,
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
-
 
                     if self.ui.app.asset_loader.has_map(&map_name) {
                         self.ui.app.main_menu_state.cached_map =
@@ -187,7 +185,7 @@ impl SowApp {
                         config.map_height = 400;
                     }
 
-                     let start_msg = sow_core::protocol::ServerStartMessage {
+                    let start_msg = sow_core::protocol::ServerStartMessage {
                         lobby_id: None,
                         config: config.clone(),
                         my_player_id: Some(1),
@@ -217,7 +215,6 @@ impl SowApp {
                         nations: None,
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
-
 
                     if self.ui.app.asset_loader.has_map(&map_id) {
                         self.ui.app.main_menu_state.cached_map =

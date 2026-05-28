@@ -331,10 +331,16 @@ pub(crate) fn render(
 
             let troops_val = attack.troops;
             let entry = ui.attack_troop_labels.entry(attack.id).or_insert_with(|| {
-                (troops_val, format!("⚔ {}", sow_ui::utils::format_number(troops_val)))
+                (
+                    troops_val,
+                    format!("⚔ {}", sow_ui::utils::format_number(troops_val)),
+                )
             });
             if (entry.0 - troops_val).abs() > 0.0001 {
-                *entry = (troops_val, format!("⚔ {}", sow_ui::utils::format_number(troops_val)));
+                *entry = (
+                    troops_val,
+                    format!("⚔ {}", sow_ui::utils::format_number(troops_val)),
+                );
             }
             let label = &entry.1;
             let color = if is_incoming {
@@ -349,7 +355,11 @@ pub(crate) fn render(
             let half = galley.size() / 2.0;
             let anchor = egui::pos2(screen_x, screen_y) - half;
             crate::hud::nameplate::paint_glow_nameplate_galley(
-                &middle_painter, anchor, galley, color, false,
+                &middle_painter,
+                anchor,
+                galley,
+                color,
+                false,
             );
         }
 
@@ -377,11 +387,7 @@ pub(crate) fn render(
             let h_col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
             let h_row = rr as i32;
 
-            if h_col >= 0
-                && h_row >= 0
-                && h_col < sim.map_w as i32
-                && h_row < sim.map_h as i32
-            {
+            if h_col >= 0 && h_row >= 0 && h_col < sim.map_w as i32 && h_row < sim.map_h as i32 {
                 let target_tile = (h_row * sim.map_w as i32 + h_col) as u32;
                 let my_id = sim.my_player_id.unwrap_or(0);
                 let current_tick = snap.tick;
@@ -394,7 +400,10 @@ pub(crate) fn render(
                         b.kind == sow_core::game::BuildingKind::City
                             && b.owner_id == my_id
                             && !b.under_construction
-                            && ui.silo_cooldowns.get(&b.id).map_or(true, |&exp| current_tick >= exp)
+                            && ui
+                                .silo_cooldowns
+                                .get(&b.id)
+                                .map_or(true, |&exp| current_tick >= exp)
                     })
                     .min_by_key(|b| {
                         let bx = (b.tile_idx % sim.map_w) as i32;
@@ -408,7 +417,10 @@ pub(crate) fn render(
                 for b in snap.buildings.iter().filter(|b| {
                     b.kind == sow_core::game::BuildingKind::City
                         && b.owner_id == my_id
-                        && ui.silo_cooldowns.get(&b.id).map_or(false, |&exp| current_tick < exp)
+                        && ui
+                            .silo_cooldowns
+                            .get(&b.id)
+                            .map_or(false, |&exp| current_tick < exp)
                 }) {
                     let (bwx, bwy) = tile_to_world(b.tile_idx, map_w);
                     let bsx = (input.camera_x + bwx * input.camera_zoom) / sf;
@@ -442,8 +454,8 @@ pub(crate) fn render(
                         let mut arc_points = Vec::with_capacity(num_points);
                         for i in 0..num_points {
                             let t = i as f32 / (num_points - 1) as f32;
-                            let angle = -std::f32::consts::FRAC_PI_2
-                                + t * progress * std::f32::consts::TAU;
+                            let angle =
+                                -std::f32::consts::FRAC_PI_2 + t * progress * std::f32::consts::TAU;
                             arc_points.push(egui::pos2(
                                 center.x + radius * angle.cos(),
                                 center.y + radius * angle.sin(),
@@ -589,10 +601,7 @@ pub(crate) fn render(
                         painter.image(
                             texture.id,
                             rect,
-                            egui::Rect::from_min_max(
-                                egui::pos2(0.0, 0.0),
-                                egui::pos2(1.0, 1.0),
-                            ),
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                             egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140),
                         );
                     }
@@ -613,4 +622,3 @@ pub(crate) fn render(
         }
     }
 }
-

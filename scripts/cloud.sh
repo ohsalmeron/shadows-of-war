@@ -4,17 +4,28 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+# shellcheck source=deploy-env.sh
+source "${ROOT}/scripts/deploy-env.sh"
+# shellcheck source=web-assets.sh
+source "${ROOT}/scripts/web-assets.sh"
 
 VPS_IP="35.239.160.167"
 VPS_USER="bizkit"
 WEB_DEST_DIR="/var/www/shadowsofwar.io/html"
 BACKEND_DEST_DIR="/home/bizkit/shadowsofwar"
+NGINX_SITE="/etc/nginx/sites-available/shadowsofwar.io"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
 WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
 echo "========================================================="
 echo "🚀 Starting Production Deployment (Shadows of War -> VPS)"
 echo "========================================================="
+
+echo "==> Preflight: local build tools..."
+check_local_build_tools
+
+echo "==> Preflight: VPS..."
+check_vps_ready "${VPS_USER}" "${VPS_IP}" "${NGINX_SITE}"
 
 # 1. Bump Version
 VERSION_FILE="${ROOT}/.version"
@@ -58,11 +69,56 @@ mkdir -p dist
 WASM_HASH=$(md5sum "${WASM_IN}" | awk '{print $1}')
 LAST_HASH_FILE="${ROOT}/.wasm_hash"
 
+inline_loader_into_index() {
+    python3 - "${ROOT}/web/loader.js" "${ROOT}/dist/index.html" <<'PY'
+import sys
+from pathlib import Path
+
+loader = Path(sys.argv[1])
+html_path = Path(sys.argv[2])
+js = loader.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
+html = html_path.read_text(encoding="utf-8")
+marker = "/* __INLINE_LOADER_JS__ */"
+if marker in html:
+    html = html.replace(marker, js, 1)
+elif '<script src="./loader.js"></script>' in html:
+    html = html.replace(
+        '<script src="./loader.js"></script>',
+        "<script>\n" + js + "\n</script>",
+        1,
+    )
+else:
+    raise SystemExit("index.html: no loader injection point")
+html_path.write_text(html, encoding="utf-8")
+PY
+}
+
+regen_sw_js_from_dist_index() {
+    local SW_TEMPLATE="${ROOT}/web/sw.js.template"
+    local INDEX="${ROOT}/dist/index.html"
+    [[ -f "${SW_TEMPLATE}" && -f "${INDEX}" ]] || return 0
+    local JS_FILE WASM_FILE BUILD_TS
+    JS_FILE=$(grep -oE 'sow_client_[0-9]+\.js' "${INDEX}" | head -1)
+    WASM_FILE=$(grep -oE 'sow_client_[0-9]+_bg\.wasm' "${INDEX}" | head -1)
+    BUILD_TS=$(grep -oE 'window\.SOW_BUILD_TS = "[0-9]+"' "${INDEX}" | grep -oE '[0-9]+' | head -1)
+    [[ -n "${JS_FILE}" && -n "${WASM_FILE}" && -n "${BUILD_TS}" ]] || return 0
+    sed -e "s/__VERSION__/${CLEAN_VERSION}/g" \
+        -e "s/__JS_FILE__/${JS_FILE}/g" \
+        -e "s/__WASM_FILE__/${WASM_FILE}/g" \
+        -e "s/__BUILD_TS__/${BUILD_TS}/g" \
+        "${SW_TEMPLATE}" > "${ROOT}/dist/sw.js"
+}
+
 if [[ -f "${LAST_HASH_FILE}" ]] && [[ "$(cat "${LAST_HASH_FILE}")" == "${WASM_HASH}" ]]; then
     echo "⚡ WASM hasn't changed. Skipping wasm-bindgen and brotli compression!"
     # Update assets just in case they changed
     rsync -a assets/ dist/assets/
+    copy_web_loader_assets
     cp web/sow.svg dist/sow.svg
+    if [[ -f dist/index.html ]]; then
+        inline_loader_into_index
+        regen_sw_js_from_dist_index
+    fi
 else
     echo "🔄 WASM changed. Running wasm-bindgen and brotli..."
     rm -rf dist/*
@@ -74,13 +130,18 @@ else
     ~/.cargo/bin/wasm-bindgen --out-dir dist --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
 
     rsync -a assets/ dist/assets/ || true
+    copy_web_loader_assets
     cp -a web/favicon_io/* dist/ 2>/dev/null || true
     cp web/sow.svg dist/sow.svg
-    cp web/sw.js dist/sw.js 2>/dev/null || true
     
     LOADER_TEMPLATE="${ROOT}/web/index.html.template"
+    SW_TEMPLATE="${ROOT}/web/sw.js.template"
     if [[ ! -f "${LOADER_TEMPLATE}" ]]; then
       echo "❌ Missing loader template: ${LOADER_TEMPLATE}"
+      exit 1
+    fi
+    if [[ ! -f "${SW_TEMPLATE}" ]]; then
+      echo "❌ Missing service worker template: ${SW_TEMPLATE}"
       exit 1
     fi
     
@@ -89,7 +150,10 @@ else
         -e "s/__WASM_FILE__/${WASM_FILE}/g" \
         -e "s/__BUILD_TS__/${BUILD_TS}/g" \
         "${LOADER_TEMPLATE}" > dist/index.html
-        
+    inline_loader_into_index
+
+    minify_js_shim "dist/${JS_FILE}"
+
     if command -v brotli >/dev/null 2>&1; then
       brotli -f -Z dist/${WASM_FILE} &
       BROTLI_WASM_PID=$!
@@ -99,6 +163,12 @@ else
       wait $BROTLI_JS_PID
       echo "✅ Brotli compression finished."
     fi
+
+    sed -e "s/__VERSION__/${CLEAN_VERSION}/g" \
+        -e "s/__JS_FILE__/${JS_FILE}/g" \
+        -e "s/__WASM_FILE__/${WASM_FILE}/g" \
+        -e "s/__BUILD_TS__/${BUILD_TS}/g" \
+        "${SW_TEMPLATE}" > dist/sw.js
     
     echo "${WASM_HASH}" > "${LAST_HASH_FILE}"
 fi
@@ -147,9 +217,14 @@ wait $RSYNC_RELAY_PID || { echo "❌ Error subiendo Backend (Relay)"; exit 1; }
 wait $RSYNC_ASSETS_PID || { echo "❌ Error subiendo Assets del servidor"; exit 1; }
 echo "✅ VPS sync complete."
 
+# 4.5 Nginx — brotli_static + Cache-Control (idempotent)
+sync_vps_nginx "${VPS_USER}" "${VPS_IP}" "${NGINX_SITE}" "${ROOT}/nginx_config.conf"
+
 # 5. Restart Services
 echo "==> Ensuring Redis is running and restarting Orchestrator..."
 ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq redis-server; sudo systemctl enable --now sow-redis; sudo systemctl restart sow-server" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+
+verify_prod_headers "https://shadowsofwar.io" || echo "⚠️  Header verification failed — site may still be propagating"
 
 echo "========================================================="
 echo "🎉 Deployment Completed Successfully (v${CLEAN_VERSION})!"

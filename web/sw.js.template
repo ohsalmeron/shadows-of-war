@@ -1,0 +1,132 @@
+/**
+ * Service worker for Shadows of War.
+ *
+ * Important: we DO NOT intercept WASM or wasm-bindgen JS requests. The page
+ * uses WebAssembly.compileStreaming() on those, and any attempt to clone the
+ * response body in the SW (cache.put(response.clone())) races the streaming
+ * compile and aborts it with ERR_CACHE_WRITE_FAILURE. The browser's HTTP cache
+ * already handles those files via Cache-Control headers — we just stay out of
+ * the way.
+ *
+ * What we DO cache here:
+ *   - index.html (network-first, fallback to cache offline)
+ *   - The four loader webp graphics + sow.svg (precached on install)
+ */
+
+const CACHE_NAME = 'sow-__BUILD_TS__';
+
+const PRECACHE = [
+    './sow.svg',
+    './assets/ui/sow-splash-desktop.webp',
+    './assets/ui/sow-splash-mobile.webp',
+    './assets/ui/loader_empty.webp',
+    './assets/ui/loader_full.webp',
+];
+
+self.addEventListener('install', (event) => {
+    self.skipWaiting();
+    event.waitUntil(
+        (async () => {
+            const cache = await caches.open(CACHE_NAME);
+            // Use Promise.allSettled so a single 404 doesn't abort the install.
+            await Promise.allSettled(
+                PRECACHE.map((url) =>
+                    cache.add(url).catch((e) => {
+                        console.warn('[sw] skip precache', url, e);
+                    })
+                )
+            );
+        })()
+    );
+});
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        (async () => {
+            const keys = await caches.keys();
+            await Promise.all(
+                keys
+                    .filter((k) => k.startsWith('sow-') && k !== CACHE_NAME)
+                    .map((k) => caches.delete(k))
+            );
+            await self.clients.claim();
+        })()
+    );
+});
+
+function isHtmlEntry(pathname) {
+    return pathname === '/' || pathname.endsWith('/') || pathname.endsWith('/index.html');
+}
+
+function isStaticUiAsset(pathname) {
+    return (
+        pathname.endsWith('/sow.svg') ||
+        pathname.startsWith('/assets/ui/')
+    );
+}
+
+self.addEventListener('fetch', (event) => {
+    const req = event.request;
+    if (req.method !== 'GET') return;
+
+    const url = new URL(req.url);
+    if (url.origin !== self.location.origin) return;
+
+    // CRITICAL: never intercept anything that could be a streaming WASM/JS
+    // fetch. Let the browser handle those directly (HTTP cache works fine).
+    if (
+        url.pathname.endsWith('.wasm') ||
+        url.pathname.endsWith('.wasm.br') ||
+        url.pathname.endsWith('.js') ||
+        url.pathname.endsWith('.js.br') ||
+        url.pathname.endsWith('.bin') ||
+        url.pathname.endsWith('.bin.br')
+    ) {
+        return;
+    }
+
+    if (isHtmlEntry(url.pathname)) {
+        event.respondWith(networkFirst(req));
+        return;
+    }
+
+    if (isStaticUiAsset(url.pathname)) {
+        event.respondWith(cacheFirst(req));
+        return;
+    }
+
+    // Everything else: pass through, no SW involvement.
+});
+
+async function cacheFirst(request) {
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    try {
+        const response = await fetch(request);
+        if (response.ok && response.type !== 'opaque') {
+            cache.put(request, response.clone()).catch(() => {});
+        }
+        return response;
+    } catch (e) {
+        const fallback = await cache.match(request);
+        if (fallback) return fallback;
+        throw e;
+    }
+}
+
+async function networkFirst(request) {
+    try {
+        const response = await fetch(request);
+        if (response.ok && response.type !== 'opaque') {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, response.clone()).catch(() => {});
+        }
+        return response;
+    } catch (e) {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        throw e;
+    }
+}

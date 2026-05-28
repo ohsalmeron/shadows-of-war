@@ -67,7 +67,7 @@ pub(crate) fn render(
     let player_colors = ctx.player_colors;
     let building_scale = ctx.painter.ctx().data(|d| {
         d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
-            .unwrap_or(2.0)
+            .unwrap_or(1.0)
     });
     let zoom_factor = ((zoom_scaled - 0.6) / 9.4).clamp(0.0, 1.0);
     let min_lod_scale = 0.5; // Scale when fully zoomed out
@@ -154,6 +154,10 @@ pub(crate) fn render(
             > = std::collections::HashMap::with_capacity(building_count / 4);
 
             for b in &snap.buildings {
+                if zoom_scaled < 0.6 && b.kind != sow_core::game::BuildingKind::City {
+                    continue; // Skip rendering Bunkers, Factories, and Ports on LOD 3 to reduce noise
+                }
+
                 let tile_x = (b.tile_idx % sim.map_w) as f32;
                 let tile_y = (b.tile_idx / sim.map_w) as f32;
                 let bx = tile_x + 0.5 + (tile_y as i32 % 2) as f32 * 0.5;
@@ -260,6 +264,37 @@ pub(crate) fn render(
             }
 
             let center = egui::pos2(screen_x, screen_y);
+
+            // LOD 3: Draw "City Lights" Heatmap Nodes
+            if zoom_scaled < 0.6 {
+                let player_color = if b.owner_id != 0 {
+                    player_colors
+                        .get(b.owner_id as usize)
+                        .copied()
+                        .unwrap_or(egui::Color32::WHITE)
+                } else {
+                    egui::Color32::WHITE
+                };
+
+                let dot_radius = if b.count > 1 {
+                    (0.5 + (b.count as f32).sqrt().min(3.0)) * final_scale
+                } else {
+                    0.5 * final_scale
+                };
+
+                let glow_alpha = (b.active_level as f32 / 10.0).clamp(0.2, 1.0) * 150.0;
+                let color_glow = egui::Color32::from_rgba_unmultiplied(
+                    player_color.r(),
+                    player_color.g(),
+                    player_color.b(),
+                    glow_alpha as u8,
+                );
+                let color_core = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 200);
+
+                painter.circle_filled(center, dot_radius * 2.0, color_glow);
+                painter.circle_filled(center, dot_radius * 0.8, color_core);
+                continue;
+            }
 
             let uri = b.kind.asset().uri();
 
@@ -377,7 +412,7 @@ pub(crate) fn render(
                                     egui::Rect::from_min_max(
                                         egui::pos2(0.0, 0.0),
                                         egui::pos2(1.0, 1.0),
-                                     ),
+                                    ),
                                     player_color,
                                 );
                             }
@@ -1049,8 +1084,11 @@ pub(crate) fn render(
 
                 let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
                 let font_id = egui::FontId::proportional(font_size);
-                let galley =
-                    painter.layout_no_wrap(text.clone().into_owned(), font_id.clone(), egui::Color32::WHITE);
+                let galley = painter.layout_no_wrap(
+                    text.clone().into_owned(),
+                    font_id.clone(),
+                    egui::Color32::WHITE,
+                );
 
                 let padding_x = 8.0_f32;
                 let padding_y = 4.0_f32;
@@ -1101,7 +1139,9 @@ pub(crate) fn render(
 
                 if is_hovered {
                     let b_id = b.id.unwrap_or(0);
-                    if ui.cached_hovered_building_id != Some(b_id) || ui.cached_hovered_building_level != b.active_level {
+                    if ui.cached_hovered_building_id != Some(b_id)
+                        || ui.cached_hovered_building_level != b.active_level
+                    {
                         ui.cached_hovered_building_id = Some(b_id);
                         ui.cached_hovered_building_level = b.active_level;
                         ui.cached_hovered_building_tooltip = match b.kind {
@@ -1115,7 +1155,10 @@ pub(crate) fn render(
                             }
                             sow_core::game::BuildingKind::Factory => {
                                 let title = "🏭 Industrial Factory";
-                                let stat1 = format!("Gold Generation: +{:.1}/s", config.factory_gold_income);
+                                let stat1 = format!(
+                                    "Gold Generation: +{:.1}/s",
+                                    config.factory_gold_income
+                                );
                                 format!("{}\n{}", title, stat1)
                             }
                             sow_core::game::BuildingKind::Port => {
@@ -1375,7 +1418,8 @@ pub(crate) fn render(
 
                     let padding_x = 8.0_f32;
                     let padding_y = 4.0_f32;
-                    let rect_w = galley.rect.width().max(cost_galley.rect.width()) + padding_x * 2.0;
+                    let rect_w =
+                        galley.rect.width().max(cost_galley.rect.width()) + padding_x * 2.0;
                     let line_h = galley.rect.height();
                     let rect_h = line_h * 2.0 + padding_y * 3.0;
 
