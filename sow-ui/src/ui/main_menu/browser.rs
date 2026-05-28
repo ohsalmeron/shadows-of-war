@@ -18,10 +18,15 @@ pub fn draw_left_column(
     let total_lobbies = state.lobbies.len();
     let max_h = if compact {
         180.0
-    } else if total_lobbies > 0 {
-        ((ui.available_height() - 40.0) / total_lobbies as f32).max(100.0)
     } else {
-        160.0
+        // Right-rail stack: cap by width (~16:9), not remaining column height.
+        let by_width = ui.available_width() * 9.0 / 16.0;
+        let per_lobby = if total_lobbies > 1 {
+            (by_width * 0.85).min(160.0)
+        } else {
+            by_width
+        };
+        per_lobby.clamp(120.0, 200.0)
     };
 
     if state.lobbies.is_empty() {
@@ -43,26 +48,43 @@ pub fn draw_left_column(
             .filter(|l| l.game_mode == "Teams")
             .collect();
 
+        let mut draw_lobby = |ui: &mut Ui, lobby: &sow_core::protocol::LobbyInfo| {
+            let thumbnail = asset_loader.thumbnail(&lobby.map_name);
+            let response = ui.add(LobbyCard::new(lobby, thumbnail).max_h(max_h));
+            if response.clicked() {
+                *action = Some(UiAction::JoinLobby(lobby.id));
+            }
+            if thumbnail.is_none() {
+                if let Some(err) = asset_loader.thumbnail_error(&lobby.map_name) {
+                    ui.label(
+                        egui::RichText::new(format!("Thumbnail: {err}"))
+                            .size(11.0)
+                            .color(crate::ui::theme::accent_danger()),
+                    );
+                } else if asset_loader.thumbnail_in_flight(&lobby.map_name) {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(
+                            egui::RichText::new("Loading thumbnail…")
+                                .size(11.0)
+                                .color(crate::ui::theme::text_secondary()),
+                        );
+                    });
+                }
+            }
+            ui.add_space(8.0);
+        };
+
         if !ffa_lobbies.is_empty() {
             for lobby in ffa_lobbies {
-                let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-                let response = ui.add(LobbyCard::new(lobby, thumbnail).max_h(max_h));
-                if response.clicked() {
-                    *action = Some(UiAction::JoinLobby(lobby.id));
-                }
-                ui.add_space(8.0);
+                draw_lobby(ui, lobby);
             }
         }
 
         if !team_lobbies.is_empty() {
             ui.add_space(8.0);
             for lobby in team_lobbies {
-                let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-                let response = ui.add(LobbyCard::new(lobby, thumbnail).max_h(max_h));
-                if response.clicked() {
-                    *action = Some(UiAction::JoinLobby(lobby.id));
-                }
-                ui.add_space(8.0);
+                draw_lobby(ui, lobby);
             }
         }
     }

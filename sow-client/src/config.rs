@@ -32,7 +32,7 @@ impl Default for ClientVisualConfig {
             nameplate_my_size: 12.0,
             nameplate_nation_size: 12.0,
             nameplate_tribe_size: 12.0,
-            nameplate_premium_size: 12.0,
+            nameplate_premium_size: 18.0,
             nameplate_disconnected_emoji_scale: 3.0,
 
             // Android UI Theme Settings (Main Menu)

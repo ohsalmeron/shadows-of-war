@@ -206,10 +206,12 @@ fn draw_map_briefing(
                     .0;
 
                 if let Some(tex) = thumbnail {
-                    let image = egui::Image::new(tex)
-                        .fit_to_exact_size(rect.size())
-                        .corner_radius(CornerRadius::same(8));
-                    ui.put(rect, image);
+                    crate::ui::map_texture::draw_map_thumbnail(
+                        ui.painter(),
+                        tex.id(),
+                        rect,
+                        1.0,
+                    );
                 } else {
                     ui.painter()
                         .rect_filled(rect, 8.0, Color32::from_black_alpha(120));

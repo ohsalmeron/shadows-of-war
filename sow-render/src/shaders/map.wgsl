@@ -191,73 +191,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
 
-        // Base flat colors — clean and premium at any zoom
+        // Flat water — no procedural waves (they moiré into diagonal scanlines when zoomed out)
         var color_flat = vec3<f32>(65.0 / 255.0, 128.0 / 255.0, 175.0 / 255.0);
         if !is_ocean_water {
             color_flat = vec3<f32>(55.0 / 255.0, 135.0 / 255.0, 168.0 / 255.0);
         }
 
-        // Zoom LOD: detail fades in between zoom 1.5 and 3.0
-        let water_detail = clamp((globals.zoom - 1.5) / 1.5, 0.0, 1.0);
-
-        // Gentle large-scale wave visible at all zoom levels (single cheap sin)
-        let gentle = sin(world_x * 0.4 + world_y * 0.3 + globals.time * 0.6) * 0.02;
-        var final_water_color = color_flat + vec3<f32>(gentle * 0.5, gentle * 0.7, gentle);
-
-        if water_detail > 0.0 {
-            let px = world_x * 8.0;
-            let py = world_y * 8.0;
-            let tile_seed = terrain_rgba.w;
-            let wave_speed = 0.8 + tile_seed * 1.4;
-            let wave_phase = tile_seed * 6.28318;
-            let freq_x = 0.12 + tile_seed * 0.06;
-            let freq_y = 0.06 + (1.0 - tile_seed) * 0.06;
-            let t = globals.time * wave_speed + wave_phase;
-            let wave = sin(px * freq_x + py * freq_y + t) + cos(py * freq_x - px * freq_y + t * 0.7);
-
-            // Sparkles
-            let sparkle_t = floor(globals.time * 4.0);
-            let sparkle_hash = fract(sin(px * 12.9898 + py * 78.233 + sparkle_t) * 43758.5453);
-
-            var color_deep = vec3<f32>(70.0 / 255.0, 132.0 / 255.0, 180.0 / 255.0);
-            var color_mid  = vec3<f32>(85.0 / 255.0, 143.0 / 255.0, 215.0 / 255.0);
-            var color_foam = vec3<f32>(100.0 / 255.0, 143.0 / 255.0, 255.0 / 255.0);
-            if !is_ocean_water {
-                color_deep = vec3<f32>(60.0 / 255.0, 140.0 / 255.0, 175.0 / 255.0);
-                color_mid  = vec3<f32>(75.0 / 255.0, 155.0 / 255.0, 195.0 / 255.0);
-                color_foam = vec3<f32>(95.0 / 255.0, 175.0 / 255.0, 220.0 / 255.0);
-            }
-
-            var detail_color = color_deep;
-            if sparkle_hash > 0.988 { detail_color = color_foam; }
-            else if wave > 1.2 { detail_color = color_foam; }
-            else if wave > 0.4 { detail_color = color_mid; }
-
-            // Caustics
-            let c1 = sin(px * 0.3 + globals.time * 1.2) * cos(py * 0.4 - globals.time * 0.9);
-            let c2 = sin(px * 0.25 - py * 0.35 + globals.time * 0.7);
-            let caustic = max(0.0, c1 + c2 - 0.6) * 0.15;
-            detail_color = detail_color + vec3<f32>(caustic * 0.6, caustic * 0.8, caustic);
-
-            // River flow lines
-            if !is_ocean_water {
-                let flow_dir = 0.7 * world_x + 0.3 * world_y;
-                let flow = sin(flow_dir * 12.0 - globals.time * 3.5) * 0.5 + 0.5;
-                let streak = smoothstep(0.7, 0.95, flow) * 0.12;
-                detail_color = detail_color + vec3<f32>(streak * 0.5, streak * 0.8, streak);
-            }
-
-            // Blend flat→detail based on zoom
-            final_water_color = mix(final_water_color, detail_color, water_detail);
-
-            // Wave normals only at detail zoom
-            let wave_dx = cos(px * freq_x + py * freq_y + t) * freq_x - sin(py * freq_x - px * freq_y + t * 0.7) * freq_y;
-            let wave_dy = cos(px * freq_x + py * freq_y + t) * freq_y + sin(py * freq_x - px * freq_y + t * 0.7) * freq_x;
-            normal = normalize(vec3<f32>(-wave_dx * 0.8 * water_detail, -wave_dy * 0.8 * water_detail, 1.0));
-            is_specular = water_detail > 0.5;
-        }
-
-        terrain_color = vec4<f32>(final_water_color, 1.0);
+        terrain_color = vec4<f32>(color_flat, 1.0);
     }
 
     // Convert sRGB palette input to linear space
@@ -389,7 +329,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     // ── Dynamic Conquest Border Shockwave Pulse ──
                     if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
                         let pulse = 1.0 - min_border_dist / globals.border_thickness;
-                        border_albedo = mix(border_albedo, vec3<f32>(1.2, 1.2, 1.2), flash_val * globals.effect_shockwave * pulse * 0.5);
+                        // Keep conquest pulse in the conquering player's hue instead of whitening it.
+                        let conquer_glow = min(owner_albedo(owner_id) * 1.35, vec3<f32>(1.0, 1.0, 1.0));
+                        border_albedo = mix(
+                            border_albedo,
+                            conquer_glow,
+                            flash_val * globals.effect_shockwave * pulse * 0.5
+                        );
                     }
 
                     // ── Contested Border Energy Crackling (PvP shimmer) ──
@@ -527,11 +473,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let warm_tint = vec3<f32>(1.02 + 0.03 * sun_phase, 1.0 + 0.01 * sun_phase, 1.0 - 0.02 * sun_phase);
     base_color = base_color * warm_tint;
 
-    // ── Embossed Cell Vignette (Closed-form Hex SDF - 100% Zero-Loop) ──
+    // Hex SDF reused by land emboss + building-placement grid (computed once; emboss skipped on water)
     let min_dist_to_edge = 0.5 - max(abs(local_pos.x), 0.5 * abs(local_pos.x) + 0.86602540378 * abs(local_pos.y));
-    if globals.zoom >= 0.6 {
+
+    // Embossed cell vignette — land only (on water it moirés into diagonal hatch when zoomed out)
+    if is_land && globals.zoom >= 0.6 {
         let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
-        base_color = base_color * (0.86 + 0.14 * cell_bevel); // Emphasizes 3D depth of individual tiles
+        base_color = base_color * (0.86 + 0.14 * cell_bevel);
     }
 
     // ── Tactile Canvas/Matte Paper Texture Overlay (Zoom-dependent LOD) ──

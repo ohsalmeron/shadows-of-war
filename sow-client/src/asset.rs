@@ -1,15 +1,23 @@
 use crate::app::SowApp;
-use crate::{get_assets_url, MapDownloadEvent};
+use crate::{get_maps_url, MapDownloadEvent};
+#[cfg(target_arch = "wasm32")]
+use crate::get_assets_url;
 use sow_ui::app::ClientPhase;
 
 impl SowApp {
     pub fn update_assets(&mut self) {
+        self.poll_thumbnail_fetches();
+
         #[cfg(target_arch = "wasm32")]
         self.poll_leader_portrait_fetches();
 
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
             match res {
+                MapDownloadEvent::CatalogReady(entries) => {
+                    self.ui.app.asset_loader.catalog_in_flight = false;
+                    self.ui.app.asset_loader.map_catalog = Some(entries);
+                }
                 MapDownloadEvent::Progress(downloaded_map_name, progress) => {
                     if Some(downloaded_map_name.clone())
                         == self.ui.app.main_menu_state.downloading_map_name
@@ -34,59 +42,37 @@ impl SowApp {
                     }
                 }
                 MapDownloadEvent::ThumbnailReady(map_name, bytes) => {
-                    if let Ok(img) = image::load_from_memory(&bytes) {
-                        let size = [img.width() as _, img.height() as _];
-                        let image_buffer = img.to_rgba8();
-                        let pixels = image_buffer.as_flat_samples();
-                        let color_image =
-                            egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                        let texture = self.ui.egui_ctx.load_texture(
-                            &map_name,
-                            color_image,
-                            egui::TextureOptions::LINEAR,
-                        );
-                        let key = map_name.to_lowercase().replace([' ', '_'], "");
-                        self.ui.app.asset_loader.thumbnails.insert(key, texture);
-                    } else {
-                        log::warn!("Failed to decode thumbnail for {}", map_name);
+                    match self.ui.app.asset_loader.ingest_thumbnail(
+                        &self.ui.egui_ctx,
+                        &map_name,
+                        &bytes,
+                    ) {
+                        Ok(()) => {
+                            log::debug!("Loaded map thumbnail: {}", map_name);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to decode thumbnail for {}: {}", map_name, e);
+                            self.ui
+                                .app
+                                .asset_loader
+                                .note_thumbnail_failure(&map_name, e);
+                        }
                     }
+                }
+                MapDownloadEvent::ThumbnailFailed(map_name, reason) => {
+                    log::warn!("Map thumbnail fetch failed for {}: {}", map_name, reason);
                     self.ui
                         .app
                         .asset_loader
-                        .thumbnails_in_flight
-                        .remove(&map_name);
+                        .note_thumbnail_failure(&map_name, reason);
                 }
                 MapDownloadEvent::MapReady(map_name, bytes) => {
-                    let mut valid = true;
-                    if let Some(expected_md5) =
-                        self.ui.app.asset_loader.expected_md5s.get(&map_name)
-                    {
-                        let digest = md5::compute(&bytes);
-                        let actual_md5 = format!("{:x}", digest);
-                        if actual_md5 != *expected_md5 {
-                            log::error!(
-                                "MD5 mismatch for map {}: expected {}, got {}",
-                                map_name,
-                                expected_md5,
-                                actual_md5
-                            );
-                            valid = false;
-                        } else {
-                            log::info!("MD5 verified for map {}", map_name);
-                        }
-                    }
-
                     self.ui.app.asset_loader.maps_in_flight.remove(&map_name);
-                    if valid {
-                        self.ui
-                            .app
-                            .asset_loader
-                            .maps
-                            .insert(map_name.clone(), bytes.clone());
-                    } else {
-                        // Optionally handle failure, we just drop it so it can be retried later
-                        continue;
-                    }
+                    self.ui
+                        .app
+                        .asset_loader
+                        .maps
+                        .insert(map_name.clone(), bytes.clone());
 
                     if Some(map_name.clone()) == self.ui.app.main_menu_state.downloading_map_name {
                         log::info!("Map download completed successfully.");
@@ -120,25 +106,6 @@ impl SowApp {
                         }
                     }
                 }
-                MapDownloadEvent::ManifestReady(map_name, manifest) => {
-                    self.ui
-                        .app
-                        .asset_loader
-                        .manifests_in_flight
-                        .remove(&map_name);
-                    self.ui
-                        .app
-                        .asset_loader
-                        .manifests
-                        .insert(map_name.clone(), manifest.clone());
-                    if Some(map_name) == self.ui.app.main_menu_state.downloading_map_name {
-                        self.ui.app.main_menu_state.cached_manifest = Some(manifest);
-                    }
-                }
-                MapDownloadEvent::CatalogReady(catalog) => {
-                    self.ui.app.asset_loader.catalog_in_flight = false;
-                    self.ui.app.asset_loader.map_catalog = Some(catalog);
-                }
                 MapDownloadEvent::LeaderPortraitReady {
                     leader,
                     mobile,
@@ -163,6 +130,70 @@ impl SowApp {
                 }
             }
         }
+    }
+
+    fn poll_thumbnail_fetches(&mut self) {
+        let pending = self.ui.app.asset_loader.drain_thumbnail_fetch_pending();
+        for map_name in pending {
+            self.start_thumbnail_fetch(map_name);
+        }
+    }
+
+    pub(crate) fn start_thumbnail_fetch(&mut self, map_name: String) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(bytes) = sow_core::maps::read_thumbnail_webp_from_repo(&map_name) {
+                match self.ui.app.asset_loader.ingest_thumbnail(
+                    &self.ui.egui_ctx,
+                    &map_name,
+                    &bytes,
+                ) {
+                    Ok(()) => {
+                        log::debug!("Loaded map thumbnail from repo: {}", map_name);
+                        return;
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Repo thumbnail decode failed for {}: {}",
+                            map_name,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        let url = format!(
+            "{}/{}/thumbnail.webp",
+            get_maps_url().trim_end_matches('/'),
+            map_name
+        );
+        let tx = self.tasks.map_tx.clone();
+        let map_name_for_closure = map_name.clone();
+        let request = ehttp::Request::get(&url);
+        log::debug!("Fetching map thumbnail: {}", url);
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            match result {
+                Ok(res) if res.ok => {
+                    let _ = tx.send(MapDownloadEvent::ThumbnailReady(
+                        map_name_for_closure,
+                        res.bytes,
+                    ));
+                }
+                Ok(res) => {
+                    let _ = tx.send(MapDownloadEvent::ThumbnailFailed(
+                        map_name_for_closure,
+                        format!("HTTP {}", res.status),
+                    ));
+                }
+                Err(e) => {
+                    let _ = tx.send(MapDownloadEvent::ThumbnailFailed(
+                        map_name_for_closure,
+                        e.to_string(),
+                    ));
+                }
+            }
+        });
     }
 
     #[cfg(target_arch = "wasm32")]

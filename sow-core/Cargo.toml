@@ -15,6 +15,6 @@ bitfield = { workspace = true }
 wyrand = { workspace = true }
 log = { workspace = true }
 bytemuck = { workspace = true }
-serde_json = { workspace = true }
 egui = { workspace = true }
 libm = "0.2.16"
+brotli = { workspace = true }

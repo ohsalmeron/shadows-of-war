@@ -24,24 +24,9 @@ pub(crate) fn hide_web_loader() {
 impl SowApp {
     pub fn update_loader(&mut self) {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
-            // Auto-populate cached_manifest from asset_loader if missing
-            if self.ui.app.main_menu_state.cached_manifest.is_none() {
-                if let Some(man) = self
-                    .ui
-                    .app
-                    .asset_loader
-                    .manifests
-                    .get(&start_msg.config.map_name)
-                {
-                    self.ui.app.main_menu_state.cached_manifest = Some(man.clone());
-                }
-            }
-
             let has_map = self.ui.app.main_menu_state.cached_map.is_some();
-            let has_manifest = self.ui.app.main_menu_state.cached_manifest.is_some();
-            let needs_manifest = self.net.is_offline; // Multiplayer server sends config; we only need manifest for singleplayer
 
-            if !has_map || (needs_manifest && !has_manifest) {
+            if !has_map {
                 self.tasks.engine_init_queued_msg = Some(start_msg);
 
                 // Keep splash screen updated with map download progress
@@ -59,51 +44,41 @@ impl SowApp {
                 self.ui.app.splash_state.progress = 0.1;
 
                 let cached_map = self.ui.app.main_menu_state.cached_map.take();
-                let cached_manifest = self.ui.app.main_menu_state.cached_manifest.take();
                 let mut start_msg_clone = start_msg.clone();
-                if let Some(man) = cached_manifest {
-                    start_msg_clone.nations = man.nations;
-                    start_msg_clone.config.map_width = man.map.width;
-                    start_msg_clone.config.map_height = man.map.height;
-                }
 
                 let tx = self.tasks.engine_init_tx.clone();
 
                 let init_logic = move || {
                     let _ = tx.send(EngineInitEvent::Status("Decompressing map...".to_string()));
 
-                    let mut uncompressed_map = None;
-                    if let Some(bytes) = cached_map {
-                        let expected_len = (start_msg_clone.config.map_width
-                            * start_msg_clone.config.map_height)
-                            as usize;
-                        if bytes.len() == expected_len {
-                            log::info!(
-                                "Map payload is already uncompressed (browser auto-decompression)"
-                            );
-                            uncompressed_map = Some(bytes);
-                        } else {
-                            let mut uncompressed = Vec::new();
-                            let mut decompressor =
-                                brotli::Decompressor::new(bytes.as_slice(), 4096);
-                            if std::io::Read::read_to_end(&mut decompressor, &mut uncompressed)
-                                .is_ok()
-                            {
-                                uncompressed_map = Some(uncompressed);
-                            } else {
-                                log::error!("Failed to decompress map.bin.br payload");
-                            }
-                        }
-                    } else {
+                    let parsed_map = cached_map.as_ref().and_then(|bytes| {
+                        sow_core::maps::load_map_from_payload(bytes)
+                            .map_err(|e| {
+                                log::error!("Failed to parse map.bin: {e}");
+                                e
+                            })
+                            .ok()
+                    });
+
+                    if cached_map.is_none() {
                         log::error!("Cached map data not found! Terrain will be empty.");
                     }
+
+                    let (w, h) = if let Some(ref m) = parsed_map {
+                        (m.width, m.height)
+                    } else {
+                        (
+                            start_msg_clone.config.map_width,
+                            start_msg_clone.config.map_height,
+                        )
+                    };
+                    start_msg_clone.config.map_width = w;
+                    start_msg_clone.config.map_height = h;
 
                     let _ = tx.send(EngineInitEvent::Status(
                         "Computing terrain and water geometry...".to_string(),
                     ));
 
-                    let w = start_msg_clone.config.map_width;
-                    let h = start_msg_clone.config.map_height;
                     let mut state = sow_core::game::GameState::new(
                         start_msg_clone.seed,
                         w,
@@ -111,23 +86,24 @@ impl SowApp {
                         start_msg_clone.config.clone(),
                     );
 
-                    if let Some(bytes) = uncompressed_map {
-                        if bytes.len() == state.map.terrain.len() {
+                    if let Some(map_file) = parsed_map {
+                        state.total_land_tiles = map_file.num_land_tiles;
+                        state.map_spawns = map_file.spawns;
+                        if map_file.terrain.len() == state.map.terrain.len() {
                             let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
                             unsafe {
                                 std::ptr::copy_nonoverlapping(
-                                    bytes.as_ptr(),
+                                    map_file.terrain.as_ptr(),
                                     dest_ptr,
-                                    bytes.len(),
+                                    map_file.terrain.len(),
                                 );
                             }
                         } else {
-                            log::error!("Map size mismatch! Expected {} bytes but decompressed {} bytes. Map will be randomly generated.", state.map.terrain.len(), bytes.len());
-                            for (i, &b) in bytes.iter().enumerate() {
-                                if i < state.map.terrain.len() {
-                                    state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
-                                }
-                            }
+                            log::error!(
+                                "Terrain length mismatch: expected {}, got {}",
+                                state.map.terrain.len(),
+                                map_file.terrain.len()
+                            );
                         }
                     }
 
@@ -179,11 +155,10 @@ impl SowApp {
                     let boot_ready = avatars_ready;
                     #[cfg(not(target_arch = "wasm32"))]
                     let boot_ready = {
-                        let catalog_ready = self.ui.app.asset_loader.map_catalog.is_some();
                         let leaders_ready =
                             !self.ui.app.asset_loader.leader_desktop_images.is_empty();
                         let ui_ready = self.ui.app.asset_loader.ui_loader_empty.is_some();
-                        catalog_ready && avatars_ready && leaders_ready && ui_ready
+                        avatars_ready && leaders_ready && ui_ready
                     };
 
                     if boot_ready {
@@ -235,7 +210,6 @@ impl SowApp {
                             seed: 0,
                             map_bytes: vec![0b10000000], // 1 land tile
                             players: vec![],
-                            nations: None,
                         });
                         self.sim.turn_queue.clear();
                         self.ui.label_positions.clear();
@@ -300,7 +274,6 @@ impl SowApp {
                             seed: start_msg.seed,
                             map_bytes: map_bytes.clone(),
                             players: start_msg.players.clone(),
-                            nations: start_msg.nations.clone(),
                         });
 
                         for turn in &start_msg.missed_turns {
@@ -380,6 +353,15 @@ impl SowApp {
                         self.ui.app.splash_state.progress = 0.99;
                         self.ui.app.splash_state.status_text =
                             "Connecting to game server...".to_string();
+                        if self.ui.app.splash_state.frames_drawn % 120 == 0 {
+                            log::warn!(
+                                "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, phase={:?}",
+                                self.ui.app.main_menu_state.is_connected,
+                                self.net.client.is_some(),
+                                self.ws_on_relay(),
+                                self.ui.app.phase
+                            );
+                        }
                     }
                 }
             }

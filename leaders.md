@@ -1,6 +1,6 @@
 # Shadows of War - Absolute Complete Leaders Roster
 
-This file documents the complete roster of **1269** leaders for the game. Each leader has detailed Hero and Empire descriptions designed for high-end AAA character concept art.
+This file documents the complete roster of **1270** leaders for the game. Each leader has detailed Hero and Empire descriptions designed for high-end AAA character concept art.
 
 ---
 
@@ -5085,4 +5085,8 @@ This file documents the complete roster of **1269** leaders for the game. Each l
 ### 1269. Maximinus Daza | Rome | Roman Republic / Empire | 1st Century BCE – 4th Century CE
 - **Hero:** Lithe and calculating patrician stance in polished iron lorica segmentata armor over a crimson tunic, holding a decorated steel gladius, calculating strategic genius with a cold, piercing gaze, stance light and ready.
 - **Empire:** Bustling stone forums and monumental triumphal arches, a crowded assembly of senators under marble porticos, atmospheric perspective, imperial crimson, marble white, and polished gold palette.
+
+### 1270. Ragnar Lothbrok | Viking Kingdom | Kingdom of Norway | 9th Century CE
+- **Hero:** Muscular, towering northern warrior with wild blue eyes burning with savage ambition, wearing a thick wolf-pelt mantle over a heavy iron chainmail shirt, gripping a massive bearded battle-axe, stance light and ready.
+- **Empire:** Soaring misty fjords with dragon-prowed Viking longships anchored on cold choppy waters, dark wooden stave churches under stormy northern skies with dancing green Northern Lights, atmospheric perspective, deep ocean blue, slate grey, and pine green palette.
 

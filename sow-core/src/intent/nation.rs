@@ -2,7 +2,12 @@ use crate::building::{
     aggregate_buildings_per_player, resolve_structure_spawn_tile, structure_build_cost_gold,
     structure_kind_enabled,
 };
+use crate::diplomacy::{
+    alliance_propose_roll_cap, is_valid_alliance_target, maybe_betray_for_attack,
+    should_reject_traitor_request, ALLIANCE_RENEWAL_WINDOW_TICKS,
+};
 use crate::engine::SowEngine;
+use crate::player::PlayerType;
 
 use crate::game::{BuildingKind, NukeKind};
 use crate::protocol::{AttackIntent, GameplayIntent, StampedIntent};
@@ -269,7 +274,9 @@ impl SowEngine {
 
             // ── Alliance Proposal Evaluation ───────────────────────────────
             let mut proposals_to_accept = Vec::new();
-            for &(proposer, target) in &self.alliances_proposed {
+            for prop in &self.alliances_proposed {
+                let proposer = prop.proposer;
+                let target = prop.target;
                 if target == bot_id {
                     let proposer_ok = self
                         .state
@@ -288,32 +295,53 @@ impl SowEngine {
                         let current_points = self.state.player(bot_id).unwrap().iq_points;
                         if current_points >= alliance_cost {
                             let mut accept = false;
+                            let tick = self.current_tick_u32();
+                            let traitor_roll = self
+                                .state
+                                .player_mut(bot_id)
+                                .unwrap()
+                                .bot_rng
+                                .next_int(0, 100);
                             if bot_iq >= 130 {
                                 if let (Some(p_me), Some(p_prop)) =
                                     (self.state.player(bot_id), self.state.player(proposer))
                                 {
-                                    let me_troops = p_me.troops.max(1.0);
-                                    let me_tiles = p_me.tile_count.max(1);
-                                    if p_prop.troops >= me_troops * 0.8
-                                        && p_prop.tile_count >= (me_tiles as f64 * 0.8) as u32
-                                    {
-                                        accept = true;
+                                    if should_reject_traitor_request(p_prop, tick, traitor_roll) {
+                                        accept = false;
+                                    } else {
+                                        let me_troops = p_me.troops.max(1.0);
+                                        let me_tiles = p_me.tile_count.max(1);
+                                        if p_prop.troops >= me_troops * 0.8
+                                            && p_prop.tile_count >= (me_tiles as f64 * 0.8) as u32
+                                        {
+                                            accept = true;
+                                        }
                                     }
                                 }
                             } else if bot_iq >= 100 {
                                 if let (Some(p_me), Some(p_prop)) =
                                     (self.state.player(bot_id), self.state.player(proposer))
                                 {
-                                    let me_troops = p_me.troops.max(1.0);
-                                    let me_tiles = p_me.tile_count.max(1);
-                                    if p_prop.troops >= me_troops * 0.5
-                                        && p_prop.tile_count >= (me_tiles as f64 * 0.5) as u32
-                                    {
-                                        accept = true;
+                                    if should_reject_traitor_request(p_prop, tick, traitor_roll) {
+                                        accept = false;
+                                    } else {
+                                        let me_troops = p_me.troops.max(1.0);
+                                        let me_tiles = p_me.tile_count.max(1);
+                                        if p_prop.troops >= me_troops * 0.5
+                                            && p_prop.tile_count >= (me_tiles as f64 * 0.5) as u32
+                                        {
+                                            accept = true;
+                                        }
                                     }
                                 }
+                            } else if let Some(p_prop) = self.state.player(proposer) {
+                                accept = !should_reject_traitor_request(
+                                    p_prop,
+                                    tick,
+                                    traitor_roll,
+                                );
                             } else {
-                                accept = true;
+                                accept = false;
                             }
 
                             if accept {
@@ -532,48 +560,6 @@ impl SowEngine {
                 }
             }
 
-            // ── Breaking Alliances if ally has become too weak ─────────────
-            let current_points = self.state.player(bot_id).unwrap().iq_points;
-            if current_points >= alliance_cost {
-                let mut alliances_to_break = Vec::new();
-                if let Some(p_me) = self.state.player(bot_id) {
-                    for &ally_id in &p_me.alliances {
-                        if let Some(p_ally) = self.state.player(ally_id) {
-                            if p_ally.alive {
-                                let me_troops = p_me.troops.max(1.0);
-                                let me_tiles = p_me.tile_count.max(1);
-                                if bot_iq >= 130 {
-                                    if p_ally.troops < me_troops * 0.8
-                                        || p_ally.tile_count < (me_tiles as f64 * 0.8) as u32
-                                    {
-                                        alliances_to_break.push(ally_id);
-                                    }
-                                } else if bot_iq >= 100
-                                    && (p_ally.troops < me_troops * 0.5
-                                        || p_ally.tile_count < (me_tiles as f64 * 0.5) as u32)
-                                {
-                                    alliances_to_break.push(ally_id);
-                                }
-                            }
-                        }
-                    }
-                }
-                for ally_id in alliances_to_break {
-                    if let Some(p_me) = self.state.player_mut(bot_id) {
-                        if p_me.iq_points >= alliance_cost {
-                            p_me.iq_points -= alliance_cost;
-                            decisions.push(BotDecision {
-                                bot_id,
-                                kind: BotDecisionKind::Build,
-                                intent: GameplayIntent::BreakAlliance {
-                                    target_player: ally_id,
-                                },
-                            });
-                        }
-                    }
-                }
-            }
-
             // ── Zero-allocation border and neighbor scanning ──────────────
             self.placement_scratch.border_scratch.clear();
             if let Some(player) = self.state.player(bot_id) {
@@ -614,7 +600,21 @@ impl SowEngine {
 
             // ── Propose Alliances ──────────────────────────────────────────
             let current_points = self.state.player(bot_id).unwrap().iq_points;
-            if current_points >= alliance_cost && !neighbor_players.is_empty() {
+            let is_under_attack = self
+                .attacks
+                .iter()
+                .any(|att| {
+                    att.target_owner == bot_id
+                        && self
+                            .state
+                            .player(bot_id)
+                            .map(|p| !p.alliances.contains(&att.owner_id))
+                            .unwrap_or(true)
+                });
+            let expand_first = has_neutral && !is_under_attack;
+
+            if current_points >= alliance_cost && !neighbor_players.is_empty() && !expand_first
+            {
                 let mut proposed_target = None;
                 let (me_alliances, me_troops, me_tile_count) = {
                     let p_me = self.state.player(bot_id).unwrap();
@@ -628,30 +628,6 @@ impl SowEngine {
                 } else {
                     5
                 };
-
-                // Betrayal logic
-                if bot_iq >= 130 && !me_alliances.is_empty() {
-                    for &ally_id in &me_alliances {
-                        if let Some(ally) = self.state.player(ally_id) {
-                            if me_troops >= ally.troops * 2.0 {
-                                let tick = self.state.tick as u32;
-                                if let Some(p_me) = self.state.player_mut(bot_id) {
-                                    p_me.iq_points -= alliance_cost;
-                                    p_me.traitor = true;
-                                    p_me.traitor_tick = tick;
-                                }
-                                decisions.push(BotDecision {
-                                    bot_id,
-                                    kind: BotDecisionKind::Build,
-                                    intent: GameplayIntent::BreakAlliance {
-                                        target_player: ally_id,
-                                    },
-                                });
-                                break;
-                            }
-                        }
-                    }
-                }
 
                 for &neighbor in &neighbor_players {
                     let (neigh_alive, neigh_troops, neigh_tile_count) =
@@ -669,29 +645,38 @@ impl SowEngine {
                             let p_me = self.state.player(bot_id).unwrap();
                             let allied = p_me.alliances.contains(&neighbor);
                             let timer = p_me.alliance_timers.get(&neighbor).copied().unwrap_or(0);
-                            (allied, allied && timer <= 600)
+                            (allied, allied && timer <= ALLIANCE_RENEWAL_WINDOW_TICKS)
                         };
-                        let is_proposed = self.alliances_proposed.contains(&(bot_id, neighbor));
+                        let neigh_type = self
+                            .state
+                            .player(neighbor)
+                            .map(|p| p.player_type)
+                            .unwrap_or(PlayerType::Bot);
+                        let valid_target =
+                            is_valid_alliance_target(bot_id, neighbor, neigh_type);
+                        let can_send = self.can_send_alliance_request(bot_id, neighbor);
 
                         let has_room = me_alliances.len() < max_alliances;
                         let should_propose = (has_room && !is_allied && !is_teammate) || can_renew;
 
-                        if should_propose && !is_proposed {
+                        if should_propose && valid_target && can_send {
                             let mut meets_threshold = false;
                             let roll = {
                                 let p_me = self.state.player_mut(bot_id).unwrap();
                                 p_me.bot_rng.next_int(0, 100)
                             };
+                            let roll_cap =
+                                alliance_propose_roll_cap(bot_id, bot_iq, can_renew);
 
                             if can_renew {
-                                meets_threshold = true;
+                                meets_threshold = roll < roll_cap;
                             } else if bot_iq >= 130 {
                                 let me_troops_val = me_troops.max(1.0);
                                 let me_tiles_val = me_tile_count.max(1);
                                 if neigh_troops >= me_troops_val * 0.8
                                     && neigh_tile_count >= (me_tiles_val as f64 * 0.8) as u32
                                 {
-                                    meets_threshold = roll < 15;
+                                    meets_threshold = roll < roll_cap;
                                 }
                             } else if bot_iq >= 100 {
                                 let me_troops_val = me_troops.max(1.0);
@@ -699,10 +684,10 @@ impl SowEngine {
                                 if neigh_troops >= me_troops_val * 0.5
                                     && neigh_tile_count >= (me_tiles_val as f64 * 0.5) as u32
                                 {
-                                    meets_threshold = roll < 10;
+                                    meets_threshold = roll < roll_cap;
                                 }
                             } else {
-                                meets_threshold = roll < 5;
+                                meets_threshold = roll < roll_cap;
                             }
 
                             if meets_threshold {
@@ -903,6 +888,60 @@ impl SowEngine {
             if slot.do_attack {
                 let current_points = self.state.player(bot_id).unwrap().iq_points;
                 if current_points >= attack_cost {
+                    let tick = self.current_tick_u32();
+                    let betray_cd = self.alliance_betray_cooldown_until.get(&bot_id).copied();
+                    let bordering_count = neighbor_players.len();
+                    let allied_on_border: Vec<u16> = {
+                        let p_me = self.state.player(bot_id).unwrap();
+                        p_me.alliances
+                            .iter()
+                            .copied()
+                            .filter(|id| neighbor_players.contains(&id))
+                            .collect()
+                    };
+                    let mut betray_then_attack: Option<u16> = None;
+                    for ally_id in allied_on_border {
+                        let should_betray = {
+                            let p_me = self.state.player(bot_id).unwrap();
+                            let Some(p_ally) = self.state.player(ally_id) else {
+                                continue;
+                            };
+                            let mut rng = WyRand::new(
+                                self.state
+                                    .seed
+                                    .wrapping_add(bot_id as u64)
+                                    .wrapping_add(ally_id as u64)
+                                    .wrapping_add(tick as u64),
+                            );
+                            maybe_betray_for_attack(
+                                p_me,
+                                p_ally,
+                                bordering_count,
+                                tick,
+                                betray_cd,
+                                &mut rng,
+                            )
+                        };
+                        if should_betray {
+                            betray_then_attack = Some(ally_id);
+                            break;
+                        }
+                    }
+                    if let Some(ally_id) = betray_then_attack {
+                        if let Some(p_me) = self.state.player_mut(bot_id) {
+                            if p_me.iq_points >= alliance_cost {
+                                p_me.iq_points -= alliance_cost;
+                            }
+                        }
+                        decisions.push(BotDecision {
+                            bot_id,
+                            kind: BotDecisionKind::Build,
+                            intent: GameplayIntent::BreakAlliance {
+                                target_player: ally_id,
+                            },
+                        });
+                    }
+
                     let trigger_ratio = slot.profile.trigger_ratio;
                     let reserve_ratio = slot.profile.reserve_ratio;
                     let expand_ratio = slot.profile.expand_ratio;
@@ -917,6 +956,9 @@ impl SowEngine {
                         .iter()
                         .copied()
                         .filter(|&id| {
+                            if betray_then_attack == Some(id) {
+                                return true;
+                            }
                             if let Some(p_me) = self.state.player(bot_id) {
                                 !p_me.alliances.contains(&id)
                             } else {
@@ -1427,25 +1469,56 @@ mod bot_iq_alliance_tests {
     }
 
     #[test]
-    #[ignore]
-    fn test_alliance_betrayal_high_iq() {
+    fn test_attack_context_betrayal_not_timer_driven() {
+        let mut engine = test_engine_two_players(42);
+        let p1 = engine.state.player_mut(1).unwrap();
+        p1.iq_points = 100.0;
+        p1.player_type = crate::player::PlayerType::Nation;
+        p1.alliances.push(2);
+        p1.alliance_timers.insert(2, 100);
+        p1.troops = 5000.0;
+        let p2 = engine.state.player_mut(2).unwrap();
+        p2.alliances.push(1);
+        p2.alliance_timers.insert(1, 100);
+        p2.troops = 500.0;
+        // No neutral land — boxed in with ally only.
+        let mut broke_alliance = false;
+        for _ in 0..120 {
+            engine.state.tick += 1;
+            engine.execute_ai_think();
+            if !engine.state.player(1).unwrap().alliances.contains(&2) {
+                broke_alliance = true;
+                break;
+            }
+        }
+        assert!(
+            broke_alliance,
+            "strong nation should betray weak bordering ally via attack-context logic"
+        );
+    }
+
+    #[test]
+    fn test_proactive_two_x_betrayal_removed() {
         let mut engine = test_engine_two_players(42);
         engine.state.player_mut(1).unwrap().iq_points = 100.0;
-        // Force alliance
         engine.state.player_mut(1).unwrap().alliances.push(2);
         engine.state.player_mut(2).unwrap().alliances.push(1);
-
-        engine.refresh_building_grid();
-        engine.state.player_mut(1).unwrap().troops = 5000.0;
-        engine.state.map.set_owner_id(1, 0, 2);
-        for _ in 0..30 {
+        engine.state.player_mut(1).unwrap().alliance_timers.insert(2, 500);
+        engine.state.player_mut(2).unwrap().alliance_timers.insert(1, 500);
+        engine.state.player_mut(1).unwrap().troops = 2500.0;
+        engine.state.player_mut(2).unwrap().troops = 1000.0;
+        // Give bot 1 neutral expansion option so diplomacy propose is skipped; 2x should not auto-break.
+        engine.state.map.set_owner_id(2, 0, 0);
+        let idx = engine.state.map.ref_id(2, 0);
+        engine.state.map.terrain[idx] = crate::map::MapTile::from_byte(0b1000_0000);
+        for _ in 0..20 {
             engine.state.tick += 1;
             engine.execute_ai_think();
         }
-        // Bot 1 (1000 troops) should betray Bot 2 (100 troops)
-        let p1 = engine.state.player(1).unwrap();
-        assert!(p1.traitor);
-        assert_eq!(p1.traitor_tick, 0);
+        assert!(
+            engine.state.player(1).unwrap().alliances.contains(&2),
+            "2x troop advantage alone must not trigger timer betrayal"
+        );
     }
 
     #[test]

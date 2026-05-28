@@ -22,14 +22,10 @@ pub struct TerrainTile {
 
 pub struct MapResult {
     pub map_data: Vec<u8>,
-    pub mini_map_data: Vec<u8>,
     pub thumbnail_data: Vec<u8>,
     pub width: u32,
     pub height: u32,
     pub num_land_tiles: u32,
-    pub mini_width: u32,
-    pub mini_height: u32,
-    pub mini_num_land_tiles: u32,
 }
 
 pub struct GeneratorArgs {
@@ -108,18 +104,13 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
     }
 
     let (map_data, num_land_tiles) = pack_terrain(&grid);
-    let (mini_map_data, mini_num_land_tiles) = pack_terrain(&mini_grid);
 
     Ok(MapResult {
         map_data,
-        mini_map_data,
         thumbnail_data,
         width,
         height,
         num_land_tiles,
-        mini_width: width / 2,
-        mini_height: height / 2,
-        mini_num_land_tiles,
     })
 }
 

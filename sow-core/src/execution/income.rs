@@ -53,16 +53,27 @@ impl SowEngine {
                 == crate::player::PlayerType::Bot
                 && !player_id.is_multiple_of(100);
 
+            let leader = self.state.players[idx].leader;
+            let richard_mult = if leader == crate::player::Leader::RichardTheLionheart {
+                1.50
+            } else {
+                1.0
+            };
+            let leonidas_mult = if leader == crate::player::Leader::Leonidas {
+                1.50
+            } else {
+                1.0
+            };
+
             let mut max_tr = config.max_troops_base
                 + max_troops_bonus * config.max_troops_scale
-                + agg.city_levels as f64 * config.city_max_troops
-                + agg.armory_levels as f64 * 500.0;
+                + agg.city_levels as f64 * config.city_max_troops * richard_mult
+                + agg.armory_levels as f64 * 500.0 * leonidas_mult;
             if is_standard_bot {
                 max_tr /= 1.5;
             }
             self.state.players[idx].max_troops = max_tr;
 
-            let leader = self.state.players[idx].leader;
             let sun_tzu_mult = if leader == crate::player::Leader::SunTzu {
                 1.20
             } else {
@@ -73,9 +84,14 @@ impl SowEngine {
             } else {
                 1.0
             };
+            let vercingetorix_mult = if leader == crate::player::Leader::Vercingetorix {
+                1.50
+            } else {
+                1.0
+            };
 
             let mut troop_income = config.per_tick(config.troop_base_income)
-                + config.per_tick(50.0) * agg.city_levels as f64
+                + config.per_tick(50.0) * agg.city_levels as f64 * vercingetorix_mult
                 + config.per_tick(80.0) * agg.armory_levels as f64 * sun_tzu_mult
                 + config.per_tick(config.port_troop_income)
                     * agg.port_levels as f64
@@ -92,11 +108,23 @@ impl SowEngine {
             } else {
                 1.0
             };
+            let boudica_mult = if leader == crate::player::Leader::Boudica {
+                1.50
+            } else {
+                1.0
+            };
 
-            let factory_gold_income = agg.factory_levels as f64 * config.factory_gold_income;
+            let lady_six_sky_mult = if leader == crate::player::Leader::LadySixSky {
+                1.50
+            } else {
+                1.0
+            };
+
+            let factory_gold_income =
+                agg.factory_levels as f64 * config.factory_gold_income * lady_six_sky_mult;
 
             let mut gold_income = config.per_tick(config.gold_base_income)
-                + config.per_tick(config.city_gold_income) * agg.city_levels as f64
+                + config.per_tick(config.city_gold_income) * agg.city_levels as f64 * boudica_mult
                 + config.per_tick(100.0) * agg.foundry_levels as f64 * cleo_mult
                 + config.per_tick(config.port_gold_income)
                     * agg.port_levels as f64

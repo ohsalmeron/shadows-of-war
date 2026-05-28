@@ -4,6 +4,17 @@ _SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy-env.sh
 source "${_SCRIPTS_DIR}/deploy-env.sh"
 
+copy_leader_portraits() {
+    local dest="${1:-dist/assets/ui/leaders}"
+    local leaders_src="${ROOT}/sow-ui/assets/ui/leaders"
+    if [[ ! -d "${leaders_src}" ]]; then
+        echo "❌ Missing leader portraits: ${leaders_src}"
+        exit 1
+    fi
+    mkdir -p "${dest}"
+    cp -a "${leaders_src}/." "${dest}/"
+}
+
 copy_web_loader_assets() {
     local dest="${1:-dist/assets/ui}"
     local ui_src="${ROOT}/sow-ui/assets/ui"
@@ -19,6 +30,7 @@ copy_web_loader_assets() {
     "${cwebp_bin}" -q 82 -resize 1032 256 "${ui_src}/loader_full.webp" -o "${dest}/loader_full.webp"
     "${cwebp_bin}" -q 82 -resize 720 1280 "${ui_src}/sow-splash-mobile.webp" -o "${dest}/sow-splash-mobile.webp"
     cp "${ui_src}/sow-splash-desktop.webp" "${dest}/sow-splash-desktop.webp"
+    copy_leader_portraits "${dest}/leaders"
 }
 
 minify_js_shim() {

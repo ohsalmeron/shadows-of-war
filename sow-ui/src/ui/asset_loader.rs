@@ -10,6 +10,9 @@ pub struct LeaderPortraitKey {
 }
 
 pub struct AssetLoader {
+    /// Dynamic map list from `catalog.bin` (fetched at runtime).
+    pub map_catalog: Option<Vec<sow_core::maps::MapCatalogEntry>>,
+    pub catalog_in_flight: bool,
     /// Fully downloaded + cached map binary data (compressed .br bytes)
     pub maps: HashMap<String, Vec<u8>>,
     /// Maps currently being fetched
@@ -18,15 +21,10 @@ pub struct AssetLoader {
     pub thumbnails: HashMap<String, TextureHandle>,
     /// Thumbnails currently being fetched
     pub thumbnails_in_flight: HashSet<String>,
-    /// Fetched MapManifests
-    pub manifests: HashMap<String, sow_core::map_legacy::MapManifest>,
-    /// Manifests currently being fetched
-    pub manifests_in_flight: HashSet<String>,
-    pub catalog_in_flight: bool,
-    /// The global list of all available maps fetched from maps.json
-    pub map_catalog: Option<Vec<sow_core::map_legacy::MapManifest>>,
-    /// Expected MD5 hashes for maps
-    pub expected_md5s: HashMap<String, String>,
+    /// Last fetch/decode failure per map key (for main-menu debug display).
+    pub thumbnail_errors: HashMap<String, String>,
+    /// Queued thumbnail keys; drained by sow-client each frame.
+    pub thumbnails_fetch_pending: Vec<String>,
     /// Pre-loaded avatar textures
     pub avatars: HashMap<sow_core::player::Leader, TextureHandle>,
     pub avatar_fallback: Option<TextureHandle>,
@@ -48,59 +46,21 @@ impl Default for AssetLoader {
 }
 
 impl AssetLoader {
+    /// Normalize map display names to folder keys (e.g. "Bering Strait" -> "beringstrait").
+    pub fn map_key(name: &str) -> String {
+        sow_core::maps::map_key(name)
+    }
+
     pub fn new() -> Self {
-        let mut manifests = HashMap::new();
-        let mut catalog = Vec::new();
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
-                include_bytes!("../../../assets/maps/world/manifest.json"),
-            ) {
-                manifests.insert("world".to_string(), manifest.clone());
-                catalog.push(manifest.clone());
-
-                let mut custom_manifest = manifest.clone();
-                custom_manifest.name = "Custom".to_string();
-                custom_manifest.map.width = 800;
-                custom_manifest.map.height = 600;
-                manifests.insert("custom".to_string(), custom_manifest);
-            }
-
-            if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
-                include_bytes!("../../../assets/maps/giantworldmap/manifest.json"),
-            ) {
-                manifests.insert("giantworldmap".to_string(), manifest.clone());
-                catalog.push(manifest);
-            }
-        }
-
-        if let Ok(manifest) = serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
-            include_bytes!("../../../assets/maps/tutorial/manifest.json"),
-        ) {
-            manifests.insert("tutorial".to_string(), manifest.clone());
-            catalog.push(manifest);
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let map_catalog = if catalog.is_empty() {
-            None
-        } else {
-            Some(catalog)
-        };
-        #[cfg(target_arch = "wasm32")]
-        let map_catalog: Option<Vec<sow_core::map_legacy::MapManifest>> = None;
-
         Self {
+            map_catalog: None,
+            catalog_in_flight: false,
             maps: HashMap::new(),
             maps_in_flight: HashSet::new(),
             thumbnails: HashMap::new(),
             thumbnails_in_flight: HashSet::new(),
-            manifests,
-            manifests_in_flight: HashSet::new(),
-            catalog_in_flight: false,
-            map_catalog,
-            expected_md5s: HashMap::new(),
+            thumbnail_errors: HashMap::new(),
+            thumbnails_fetch_pending: Vec::new(),
             avatars: HashMap::new(),
             avatar_fallback: None,
             ui_loader_empty: None,
@@ -196,87 +156,109 @@ impl AssetLoader {
     }
 
     pub fn has_map(&self, map_name: &str) -> bool {
-        let key = map_name.to_lowercase().replace([' ', '_'], "");
-        key == "world"
-            || key == "giantworldmap"
-            || key == "tutorial"
-            || self.maps.contains_key(&key)
+        let key = Self::map_key(map_name);
+        self.maps.contains_key(&key) || sow_core::maps::map_payload_available(&key)
     }
 
     pub fn take_map(&mut self, map_name: &str) -> Option<Vec<u8>> {
-        let key = map_name.to_lowercase().replace([' ', '_'], "");
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if key == "world" && !self.maps.contains_key("world") {
-                self.maps.insert(
-                    "world".to_string(),
-                    include_bytes!("../../../assets/maps/world/map.bin.br").to_vec(),
-                );
-            }
-            if key == "giantworldmap" && !self.maps.contains_key("giantworldmap") {
-                self.maps.insert(
-                    "giantworldmap".to_string(),
-                    include_bytes!("../../../assets/maps/giantworldmap/map.bin.br").to_vec(),
-                );
-            }
-        }
-        if key == "tutorial" {
-            Some(include_bytes!("../../../assets/maps/tutorial/map.bin.br").to_vec())
-        } else {
-            self.maps.remove(&key)
-        }
+        let key = Self::map_key(map_name);
+        let cached = self.maps.remove(&key);
+        sow_core::maps::load_map_br_payload(&key, cached)
     }
 
     pub fn thumbnail(&self, map_name: &str) -> Option<&TextureHandle> {
-        let key = map_name.to_lowercase().replace([' ', '_'], "");
-        self.thumbnails.get(&key)
+        self.thumbnails.get(&Self::map_key(map_name))
+    }
+
+    pub fn thumbnail_in_flight(&self, map_name: &str) -> bool {
+        self.thumbnails_in_flight.contains(&Self::map_key(map_name))
+    }
+
+    pub fn thumbnail_error(&self, map_name: &str) -> Option<&str> {
+        self.thumbnail_errors
+            .get(&Self::map_key(map_name))
+            .map(String::as_str)
+    }
+
+    /// Insert a decoded thumbnail texture (always keyed with [`map_key`]).
+    pub fn ingest_thumbnail(
+        &mut self,
+        ctx: &egui::Context,
+        map_name: &str,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        let key = Self::map_key(map_name);
+        let color_image = crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
+            .ok_or_else(|| "decode failed (invalid or unsupported image)".to_string())?;
+        let texture = ctx.load_texture(
+            format!("map_thumb_{key}"),
+            color_image,
+            egui::TextureOptions::LINEAR,
+        );
+        self.thumbnails.insert(key.clone(), texture);
+        self.thumbnails_in_flight.remove(&key);
+        self.thumbnail_errors.remove(&key);
+        Ok(())
+    }
+
+    pub fn note_thumbnail_failure(&mut self, map_name: &str, reason: impl Into<String>) {
+        let key = Self::map_key(map_name);
+        self.thumbnails_in_flight.remove(&key);
+        self.thumbnail_errors.insert(key, reason.into());
+    }
+
+    /// Queue a thumbnail fetch when missing (idempotent).
+    pub fn request_thumbnail(&mut self, map_name: &str) {
+        let key = Self::map_key(map_name);
+        if self.thumbnails.contains_key(&key)
+            || self.thumbnails_in_flight.contains(&key)
+            || self
+                .thumbnails_fetch_pending
+                .iter()
+                .any(|pending| pending == &key)
+        {
+            return;
+        }
+        self.thumbnails_in_flight.insert(key.clone());
+        self.thumbnail_errors.remove(&key);
+        self.thumbnails_fetch_pending.push(key);
+    }
+
+    pub fn drain_thumbnail_fetch_pending(&mut self) -> Vec<String> {
+        self.thumbnails_fetch_pending.drain(..).collect()
     }
 
     pub fn get_assets_to_fetch(
         &mut self,
         lobbies: &[sow_core::protocol::LobbyInfo],
-    ) -> (Vec<String>, Vec<String>, Vec<String>) {
-        let mut thumbs_to_fetch = Vec::new();
-        let mut manifests_to_fetch = Vec::new();
+    ) -> (Vec<String>, Vec<String>) {
         let mut maps_to_fetch = Vec::new();
 
         let mut unique_maps = HashSet::new();
         for l in lobbies {
             unique_maps.insert(l.map_name.clone());
-            if let Some(md5) = &l.map_md5 {
-                self.expected_md5s.insert(l.map_name.clone(), md5.clone());
-            }
         }
 
-        // Thumbnails: fetch all missing ones at once (they are small)
+        // Thumbnails: queue missing ones; sow-client drains via poll_thumbnail_fetches.
         for map_name in &unique_maps {
-            if !self.thumbnails.contains_key(map_name)
-                && !self.thumbnails_in_flight.contains(map_name)
-            {
-                self.thumbnails_in_flight.insert(map_name.clone());
-                thumbs_to_fetch.push(map_name.clone());
-            }
-            if !self.manifests.contains_key(map_name)
-                && !self.manifests_in_flight.contains(map_name)
-            {
-                self.manifests_in_flight.insert(map_name.clone());
-                manifests_to_fetch.push(map_name.clone());
-            }
+            self.request_thumbnail(map_name);
         }
+        let thumbs_to_fetch = Vec::new();
 
         // Maps: only fetch if no other map is currently downloading to prevent network congestion
         if self.maps_in_flight.is_empty() {
-            // Pick primary map first, then arbitrary next
             let mut target_map = None;
             if let Some(primary) = crate::ui::main_menu::primary_lobby_for_browser(lobbies) {
-                if !self.maps.contains_key(&primary.map_name) {
-                    target_map = Some(primary.map_name.clone());
+                let key = Self::map_key(&primary.map_name);
+                if !self.has_map(&key) {
+                    target_map = Some(key);
                 }
             }
             if target_map.is_none() {
                 for map_name in &unique_maps {
-                    if !self.maps.contains_key(map_name) {
-                        target_map = Some(map_name.clone());
+                    let key = Self::map_key(map_name);
+                    if !self.has_map(&key) {
+                        target_map = Some(key);
                         break;
                     }
                 }
@@ -288,7 +270,7 @@ impl AssetLoader {
             }
         }
 
-        (thumbs_to_fetch, manifests_to_fetch, maps_to_fetch)
+        (thumbs_to_fetch, maps_to_fetch)
     }
 
     pub fn flush_except(&mut self, keep: &[String]) {
@@ -331,6 +313,21 @@ impl AssetLoader {
                 sow_core::player::Leader::GenghisKhan => {
                     include_bytes!("../../assets/avatars/genghis_khan.webp").as_slice()
                 }
+                sow_core::player::Leader::RichardTheLionheart => {
+                    include_bytes!("../../assets/avatars/richard_the_lionheart.webp").as_slice()
+                }
+                sow_core::player::Leader::Vercingetorix => {
+                    include_bytes!("../../assets/avatars/vercingetorix.webp").as_slice()
+                }
+                sow_core::player::Leader::Boudica => {
+                    include_bytes!("../../assets/avatars/boudica.webp").as_slice()
+                }
+                sow_core::player::Leader::LadySixSky => {
+                    include_bytes!("../../assets/avatars/lady_six_sky.webp").as_slice()
+                }
+                sow_core::player::Leader::Leonidas => {
+                    include_bytes!("../../assets/avatars/leonidas.webp").as_slice()
+                }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
             self.avatars.insert(
@@ -348,12 +345,9 @@ impl AssetLoader {
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
         if !self.thumbnails.contains_key("tutorial") {
             let bytes = include_bytes!("../../../assets/maps/tutorial/thumbnail.webp");
-            if let Ok(img) = image::load_from_memory(bytes) {
-                let size = [img.width() as _, img.height() as _];
-                let image_buffer = img.to_rgba8();
-                let pixels = image_buffer.as_flat_samples();
-                let color_image =
-                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            if let Some(color_image) =
+                crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
+            {
                 let texture =
                     ctx.load_texture("tutorial", color_image, egui::TextureOptions::LINEAR);
                 self.thumbnails.insert("tutorial".to_string(), texture);
@@ -403,12 +397,9 @@ impl AssetLoader {
 
             if !self.thumbnails.contains_key("world") {
                 let bytes = include_bytes!("../../../assets/maps/world/thumbnail.webp");
-                if let Ok(img) = image::load_from_memory(bytes) {
-                    let size = [img.width() as _, img.height() as _];
-                    let image_buffer = img.to_rgba8();
-                    let pixels = image_buffer.as_flat_samples();
-                    let color_image =
-                        egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                if let Some(color_image) =
+                    crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
+                {
                     let texture =
                         ctx.load_texture("world", color_image, egui::TextureOptions::LINEAR);
                     self.thumbnails.insert("world".to_string(), texture);
@@ -417,12 +408,9 @@ impl AssetLoader {
 
             if !self.thumbnails.contains_key("giantworldmap") {
                 let bytes = include_bytes!("../../../assets/maps/giantworldmap/thumbnail.webp");
-                if let Ok(img) = image::load_from_memory(bytes) {
-                    let size = [img.width() as _, img.height() as _];
-                    let image_buffer = img.to_rgba8();
-                    let pixels = image_buffer.as_flat_samples();
-                    let color_image =
-                        egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                if let Some(color_image) =
+                    crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
+                {
                     let texture = ctx.load_texture(
                         "giantworldmap",
                         color_image,
@@ -480,6 +468,22 @@ impl AssetLoader {
                 sow_core::player::Leader::GenghisKhan => {
                     include_bytes!("../../assets/ui/leaders/genghis_khan_desktop.webp").as_slice()
                 }
+                sow_core::player::Leader::RichardTheLionheart => {
+                    include_bytes!("../../assets/ui/leaders/richard_the_lionheart_desktop.webp")
+                        .as_slice()
+                }
+                sow_core::player::Leader::Vercingetorix => {
+                    include_bytes!("../../assets/ui/leaders/vercingetorix_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::Boudica => {
+                    include_bytes!("../../assets/ui/leaders/boudica_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::LadySixSky => {
+                    include_bytes!("../../assets/ui/leaders/lady_six_sky_desktop.webp").as_slice()
+                }
+                sow_core::player::Leader::Leonidas => {
+                    include_bytes!("../../assets/ui/leaders/leonidas_desktop.webp").as_slice()
+                }
             };
             let mobile_bytes = match leader {
                 sow_core::player::Leader::Caesar => {
@@ -500,6 +504,22 @@ impl AssetLoader {
                 sow_core::player::Leader::GenghisKhan => {
                     include_bytes!("../../assets/ui/leaders/genghis_khan_mobile.webp").as_slice()
                 }
+                sow_core::player::Leader::RichardTheLionheart => {
+                    include_bytes!("../../assets/ui/leaders/richard_the_lionheart_mobile.webp")
+                        .as_slice()
+                }
+                sow_core::player::Leader::Vercingetorix => {
+                    include_bytes!("../../assets/ui/leaders/vercingetorix_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::Boudica => {
+                    include_bytes!("../../assets/ui/leaders/boudica_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::LadySixSky => {
+                    include_bytes!("../../assets/ui/leaders/lady_six_sky_mobile.webp").as_slice()
+                }
+                sow_core::player::Leader::Leonidas => {
+                    include_bytes!("../../assets/ui/leaders/leonidas_mobile.webp").as_slice()
+                }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
             self.leader_desktop_images.insert(
@@ -519,23 +539,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_embedded_manifest_parsing() {
-        let loader = AssetLoader::new();
-        assert!(loader.manifests.contains_key("tutorial"));
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let manifest_bytes = include_bytes!("../../../assets/maps/world/manifest.json");
-            let parsed =
-                serde_json::from_slice::<sow_core::map_legacy::MapManifest>(manifest_bytes);
-            assert!(
-                parsed.is_ok(),
-                "Failed to parse manifest: {:?}",
-                parsed.err()
-            );
-            assert!(loader.manifests.contains_key("world"));
-            assert!(loader.manifests.contains_key("giantworldmap"));
-            assert!(loader.manifests.contains_key("custom"));
-        }
+    fn test_bundled_map_br_present() {
+        assert!(sow_core::maps::bundled_map_br("tutorial").is_some());
+        assert!(sow_core::maps::bundled_map_br("world").is_some());
     }
 
     #[test]

@@ -163,28 +163,6 @@ else
     echo "${WASM_HASH}" > "${LAST_HASH_FILE}"
 fi
 
-# 3.5 Update Map MD5 Hashes
-echo "==> Updating Map MD5 Hashes..."
-python3 - <<'PY'
-import json
-import hashlib
-from pathlib import Path
-
-maps_src = Path("assets/maps")
-for manifest_path in maps_src.rglob("manifest.json"):
-    map_br = manifest_path.parent / "map.bin.br"
-    if map_br.exists():
-        with open(map_br, "rb") as f:
-            md5_hash = hashlib.md5(f.read()).hexdigest()
-        with open(manifest_path, "r") as f:
-            manifest = json.load(f)
-        if manifest.get("map_md5") != md5_hash:
-            manifest["map_md5"] = md5_hash
-            with open(manifest_path, "w") as f:
-                json.dump(manifest, f, indent=2)
-            print(f"Updated MD5 for {manifest_path.parent.name}: {md5_hash}")
-PY
-
 # 4. Deployment
 echo "==> [PARALLEL] Pushing to VPS..."
 rsync -avz --delete --exclude='*.bin' dist/ ${VPS_USER}@${VPS_IP}:${WEB_DEST_DIR}/ &
@@ -198,7 +176,7 @@ rsync -avz ${RELAY_BIN} ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/sow-relay &
 RSYNC_RELAY_PID=$!
 
 ssh ${VPS_USER}@${VPS_IP} "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
-rsync -avz --exclude='*.bin' assets/maps/ ${VPS_USER}@${VPS_IP}:/home/bizkit/shadowsofwar/assets/maps/ &
+rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ ${VPS_USER}@${VPS_IP}:/home/bizkit/shadowsofwar/assets/maps/ &
 RSYNC_ASSETS_PID=$!
 
 wait $RSYNC_WEB_PID || { echo "❌ Error subiendo Frontend"; exit 1; }

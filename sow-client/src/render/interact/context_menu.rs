@@ -60,7 +60,7 @@ impl SowApp {
                         .unwrap_or(2400);
                 }
             }
-            let is_in_renewal_window = is_allied && alliance_timer <= 600;
+            let is_in_renewal_window = is_allied && alliance_timer <= 300;
 
             let has_alliance_request = my_snapshot
                 .map(|p| p.alliance_requests.contains(&owner_id))

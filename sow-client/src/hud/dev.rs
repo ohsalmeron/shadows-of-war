@@ -67,50 +67,24 @@ impl SowApp {
     pub(crate) fn render_dev_panels(&mut self, ctx: &egui::Context) {
         let rect = ctx.content_rect();
         let compact = rect.width() < 1024.0 || rect.width() < rect.height() * 1.25;
-        let text_size = if compact { 10.0 } else { 12.0 };
-        let padding = if compact {
-            egui::Margin::symmetric(6, 3)
-        } else {
-            egui::Margin::symmetric(10, 5)
-        };
-        let corner_radius = if compact { 8.0 } else { 10.0 };
+        let text_size = if compact { 10.0 } else { 11.0 };
+        let inset = if compact { 8.0 } else { 12.0 };
 
-        egui::Area::new(egui::Id::new("ping_fps_zoom_area"))
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 28.0))
-            .show(ctx, |ui| {
-                egui::Frame::new()
-                    .fill(sow_ui::ui::theme::panel_bg_transparent())
-                    .stroke(egui::Stroke::new(
-                        1.0_f32,
-                        sow_ui::ui::theme::nickname_field_border(),
-                    ))
-                    .corner_radius(corner_radius)
-                    .inner_margin(padding)
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.x = if compact { 6.0 } else { 10.0 };
-                        ui.horizontal(|ui| {
-                            if let Some(ping) = self.net.current_ping_ms {
-                                ui.label(
-                                    egui::RichText::new(format!("Ping: {}ms", ping))
-                                        .color(egui::Color32::WHITE)
-                                        .size(text_size)
-                                        .strong(),
-                                );
-                            }
-                            ui.label(
-                                egui::RichText::new(format!("FPS: {}", self.time.current_fps))
-                                    .color(egui::Color32::YELLOW)
-                                    .size(text_size)
-                                    .strong(),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!("Zoom: {:.2}", self.input.camera_zoom))
-                                    .color(egui::Color32::LIGHT_BLUE)
-                                    .size(text_size)
-                                    .strong(),
-                            );
-                        });
-                    });
-            });
+        let stats = if let Some(ping) = self.net.current_ping_ms {
+            format!("{ping}ms · {} fps", self.time.current_fps)
+        } else {
+            format!("{} fps", self.time.current_fps)
+        };
+
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("dev_stats"),
+        ));
+        let font = egui::FontId::monospace(text_size);
+        let color = egui::Color32::from_gray(165);
+        let galley = painter.layout_no_wrap(stats, font, color);
+        let size = galley.size();
+        let pos = egui::pos2(rect.max.x - inset - size.x, rect.max.y - inset - size.y);
+        painter.galley(pos, galley, color);
     }
 }

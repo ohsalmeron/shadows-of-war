@@ -120,7 +120,7 @@ fn draw_custom_slider_u64(ui: &mut egui::Ui, value: &mut u64, range: std::ops::R
 pub fn draw_modal(
     ctx: &egui::Context,
     state: &mut MainMenuState,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     action: &mut Option<UiAction>,
     lang: sow_lang::Language,
     is_mobile: bool,
@@ -199,10 +199,12 @@ pub fn draw_modal(
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 12.0);
                     let config = &mut state.single_player_config;
+                    asset_loader.request_thumbnail(&config.map_name);
+                    let loader = &*asset_loader;
 
                     let draw_preview =
                         |ui: &mut egui::Ui, config: &sow_core::game_config::GameConfig| {
-                            let thumbnail = asset_loader.thumbnail(&config.map_name);
+                            let thumbnail = loader.thumbnail(&config.map_name);
                             let aspect = 1.77_f32;
                             let w = ui.available_width();
                             let h = w / aspect;
@@ -211,22 +213,33 @@ pub fn draw_modal(
                                 .0;
 
                             if let Some(tex) = thumbnail {
-                                let image = egui::Image::new(tex)
-                                    .fit_to_exact_size(rect.size())
-                                    .corner_radius(12);
-                                ui.put(rect, image);
+                                crate::ui::map_texture::draw_map_thumbnail(
+                                    ui.painter(),
+                                    tex.id(),
+                                    rect,
+                                    1.0,
+                                );
                             } else {
                                 ui.painter().rect_filled(
                                     rect,
                                     12.0,
                                     Color32::from_black_alpha(120),
                                 );
+                                let status = if let Some(err) =
+                                    loader.thumbnail_error(&config.map_name)
+                                {
+                                    format!("Thumbnail: {err}")
+                                } else if loader.thumbnail_in_flight(&config.map_name) {
+                                    strings.loading_maps.to_string()
+                                } else {
+                                    strings.no_preview.to_string()
+                                };
                                 crate::ui::theme::outlined_text(
                                     ui.painter(),
                                     rect.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    &strings.no_preview,
-                                    egui::FontId::proportional(16.0),
+                                    &status,
+                                    egui::FontId::proportional(14.0),
                                     theme::text_secondary(),
                                     Color32::BLACK,
                                 );
@@ -248,16 +261,15 @@ pub fn draw_modal(
                                     .width(ui.available_width() - 8.0)
                                     .selected_text(RichText::new(&config.map_name).size(16.0))
                                     .show_ui(ui, |ui| {
-                                        if let Some(catalog) = &asset_loader.map_catalog {
+                                        if let Some(catalog) = &loader.map_catalog {
                                             if catalog.is_empty() {
                                                 ui.label(&strings.no_maps_found);
                                             } else {
                                                 for map_entry in catalog {
-                                                    let display_name = &map_entry.name;
                                                     ui.selectable_value(
                                                         &mut config.map_name,
-                                                        display_name.to_string(),
-                                                        display_name,
+                                                        map_entry.key.clone(),
+                                                        map_entry.display_name.as_str(),
                                                     );
                                                 }
                                             }
@@ -309,6 +321,11 @@ pub fn draw_modal(
                                         sow_core::player::Leader::SunTzu => "📜",
                                         sow_core::player::Leader::Alexander => "🛡️",
                                         sow_core::player::Leader::GenghisKhan => "🐺",
+                                        sow_core::player::Leader::RichardTheLionheart => "🦁",
+                                        sow_core::player::Leader::Vercingetorix => "⚔️",
+                                        sow_core::player::Leader::Boudica => "🔥",
+                                        sow_core::player::Leader::LadySixSky => "🌙",
+                                        sow_core::player::Leader::Leonidas => "🪖",
                                     };
 
                                     ui.horizontal(|ui| {

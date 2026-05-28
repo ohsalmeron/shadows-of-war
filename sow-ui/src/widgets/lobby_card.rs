@@ -71,16 +71,13 @@ impl<'a> Widget for LobbyCard<'a> {
         let stroke_width = if is_hovered { 2.0_f32 } else { 1.0_f32 };
 
         if let Some(texture) = self.texture {
-            let tint = if is_hovered {
-                Color32::WHITE
-            } else {
-                Color32::from_gray(200)
-            };
-            let image = egui::Image::new(texture)
-                .fit_to_exact_size(rect.size())
-                .corner_radius(CornerRadius::same(12))
-                .tint(tint);
-            ui.put(rect, image);
+            let brightness = if is_hovered { 1.2 } else { 1.0 };
+            crate::ui::map_texture::draw_map_thumbnail(
+                ui.painter(),
+                texture.id(),
+                rect,
+                brightness,
+            );
         } else {
             ui.painter()
                 .rect_filled(rect, 12.0, crate::ui::theme::menu_secondary_button());

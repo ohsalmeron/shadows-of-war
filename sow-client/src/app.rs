@@ -267,6 +267,14 @@ impl SowApp {
 
         // ── UI State ────────────────────────────────────────────────────────────
         let mut app = ClientApp::new();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Ok(bytes) = std::fs::read("assets/maps/catalog.bin") {
+                if let Ok(catalog) = sow_core::map_file::parse_catalog(&bytes) {
+                    app.asset_loader.map_catalog = Some(catalog.entries);
+                }
+            }
+        }
         let egui_ctx = Context::default();
         egui_extras::install_image_loaders(&egui_ctx);
         sow_ui::ui::theme::apply_theme(&egui_ctx);
@@ -710,14 +718,26 @@ impl SowApp {
                 seed,
                 map_bytes,
                 players,
-                nations,
             } => {
                 self.sim.config = (*config).clone();
                 let map_w = config.map_width;
                 let map_h = config.map_height;
                 let mut state = sow_core::game::GameState::new(seed, map_w, map_h, *config);
 
-                if map_bytes.len() == state.map.terrain.len() {
+                if let Ok(map_file) = sow_core::maps::load_map_from_payload(&map_bytes) {
+                    state.total_land_tiles = map_file.num_land_tiles;
+                    state.map_spawns = map_file.spawns;
+                    if map_file.terrain.len() == state.map.terrain.len() {
+                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                map_file.terrain.as_ptr(),
+                                dest_ptr,
+                                map_file.terrain.len(),
+                            );
+                        }
+                    }
+                } else if map_bytes.len() == state.map.terrain.len() {
                     let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
                     unsafe {
                         std::ptr::copy_nonoverlapping(
@@ -725,12 +745,6 @@ impl SowApp {
                             dest_ptr,
                             map_bytes.len(),
                         );
-                    }
-                } else {
-                    for (i, &b) in map_bytes.iter().enumerate() {
-                        if i < state.map.terrain.len() {
-                            state.map.terrain[i] = sow_core::map::MapTile::from_byte(b);
-                        }
                     }
                 }
 
@@ -754,7 +768,6 @@ impl SowApp {
                 new_engine.spawn_ai(
                     new_engine.state.config.nation_count,
                     new_engine.state.config.bot_count,
-                    nations,
                 );
                 let snap = new_engine.build_snapshot();
                 self.sim.current_snapshot = Some(snap);
@@ -929,7 +942,6 @@ impl SowApp {
                     }
                     // Process nuke alerts into HUD notifications
                     let my_id = self.sim.my_player_id.unwrap_or(0);
-                    let now = web_time::Instant::now();
                     for alert in &snap.nuke_alerts {
                         let attacker_name = snap
                             .players
@@ -1023,20 +1035,7 @@ impl SowApp {
                             )
                         };
 
-                        self.ui
-                            .app
-                            .hud_state
-                            .nuke_alerts
-                            .push(sow_ui::ui::hud::NukeAlertDisplay {
-                                message,
-                                color,
-                                spawned_at: now,
-                            });
-
-                        // Cap ring buffer at 8
-                        if self.ui.app.hud_state.nuke_alerts.len() > 8 {
-                            self.ui.app.hud_state.nuke_alerts.remove(0);
-                        }
+                        self.ui.app.hud_state.push_notification(message, color);
                     }
 
                     self.sim.current_snapshot = Some(snap);

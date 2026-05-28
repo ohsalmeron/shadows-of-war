@@ -1,12 +1,12 @@
-use serde_json::json;
 use sow_core::map::MapTile;
+use sow_core::map_file::{self, MapFile, MapSpawn};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let width = 800;
-    let height = 600;
+    let width: u32 = 800;
+    let height: u32 = 600;
     let size = (width * height) as usize;
     let mut terrain = vec![MapTile::from_byte(32); size]; // Start with all Ocean (value 32)
 
@@ -85,14 +85,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Let's iterate and identify any land tile adjacent to a water tile.
     // If so, set its shore bit (bit 6).
     let mut terrain_final = terrain.clone();
-    for y in 1..(height - 1) {
-        for x in 1..(width - 1) {
+    for y in 1..height.saturating_sub(1) {
+        for x in 1..width.saturating_sub(1) {
             let idx = (y * width + x) as usize;
             if terrain[idx].is_land() {
                 let mut near_water = false;
-                for dy in -1..=1 {
-                    for dx in -1..=1 {
-                        let n_idx = ((y + dy) * width + (x + dx)) as usize;
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        let ny = y as i32 + dy;
+                        let nx = x as i32 + dx;
+                        let n_idx = (ny as u32 * width + nx as u32) as usize;
                         if terrain[n_idx].is_water() {
                             near_water = true;
                             break;
@@ -115,49 +117,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = Path::new("assets/maps/tutorial");
     fs::create_dir_all(output_dir)?;
 
-    let bin_path = output_dir.join("map.bin");
-    let bin_data: Vec<u8> = terrain_final.iter().map(|t| t.as_byte()).collect();
-    fs::write(&bin_path, &bin_data)?;
-    println!("💾 Wrote {} bytes to map.bin", bin_data.len());
+    let terrain_bytes: Vec<u8> = terrain_final.iter().map(|t| t.as_byte()).collect();
+    let num_land = terrain_bytes.iter().filter(|b| (*b & 0x80) != 0).count() as u32;
+    let map_file = MapFile {
+        display_name: "Tutorial".to_string(),
+        width,
+        height,
+        num_land_tiles: num_land,
+        spawns: vec![
+            MapSpawn {
+                name: "Korinthal".to_string(),
+                flag: String::new(),
+                x: 250,
+                y: 350,
+            },
+            MapSpawn {
+                name: "Lunareth".to_string(),
+                flag: String::new(),
+                x: 550,
+                y: 300,
+            },
+        ],
+        terrain: terrain_bytes,
+    };
+    let encoded = map_file::encode(&map_file);
+    fs::write(output_dir.join("map.bin"), &encoded)?;
+    println!("Wrote {} bytes to map.bin", encoded.len());
 
-    // Compress to map.bin.br
     let br_path = output_dir.join("map.bin.br");
     let mut compressor = brotli::CompressorWriter::new(File::create(&br_path)?, 4096, 11, 22);
-    compressor.write_all(&bin_data)?;
+    compressor.write_all(&encoded)?;
     compressor.flush()?;
-    println!("⚡ Compressed map.bin to map.bin.br");
-
-    // Write manifest.json with dummy hash first (or actual hash if computed)
-    let md5_hash = "tutorial_md5_placeholder".to_string();
-
-    let manifest = json!({
-        "name": "Tutorial",
-        "map": {
-            "width": width,
-            "height": height,
-            "num_land_tiles": bin_data.iter().filter(|&&b| (b & 0x80) != 0).count()
-        },
-        "map16x": { "width": width / 16, "height": height / 16, "num_land_tiles": 0 },
-        "map4x": { "width": width / 4, "height": height / 4, "num_land_tiles": 0 },
-        "nations": [
-            {
-                "coordinates": [250, 350],
-                "flag": "",
-                "name": "Korinthal"
-            },
-            {
-                "coordinates": [550, 300],
-                "flag": "",
-                "name": "Lunareth"
-            }
-        ],
-        "teamGameSpawnAreas": {},
-        "map_md5": md5_hash
-    });
-
-    let manifest_path = output_dir.join("manifest.json");
-    fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
-    println!("📝 Wrote manifest.json");
+    println!("Compressed map.bin to map.bin.br");
 
     // Copy thumbnail from world to tutorial
     let src_thumb = Path::new("assets/maps/world/thumbnail.webp");

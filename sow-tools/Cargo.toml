@@ -16,6 +16,10 @@ path = "src/bot_manager.rs"
 name = "generate-tutorial"
 path = "src/bin/generate_tutorial.rs"
 
+[[bin]]
+name = "migrate-maps"
+path = "src/bin/migrate_maps.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 serde = { workspace = true }

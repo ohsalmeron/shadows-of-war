@@ -461,27 +461,29 @@ impl MapEditorSession {
                     return;
                 }
 
-                if std::fs::write(out_dir.join("map.bin"), &result.map_data).is_ok()
-                    && std::fs::write(out_dir.join("mini_map.bin"), &result.mini_map_data).is_ok()
-                    && std::fs::write(out_dir.join("thumbnail.webp"), &result.thumbnail_data)
-                        .is_ok()
+                let spawns: Vec<sow_core::map_file::MapSpawn> = self
+                    .spawns
+                    .iter()
+                    .map(|s| sow_core::map_file::MapSpawn {
+                        name: s.name.clone(),
+                        flag: s.flag.clone(),
+                        x: s.x,
+                        y: s.y,
+                    })
+                    .collect();
+                let map_file = sow_core::map_file::MapFile {
+                    display_name: self.map_name.clone(),
+                    width: result.width,
+                    height: result.height,
+                    num_land_tiles: result.num_land_tiles,
+                    spawns,
+                    terrain: result.map_data,
+                };
+                let map_bytes = sow_core::map_file::encode(&map_file);
+
+                if std::fs::write(out_dir.join("map.bin"), &map_bytes).is_ok()
+                    && std::fs::write(out_dir.join("thumbnail.webp"), &result.thumbnail_data).is_ok()
                 {
-                    // Construct and serialize manifest metadata
-                    let manifest = serde_json::json!({
-                        "name": self.map_name,
-                        "nations": self.spawns.iter().map(|s| {
-                            serde_json::json!({
-                                "name": s.name,
-                                "flag": s.flag,
-                                "coordinates": [s.x, s.y]
-                            })
-                        }).collect::<Vec<_>>()
-                    });
-
-                    if let Ok(manifest_bytes) = serde_json::to_vec_pretty(&manifest) {
-                        let _ = std::fs::write(out_dir.join("manifest.json"), manifest_bytes);
-                    }
-
                     self.notify(&strings.msg_saved);
                 } else {
                     self.notify(&strings.msg_write_failed);

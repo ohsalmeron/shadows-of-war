@@ -21,7 +21,8 @@ pub struct MainMenuState {
     pub downloading_map_name: Option<String>,
     pub is_downloading_map: bool,
     pub cached_map: Option<Vec<u8>>,
-    pub cached_manifest: Option<sow_core::map_legacy::MapManifest>,
+    /// Folder key of the map whose terrain bytes are cached for offline start.
+    pub cached_map_key: Option<String>,
     pub map_download_progress: u8,
     pub show_leader_picker: bool,
     pub clan_tag: String,
@@ -55,13 +56,18 @@ impl Default for MainMenuState {
                     .duration_since(web_time::SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis();
-                match ms % 6 {
+                match ms % 11 {
                     0 => sow_core::player::Leader::Caesar,
                     1 => sow_core::player::Leader::Cleopatra,
                     2 => sow_core::player::Leader::Ragnar,
                     3 => sow_core::player::Leader::SunTzu,
                     4 => sow_core::player::Leader::Alexander,
-                    _ => sow_core::player::Leader::GenghisKhan,
+                    5 => sow_core::player::Leader::GenghisKhan,
+                    6 => sow_core::player::Leader::RichardTheLionheart,
+                    7 => sow_core::player::Leader::Vercingetorix,
+                    8 => sow_core::player::Leader::Boudica,
+                    9 => sow_core::player::Leader::LadySixSky,
+                    _ => sow_core::player::Leader::Leonidas,
                 }
             },
             selected_civilization: {
@@ -69,13 +75,18 @@ impl Default for MainMenuState {
                     .duration_since(web_time::SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis();
-                match ms % 6 {
+                match ms % 11 {
                     0 => sow_core::player::Civilization::Rome,
                     1 => sow_core::player::Civilization::Egypt,
                     2 => sow_core::player::Civilization::Vikings,
                     3 => sow_core::player::Civilization::China,
                     4 => sow_core::player::Civilization::Macedon,
-                    _ => sow_core::player::Civilization::Mongols,
+                    5 => sow_core::player::Civilization::Mongols,
+                    6 => sow_core::player::Civilization::Angevin,
+                    7 => sow_core::player::Civilization::Gallic,
+                    8 => sow_core::player::Civilization::Iceni,
+                    9 => sow_core::player::Civilization::Maya,
+                    _ => sow_core::player::Civilization::Sparta,
                 }
             },
             pending_join_lobby_id: None,
@@ -83,7 +94,7 @@ impl Default for MainMenuState {
             downloading_map_name: None,
             is_downloading_map: false,
             cached_map: None,
-            cached_manifest: None,
+            cached_map_key: None,
             map_download_progress: 0,
             show_leader_picker: false,
             show_single_player_setup: false,
@@ -121,6 +132,102 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     Some(rest[0].clone())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn draw_menu_right_panel_contents(
+    ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    section_gap: f32,
+    action_min_h: f32,
+    compact: bool,
+    action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_lang::Language,
+) {
+    let strings = &sow_lang::get(lang).main_menu;
+    let version = format!("v{}", include_str!("../../../../.version").trim());
+
+    profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
+
+    if !state.is_connected {
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(
+                egui::RichText::new(&strings.connecting)
+                    .color(crate::ui::theme::text_secondary()),
+            );
+        });
+    }
+
+    ui.add_space(section_gap);
+    browser::draw_left_column(
+        ui,
+        state,
+        section_gap,
+        action_min_h,
+        compact,
+        action,
+        asset_loader,
+        lang,
+    );
+
+    ui.add_space(section_gap);
+    actions::draw_right_column(
+        ui,
+        state,
+        section_gap,
+        action_min_h,
+        compact,
+        action,
+        lang,
+    );
+
+    ui.add_space(section_gap);
+    ui.label(
+        egui::RichText::new(version)
+            .size(12.0)
+            .color(crate::ui::theme::text_secondary()),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_menu_right_panel(
+    ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    section_gap: f32,
+    action_min_h: f32,
+    compact: bool,
+    action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_lang::Language,
+) {
+    if compact {
+        draw_menu_right_panel_contents(
+            ui,
+            state,
+            section_gap,
+            action_min_h,
+            compact,
+            action,
+            asset_loader,
+            lang,
+        );
+    } else {
+        crate::ui::theme::menu_right_panel_frame(false).show(ui, |ui| {
+            draw_menu_right_panel_contents(
+                ui,
+                state,
+                section_gap,
+                action_min_h,
+                compact,
+                action,
+                asset_loader,
+                lang,
+            );
+        });
+    }
+}
+
 pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -130,7 +237,7 @@ pub fn draw(
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
     asset_loader.request_leader_portrait(state.selected_leader, compact);
-    let outer_pad = if compact { 0.0 } else { 16.0 };
+    let outer_pad = 16.0;
     let section_gap = if compact { 12.0 } else { 16.0 };
 
     let action_min_h = if compact { 64.0 } else { 72.0 };
@@ -145,8 +252,6 @@ pub fn draw(
         .show_inside(root_ui, |ui| {
             // Draw high-fidelity selected leader background texture
             let screen_rect = ui.ctx().content_rect();
-            let screen_w = screen_rect.width();
-            let screen_h = screen_rect.height();
             let is_mobile = compact;
 
             let background_tex = if is_mobile {
@@ -160,30 +265,14 @@ pub fn draw(
             };
 
             if let Some(texture) = background_tex {
-                let tex_aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
-                let screen_aspect = screen_w / screen_h;
-
-                let (mut u0, mut v0, mut u1, mut v1) = (0.0, 0.0, 1.0, 1.0);
-
-                if tex_aspect > screen_aspect {
-                    let crop_w = screen_aspect / tex_aspect;
-                    u0 = (1.0 - crop_w) / 2.0;
-                    u1 = 1.0 - u0;
-                } else {
-                    let crop_h = tex_aspect / screen_aspect;
-                    if is_mobile {
-                        v0 = 0.0;
-                        v1 = crop_h;
-                    } else {
-                        v0 = (1.0 - crop_h) / 2.0;
-                        v1 = 1.0 - v0;
-                    }
-                }
-
+                let uv = crate::widgets::avatar_picker::calculate_cover_uv(
+                    screen_rect.size(),
+                    texture.size_vec2(),
+                );
                 ui.painter().image(
                     texture.id(),
                     screen_rect,
-                    egui::Rect::from_min_max(egui::pos2(u0, v0), egui::pos2(u1, v1)),
+                    uv,
                     Color32::WHITE,
                 );
             } else {
@@ -194,9 +283,6 @@ pub fn draw(
                 );
             }
 
-            // Draw a translucent overlay to make main menu text perfectly readable
-            ui.painter()
-                .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(120));
             if state.is_waiting {
                 queue_overlay::draw_queue_overlay(
                     ui,
@@ -210,139 +296,49 @@ pub fn draw(
                 return;
             }
 
-            let panel_frame = crate::ui::theme::standard_panel_frame(compact);
-            let parent_available = ui.available_size();
-            let pad = if compact { 32.0 } else { 50.0 };
-            let inner_size = parent_available - egui::vec2(pad, pad);
+            let content_h = ui.available_height();
 
-            panel_frame.show(ui, |ui| {
-                if compact {
-                    ui.set_min_height(inner_size.y);
-                } else {
-                    ui.set_min_size(inner_size);
-                }
-                let show_footer = ui.available_height() > 430.0;
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            if !compact {
-                                profile::draw_user_profile_header(
-                                    ui,
-                                    state,
-                                    compact,
-                                    asset_loader,
-                                    lang,
-                                );
-                            }
-                        });
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if !state.is_connected {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label(
-                                        egui::RichText::new(&strings.connecting)
-                                            .color(crate::ui::theme::text_secondary()),
-                                    );
-                                });
-                            }
-                        });
-                    });
-
-                    if compact {
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            ui.add_space(8.0);
-                            profile::draw_user_profile_header(
+            if compact {
+                let viewport = ui.available_size();
+                ui.allocate_ui_with_layout(viewport, Layout::top_down(Align::Min), |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.set_min_width(viewport.x);
+                            draw_menu_right_panel(
                                 ui,
                                 state,
+                                section_gap,
+                                action_min_h,
                                 compact,
+                                &mut action,
                                 asset_loader,
                                 lang,
                             );
-                            ui.add_space(8.0);
-
-                            ui.vertical(|ui| {
-                                browser::draw_left_column(
-                                    ui,
-                                    state,
-                                    section_gap,
-                                    action_min_h,
-                                    compact,
-                                    &mut action,
-                                    asset_loader,
-                                    lang,
-                                );
-                                ui.add_space(section_gap);
-                                actions::draw_right_column(
-                                    ui,
-                                    state,
-                                    section_gap,
-                                    action_min_h,
-                                    compact,
-                                    &mut action,
-                                    lang,
-                                );
-                            });
                         });
-                    } else {
-                        ui.horizontal_top(|ui| {
-                            let total = ui.available_width();
-                            let gap = section_gap;
-                            let left_w = (total - gap) * 0.58;
-                            let right_w = (total - gap) * 0.34;
-                            let footer_offset = if show_footer { section_gap + 22.0 } else { 0.0 };
-                            let content_h = ui.available_height() - footer_offset;
-
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(left_w, content_h),
-                                Layout::top_down(Align::Min),
-                                |ui| {
-                                    browser::draw_left_column(
-                                        ui,
-                                        state,
-                                        section_gap,
-                                        action_min_h,
-                                        compact,
-                                        &mut action,
-                                        asset_loader,
-                                        lang,
-                                    );
-                                },
-                            );
-
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(right_w.clamp(280.0, 420.0), content_h),
-                                Layout::top_down(Align::Min),
-                                |ui| {
-                                    actions::draw_right_column(
-                                        ui,
-                                        state,
-                                        section_gap,
-                                        action_min_h,
-                                        compact,
-                                        &mut action,
-                                        lang,
-                                    );
-                                },
-                            );
-                        });
-                    }
-
-                    if show_footer {
-                        ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                            ui.add_space(6.0);
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "v{}",
-                                    include_str!("../../../../.version").trim()
-                                ))
-                                .size(14.0)
-                                .color(crate::ui::theme::text_secondary()),
-                            );
-                            ui.separator();
-                        });
-                    }
                 });
-            });
+            } else {
+                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                    let total = ui.available_width();
+                    let panel_w = (total / 3.0).clamp(340.0, 460.0);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(panel_w, content_h),
+                        Layout::top_down(Align::Min),
+                        |ui| {
+                            draw_menu_right_panel(
+                                ui,
+                                state,
+                                section_gap,
+                                action_min_h,
+                                compact,
+                                &mut action,
+                                asset_loader,
+                                lang,
+                            );
+                        },
+                    );
+                });
+            }
         });
 
     if state.show_leader_picker

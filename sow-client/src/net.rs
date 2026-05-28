@@ -4,6 +4,33 @@ use sow_ui::app::ClientPhase;
 use web_time::{Duration, Instant};
 
 impl SowApp {
+    fn fetch_map_catalog_if_needed(&mut self) {
+        if self.ui.app.asset_loader.map_catalog.is_some()
+            || self.ui.app.asset_loader.catalog_in_flight
+        {
+            return;
+        }
+        self.ui.app.asset_loader.catalog_in_flight = true;
+        let url = format!(
+            "{}/catalog.bin",
+            get_maps_url().trim_end_matches('/')
+        );
+        let tx = self.tasks.map_tx.clone();
+        let request = ehttp::Request::get(&url);
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            if let Ok(res) = result {
+                if res.ok {
+                    if let Ok(catalog) = sow_core::map_file::parse_catalog(&res.bytes) {
+                        let _ = tx.send(MapDownloadEvent::CatalogReady(catalog.entries));
+                        return;
+                    }
+                }
+            }
+            log::warn!("Failed to fetch map catalog.bin");
+            let _ = tx.send(MapDownloadEvent::CatalogReady(Vec::new()));
+        });
+    }
+
     pub fn update_net(&mut self, now: Instant) {
         #[cfg(target_arch = "wasm32")]
         {
@@ -22,32 +49,11 @@ impl SowApp {
             self.net.ws_connect_not_before = self.net.ws_connect_not_before.min(now);
         }
 
-        // Fetch dynamic map catalog if not already fetched
-        if self.ui.app.asset_loader.map_catalog.is_none()
-            && !self.ui.app.asset_loader.catalog_in_flight
-        {
-            self.ui.app.asset_loader.catalog_in_flight = true;
-            let maps_base = get_maps_url();
-            let url = format!("{}/maps.json", maps_base.trim_end_matches('/'));
-            let request = ehttp::Request::get(&url);
-            let tx = self.tasks.map_tx.clone();
-            ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-                let catalog = match result {
-                    Ok(res) if res.ok => serde_json::from_slice::<
-                        Vec<sow_core::map_legacy::MapManifest>,
-                    >(&res.bytes)
-                    .unwrap_or_default(),
-                    Ok(res) => {
-                        log::warn!("maps.json fetch failed: HTTP {}", res.status);
-                        Vec::new()
-                    }
-                    Err(e) => {
-                        log::warn!("maps.json fetch error: {}", e);
-                        Vec::new()
-                    }
-                };
-                let _ = tx.send(crate::MapDownloadEvent::CatalogReady(catalog));
-            });
+        if matches!(
+            self.ui.app.phase,
+            sow_ui::app::ClientPhase::MainMenu | sow_ui::app::ClientPhase::Splash
+        ) {
+            self.fetch_map_catalog_if_needed();
         }
 
         // 3-second relay timeout check
@@ -271,7 +277,6 @@ impl SowApp {
                                                         && sync_msg.time_remaining < 30.0,
                                                     timer_secs: sync_msg.time_remaining,
                                                     map_name: "Loading...".to_string(),
-                                                    map_md5: None,
                                                     game_mode: "FFA".to_string(),
                                                     players: sync_msg.players.clone(),
                                                 },
@@ -292,66 +297,11 @@ impl SowApp {
                             }
 
                             let maps_base = get_maps_url();
-                            let (thumbs_to_fetch, manifests_to_fetch, maps_to_fetch) = self
+                            let (_, maps_to_fetch) = self
                                 .ui
                                 .app
                                 .asset_loader
                                 .get_assets_to_fetch(&self.ui.app.main_menu_state.lobbies);
-
-                            for map_name in thumbs_to_fetch {
-                                let url = format!(
-                                    "{}/{}/thumbnail.webp",
-                                    maps_base.trim_end_matches('/'),
-                                    map_name
-                                );
-                                let tx = self.tasks.map_tx.clone();
-                                let map_name_for_closure = map_name.clone();
-                                let request = ehttp::Request::get(&url);
-                                ehttp::fetch(
-                                    request,
-                                    move |result: ehttp::Result<ehttp::Response>| {
-                                        if let Ok(res) = result {
-                                            if res.ok {
-                                                let _ = tx.send(MapDownloadEvent::ThumbnailReady(
-                                                    map_name_for_closure,
-                                                    res.bytes,
-                                                ));
-                                            }
-                                        }
-                                    },
-                                );
-                            }
-
-                            for map_name in manifests_to_fetch {
-                                let url = format!(
-                                    "{}/{}/manifest.json",
-                                    maps_base.trim_end_matches('/'),
-                                    map_name
-                                );
-                                let tx = self.tasks.map_tx.clone();
-                                let map_name_for_closure = map_name.clone();
-                                let request = ehttp::Request::get(&url);
-                                ehttp::fetch(
-                                    request,
-                                    move |result: ehttp::Result<ehttp::Response>| {
-                                        if let Ok(res) = result {
-                                            if res.ok {
-                                                if let Ok(manifest) = serde_json::from_slice::<
-                                                    sow_core::map_legacy::MapManifest,
-                                                >(
-                                                    &res.bytes
-                                                ) {
-                                                    let _ =
-                                                        tx.send(MapDownloadEvent::ManifestReady(
-                                                            map_name_for_closure,
-                                                            manifest,
-                                                        ));
-                                                }
-                                            }
-                                        }
-                                    },
-                                );
-                            }
 
                             for map_name in maps_to_fetch {
                                 let url = format!(
@@ -674,6 +624,16 @@ impl SowApp {
         }
 
         if ws_disconnected {
+            log::warn!(
+                "[CLIENT NET] WS disconnect observed: phase={:?}, waiting={}, splash_job={:?}, has_engine_init_queued={}, has_pending_init_data={}, on_relay={}, ws_url={}",
+                self.ui.app.phase,
+                self.ui.app.main_menu_state.is_waiting,
+                self.ui.app.splash_state.job,
+                self.tasks.engine_init_queued_msg.is_some(),
+                self.tasks.pending_engine_init_data.is_some(),
+                self.ws_on_relay(),
+                self.net.ws_url
+            );
             self.net.client = None;
             self.ui.app.main_menu_state.is_connected = false;
             self.ui.app.main_menu_state.is_connecting = false;

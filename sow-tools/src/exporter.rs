@@ -1,7 +1,8 @@
 use crate::poi_extractor::POISpawn;
-use serde_json::json;
 use sow_core::map::MapTile;
+use sow_core::map_file::{self, MapFile, MapSpawn};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 pub fn export_map(
@@ -15,38 +16,35 @@ pub fn export_map(
     let output_dir = format!("assets/maps/{}", map_name);
     fs::create_dir_all(&output_dir)?;
 
-    // 1. Write map.bin
-    let bin_path = Path::new(&output_dir).join("map.bin");
-    let bin_data: Vec<u8> = terrain.iter().map(|t| t.as_byte()).collect();
-    fs::write(&bin_path, bin_data)?;
-
-    // 2. Write info.json / manifest.json
-    let nations: Vec<serde_json::Value> = spawns
+    let terrain_bytes: Vec<u8> = terrain.iter().map(|t| t.as_byte()).collect();
+    let num_land = terrain_bytes.iter().filter(|b| (*b & 0x80) != 0).count() as u32;
+    let map_spawns: Vec<MapSpawn> = spawns
         .iter()
-        .map(|spawn| {
-            json!({
-                "name": spawn.name,
-                "coordinates": [spawn.x, spawn.y],
-                "flag": "xx" // Placeholder flag for bots
-            })
+        .map(|s| MapSpawn {
+            name: s.name.clone(),
+            flag: "xx".to_string(),
+            x: s.x,
+            y: s.y,
         })
         .collect();
 
-    // Map the manifest format used by LegacyEngine
-    let manifest = json!({
-        "name": map_name,
-        "map": {
-            "width": width,
-            "height": height,
-            "num_land_tiles": width * height // Approximation for now
-        },
-        "map16x": { "width": width / 16, "height": height / 16, "num_land_tiles": 0 },
-        "map4x": { "width": width / 4, "height": height / 4, "num_land_tiles": 0 },
-        "nations": nations
-    });
+    let map_file = MapFile {
+        display_name: map_name.to_string(),
+        width,
+        height,
+        num_land_tiles: num_land,
+        spawns: map_spawns,
+        terrain: terrain_bytes,
+    };
+    let encoded = map_file::encode(&map_file);
+    fs::write(Path::new(&output_dir).join("map.bin"), &encoded)?;
 
-    let manifest_path = Path::new(&output_dir).join("manifest.json");
-    fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+    let mut out = Vec::new();
+    let mut writer = brotli::CompressorWriter::new(&mut out, 4096, 11, 22);
+    writer.write_all(&encoded)?;
+    writer.flush()?;
+    drop(writer);
+    fs::write(Path::new(&output_dir).join("map.bin.br"), out)?;
 
     if single_player_config {
         let ron_path = "crates/client/assets/configs/default_single_player.ron";
@@ -63,7 +61,7 @@ pub fn export_map(
         );
         fs::write(ron_path, ron_content)?;
         println!(
-            "📝 Wrote default_single_player.ron for {} with {} bots",
+            "Wrote default_single_player.ron for {} with {} bots",
             map_name, bot_count
         );
     }

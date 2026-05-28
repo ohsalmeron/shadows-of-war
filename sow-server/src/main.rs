@@ -1,4 +1,5 @@
 mod lobby;
+mod map_catalog;
 
 use futures_util::{SinkExt, StreamExt};
 use lobby::{build_lobby_broadcast, join_player, leave_player, master_tick, ServerLobby};
@@ -202,7 +203,6 @@ async fn main() {
                                 missed_turns: vec![],
                                 map_data: None,
                                 relay_port: Some(relay_port),
-                                nations: lobby.map_nations.clone(),
                             };
 
                             for p in &lobby.players {
@@ -271,10 +271,23 @@ async fn main() {
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
+    let maps_root = map_catalog::maps_root();
+    map_catalog::init(&maps_root);
+
     // HTTP Static File Server for maps
     tokio::spawn(async move {
-        let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-        let app = axum::Router::new()
+        let root = maps_root.clone();
+        let catalog_route = axum::Router::new().route(
+            "/maps/catalog.bin",
+            axum::routing::get(|| async {
+                axum::response::Response::builder()
+                    .header("Content-Type", "application/octet-stream")
+                    .header("Cache-Control", "public, max-age=60")
+                    .body(axum::body::Body::from(map_catalog::catalog_bytes().to_vec()))
+                    .unwrap()
+            }),
+        );
+        let app = catalog_route
             .nest_service(
                 "/maps",
                 tower_http::services::ServeDir::new(root).precompressed_br(),

@@ -64,7 +64,14 @@ impl SowEngine {
             // Fast approximation of active frontier size without scanning the entire empire border
             let adjacent = (execution.to_conquer.len() as f64).max(1.0);
 
-            let max_cap = max_tiles_cap_for_troops(execution.troops, &self.state.config);
+            let troop_strength = self
+                .state
+                .player(execution.owner_id)
+                .map(|p| p.leader.troop_strength_multiplier())
+                .unwrap_or(1.0);
+            let effective_troops = execution.troops * troop_strength;
+
+            let max_cap = max_tiles_cap_for_troops(effective_troops, &self.state.config);
 
             let mut max_tiles_f64 = if execution.target_owner == 0 {
                 // Neutral expansion speed: proportional to true border size
@@ -76,13 +83,14 @@ impl SowEngine {
                     .map(|p| p.troops.max(0.0))
                     .unwrap_or(1.0)
                     .max(1.0);
-                let ratio = execution.troops / defender_troops;
+                let ratio = effective_troops / defender_troops;
                 let power = (ratio * 2.0).clamp(0.02, 0.5);
                 (power * adjacent * 3.0).max(1.0).min(max_cap)
             };
 
             // Speed scales with remaining troops. Higher momentum_divisor = slower ramp.
-            let momentum = (execution.troops / self.state.config.momentum_divisor).clamp(0.1, 5.0);
+            let momentum =
+                (effective_troops / self.state.config.momentum_divisor).clamp(0.1, 5.0);
             max_tiles_f64 *= momentum;
 
             // Alexander (Macedon) perk: +15% expansion speed
@@ -153,8 +161,9 @@ impl SowEngine {
 
                     if execution.target_owner == 0 {
                         // Neutral: attacker pays constant base cost scaled by terrain multiplier
-                        execution.troops -=
-                            self.state.config.attack_cost_neutral * terrain_multiplier;
+                        execution.troops -= (self.state.config.attack_cost_neutral
+                            * terrain_multiplier)
+                            / troop_strength;
                     } else {
                         // PvP: Combat resolution (OpenFront Parity)
                         let mut def_loss = 0.0;
@@ -185,9 +194,10 @@ impl SowEngine {
                         };
                         let dp_multiplier = 1.0 + (dp_bonus as f64 * scale);
 
-                        let atk_loss = self.state.config.attack_cost_enemy
+                        let atk_loss = (self.state.config.attack_cost_enemy
                             * terrain_multiplier
-                            * dp_multiplier;
+                            * dp_multiplier)
+                            / troop_strength;
 
                         execution.troops -= atk_loss;
 

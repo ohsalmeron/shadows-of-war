@@ -10,12 +10,16 @@
 pub mod bitset;
 pub mod building;
 pub mod config;
+pub mod diplomacy;
+#[cfg(test)]
+mod diplomacy_engine_tests;
 pub mod engine;
 pub mod execution;
 pub mod game;
 pub mod game_config;
 pub mod intent;
 pub mod map;
+pub mod map_file;
 pub mod pathfinding;
 pub mod player;
 pub mod rng;
@@ -24,7 +28,7 @@ pub mod warp_fleet;
 
 pub mod assets;
 pub use assets::register_game_assets;
-pub mod map_legacy;
+pub mod maps;
 pub mod protocol;
 pub mod tribes;
 pub mod water_components;

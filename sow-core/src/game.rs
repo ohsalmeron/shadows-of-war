@@ -229,6 +229,9 @@ pub struct GameState {
     pub total_land_tiles: u32,
     #[serde(default)]
     pub sea_lanes: std::sync::Arc<Vec<crate::sea_lane::SeaLane>>,
+    /// City-state spawn anchors from the loaded `map.bin` (not serialized over the wire).
+    #[serde(skip)]
+    pub map_spawns: Vec<crate::map_file::MapSpawn>,
 }
 fn default_one() -> u64 {
     1
@@ -258,6 +261,7 @@ impl GameState {
             next_projectile_id: 1,
             total_land_tiles: 0,
             sea_lanes: std::sync::Arc::new(Vec::new()),
+            map_spawns: Vec::new(),
         }
     }
     pub fn register_player(&mut self, player: Player) {

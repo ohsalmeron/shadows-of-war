@@ -37,10 +37,8 @@ pub struct ServerLobby {
     pub ready_players: std::collections::HashSet<u16>,
     pub seed: u64,
     pub config: GameConfig,
-    pub map_md5: Option<String>,
     pub game_mode: String,
     pub relay_port: Option<u16>,
-    pub map_nations: Option<Vec<sow_core::map_legacy::Nation>>,
 }
 
 impl ServerLobby {
@@ -58,16 +56,10 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
     let maps = ["pangaea", "fourislands"];
     config.map_name = maps[map_idx % maps.len()].to_string();
 
-    let mut map_md5 = None;
-    let mut map_nations = None;
-    let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-    let map_dir = std::path::Path::new(&root).join(&config.map_name);
-    let manifest_path = map_dir.join("manifest.json");
-    if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
-        if let Ok(manifest) = serde_json::from_str::<sow_core::map_legacy::MapManifest>(&m_data) {
-            map_md5 = manifest.map_md5;
-            map_nations = manifest.nations;
-        }
+    if let Some(entry) = crate::map_catalog::lookup(&config.map_name) {
+        config.map_name = entry.key.clone();
+        config.map_width = entry.width;
+        config.map_height = entry.height;
     }
 
     config.game_mode = game_mode.to_string();
@@ -81,10 +73,8 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
         ready_players: std::collections::HashSet::new(),
         seed: 0,
         config,
-        map_md5,
         game_mode: game_mode.to_string(),
         relay_port: None,
-        map_nations,
     });
 }
 
@@ -235,25 +225,15 @@ fn start_match(lobby: &mut ServerLobby) {
     lobby.phase = LobbyPhase::Loading;
     lobby.seed = rand::random();
 
-    let root = std::env::var("SOW_MAPS_ROOT").unwrap_or_else(|_| "assets/maps".to_string());
-    let map_dir = std::path::Path::new(&root).join(&lobby.config.map_name);
-    let manifest_path = map_dir.join("manifest.json");
-
-    if let Ok(m_data) = std::fs::read_to_string(&manifest_path) {
-        if let Ok(manifest) = serde_json::from_str::<sow_core::map_legacy::MapManifest>(&m_data) {
-            lobby.config.map_width = manifest.map.width;
-            lobby.config.map_height = manifest.map.height;
-            lobby.map_nations = manifest.nations;
-        } else {
-            log::error!("Failed to parse map manifest at {:?}", manifest_path);
-        }
+    if let Some(entry) = crate::map_catalog::lookup(&lobby.config.map_name) {
+        lobby.config.map_width = entry.width;
+        lobby.config.map_height = entry.height;
+        lobby.config.map_name = entry.key.clone();
     } else {
-        log::warn!(
-            "Could not load map manifest {:?}, falling back to defaults",
-            map_dir
+        log::error!(
+            "Unknown map '{}' in catalog; using config defaults",
+            lobby.config.map_name
         );
-        lobby.config.map_width = 800;
-        lobby.config.map_height = 600;
     }
 
     // We no longer build map state or SowEngine here. That is handled by sow-relay.
@@ -400,7 +380,6 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
                 0.0
             },
             map_name: g.config.map_name.clone(),
-            map_md5: g.map_md5.clone(),
             game_mode: g.game_mode.clone(),
             players: g
                 .players

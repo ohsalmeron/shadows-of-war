@@ -26,8 +26,16 @@ fn get_build_version() -> String {
 
 fn get_maps_url() -> String {
     #[allow(unused_mut)]
-    let mut url = std::env::var("SOW_MAPS_URL")
-        .unwrap_or_else(|_| "https://shadowsofwar.io/assets/maps".to_string());
+    let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| {
+        #[cfg(target_arch = "wasm32")]
+        {
+            "https://shadowsofwar.io/assets/maps".to_string()
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            "http://127.0.0.1:25566/maps".to_string()
+        }
+    });
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {
@@ -50,6 +58,7 @@ fn get_maps_url() -> String {
     url
 }
 
+#[cfg(target_arch = "wasm32")]
 fn get_assets_url() -> String {
     #[allow(unused_mut)]
     let mut url =
@@ -102,10 +111,10 @@ fn spawn_sow_client_connect(
 }
 
 pub enum MapDownloadEvent {
+    CatalogReady(Vec<sow_core::maps::MapCatalogEntry>),
     MapReady(String, Vec<u8>),
     ThumbnailReady(String, Vec<u8>),
-    ManifestReady(String, sow_core::map_legacy::MapManifest),
-    CatalogReady(Vec<sow_core::map_legacy::MapManifest>),
+    ThumbnailFailed(String, String),
     LeaderPortraitReady {
         leader: sow_core::player::Leader,
         mobile: bool,

@@ -278,7 +278,7 @@ pub(crate) fn render(
                                 let has_pending_proposal =
                                     me.alliance_requests.contains(&player.id)
                                         || player.alliance_requests.contains(&my_id);
-                                if timer <= 600 && !has_pending_proposal {
+                                if timer <= 300 && !has_pending_proposal {
                                     is_heart_flashing = true;
                                 }
                             } else if me.alliance_requests.contains(&player.id) {
@@ -1008,7 +1008,7 @@ pub(crate) fn render(
                             let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
                             let has_pending_proposal = me.alliance_requests.contains(&player.id)
                                 || player.alliance_requests.contains(&my_id);
-                            if timer <= 600 && !has_pending_proposal {
+                            if timer <= 300 && !has_pending_proposal {
                                 is_heart_flashing = true;
                             }
                         } else if me.alliance_requests.contains(&player.id) {

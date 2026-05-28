@@ -14,16 +14,26 @@ pub enum Civilization {
     China,
     Macedon,
     Mongols,
+    Angevin,
+    Gallic,
+    Iceni,
+    Maya,
+    Sparta,
 }
 
 impl Civilization {
-    pub const ALL: [Civilization; 6] = [
+    pub const ALL: [Civilization; 11] = [
         Civilization::Rome,
         Civilization::Egypt,
         Civilization::Vikings,
         Civilization::China,
         Civilization::Macedon,
         Civilization::Mongols,
+        Civilization::Angevin,
+        Civilization::Gallic,
+        Civilization::Iceni,
+        Civilization::Maya,
+        Civilization::Sparta,
     ];
 
     pub fn name(self) -> &'static str {
@@ -34,6 +44,11 @@ impl Civilization {
             Civilization::China => "Chinese Empire",
             Civilization::Macedon => "Macedonian Empire",
             Civilization::Mongols => "Mongol Horde",
+            Civilization::Angevin => "Angevin Empire",
+            Civilization::Gallic => "Gallic Tribes",
+            Civilization::Iceni => "Iceni Kingdom",
+            Civilization::Maya => "Maya Civilization",
+            Civilization::Sparta => "Sparta",
         }
     }
 }
@@ -47,16 +62,26 @@ pub enum Leader {
     SunTzu,
     Alexander,
     GenghisKhan,
+    RichardTheLionheart,
+    Vercingetorix,
+    Boudica,
+    LadySixSky,
+    Leonidas,
 }
 
 impl Leader {
-    pub const ALL: [Leader; 6] = [
+    pub const ALL: [Leader; 11] = [
         Leader::Caesar,
         Leader::Cleopatra,
         Leader::Ragnar,
         Leader::SunTzu,
         Leader::Alexander,
         Leader::GenghisKhan,
+        Leader::RichardTheLionheart,
+        Leader::Vercingetorix,
+        Leader::Boudica,
+        Leader::LadySixSky,
+        Leader::Leonidas,
     ];
 
     pub fn name(self) -> &'static str {
@@ -67,17 +92,45 @@ impl Leader {
             Leader::SunTzu => "Sun Tzu",
             Leader::Alexander => "Alexander",
             Leader::GenghisKhan => "Genghis Khan",
+            Leader::RichardTheLionheart => "Richard the Lionheart",
+            Leader::Vercingetorix => "Vercingetorix",
+            Leader::Boudica => "Boudica",
+            Leader::LadySixSky => "Lady Six Sky",
+            Leader::Leonidas => "Leonidas",
+        }
+    }
+
+    /// Combat multiplier for troop losses and expansion power (1.0 = normal).
+    pub fn troop_strength_multiplier(self) -> f64 {
+        match self {
+            Leader::Caesar => 1.10,
+            _ => 1.0,
         }
     }
 
     pub fn perk_description(self) -> &'static str {
         match self {
-            Leader::Caesar => "Pax Romana: Starts match with a Level 2 Capital City.",
+            Leader::Caesar => "Legions of Rome: Armies fight 10% stronger (lower losses, faster conquest).",
             Leader::Cleopatra => "Gift of the Nile: Factory districts generate +50% Gold.",
             Leader::Ragnar => "Longship Raid: Ports generate +50% Gold.",
             Leader::SunTzu => "Art of War: Factory districts produce troops 20% faster.",
             Leader::Alexander => "Great Conquest: Territory-conquering troops expand 15% faster.",
             Leader::GenghisKhan => "Horde Momentum: Gain 10% of gold spent by defeated enemies.",
+            Leader::RichardTheLionheart => {
+                "Crusader Fortresses: City districts grant +50% max troop capacity."
+            }
+            Leader::Vercingetorix => {
+                "Hillfort Gaul: City districts generate +50% troop income."
+            }
+            Leader::Boudica => {
+                "Iceni Revolt: City districts generate +50% Gold."
+            }
+            Leader::LadySixSky => {
+                "Temple of the Sky: Factory districts generate +50% Gold."
+            }
+            Leader::Leonidas => {
+                "Spartan Phalanx: Armory districts grant +50% max troop capacity."
+            }
         }
     }
 }
@@ -215,6 +268,11 @@ impl Player {
             Civilization::China => Leader::SunTzu,
             Civilization::Macedon => Leader::Alexander,
             Civilization::Mongols => Leader::GenghisKhan,
+            Civilization::Angevin => Leader::RichardTheLionheart,
+            Civilization::Gallic => Leader::Vercingetorix,
+            Civilization::Iceni => Leader::Boudica,
+            Civilization::Maya => Leader::LadySixSky,
+            Civilization::Sparta => Leader::Leonidas,
         };
         let is_smart_tribe = id.is_multiple_of(100);
         let starting_troops = config.starting_troops;
@@ -271,6 +329,11 @@ impl Player {
             Civilization::China => Leader::SunTzu,
             Civilization::Macedon => Leader::Alexander,
             Civilization::Mongols => Leader::GenghisKhan,
+            Civilization::Angevin => Leader::RichardTheLionheart,
+            Civilization::Gallic => Leader::Vercingetorix,
+            Civilization::Iceni => Leader::Boudica,
+            Civilization::Maya => Leader::LadySixSky,
+            Civilization::Sparta => Leader::Leonidas,
         };
         Self {
             id,

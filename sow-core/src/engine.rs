@@ -1,6 +1,11 @@
 use crate::building::{Building, BuildingAggregate, BuildingGrid, DefenseGrid};
+use crate::diplomacy::{
+    AllianceProposal, ALLIANCE_REQUEST_COOLDOWN_TICKS, ALLIANCE_REQUEST_TTL_TICKS,
+    BETRAYAL_COOLDOWN_TICKS,
+};
 use crate::execution::AttackExecution;
 use crate::game::GameState;
+use crate::player::PlayerId;
 use crate::pathfinding::WaterPathfinderScratch;
 use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
@@ -54,7 +59,12 @@ pub struct SowEngine {
     pub sea_lanes_dirty: bool,
     pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
 
-    pub alliances_proposed: Vec<(crate::player::PlayerId, crate::player::PlayerId)>,
+    pub alliances_proposed: Vec<AllianceProposal>,
+    /// `(proposer, target)` → tick when another outgoing request is allowed.
+    pub alliance_request_cooldown_until:
+        std::collections::HashMap<(PlayerId, PlayerId), u32>,
+    /// Bot id → tick when another betrayal is allowed.
+    pub alliance_betray_cooldown_until: std::collections::HashMap<PlayerId, u32>,
     pub resource_requests_proposed: Vec<ResourceRequestProposed>,
     pub port_queues:
         std::collections::HashMap<u64, std::collections::VecDeque<crate::game::ShipProduction>>,
@@ -101,6 +111,8 @@ impl SowEngine {
             sea_lane_calc: None,
 
             alliances_proposed: Vec::new(),
+            alliance_request_cooldown_until: std::collections::HashMap::new(),
+            alliance_betray_cooldown_until: std::collections::HashMap::new(),
             resource_requests_proposed: Vec::new(),
             port_queues: std::collections::HashMap::new(),
             projectiles: Vec::new(),
@@ -109,6 +121,82 @@ impl SowEngine {
             recent_nuke_targets: Vec::new(),
             mirv_cooldown_targets: std::collections::HashMap::new(),
         }
+    }
+
+    #[inline]
+    pub fn current_tick_u32(&self) -> u32 {
+        self.state.tick as u32
+    }
+
+    /// Expire stale proposals, cooldown entries, traitor flags, and emoji timers run elsewhere.
+    pub fn prune_alliance_diplomacy(&mut self) {
+        let tick = self.current_tick_u32();
+        let mut expired = Vec::new();
+        self.alliances_proposed.retain(|p| {
+            let alive = tick.saturating_sub(p.created_tick) <= ALLIANCE_REQUEST_TTL_TICKS;
+            if !alive {
+                expired.push(*p);
+            }
+            alive
+        });
+        for p in expired {
+            self.mark_alliance_request_cooldown(p.proposer, p.target);
+        }
+        self.alliance_request_cooldown_until
+            .retain(|_, until| *until > tick);
+        self.alliance_betray_cooldown_until
+            .retain(|_, until| *until > tick);
+        for player in &mut self.state.players {
+            if player.traitor && player.traitor_tick > 0 && tick >= player.traitor_tick {
+                player.traitor = false;
+                player.traitor_tick = 0;
+            }
+        }
+    }
+
+    #[inline]
+    pub fn has_alliance_proposal(&self, proposer: PlayerId, target: PlayerId) -> bool {
+        self.alliances_proposed
+            .iter()
+            .any(|p| p.proposer == proposer && p.target == target)
+    }
+
+    #[inline]
+    pub fn can_send_alliance_request(&self, proposer: PlayerId, target: PlayerId) -> bool {
+        if self.has_alliance_proposal(proposer, target) {
+            return false;
+        }
+        let tick = self.current_tick_u32();
+        !self
+            .alliance_request_cooldown_until
+            .get(&(proposer, target))
+            .is_some_and(|until| *until > tick)
+    }
+
+    pub fn mark_alliance_request_cooldown(&mut self, proposer: PlayerId, target: PlayerId) {
+        let until = self
+            .current_tick_u32()
+            .saturating_add(ALLIANCE_REQUEST_COOLDOWN_TICKS);
+        self.alliance_request_cooldown_until
+            .insert((proposer, target), until);
+    }
+
+    pub fn mark_betrayal_cooldown(&mut self, bot_id: PlayerId) {
+        let until = self
+            .current_tick_u32()
+            .saturating_add(BETRAYAL_COOLDOWN_TICKS);
+        self.alliance_betray_cooldown_until.insert(bot_id, until);
+    }
+
+    pub fn push_alliance_proposal(&mut self, proposer: PlayerId, target: PlayerId) {
+        if self.has_alliance_proposal(proposer, target) {
+            return;
+        }
+        self.alliances_proposed.push(AllianceProposal {
+            proposer,
+            target,
+            created_tick: self.current_tick_u32(),
+        });
     }
 
     pub fn refresh_building_grid(&mut self) {
@@ -187,27 +275,6 @@ impl SowEngine {
                     if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
                         self.state.place_spawn(pid, sx, sy);
                         log::info!("Auto-spawned missing player {} at {}, {}", pid, sx, sy);
-
-                        // Place City Center!
-                        let is_caesar = if let Some(player) = self.state.player(pid) {
-                            player.leader == crate::player::Leader::Caesar
-                        } else {
-                            false
-                        };
-                        let building_id = self.state.next_building_id;
-                        self.state.next_building_id =
-                            self.state.next_building_id.wrapping_add(1).max(1);
-                        let w = self.state.map.width;
-                        self.add_building(Building {
-                            id: building_id,
-                            owner_id: pid,
-                            tile_idx: sy * w + sx,
-                            kind: crate::game::BuildingKind::City,
-                            level: if is_caesar { 2 } else { 1 },
-                            under_construction: false,
-                            ticks_until_complete: 0,
-                            modules: crate::building::CityModules::default(),
-                        });
                     }
                 }
             }
@@ -222,6 +289,7 @@ impl SowEngine {
         }
 
         self.execute_income();
+        self.prune_alliance_diplomacy();
         self.execute_ai_think();
         self.execute_construction();
         self.execute_ship_production();
@@ -353,13 +421,8 @@ impl SowEngine {
             self.state.phase = crate::game::GamePhase::GameOver;
         }
     }
-    pub fn spawn_ai(
-        &mut self,
-        nation_count: u32,
-        tribe_count: u32,
-        manifest_nations: Option<Vec<crate::map_legacy::Nation>>,
-    ) {
-        let mut spawned_nations = 0;
+    pub fn spawn_ai(&mut self, city_state_count: u32, tribe_count: u32) {
+        let mut spawned_city_states = 0;
         let mut spawned_tribes = 0;
         use crate::player::Player;
         use wyrand::WyRand;
@@ -367,47 +430,46 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed);
         let config = self.state.config.clone();
 
-        let json_nations = manifest_nations.unwrap_or_default();
-        if json_nations.len() > 0 || nation_count > 0 || tribe_count > 0 {
+        let anchor_count = self.state.map_spawns.len();
+        if anchor_count > 0 || city_state_count > 0 || tribe_count > 0 {
             log::info!(
-                "spawn_ai: json_nations len is {}, nation_count is {}, tribe_count is {}",
-                json_nations.len(),
-                nation_count,
+                "spawn_ai: map='{}' city_state_anchors={} city_state_count={} tribe_count={}",
+                self.state.config.map_name,
+                anchor_count,
+                city_state_count,
                 tribe_count
             );
         }
 
-        // The total number of Nations we spawn is exactly what was requested by the user.
-        let total_nations_to_spawn = nation_count;
+        let total_city_states_to_spawn = city_state_count;
 
         // Keep track of names already used to prevent duplicates
         let mut used_names = std::collections::HashSet::new();
 
-        // 1. First, prepare the list of JSON nations
-        let mut json_iter = json_nations.into_iter();
+        let map_spawns_snapshot: Vec<crate::map_file::MapSpawn> =
+            self.state.map_spawns.clone();
 
-        // 2. Prepare the fallback historical civilizations pool for extra nations
+        // Prepare the fallback historical civilizations pool for extra city-states
         let extra_nations_pool = crate::tribes::HISTORICAL_CIVILIZATIONS;
         let mut extra_nations_indices: Vec<usize> = (0..extra_nations_pool.len()).collect();
 
-        // 3. Spawn Nations
-        for i in 0..total_nations_to_spawn {
+        for i in 0..total_city_states_to_spawn {
             let bot_id = 104 + i as u16;
 
-            let manifest_nation = json_iter.next();
+            let anchored = map_spawns_snapshot.get(i as usize);
             let mut spawn_point = None;
             let mut name = String::new();
 
-            if let Some(n) = &manifest_nation {
-                let nx = n.coordinates[0];
-                let ny = n.coordinates[1];
+            if let Some(spawn) = anchored {
+                let nx = spawn.x;
+                let ny = spawn.y;
                 if self.state.map.is_valid_coord(nx as i32, ny as i32)
                     && self.state.map.owner_id(nx, ny) == 0
                     && self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land()
                 {
                     spawn_point = Some((nx, ny));
                 }
-                name = n.name.clone();
+                name = spawn.name.clone();
                 used_names.insert(name.clone());
             } else {
                 // We need extra nations! Grab from HISTORICAL_CIVILIZATIONS and ensure no duplicate of any used name
@@ -436,10 +498,10 @@ impl SowEngine {
 
             if i < 5 {
                 log::info!(
-                    "spawn_ai Nation[{}]: name='{}' manifest={}",
+                    "spawn_ai city_state[{}]: name='{}' anchored={}",
                     i,
                     name,
-                    manifest_nation.is_some()
+                    anchored.is_some()
                 );
             }
 
@@ -461,32 +523,12 @@ impl SowEngine {
                 let mut player = Player::new_nation(bot_id, name, color, &config);
                 player.team = team;
                 self.state.spawn_player(player, sx, sy);
-                spawned_nations += 1;
-
-                // Place City Center!
-                let is_caesar = if let Some(p) = self.state.player(bot_id) {
-                    p.leader == crate::player::Leader::Caesar
-                } else {
-                    false
-                };
-                let building_id = self.state.next_building_id;
-                self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
-                let w = self.state.map.width;
-                self.add_building(Building {
-                    id: building_id,
-                    owner_id: bot_id,
-                    tile_idx: sy * w + sx,
-                    kind: crate::game::BuildingKind::City,
-                    level: if is_caesar { 2 } else { 1 },
-                    under_construction: false,
-                    ticks_until_complete: 0,
-                    modules: crate::building::CityModules::default(),
-                });
+                spawned_city_states += 1;
             }
         }
 
-        // 4. Spawn Tribes (IDs above nations)
-        let tribe_start_id = 104 + total_nations_to_spawn as u16;
+        // Spawn tribes (IDs above city-states)
+        let tribe_start_id = 104 + total_city_states_to_spawn as u16;
         let fallback_pool = crate::tribes::FALLBACK_TRIBES;
         let mut fallback_indices: Vec<usize> = (0..fallback_pool.len()).collect();
 
@@ -527,10 +569,10 @@ impl SowEngine {
             }
         }
 
-        if total_nations_to_spawn > 0 || tribe_count > 0 {
+        if total_city_states_to_spawn > 0 || tribe_count > 0 {
             log::info!(
-                "Spawned {} nations and {} tribes successfully.",
-                spawned_nations,
+                "Spawned {} city-states and {} tribes successfully.",
+                spawned_city_states,
                 spawned_tribes
             );
         }
@@ -566,24 +608,7 @@ impl SowEngine {
             player.team = team;
             player.civilization = civilization;
             player.leader = leader;
-            let is_caesar = player.leader == crate::player::Leader::Caesar;
             self.state.spawn_player(player, sx, sy);
-
-            // Build the initial capital city
-            let w = self.state.map.width;
-            self.buildings.push(Building {
-                id: self.state.next_building_id,
-                owner_id: player_id,
-                tile_idx: sy * w + sx,
-                kind: crate::game::BuildingKind::City,
-                level: if is_caesar { 2 } else { 1 },
-                under_construction: false,
-                ticks_until_complete: 0,
-                modules: crate::building::CityModules::default(),
-            });
-            self.state.next_building_id += 1;
-
-            self.building_aggregates_dirty = true;
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);
         }
@@ -662,8 +687,8 @@ impl SowEngine {
 
                 let alliance_requests = proposed
                     .iter()
-                    .filter(|pair| pair.1 == p.id)
-                    .map(|pair| pair.0)
+                    .filter(|prop| prop.target == p.id)
+                    .map(|prop| prop.proposer)
                     .collect();
 
                 let resource_requests = proposed_resources
@@ -901,56 +926,59 @@ mod tests {
     use crate::game_config::GameConfig;
     use crate::game::GameState;
     use crate::water_components::WaterComponents;
-    use crate::map_legacy::Nation;
-
     #[test]
-    fn test_spawn_ai_nations() {
+    fn test_spawn_ai_city_states() {
         let config = GameConfig {
-            map_width: 200,
-            map_height: 200,
+            map_name: "tutorial".to_string(),
+            map_width: 1000,
+            map_height: 800,
             ..Default::default()
         };
-        // 1. nation_count = 0, manifest_nations = 3 nations.
-        // Should spawn 0 nations.
-        let mut state = GameState::new(42, 200, 200, config.clone());
+        let mut state = GameState::new(42, 1000, 800, config.clone());
         for t in &mut state.map.terrain {
             *t = crate::map::MapTile::from_byte(0b1000_0000);
         }
         let mut engine = SowEngine::new(state, WaterComponents::default());
-        let manifest_nations = vec![
-            Nation { name: "Ireland".to_string(), flag: None, coordinates: [20, 20] },
-            Nation { name: "England".to_string(), flag: None, coordinates: [60, 60] },
-            Nation { name: "Spain".to_string(), flag: None, coordinates: [100, 100] },
-        ];
-        engine.spawn_ai(0, 0, Some(manifest_nations.clone()));
+        engine.spawn_ai(0, 0);
         assert_eq!(engine.state.players.len(), 0);
 
-        // 2. nation_count = 5, manifest_nations = 3.
-        // Should spawn 5 nations: 3 from manifest, 2 from fallback.
-        let mut state = GameState::new(42, 200, 200, config.clone());
+        let mut state = GameState::new(42, 1000, 800, config.clone());
         for t in &mut state.map.terrain {
             *t = crate::map::MapTile::from_byte(0b1000_0000);
         }
-        let mut engine = SowEngine::new(state, WaterComponents::default());
-        engine.spawn_ai(5, 0, Some(manifest_nations.clone()));
-        assert_eq!(engine.state.players.len(), 5);
-        let player_names: Vec<String> = engine.state.players.iter().map(|p| p.name.clone()).collect();
-        assert!(player_names.contains(&"Ireland".to_string()));
-        assert!(player_names.contains(&"England".to_string()));
-        assert!(player_names.contains(&"Spain".to_string()));
+        state.map_spawns = vec![
+            crate::map_file::MapSpawn {
+                name: "Testland".to_string(),
+                flag: "xx".to_string(),
+                x: 10,
+                y: 10,
+            },
+            crate::map_file::MapSpawn {
+                name: "Testland".to_string(),
+                flag: "xx".to_string(),
+                x: 20,
+                y: 20,
+            },
+        ];
 
-        // 3. nation_count = 2, manifest_nations = 3.
-        // Should spawn 2 nations, both from manifest.
-        let mut state = GameState::new(42, 200, 200, config.clone());
+        let mut engine = SowEngine::new(state, WaterComponents::default());
+        engine.spawn_ai(2, 0);
+        assert_eq!(engine.state.players.len(), 2);
+        assert!(
+            engine
+                .state
+                .players
+                .iter()
+                .all(|p| p.name == "Testland"),
+            "anchored spawns use map.bin spawn names"
+        );
+
+        let mut state = GameState::new(42, 1000, 800, config);
         for t in &mut state.map.terrain {
             *t = crate::map::MapTile::from_byte(0b1000_0000);
         }
         let mut engine = SowEngine::new(state, WaterComponents::default());
-        engine.spawn_ai(2, 0, Some(manifest_nations.clone()));
-        assert_eq!(engine.state.players.len(), 2);
-        let player_names: Vec<String> = engine.state.players.iter().map(|p| p.name.clone()).collect();
-        assert!(player_names.contains(&"Ireland".to_string()));
-        assert!(player_names.contains(&"England".to_string()));
-        assert!(!player_names.contains(&"Spain".to_string()));
+        engine.spawn_ai(3, 0);
+        assert_eq!(engine.state.players.len(), 3);
     }
 }

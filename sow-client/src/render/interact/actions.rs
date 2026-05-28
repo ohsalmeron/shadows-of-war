@@ -77,7 +77,6 @@ impl SowApp {
                         missed_turns: vec![],
                         map_data: None,
                         relay_port: None,
-                        nations: None,
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
 
@@ -166,23 +165,35 @@ impl SowApp {
                     self.sim.my_player_id = Some(1);
                     self.sim.my_lobby_id = Some(0);
 
-                    let map_id = config.map_name.to_lowercase().replace("_", "");
+                    let map_id =
+                        sow_ui::ui::asset_loader::AssetLoader::map_key(&config.map_name);
                     self.ui.app.main_menu_state.downloading_map_name = Some(map_id.clone());
 
                     let mut config = *config;
                     config.map_name = map_id.clone();
-                    if let Some(man) = self.ui.app.asset_loader.manifests.get(&map_id) {
-                        config.map_width = man.map.width;
-                        config.map_height = man.map.height;
-                    } else if map_id == "world" {
-                        config.map_width = 2000;
-                        config.map_height = 1000;
-                    } else if map_id == "giantworldmap" {
-                        config.map_width = 4108;
-                        config.map_height = 1948;
-                    } else {
-                        config.map_width = 800;
-                        config.map_height = 400;
+                    if let Some(catalog) = &self.ui.app.asset_loader.map_catalog {
+                        if let Some(entry) = sow_core::maps::catalog_lookup(catalog, &map_id) {
+                            config.map_width = entry.width;
+                            config.map_height = entry.height;
+                            config.map_name = entry.key.clone();
+                        } else {
+                            log::warn!("Map '{}' not in catalog.bin", map_id);
+                        }
+                    }
+                    if let Some(payload) =
+                        sow_core::maps::load_map_br_payload(&map_id, None)
+                    {
+                        if let Ok(map_file) =
+                            sow_core::maps::load_map_from_payload(&payload)
+                        {
+                            config.map_width = map_file.width;
+                            config.map_height = map_file.height;
+                            self.ui
+                                .app
+                                .asset_loader
+                                .maps
+                                .insert(map_id.clone(), payload);
+                        }
                     }
 
                     let start_msg = sow_core::protocol::ServerStartMessage {
@@ -212,47 +223,19 @@ impl SowApp {
                         missed_turns: vec![],
                         map_data: None,
                         relay_port: None,
-                        nations: None,
                     };
                     self.tasks.engine_init_queued_msg = Some(start_msg);
 
                     if self.ui.app.asset_loader.has_map(&map_id) {
                         self.ui.app.main_menu_state.cached_map =
                             self.ui.app.asset_loader.take_map(&map_id);
+                        self.ui.app.main_menu_state.cached_map_key = Some(map_id.clone());
                         self.ui.app.main_menu_state.is_downloading_map = false;
                     } else {
                         self.ui.app.main_menu_state.is_downloading_map = true;
                         self.ui.app.main_menu_state.cached_map = None;
+                        self.ui.app.main_menu_state.cached_map_key = None;
                         let maps_base = crate::get_maps_url();
-                        let map_name_clone = map_id.clone();
-                        let tx_man = self.tasks.map_tx.clone();
-
-                        // 1. Fetch manifest.json
-                        let manifest_url = format!(
-                            "{}/{}/manifest.json",
-                            maps_base.trim_end_matches('/'),
-                            map_id
-                        );
-                        let request_man = ehttp::Request::get(&manifest_url);
-                        ehttp::fetch(request_man, move |result| {
-                            if let Ok(res) = result {
-                                if res.ok {
-                                    if let Ok(manifest) =
-                                        serde_json::from_slice::<sow_core::map_legacy::MapManifest>(
-                                            &res.bytes,
-                                        )
-                                    {
-                                        let _ =
-                                            tx_man.send(crate::MapDownloadEvent::ManifestReady(
-                                                map_name_clone,
-                                                manifest,
-                                            ));
-                                    }
-                                }
-                            }
-                        });
-
-                        // 2. Fetch map.bin.br
                         let url =
                             format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_id);
                         let tx = self.tasks.map_tx.clone();
