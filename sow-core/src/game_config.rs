@@ -192,12 +192,12 @@ impl Default for GameConfig {
             // Combat & Expansion Mechanics
             attack_cost_enemy: 1.5,
             attack_cost_neutral: 1.0,
-            terrain_multiplier_highland: 1.25,
-            terrain_multiplier_mountain: 2.5,
+            terrain_multiplier_highland: 2.25,
+            terrain_multiplier_mountain: 4.5,
 
             max_tiles_per_tick: 4096.0,
             max_tiles_per_tick_reference_troops: 25000.0,
-            max_tiles_per_tick_at_reference: 512.0,
+            max_tiles_per_tick_at_reference: 64.0,
             momentum_divisor: 1250.0,
 
             // Economy & Income Rates

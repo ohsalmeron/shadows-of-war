@@ -66,7 +66,7 @@ impl SowApp {
 
     pub(crate) fn render_dev_panels(&mut self, ctx: &egui::Context) {
         let rect = ctx.content_rect();
-        let compact = rect.width() < 1024.0 || rect.width() < rect.height() * 1.25;
+        let compact = rect.width() < 768.0 || rect.width() < rect.height() * 1.25;
         let text_size = if compact { 10.0 } else { 11.0 };
         let inset = if compact { 8.0 } else { 12.0 };
 

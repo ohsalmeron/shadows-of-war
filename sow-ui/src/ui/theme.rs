@@ -2,9 +2,16 @@ use std::sync::Arc;
 
 use egui::{
     style::{Selection, WidgetVisuals, Widgets},
-    Align2, Color32, Context, CornerRadius, FontId, Galley, Margin, Pos2, Rangef, Rect, Response,
-    Sense, Stroke, StrokeKind, Style, TextStyle, Ui, Vec2, Visuals,
+    Align2, Color32, Context, CornerRadius, FontId, Galley, Image, Margin, Pos2, Rangef, Rect,
+    Response, Sense, Stroke, StrokeKind, Style, TextStyle, TextureHandle, Ui, Vec2, Visuals,
 };
+
+/// Phone/narrow layout: stacked main menu + mobile leader art below this width.
+#[inline]
+pub fn compact_viewport(ctx: &Context) -> bool {
+    let rect = ctx.content_rect();
+    rect.width() < 480.0 || rect.height() < 600.0
+}
 
 /// Cosmic Rush palette
 pub mod palette {
@@ -171,6 +178,7 @@ pub enum PanelKind {
 pub fn panel_frame(kind: PanelKind, compact: bool) -> egui::Frame {
     match kind {
         PanelKind::HudOverlay => {
+            // Bottom-left attack ratio and similar compact overlays (not the right-side icon rails).
             let (margin_x, margin_y) = if cfg!(target_os = "android") {
                 (margin::REGULAR, margin::COZY)
             } else {
@@ -302,6 +310,85 @@ pub fn draw_tab(
             FontId::proportional(font_size),
             label_color,
         );
+
+        if badge_count > 0 {
+            let badge_center = rect.right_top() + Vec2::new(-6.0, 6.0);
+            let badge_r = if compact { 5.5 } else { 6.0 };
+            ui.painter()
+                .circle_filled(badge_center, badge_r, palette::danger());
+            let badge_text = if badge_count > 9 {
+                "9+".to_string()
+            } else {
+                badge_count.to_string()
+            };
+            ui.painter().text(
+                badge_center,
+                Align2::CENTER_CENTER,
+                badge_text,
+                FontId::proportional(if compact { 7.0 } else { 7.5 }),
+                Color32::WHITE,
+            );
+        }
+    }
+
+    response
+}
+
+/// Browser-style tab with a centered HUD icon instead of a text label.
+pub fn draw_icon_tab(
+    ui: &mut Ui,
+    texture: Option<&TextureHandle>,
+    selected: bool,
+    accent: Color32,
+    badge_count: usize,
+    tab_w: f32,
+    compact: bool,
+) -> Response {
+    let style = hud_tab_style();
+    let tab_h = tab::height(compact);
+    let tab_radius = radius::tab_top();
+    let icon_size = if compact { 20.0 } else { 22.0 };
+
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(tab_w, tab_h), Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let fill = if selected {
+            style.active_fill
+        } else if response.hovered() {
+            style.hover_fill
+        } else {
+            style.inactive_fill
+        };
+
+        let side_stroke = if selected {
+            Stroke::new(stroke::HAIRLINE, accent.linear_multiply(0.6))
+        } else {
+            Stroke::NONE
+        };
+
+        ui.painter().rect(rect, tab_radius, fill, side_stroke, StrokeKind::Inside);
+
+        if selected {
+            let bar = Rect::from_min_max(
+                Pos2::new(rect.left() + 1.0, rect.top()),
+                Pos2::new(rect.right() - 1.0, rect.top() + tab::ACCENT_BAR_H),
+            );
+            ui.painter().rect_filled(bar, 0, accent);
+        } else {
+            let baseline_y = rect.bottom() - tab::BASELINE_H;
+            let baseline_stroke = if response.hovered() {
+                Stroke::new(stroke::EMPHASIS, accent.linear_multiply(0.85))
+            } else {
+                Stroke::new(stroke::HAIRLINE, style.baseline.linear_multiply(0.7))
+            };
+            ui.painter()
+                .hline(rect.x_range(), baseline_y, baseline_stroke);
+        }
+
+        if let Some(tex) = texture {
+            let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(icon_size));
+            ui.put(icon_rect, Image::new(tex).fit_to_exact_size(icon_rect.size()));
+        }
 
         if badge_count > 0 {
             let badge_center = rect.right_top() + Vec2::new(-6.0, 6.0);
@@ -521,8 +608,8 @@ pub fn apply_theme(ctx: &Context) {
 }
 
 #[inline]
-pub fn hud_panel_frame() -> egui::Frame {
-    panel_frame(PanelKind::HudOverlay, false)
+pub fn hud_icon_rail_spacing(ui: &mut egui::Ui) {
+    ui.spacing_mut().item_spacing = egui::vec2(hud_icon_spacing(), hud_icon_spacing());
 }
 
 #[inline]
@@ -572,12 +659,17 @@ pub fn menu_right_panel_frame(compact: bool) -> egui::Frame {
 }
 
 #[inline]
-pub fn hud_button_text_size() -> f32 {
+pub fn hud_icon_size() -> f32 {
     if cfg!(target_os = "android") {
-        32.0
+        48.0
     } else {
-        18.0
+        40.0
     }
+}
+
+#[inline]
+pub fn hud_icon_spacing() -> f32 {
+    margin::TIGHT as f32
 }
 
 /// Paint a pre-laid-out galley with premium 7-pass glow (zero layout cost).
@@ -608,6 +700,64 @@ fn paint_premium_glow_galley(
     }
     // 3. Core text (1 pass)
     painter.galley_with_override_text_color(pos, galley, base_color);
+}
+
+/// Short soft pixel shadow — opaque at the glyph origin, fading over ~2–3 px.
+fn paint_pixel_shadow_galley(
+    painter: &egui::Painter,
+    pos: Pos2,
+    galley: Arc<Galley>,
+    base_color: Color32,
+) {
+    const LAYERS: [(f32, f32, u8); 6] = [
+        (0.0, 1.0, 230),
+        (1.0, 1.0, 175),
+        (0.0, 2.0, 120),
+        (1.0, 2.0, 70),
+        (2.0, 2.0, 35),
+        (1.0, 3.0, 18),
+    ];
+    for &(dx, dy, alpha) in &LAYERS {
+        painter.galley_with_override_text_color(
+            pos + Vec2::new(dx, dy),
+            galley.clone(),
+            Color32::from_black_alpha(alpha),
+        );
+    }
+    painter.galley_with_override_text_color(pos, galley, base_color);
+}
+
+/// Leader name in caps with a tight pixel shadow and clear size hierarchy vs body text.
+pub fn leader_name_label(ui: &mut Ui, name: &str, size: f32) -> Response {
+    leader_caps_line(ui, name, size)
+}
+
+/// All-caps white line with the leader picker pixel shadow.
+pub fn leader_caps_line(ui: &mut Ui, text: &str, size: f32) -> Response {
+    let text = text.to_uppercase();
+    let font_id = FontId::proportional(size);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text, font_id, Color32::WHITE);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        paint_pixel_shadow_galley(ui.painter(), rect.left_top(), galley, Color32::WHITE);
+    }
+    response
+}
+
+/// Wrapped all-caps block with pixel shadow (ability / perk text).
+pub fn leader_caps_paragraph(ui: &mut Ui, text: &str, size: f32, wrap_w: f32) -> Response {
+    let text = text.to_uppercase();
+    let font_id = FontId::proportional(size);
+    let galley = ui
+        .painter()
+        .layout(text, font_id, Color32::WHITE, wrap_w);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        paint_pixel_shadow_galley(ui.painter(), rect.left_top(), galley, Color32::WHITE);
+    }
+    response
 }
 
 /// Draw text with a crisp black outline and heavy bottom drop shadow.

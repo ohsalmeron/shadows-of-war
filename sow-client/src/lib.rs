@@ -74,6 +74,23 @@ fn get_assets_url() -> String {
     url
 }
 
+/// Deploy timestamp injected by index.html; busts browser + service-worker image caches.
+#[cfg(target_arch = "wasm32")]
+fn get_assets_cache_bust() -> String {
+    if let Some(window) = web_sys::window() {
+        if let Ok(val) =
+            js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_BUILD_TS"))
+        {
+            if let Some(s) = val.as_string() {
+                if s != "__BUILD_TS__" && !s.is_empty() {
+                    return s;
+                }
+            }
+        }
+    }
+    String::new()
+}
+
 mod config;
 
 /// Allow very wide map views (scroll / pinch clamp to this minimum).

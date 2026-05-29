@@ -34,7 +34,7 @@ impl Default for SettingsState {
 
 pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) -> Option<UiAction> {
     let mut action = None;
-    let compact = root_ui.ctx().content_rect().width() < 900.0;
+    let compact = root_ui.ctx().content_rect().width() < 768.0;
     let panel_w = if compact {
         root_ui.ctx().content_rect().width()
     } else {

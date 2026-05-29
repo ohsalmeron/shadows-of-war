@@ -3,22 +3,20 @@
 use egui::{Color32, Painter, TextureId};
 use image::RgbaImage;
 
-/// Turn near-black backdrop pixels transparent; keep original RGB and edge alpha intact.
-pub fn key_black_backdrop_rgba8(pixels: &mut [u8]) {
+/// Force every pixel fully opaque — thumbnails are drawn as solid albedo, no alpha keying.
+pub fn force_opaque_rgba8(pixels: &mut [u8]) {
     for px in pixels.chunks_exact_mut(4) {
-        if px[0] < 18 && px[1] < 18 && px[2] < 18 {
-            px[3] = 0;
-        }
+        px[3] = 255;
     }
 }
 
-pub fn key_black_backdrop_image(image: &mut RgbaImage) {
-    key_black_backdrop_rgba8(image.as_mut());
+pub fn force_opaque_image(image: &mut RgbaImage) {
+    force_opaque_rgba8(image.as_mut());
 }
 
 pub fn color_image_from_map_thumbnail_bytes(bytes: &[u8]) -> Option<egui::ColorImage> {
     let mut image = image::load_from_memory(bytes).ok()?.to_rgba8();
-    key_black_backdrop_image(&mut image);
+    force_opaque_image(&mut image);
     let size = [image.width() as _, image.height() as _];
     let pixels = image.as_flat_samples();
     Some(egui::ColorImage::from_rgba_unmultiplied(
@@ -27,24 +25,64 @@ pub fn color_image_from_map_thumbnail_bytes(bytes: &[u8]) -> Option<egui::ColorI
     ))
 }
 
-/// Standard alpha-blended map thumbnail (no fake additive / luminance keying).
+/// Center-crop UV for fitting a texture into a destination rect without stretching.
+pub fn cover_uv(rect_size: egui::Vec2, tex_size: egui::Vec2) -> egui::Rect {
+    let rect_aspect = rect_size.x / rect_size.y;
+    let tex_aspect = tex_size.x / tex_size.y;
+
+    if tex_aspect > rect_aspect {
+        let u_width = rect_aspect / tex_aspect;
+        let u_start = (1.0 - u_width) / 2.0;
+        egui::Rect::from_min_max(egui::pos2(u_start, 0.0), egui::pos2(u_start + u_width, 1.0))
+    } else {
+        let v_height = tex_aspect / rect_aspect;
+        let v_start = (1.0 - v_height) / 2.0;
+        egui::Rect::from_min_max(
+            egui::pos2(0.0, v_start),
+            egui::pos2(1.0, v_start + v_height),
+        )
+    }
+}
+
+/// Map thumbnails are always displayed as 1:1 squares (side length in logical pixels).
+pub fn thumbnail_square_side(available_width: f32, compact: bool) -> f32 {
+    if compact {
+        available_width
+    } else {
+        available_width.clamp(120.0, 200.0)
+    }
+}
+
+/// Full-opaque map thumbnail (albedo only — no alpha compositing tricks).
 pub fn draw_map_thumbnail(
     painter: &Painter,
     texture: TextureId,
     rect: egui::Rect,
     brightness: f32,
 ) {
-    let tint = if brightness > 1.01 {
-        Color32::WHITE.gamma_multiply(brightness.clamp(1.0, 1.12))
-    } else {
-        Color32::WHITE
-    };
-    painter.image(
+    draw_map_thumbnail_uv(
+        painter,
         texture,
         rect,
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-        tint,
+        brightness,
     );
+}
+
+/// Map thumbnail with explicit UV (use [`cover_uv`] for center-cropped fit).
+pub fn draw_map_thumbnail_uv(
+    painter: &Painter,
+    texture: TextureId,
+    rect: egui::Rect,
+    uv: egui::Rect,
+    brightness: f32,
+) {
+    let tint = if brightness > 1.01 {
+        Color32::WHITE.gamma_multiply(brightness.clamp(1.0, 1.2))
+    } else {
+        Color32::WHITE
+    };
+    painter.image(texture, rect, uv, tint);
 }
 
 #[cfg(test)]
@@ -52,16 +90,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn black_backdrop_becomes_transparent() {
-        let mut px = [0u8, 0, 0, 255];
-        key_black_backdrop_rgba8(&mut px);
-        assert_eq!(px[3], 0);
+    fn decode_forces_full_opacity() {
+        let mut px = [10u8, 20, 30, 0];
+        force_opaque_rgba8(&mut px);
+        assert_eq!(px[3], 255);
     }
 
     #[test]
-    fn colored_pixels_keep_alpha() {
-        let mut px = [40u8, 200, 60, 200];
-        key_black_backdrop_rgba8(&mut px);
-        assert_eq!(px[3], 200);
+    fn colored_pixels_keep_rgb() {
+        let mut px = [40u8, 200, 60, 128];
+        force_opaque_rgba8(&mut px);
+        assert_eq!(px[0..3], [40, 200, 60]);
+        assert_eq!(px[3], 255);
     }
 }

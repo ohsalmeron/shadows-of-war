@@ -95,11 +95,11 @@ impl SowApp {
                         break;
                     }
                 }
-                self.time.last_tick = now;
             } else {
                 // Singleplayer: offline tick generation and HUD updates
-                let dt = now.duration_since(self.time.last_tick).as_secs_f32();
-                self.time.last_tick = now;
+                let dt = now
+                    .duration_since(self.time.interp.last_applied_at)
+                    .as_secs_f32();
 
                 let mut safe_dt = dt;
                 if safe_dt > 0.1 {
@@ -108,7 +108,7 @@ impl SowApp {
                 self.sim.offline_tick_timer += safe_dt;
 
                 while self.sim.offline_tick_timer >= 0.05 {
-                    // 20 TPS (50ms)
+                    // 20 TPS (50ms) offline cadence
                     self.sim.offline_tick_timer -= 0.05;
 
                     let raw_intents = std::mem::take(&mut self.sim.offline_intents);
@@ -191,8 +191,6 @@ impl SowApp {
                 }
                 self.sync_building_costs();
             }
-        } else {
-            self.time.last_tick = now;
         }
         // Snapshot is now instantly updated by dispatch_sim_command
         if self.ui.app.splash_state.gpu_load_step == 3 && self.sim.current_snapshot.is_some() {

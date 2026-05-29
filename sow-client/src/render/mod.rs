@@ -355,6 +355,58 @@ impl SowApp {
                     colors_struct,
                 );
                 map_drawn = true;
+
+                // ── GPU-instanced movers (boats, nukes, SAM) ─────────────
+                if self.gfx.mover_renderer.is_none() {
+                    let surface_format = s.info().format;
+                    self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                        &self.gfx.render_ctx.context,
+                        surface_format,
+                    ));
+                    if let Some(ref mr_mover) = self.gfx.mover_renderer {
+                        mr_mover.upload_atlas(
+                            &mut self.gfx.render_ctx.command_encoder,
+                            &self.gfx.render_ctx.context,
+                        );
+                    }
+                }
+                if let (Some(ref mut mover_r), Some(ref snap)) = (
+                    &mut self.gfx.mover_renderer,
+                    &self.sim.current_snapshot,
+                ) {
+                    let now = web_time::Instant::now();
+                    let alpha = crate::render::world::movers::interp_alpha(&self.time, now);
+                    let pack = crate::render::world::movers::MoverPackParams {
+                        camera_x: self.input.camera_x,
+                        camera_y: self.input.camera_y,
+                        camera_zoom: self.input.camera_zoom,
+                        screen_w: self.input.screen_w,
+                        screen_h: self.input.screen_h,
+                        alpha,
+                        selected_warships: &self.input.selected_warships,
+                    };
+                    crate::render::world::movers::update_and_pack(
+                        &mut self.ui.mover_scene,
+                        snap,
+                        self.sim.map_w,
+                        mover_r,
+                        pack,
+                    );
+                    let mover_globals = sow_render::MoverGlobals {
+                        camera_pos: [self.input.camera_x, self.input.camera_y],
+                        zoom: self.input.camera_zoom,
+                        sprite_count: 0,
+                        screen_size: [self.input.screen_w, self.input.screen_h],
+                        trail_count: 0,
+                        _pad: 0.0,
+                    };
+                    mover_r.draw(
+                        &mut self.gfx.render_ctx.command_encoder,
+                        frame.texture_view(),
+                        mover_globals,
+                        &self.gfx.render_ctx.context,
+                    );
+                }
             }
 
             if !map_drawn {
@@ -709,6 +761,13 @@ impl SowApp {
                             ));
                             self.gfx.needs_first_upload = true;
                         }
+                        if let Some(mut old_mover) = self.gfx.mover_renderer.take() {
+                            old_mover.destroy(&self.gfx.render_ctx);
+                        }
+                        self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                            &self.gfx.render_ctx.context,
+                            format,
+                        ));
                         if let Some(mut old_gp) = self.gfx.gui_painter.take() {
                             old_gp.destroy(&self.gfx.render_ctx.context);
                         }

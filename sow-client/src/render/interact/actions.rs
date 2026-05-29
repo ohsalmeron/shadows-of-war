@@ -66,7 +66,12 @@ impl SowApp {
                                     format!("[{}] {}", tag, name)
                                 }
                             },
-                            color: sow_core::player::human_shader_territory_rgb(1),
+                            color: self
+                                .ui
+                                .app
+                                .main_menu_state
+                                .selected_leader
+                                .filler_rgb(),
                             player_type: sow_core::player::PlayerType::Human,
                             team: None,
                             spawn_x: 0,
@@ -212,7 +217,12 @@ impl SowApp {
                                     format!("[{}] {}", tag, name)
                                 }
                             },
-                            color: sow_core::player::human_shader_territory_rgb(1),
+                            color: self
+                                .ui
+                                .app
+                                .main_menu_state
+                                .selected_leader
+                                .filler_rgb(),
                             player_type: sow_core::player::PlayerType::Human,
                             team: None,
                             spawn_x: 0,

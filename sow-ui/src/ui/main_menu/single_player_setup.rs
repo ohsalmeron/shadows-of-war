@@ -314,19 +314,7 @@ pub fn draw_modal(
                                     let leader = config.player_leader;
                                     let civ = config.player_civilization;
 
-                                    let emoji = match leader {
-                                        sow_core::player::Leader::Caesar => "🏛️",
-                                        sow_core::player::Leader::Cleopatra => "👑",
-                                        sow_core::player::Leader::Ragnar => "🪓",
-                                        sow_core::player::Leader::SunTzu => "📜",
-                                        sow_core::player::Leader::Alexander => "🛡️",
-                                        sow_core::player::Leader::GenghisKhan => "🐺",
-                                        sow_core::player::Leader::RichardTheLionheart => "🦁",
-                                        sow_core::player::Leader::Vercingetorix => "⚔️",
-                                        sow_core::player::Leader::Boudica => "🔥",
-                                        sow_core::player::Leader::LadySixSky => "🌙",
-                                        sow_core::player::Leader::Leonidas => "🪖",
-                                    };
+                                    let emoji = leader.menu_emoji();
 
                                     ui.horizontal(|ui| {
                                         ui.label(RichText::new(emoji).size(20.0));

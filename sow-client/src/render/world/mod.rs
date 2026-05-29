@@ -1,6 +1,7 @@
 pub mod buildings;
 pub mod effects;
 pub mod fleets;
+pub mod movers;
 pub mod nameplates;
 pub mod projectiles;
 pub mod railways;

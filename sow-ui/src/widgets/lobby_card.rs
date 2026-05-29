@@ -4,7 +4,7 @@ use sow_core::protocol::LobbyInfo;
 pub struct LobbyCard<'a> {
     lobby: &'a LobbyInfo,
     texture: Option<&'a egui::TextureHandle>,
-    max_h: f32,
+    side: f32,
 }
 
 impl<'a> LobbyCard<'a> {
@@ -12,12 +12,13 @@ impl<'a> LobbyCard<'a> {
         Self {
             lobby,
             texture,
-            max_h: 160.0,
+            side: 160.0,
         }
     }
 
-    pub fn max_h(mut self, max_h: f32) -> Self {
-        self.max_h = max_h;
+    /// Square edge length (1:1 — standard for map thumbnails).
+    pub fn side(mut self, side: f32) -> Self {
+        self.side = side;
         self
     }
 }
@@ -28,25 +29,8 @@ pub struct LobbyCardResponse {
 
 impl<'a> Widget for LobbyCard<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let max_w = ui.available_width();
-        let mut w = max_w;
-        let mut h = self.max_h;
-
-        if let Some(texture) = self.texture {
-            let tex_size = texture.size();
-            let tex_aspect = tex_size[0] as f32 / tex_size[1] as f32;
-            let box_aspect = max_w / self.max_h;
-
-            if tex_aspect > box_aspect {
-                w = max_w;
-                h = max_w / tex_aspect;
-            } else {
-                h = self.max_h;
-                w = self.max_h * tex_aspect;
-            }
-        }
-
-        let desired_size = egui::vec2(w, h);
+        let side = self.side.min(ui.available_width());
+        let desired_size = egui::vec2(side, side);
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 
         let is_hovered = response.hovered();
@@ -72,10 +56,12 @@ impl<'a> Widget for LobbyCard<'a> {
 
         if let Some(texture) = self.texture {
             let brightness = if is_hovered { 1.2 } else { 1.0 };
-            crate::ui::map_texture::draw_map_thumbnail(
+            let uv = crate::ui::map_texture::cover_uv(rect.size(), texture.size_vec2());
+            crate::ui::map_texture::draw_map_thumbnail_uv(
                 ui.painter(),
                 texture.id(),
                 rect,
+                uv,
                 brightness,
             );
         } else {

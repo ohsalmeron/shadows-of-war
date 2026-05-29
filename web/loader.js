@@ -42,6 +42,14 @@
         loaderFull: './assets/ui/loader_full.webp',
     };
 
+    function assetUrl(path) {
+        const v = window.SOW_BUILD_TS;
+        if (v && v !== '__BUILD_TS__') {
+            return path + '?v=' + encodeURIComponent(v);
+        }
+        return path;
+    }
+
     let root = null;
     let splashBg = null;
     let barFill = null;
@@ -75,7 +83,7 @@
     }
 
     function splashSrc() {
-        return isMobile() ? ASSETS.splashMobile : ASSETS.splashDesktop;
+        return assetUrl(isMobile() ? ASSETS.splashMobile : ASSETS.splashDesktop);
     }
 
     function layout() {
@@ -145,9 +153,9 @@
         root.innerHTML = `
             <img id="splash-bg" class="splash-bg" alt="" decoding="async" fetchpriority="high" src="${splashSrc()}">
             <div id="loader-bar-wrap" class="loader-bar-wrap">
-                <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${ASSETS.loaderEmpty}">
+                <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.loaderEmpty)}">
                 <div id="loader-bar-fill" class="loader-bar-fill">
-                    <img id="loader-bar-full" class="loader-bar-full" alt="" decoding="async" fetchpriority="low" src="${ASSETS.loaderFull}">
+                    <img id="loader-bar-full" class="loader-bar-full" alt="" decoding="async" fetchpriority="low" src="${assetUrl(ASSETS.loaderFull)}">
                 </div>
                 <p id="loader-text" class="loader-text">Loading...</p>
             </div>

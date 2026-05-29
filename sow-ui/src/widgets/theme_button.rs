@@ -1,4 +1,4 @@
-use egui::{Button, Color32, Response, Ui, Widget};
+use egui::{Button, Color32, Response, Stroke, Ui, Widget};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThemeButtonStyle {
@@ -15,6 +15,8 @@ pub struct ThemeButton {
     text_size: f32,
     custom_fill: Option<Color32>,
     custom_text_color: Option<Color32>,
+    corner_radius: Option<u8>,
+    stroke: Option<Stroke>,
 }
 
 impl ThemeButton {
@@ -26,6 +28,8 @@ impl ThemeButton {
             text_size: 18.0,
             custom_fill: None,
             custom_text_color: None,
+            corner_radius: None,
+            stroke: None,
         }
     }
 
@@ -53,6 +57,16 @@ impl ThemeButton {
         self.custom_text_color = Some(color);
         self
     }
+
+    pub fn corner_radius(mut self, radius: u8) -> Self {
+        self.corner_radius = Some(radius);
+        self
+    }
+
+    pub fn stroke(mut self, stroke: Stroke) -> Self {
+        self.stroke = Some(stroke);
+        self
+    }
 }
 
 impl Widget for ThemeButton {
@@ -60,6 +74,14 @@ impl Widget for ThemeButton {
         let text_color = self.custom_text_color.unwrap_or(Color32::WHITE);
 
         let mut btn = Button::new("").min_size(self.min_size);
+
+        if let Some(radius) = self.corner_radius {
+            btn = btn.corner_radius(egui::CornerRadius::same(radius));
+        }
+
+        if let Some(stroke) = self.stroke {
+            btn = btn.stroke(stroke);
+        }
 
         if let Some(fill) = self.custom_fill {
             btn = btn.fill(fill);

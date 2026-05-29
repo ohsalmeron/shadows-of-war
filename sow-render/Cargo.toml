@@ -8,6 +8,10 @@ description = "Shadows of War — Blade-powered rendering engine"
 sow-core = { workspace = true }
 bytemuck = { workspace = true }
 log = { workspace = true }
+image = { workspace = true, features = ["png"] }
+resvg = "0.45"
+usvg = "0.45"
+tiny-skia = "0.11"
 
 blade-graphics = { workspace = true }
 blade-macros = { workspace = true }

@@ -1,7 +1,7 @@
 use crate::app::SowApp;
 use crate::{get_maps_url, MapDownloadEvent};
 #[cfg(target_arch = "wasm32")]
-use crate::get_assets_url;
+use crate::{get_assets_cache_bust, get_assets_url};
 use sow_ui::app::ClientPhase;
 
 impl SowApp {
@@ -203,12 +203,24 @@ impl SowApp {
             return;
         }
         let assets_base = get_assets_url();
+        let cache_bust = get_assets_cache_bust();
         for key in pending {
-            let url = format!(
-                "{}/ui/leaders/{}",
-                assets_base.trim_end_matches('/'),
-                sow_ui::ui::asset_loader::AssetLoader::leader_portrait_filename(key)
-            );
+            let filename =
+                sow_ui::ui::asset_loader::AssetLoader::leader_portrait_filename(key);
+            let url = if cache_bust.is_empty() {
+                format!(
+                    "{}/ui/leaders/{}",
+                    assets_base.trim_end_matches('/'),
+                    filename
+                )
+            } else {
+                format!(
+                    "{}/ui/leaders/{}?v={}",
+                    assets_base.trim_end_matches('/'),
+                    filename,
+                    cache_bust
+                )
+            };
             let tx = self.tasks.map_tx.clone();
             let leader = key.leader;
             let mobile = key.mobile;

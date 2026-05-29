@@ -15,19 +15,7 @@ pub fn draw_left_column(
     lang: sow_lang::Language,
 ) {
     let strings = &sow_lang::get(lang).main_menu;
-    let total_lobbies = state.lobbies.len();
-    let max_h = if compact {
-        180.0
-    } else {
-        // Right-rail stack: cap by width (~16:9), not remaining column height.
-        let by_width = ui.available_width() * 9.0 / 16.0;
-        let per_lobby = if total_lobbies > 1 {
-            (by_width * 0.85).min(160.0)
-        } else {
-            by_width
-        };
-        per_lobby.clamp(120.0, 200.0)
-    };
+    let side = crate::ui::map_texture::thumbnail_square_side(ui.available_width(), compact);
 
     if state.lobbies.is_empty() {
         crate::ui::theme::outlined_label(
@@ -50,7 +38,7 @@ pub fn draw_left_column(
 
         let mut draw_lobby = |ui: &mut Ui, lobby: &sow_core::protocol::LobbyInfo| {
             let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-            let response = ui.add(LobbyCard::new(lobby, thumbnail).max_h(max_h));
+            let response = ui.add(LobbyCard::new(lobby, thumbnail).side(side));
             if response.clicked() {
                 *action = Some(UiAction::JoinLobby(lobby.id));
             }

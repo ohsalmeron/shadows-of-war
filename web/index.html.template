@@ -25,9 +25,9 @@
     
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
-    <link rel="preload" href="./assets/ui/sow-splash-desktop.webp" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
-    <link rel="preload" href="./assets/ui/sow-splash-mobile.webp" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
-    <link rel="preload" href="./assets/ui/loader_empty.webp" as="image" type="image/webp" fetchpriority="high">
+    <link rel="preload" href="./assets/ui/sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
+    <link rel="preload" href="./assets/ui/sow-splash-mobile.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
+    <link rel="preload" href="./assets/ui/loader_empty.webp?v=__BUILD_TS__" as="image" type="image/webp" fetchpriority="high">
     <style>
         body, html {
             margin: 0;

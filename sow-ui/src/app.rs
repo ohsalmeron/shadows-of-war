@@ -111,12 +111,16 @@ impl ClientApp {
                 }
                 None
             }
-            ClientPhase::Playing => hud::draw(
-                ui,
-                &mut self.hud_state,
-                cancel_intents,
-                self.settings_state.language,
-            ),
+            ClientPhase::Playing => {
+                self.asset_loader.ensure_hud_icons_loaded(ui.ctx());
+                hud::draw(
+                    ui,
+                    &mut self.hud_state,
+                    cancel_intents,
+                    self.settings_state.language,
+                    &mut self.asset_loader,
+                )
+            }
         };
 
         let settings_action =

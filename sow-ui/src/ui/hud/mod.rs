@@ -4,7 +4,32 @@ use sow_core::protocol::{AttackSnapshot, FleetSnapshot, PlayerSnapshot};
 use sow_lang::Language;
 use web_time::{Duration, Instant};
 
+pub mod icons;
+
+use icons::HudIcon;
+
 const EVENT_LOG_MAX_ENTRIES: usize = 50;
+const HUD_BOTTOM_CONTROLS_GAP: f32 = 12.0;
+const HUD_MAP_CONTROLS_DESKTOP_CLEARANCE: f32 = 100.0;
+/// Fallback when the bottom panel has not been laid out yet this frame (mobile).
+const HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE: f32 = 220.0;
+
+fn hud_bottom_panel_clearance(ctx: &egui::Context, compact: bool) -> f32 {
+    if !compact {
+        return HUD_MAP_CONTROLS_DESKTOP_CLEARANCE;
+    }
+    let screen = ctx.content_rect();
+    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")))
+        .map(|r| (screen.max.y - r.min.y).max(0.0) + HUD_BOTTOM_CONTROLS_GAP)
+        .unwrap_or(HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE + HUD_BOTTOM_CONTROLS_GAP)
+}
+
+fn hud_map_controls_anchor_offset(ctx: &egui::Context, compact: bool, safe_area_bottom: f32) -> egui::Vec2 {
+    egui::vec2(
+        -12.0,
+        -hud_bottom_panel_clearance(ctx, compact) - safe_area_bottom,
+    )
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum BottomHudTab {
@@ -378,6 +403,7 @@ fn draw_browser_tab_strip(
     compact: bool,
     dispatch_total: usize,
     event_unread: usize,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) -> Option<egui::Rect> {
     let dispatch_unread = if state.bottom_tab != BottomHudTab::BattleLog {
         dispatch_total.saturating_sub(state.battle_log_seen_count)
@@ -393,16 +419,16 @@ fn draw_browser_tab_strip(
         ui.spacing_mut().item_spacing.x = crate::ui::theme::tab::GAP;
 
         let tabs = [
-            (BottomHudTab::Controls, "CONTROLS", 0_usize),
-            (BottomHudTab::BattleLog, "BATTLE LOG", dispatch_unread),
-            (BottomHudTab::EventLog, "EVENT LOG", event_unread),
+            (BottomHudTab::Controls, 0_usize),
+            (BottomHudTab::BattleLog, dispatch_unread),
+            (BottomHudTab::EventLog, event_unread),
         ];
 
-        for (tab, label, badge) in tabs {
+        for (tab, badge) in tabs {
             let selected = state.bottom_tab == tab;
-            let resp = crate::ui::theme::draw_tab(
+            let resp = crate::ui::theme::draw_icon_tab(
                 ui,
-                label,
+                asset_loader.hud_icon(tab.hud_icon()),
                 selected,
                 tab_accent(tab),
                 badge,
@@ -773,16 +799,19 @@ pub fn draw(
     state: &mut HudState,
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     lang: Language,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
 ) -> Option<UiAction> {
     static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
     REGISTER_ONCE.call_once(|| {
         sow_core::register_game_assets(ui.ctx());
     });
 
+    asset_loader.ensure_hud_icons_loaded(ui.ctx());
+
     let mut action = None;
 
     let rect = ui.ctx().content_rect();
-    let compact = rect.width() < 1024.0 || rect.width() < rect.height() * 1.25;
+    let compact = rect.width() < 768.0 || rect.width() < rect.height() * 1.25;
 
     let panel_w = if compact {
         ui.ctx().content_rect().width() - 84.0
@@ -820,7 +849,7 @@ pub fn draw(
         egui::vec2(0.0, -state.safe_area_bottom)
     };
 
-    egui::Area::new(egui::Id::new("hud_bottom_area_v9"))
+    let bottom_hud_area = egui::Area::new(egui::Id::new("hud_bottom_area_v9"))
         .anchor(bottom_anchor, bottom_offset)
         .order(egui::Order::Foreground)
         .movable(false)
@@ -873,6 +902,7 @@ pub fn draw(
                                 compact,
                                 dispatch_total,
                                 event_unread,
+                                asset_loader,
                             );
                         });
 
@@ -927,6 +957,12 @@ pub fn draw(
                     });
                 });
         });
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(
+            egui::Id::new("hud_bottom_panel_rect"),
+            bottom_hud_area.response.rect,
+        );
+    });
 
     // ── Top-right HUD buttons ─────────────────────────────────────────────────
     let my_snapshot = state.players.iter().find(|p| p.id == state.my_player_id);
@@ -962,68 +998,74 @@ pub fn draw(
     state.prev_requests = requests.clone();
     state.prev_resource_requests = resource_requests.iter().map(|r| r.requester).collect();
 
-    egui::Area::new(egui::Id::new("hud_exit_button"))
+    let icon_size = crate::ui::theme::hud_icon_size();
+
+    egui::Area::new(egui::Id::new("hud_top_icons"))
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            crate::ui::theme::hud_panel_frame().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let btn_resp = ui
-                        .add(crate::widgets::HudButton::new("📩"))
-                        .on_hover_text(&sow_lang::get(lang).hud.inbox_title);
-                    if btn_resp.clicked() {
-                        state.show_alliance_inbox = !state.show_alliance_inbox;
-                    }
+            crate::ui::theme::hud_icon_rail_spacing(ui);
+            ui.horizontal(|ui| {
+                let inbox_resp = ui.add(crate::widgets::HudIconButton::new(
+                    asset_loader.hud_icon(HudIcon::Inbox),
+                    icon_size,
+                ));
+                if inbox_resp.clicked() {
+                    state.show_alliance_inbox = !state.show_alliance_inbox;
+                }
 
-                    // Render red badge with active notifications at all times (bounces/pops on new requests)
-                    if total_notifications > 0 {
-                        let mut scale = 1.0_f32;
-                        if let Some(t) = state.last_request_time {
-                            let elapsed = t.elapsed().as_secs_f32();
-                            if elapsed < 0.6_f32 {
-                                let progress = elapsed / 0.6_f32;
-                                // Elastic bounce: pops up quickly, wobbles, and settles back to 1.0
-                                scale = 1.0_f32
-                                    + 0.8_f32
-                                        * (progress * std::f32::consts::PI).sin()
-                                        * (1.0_f32 - progress);
-                                ui.ctx().request_repaint(); // keep animating
-                            }
+                if total_notifications > 0 {
+                    let mut scale = 1.0_f32;
+                    if let Some(t) = state.last_request_time {
+                        let elapsed = t.elapsed().as_secs_f32();
+                        if elapsed < 0.6_f32 {
+                            let progress = elapsed / 0.6_f32;
+                            scale = 1.0_f32
+                                + 0.8_f32
+                                    * (progress * std::f32::consts::PI).sin()
+                                    * (1.0_f32 - progress);
+                            ui.ctx().request_repaint();
                         }
-
-                        let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
-                        let badge_radius = 8.0_f32 * scale;
-                        ui.painter().circle_filled(
-                            badge_center,
-                            badge_radius,
-                            Color32::from_rgb(239, 68, 68),
-                        );
-                        ui.painter().text(
-                            badge_center,
-                            egui::Align2::CENTER_CENTER,
-                            total_notifications.to_string(),
-                            egui::FontId::proportional(10.0_f32 * scale),
-                            Color32::WHITE,
-                        );
                     }
 
-                    if ui
-                        .add(crate::widgets::HudButton::new("⚙"))
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_settings)
-                        .clicked()
-                    {
-                        action = Some(UiAction::ToggleSettings);
-                    }
-                    if ui
-                        .add(
-                            crate::widgets::HudButton::new("✖")
-                                .color(Color32::from_rgb(255, 100, 100)),
-                        )
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_exit)
-                        .clicked()
-                    {
-                        action = Some(UiAction::LeaveLobby);
-                    }
+                    let badge_center = inbox_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
+                    let badge_radius = 8.0_f32 * scale;
+                    ui.painter().circle_filled(
+                        badge_center,
+                        badge_radius,
+                        Color32::from_rgb(239, 68, 68),
+                    );
+                    ui.painter().text(
+                        badge_center,
+                        egui::Align2::CENTER_CENTER,
+                        total_notifications.to_string(),
+                        egui::FontId::proportional(10.0_f32 * scale),
+                        Color32::WHITE,
+                    );
+                }
+
+                if ui
+                    .add(crate::widgets::HudIconButton::new(
+                        asset_loader.hud_icon(HudIcon::Settings),
+                        icon_size,
+                    ))
+                    .clicked()
+                {
+                    action = Some(UiAction::ToggleSettings);
+                }
+                if ui
+                    .add(crate::widgets::HudIconButton::new(
+                        asset_loader.hud_icon(HudIcon::Exit),
+                        icon_size,
+                    ))
+                    .clicked()
+                {
+                    action = Some(UiAction::LeaveLobby);
+                }
+
+                let top_icons_rect = ui.min_rect();
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(egui::Id::new("hud_top_icons_rect"), top_icons_rect);
                 });
             });
         });
@@ -1328,14 +1370,13 @@ pub fn draw(
                     }
                 }
 
-                // Allow clicking the 📩 mailbox button to toggle without auto-closing
-                let screen_size = ui.ctx().content_rect();
-                let toggle_btn_rect = egui::Rect::from_min_max(
-                    pos2(screen_size.right() - 120.0, 12.0 + state.safe_area_top),
-                    pos2(screen_size.right(), 50.0 + state.safe_area_top),
-                );
-                if toggle_btn_rect.contains(pos) {
-                    click_absorbed = true;
+                if let Some(rect) = ui
+                    .ctx()
+                    .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_top_icons_rect")))
+                {
+                    if rect.contains(pos) {
+                        click_absorbed = true;
+                    }
                 }
 
                 if !click_absorbed {
@@ -1347,105 +1388,100 @@ pub fn draw(
     }
 
     // ── Floating Map Controls ──────────────────────────────────────────────
+    let map_controls_offset = hud_map_controls_anchor_offset(ui.ctx(), compact, state.safe_area_bottom);
     egui::Area::new(egui::Id::new("hud_map_controls"))
-        .anchor(
-            Align2::RIGHT_BOTTOM,
-            vec2(-12.0, -100.0 - state.safe_area_bottom),
-        )
+        .anchor(Align2::RIGHT_BOTTOM, map_controls_offset)
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            crate::ui::theme::panel_frame(crate::ui::theme::PanelKind::HudOverlay, compact).show(
-                ui,
-                |ui| {
-                let btn_w = if cfg!(target_os = "android") {
-                    48.0
+            crate::ui::theme::hud_icon_rail_spacing(ui);
+            ui.vertical(|ui| {
+                if ui
+                    .add(crate::widgets::HudIconButton::new(
+                        asset_loader.hud_icon(HudIcon::ZoomIn),
+                        icon_size,
+                    ))
+                    .clicked()
+                {
+                    action = Some(UiAction::ZoomIn);
+                }
+                if ui
+                    .add(crate::widgets::HudIconButton::new(
+                        asset_loader.hud_icon(HudIcon::ZoomOut),
+                        icon_size,
+                    ))
+                    .clicked()
+                {
+                    action = Some(UiAction::ZoomOut);
+                }
+                if ui
+                    .add(crate::widgets::HudIconButton::new(
+                        asset_loader.hud_icon(HudIcon::CenterCamera),
+                        icon_size,
+                    ))
+                    .clicked()
+                {
+                    action = Some(UiAction::CenterCamera);
+                }
+                if ui
+                    .add(crate::widgets::HudIconButton::new(
+                        asset_loader.hud_icon(HudIcon::Emoji),
+                        icon_size,
+                    ))
+                    .clicked()
+                {
+                    state.show_emoji_panel = !state.show_emoji_panel;
+                    if state.show_emoji_panel {
+                        state.emoji_panel_pos = None;
+                        state.emoji_panel_just_opened = true;
+                    }
+                }
+                let my_pid = state.my_player_id;
+                let total_attacks = if my_pid != 0 {
+                    state
+                        .attacks
+                        .iter()
+                        .filter(|a| a.target_owner == my_pid || a.owner_id == my_pid)
+                        .count()
+                        + state.fleets.iter().filter(|f| f.owner_id == my_pid).count()
                 } else {
-                    32.0
+                    0
                 };
-                ui.set_width(btn_w);
-                ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
-                ui.vertical_centered(|ui| {
-                    if ui
-                        .add(crate::widgets::HudButton::new("+"))
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_zoom_in)
-                        .clicked()
-                    {
-                        action = Some(UiAction::ZoomIn);
-                    }
-                    if ui
-                        .add(crate::widgets::HudButton::new("-"))
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_zoom_out)
-                        .clicked()
-                    {
-                        action = Some(UiAction::ZoomOut);
-                    }
-                    if ui
-                        .add(crate::widgets::HudButton::new("⌖"))
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_center_camera)
-                        .clicked()
-                    {
-                        action = Some(UiAction::CenterCamera);
-                    }
-                    ui.separator();
-                    if ui
-                        .add(crate::widgets::HudButton::new("😀"))
-                        .on_hover_text("Express Emoji")
-                        .clicked()
-                    {
-                        state.show_emoji_panel = !state.show_emoji_panel;
-                        if state.show_emoji_panel {
-                            state.emoji_panel_pos = None;
-                            state.emoji_panel_just_opened = true;
-                        }
-                    }
-                    let my_pid = state.my_player_id;
-                    let total_attacks = if my_pid != 0 {
-                        state
-                            .attacks
-                            .iter()
-                            .filter(|a| a.target_owner == my_pid || a.owner_id == my_pid)
-                            .count()
-                            + state.fleets.iter().filter(|f| f.owner_id == my_pid).count()
-                    } else {
-                        0
-                    };
 
-                    let attacks_btn = ui
-                        .add(crate::widgets::HudButton::new("⚔"))
-                        .on_hover_text("Battle Log");
-                    if attacks_btn.clicked() {
-                        state.bottom_tab = BottomHudTab::BattleLog;
-                        state.battle_log_seen_count = total_attacks;
-                    }
+                let attacks_btn = ui.add(crate::widgets::HudIconButton::new(
+                    asset_loader.hud_icon(HudIcon::BattleLog),
+                    icon_size,
+                ));
+                if attacks_btn.clicked() {
+                    state.bottom_tab = BottomHudTab::BattleLog;
+                    state.battle_log_seen_count = total_attacks;
+                }
 
-                    let battle_unread = if state.bottom_tab != BottomHudTab::BattleLog {
-                        total_attacks.saturating_sub(state.battle_log_seen_count)
-                    } else {
-                        0
-                    };
+                let battle_unread = if state.bottom_tab != BottomHudTab::BattleLog {
+                    total_attacks.saturating_sub(state.battle_log_seen_count)
+                } else {
+                    0
+                };
 
-                    if battle_unread > 0 {
-                        let badge_center = attacks_btn.rect.right_top() + egui::vec2(-2.0, 2.0);
-                        ui.painter().circle_filled(
-                            badge_center,
-                            6.5,
-                            Color32::from_rgb(239, 68, 68),
-                        );
-                        ui.painter().text(
-                            badge_center,
-                            egui::Align2::CENTER_CENTER,
-                            if battle_unread > 9 {
-                                "9+".to_string()
-                            } else {
-                                battle_unread.to_string()
-                            },
-                            egui::FontId::proportional(8.5),
-                            Color32::WHITE,
-                        );
-                    }
-                });
-            },
-            );
+                if battle_unread > 0 {
+                    let badge_center = attacks_btn.rect.right_top() + egui::vec2(-2.0, 2.0);
+                    ui.painter().circle_filled(
+                        badge_center,
+                        6.5,
+                        Color32::from_rgb(239, 68, 68),
+                    );
+                    ui.painter().text(
+                        badge_center,
+                        egui::Align2::CENTER_CENTER,
+                        if battle_unread > 9 {
+                            "9+".to_string()
+                        } else {
+                            battle_unread.to_string()
+                        },
+                        egui::FontId::proportional(8.5),
+                        Color32::WHITE,
+                    );
+                }
+            });
         });
 
     // ── Bottom-left Attack Ratio Panel ────────────────────────────────────
@@ -1553,7 +1589,11 @@ pub fn draw(
         } else {
             area = area.anchor(
                 Align2::RIGHT_BOTTOM,
-                vec2(-64.0, -100.0 - state.safe_area_bottom + y_offset),
+                vec2(
+                    -64.0,
+                    hud_map_controls_anchor_offset(ui.ctx(), false, state.safe_area_bottom).y
+                        + y_offset,
+                ),
             );
         }
 
@@ -1831,13 +1871,20 @@ pub fn draw(
                 // Allow clicking the HUD bottom bar controls without dismissing if we are in default mode
                 if state.emoji_panel_pos.is_none() {
                     let screen_size = ui.ctx().content_rect();
-                    let hud_rect = egui::Rect::from_min_max(
-                        pos2(
-                            screen_size.right() - 510.0,
-                            screen_size.bottom() - 90.0 - state.safe_area_bottom,
-                        ),
-                        pos2(screen_size.right(), screen_size.bottom()),
-                    );
+                    let hud_rect = ui
+                        .ctx()
+                        .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")))
+                        .unwrap_or_else(|| {
+                            egui::Rect::from_min_max(
+                                pos2(
+                                    screen_size.right() - 510.0,
+                                    screen_size.bottom()
+                                        - HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE
+                                        - state.safe_area_bottom,
+                                ),
+                                pos2(screen_size.right(), screen_size.bottom()),
+                            )
+                        });
                     if hud_rect.contains(pos) {
                         is_outside = false;
                     }
@@ -2259,7 +2306,7 @@ fn draw_betrayal_overlay(
     if let Some((ally_id, intent)) = state.show_betrayal_warning.clone() {
         let screen_rect = ctx.content_rect();
         let compact =
-            screen_rect.width() < 1024.0 || screen_rect.width() < screen_rect.height() * 1.25;
+            screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
         ctx.layer_painter(egui::LayerId::new(
             egui::Order::Middle,
@@ -2720,7 +2767,7 @@ fn draw_transfer_panel(
     // Slide up with overshoot bounce from below screen
     let current_y = target_y + (screen_rect.height() / 2.0 + 200.0) * (1.0 - anim_scale);
 
-    let compact = screen_rect.width() < 1024.0 || screen_rect.width() < screen_rect.height() * 1.25;
+    let compact = screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
     let modal_w = if compact { 320.0 } else { 380.0 };
 
     egui::Area::new(egui::Id::new("transfer_panel_modal"))

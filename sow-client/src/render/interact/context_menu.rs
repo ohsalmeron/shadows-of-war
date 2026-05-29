@@ -121,7 +121,7 @@ impl SowApp {
             };
             let scale = spring_scale.clamp(0.0, 1.25);
             let screen = ctx.content_rect();
-            let compact = screen.width() < 1024.0 || screen.width() < screen.height() * 1.25;
+            let compact = screen.width() < 768.0 || screen.width() < screen.height() * 1.25;
             let sf = ctx.pixels_per_point();
             let r_padding = 110.0 * scale;
             let clamped_x = (mx / sf).clamp(r_padding, screen.width() - r_padding);

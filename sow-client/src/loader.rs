@@ -288,15 +288,23 @@ impl SowApp {
                         if let Some(mut mr) = self.gfx.map_renderer.take() {
                             mr.destroy(&self.gfx.render_ctx); // MANDATORY MEMORY LEAK FIX
                         }
+                        if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                            mover.destroy(&self.gfx.render_ctx);
+                        }
                         if let Some(ref s) = self.gfx.surface {
+                            let format = s.info().format;
                             self.gfx.map_renderer =
                                 Some(sow_render::map_renderer::MapRenderer::new(
                                     &self.gfx.render_ctx.context,
                                     self.sim.map_w,
                                     self.sim.map_h,
-                                    s.info().format,
+                                    format,
                                     &map_bytes,
                                 ));
+                            self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                                &self.gfx.render_ctx.context,
+                                format,
+                            ));
                             self.gfx.needs_first_upload = true;
                         }
 

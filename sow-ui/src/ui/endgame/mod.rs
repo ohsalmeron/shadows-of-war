@@ -21,7 +21,7 @@ pub fn draw(ctx: &egui::Context, config: &EndgameConfig, lang: Language) -> Opti
 
     let strings = &sow_lang::get(lang).endgame;
     let screen_rect = ctx.content_rect();
-    let compact = screen_rect.width() < 1024.0 || screen_rect.width() < screen_rect.height() * 1.25;
+    let compact = screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
     // Dim background
     egui::Area::new(egui::Id::new("endgame_dimmer"))

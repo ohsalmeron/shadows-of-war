@@ -178,7 +178,7 @@ async fn main() {
                                         (Some(sow_core::protocol::Team::Blue), [0.2, 0.5, 1.0])
                                     }
                                 } else {
-                                    (None, sow_core::player::human_shader_territory_rgb(p.player_id))
+                                    (None, p.leader.filler_rgb())
                                 };
 
                                 player_infos.push(sow_core::protocol::PlayerInfo {

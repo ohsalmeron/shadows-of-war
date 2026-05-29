@@ -34,6 +34,7 @@ pub struct AssetLoader {
     pub leader_mobile_images: HashMap<sow_core::player::Leader, TextureHandle>,
     pub splash_desktop: Option<TextureHandle>,
     pub splash_mobile: Option<TextureHandle>,
+    pub hud_icons: HashMap<crate::ui::hud::icons::HudIcon, TextureHandle>,
     /// Queued leader portrait fetches (wasm32); drained by sow-client network layer.
     pub leaders_fetch_pending: Vec<LeaderPortraitKey>,
     pub leaders_in_flight: HashSet<LeaderPortraitKey>,
@@ -69,6 +70,7 @@ impl AssetLoader {
             leader_mobile_images: HashMap::new(),
             splash_desktop: None,
             splash_mobile: None,
+            hud_icons: HashMap::new(),
             leaders_fetch_pending: Vec::new(),
             leaders_in_flight: HashSet::new(),
         }
@@ -328,6 +330,9 @@ impl AssetLoader {
                 sow_core::player::Leader::Leonidas => {
                     include_bytes!("../../assets/avatars/leonidas.webp").as_slice()
                 }
+                sow_core::player::Leader::Napoleon => {
+                    include_bytes!("../../assets/avatars/napoleon.webp").as_slice()
+                }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
             self.avatars.insert(
@@ -484,6 +489,9 @@ impl AssetLoader {
                 sow_core::player::Leader::Leonidas => {
                     include_bytes!("../../assets/ui/leaders/leonidas_desktop.webp").as_slice()
                 }
+                sow_core::player::Leader::Napoleon => {
+                    include_bytes!("../../assets/ui/leaders/napoleon_desktop.webp").as_slice()
+                }
             };
             let mobile_bytes = match leader {
                 sow_core::player::Leader::Caesar => {
@@ -520,6 +528,9 @@ impl AssetLoader {
                 sow_core::player::Leader::Leonidas => {
                     include_bytes!("../../assets/ui/leaders/leonidas_mobile.webp").as_slice()
                 }
+                sow_core::player::Leader::Napoleon => {
+                    include_bytes!("../../assets/ui/leaders/napoleon_mobile.webp").as_slice()
+                }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
             self.leader_desktop_images.insert(
@@ -531,6 +542,34 @@ impl AssetLoader {
                 load_image(&format!("leader_{}_mobile", name_lower), mobile_bytes),
             );
         }
+    }
+
+    pub fn ensure_hud_icons_loaded(&mut self, ctx: &egui::Context) {
+        use crate::ui::hud::icons::HudIcon;
+
+        if self.hud_icons.len() == HudIcon::ALL.len() {
+            return;
+        }
+
+        for icon in HudIcon::ALL {
+            if self.hud_icons.contains_key(&icon) {
+                continue;
+            }
+            let image = image::load_from_memory(icon.bytes())
+                .unwrap_or_else(|e| panic!("Failed to load {}: {e}", icon.file_name()))
+                .to_rgba8();
+            let size = [image.width() as _, image.height() as _];
+            let pixels = image.as_flat_samples();
+            let color_image =
+                egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            let texture = ctx.load_texture(icon.texture_name(), color_image, egui::TextureOptions::LINEAR);
+            self.hud_icons.insert(icon, texture);
+        }
+    }
+
+    #[inline]
+    pub fn hud_icon(&self, icon: crate::ui::hud::icons::HudIcon) -> Option<&TextureHandle> {
+        self.hud_icons.get(&icon)
     }
 }
 

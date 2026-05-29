@@ -19,10 +19,11 @@ pub enum Civilization {
     Iceni,
     Maya,
     Sparta,
+    France,
 }
 
 impl Civilization {
-    pub const ALL: [Civilization; 11] = [
+    pub const ALL: [Civilization; 12] = [
         Civilization::Rome,
         Civilization::Egypt,
         Civilization::Vikings,
@@ -34,6 +35,7 @@ impl Civilization {
         Civilization::Iceni,
         Civilization::Maya,
         Civilization::Sparta,
+        Civilization::France,
     ];
 
     pub fn name(self) -> &'static str {
@@ -49,6 +51,7 @@ impl Civilization {
             Civilization::Iceni => "Iceni Kingdom",
             Civilization::Maya => "Maya Civilization",
             Civilization::Sparta => "Sparta",
+            Civilization::France => "Kingdom of France",
         }
     }
 }
@@ -67,10 +70,11 @@ pub enum Leader {
     Boudica,
     LadySixSky,
     Leonidas,
+    Napoleon,
 }
 
 impl Leader {
-    pub const ALL: [Leader; 11] = [
+    pub const ALL: [Leader; 12] = [
         Leader::Caesar,
         Leader::Cleopatra,
         Leader::Ragnar,
@@ -82,7 +86,44 @@ impl Leader {
         Leader::Boudica,
         Leader::LadySixSky,
         Leader::Leonidas,
+        Leader::Napoleon,
     ];
+
+    /// Menu / HUD emoji for this leader.
+    pub fn menu_emoji(self) -> &'static str {
+        match self {
+            Leader::Caesar => "🏛️",
+            Leader::Cleopatra => "👑",
+            Leader::Ragnar => "🪓",
+            Leader::SunTzu => "📜",
+            Leader::Alexander => "🛡️",
+            Leader::GenghisKhan => "🐺",
+            Leader::RichardTheLionheart => "🦁",
+            Leader::Vercingetorix => "⚔️",
+            Leader::Boudica => "🔥",
+            Leader::LadySixSky => "🌙",
+            Leader::Leonidas => "🪖",
+            Leader::Napoleon => "🎖️",
+        }
+    }
+
+    /// Brand / placeholder fill color (linear RGB 0..1). Used behind portraits and for human territory tint.
+    pub fn filler_rgb(self) -> [f32; 3] {
+        match self {
+            Leader::Caesar => [0.75, 0.15, 0.18],
+            Leader::Cleopatra => [0.85, 0.65, 0.15],
+            Leader::Ragnar => [0.15, 0.35, 0.65],
+            Leader::SunTzu => [0.15, 0.55, 0.42],
+            Leader::Alexander => [0.22, 0.45, 0.78],
+            Leader::GenghisKhan => [0.55, 0.42, 0.22],
+            Leader::RichardTheLionheart => [0.72, 0.18, 0.15],
+            Leader::Vercingetorix => [0.28, 0.52, 0.22],
+            Leader::Boudica => [0.88, 0.42, 0.12],
+            Leader::LadySixSky => [0.12, 0.58, 0.52],
+            Leader::Leonidas => [0.62, 0.42, 0.22],
+            Leader::Napoleon => [0.18, 0.28, 0.68],
+        }
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -97,6 +138,7 @@ impl Leader {
             Leader::Boudica => "Boudica",
             Leader::LadySixSky => "Lady Six Sky",
             Leader::Leonidas => "Leonidas",
+            Leader::Napoleon => "Napoleon",
         }
     }
 
@@ -130,6 +172,9 @@ impl Leader {
             }
             Leader::Leonidas => {
                 "Spartan Phalanx: Armory districts grant +50% max troop capacity."
+            }
+            Leader::Napoleon => {
+                "Grande Armée: Territory-conquering troops expand 20% faster."
             }
         }
     }
@@ -273,6 +318,7 @@ impl Player {
             Civilization::Iceni => Leader::Boudica,
             Civilization::Maya => Leader::LadySixSky,
             Civilization::Sparta => Leader::Leonidas,
+            Civilization::France => Leader::Napoleon,
         };
         let is_smart_tribe = id.is_multiple_of(100);
         let starting_troops = config.starting_troops;
@@ -334,6 +380,7 @@ impl Player {
             Civilization::Iceni => Leader::Boudica,
             Civilization::Maya => Leader::LadySixSky,
             Civilization::Sparta => Leader::Leonidas,
+            Civilization::France => Leader::Napoleon,
         };
         Self {
             id,

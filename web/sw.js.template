@@ -17,10 +17,10 @@ const CACHE_NAME = 'sow-__BUILD_TS__';
 
 const PRECACHE = [
     './sow.svg',
-    './assets/ui/sow-splash-desktop.webp',
-    './assets/ui/sow-splash-mobile.webp',
-    './assets/ui/loader_empty.webp',
-    './assets/ui/loader_full.webp',
+    './assets/ui/sow-splash-desktop.webp?v=__BUILD_TS__',
+    './assets/ui/sow-splash-mobile.webp?v=__BUILD_TS__',
+    './assets/ui/loader_empty.webp?v=__BUILD_TS__',
+    './assets/ui/loader_full.webp?v=__BUILD_TS__',
 ];
 
 self.addEventListener('install', (event) => {

@@ -94,9 +94,12 @@ impl SowEngine {
             max_tiles_f64 *= momentum;
 
             // Alexander (Macedon) perk: +15% expansion speed
+            // Napoleon (France) perk: +20% expansion speed
             if let Some(player) = self.state.player(execution.owner_id) {
-                if player.leader == crate::player::Leader::Alexander {
-                    max_tiles_f64 *= 1.15;
+                match player.leader {
+                    crate::player::Leader::Alexander => max_tiles_f64 *= 1.15,
+                    crate::player::Leader::Napoleon => max_tiles_f64 *= 1.20,
+                    _ => {}
                 }
             }
 

@@ -16,6 +16,7 @@ pub struct GraphicsState {
     pub surface: Option<blade_graphics::Surface>,
     pub render_ctx: sow_render::RenderContext,
     pub map_renderer: Option<sow_render::MapRenderer>,
+    pub mover_renderer: Option<sow_render::MoverRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
@@ -144,7 +145,10 @@ pub struct UiState {
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
-    pub cached_leaderboard: Vec<(u16, String, u32, f64)>,
+    pub leaderboard_rankings: Vec<crate::hud::leaderboard::LeaderboardRanking>,
+    pub leaderboard_display:
+        std::collections::HashMap<u16, crate::hud::leaderboard::LeaderboardRowDisplay>,
+    pub leaderboard_show_all: bool,
     pub show_dev_sidebar: bool,
     pub update_available: bool,
     pub is_spectating: bool,
@@ -177,12 +181,37 @@ pub struct UiState {
     pub rail_state: crate::render::world::railways::RailState,
     /// Client-side nuke silo cooldown tracking: building id → tick when ready.
     pub silo_cooldowns: std::collections::HashMap<u64, u64>,
+    pub mover_scene: crate::render::world::movers::MoverScene,
+}
+
+/// Wall-clock anchor for render-behind-by-one-tick interpolation between sim snapshots.
+pub struct InterpClock {
+    pub last_applied_at: web_time::Instant,
+    pub tick_dur: Duration,
+}
+
+impl InterpClock {
+    #[inline]
+    pub fn alpha(&self, now: Instant) -> f32 {
+        let elapsed = now.duration_since(self.last_applied_at).as_secs_f32();
+        let dur = self.tick_dur.as_secs_f32().max(0.001);
+        let t = (elapsed / dur).clamp(0.0, 1.0);
+        // Smoothstep — same feel as legacy fleet/nuke overlays.
+        t * t * (3.0 - 2.0 * t)
+    }
+
+    pub fn stamp_applied(&mut self, now: Instant) {
+        self.last_applied_at = now;
+    }
+
+    pub fn set_tick_dur_ms(&mut self, tick_rate_ms: f32) {
+        self.tick_dur = Duration::from_secs_f32((tick_rate_ms / 1000.0).max(0.001));
+    }
 }
 
 pub struct TimeState {
-    pub last_tick: web_time::Instant,
+    pub interp: InterpClock,
     pub start_time: web_time::Instant,
-    pub tick_interval: web_time::Duration,
     pub frame_count: u32,
     pub last_fps_time: web_time::Instant,
     pub current_fps: u32,
@@ -262,6 +291,7 @@ impl SowApp {
         let render_ctx = RenderContext::new();
         let surface: Option<gpu::Surface> = None;
         let map_renderer: Option<MapRenderer> = None;
+        let mover_renderer: Option<sow_render::MoverRenderer> = None;
         let gui_painter: Option<GuiPainter> = None;
         let window: Option<Box<dyn winit::window::Window>> = None;
 
@@ -373,9 +403,11 @@ impl SowApp {
         let has_snapped_camera_to_spawn = false;
 
         let prev_sync_point: Option<gpu::SyncPoint> = None;
-        let last_tick = Instant::now();
         let start_time = Instant::now();
-        let tick_interval = Duration::from_millis(50);
+        let interp = InterpClock {
+            last_applied_at: start_time,
+            tick_dur: Duration::from_millis(100),
+        };
         let needs_first_upload = true;
 
         let frame_count = 0;
@@ -411,6 +443,7 @@ impl SowApp {
                 surface,
                 render_ctx,
                 map_renderer,
+                mover_renderer,
                 gui_painter,
                 prev_sync_point,
                 needs_first_upload,
@@ -479,7 +512,9 @@ impl SowApp {
                 tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
                 show_leaderboard: false,
                 leaderboard_timer: 0.0,
-                cached_leaderboard: Vec::new(),
+                leaderboard_rankings: Vec::new(),
+                leaderboard_display: std::collections::HashMap::new(),
+                leaderboard_show_all: false,
                 show_dev_sidebar: false,
                 update_available: false,
                 is_spectating: false,
@@ -502,11 +537,11 @@ impl SowApp {
                 edge_mask_cache: Vec::new(),
                 rail_state: crate::render::world::railways::RailState::new(),
                 silo_cooldowns: std::collections::HashMap::new(),
+                mover_scene: crate::render::world::movers::MoverScene::new(),
             },
             time: TimeState {
-                last_tick,
+                interp,
                 start_time,
-                tick_interval,
                 frame_count,
                 last_fps_time,
                 current_fps,
@@ -580,6 +615,9 @@ impl SowApp {
             }
             if let Some(mut mr) = self.gfx.map_renderer.take() {
                 mr.destroy(&self.gfx.render_ctx);
+            }
+            if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                mover.destroy(&self.gfx.render_ctx);
             }
             self.gfx.render_ctx.context.destroy_surface(&mut s);
         }
@@ -666,6 +704,9 @@ impl Drop for SowApp {
         }
         if let Some(mut mr) = self.gfx.map_renderer.take() {
             mr.destroy(&self.gfx.render_ctx);
+        }
+        if let Some(mut mover) = self.gfx.mover_renderer.take() {
+            mover.destroy(&self.gfx.render_ctx);
         }
         if let Some(mut gui) = self.gfx.gui_painter.take() {
             gui.destroy(&self.gfx.render_ctx.context);
@@ -773,6 +814,9 @@ impl SowApp {
                 self.sim.current_snapshot = Some(snap);
                 self.sim.engine = Some(new_engine);
                 self.sim.tile_upgrades = vec![0; (map_w * map_h) as usize];
+                self.time.interp.set_tick_dur_ms(self.sim.config.tick_rate_ms);
+                self.time.interp.stamp_applied(web_time::Instant::now());
+                self.ui.mover_scene = crate::render::world::movers::MoverScene::new();
 
                 self.input.camera_zoom = 0.5;
                 self.input.camera_x =
@@ -1039,11 +1083,13 @@ impl SowApp {
                     }
 
                     self.sim.current_snapshot = Some(snap);
+                    self.time.interp.stamp_applied(web_time::Instant::now());
                 }
             }
             sow_core::protocol::SimCommand::Shutdown => {
                 self.sim.engine = None;
                 self.sim.current_snapshot = None;
+                self.ui.mover_scene = crate::render::world::movers::MoverScene::new();
             }
         }
     }

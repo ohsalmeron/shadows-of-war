@@ -56,7 +56,7 @@ impl Default for MainMenuState {
                     .duration_since(web_time::SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis();
-                match ms % 11 {
+                match ms % 12 {
                     0 => sow_core::player::Leader::Caesar,
                     1 => sow_core::player::Leader::Cleopatra,
                     2 => sow_core::player::Leader::Ragnar,
@@ -67,7 +67,8 @@ impl Default for MainMenuState {
                     7 => sow_core::player::Leader::Vercingetorix,
                     8 => sow_core::player::Leader::Boudica,
                     9 => sow_core::player::Leader::LadySixSky,
-                    _ => sow_core::player::Leader::Leonidas,
+                    10 => sow_core::player::Leader::Leonidas,
+                    _ => sow_core::player::Leader::Napoleon,
                 }
             },
             selected_civilization: {
@@ -75,7 +76,7 @@ impl Default for MainMenuState {
                     .duration_since(web_time::SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis();
-                match ms % 11 {
+                match ms % 12 {
                     0 => sow_core::player::Civilization::Rome,
                     1 => sow_core::player::Civilization::Egypt,
                     2 => sow_core::player::Civilization::Vikings,
@@ -86,7 +87,8 @@ impl Default for MainMenuState {
                     7 => sow_core::player::Civilization::Gallic,
                     8 => sow_core::player::Civilization::Iceni,
                     9 => sow_core::player::Civilization::Maya,
-                    _ => sow_core::player::Civilization::Sparta,
+                    10 => sow_core::player::Civilization::Sparta,
+                    _ => sow_core::player::Civilization::France,
                 }
             },
             pending_join_lobby_id: None,
@@ -115,7 +117,7 @@ impl Default for MainMenuState {
 
 #[inline]
 pub fn lobby_compact_layout(ctx: &egui::Context) -> bool {
-    ctx.content_rect().width() < 900.0 || ctx.content_rect().height() < 600.0
+    crate::ui::theme::compact_viewport(ctx)
 }
 
 pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
@@ -143,21 +145,9 @@ fn draw_menu_right_panel_contents(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_lang::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
     let version = format!("v{}", include_str!("../../../../.version").trim());
 
     profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
-
-    if !state.is_connected {
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(
-                egui::RichText::new(&strings.connecting)
-                    .color(crate::ui::theme::text_secondary()),
-            );
-        });
-    }
 
     ui.add_space(section_gap);
     browser::draw_left_column(
@@ -228,6 +218,41 @@ fn draw_menu_right_panel(
     }
 }
 
+fn draw_connecting_indicator(
+    ctx: &egui::Context,
+    state: &MainMenuState,
+    lang: sow_lang::Language,
+    compact: bool,
+) {
+    if state.is_connected {
+        return;
+    }
+
+    let strings = &sow_lang::get(lang).main_menu;
+    let pad_x = if compact { 24.0 } else { 20.0 };
+    let pad_y = if compact { 56.0 } else { 20.0 };
+
+    egui::Area::new(egui::Id::new("main_menu_connecting"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-pad_x, pad_y))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(Color32::from_black_alpha(140))
+                .corner_radius(8)
+                .inner_margin(egui::Margin::symmetric(12, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(
+                            egui::RichText::new(&strings.connecting)
+                                .color(crate::ui::theme::text_secondary())
+                                .size(if compact { 13.0 } else { 14.0 }),
+                        );
+                    });
+                });
+        });
+}
+
 pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -265,9 +290,10 @@ pub fn draw(
             };
 
             if let Some(texture) = background_tex {
-                let uv = crate::widgets::avatar_picker::calculate_cover_uv(
+                let uv = crate::widgets::avatar_picker::leader_background_cover_uv(
                     screen_rect.size(),
                     texture.size_vec2(),
+                    is_mobile,
                 );
                 ui.painter().image(
                     texture.id(),
@@ -340,6 +366,8 @@ pub fn draw(
                 });
             }
         });
+
+    draw_connecting_indicator(root_ui.ctx(), state, lang, compact);
 
     if state.show_leader_picker
         && crate::widgets::draw_leader_picker_modal(

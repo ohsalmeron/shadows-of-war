@@ -1,5 +1,31 @@
 use super::MainMenuState;
-use egui::{Color32, Stroke, Ui};
+use egui::{Color32, Rect, Stroke, Ui};
+
+const MAIN_MENU_AVATAR_RECT_KEY: &str = "main_menu_avatar_rect";
+
+fn main_menu_avatar_rect_id() -> egui::Id {
+    egui::Id::new(MAIN_MENU_AVATAR_RECT_KEY)
+}
+
+/// Screen rect of the main-menu leader avatar button (same frame the picker opens from).
+pub fn main_menu_avatar_button_rect(ctx: &egui::Context) -> Rect {
+    let id = main_menu_avatar_rect_id();
+    if let Some(rect) = ctx.data(|d| d.get_temp::<Rect>(id)) {
+        return rect;
+    }
+    // Fallback mirrors [`draw_user_profile_header`] layout at scroll top.
+    const OUTER_PAD: f32 = 16.0;
+    const AVATAR_SIZE: f32 = 40.0;
+    const PROFILE_H: f32 = 56.0;
+    let screen = ctx.content_rect();
+    Rect::from_min_size(
+        egui::pos2(
+            screen.min.x + OUTER_PAD + 8.0,
+            screen.min.y + OUTER_PAD + (PROFILE_H - AVATAR_SIZE) * 0.5,
+        ),
+        egui::vec2(AVATAR_SIZE, AVATAR_SIZE),
+    )
+}
 
 pub fn draw_user_profile_header(
     ui: &mut Ui,
@@ -46,6 +72,10 @@ pub fn draw_user_profile_header(
         egui::vec2(avatar_size, avatar_size),
     );
 
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(main_menu_avatar_rect_id(), avatar_rect);
+    });
+
     let avatar_response = ui.interact(
         avatar_rect,
         ui.id().with("avatar_btn"),
@@ -66,6 +96,14 @@ pub fn draw_user_profile_header(
 
     ui.painter().rect_filled(avatar_rect, 6.0, btn_bg);
 
+    let leader_rgb = state.selected_leader.filler_rgb();
+    let leader_fill = egui::Color32::from_rgb(
+        (leader_rgb[0] * 255.0).round() as u8,
+        (leader_rgb[1] * 255.0).round() as u8,
+        (leader_rgb[2] * 255.0).round() as u8,
+    );
+    ui.painter().rect_filled(avatar_rect, 6.0, leader_fill);
+
     // Render the pre-loaded high-quality avatar image texture
     if let Some(tex) = asset_loader.avatars.get(&state.selected_leader) {
         let image = egui::Image::new(tex)
@@ -74,6 +112,11 @@ pub fn draw_user_profile_header(
         ui.put(avatar_rect, image);
     }
 
+    let frame_color = if avatar_response.hovered() {
+        crate::ui::theme::accent_solo_cyan()
+    } else {
+        leader_fill
+    };
     ui.painter().rect_stroke(
         avatar_rect,
         6.0,
@@ -83,7 +126,7 @@ pub fn draw_user_profile_header(
             } else {
                 1.0_f32
             },
-            crate::ui::theme::accent_solo_cyan(),
+            frame_color,
         ),
         egui::StrokeKind::Inside,
     );
