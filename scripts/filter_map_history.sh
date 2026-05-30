@@ -8,9 +8,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-if ! command -v git-filter-repo >/dev/null 2>&1; then
-  echo "Install git-filter-repo: pip install git-filter-repo"
-  exit 1
+FILTER_REPO="$ROOT/scripts/git-filter-repo"
+if [[ ! -x "$FILTER_REPO" ]]; then
+  if command -v git-filter-repo >/dev/null 2>&1; then
+    FILTER_REPO="git-filter-repo"
+  else
+    echo "Downloading git-filter-repo to scripts/git-filter-repo ..."
+    curl -fsSL "https://raw.githubusercontent.com/newren/git-filter-repo/v2.47.0/git-filter-repo" -o "$FILTER_REPO"
+    chmod +x "$FILTER_REPO"
+  fi
 fi
 
 BACKUP="$(mktemp -d)"
@@ -22,7 +28,7 @@ cp assets/maps/catalog.bin "$BACKUP/"
 cp assets/maps/SOURCES.toml "$BACKUP/"
 
 echo "Rewriting history (removing all assets/maps/ blobs)..."
-git filter-repo --force --invert-paths --path assets/maps/
+"$FILTER_REPO" --force --invert-paths --path assets/maps/
 
 echo "Restoring northamerica + catalog + SOURCES.toml"
 mkdir -p assets/maps
