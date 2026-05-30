@@ -11,7 +11,6 @@ macro_rules! all_assets {
             Factory => "factory.svg",
             Port => "port.svg",
             DefensePost => "defense_post.svg",
-            SamLauncher => "sam_launcher.svg",
             MissileSilo => "missile_silo.svg",
             TradeShip => "trade_ship.svg",
             TransportShip => "transport_ship.svg",
@@ -19,10 +18,7 @@ macro_rules! all_assets {
             Star => "star.svg",
             Handshake => "handshake.svg",
             AtomBomb => "atombomb.png",
-            HydrogenBomb => "hydrogenbomb.png",
-            Mirv => "mirv.png",
-            SamMissile => "sam_missile.png",
-            NukeExplosion => "nuke_explosion.png"
+            SamMissile => "sam_missile.png"
         }
     };
 }

@@ -1,4 +1,4 @@
-//! LegacyEngine / Dark Rift style master lobby: dynamic queue, single countdown promotion,
+//! Master lobby: dynamic queue, single countdown promotion,
 //! broadcasts only joinable lobbies, Active GC when no humans remain.
 
 use sow_core::game_config::GameConfig;
@@ -53,13 +53,13 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
     let mut config = GameConfig::default();
     static NEXT_MAP_INDEX: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let maps = ["pangaea", "fourislands"];
-    config.map_name = maps[map_idx % maps.len()].to_string();
-
-    if let Some(entry) = crate::map_catalog::lookup(&config.map_name) {
+    let pool = crate::map_catalog::entries();
+    if let Some(entry) = sow_core::maps::catalog_entry_at(pool, map_idx) {
         config.map_name = entry.key.clone();
         config.map_width = entry.width;
         config.map_height = entry.height;
+    } else {
+        log::error!("No maps in catalog; using default config map_name");
     }
 
     config.game_mode = game_mode.to_string();

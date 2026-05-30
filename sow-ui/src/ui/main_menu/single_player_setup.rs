@@ -198,9 +198,13 @@ pub fn draw_modal(
                 .auto_shrink(false)
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 12.0);
-                    let config = &mut state.single_player_config;
-                    asset_loader.request_thumbnail(&config.map_name);
+                    if let Some(catalog) = &asset_loader.map_catalog {
+                        state.apply_map_catalog(catalog);
+                    }
+                    let map_name = state.single_player_config.map_name.clone();
+                    asset_loader.request_thumbnail(&map_name);
                     let loader = &*asset_loader;
+                    let config = &mut state.single_player_config;
 
                     let draw_preview =
                         |ui: &mut egui::Ui, config: &sow_core::game_config::GameConfig| {
@@ -257,9 +261,17 @@ pub fn draw_modal(
                         |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                             setting_card(ui, &strings.map_selection, is_mobile, |ui| {
                                 ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
+                                let selected_label = loader
+                                    .map_catalog
+                                    .as_ref()
+                                    .and_then(|c| {
+                                        sow_core::maps::catalog_lookup(c, &config.map_name)
+                                    })
+                                    .map(|e| e.display_name.as_str())
+                                    .unwrap_or(config.map_name.as_str());
                                 egui::ComboBox::from_id_salt("sp_map")
                                     .width(ui.available_width() - 8.0)
-                                    .selected_text(RichText::new(&config.map_name).size(16.0))
+                                    .selected_text(RichText::new(selected_label).size(16.0))
                                     .show_ui(ui, |ui| {
                                         if let Some(catalog) = &loader.map_catalog {
                                             if catalog.is_empty() {

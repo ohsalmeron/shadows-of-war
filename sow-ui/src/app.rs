@@ -17,6 +17,7 @@ pub struct ClientApp {
     pub splash_state: loading_screen::SplashState,
     pub asset_loader: asset_loader::AssetLoader,
     pub is_settings_open: bool,
+    pub is_credits_open: bool,
     pub settings_state: crate::ui::settings::SettingsState,
 }
 
@@ -78,6 +79,7 @@ impl ClientApp {
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
             is_settings_open: false,
+            is_credits_open: false,
             settings_state: crate::ui::settings::SettingsState::default(),
         }
     }
@@ -129,6 +131,15 @@ impl ClientApp {
             self.is_settings_open = !self.is_settings_open;
         } else if let Some(UiAction::ToggleSettings) = action {
             self.is_settings_open = !self.is_settings_open;
+            action = None;
+        }
+
+        let credits_action =
+            crate::ui::credits::draw(ui, self.is_credits_open, self.settings_state.language);
+        if let Some(UiAction::ToggleCredits) = credits_action {
+            self.is_credits_open = !self.is_credits_open;
+        } else if let Some(UiAction::ToggleCredits) = action {
+            self.is_credits_open = !self.is_credits_open;
             action = None;
         }
 

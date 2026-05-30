@@ -196,6 +196,7 @@ impl SowApp {
         if self.ui.app.splash_state.gpu_load_step == 3 && self.sim.current_snapshot.is_some() {
             self.ui.app.splash_state.gpu_load_step = 4;
             self.ui.app.phase = sow_ui::app::ClientPhase::Playing;
+            crate::store_portals::gameplay_start();
 
             // Clear pending init data to completely finish EnterGame phase
             self.tasks.pending_engine_init_data = None;

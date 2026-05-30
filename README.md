@@ -28,6 +28,9 @@ The project is structured as a multi-crate Rust workspace to strictly enforce se
 * **Rust**: Latest stable toolchain (`rustup`).
 * **Python 3**: Required for the cluster script.
 * **Vulkan / GPU Drivers**: Required for the native `blade-graphics` renderer.
+* **Vendored forks** (required for a from-scratch clone): clone `egui/`, `winit/`, and `blade/` next to this repo at the commits pinned in [NOTICE](NOTICE), or run `./scripts/publish_vendored_forks.sh` after publishing forks to GitHub.
+
+Before the first **public** push, run `./scripts/pre_public_push.sh` and (once) `./scripts/filter_map_history.sh` to scrub OpenFront community map binaries from git history.
 
 ### Launching the Cluster
 The easiest way to run the project during development is to use the provided Python cluster script, which automatically builds the server and spawns multiple native clients.
@@ -118,6 +121,50 @@ Achieving seamless performance on "shitty" low-end hardware (like older Androids
 
 ---
 
+## Map authoring (paint, OpenFront import, OSM)
+
+Shadows of War uses a single **SOWM** artifact per map (`map.bin` / `map.bin.br` with embedded spawns). Three creation paths mirror the OpenFront community workflow:
+
+| Layer | Tool | Output |
+|-------|------|--------|
+| **Paint** | In-game Map Editor (`sow-client` main menu) | `assets/maps/<name>/` via Compile & Export |
+| **OpenFront import** | `sow-tools import-openfront` | Same SOWM layout from `image.png` + `info.json` or legacy `map.bin` + `manifest.json` |
+| **OSM region** | `sow-tools` bbox CLI | Overpass fetch → rasterizer → spawns from `place=*` nodes |
+
+### OpenFront mapper workflow (Layer 1b)
+
+1. Author in OpenFront style: paint `image.png` (blue channel = water), place nations in `info.json` (`name`, `flag`, `coordinates`).
+2. From the repo root, import into SOW:
+
+```bash
+cargo run -p sow-tools -- import-openfront \
+  --input path/to/OpenFrontIO/map-generator/assets/maps/europe \
+  --name europe
+```
+
+Or re-pack an existing shipped folder that already has `map.bin`:
+
+```bash
+cargo run -p sow-tools -- import-openfront --input assets/maps/europe
+```
+
+This writes `map.bin`, `map.bin.br`, `thumbnail.webp`, and refreshes `assets/maps/catalog.bin`.
+
+### OSM bbox generation (Layer 2)
+
+```bash
+cargo run -p sow-tools -- \
+  --bbox "-103.4,20.6,-103.3,20.7" \
+  --name guadalajara \
+  --scale 1000
+```
+
+Set `SOW_MAPS_ROOT` to override the output directory (default: `assets/maps`). Requires network access to the public Overpass API.
+
+**OSM attribution:** Maps derived from OpenStreetMap must credit [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright). Hand-painted and OpenFront PNG imports have no OSM obligation.
+
+---
+
 ## 📝 Development Notes & Rules
 
 * **Zero-Allocation Hot Path**: The `sow-core` simulation loop (`engine.tick()`) must avoid dynamic memory allocation (`Vec::push`, `Box::new`, etc.) to prevent stutters and ensure consistent frame times.
@@ -125,5 +172,46 @@ Achieving seamless performance on "shitty" low-end hardware (like older Androids
 
 ---
 
-## 📜 License
-*TBD*
+## License
+
+Shadows of War is free software licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
+
+Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](COPYRIGHT).
+
+This project is a derivative work based on [OpenFront](https://openfront.io) (© OpenFront LLC and Contributors, AGPL-3.0). Owned art (avatars, splash, select leader portraits, and core building icons) is restored; remaining sprites and HUD assets are TBD placeholders. Only the `northamerica` map ships in-repo. Third-party notices: [NOTICE](NOTICE).
+
+## AI-generated art (store submission)
+
+Splash screens, avatars, and leader portraits were created with Gemini, Meta AI, and Midjourney. Prompt history and iteration notes live in [`leaders.md`](leaders.md) (internal roster; share with Poki/CrazyGames on request). Verify each tool’s Terms of Service allows commercial redistribution in compiled game binaries before store submission. See [`assets/SOURCES.toml`](assets/SOURCES.toml).
+
+## Partner platforms (CrazyGames / Poki)
+
+Web builds load [`web/sdk/store_portals.js`](web/sdk/store_portals.js) for gameplay start/stop hooks. Privacy policy: [web/privacy.html](web/privacy.html) (hosted at https://shadowsofwar.io/privacy.html). Measure WASM size with `./scripts/measure_wasm_size.sh` (CrazyGames Basic Launch ≤ 50 MB).
+
+## Corresponding Source (AGPL §13)
+
+The production server at https://shadowsofwar.io runs `sow-server` and `sow-relay` from this repository. Corresponding source for any deployed version is available at the matching git tag or commit shown in the client build (`SOW_BUILD_VERSION`).
+
+```bash
+git clone https://github.com/ohsalmeron/shadows-of-war.git
+cd shadows-of-war
+cargo build --release -p sow-server -p sow-relay
+```
+
+## OpenStreetMap Compliance
+
+Maps generated via `sow-tools` from OpenStreetMap data must credit [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Requirements:
+
+- Do **not** use `tile.openstreetmap.org` as your own CDN or tile cache.
+- Overpass API: use a identifiable User-Agent (`ShadowsOfWar-sow-tools/1.0`), respect rate limits, and avoid hammering public instances.
+- Store the Overpass query bbox in `assets/maps/SOURCES.toml` for each OSM-derived map.
+- Mark OSM maps with `source = "osm"` in SOURCES.toml.
+
+Hand-painted maps and OpenFront-format imports have no OSM obligation unless they incorporate OSM data.
+
+See also [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
+## Map Attribution
+
+Only the `northamerica` map is included in `assets/maps/`. See `assets/maps/SOURCES.toml`. OpenFront-derived maps were removed from the repository and git history (run `./scripts/filter_map_history.sh` before first public push). Credits UI documents CC-BY-SA attribution for maps that appeared in development history.
+

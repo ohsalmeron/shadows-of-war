@@ -41,7 +41,7 @@ impl Default for MainMenuState {
             is_waiting: false,
             wait_timer_secs: 0.0,
             server_address: std::env::var("SOW_WS_URL")
-                .unwrap_or_else(|_| "ws://127.0.0.1:25565".to_string()),
+                .unwrap_or_else(|_| "wss://shadowsofwar.io/ws/".to_string()),
             lobbies: Vec::new(),
             player_name: {
                 let ms = web_time::SystemTime::now()
@@ -101,7 +101,6 @@ impl Default for MainMenuState {
             show_leader_picker: false,
             show_single_player_setup: false,
             single_player_config: Box::new(sow_core::game_config::GameConfig {
-                map_name: "World".to_string(),
                 seed: web_time::SystemTime::now()
                     .duration_since(web_time::SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -112,6 +111,20 @@ impl Default for MainMenuState {
 
             error_message: None,
         }
+    }
+}
+
+impl MainMenuState {
+    /// Clamp skirmish map selection to a valid catalog entry (dimensions included).
+    pub fn apply_map_catalog(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
+        let cfg = &mut self.single_player_config;
+        cfg.map_name = sow_core::maps::resolve_map_name(catalog, &cfg.map_name);
+        sow_core::maps::apply_catalog_dimensions(
+            catalog,
+            &mut cfg.map_name,
+            &mut cfg.map_width,
+            &mut cfg.map_height,
+        );
     }
 }
 
@@ -173,11 +186,29 @@ fn draw_menu_right_panel_contents(
     );
 
     ui.add_space(section_gap);
-    ui.label(
-        egui::RichText::new(version)
-            .size(12.0)
-            .color(crate::ui::theme::text_secondary()),
-    );
+    let strings = &sow_lang::get(lang).main_menu;
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(version)
+                .size(12.0)
+                .color(crate::ui::theme::text_secondary()),
+        );
+        ui.add_space(8.0);
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(&strings.credits_link)
+                        .size(12.0)
+                        .color(crate::ui::theme::accent_solo_cyan()),
+                )
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .clicked()
+        {
+            *action = Some(UiAction::ToggleCredits);
+        }
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -492,6 +523,8 @@ pub fn draw(
             state.error_message = None;
         }
     }
+
+    crate::ui::attribution::draw_openfront_footer(root_ui, lang);
 
     action
 }

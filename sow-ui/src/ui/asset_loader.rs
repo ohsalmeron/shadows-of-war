@@ -348,14 +348,15 @@ impl AssetLoader {
     }
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
-        if !self.thumbnails.contains_key("tutorial") {
-            let bytes = include_bytes!("../../../assets/maps/tutorial/thumbnail.webp");
+        if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
+            let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
             if let Some(color_image) =
                 crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
             {
+                let key = sow_core::maps::DEFAULT_MAP_KEY.to_string();
                 let texture =
-                    ctx.load_texture("tutorial", color_image, egui::TextureOptions::LINEAR);
-                self.thumbnails.insert("tutorial".to_string(), texture);
+                    ctx.load_texture(&key, color_image, egui::TextureOptions::LINEAR);
+                self.thumbnails.insert(key, texture);
             }
         }
 
@@ -399,31 +400,6 @@ impl AssetLoader {
                 "sow_splash_mobile",
                 include_bytes!("../../assets/ui/sow-splash-mobile.webp"),
             ));
-
-            if !self.thumbnails.contains_key("world") {
-                let bytes = include_bytes!("../../../assets/maps/world/thumbnail.webp");
-                if let Some(color_image) =
-                    crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
-                {
-                    let texture =
-                        ctx.load_texture("world", color_image, egui::TextureOptions::LINEAR);
-                    self.thumbnails.insert("world".to_string(), texture);
-                }
-            }
-
-            if !self.thumbnails.contains_key("giantworldmap") {
-                let bytes = include_bytes!("../../../assets/maps/giantworldmap/thumbnail.webp");
-                if let Some(color_image) =
-                    crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
-                {
-                    let texture = ctx.load_texture(
-                        "giantworldmap",
-                        color_image,
-                        egui::TextureOptions::LINEAR,
-                    );
-                    self.thumbnails.insert("giantworldmap".to_string(), texture);
-                }
-            }
         }
     }
 
@@ -575,24 +551,15 @@ impl AssetLoader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_bundled_map_br_present() {
-        assert!(sow_core::maps::bundled_map_br("tutorial").is_some());
-        assert!(sow_core::maps::bundled_map_br("world").is_some());
+        assert!(sow_core::maps::bundled_map_br("northamerica").is_some());
+        assert!(sow_core::maps::bundled_map_br("world").is_none());
     }
 
     #[test]
     fn test_thumbnail_decoding() {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let world_bytes = include_bytes!("../../../assets/maps/world/thumbnail.webp");
-            assert!(image::load_from_memory(world_bytes).is_ok());
-            let giant_bytes = include_bytes!("../../../assets/maps/giantworldmap/thumbnail.webp");
-            assert!(image::load_from_memory(giant_bytes).is_ok());
-        }
-        let tutorial_bytes = include_bytes!("../../../assets/maps/tutorial/thumbnail.webp");
-        assert!(image::load_from_memory(tutorial_bytes).is_ok());
+        let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
+        assert!(image::load_from_memory(bytes).is_ok());
     }
 }

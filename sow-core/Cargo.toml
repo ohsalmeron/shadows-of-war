@@ -3,6 +3,7 @@ name = "sow-core"
 version = "0.1.0"
 edition = "2021"
 description = "Shadows of War — Pure deterministic simulation core"
+license = "AGPL-3.0-or-later"
 
 [features]
 default = ["std"]

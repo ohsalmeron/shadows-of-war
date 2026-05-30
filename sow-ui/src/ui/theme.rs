@@ -608,6 +608,71 @@ pub fn apply_theme(ctx: &Context) {
 }
 
 #[inline]
+pub fn hud_panel_frame() -> egui::Frame {
+    panel_frame(PanelKind::HudOverlay, false)
+}
+
+/// Near-black surface for the in-game leaderboard body.
+#[inline]
+pub fn leaderboard_panel_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(Color32::from_rgba_unmultiplied(6, 8, 12, 235))
+        .stroke(egui::Stroke::new(
+            1.0_f32,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 20),
+        ))
+        .corner_radius(egui::CornerRadius::same(10))
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .shadow(egui::Shadow::NONE)
+}
+
+/// Dark inset search field used inside the leaderboard panel.
+#[inline]
+pub fn leaderboard_search_field_bg() -> Color32 {
+    Color32::from_rgba_unmultiplied(0, 0, 0, 120)
+}
+
+#[inline]
+pub fn leaderboard_search_field_border() -> Color32 {
+    Color32::from_rgba_unmultiplied(255, 255, 255, 25)
+}
+
+#[inline]
+pub fn hud_button_text_size() -> f32 {
+    if cfg!(target_os = "android") {
+        32.0
+    } else {
+        18.0
+    }
+}
+
+/// Red notification badge (circle + count) used on HUD toolbar buttons.
+pub fn paint_count_badge(
+    painter: &egui::Painter,
+    anchor: egui::Pos2,
+    count: usize,
+    radius: f32,
+    font_size: f32,
+    cap: Option<usize>,
+) {
+    if count == 0 {
+        return;
+    }
+    let label = match cap {
+        Some(max) if count > max => format!("{max}+"),
+        _ => count.to_string(),
+    };
+    painter.circle_filled(anchor, radius, Color32::from_rgb(239, 68, 68));
+    painter.text(
+        anchor,
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(font_size),
+        Color32::WHITE,
+    );
+}
+
+#[inline]
 pub fn hud_icon_rail_spacing(ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing = egui::vec2(hud_icon_spacing(), hud_icon_spacing());
 }
@@ -634,6 +699,33 @@ pub fn standard_panel_frame(compact: bool) -> egui::Frame {
                 offset: [0, 10],
             })
     }
+}
+
+/// Top vs side chrome in the map editor (shadow strength differs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MapEditorGlassPanel {
+    Top,
+    Side,
+}
+
+/// Glass panels for the map editor — map stays visible through the center viewport.
+#[inline]
+pub fn map_editor_glass_frame(panel: MapEditorGlassPanel, _compact: bool) -> egui::Frame {
+    let (blur, margin, shadow_alpha, offset_y) = match panel {
+        MapEditorGlassPanel::Top => (16_u8, Margin::symmetric(20, 14), 15_u8, 6),
+        MapEditorGlassPanel::Side => (24_u8, Margin::symmetric(16, 20), 20_u8, 8),
+    };
+    egui::Frame::new()
+        .fill(panel_bg_transparent())
+        .stroke(Stroke::new(1.0_f32, palette::field_border()))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(margin)
+        .shadow(egui::Shadow {
+            blur,
+            spread: 0,
+            color: Color32::from_rgba_unmultiplied(6, 182, 212, shadow_alpha),
+            offset: [0, offset_y],
+        })
 }
 
 /// Dark translucent rail for main-menu action buttons (no backdrop blur).

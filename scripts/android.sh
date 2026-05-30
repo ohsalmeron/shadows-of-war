@@ -116,8 +116,22 @@ if [[ "${TARGET}" == "native" ]]; then
   MANIFEST="${ROOT}/sow-client/Cargo.toml"
   [[ -f "$MANIFEST" ]] && grep -q '^\[package.metadata.android\]' "$MANIFEST" 2>/dev/null || fail "missing sow-client/Cargo.toml with [package.metadata.android]"
   
-  # Ensure release keystore is created
+  # Ensure release keystore and signing config exist (local only, gitignored)
   KEYSTORE="${ROOT}/keystores/release.keystore"
+  SIGNING_CFG="${ROOT}/sow-client/signing.local.toml"
+  KS_PASS="${SOW_KEYSTORE_PASSWORD:?Set SOW_KEYSTORE_PASSWORD for Android release signing}"
+  KEY_PASS="${SOW_KEY_PASSWORD:-$KS_PASS}"
+
+  if [[ ! -f "${SIGNING_CFG}" ]]; then
+    cat > "${SIGNING_CFG}" <<EOF
+[package.metadata.android.signing.release]
+path = "../keystores/release.keystore"
+keystore_password = "${KS_PASS}"
+key_password = "${KEY_PASS}"
+key_alias = "shadows"
+EOF
+  fi
+
   if [[ ! -f "${KEYSTORE}" ]]; then
     cyan "==> Generating release keystore at ${KEYSTORE}"
     mkdir -p "$(dirname "${KEYSTORE}")"
@@ -125,13 +139,13 @@ if [[ "${TARGET}" == "native" ]]; then
       -keystore "${KEYSTORE}" \
       -alias shadows \
       -keyalg RSA -keysize 2048 -validity 10000 \
-      -storepass shadowswar -keypass shadowswar \
-      -dname "CN=Shadows Of War, OU=Self, O=LegacyEngine, L=Local, S=NA, C=US" \
+      -storepass "${KS_PASS}" -keypass "${KEY_PASS}" \
+      -dname "CN=Shadows Of War, OU=Self, O=ShadowsOfWar, L=Local, S=NA, C=US" \
       >/dev/null
   fi
 
   cyan "📦 Building Native GLES APK..."
-  RUSTFLAGS='--cfg gles' cargo apk build --release --lib -p sow-client
+  RUSTFLAGS='--cfg gles' cargo apk build --release --lib -p sow-client --config "${SIGNING_CFG}"
   
   APK_SRC="${ROOT}/target/release/apk/sow-client.apk"
   APK_OUT="${ROOT}/build/sow-client-native.apk"

@@ -145,7 +145,7 @@ impl SowEngine {
     /// Unified AI pipeline for both Tribes (`Bot`) and Nations.
     ///
     /// - Builds one combined schedule of all AI entities.
-    /// - Every scheduled bot acts each tick (no global budget cap — same as OpenFront).
+    /// - Every scheduled bot acts each tick (no global budget cap).
     /// - Each bot self-throttles via its own `interval_base` in `get_bot_ai_profile`.
     /// - Uses `placement_scratch.border_scratch` for zero-allocation border scanning.
     pub fn execute_ai_think(&mut self) {
@@ -250,7 +250,7 @@ impl SowEngine {
             }
         }
 
-        // ── Process all scheduled bots (no global cap — same as OpenFront) ─────
+        // ── Process all scheduled bots (no global cap) ─────
         let mut decisions: Vec<BotDecision> = Vec::new();
 
         for slot in &schedule {

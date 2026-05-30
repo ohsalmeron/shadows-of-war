@@ -1,4 +1,4 @@
-//! Alliance request lifecycle, cooldowns, and betrayal heuristics (OpenFront-inspired, SOW-native).
+//! Alliance request lifecycle, cooldowns, and betrayal heuristics.
 
 use crate::player::{Player, PlayerId, PlayerType};
 use crate::rng::NextIntExt;

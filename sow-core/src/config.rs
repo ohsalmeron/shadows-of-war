@@ -1,6 +1,6 @@
 //! Game balance constants.
 
-/// LegacyEngine parity uses much larger gold magnitudes (125_000, 1_000_000, ...).
+/// Game balance uses large gold magnitudes (125_000, 1_000_000, ...).
 /// Keep those ratios by scaling into Shadows of War's lighter economy.
 pub const GOLD_SCALE: f64 = 1_000.0;
 

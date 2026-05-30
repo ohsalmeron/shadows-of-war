@@ -8,13 +8,11 @@ pub enum MoverSpriteId {
     TradeShip = 1,
     Warship = 2,
     AtomBomb = 3,
-    HydrogenBomb = 4,
-    Mirv = 5,
-    SamMissile = 6,
+    SamMissile = 4,
 }
 
 impl MoverSpriteId {
-    pub const COUNT: usize = 7;
+    pub const COUNT: usize = 5;
     pub const ATLAS_CELL: u32 = 64;
 
     pub fn uv_rect(self) -> [f32; 4] {
@@ -47,14 +45,6 @@ const SPRITE_FILES: &[(&str, &[u8])] = &[
     (
         "atombomb.png",
         include_bytes!("../../sow-client/assets/atombomb.png"),
-    ),
-    (
-        "hydrogenbomb.png",
-        include_bytes!("../../sow-client/assets/hydrogenbomb.png"),
-    ),
-    (
-        "mirv.png",
-        include_bytes!("../../sow-client/assets/mirv.png"),
     ),
     (
         "sam_missile.png",

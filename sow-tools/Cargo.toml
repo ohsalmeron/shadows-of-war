@@ -3,6 +3,7 @@ name = "sow-tools"
 version = "0.1.0"
 edition = "2021"
 description = "Shadows of War — Map generator and tooling CLI"
+license = "AGPL-3.0-or-later"
 
 [[bin]]
 name = "test-relay"
@@ -22,13 +23,13 @@ path = "src/bin/migrate_maps.rs"
 
 [dependencies]
 sow-core = { workspace = true }
+sow-map = { workspace = true }
 serde = { workspace = true }
+image = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
-geo = { workspace = true }
-geo-types = { workspace = true }
 bincode.workspace = true
 clap = { workspace = true }
 env_logger = { workspace = true }

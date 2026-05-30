@@ -16,6 +16,10 @@ impl SowApp {
             match res {
                 MapDownloadEvent::CatalogReady(entries) => {
                     self.ui.app.asset_loader.catalog_in_flight = false;
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .apply_map_catalog(&entries);
                     self.ui.app.asset_loader.map_catalog = Some(entries);
                 }
                 MapDownloadEvent::Progress(downloaded_map_name, progress) => {

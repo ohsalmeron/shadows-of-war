@@ -393,7 +393,7 @@ fn draw_leader_avatar_button(
 
     let leader_color = leader_filler_color32(leader);
 
-    let anim_id = ui.id().with(("leader_select", leader));
+    let anim_id = egui::Id::new(("leader_picker_select", leader));
     let scale = crate::ui::animation::selection_grow_scale(
         ui.ctx(),
         anim_id,
@@ -466,6 +466,7 @@ fn draw_leader_rail(
             .scope_builder(egui::UiBuilder::new().max_rect(avatar_rect), |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
+                    .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                     .id_salt("leader_desktop_rail")
                     .show(ui, |ui| {
@@ -515,8 +516,15 @@ fn draw_leader_carousel(
     let total_carousel_w = (avatar_size + 12.0) * leader_count - 12.0;
 
     ui.allocate_ui(egui::vec2(panel_w, scroll_area_h), |ui| {
+            // Content drag steals taps on avatars; use the scroll bar + wheel instead.
             egui::ScrollArea::horizontal()
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .id_salt("leader_mobile_carousel")
+                .scroll_source(egui::scroll_area::ScrollSource {
+                    scroll_bar: true,
+                    drag: false,
+                    mouse_wheel: true,
+                })
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;

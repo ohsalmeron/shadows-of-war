@@ -3,6 +3,7 @@ name = "sow-render"
 version = "0.1.0"
 edition = "2021"
 description = "Shadows of War — Blade-powered rendering engine"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 sow-core = { workspace = true }

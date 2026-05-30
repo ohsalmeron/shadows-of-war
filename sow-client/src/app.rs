@@ -148,7 +148,11 @@ pub struct UiState {
     pub leaderboard_rankings: Vec<crate::hud::leaderboard::LeaderboardRanking>,
     pub leaderboard_display:
         std::collections::HashMap<u16, crate::hud::leaderboard::LeaderboardRowDisplay>,
-    pub leaderboard_show_all: bool,
+    pub leaderboard_visible_limit: usize,
+    pub leaderboard_search: String,
+    pub leaderboard_team_rankings: Vec<crate::hud::leaderboard::TeamRanking>,
+    pub leaderboard_prev_search: String,
+    pub leaderboard_was_open: bool,
     pub show_dev_sidebar: bool,
     pub update_available: bool,
     pub is_spectating: bool,
@@ -301,6 +305,7 @@ impl SowApp {
         {
             if let Ok(bytes) = std::fs::read("assets/maps/catalog.bin") {
                 if let Ok(catalog) = sow_core::map_file::parse_catalog(&bytes) {
+                    app.main_menu_state.apply_map_catalog(&catalog.entries);
                     app.asset_loader.map_catalog = Some(catalog.entries);
                 }
             }
@@ -514,7 +519,11 @@ impl SowApp {
                 leaderboard_timer: 0.0,
                 leaderboard_rankings: Vec::new(),
                 leaderboard_display: std::collections::HashMap::new(),
-                leaderboard_show_all: false,
+                leaderboard_visible_limit: crate::hud::leaderboard::INITIAL_VISIBLE_LIMIT,
+                leaderboard_search: String::new(),
+                leaderboard_team_rankings: Vec::new(),
+                leaderboard_prev_search: String::new(),
+                leaderboard_was_open: false,
                 show_dev_sidebar: false,
                 update_available: false,
                 is_spectating: false,
@@ -605,7 +614,19 @@ impl SowApp {
         self.net.ws_url.contains("/relay/") || self.net.ws_url.contains("2557")
     }
 
+    /// Window used for input/redraw: map editor session owns it while editing.
+    pub fn active_window(&self) -> Option<&dyn winit::window::Window> {
+        if let Some(editor) = self.map_editor.as_ref() {
+            return editor.window_ref();
+        }
+        self.gfx.window.as_deref()
+    }
+
     pub fn handle_suspended(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        if let Some(ref mut editor) = self.map_editor {
+            editor.handle_suspended();
+            return;
+        }
         if let Some(sp) = self.gfx.prev_sync_point.take() {
             let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
         }
@@ -626,6 +647,10 @@ impl SowApp {
     pub fn handle_resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         // App or tab foregrounded — retry WS soon if the socket died in the background.
         self.net.ws_reconnect_after_resume = true;
+        if let Some(ref mut editor) = self.map_editor {
+            editor.handle_resumed();
+            return;
+        }
         if self.gfx.window.is_none() {
             #[cfg(any(target_os = "android", target_os = "ios"))]
             #[allow(unused_mut)]

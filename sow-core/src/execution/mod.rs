@@ -11,7 +11,7 @@ pub mod income;
 pub mod nukes;
 pub mod sam;
 
-/// Fraction of refunded troops lost when retreating from an attack on another player (LegacyEngine parity).
+/// Fraction of refunded troops lost when retreating from an attack on another player.
 pub const RETREAT_PENALTY_VS_PLAYER: f64 = 0.25;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,7 +91,7 @@ impl AttackExecution {
             TerrainType::Water | TerrainType::Lake => 3,
         };
         let r = self.rng.next_int(0, 7) as i64;
-        // Formula scaled by 4 to maintain LegacyEngine quartiles in integer space
+        // Formula scaled by 4 to maintain quartiles in integer space
         (r + 10) * (4 - (num_owned_by_me as i64 * 2) + mag_x2) + (tick as i64 * 4)
     }
 }

@@ -200,13 +200,7 @@ impl MoverScene {
 
         let (sprite, size, trail_color) = match proj.kind {
             ProjectileKind::Nuke { level } => {
-                let sprite = if level >= 3 {
-                    MoverSpriteId::Mirv
-                } else if level >= 2 {
-                    MoverSpriteId::HydrogenBomb
-                } else {
-                    MoverSpriteId::AtomBomb
-                };
+                let sprite = MoverSpriteId::AtomBomb;
                 let tc = if level >= 3 {
                     [1.0, 0.667, 0.0, 0.63]
                 } else if level == 2 {

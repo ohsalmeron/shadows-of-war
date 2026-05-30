@@ -929,7 +929,7 @@ mod tests {
     #[test]
     fn test_spawn_ai_city_states() {
         let config = GameConfig {
-            map_name: "tutorial".to_string(),
+            map_name: crate::maps::DEFAULT_MAP_KEY.to_string(),
             map_width: 1000,
             map_height: 800,
             ..Default::default()

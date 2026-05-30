@@ -72,6 +72,10 @@ async fn main() {
 
     let mut games: Vec<ServerLobby> = Vec::new();
     let mut next_lobby_id: u64 = 1;
+
+    let maps_root = map_catalog::maps_root();
+    map_catalog::init(&maps_root);
+
     master_tick(&mut games, &mut next_lobby_id);
 
     let games_state = Arc::new(Mutex::new(games));
@@ -270,9 +274,6 @@ async fn main() {
 
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
-
-    let maps_root = map_catalog::maps_root();
-    map_catalog::init(&maps_root);
 
     // HTTP Static File Server for maps
     tokio::spawn(async move {

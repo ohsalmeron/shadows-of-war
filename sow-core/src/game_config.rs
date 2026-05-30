@@ -178,10 +178,10 @@ impl Default for GameConfig {
 
 
             // Map Generation & Spawning
-            map_name: "world".to_string(),
+            map_name: crate::maps::DEFAULT_MAP_KEY.to_string(),
             game_mode: "FFA".to_string(),
-            map_width: 2904,
-            map_height: 1672,
+            map_width: 1000,
+            map_height: 800,
             random_spawn: false,
             map_control_win_percentage: 0.60,
 

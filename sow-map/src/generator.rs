@@ -62,7 +62,7 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
         width as usize
     ];
 
-    // Convert pixel colors to terrain types and magnitudes (matching Go / OpenFrontIO)
+    // Convert pixel colors to terrain types and magnitudes (legacy map color mapping).
     for (x, column) in grid.iter_mut().enumerate().take(width as usize) {
         for (y, tile) in column.iter_mut().enumerate().take(height as usize) {
             let idx = y * args.width as usize + x;

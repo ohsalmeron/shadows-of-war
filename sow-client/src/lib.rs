@@ -24,16 +24,33 @@ fn get_build_version() -> String {
     }
 }
 
+fn maps_url_from_ws_url(ws_url: &str) -> Option<String> {
+    let rest = ws_url
+        .strip_prefix("wss://")
+        .or_else(|| ws_url.strip_prefix("ws://"))?;
+    let host = rest.split('/').next()?.split(':').next()?;
+    if host == "127.0.0.1" || host == "localhost" {
+        Some("http://127.0.0.1:25566/maps".to_string())
+    } else {
+        Some(format!("https://{host}/maps"))
+    }
+}
+
 fn get_maps_url() -> String {
     #[allow(unused_mut)]
     let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| {
+        if let Ok(ws) = std::env::var("SOW_WS_URL") {
+            if let Some(derived) = maps_url_from_ws_url(&ws) {
+                return derived;
+            }
+        }
         #[cfg(target_arch = "wasm32")]
         {
             "https://shadowsofwar.io/assets/maps".to_string()
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            "http://127.0.0.1:25566/maps".to_string()
+            "https://shadowsofwar.io/maps".to_string()
         }
     });
     #[cfg(target_arch = "wasm32")]
@@ -160,6 +177,7 @@ pub mod input;
 pub mod loader;
 pub mod net;
 pub mod render;
+pub mod store_portals;
 
 use app::SowApp;
 use winit::application::ApplicationHandler;
@@ -184,11 +202,20 @@ impl ApplicationHandler for SowApp {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        if self.gfx.window.is_none() || self.gfx.window.as_ref().unwrap().id() != window_id {
+        if let Some(ref mut editor) = self.map_editor {
+            if editor.window_id() != Some(window_id) {
+                return;
+            }
+            if matches!(event, winit::event::WindowEvent::CloseRequested) {
+                self.teardown_map_editor_and_exit();
+                event_loop.exit();
+                return;
+            }
+            editor.handle_window_event(event_loop, event);
             return;
         }
-        if let Some(ref mut editor) = self.map_editor {
-            editor.handle_window_event(event_loop, event);
+
+        if self.gfx.window.is_none() || self.gfx.window.as_ref().unwrap().id() != window_id {
             return;
         }
         if let winit::event::WindowEvent::RedrawRequested = event {
@@ -200,7 +227,7 @@ impl ApplicationHandler for SowApp {
 
     fn about_to_wait(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         self.update(event_loop);
-        if let Some(win) = self.gfx.window.as_ref() {
+        if let Some(win) = self.active_window() {
             win.request_redraw();
         }
     }

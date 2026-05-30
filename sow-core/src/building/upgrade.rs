@@ -2,7 +2,7 @@ use super::core::Building;
 use super::placement::{idx_xy, manhattan, STRUCTURE_MIN_DIST};
 use crate::game::BuildingKind;
 use crate::map::GameMap;
-/// LegacyEngine `findExistingUnitToUpgrade`: closest structure of `kind` within Manhattan
+/// Closest structure of `kind` within Manhattan
 /// `STRUCTURE_MIN_DIST` of `click_idx`.
 pub fn find_upgrade_target_id(
     map: &GameMap,

@@ -52,6 +52,7 @@ pub struct MainMenuStrings {
     pub deployment_engine_val: String,
     pub ready_room: String,
     pub ready: String,
+    pub credits_link: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -67,11 +68,13 @@ pub struct SettingsStrings {
     pub music_volume: String,
     pub sfx_volume: String,
     pub back_button: String,
+    pub credits_licenses: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoadingScreenStrings {
     pub loading: String,
+    pub splash_attribution: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,6 +180,22 @@ pub struct MapEditorStrings {
     pub msg_write_failed: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreditsStrings {
+    pub title: String,
+    pub link: String,
+    pub close: String,
+    pub copyright_sow: String,
+    pub license_agpl: String,
+    pub based_on: String,
+    pub maps_cc: String,
+    pub notice: String,
+    pub source: String,
+    pub privacy: String,
+    pub openfront_footer: String,
+    pub splash_line: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct LanguageStrings {
     pub main_menu: MainMenuStrings,
@@ -186,6 +205,7 @@ pub struct LanguageStrings {
     pub hud: HudStrings,
     pub tutorial: TutorialStrings,
     pub map_editor: MapEditorStrings,
+    pub credits: CreditsStrings,
 }
 
 static EN_STRINGS: OnceLock<LanguageStrings> = OnceLock::new();
@@ -202,6 +222,7 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
                 include_str!("../strings/es/hud.toml"),
                 include_str!("../strings/es/tutorial.toml"),
                 include_str!("../strings/es/map_editor.toml"),
+                include_str!("../strings/es/credits.toml"),
             )
         }),
         _ => EN_STRINGS.get_or_init(|| {
@@ -213,6 +234,7 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
                 include_str!("../strings/en/hud.toml"),
                 include_str!("../strings/en/tutorial.toml"),
                 include_str!("../strings/en/map_editor.toml"),
+                include_str!("../strings/en/credits.toml"),
             )
         }),
     }
@@ -226,6 +248,7 @@ fn load_language(
     hud_toml: &str,
     tutorial_toml: &str,
     map_editor_toml: &str,
+    credits_toml: &str,
 ) -> LanguageStrings {
     LanguageStrings {
         main_menu: toml::from_str(main_menu_toml).expect("Failed to parse main_menu.toml"),
@@ -236,5 +259,6 @@ fn load_language(
         hud: toml::from_str(hud_toml).expect("Failed to parse hud.toml"),
         tutorial: toml::from_str(tutorial_toml).expect("Failed to parse tutorial.toml"),
         map_editor: toml::from_str(map_editor_toml).expect("Failed to parse map_editor.toml"),
+        credits: toml::from_str(credits_toml).expect("Failed to parse credits.toml"),
     }
 }

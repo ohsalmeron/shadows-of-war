@@ -2,8 +2,11 @@
 
 pub use crate::map_file::{MapCatalog, MapCatalogEntry, MapFile, MapHeader, MapSpawn};
 
+/// Default map key when catalog is empty or name is unknown.
+pub const DEFAULT_MAP_KEY: &str = "northamerica";
+
 /// Maps shipped inside the client WASM for offline single-player boot.
-pub const BUNDLED_MAP_KEYS: &[&str] = &["world", "giantworldmap", "tutorial"];
+pub const BUNDLED_MAP_KEYS: &[&str] = &[DEFAULT_MAP_KEY];
 
 /// Normalize map folder / config name to catalog key (e.g. `"Europe"` → `"europe"`).
 #[inline]
@@ -26,6 +29,30 @@ pub fn catalog_lookup<'a>(
     catalog
         .iter()
         .find(|e| e.key == key || e.display_name.eq_ignore_ascii_case(name))
+}
+
+#[inline]
+pub fn catalog_entry_at<'a>(
+    catalog: &'a [MapCatalogEntry],
+    index: usize,
+) -> Option<&'a MapCatalogEntry> {
+    if catalog.is_empty() {
+        None
+    } else {
+        Some(&catalog[index % catalog.len()])
+    }
+}
+
+/// Return normalized catalog key if `name` is in the catalog, else first entry or [`DEFAULT_MAP_KEY`].
+#[inline]
+pub fn resolve_map_name(catalog: &[MapCatalogEntry], name: &str) -> String {
+    if let Some(entry) = catalog_lookup(catalog, name) {
+        return entry.key.clone();
+    }
+    catalog
+        .first()
+        .map(|e| e.key.clone())
+        .unwrap_or_else(|| DEFAULT_MAP_KEY.to_string())
 }
 
 #[inline]
@@ -53,9 +80,7 @@ pub fn load_map_from_payload(bytes: &[u8]) -> Result<MapFile, crate::map_file::M
 #[inline]
 pub fn bundled_map_br(key: &str) -> Option<&'static [u8]> {
     match map_key(key).as_str() {
-        "world" => Some(include_bytes!("../../assets/maps/world/map.bin.br")),
-        "giantworldmap" => Some(include_bytes!("../../assets/maps/giantworldmap/map.bin.br")),
-        "tutorial" => Some(include_bytes!("../../assets/maps/tutorial/map.bin.br")),
+        "northamerica" => Some(include_bytes!("../../assets/maps/northamerica/map.bin.br")),
         _ => None,
     }
 }

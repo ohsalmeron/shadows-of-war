@@ -32,7 +32,7 @@ impl SowApp {
                     #[cfg(not(target_arch = "wasm32"))]
                     let _ = std::fs::remove_file("sow_tutorial_completed.txt");
 
-                    let map_name = "tutorial".to_string();
+                    let map_name = sow_core::maps::DEFAULT_MAP_KEY.to_string();
                     self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
 
                     let tutorial_seed = web_time::SystemTime::now()
@@ -387,6 +387,9 @@ impl SowApp {
                 }
                 UiAction::ToggleSettings => {
                     // Handle settings toggle if it's there
+                }
+                UiAction::ToggleCredits => {
+                    self.ui.app.is_credits_open = !self.ui.app.is_credits_open;
                 }
                 UiAction::ZoomIn => {
                     self.process_camera_zoom(

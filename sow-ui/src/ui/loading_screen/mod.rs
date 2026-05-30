@@ -262,5 +262,17 @@ pub fn draw(
         shadow_color,
     );
 
+    // Legal attribution (OpenFront §7)
+    let attr = &sow_lang::get(lang).loading_screen.splash_attribution;
+    let attr_font = egui::FontId::proportional(if is_mobile { 9.0 } else { 10.0 });
+    let attr_pos = egui::pos2(screen_rect.min.x + 12.0, screen_rect.max.y - 12.0);
+    root_ui.painter().text(
+        attr_pos,
+        egui::Align2::LEFT_BOTTOM,
+        attr.as_str(),
+        attr_font,
+        Color32::from_rgba_unmultiplied(189, 189, 189, alpha),
+    );
+
     None
 }

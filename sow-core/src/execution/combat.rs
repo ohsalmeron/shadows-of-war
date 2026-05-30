@@ -9,7 +9,7 @@ use crate::map::TerrainType;
 use crate::rng::NextIntExt;
 use crate::warp_fleet::best_shore_spawn_for_transport;
 
-// System analogous to AttackExecution.tick() in OpenFront
+// Attack execution tick (territory expansion and combat resolution)
 impl SowEngine {
     pub fn execute_combat(&mut self) {
         if self.state.phase != GamePhase::Playing {
@@ -168,7 +168,7 @@ impl SowEngine {
                             * terrain_multiplier)
                             / troop_strength;
                     } else {
-                        // PvP: Combat resolution (OpenFront Parity)
+                        // PvP: Combat resolution
                         let mut def_loss = 0.0;
                         if let Some(target_player) = self.state.player(execution.target_owner) {
                             if target_player.tile_count > 0 {
@@ -276,7 +276,7 @@ impl SowEngine {
                     }
 
                     // VALID CONQUEST
-                    // Apply change AFTER enqueuing neighbors, mimicking OpenFront's `this._owner.conquer`
+                    // Apply change AFTER enqueuing neighbors
                     // This ensures new neighbors don't artificially lower their priority by counting this tile as friendly yet!
                     // Guaranteed BFS spread without DFS spikes!
                     self.state
@@ -369,7 +369,7 @@ impl SowEngine {
         }
     }
 
-    /// OpenFront `TransportShipExecution`: 1 tile/tick over water, retreat, landing → conquer + `AttackExecution`.
+    /// Transport ship: 1 tile/tick over water, retreat, landing → conquer + attack execution.
     pub fn execute_fleets(&mut self) {
         if self.state.phase != GamePhase::Playing {
             return;

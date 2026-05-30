@@ -3,6 +3,7 @@ name = "sow-client"
 version = "0.1.0"
 edition = "2021"
 description = "Shadows of War"
+license = "AGPL-3.0-or-later"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -69,9 +70,3 @@ config_changes = "density|keyboard|keyboardHidden|navigation|orientation|screenL
 [[package.metadata.android.application.activity.intent_filter]]
 actions = ["android.intent.action.MAIN"]
 categories = ["android.intent.category.LAUNCHER"]
-
-[package.metadata.android.signing.release]
-path = "../keystores/release.keystore"
-keystore_password = "shadowswar"
-key_password = "shadowswar"
-key_alias = "shadows"

@@ -1,9 +1,10 @@
+use crate::openfront_import::refresh_catalog;
 use crate::poi_extractor::POISpawn;
 use sow_core::map::MapTile;
 use sow_core::map_file::{self, MapFile, MapSpawn};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn export_map(
     map_name: &str,
@@ -46,6 +47,11 @@ pub fn export_map(
     drop(writer);
     fs::write(Path::new(&output_dir).join("map.bin.br"), out)?;
 
+    let maps_root = maps_root();
+    if let Err(e) = refresh_catalog(&maps_root) {
+        eprintln!("Warning: could not refresh catalog.bin: {e}");
+    }
+
     if single_player_config {
         let ron_path = "crates/client/assets/configs/default_single_player.ron";
         let bot_count = spawns.len();
@@ -67,4 +73,10 @@ pub fn export_map(
     }
 
     Ok(())
+}
+
+fn maps_root() -> PathBuf {
+    std::env::var("SOW_MAPS_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("assets/maps"))
 }

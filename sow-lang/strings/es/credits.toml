@@ -1,0 +1,14 @@
+title = "Créditos y licencias"
+link = "Créditos y licencias"
+close = "CERRAR"
+
+copyright_sow = "Shadows of War — Copyright (c) Omar Hernandez Salmeron"
+license_agpl = "Licenciado bajo GNU Affero General Public License v3.0 o posterior (AGPL-3.0-or-later)"
+based_on = "Basado en OpenFront (https://openfront.io) — © OpenFront and Contributors"
+maps_cc = "Mapas comunitarios y miniaturas de OpenFront (CC-BY-SA 4.0, © colaboradores de OpenFront) estuvieron en el historial de desarrollo; solo el mapa de Norteamérica se incluye en las versiones actuales."
+notice = "Avisos de terceros completos: ver NOTICE en el repositorio"
+source = "Código fuente correspondiente: https://github.com/ohsalmeron/shadows-of-war"
+privacy = "Política de privacidad: https://shadowsofwar.io/privacy.html"
+
+openfront_footer = "© OpenFront and Contributors"
+splash_line = "© OpenFront and Contributors · Shadows of War · AGPL-3.0"

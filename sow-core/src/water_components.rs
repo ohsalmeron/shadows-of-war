@@ -1,5 +1,4 @@
-//! Connected-component labeling of the water plane (LegacyEngine parity for
-//! `WaterManager.getWaterComponent`). Two shoreline tiles share a `component`
+//! Connected-component labeling of the water plane. Two shoreline tiles share a `component`
 //! iff they touch the same connected body of water — ocean, lake, or river.
 //!
 //! Computed once at map-load (terrain is static). Each client does this locally

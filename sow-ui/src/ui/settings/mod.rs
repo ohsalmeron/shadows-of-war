@@ -229,7 +229,27 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     ui.selectable_value(&mut state.language, Language::German, "German");
                 });
 
-            ui.add_space(32.0);
+            ui.add_space(24.0);
+
+            // --- Credits ---
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(&strings.credits_licenses)
+                                .size(16.0)
+                                .color(accent_solo_cyan()),
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(Stroke::NONE),
+                    )
+                    .clicked()
+                {
+                    action = Some(UiAction::ToggleCredits);
+                }
+            });
+
+            ui.add_space(24.0);
 
             // --- Back Button ---
             ui.vertical_centered(|ui| {

@@ -1,0 +1,8 @@
+# Copy to signing.local.toml (gitignored) and set your passwords.
+# Used by scripts/android.sh: cargo apk build --config sow-client/signing.local.toml
+
+[package.metadata.android.signing.release]
+path = "../keystores/release.keystore"
+keystore_password = "CHANGE_ME"
+key_password = "CHANGE_ME"
+key_alias = "shadows"

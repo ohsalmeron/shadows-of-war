@@ -113,14 +113,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Export to assets/maps/tutorial/
-    let output_dir = Path::new("assets/maps/tutorial");
+    // Export to assets/maps/northamerica/
+    let output_dir = Path::new("assets/maps/northamerica");
     fs::create_dir_all(output_dir)?;
 
     let terrain_bytes: Vec<u8> = terrain_final.iter().map(|t| t.as_byte()).collect();
     let num_land = terrain_bytes.iter().filter(|b| (*b & 0x80) != 0).count() as u32;
     let map_file = MapFile {
-        display_name: "Tutorial".to_string(),
+        display_name: "North America".to_string(),
         width,
         height,
         num_land_tiles: num_land,
@@ -150,12 +150,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     compressor.flush()?;
     println!("Compressed map.bin to map.bin.br");
 
-    // Copy thumbnail from world to tutorial
-    let src_thumb = Path::new("assets/maps/world/thumbnail.webp");
+    // Placeholder thumbnail (generate via scripts/generate_placeholder_assets.py if missing)
     let dst_thumb = output_dir.join("thumbnail.webp");
-    if src_thumb.exists() {
-        fs::copy(src_thumb, dst_thumb)?;
-        println!("🖼️  Copied thumbnail.webp");
+    if !dst_thumb.exists() {
+        println!("Note: add thumbnail.webp to {}", output_dir.display());
     }
 
     Ok(())

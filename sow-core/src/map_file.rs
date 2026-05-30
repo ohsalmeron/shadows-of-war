@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn roundtrip_map_file() {
         let map = MapFile {
-            display_name: "Tutorial".to_string(),
+            display_name: "North America".to_string(),
             width: 4,
             height: 4,
             num_land_tiles: 10,
@@ -309,7 +309,7 @@ mod tests {
         };
         let bytes = encode(&map);
         let parsed = parse(&bytes).unwrap();
-        assert_eq!(parsed.display_name, "Tutorial");
+        assert_eq!(parsed.display_name, "North America");
         assert_eq!(parsed.spawns.len(), 1);
         assert_eq!(parsed.terrain.len(), 16);
     }
@@ -318,8 +318,8 @@ mod tests {
     fn roundtrip_catalog() {
         let cat = MapCatalog {
             entries: vec![MapCatalogEntry {
-                key: "tutorial".to_string(),
-                display_name: "Tutorial".to_string(),
+                key: "northamerica".to_string(),
+                display_name: "North America".to_string(),
                 width: 100,
                 height: 100,
             }],
@@ -327,6 +327,6 @@ mod tests {
         let bytes = encode_catalog(&cat);
         let parsed = parse_catalog(&bytes).unwrap();
         assert_eq!(parsed.entries.len(), 1);
-        assert_eq!(parsed.entries[0].key, "tutorial");
+        assert_eq!(parsed.entries[0].key, "northamerica");
     }
 }

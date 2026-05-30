@@ -52,6 +52,16 @@
             z-index: 9999;
         }
 
+        #credits {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: rgba(189, 189, 189, 0.71);
+            font-size: 8px;
+            pointer-events: none;
+            z-index: 9999;
+        }
+
         #web-loader {
             position: fixed;
             top: 0;
@@ -160,8 +170,10 @@
         <p>Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser without any downloads. Join thousands of players in real-time tactical warfare, expand your empire, and prove your strategic supremacy.</p>
     </div>
     <canvas id="blade" oncontextmenu="return false;"></canvas>
+    <div id="credits">© OpenFront and Contributors</div>
     <div id="version">v__VERSION__</div>
 
+    <script src="./sdk/store_portals.js"></script>
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";

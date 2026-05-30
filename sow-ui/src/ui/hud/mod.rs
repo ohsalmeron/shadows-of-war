@@ -6,8 +6,6 @@ use web_time::{Duration, Instant};
 
 pub mod icons;
 
-use icons::HudIcon;
-
 const EVENT_LOG_MAX_ENTRIES: usize = 50;
 const HUD_BOTTOM_CONTROLS_GAP: f32 = 12.0;
 const HUD_MAP_CONTROLS_DESKTOP_CLEARANCE: f32 = 100.0;
@@ -998,74 +996,66 @@ pub fn draw(
     state.prev_requests = requests.clone();
     state.prev_resource_requests = resource_requests.iter().map(|r| r.requester).collect();
 
-    let icon_size = crate::ui::theme::hud_icon_size();
-
     egui::Area::new(egui::Id::new("hud_top_icons"))
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            crate::ui::theme::hud_icon_rail_spacing(ui);
-            ui.horizontal(|ui| {
-                let inbox_resp = ui.add(crate::widgets::HudIconButton::new(
-                    asset_loader.hud_icon(HudIcon::Inbox),
-                    icon_size,
-                ));
-                if inbox_resp.clicked() {
-                    state.show_alliance_inbox = !state.show_alliance_inbox;
-                }
-
-                if total_notifications > 0 {
-                    let mut scale = 1.0_f32;
-                    if let Some(t) = state.last_request_time {
-                        let elapsed = t.elapsed().as_secs_f32();
-                        if elapsed < 0.6_f32 {
-                            let progress = elapsed / 0.6_f32;
-                            scale = 1.0_f32
-                                + 0.8_f32
-                                    * (progress * std::f32::consts::PI).sin()
-                                    * (1.0_f32 - progress);
-                            ui.ctx().request_repaint();
-                        }
+            crate::ui::theme::hud_panel_frame().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let btn_resp = ui
+                        .add(crate::widgets::HudButton::new("📩"))
+                        .on_hover_text(&sow_lang::get(lang).hud.inbox_title);
+                    if btn_resp.clicked() {
+                        state.show_alliance_inbox = !state.show_alliance_inbox;
                     }
 
-                    let badge_center = inbox_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
-                    let badge_radius = 8.0_f32 * scale;
-                    ui.painter().circle_filled(
-                        badge_center,
-                        badge_radius,
-                        Color32::from_rgb(239, 68, 68),
-                    );
-                    ui.painter().text(
-                        badge_center,
-                        egui::Align2::CENTER_CENTER,
-                        total_notifications.to_string(),
-                        egui::FontId::proportional(10.0_f32 * scale),
-                        Color32::WHITE,
-                    );
-                }
+                    if total_notifications > 0 {
+                        let mut scale = 1.0_f32;
+                        if let Some(t) = state.last_request_time {
+                            let elapsed = t.elapsed().as_secs_f32();
+                            if elapsed < 0.6_f32 {
+                                let progress = elapsed / 0.6_f32;
+                                scale = 1.0_f32
+                                    + 0.8_f32
+                                        * (progress * std::f32::consts::PI).sin()
+                                        * (1.0_f32 - progress);
+                                ui.ctx().request_repaint();
+                            }
+                        }
 
-                if ui
-                    .add(crate::widgets::HudIconButton::new(
-                        asset_loader.hud_icon(HudIcon::Settings),
-                        icon_size,
-                    ))
-                    .clicked()
-                {
-                    action = Some(UiAction::ToggleSettings);
-                }
-                if ui
-                    .add(crate::widgets::HudIconButton::new(
-                        asset_loader.hud_icon(HudIcon::Exit),
-                        icon_size,
-                    ))
-                    .clicked()
-                {
-                    action = Some(UiAction::LeaveLobby);
-                }
+                        let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
+                        crate::ui::theme::paint_count_badge(
+                            ui.painter(),
+                            badge_center,
+                            total_notifications,
+                            8.0_f32 * scale,
+                            10.0_f32 * scale,
+                            None,
+                        );
+                    }
 
-                let top_icons_rect = ui.min_rect();
-                ui.ctx().data_mut(|d| {
-                    d.insert_temp(egui::Id::new("hud_top_icons_rect"), top_icons_rect);
+                    if ui
+                        .add(crate::widgets::HudButton::new("⚙"))
+                        .on_hover_text(&sow_lang::get(lang).hud.hover_settings)
+                        .clicked()
+                    {
+                        action = Some(UiAction::ToggleSettings);
+                    }
+                    if ui
+                        .add(
+                            crate::widgets::HudButton::new("✖")
+                                .color(Color32::from_rgb(255, 100, 100)),
+                        )
+                        .on_hover_text(&sow_lang::get(lang).hud.hover_exit)
+                        .clicked()
+                    {
+                        action = Some(UiAction::LeaveLobby);
+                    }
+
+                    let top_icons_rect = ui.min_rect();
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(egui::Id::new("hud_top_icons_rect"), top_icons_rect);
+                    });
                 });
             });
         });
@@ -1393,95 +1383,90 @@ pub fn draw(
         .anchor(Align2::RIGHT_BOTTOM, map_controls_offset)
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            crate::ui::theme::hud_icon_rail_spacing(ui);
-            ui.vertical(|ui| {
-                if ui
-                    .add(crate::widgets::HudIconButton::new(
-                        asset_loader.hud_icon(HudIcon::ZoomIn),
-                        icon_size,
-                    ))
-                    .clicked()
-                {
-                    action = Some(UiAction::ZoomIn);
-                }
-                if ui
-                    .add(crate::widgets::HudIconButton::new(
-                        asset_loader.hud_icon(HudIcon::ZoomOut),
-                        icon_size,
-                    ))
-                    .clicked()
-                {
-                    action = Some(UiAction::ZoomOut);
-                }
-                if ui
-                    .add(crate::widgets::HudIconButton::new(
-                        asset_loader.hud_icon(HudIcon::CenterCamera),
-                        icon_size,
-                    ))
-                    .clicked()
-                {
-                    action = Some(UiAction::CenterCamera);
-                }
-                if ui
-                    .add(crate::widgets::HudIconButton::new(
-                        asset_loader.hud_icon(HudIcon::Emoji),
-                        icon_size,
-                    ))
-                    .clicked()
-                {
-                    state.show_emoji_panel = !state.show_emoji_panel;
-                    if state.show_emoji_panel {
-                        state.emoji_panel_pos = None;
-                        state.emoji_panel_just_opened = true;
-                    }
-                }
-                let my_pid = state.my_player_id;
-                let total_attacks = if my_pid != 0 {
-                    state
-                        .attacks
-                        .iter()
-                        .filter(|a| a.target_owner == my_pid || a.owner_id == my_pid)
-                        .count()
-                        + state.fleets.iter().filter(|f| f.owner_id == my_pid).count()
-                } else {
-                    0
-                };
-
-                let attacks_btn = ui.add(crate::widgets::HudIconButton::new(
-                    asset_loader.hud_icon(HudIcon::BattleLog),
-                    icon_size,
-                ));
-                if attacks_btn.clicked() {
-                    state.bottom_tab = BottomHudTab::BattleLog;
-                    state.battle_log_seen_count = total_attacks;
-                }
-
-                let battle_unread = if state.bottom_tab != BottomHudTab::BattleLog {
-                    total_attacks.saturating_sub(state.battle_log_seen_count)
-                } else {
-                    0
-                };
-
-                if battle_unread > 0 {
-                    let badge_center = attacks_btn.rect.right_top() + egui::vec2(-2.0, 2.0);
-                    ui.painter().circle_filled(
-                        badge_center,
-                        6.5,
-                        Color32::from_rgb(239, 68, 68),
-                    );
-                    ui.painter().text(
-                        badge_center,
-                        egui::Align2::CENTER_CENTER,
-                        if battle_unread > 9 {
-                            "9+".to_string()
+            crate::ui::theme::panel_frame(crate::ui::theme::PanelKind::HudOverlay, compact).show(
+                ui,
+                |ui| {
+                    let btn_w = if cfg!(target_os = "android") {
+                        48.0
+                    } else {
+                        32.0
+                    };
+                    ui.set_width(btn_w);
+                    ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
+                    ui.vertical_centered(|ui| {
+                        if ui
+                            .add(crate::widgets::HudButton::new("+"))
+                            .on_hover_text(&sow_lang::get(lang).hud.hover_zoom_in)
+                            .clicked()
+                        {
+                            action = Some(UiAction::ZoomIn);
+                        }
+                        if ui
+                            .add(crate::widgets::HudButton::new("-"))
+                            .on_hover_text(&sow_lang::get(lang).hud.hover_zoom_out)
+                            .clicked()
+                        {
+                            action = Some(UiAction::ZoomOut);
+                        }
+                        if ui
+                            .add(crate::widgets::HudButton::new("⌖"))
+                            .on_hover_text(&sow_lang::get(lang).hud.hover_center_camera)
+                            .clicked()
+                        {
+                            action = Some(UiAction::CenterCamera);
+                        }
+                        ui.separator();
+                        if ui
+                            .add(crate::widgets::HudButton::new("😀"))
+                            .on_hover_text("Express Emoji")
+                            .clicked()
+                        {
+                            state.show_emoji_panel = !state.show_emoji_panel;
+                            if state.show_emoji_panel {
+                                state.emoji_panel_pos = None;
+                                state.emoji_panel_just_opened = true;
+                            }
+                        }
+                        let my_pid = state.my_player_id;
+                        let total_attacks = if my_pid != 0 {
+                            state
+                                .attacks
+                                .iter()
+                                .filter(|a| a.target_owner == my_pid || a.owner_id == my_pid)
+                                .count()
+                                + state.fleets.iter().filter(|f| f.owner_id == my_pid).count()
                         } else {
-                            battle_unread.to_string()
-                        },
-                        egui::FontId::proportional(8.5),
-                        Color32::WHITE,
-                    );
-                }
-            });
+                            0
+                        };
+
+                        let attacks_btn = ui
+                            .add(crate::widgets::HudButton::new("⚔"))
+                            .on_hover_text("Battle Log");
+                        if attacks_btn.clicked() {
+                            state.bottom_tab = BottomHudTab::BattleLog;
+                            state.battle_log_seen_count = total_attacks;
+                        }
+
+                        let battle_unread = if state.bottom_tab != BottomHudTab::BattleLog {
+                            total_attacks.saturating_sub(state.battle_log_seen_count)
+                        } else {
+                            0
+                        };
+
+                        if battle_unread > 0 {
+                            let badge_center = attacks_btn.rect.right_top() + egui::vec2(-2.0, 2.0);
+                            crate::ui::theme::paint_count_badge(
+                                ui.painter(),
+                                badge_center,
+                                battle_unread,
+                                6.5,
+                                8.5,
+                                Some(9),
+                            );
+                        }
+                    });
+                },
+            );
         });
 
     // ── Bottom-left Attack Ratio Panel ────────────────────────────────────
@@ -1903,6 +1888,8 @@ pub fn draw(
     draw_sync_overlay(ui.ctx(), state, lang);
     draw_betrayal_overlay(ui.ctx(), state, cancel_intents);
     draw_error_overlay(ui.ctx(), state);
+
+    crate::ui::attribution::draw_openfront_footer(ui, lang);
 
     action
 }

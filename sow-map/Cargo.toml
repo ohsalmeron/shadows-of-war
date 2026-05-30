@@ -3,6 +3,7 @@ name = "sow-map"
 version = "0.1.0"
 edition = "2021"
 description = "Shadows of War Map Crate (Interactive Editor and Generator)"
+license = "AGPL-3.0-or-later"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
