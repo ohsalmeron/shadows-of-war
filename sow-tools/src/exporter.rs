@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 pub fn export_map(
     map_name: &str,
+    display_name: &str,
     width: u32,
     height: u32,
     terrain: Vec<MapTile>,
@@ -30,7 +31,7 @@ pub fn export_map(
         .collect();
 
     let map_file = MapFile {
-        display_name: map_name.to_string(),
+        display_name: display_name.to_string(),
         width,
         height,
         num_land_tiles: num_land,
@@ -47,8 +48,14 @@ pub fn export_map(
     drop(writer);
     fs::write(Path::new(&output_dir).join("map.bin.br"), out)?;
 
-    let maps_root = maps_root();
-    if let Err(e) = refresh_catalog(&maps_root) {
+    let preview = sow_map::terrain_preview_image(width, height, &map_file.terrain);
+    sow_map::write_square_thumbnail(
+        &preview,
+        &Path::new(&output_dir).join("thumbnail.webp"),
+    )
+    .map_err(|e| format!("thumbnail: {e}"))?;
+
+    if let Err(e) = refresh_catalog(&maps_root()) {
         eprintln!("Warning: could not refresh catalog.bin: {e}");
     }
 

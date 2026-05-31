@@ -712,7 +712,7 @@ pub enum MapEditorGlassPanel {
 #[inline]
 pub fn map_editor_glass_frame(panel: MapEditorGlassPanel, _compact: bool) -> egui::Frame {
     let (blur, margin, shadow_alpha, offset_y) = match panel {
-        MapEditorGlassPanel::Top => (16_u8, Margin::symmetric(20, 14), 15_u8, 6),
+        MapEditorGlassPanel::Top => (16_u8, Margin::symmetric(24, 18), 15_u8, 6),
         MapEditorGlassPanel::Side => (24_u8, Margin::symmetric(16, 20), 20_u8, 8),
     };
     egui::Frame::new()

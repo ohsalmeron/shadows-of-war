@@ -24,6 +24,7 @@ src/assets/
 
 # Debug / Log Outputs
 *.log
+dump.rdb
 *debug*.txt
 eslint_out.txt
 leaders/

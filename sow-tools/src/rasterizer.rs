@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sow_core::map::MapTile;
 
 const OCEAN_WATER: u8 = 0b00100000;
 const LAND_PLAINS: u8 = 0b10000000;
+const PURE_WATER: u8 = 0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FillKind {
@@ -11,48 +13,206 @@ enum FillKind {
 }
 
 struct LabeledRing {
-    kind: FillKind,
     points: Vec<(f32, f32)>,
 }
 
-pub fn rasterize_map(
+/// Projected OSM geometry merged across tiles (coastlines only — kept small in memory).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoastlineGeometry {
+    pub segments: Vec<Vec<(f32, f32)>>,
+}
+
+pub fn map_dimensions(
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+    scale: f64,
+) -> (u32, u32) {
+    let width = sow_core::maps::align_map_dim(((max_lon - min_lon) * scale).ceil() as u32);
+    let height = sow_core::maps::align_map_dim(((max_lat - min_lat) * scale).ceil() as u32);
+    (width, height)
+}
+
+pub fn extract_coastlines(
+    data: &Value,
+    min_lon: f64,
+    _min_lat: f64,
+    _max_lon: f64,
+    max_lat: f64,
+    scale: f64,
+    width: u32,
+    height: u32,
+) -> CoastlineGeometry {
+    let (_, _, segments) =
+        collect_geometry(data, min_lon, _min_lat, _max_lon, max_lat, scale, width, height);
+    CoastlineGeometry { segments }
+}
+
+pub fn stamp_water_polygons(
+    grid: &mut [MapTile],
     data: &Value,
     min_lon: f64,
     min_lat: f64,
     max_lon: f64,
     max_lat: f64,
     scale: f64,
+    width: u32,
+    height: u32,
+) {
+    let (_, water_rings, _) =
+        collect_geometry(data, min_lon, min_lat, max_lon, max_lat, scale, width, height);
+    for ring in &water_rings {
+        fill_polygon(width, height, &ring.points, |idx| {
+            grid[idx] = MapTile::from_byte(PURE_WATER);
+        });
+    }
+}
+
+pub fn build_landmass_from_coastlines(
+    coastlines: &CoastlineGeometry,
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+    scale: f64,
 ) -> (u32, u32, Vec<MapTile>) {
-    let mut width = ((max_lon - min_lon) * scale).ceil() as u32;
-    let mut height = ((max_lat - min_lat) * scale).ceil() as u32;
-    width -= width % 4;
-    height -= height % 4;
-    width = width.max(4);
-    height = height.max(4);
-
+    let (width, height) = map_dimensions(min_lon, min_lat, max_lon, max_lat, scale);
     let size = (width * height) as usize;
-    let mut grid = vec![MapTile::from_byte(OCEAN_WATER); size];
 
-    let rings = collect_rings(data, min_lon, min_lat, max_lon, max_lat, scale, width, height);
+    eprintln!(
+        "Landmass from {} coastline segments",
+        coastlines.segments.len()
+    );
 
-    for ring in &rings {
-        if ring.kind == FillKind::Land {
-            fill_polygon(width, height, &ring.points, |idx| {
-                grid[idx] = MapTile::from_byte(LAND_PLAINS);
-            });
-        }
+    let mut grid = vec![MapTile::from_byte(PURE_WATER); size];
+    let mut barriers = vec![false; size];
+    for line in &coastlines.segments {
+        rasterize_polyline_barrier(&mut barriers, width, height, line, 5.0);
     }
-    for ring in &rings {
-        if ring.kind == FillKind::Water {
-            fill_polygon(width, height, &ring.points, |idx| {
-                grid[idx] = MapTile::from_byte(0);
-            });
-        }
+    dilate_barriers(&mut barriers, width, height);
+
+    flood_ocean_from_edges(&mut grid, width, height, &barriers);
+
+    if !coastlines.segments.is_empty() {
+        let seed_x = ((min_lon + max_lon) * 0.5 - min_lon) * scale;
+        let seed_y = (max_lat - (min_lat + max_lat) * 0.5) * scale;
+        flood_fill_land(
+            &mut grid,
+            width,
+            height,
+            seed_x.round() as i32,
+            seed_y.round() as i32,
+            &barriers,
+        );
+    } else {
+        eprintln!("Warning: no coastline data; map will be all ocean");
     }
+
+    let land_count = grid.iter().filter(|t| t.is_land()).count();
+    let water_count = grid.len() - land_count;
+    eprintln!("Landmass {width}x{height}: {land_count} land, {water_count} water tiles");
 
     apply_ocean_and_shoreline(&mut grid, width, height);
-
     (width, height, grid)
+}
+
+fn collect_geometry(
+    data: &Value,
+    min_lon: f64,
+    _min_lat: f64,
+    _max_lon: f64,
+    max_lat: f64,
+    scale: f64,
+    width: u32,
+    height: u32,
+) -> (Vec<LabeledRing>, Vec<LabeledRing>, Vec<Vec<(f32, f32)>>) {
+    let mut land_rings = Vec::new();
+    let mut water_rings = Vec::new();
+    let mut coastlines = Vec::new();
+
+    let Some(elements) = data.get("elements").and_then(|e| e.as_array()) else {
+        return (land_rings, water_rings, coastlines);
+    };
+
+    for element in elements {
+        let elem_type = element.get("type").and_then(|t| t.as_str());
+        let tags = element.get("tags");
+
+        match elem_type {
+            Some("way") => {
+                if tags_way_is_coastline(tags) {
+                    if let Some(geom) = element.get("geometry").and_then(|g| g.as_array()) {
+                        let points = geometry_to_points(
+                            geom, min_lon, max_lat, scale, width, height,
+                        );
+                        if points.len() >= 2 {
+                            coastlines.push(points);
+                        }
+                    } else if let Some(nodes) = way_nodes_from_refs(element, elements) {
+                        let projected =
+                            project_latlons(&nodes, min_lon, max_lat, scale, width, height);
+                        if projected.len() >= 2 {
+                            coastlines.push(projected);
+                        }
+                    }
+                    continue;
+                }
+
+                let Some(geom) = element.get("geometry").and_then(|g| g.as_array()) else {
+                    continue;
+                };
+                let points = geometry_to_points(
+                    geom, min_lon, max_lat, scale, width, height,
+                );
+                if points.len() < 3 {
+                    continue;
+                }
+                if let Some(kind) = classify_way(tags) {
+                    let ring = LabeledRing { points };
+                    match kind {
+                        FillKind::Land => land_rings.push(ring),
+                        FillKind::Water => water_rings.push(ring),
+                    }
+                }
+            }
+            Some("relation") => {
+                let Some(kind) = classify_relation(tags) else {
+                    continue;
+                };
+                if tags
+                    .and_then(|t| t.get("natural"))
+                    .and_then(|v| v.as_str())
+                    == Some("coastline")
+                {
+                    continue;
+                }
+                if let Some(members) = element.get("members").and_then(|m| m.as_array()) {
+                    for member in members {
+                        if member.get("role").and_then(|r| r.as_str()) != Some("outer") {
+                            continue;
+                        }
+                        let Some(geom) = member.get("geometry").and_then(|g| g.as_array()) else {
+                            continue;
+                        };
+                        let points = geometry_to_points(
+                            geom, min_lon, max_lat, scale, width, height,
+                        );
+                        if points.len() >= 3 {
+                            let ring = LabeledRing { points };
+                            match kind {
+                                FillKind::Land => land_rings.push(ring),
+                                FillKind::Water => water_rings.push(ring),
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    (land_rings, water_rings, coastlines)
 }
 
 fn lon_lat_to_pixel(
@@ -72,98 +232,9 @@ fn lon_lat_to_pixel(
     )
 }
 
-fn collect_rings(
-    data: &Value,
-    min_lon: f64,
-    min_lat: f64,
-    max_lon: f64,
-    max_lat: f64,
-    scale: f64,
-    width: u32,
-    height: u32,
-) -> Vec<LabeledRing> {
-    let mut rings = Vec::new();
-    let Some(elements) = data.get("elements").and_then(|e| e.as_array()) else {
-        return rings;
-    };
-
-    for element in elements {
-        let elem_type = element.get("type").and_then(|t| t.as_str());
-        let tags = element.get("tags");
-
-        match elem_type {
-            Some("way") => {
-                let Some(geom) = element.get("geometry").and_then(|g| g.as_array()) else {
-                    if tags_way_is_coastline(tags) {
-                        if let Some(nodes) = way_nodes_from_refs(element, elements) {
-                            let projected = project_latlons(
-                                &nodes, min_lon, max_lat, scale, width, height,
-                            );
-                            rasterize_polyline_thick(&mut rings, &projected, FillKind::Land, 3.0);
-                        }
-                    }
-                    continue;
-                };
-                let points = geometry_to_points(
-                    geom,
-                    min_lon,
-                    min_lat,
-                    max_lon,
-                    max_lat,
-                    scale,
-                    width,
-                    height,
-                );
-                if points.len() < 3 {
-                    if tags_way_is_coastline(tags) {
-                        rasterize_polyline_thick(&mut rings, &points, FillKind::Land, 2.5);
-                    }
-                    continue;
-                }
-                if let Some(kind) = classify_way(tags) {
-                    rings.push(LabeledRing { kind, points });
-                }
-            }
-            Some("relation") => {
-                let Some(kind) = classify_relation(tags) else {
-                    continue;
-                };
-                if let Some(members) = element.get("members").and_then(|m| m.as_array()) {
-                    for member in members {
-                        if member.get("role").and_then(|r| r.as_str()) != Some("outer") {
-                            continue;
-                        }
-                        let Some(geom) = member.get("geometry").and_then(|g| g.as_array()) else {
-                            continue;
-                        };
-                        let points = geometry_to_points(
-                            geom,
-                            min_lon,
-                            min_lat,
-                            max_lon,
-                            max_lat,
-                            scale,
-                            width,
-                            height,
-                        );
-                        if points.len() >= 3 {
-                            rings.push(LabeledRing { kind, points });
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    rings
-}
-
 fn geometry_to_points(
     geom: &[Value],
     min_lon: f64,
-    _min_lat: f64,
-    _max_lon: f64,
     max_lat: f64,
     scale: f64,
     width: u32,
@@ -221,10 +292,11 @@ fn project_latlons(
         .collect()
 }
 
-fn rasterize_polyline_thick(
-    rings: &mut Vec<LabeledRing>,
+fn rasterize_polyline_barrier(
+    barriers: &mut [bool],
+    width: u32,
+    height: u32,
     projected: &[(f32, f32)],
-    kind: FillKind,
     thickness: f32,
 ) {
     if projected.len() < 2 {
@@ -239,15 +311,140 @@ fn rasterize_polyline_thick(
             let cx = x0 + (x1 - x0) * t;
             let cy = y0 + (y1 - y0) * t;
             let r = thickness;
-            rings.push(LabeledRing {
-                kind,
-                points: vec![
-                    (cx - r, cy - r),
-                    (cx + r, cy - r),
-                    (cx + r, cy + r),
-                    (cx - r, cy + r),
-                ],
-            });
+            for dy in -r.ceil() as i32..=r.ceil() as i32 {
+                for dx in -r.ceil() as i32..=r.ceil() as i32 {
+                    if (dx * dx + dy * dy) as f32 > r * r {
+                        continue;
+                    }
+                    let px = cx.round() as i32 + dx;
+                    let py = cy.round() as i32 + dy;
+                    if px >= 0 && py >= 0 && px < width as i32 && py < height as i32 {
+                        barriers[(py as u32 * width + px as u32) as usize] = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn dilate_barriers(barriers: &mut [bool], width: u32, height: u32) {
+    let w = width as usize;
+    let h = height as usize;
+    let orig = barriers.to_vec();
+    for y in 0..h {
+        for x in 0..w {
+            if !orig[y * w + x] {
+                continue;
+            }
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nx = x as i32 + dx;
+                    let ny = y as i32 + dy;
+                    if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
+                        barriers[(ny as usize * w + nx as usize) as usize] = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn flood_fill_land(
+    grid: &mut [MapTile],
+    width: u32,
+    height: u32,
+    seed_x: i32,
+    seed_y: i32,
+    barriers: &[bool],
+) {
+    let w = width as i32;
+    let h = height as i32;
+    if seed_x < 0 || seed_y < 0 || seed_x >= w || seed_y >= h {
+        return;
+    }
+    let start = (seed_y * w + seed_x) as usize;
+    if barriers.get(start).copied().unwrap_or(false) || is_exterior_ocean(grid[start]) {
+        return;
+    }
+
+    let mut visited = vec![false; grid.len()];
+    let mut stack = vec![start];
+    visited[start] = true;
+
+    while let Some(cur) = stack.pop() {
+        if is_exterior_ocean(grid[cur]) {
+            continue;
+        }
+        grid[cur] = MapTile::from_byte(LAND_PLAINS);
+        let cx = (cur as i32) % w;
+        let cy = (cur as i32) / w;
+        for (dx, dy) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let nx = cx + dx;
+            let ny = cy + dy;
+            if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                continue;
+            }
+            let ni = (ny * w + nx) as usize;
+            if visited[ni]
+                || barriers.get(ni).copied().unwrap_or(false)
+                || is_exterior_ocean(grid[ni])
+            {
+                continue;
+            }
+            visited[ni] = true;
+            stack.push(ni);
+        }
+    }
+}
+
+fn is_exterior_ocean(tile: MapTile) -> bool {
+    tile.as_byte() & OCEAN_WATER != 0
+}
+
+fn flood_ocean_from_edges(grid: &mut [MapTile], width: u32, height: u32, barriers: &[bool]) {
+    let w = width as usize;
+    let h = height as usize;
+    let mut visited = vec![false; grid.len()];
+    let mut stack = Vec::new();
+
+    for x in 0..w {
+        for &y in &[0, h - 1] {
+            let idx = y * w + x;
+            if !grid[idx].is_land() && !barriers[idx] {
+                visited[idx] = true;
+                stack.push(idx);
+            }
+        }
+    }
+    for y in 0..h {
+        for &x in &[0, w - 1] {
+            let idx = y * w + x;
+            if !grid[idx].is_land() && !visited[idx] && !barriers[idx] {
+                visited[idx] = true;
+                stack.push(idx);
+            }
+        }
+    }
+
+    while let Some(cur) = stack.pop() {
+        if grid[cur].is_land() {
+            continue;
+        }
+        grid[cur] = MapTile::from_byte(OCEAN_WATER);
+        let cx = (cur % w) as i32;
+        let cy = (cur / w) as i32;
+        for (dx, dy) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let nx = cx + dx;
+            let ny = cy + dy;
+            if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                continue;
+            }
+            let ni = (ny as usize * w + nx as usize) as usize;
+            if visited[ni] || barriers[ni] || grid[ni].is_land() {
+                continue;
+            }
+            visited[ni] = true;
+            stack.push(ni);
         }
     }
 }
@@ -274,9 +471,6 @@ fn classify_relation(tags: Option<&Value>) -> Option<FillKind> {
     if is_water_tag(tags) {
         return Some(FillKind::Water);
     }
-    if tags.get("natural").and_then(|v| v.as_str()) == Some("coastline") {
-        return Some(FillKind::Land);
-    }
     None
 }
 
@@ -291,10 +485,7 @@ fn is_water_tag(tags: &Value) -> bool {
     if tags.get("landuse").and_then(|v| v.as_str()) == Some("water") {
         return true;
     }
-    if tags.get("waterway").is_some() {
-        return true;
-    }
-    false
+    tags.get("waterway").is_some()
 }
 
 fn is_land_tag(tags: &Value) -> bool {
@@ -313,7 +504,6 @@ fn is_land_tag(tags: &Value) -> bool {
             | Some("bare_rock")
             | Some("sand")
             | Some("heath")
-            | Some("coastline")
             | Some("land")
     )
 }
@@ -407,7 +597,7 @@ fn apply_ocean_and_shoreline(grid: &mut [MapTile], width: u32, height: u32) {
     if let Some(largest) = water_bodies.first() {
         for &idx in largest {
             let mut byte = grid[idx].as_byte();
-            byte |= 0b00100000;
+            byte |= OCEAN_WATER;
             grid[idx] = MapTile::from_byte(byte);
         }
     }
@@ -452,10 +642,8 @@ mod tests {
         fill_polygon(width, height, &tri, |idx| {
             grid[idx] = MapTile::from_byte(LAND_PLAINS);
         });
-        let center = grid[(10 * width + 10) as usize].is_land();
-        let corner = grid[0].is_land();
-        assert!(center);
-        assert!(!corner);
+        assert!(grid[(10 * width + 10) as usize].is_land());
+        assert!(!grid[0].is_land());
     }
 
     #[test]
@@ -470,9 +658,48 @@ mod tests {
             (10.0, 20.0),
         ];
         fill_polygon(width, height, &pond, |idx| {
-            grid[idx] = MapTile::from_byte(0);
+            grid[idx] = MapTile::from_byte(PURE_WATER);
         });
         assert!(grid[(15 * width + 15) as usize].is_water());
         assert!(grid[(2 * width + 2) as usize].is_land());
+    }
+
+    #[test]
+    fn coastline_encloses_land_and_exterior_stays_water() {
+        let width = 40u32;
+        let height = 40u32;
+        let size = (width * height) as usize;
+        let mut grid = vec![MapTile::from_byte(PURE_WATER); size];
+        let mut barriers = vec![false; size];
+
+        let coast = vec![
+            (10.0, 10.0),
+            (30.0, 10.0),
+            (30.0, 30.0),
+            (10.0, 30.0),
+            (10.0, 10.0),
+        ];
+        rasterize_polyline_barrier(&mut barriers, width, height, &coast, 5.0);
+        dilate_barriers(&mut barriers, width, height);
+
+        flood_ocean_from_edges(&mut grid, width, height, &barriers);
+        flood_fill_land(&mut grid, width, height, 20, 20, &barriers);
+        apply_ocean_and_shoreline(&mut grid, width, height);
+
+        assert!(grid[(20 * width + 20) as usize].is_land());
+        assert!(!grid[0].is_land());
+        assert!(!grid[(39 * width + 39) as usize].is_land());
+    }
+
+    #[test]
+    fn seed_fill_without_barriers_cannot_create_inland() {
+        let width = 20u32;
+        let height = 20u32;
+        let mut grid = vec![MapTile::from_byte(PURE_WATER); (width * height) as usize];
+        let barriers = vec![false; grid.len()];
+        flood_ocean_from_edges(&mut grid, width, height, &barriers);
+        flood_fill_land(&mut grid, width, height, 10, 10, &barriers);
+        assert!(!grid[(10 * width + 10) as usize].is_land());
+        assert!(grid.iter().all(|t| is_exterior_ocean(*t)));
     }
 }

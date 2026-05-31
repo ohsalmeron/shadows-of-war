@@ -49,10 +49,15 @@ pub fn extract_bots(
         if !PLACE_TYPES.contains(&place_type) {
             continue;
         }
-        let Some(poi_name) = name else {
-            continue;
-        };
-        if poi_name.trim().is_empty() {
+        let poi_name = name
+            .map(|n| n.trim())
+            .filter(|n| !n.is_empty())
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| {
+                let id = element.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+                format!("{place_type}_{id}")
+            });
+        if poi_name.ends_with("_0") {
             continue;
         }
 
@@ -70,7 +75,7 @@ pub fn extract_bots(
         }
 
         spawns.push(POISpawn {
-            name: poi_name.to_string(),
+            name: poi_name,
             x,
             y,
         });
@@ -84,4 +89,34 @@ pub fn extract_bots(
     }
 
     spawns
+}
+
+/// Spread spawn points on land when Overpass place nodes are unavailable.
+pub fn fallback_spawns_on_land(
+    terrain: &[sow_core::map::MapTile],
+    map_width: u32,
+    map_height: u32,
+    max: usize,
+) -> Vec<POISpawn> {
+    let mut out = Vec::new();
+    let cols = 8usize;
+    let rows = 4usize;
+    for row in 0..rows {
+        for col in 0..cols {
+            let x = ((col + 1) * map_width as usize / (cols + 1)) as u32;
+            let y = ((row + 1) * map_height as usize / (rows + 1)) as u32;
+            let idx = (y * map_width + x) as usize;
+            if terrain.get(idx).is_some_and(|t| t.is_land()) {
+                out.push(POISpawn {
+                    name: format!("Nation {}", out.len() + 1),
+                    x,
+                    y,
+                });
+                if out.len() >= max {
+                    return out;
+                }
+            }
+        }
+    }
+    out
 }

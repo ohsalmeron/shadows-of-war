@@ -3,6 +3,7 @@ use std::error::Error;
 use std::path::PathBuf;
 
 mod exporter;
+mod image_map;
 mod openfront_import;
 mod overpass;
 mod poi_extractor;
@@ -26,6 +27,33 @@ enum Commands {
     /// Regenerate assets/maps/catalog.bin from map.bin headers in subfolders.
     #[command(name = "refresh-catalog")]
     RefreshCatalog(RefreshCatalogArgs),
+    /// Generate a map from a source world-map PNG (land/water by pixel color).
+    #[command(name = "image-map")]
+    ImageMap(ImageMapArgs),
+}
+
+/// Generate a map from a pre-rendered world-map image (no network calls).
+#[derive(Parser, Debug)]
+struct ImageMapArgs {
+    /// Source PNG whose pixel colors encode land/water (OpenFront-style).
+    #[arg(short, long)]
+    input: PathBuf,
+
+    /// Output map slug under assets/maps.
+    #[arg(short, long)]
+    name: String,
+
+    /// Human-readable map title stored in map.bin (defaults to --name).
+    #[arg(long)]
+    display_name: Option<String>,
+
+    /// Optional info.json with nation coordinates for spawns.
+    #[arg(long)]
+    info: Option<PathBuf>,
+
+    /// Write default_single_player.ron for this map.
+    #[arg(long, default_value_t = false)]
+    single_player_config: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -52,6 +80,10 @@ pub struct GenerateArgs {
     /// Write default_single_player.ron for this map
     #[arg(long, default_value_t = false)]
     pub single_player_config: bool,
+
+    /// Human-readable map title stored in map.bin (defaults to --name)
+    #[arg(long)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -85,6 +117,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             openfront_import::refresh_catalog(&args.maps_root)?;
             println!("Wrote {}", args.maps_root.join("catalog.bin").display());
         }
+        Some(Commands::ImageMap(args)) => {
+            run_image_map(args)?;
+        }
         None => {
             let args = cli.generate;
             let bbox = args
@@ -93,7 +128,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let name = args
                 .name
                 .ok_or("Missing --name for generated map slug")?;
-            run_generate(&bbox, &name, args.scale, args.single_player_config).await?;
+            run_generate(
+                &bbox,
+                &name,
+                args.display_name.as_deref().unwrap_or(&name),
+                args.scale,
+                args.single_player_config,
+            )
+            .await?;
         }
     }
 
@@ -103,6 +145,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn run_generate(
     bbox: &str,
     name: &str,
+    display_name: &str,
     scale: f64,
     single_player_config: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -116,32 +159,86 @@ async fn run_generate(
     let max_lon: f64 = parts[2].parse()?;
     let max_lat: f64 = parts[3].parse()?;
 
+    let max_scale = sow_core::maps::max_scale_for_bbox(min_lon, min_lat, max_lon, max_lat);
+    let scale = if scale > max_scale {
+        eprintln!(
+            "Warning: scale {scale:.2} exceeds mobile-safe max {max_scale:.2}; clamping."
+        );
+        max_scale
+    } else {
+        scale
+    };
+    let (map_width, map_height) =
+        sow_core::maps::map_dims_for_bbox(min_lon, min_lat, max_lon, max_lat, scale);
     println!(
-        "Generating map '{name}' for bbox [{min_lon}, {min_lat}, {max_lon}, {max_lat}]"
+        "Target dimensions: {map_width}x{map_height} ({} pixels, max {})",
+        map_width as u64 * map_height as u64,
+        sow_core::maps::MAX_MAP_PIXELS
     );
 
-    println!("Fetching data from OpenStreetMap (Overpass API)...");
-    let overpass_data = overpass::fetch_bbox(min_lon, min_lat, max_lon, max_lat).await?;
+    println!(
+        "Generating map '{name}' for bbox [{min_lon}, {min_lat}, {max_lon}, {max_lat}] at scale {scale:.2}"
+    );
 
-    println!("Rasterizing terrain...");
-    let (map_width, map_height, terrain_grid) = rasterizer::rasterize_map(
-        &overpass_data,
+    println!("Fetching coastlines from OpenStreetMap (Overpass API)...");
+    let (map_width, map_height) =
+        rasterizer::map_dimensions(min_lon, min_lat, max_lon, max_lat, scale);
+
+    let coastlines = overpass::fetch_coastlines_tiled(
         min_lon,
         min_lat,
         max_lon,
         max_lat,
         scale,
-    );
+        map_width,
+        map_height,
+        Some(name),
+    )
+    .await?;
+
+    println!("Rasterizing landmass...");
+    let (map_width, map_height, mut terrain_grid) =
+        rasterizer::build_landmass_from_coastlines(
+            &coastlines,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+            scale,
+        );
+
+    println!("Stamping inland water (optional, tile-by-tile)...");
+    if let Err(e) = overpass::stamp_water_tiled(
+        &mut terrain_grid,
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+        scale,
+        map_width,
+        map_height,
+    )
+    .await
+    {
+        eprintln!("Warning: inland water pass failed: {e}");
+    }
 
     let land_count = terrain_grid.iter().filter(|t| t.is_land()).count();
     let water_count = terrain_grid.len() - land_count;
     println!(
         "Rasterized {map_width}x{map_height}: {land_count} land tiles, {water_count} water tiles"
     );
+    if land_count == 0 {
+        return Err(
+            "Rasterizer produced no land tiles (Overpass geometry likely incomplete). Aborting export."
+                .into(),
+        );
+    }
 
     println!("Extracting place spawns...");
-    let spawns = poi_extractor::extract_bots(
-        &overpass_data,
+    let places_data = overpass::fetch_places(min_lon, min_lat, max_lon, max_lat).await?;
+    let mut spawns = poi_extractor::extract_bots(
+        &places_data,
         min_lon,
         min_lat,
         max_lon,
@@ -150,11 +247,16 @@ async fn run_generate(
         map_width,
         map_height,
     );
+    if spawns.is_empty() {
+        eprintln!("Warning: no OSM place nodes; using land-grid fallback spawns");
+        spawns = poi_extractor::fallback_spawns_on_land(&terrain_grid, map_width, map_height, 16);
+    }
     println!("Found {} spawn points", spawns.len());
 
     println!("Exporting...");
     exporter::export_map(
         name,
+        display_name,
         map_width,
         map_height,
         terrain_grid,
@@ -163,5 +265,47 @@ async fn run_generate(
     )?;
 
     println!("Generation complete! Saved to assets/maps/{name}");
+    Ok(())
+}
+
+fn run_image_map(args: ImageMapArgs) -> Result<(), Box<dyn Error>> {
+    let display_name = args.display_name.clone().unwrap_or_else(|| args.name.clone());
+
+    let (src_w, src_h) = image::image_dimensions(&args.input)?;
+    println!(
+        "Generating '{}' from image {} ({src_w}x{src_h})",
+        args.name,
+        args.input.display()
+    );
+
+    let map = image_map::generate_from_image(&args.input)?;
+    let water = map.terrain.len() as u32 - map.num_land_tiles;
+    println!(
+        "Generated {}x{}: {} land tiles, {} water tiles ({:.1}% land)",
+        map.width,
+        map.height,
+        map.num_land_tiles,
+        water,
+        100.0 * map.num_land_tiles as f64 / map.terrain.len() as f64
+    );
+    if map.num_land_tiles == 0 {
+        return Err("Image classification produced no land tiles; check the source PNG.".into());
+    }
+
+    let spawns = image_map::spawns_from_info(args.info.as_deref(), src_w, src_h, &map);
+    println!("Found {} spawn points", spawns.len());
+
+    println!("Exporting...");
+    exporter::export_map(
+        &args.name,
+        &display_name,
+        map.width,
+        map.height,
+        map.terrain,
+        spawns,
+        args.single_player_config,
+    )?;
+
+    println!("Generation complete! Saved to assets/maps/{}", args.name);
     Ok(())
 }

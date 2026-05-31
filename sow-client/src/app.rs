@@ -741,6 +741,10 @@ impl Drop for SowApp {
         if let Some(mut gui) = self.gfx.gui_painter.take() {
             gui.destroy(&self.gfx.render_ctx.context);
         }
+        if let Some(mut s) = self.gfx.surface.take() {
+            self.gfx.render_ctx.context.destroy_surface(&mut s);
+        }
+        self.gfx.render_ctx.reset_command_encoder();
     }
 }
 
@@ -773,12 +777,18 @@ impl SowApp {
             self.gfx.window = window;
             self.gfx.surface = surface;
             self.gfx.render_ctx = render_ctx;
-            self.gfx.gui_painter = gui_painter;
             self.ui.app = client_app;
             self.ui.app.phase = ClientPhase::MainMenu;
             self.gfx.prev_sync_point = None;
             self.gfx.needs_first_upload = true;
+            self.gfx.gui_painter = gui_painter;
+
             log::info!("Reclaimed graphics state from map editor session.");
+            let _ = sow_map::MapEditorSession::reload_local_map_catalog(
+                &mut self.ui.app,
+                &self.ui.egui_ctx,
+                None,
+            );
         }
     }
 

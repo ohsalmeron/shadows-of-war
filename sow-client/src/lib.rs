@@ -172,6 +172,8 @@ pub mod hud;
 mod ime;
 pub mod input;
 pub mod loader;
+#[cfg(target_arch = "wasm32")]
+mod web_loader_assets;
 pub mod net;
 pub mod render;
 pub mod store_portals;
@@ -205,7 +207,9 @@ impl ApplicationHandler for SowApp {
             }
             if matches!(event, winit::event::WindowEvent::CloseRequested) {
                 self.teardown_map_editor_and_exit();
-                event_loop.exit();
+                if let Some(win) = self.gfx.window.as_ref() {
+                    win.request_redraw();
+                }
                 return;
             }
             editor.handle_window_event(event_loop, event);

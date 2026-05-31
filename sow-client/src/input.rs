@@ -57,8 +57,7 @@ impl SowApp {
                     }
                     self.gfx
                         .render_ctx
-                        .context
-                        .destroy_command_encoder(&mut self.gfx.render_ctx.command_encoder);
+                        .reset_command_encoder();
                     self.gfx.render_ctx.context.destroy_surface(&mut s);
                 }
                 event_loop.exit()
@@ -742,7 +741,7 @@ impl SowApp {
 
                 if self.ui.app.hud_state.gold < cost {
                     valid = false;
-                    err_msg = format!("Need {} Gold!", cost);
+                    err_msg = format!("Need {} Gold!", sow_ui::utils::format_number(cost));
                 } else {
                     match target_res {
                         Ok(_) => {}

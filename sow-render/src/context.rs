@@ -66,4 +66,14 @@ impl RenderContext {
         };
         self.context.create_surface_configured(window, config)
     }
+
+    /// Drop and recreate the command encoder so Blade releases internal scratch buffers.
+    pub fn reset_command_encoder(&mut self) {
+        self.context
+            .destroy_command_encoder(&mut self.command_encoder);
+        self.command_encoder = self.context.create_command_encoder(gpu::CommandEncoderDesc {
+            name: "main",
+            buffer_count: 2,
+        });
+    }
 }

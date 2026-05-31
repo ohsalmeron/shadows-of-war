@@ -406,6 +406,16 @@ impl SowApp {
                     );
                 }
                 UiAction::OpenMapEditor => {
+                    if let Some(sp) = self.gfx.prev_sync_point.take() {
+                        let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+                    }
+                    if let Some(mut mr) = self.gfx.map_renderer.take() {
+                        mr.destroy(&self.gfx.render_ctx);
+                    }
+                    if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                        mover.destroy(&self.gfx.render_ctx);
+                    }
+
                     let window = self
                         .gfx
                         .window

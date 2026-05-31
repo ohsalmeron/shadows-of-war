@@ -979,7 +979,7 @@ impl SowApp {
             *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 1.0f32)
         });
         let mut bscale = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 2.0f32)
+            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 1.0f32)
         });
         ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));

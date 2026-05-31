@@ -1317,12 +1317,11 @@ pub(crate) fn render(
                 ];
 
                 let is_stack = stack_target.is_some();
-                let outline_color = if !is_valid || !has_gold {
-                    egui::Color32::from_rgb(239, 68, 68) // Red
-                } else if is_stack {
-                    egui::Color32::from_rgb(250, 204, 21) // Gold for upgrade
+                let can_place = is_valid && has_gold;
+                let outline_color = if can_place {
+                    egui::Color32::from_rgb(34, 211, 238) // Cyan — new build and upgrade
                 } else {
-                    egui::Color32::from_rgb(34, 211, 238) // Cyan for new
+                    egui::Color32::from_rgb(239, 68, 68) // Red — invalid / broke
                 };
 
                 painter.add(egui::Shape::convex_polygon(
@@ -1336,8 +1335,8 @@ pub(crate) fn render(
                     egui::Stroke::new(3.0_f32, outline_color),
                 ));
 
-                // Draw Bunker range circle preview if Bunker
-                if kind == sow_core::game::BuildingKind::Bunker {
+                // Draw Bunker range circle preview for new placement only (not upgrades)
+                if kind == sow_core::game::BuildingKind::Bunker && !is_stack {
                     let current_range = config.bunker_range as f32;
                     let s_radius = (current_range * input.camera_zoom) / sf;
                     let range_color = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 120);
@@ -1399,7 +1398,7 @@ pub(crate) fn render(
                     } else {
                         format!("Lvl {} -> {}", current_lvl, current_lvl + 1)
                     };
-                    let cost_text = format!("{}g", cost as u32);
+                    let cost_text = format!("{}g", sow_ui::utils::format_number(cost));
 
                     let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
                     let font_id = egui::FontId::proportional(font_size);
@@ -1497,7 +1496,10 @@ pub(crate) fn render(
                         ),
                     );
 
-                    let text_val = format!("-{}", deficit);
+                    let text_val = format!(
+                        "-{}",
+                        sow_ui::utils::format_number(deficit.ceil())
+                    );
                     let font_size = (zoom_scaled * 0.65 * final_scale).clamp(10.0, 20.0).round();
                     let font_id = egui::FontId::proportional(font_size);
                     let galley = painter.layout_no_wrap(

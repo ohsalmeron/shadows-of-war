@@ -44,13 +44,12 @@ pub fn run_import(args: ImportArgs) -> Result<(), Box<dyn std::error::Error>> {
     drop(writer);
     fs::write(out_dir.join("map.bin.br"), brotli_out)?;
 
+    let thumb_path = out_dir.join("thumbnail.webp");
     if let Ok(img) = image::open(&input.join("image.png")) {
-        let thumb_path = out_dir.join("thumbnail.webp");
-        if img.save(&thumb_path).is_err() {
-            write_placeholder_thumbnail(&map_file, &thumb_path)?;
-        }
+        sow_map::write_square_thumbnail(&img, &thumb_path)
+            .map_err(|e| format!("thumbnail: {e}"))?;
     } else {
-        write_placeholder_thumbnail(&map_file, &out_dir.join("thumbnail.webp"))?;
+        write_placeholder_thumbnail(&map_file, &thumb_path)?;
     }
 
     refresh_catalog(&args.maps_root)?;
@@ -200,25 +199,8 @@ fn write_placeholder_thumbnail(
     map_file: &MapFile,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let w = map_file.width.min(256).max(1);
-    let h = map_file.height.min(256).max(1);
-    let mut rgba = vec![106u8; (w * h * 4) as usize];
-    for (i, &byte) in map_file.terrain.iter().enumerate() {
-        if i as u32 >= w * h {
-            break;
-        }
-        if (byte & 0x80) != 0 {
-            let px = i * 4;
-            rgba[px] = 190;
-            rgba[px + 1] = 200;
-            rgba[px + 2] = 138;
-            rgba[px + 3] = 255;
-        }
-    }
-    let img = image::RgbaImage::from_raw(w, h, rgba)
-        .ok_or("thumbnail buffer size mismatch")?;
-    img.save(path)?;
-    Ok(())
+    let preview = sow_map::terrain_preview_image(map_file.width, map_file.height, &map_file.terrain);
+    sow_map::write_square_thumbnail(&preview, path).map_err(|e| e.into())
 }
 
 pub fn refresh_catalog(maps_root: &Path) -> Result<(), Box<dyn std::error::Error>> {

@@ -166,6 +166,10 @@ impl SowApp {
                         #[cfg(target_arch = "wasm32")]
                         {
                             // HTML overlay owns boot; map catalog streams in background.
+                            crate::web_loader_assets::try_ingest_web_loader_textures(
+                                &self.ui.egui_ctx,
+                                &mut self.ui.app.asset_loader,
+                            );
                             self.ui.app.phase = ClientPhase::MainMenu;
                             hide_web_loader();
                             crate::store_portals::load_stop();

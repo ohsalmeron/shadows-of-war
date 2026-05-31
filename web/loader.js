@@ -144,6 +144,8 @@
 
         root.innerHTML = `
             <img id="splash-bg" class="splash-bg" alt="" decoding="async" fetchpriority="high" src="${splashSrc()}">
+            <img id="splash-desktop" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.splashDesktop)}" hidden>
+            <img id="splash-mobile" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.splashMobile)}" hidden>
             <div id="loader-bar-wrap" class="loader-bar-wrap">
                 <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.loaderEmpty)}">
                 <div id="loader-bar-fill" class="loader-bar-fill">
@@ -178,6 +180,67 @@
         loaderText = null;
     }
 
+    function rgbaFromImg(img) {
+        if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) {
+            return null;
+        }
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, w, h);
+        return {
+            width: w,
+            height: h,
+            rgba: new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength),
+        };
+    }
+
+    /** Snapshot boot loader images for egui enter/exit splashes (called from WASM before fade). */
+    function exportWebLoaderTextures() {
+        if (window.__SOW_LOADER_TEXTURES__) {
+            return window.__SOW_LOADER_TEXTURES__;
+        }
+        if (!root) {
+            return null;
+        }
+
+        const desktopEl = document.getElementById('splash-desktop');
+        const mobileEl = document.getElementById('splash-mobile');
+        const emptyEl = document.getElementById('loader-bar-empty');
+        const fullEl = document.getElementById('loader-bar-full');
+
+        let splashDesktop = rgbaFromImg(desktopEl);
+        let splashMobile = rgbaFromImg(mobileEl);
+
+        // Fallback: visible splash-bg may be decoded before hidden preload siblings.
+        if (!splashDesktop && splashBg && splashBg.src.includes('sow-splash-desktop')) {
+            splashDesktop = rgbaFromImg(splashBg);
+        }
+        if (!splashMobile && splashBg && splashBg.src.includes('sow-splash-mobile')) {
+            splashMobile = rgbaFromImg(splashBg);
+        }
+
+        const out = {};
+        const loaderEmpty = rgbaFromImg(emptyEl);
+        const loaderFull = rgbaFromImg(fullEl);
+
+        if (splashDesktop) out.splash_desktop = splashDesktop;
+        if (splashMobile) out.splash_mobile = splashMobile;
+        if (loaderEmpty) out.loader_empty = loaderEmpty;
+        if (loaderFull) out.loader_full = loaderFull;
+
+        if (Object.keys(out).length === 0) {
+            return null;
+        }
+
+        window.__SOW_LOADER_TEXTURES__ = out;
+        return out;
+    }
+
     function finish() {
         if (!root || finishing) return;
         finishing = true;
@@ -206,5 +269,6 @@
     }
 
     window.hideWebLoader = finish;
+    window.exportWebLoaderTextures = exportWebLoaderTextures;
     init();
 })();

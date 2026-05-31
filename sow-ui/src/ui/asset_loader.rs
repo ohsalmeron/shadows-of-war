@@ -46,6 +46,15 @@ impl Default for AssetLoader {
     }
 }
 
+/// Splash / loader bar textures used by the loading screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiSplashTexture {
+    LoaderEmpty,
+    LoaderFull,
+    SplashDesktop,
+    SplashMobile,
+}
+
 impl AssetLoader {
     /// Normalize map display names to folder keys (e.g. "Bering Strait" -> "beringstrait").
     pub fn map_key(name: &str) -> String {
@@ -347,6 +356,54 @@ impl AssetLoader {
         ));
     }
 
+    pub fn ui_splash_ready(&self) -> bool {
+        self.ui_loader_empty.is_some()
+            && self.ui_loader_full.is_some()
+            && self.splash_desktop.is_some()
+            && self.splash_mobile.is_some()
+    }
+
+    pub fn ingest_ui_splash_texture(
+        &mut self,
+        ctx: &egui::Context,
+        kind: UiSplashTexture,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> bool {
+        let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+        if rgba.len() != expected {
+            log::warn!(
+                "ui splash texture {:?} size mismatch: got {} expected {}",
+                kind,
+                rgba.len(),
+                expected
+            );
+            return false;
+        }
+
+        let color_image =
+            egui::ColorImage::from_rgba_unmultiplied([width as _, height as _], rgba);
+        let texture = ctx.load_texture(
+            match kind {
+                UiSplashTexture::LoaderEmpty => "ui_loader_empty",
+                UiSplashTexture::LoaderFull => "ui_loader_full",
+                UiSplashTexture::SplashDesktop => "sow_splash_desktop",
+                UiSplashTexture::SplashMobile => "sow_splash_mobile",
+            },
+            color_image,
+            egui::TextureOptions::LINEAR,
+        );
+
+        match kind {
+            UiSplashTexture::LoaderEmpty => self.ui_loader_empty = Some(texture),
+            UiSplashTexture::LoaderFull => self.ui_loader_full = Some(texture),
+            UiSplashTexture::SplashDesktop => self.splash_desktop = Some(texture),
+            UiSplashTexture::SplashMobile => self.splash_mobile = Some(texture),
+        }
+        true
+    }
+
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
         if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
             let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
@@ -361,7 +418,10 @@ impl AssetLoader {
         }
 
         #[cfg(target_arch = "wasm32")]
-        return;
+        {
+            // Splash/bar textures are transferred from the HTML boot loader at WASM boot.
+            return;
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         {

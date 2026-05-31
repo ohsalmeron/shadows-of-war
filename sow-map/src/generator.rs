@@ -47,6 +47,16 @@ pub fn generate_map(args: GeneratorArgs) -> Result<MapResult, String> {
         return Err("Invalid map dimensions or pixel buffer size".to_string());
     }
 
+    if !sow_core::maps::map_within_pixel_budget(width, height) {
+        log::warn!(
+            "Map {}x{} ({} pixels) exceeds mobile-safe max {} pixels",
+            width,
+            height,
+            width as u64 * height as u64,
+            sow_core::maps::MAX_MAP_PIXELS
+        );
+    }
+
     log::info!("Processing Map: dimensions {}x{}", width, height);
 
     let mut grid = vec![

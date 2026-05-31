@@ -272,8 +272,22 @@ impl SowApp {
                     };
 
                     if let Some(snap) = &self.sim.current_snapshot {
+                        let my_id = self.sim.my_player_id.unwrap_or(0);
+                        let stack_tile = crate::input::find_stack_target_tile(
+                            kind,
+                            col,
+                            row,
+                            self.sim.map_w,
+                            my_id,
+                            &snap.buildings,
+                        );
+
                         let mut list = Vec::new();
                         for b in &snap.buildings {
+                            if stack_tile == Some(b.tile_idx) {
+                                continue;
+                            }
+
                             let bx = (b.tile_idx % self.sim.map_w) as i32;
                             let by = (b.tile_idx / self.sim.map_w) as i32;
 
