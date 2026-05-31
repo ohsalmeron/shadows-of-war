@@ -1,10 +1,11 @@
+use crate::cli_error;
 use crate::openfront_import::refresh_catalog;
 use crate::poi_extractor::POISpawn;
 use sow_core::map::MapTile;
 use sow_core::map_file::{self, MapFile, MapSpawn};
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub fn export_map(
     map_name: &str,
@@ -14,8 +15,20 @@ pub fn export_map(
     terrain: Vec<MapTile>,
     spawns: Vec<POISpawn>,
     single_player_config: bool,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let output_dir = format!("assets/maps/{}", map_name);
+    let output_dir = maps_root().join(map_name);
+    let map_bin = output_dir.join("map.bin");
+    if map_bin.exists() && !force {
+        return Err(cli_error::user_error(
+            "export map",
+            format!(
+                "{} already exists; re-run with --force to overwrite",
+                map_bin.display()
+            ),
+        )
+        .into());
+    }
     fs::create_dir_all(&output_dir)?;
 
     let terrain_bytes: Vec<u8> = terrain.iter().map(|t| t.as_byte()).collect();
@@ -39,24 +52,27 @@ pub fn export_map(
         terrain: terrain_bytes,
     };
     let encoded = map_file::encode(&map_file);
-    fs::write(Path::new(&output_dir).join("map.bin"), &encoded)?;
+    fs::write(&map_bin, &encoded)?;
 
     let mut out = Vec::new();
     let mut writer = brotli::CompressorWriter::new(&mut out, 4096, 11, 22);
     writer.write_all(&encoded)?;
     writer.flush()?;
     drop(writer);
-    fs::write(Path::new(&output_dir).join("map.bin.br"), out)?;
+    fs::write(output_dir.join("map.bin.br"), out)?;
 
     let preview = sow_map::terrain_preview_image(width, height, &map_file.terrain);
     sow_map::write_square_thumbnail(
         &preview,
-        &Path::new(&output_dir).join("thumbnail.webp"),
+        &output_dir.join("thumbnail.webp"),
     )
-    .map_err(|e| format!("thumbnail: {e}"))?;
+    .map_err(|e| cli_error::user_error("write thumbnail", e))?;
 
     if let Err(e) = refresh_catalog(&maps_root()) {
-        eprintln!("Warning: could not refresh catalog.bin: {e}");
+        eprintln!(
+            "Warning: {}",
+            cli_error::user_error("refresh catalog", e)
+        );
     }
 
     if single_player_config {

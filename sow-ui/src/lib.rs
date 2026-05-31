@@ -9,6 +9,7 @@ pub use app::ClientApp;
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiAction {
     ConnectToServer(String),
+    RetryConnection,
     JoinLobby(u64),
     LeaveLobby,
     StartSinglePlayer(Box<sow_core::game_config::GameConfig>),

@@ -3,7 +3,6 @@ use blade_graphics as gpu;
 use egui::Context;
 use sow_render::{MapGlobals, MapRenderer, RenderContext};
 use sow_ui::ClientApp;
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use web_time::Instant;
@@ -12,36 +11,22 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
 #[cfg(not(target_arch = "wasm32"))]
+use crate::geo_underlay::{GeoGlobals, GeoUnderlayRenderer};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::image_pipeline::generate_from_rgba;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::osm_tiles::{
     classify_osm_to_rgba, fetch_region_blocking, lonlat_to_world_px, pick_fetch_zoom,
-    tiles_covering_rect, world_px_to_lonlat, CachedTile, OsmTileCache, TileKey, TILE_SIZE,
+    tiles_covering_rect, world_px_to_lonlat, OsmTileCache, TileKey, TILE_SIZE,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-struct OsmPickerState {
-    center_lon: f64,
-    center_lat: f64,
-    zoom: u32,
+struct OsmGeoState {
+    tile_zoom: u32,
+    cache: OsmTileCache,
+    underlay: Option<GeoUnderlayRenderer>,
     sel_anchor_world: Option<(f64, f64)>,
     sel_corner_world: Option<(f64, f64)>,
-    cache: OsmTileCache,
-    textures: HashMap<TileKey, egui::TextureHandle>,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl Default for OsmPickerState {
-    fn default() -> Self {
-        Self {
-            center_lon: -95.0,
-            center_lat: 40.0,
-            zoom: 4,
-            sel_anchor_world: None,
-            sel_corner_world: None,
-            cache: OsmTileCache::default(),
-            textures: HashMap::new(),
-        }
-    }
 }
 
 pub struct MapEditorSession {
@@ -53,6 +38,7 @@ pub struct MapEditorSession {
     pub gui_painter: Option<GuiPainter>,
     pub prev_sync_point: Option<gpu::SyncPoint>,
     pub needs_first_upload: bool,
+    pub needs_owner_upload: bool,
 
     // Session states
     pub width: u32,
@@ -82,9 +68,12 @@ pub struct MapEditorSession {
     pub start_time: Instant,
 
     #[cfg(not(target_arch = "wasm32"))]
-    osm_picker: OsmPickerState,
+    osm: OsmGeoState,
     #[cfg(not(target_arch = "wasm32"))]
     osm_selecting: bool,
+
+    undo_stack: Vec<Vec<u8>>,
+    paint_stroke_snapshotted: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -145,6 +134,7 @@ impl MapEditorSession {
             gui_painter: Some(gui_painter),
             prev_sync_point: None,
             needs_first_upload: true,
+            needs_owner_upload: true,
 
             width,
             height,
@@ -171,9 +161,18 @@ impl MapEditorSession {
             start_time: Instant::now(),
 
             #[cfg(not(target_arch = "wasm32"))]
-            osm_picker: OsmPickerState::default(),
+            osm: OsmGeoState {
+                tile_zoom: 4,
+                cache: OsmTileCache::default(),
+                underlay: None,
+                sel_anchor_world: None,
+                sel_corner_world: None,
+            },
             #[cfg(not(target_arch = "wasm32"))]
             osm_selecting: false,
+
+            undo_stack: Vec::new(),
+            paint_stroke_snapshotted: false,
         }
     }
 
@@ -195,6 +194,11 @@ impl MapEditorSession {
             }
             if let Some(mut mr) = self.map_renderer.take() {
                 mr.destroy(&self.render_ctx);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(ref mut underlay) = self.osm.underlay {
+                underlay.destroy(&self.render_ctx);
+                self.osm.underlay = None;
             }
             self.render_ctx.reset_command_encoder();
             self.render_ctx.context.destroy_surface(&mut s);
@@ -329,6 +333,10 @@ impl MapEditorSession {
                     if let Some(mut old_gp) = self.gui_painter.take() {
                         old_gp.destroy(&self.render_ctx.context);
                     }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(mut underlay) = self.osm.underlay.take() {
+                        underlay.destroy(&self.render_ctx);
+                    }
 
                     self.map_renderer = Some(MapRenderer::new(
                         &self.render_ctx.context,
@@ -338,6 +346,7 @@ impl MapEditorSession {
                         &self.terrain,
                     ));
                     self.needs_first_upload = true;
+                    self.needs_owner_upload = true;
                     self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
                     self.surface = Some(s);
                     log::info!("Successfully recreated editor surface.");
@@ -421,8 +430,8 @@ impl MapEditorSession {
                         && self.osm_selecting
                         && self.pointer_on_map_canvas()
                     {
-                        let (wx, wy) = self.screen_to_world_px(logical_x, logical_y);
-                        self.osm_picker.sel_corner_world = Some((wx, wy));
+                        let (wx, wy) = self.screen_to_world(logical_x, logical_y);
+                        self.osm.sel_corner_world = Some((wx, wy));
                     }
                     self.raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(
                         logical_x, logical_y,
@@ -458,15 +467,17 @@ impl MapEditorSession {
                     self.dragging = pressed;
                 } else if is_left {
                     self.primary_button_down = pressed;
+                    if !pressed {
+                        self.paint_stroke_snapshotted = false;
+                    }
                     #[cfg(not(target_arch = "wasm32"))]
                     if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker
                         && is_left
                     {
                         if pressed && self.pointer_on_map_canvas() {
-                            let (wx, wy) =
-                                self.screen_to_world_px(logical_x, logical_y);
-                            self.osm_picker.sel_anchor_world = Some((wx, wy));
-                            self.osm_picker.sel_corner_world = Some((wx, wy));
+                            let (wx, wy) = self.screen_to_world(logical_x, logical_y);
+                            self.osm.sel_anchor_world = Some((wx, wy));
+                            self.osm.sel_corner_world = Some((wx, wy));
                             self.osm_selecting = true;
                         } else if !pressed {
                             self.osm_selecting = false;
@@ -499,18 +510,20 @@ impl MapEditorSession {
                     }
                 };
 
-                if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
+                if self.pointer_on_map_canvas() {
                     #[cfg(not(target_arch = "wasm32"))]
-                    self.zoom_osm(scroll);
-                } else if self.pointer_on_map_canvas() {
-                    let zoom_speed = 0.002f32;
-                    let old_zoom = self.camera_zoom;
-                    self.camera_zoom =
-                        (self.camera_zoom * (1.0 + scroll * zoom_speed)).clamp(0.2, 10.0);
-                    let mx = self.last_mouse_logical_x;
-                    let my = self.last_mouse_logical_y;
-                    self.camera_x = mx - (mx - self.camera_x) * (self.camera_zoom / old_zoom);
-                    self.camera_y = my - (my - self.camera_y) * (self.camera_zoom / old_zoom);
+                    if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
+                        self.adjust_osm_tile_zoom(scroll);
+                    } else {
+                        let zoom_speed = 0.002f32;
+                        let old_zoom = self.camera_zoom;
+                        self.camera_zoom =
+                            (self.camera_zoom * (1.0 + scroll * zoom_speed)).clamp(0.2, 10.0);
+                        let mx = self.last_mouse_logical_x;
+                        let my = self.last_mouse_logical_y;
+                        self.camera_x = mx - (mx - self.camera_x) * (self.camera_zoom / old_zoom);
+                        self.camera_y = my - (my - self.camera_y) * (self.camera_zoom / old_zoom);
+                    }
                 } else if self.egui_ctx.egui_wants_pointer_input() {
                     let sf = self.scale_factor() as f32;
                     let (unit, vec_delta) = match delta {
@@ -543,7 +556,35 @@ impl MapEditorSession {
         }
     }
 
+    fn push_undo_snapshot(&mut self) {
+        const MAX_UNDO: usize = 20;
+        self.undo_stack.push(self.terrain.clone());
+        if self.undo_stack.len() > MAX_UNDO {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    fn undo_last_stroke(&mut self) {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.terrain = prev;
+            self.dirty_tiles.clear();
+            if let Some(ref mut mr) = self.map_renderer {
+                mr.terrain.clone_from(&self.terrain);
+            }
+            self.dirty_tiles.extend(0..self.terrain.len());
+            self.editor_ui.is_dirty = !self.undo_stack.is_empty();
+        }
+    }
+
+    fn mark_dirty(&mut self) {
+        self.editor_ui.is_dirty = true;
+    }
+
     fn paint_at_cursor(&mut self) {
+        if !self.paint_stroke_snapshotted {
+            self.push_undo_snapshot();
+            self.paint_stroke_snapshotted = true;
+        }
         let mx = self.last_mouse_logical_x;
         let my = self.last_mouse_logical_y;
 
@@ -598,6 +639,7 @@ impl MapEditorSession {
                 }
             }
         }
+        self.mark_dirty();
     }
 
     fn new_blank_map(&mut self, w: u32, h: u32) {
@@ -606,10 +648,13 @@ impl MapEditorSession {
         let size = (self.width * self.height) as usize;
         self.terrain = vec![0b00100000; size]; // All ocean tiles
         self.editor_ui.spawns.clear();
+        self.editor_ui.is_dirty = false;
+        self.undo_stack.clear();
         self.editor_ui.width = self.width;
         self.editor_ui.height = self.height;
         self.dirty_tiles.clear();
         self.needs_first_upload = true;
+        self.needs_owner_upload = true;
 
         if let Some(ref mut mr) = self.map_renderer {
             mr.destroy(&self.render_ctx);
@@ -646,42 +691,56 @@ impl MapEditorSession {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn osm_center_world_px(&self) -> (f64, f64) {
-        lonlat_to_world_px(
-            self.osm_picker.center_lon,
-            self.osm_picker.center_lat,
-            self.osm_picker.zoom,
-        )
+    fn screen_to_world(&self, sx: f32, sy: f32) -> (f64, f64) {
+        let wx = (sx - self.camera_x) / self.camera_zoom;
+        let wy = (sy - self.camera_y) / self.camera_zoom;
+        (wx as f64, wy as f64)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn screen_to_world_px(&self, sx: f32, sy: f32) -> (f64, f64) {
-        let Some(rect) = self.editor_ui.map_canvas_rect else {
-            return self.osm_center_world_px();
-        };
-        let (cx, cy) = self.osm_center_world_px();
-        let dx = (sx - rect.center().x) as f64;
-        let dy = (sy - rect.center().y) as f64;
-        (cx + dx, cy + dy)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn world_px_to_screen(&self, wx: f64, wy: f64) -> egui::Pos2 {
-        let (cx, cy) = self.osm_center_world_px();
-        let rect = self
-            .editor_ui
-            .map_canvas_rect
-            .unwrap_or_else(|| egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE));
+    fn world_to_screen(&self, wx: f64, wy: f64) -> egui::Pos2 {
         egui::pos2(
-            rect.center().x + (wx - cx) as f32,
-            rect.center().y + (wy - cy) as f32,
+            wx as f32 * self.camera_zoom + self.camera_x,
+            wy as f32 * self.camera_zoom + self.camera_y,
         )
+    }
+
+    fn gameplay_map_globals(&self, logical_w: f32, logical_h: f32, hover_hex: [f32; 2]) -> MapGlobals {
+        MapGlobals {
+            camera_pos: [self.camera_x, self.camera_y],
+            zoom: self.camera_zoom,
+            time: self.start_time.elapsed().as_secs_f32() % 1000.0,
+            screen_size: [logical_w, logical_h],
+            map_size: [self.width as f32, self.height as f32],
+            border_thickness: 1.0,
+            border_darkness: 0.35,
+            shore_thickness: 1.0,
+            shore_darkness: 1.0,
+            threat_slots: [[0.0; 4]; 8],
+            effect_shockwave: 1.0,
+            effect_breathe: 1.0,
+            effect_energy_flow: 1.0,
+            my_player_id: 0.0,
+            hover_hex,
+            hover_building_kind: 0.0,
+            _pad1: 0.0,
+            fallout_slots: [[0.0; 4]; 8],
+            nobuild_slots: [[0.0; 4]; 32],
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn osm_center_lonlat(&self) -> (f64, f64) {
+        let (lw, lh) = self.logical_screen();
+        let wx = (lw * 0.5 - self.camera_x) / self.camera_zoom;
+        let wy = (lh * 0.5 - self.camera_y) / self.camera_zoom;
+        world_px_to_lonlat(wx as f64, wy as f64, self.osm.tile_zoom)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn selection_world_square(&self) -> Option<(f64, f64, f64)> {
-        let (ax, ay) = self.osm_picker.sel_anchor_world?;
-        let (cx, cy) = self.osm_picker.sel_corner_world?;
+        let (ax, ay) = self.osm.sel_anchor_world?;
+        let (cx, cy) = self.osm.sel_corner_world?;
         let dx = cx - ax;
         let dy = cy - ay;
         let size = dx.abs().max(dy.abs());
@@ -694,98 +753,116 @@ impl MapEditorSession {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn update_osm_tiles(&mut self) {
-        let Some(rect) = self.editor_ui.map_canvas_rect else {
+    fn ensure_geo_underlay(&mut self) {
+        if self.osm.underlay.is_some() {
             return;
-        };
-        self.osm_picker.cache.drain_messages();
-
-        let (cx, cy) = self.osm_center_world_px();
-        let z = self.osm_picker.zoom;
-        let half_w = (rect.width() * 0.5) as f64 + TILE_SIZE as f64;
-        let half_h = (rect.height() * 0.5) as f64 + TILE_SIZE as f64;
-        let keys = tiles_covering_rect(cx - half_w, cy - half_h, cx + half_w, cy + half_h, z);
-        for key in &keys {
-            self.osm_picker.cache.request(*key);
         }
-
-        for key in keys {
-            if let Some(CachedTile::Ready(img)) = self.osm_picker.cache.get(key).cloned() {
-                if !self.osm_picker.textures.contains_key(&key) {
-                    let name = format!("osm_{}_{}_{}", key.z, key.x, key.y);
-                    let size = [img.width() as usize, img.height() as usize];
-                    let color_image =
-                        egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
-                    let handle = self.egui_ctx.load_texture(
-                        name,
-                        color_image,
-                        egui::TextureOptions::LINEAR,
-                    );
-                    self.osm_picker.textures.insert(key, handle);
-                }
-            }
+        if let Some(ref s) = self.surface {
+            self.osm.underlay = Some(GeoUnderlayRenderer::new(
+                &self.render_ctx.context,
+                s.info().format,
+            ));
         }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn build_osm_view(&self) -> sow_ui::ui::map_editor::OsmPickerView {
-        let mut view = sow_ui::ui::map_editor::OsmPickerView {
-            center_lon: self.osm_picker.center_lon,
-            center_lat: self.osm_picker.center_lat,
-            zoom: self.osm_picker.zoom,
-            ..Default::default()
-        };
-
+    fn visible_osm_tile_keys(&self) -> Vec<TileKey> {
         let Some(rect) = self.editor_ui.map_canvas_rect else {
-            return view;
+            return Vec::new();
         };
-
-        let (cx, cy) = self.osm_center_world_px();
-        let z = self.osm_picker.zoom;
-        let half_w = rect.width() as f64 * 0.5 + TILE_SIZE as f64;
-        let half_h = rect.height() as f64 * 0.5 + TILE_SIZE as f64;
-        for key in tiles_covering_rect(cx - half_w, cy - half_h, cx + half_w, cy + half_h, z) {
-            let Some(handle) = self.osm_picker.textures.get(&key) else {
-                continue;
-            };
-            let wx = key.x as f64 * TILE_SIZE as f64;
-            let wy = key.y as f64 * TILE_SIZE as f64;
-            let min = self.world_px_to_screen(wx, wy);
-            let max = self.world_px_to_screen(wx + TILE_SIZE as f64, wy + TILE_SIZE as f64);
-            view.tiles.push(sow_ui::ui::map_editor::OsmPickerTileDraw {
-                rect: egui::Rect::from_min_max(min, max),
-                texture: handle.id(),
-            });
+        let z = self.osm.tile_zoom;
+        let corners = [
+            self.screen_to_world(rect.left(), rect.top()),
+            self.screen_to_world(rect.right(), rect.top()),
+            self.screen_to_world(rect.left(), rect.bottom()),
+            self.screen_to_world(rect.right(), rect.bottom()),
+        ];
+        let mut min_x = f64::MAX;
+        let mut min_y = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut max_y = f64::MIN;
+        for (wx, wy) in corners {
+            min_x = min_x.min(wx);
+            min_y = min_y.min(wy);
+            max_x = max_x.max(wx);
+            max_y = max_y.max(wy);
         }
+        let pad = TILE_SIZE as f64;
+        tiles_covering_rect(min_x - pad, min_y - pad, max_x + pad, max_y + pad, z)
+    }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn build_osm_chrome(&self) -> sow_ui::ui::map_editor::OsmPickerChrome {
+        let (lon, lat) = self.osm_center_lonlat();
+        let mut chrome = sow_ui::ui::map_editor::OsmPickerChrome {
+            center_lon: lon,
+            center_lat: lat,
+            zoom: self.osm.tile_zoom,
+            selection_screen_rect: None,
+        };
         if let Some((x0, y0, size)) = self.selection_world_square() {
-            let min = self.world_px_to_screen(x0, y0);
-            let max = self.world_px_to_screen(x0 + size, y0 + size);
-            view.selection_screen_rect = Some(egui::Rect::from_min_max(min, max));
+            let min = self.world_to_screen(x0, y0);
+            let max = self.world_to_screen(x0 + size, y0 + size);
+            chrome.selection_screen_rect = Some(egui::Rect::from_min_max(min, max));
         }
-
-        view
+        chrome
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn pan_osm(&mut self, dx: f32, dy: f32) {
-        let z = self.osm_picker.zoom;
-        let (cx, cy) = self.osm_center_world_px();
-        let (lon, lat) = world_px_to_lonlat(cx - dx as f64, cy - dy as f64, z);
-        self.osm_picker.center_lon = lon.clamp(-180.0, 180.0);
-        self.osm_picker.center_lat = lat.clamp(-85.0, 85.0);
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn zoom_osm(&mut self, delta: f32) {
-        let old = self.osm_picker.zoom;
+    fn adjust_osm_tile_zoom(&mut self, delta: f32) {
+        let old = self.osm.tile_zoom;
+        let (lon, lat) = self.osm_center_lonlat();
         if delta > 0.0 {
-            self.osm_picker.zoom = (self.osm_picker.zoom + 1).min(18);
+            self.osm.tile_zoom = (self.osm.tile_zoom + 1).min(18);
         } else if delta < 0.0 {
-            self.osm_picker.zoom = self.osm_picker.zoom.saturating_sub(1).max(2);
+            self.osm.tile_zoom = self.osm.tile_zoom.saturating_sub(1).max(2);
         }
-        if self.osm_picker.zoom != old {
-            self.osm_picker.textures.clear();
+        if self.osm.tile_zoom != old {
+            if let Some(ref mut underlay) = self.osm.underlay {
+                underlay.clear_tiles(&self.render_ctx);
+            }
+            let (wx, wy) = lonlat_to_world_px(lon, lat, self.osm.tile_zoom);
+            let (lw, lh) = self.logical_screen();
+            self.camera_zoom = 1.0;
+            self.camera_x = lw * 0.5 - wx as f32;
+            self.camera_y = lh * 0.5 - wy as f32;
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn enter_osm_view(&mut self) {
+        self.osm.cache.clear();
+        if let Some(ref mut underlay) = self.osm.underlay {
+            underlay.clear_tiles(&self.render_ctx);
+        }
+        self.osm.sel_anchor_world = None;
+        self.osm.sel_corner_world = None;
+        self.osm_selecting = false;
+        self.osm.tile_zoom = 4;
+        let (wx, wy) = lonlat_to_world_px(-95.0, 40.0, self.osm.tile_zoom);
+        let (lw, lh) = self.logical_screen();
+        self.camera_zoom = 1.0;
+        self.camera_x = lw * 0.5 - wx as f32;
+        self.camera_y = lh * 0.5 - wy as f32;
+        self.ensure_geo_underlay();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn refresh_map_renderer_terrain(&mut self) {
+        self.dirty_tiles.clear();
+        self.needs_first_upload = true;
+        self.needs_owner_upload = true;
+        if let Some(ref mut mr) = self.map_renderer {
+            mr.destroy(&self.render_ctx);
+        }
+        if let Some(ref s) = self.surface {
+            self.map_renderer = Some(MapRenderer::new(
+                &self.render_ctx.context,
+                self.width,
+                self.height,
+                s.info().format,
+                &self.terrain,
+            ));
         }
     }
 
@@ -800,9 +877,10 @@ impl MapEditorSession {
         };
 
         self.editor_ui.osm.generating = true;
+        self.editor_ui.busy_message = Some(strings.msg_osm_generating.clone());
         self.notify_info(&strings.msg_osm_generating);
 
-        let z = self.osm_picker.zoom;
+        let z = self.osm.tile_zoom;
         let (lon0, lat0) = world_px_to_lonlat(x0, y0, z);
         let (lon1, lat1) = world_px_to_lonlat(x0 + size, y0 + size, z);
         let deg_span = (lon1 - lon0).abs().max((lat1 - lat0).abs());
@@ -813,7 +891,7 @@ impl MapEditorSession {
         let world_size = (wx1 - wx0).max(wy1 - wy0);
 
         let stitched = match fetch_region_blocking(
-            &mut self.osm_picker.cache,
+            &mut self.osm.cache,
             fetch_z,
             wx0,
             wy0,
@@ -821,11 +899,13 @@ impl MapEditorSession {
         ) {
             Ok(img) => img,
             Err(e) => {
-                self.editor_ui.osm.generating = false;
+                self.editor_ui.clear_busy();
                 self.notify_error(strings.msg_osm_failed.replace("{}", &e));
                 return;
             }
         };
+
+        self.editor_ui.busy_message = Some(strings.msg_osm_classifying.clone());
 
         let dst = target - (target % 4);
         let encoded = classify_osm_to_rgba(&stitched);
@@ -856,21 +936,7 @@ impl MapEditorSession {
                 self.terrain = result.map_data;
                 self.editor_ui.width = self.width;
                 self.editor_ui.height = self.height;
-                self.dirty_tiles.clear();
-                self.needs_first_upload = true;
-
-                if let Some(ref mut mr) = self.map_renderer {
-                    mr.destroy(&self.render_ctx);
-                }
-                if let Some(ref s) = self.surface {
-                    self.map_renderer = Some(MapRenderer::new(
-                        &self.render_ctx.context,
-                        self.width,
-                        self.height,
-                        s.info().format,
-                        &self.terrain,
-                    ));
-                }
+                self.refresh_map_renderer_terrain();
 
                 self.camera_zoom = 1.0;
                 let (lw, lh) = self.logical_screen();
@@ -878,13 +944,13 @@ impl MapEditorSession {
                 self.camera_y = lh * 0.5 - (self.height as f32 * 0.5) * self.camera_zoom;
 
                 self.editor_ui.mode = sow_ui::ui::map_editor::EditorMode::Brush;
-                self.editor_ui.osm.generating = false;
-                self.osm_picker.sel_anchor_world = None;
-                self.osm_picker.sel_corner_world = None;
+                self.editor_ui.clear_busy();
+                self.osm.sel_anchor_world = None;
+                self.osm.sel_corner_world = None;
                 self.notify_info(&strings.msg_osm_generated);
             }
             Err(e) => {
-                self.editor_ui.osm.generating = false;
+                self.editor_ui.clear_busy();
                 self.notify_error(strings.msg_osm_failed.replace("{}", &e));
             }
         }
@@ -906,6 +972,8 @@ impl MapEditorSession {
             return;
         }
 
+        self.editor_ui.exporting = true;
+        self.editor_ui.busy_message = Some(strings.msg_compiling.clone());
         self.notify_info(&strings.msg_compiling);
 
         // Translate current map layout canvas bytes back to RGBA pixels for our high-fidelity generator
@@ -934,12 +1002,14 @@ impl MapEditorSession {
             Ok(result) => {
                 let slug = sow_core::maps::map_key(&self.editor_ui.map_name);
                 if slug.is_empty() {
+                    self.editor_ui.clear_busy();
                     self.notify_error("Map name must contain at least one letter or number.");
                     return;
                 }
                 let maps_root = Self::maps_root();
                 let out_dir = maps_root.join(&slug);
                 if let Err(e) = std::fs::create_dir_all(&out_dir) {
+                    self.editor_ui.clear_busy();
                     self.notify_error(format!("Failed to create path: {}", e));
                     return;
                 }
@@ -1010,6 +1080,7 @@ impl MapEditorSession {
                 self.notify_error(format!("Compilation error: {}", e));
             }
         }
+        self.editor_ui.clear_busy();
     }
 
     pub fn update(&mut self, _event_loop: &dyn ActiveEventLoop) -> Option<sow_ui::UiAction> {
@@ -1043,42 +1114,35 @@ impl MapEditorSession {
         self.editor_ui.height = self.height;
 
         #[cfg(not(target_arch = "wasm32"))]
-        if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
-            self.update_osm_tiles();
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        let osm_view = if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
-            Some(self.build_osm_view())
+        let osm_chrome = if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
+            Some(self.build_osm_chrome())
         } else {
             None
         };
         #[cfg(target_arch = "wasm32")]
-        let osm_view: Option<sow_ui::ui::map_editor::OsmPickerView> = None;
+        let osm_chrome: Option<sow_ui::ui::map_editor::OsmPickerChrome> = None;
 
         let mut ui_action = sow_ui::ui::map_editor::MapEditorAction::None;
         let viewport = self.map_editor_viewport();
         let egui_ctx = self.egui_ctx.clone();
+        sow_ui::ui::theme::publish_reduced_motion(
+            &egui_ctx,
+            self.client_app.settings_state.reduced_motion,
+        );
         let egui_output = egui_ctx.run_ui(self.raw_input.clone(), |ui| {
             ui_action = sow_ui::ui::map_editor::draw_map_editor(
                 ui,
                 &egui_ctx,
                 &mut self.editor_ui,
                 viewport,
-                osm_view.as_ref(),
+                osm_chrome.as_ref(),
                 lang,
             );
         });
 
         if self.dragging {
-            if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    self.pan_osm(self.pending_pan.0, self.pending_pan.1);
-                }
-            } else {
-                self.camera_x += self.pending_pan.0;
-                self.camera_y += self.pending_pan.1;
-            }
+            self.camera_x += self.pending_pan.0;
+            self.camera_y += self.pending_pan.1;
             self.pending_pan = (0.0, 0.0);
         }
 
@@ -1087,6 +1151,18 @@ impl MapEditorSession {
             && self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::Brush
         {
             self.paint_at_cursor();
+        }
+
+        if ui_action == sow_ui::ui::map_editor::MapEditorAction::None {
+            egui_ctx.input(|i| {
+                if i.key_pressed(egui::Key::Z) && i.modifiers.command {
+                    ui_action = sow_ui::ui::map_editor::MapEditorAction::Undo;
+                } else if i.key_pressed(egui::Key::B)
+                    && self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker
+                {
+                    ui_action = sow_ui::ui::map_editor::MapEditorAction::ExitOsmPicker;
+                }
+            });
         }
 
         match ui_action {
@@ -1113,10 +1189,13 @@ impl MapEditorSession {
                     flag: "🏳".to_string(),
                 });
                 self.notify_info(&sow_lang::get(lang).map_editor.msg_spawn_placed);
+                self.mark_dirty();
             }
             sow_ui::ui::map_editor::MapEditorAction::RemoveSpawn(idx) => {
+                self.push_undo_snapshot();
                 self.editor_ui.spawns.remove(idx);
                 self.notify_info(&sow_lang::get(lang).map_editor.msg_spawn_removed);
+                self.mark_dirty();
             }
             sow_ui::ui::map_editor::MapEditorAction::EnterOsmPicker => {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -1124,11 +1203,7 @@ impl MapEditorSession {
                     self.editor_ui.npcs_panel_saved = self.editor_ui.show_npcs_panel;
                     self.editor_ui.show_npcs_panel = false;
                     self.editor_ui.mode = sow_ui::ui::map_editor::EditorMode::OsmPicker;
-                    self.osm_picker.cache.clear();
-                    self.clear_osm_gpu_textures();
-                    self.osm_picker.sel_anchor_world = None;
-                    self.osm_picker.sel_corner_world = None;
-                    self.osm_selecting = false;
+                    self.enter_osm_view();
                 }
             }
             sow_ui::ui::map_editor::MapEditorAction::ExitOsmPicker => {
@@ -1142,6 +1217,9 @@ impl MapEditorSession {
             sow_ui::ui::map_editor::MapEditorAction::GenerateFromOsm => {
                 #[cfg(not(target_arch = "wasm32"))]
                 self.generate_from_osm();
+            }
+            sow_ui::ui::map_editor::MapEditorAction::Undo => {
+                self.undo_last_stroke();
             }
             sow_ui::ui::map_editor::MapEditorAction::None => {}
         }
@@ -1162,6 +1240,43 @@ impl MapEditorSession {
             .window
             .as_ref()
             .map_or(1.0, |w| w.scale_factor() as f32);
+
+        let draw_terrain = self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::Brush;
+        #[cfg(not(target_arch = "wasm32"))]
+        let draw_osm = self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let osm_frame = if draw_osm {
+            self.ensure_geo_underlay();
+            let keys = self.visible_osm_tile_keys();
+            let visible: Vec<(TileKey, f32, f32)> = keys
+                .iter()
+                .map(|&key| {
+                    let wx = key.x as f32 * TILE_SIZE as f32;
+                    let wy = key.y as f32 * TILE_SIZE as f32;
+                    (key, wx, wy)
+                })
+                .collect();
+            Some((
+                keys,
+                visible,
+                GeoGlobals {
+                    camera_pos: [self.camera_x, self.camera_y],
+                    zoom: self.camera_zoom,
+                    _pad0: 0.0,
+                    screen_size: [logical_w, logical_h],
+                },
+            ))
+        } else {
+            None
+        };
+
+        let terrain_globals = if draw_terrain {
+            Some(self.gameplay_map_globals(logical_w, logical_h, hover_hex))
+        } else {
+            None
+        };
+
         if let Some(ref mut gp) = self.gui_painter {
             if let Some(ref mut s) = self.surface {
                 let frame = s.acquire_frame();
@@ -1186,7 +1301,38 @@ impl MapEditorSession {
                 );
 
                 // Upload map updates to GPU
-                let draw_terrain = self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::Brush;
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some((keys, visible, geo_globals)) = osm_frame {
+                    if let Some(ref mut underlay) = self.osm.underlay {
+                        underlay.sync_tiles(
+                            &mut self.osm.cache,
+                            &keys,
+                            &mut self.render_ctx,
+                        );
+                        underlay.draw(
+                            &mut self.render_ctx.command_encoder,
+                            &self.render_ctx.context,
+                            frame.texture_view(),
+                            geo_globals,
+                            &visible,
+                            gpu::InitOp::Clear(gpu::TextureColor::OpaqueBlack),
+                        );
+                    }
+                } else if !draw_terrain {
+                    let _pass = self.render_ctx.command_encoder.render(
+                        "osm_bg_clear",
+                        gpu::RenderTargetSet {
+                            colors: &[gpu::RenderTarget {
+                                view: frame.texture_view(),
+                                init_op: gpu::InitOp::Clear(gpu::TextureColor::OpaqueBlack),
+                                finish_op: gpu::FinishOp::Store,
+                            }],
+                            depth_stencil: None,
+                        },
+                    );
+                }
+
+                #[cfg(target_arch = "wasm32")]
                 if !draw_terrain {
                     let _pass = self.render_ctx.command_encoder.render(
                         "osm_bg_clear",
@@ -1200,6 +1346,7 @@ impl MapEditorSession {
                         },
                     );
                 }
+
                 if draw_terrain {
                     if let Some(ref mut mr) = self.map_renderer {
                     if self.needs_first_upload {
@@ -1211,6 +1358,14 @@ impl MapEditorSession {
                             .init_texture(mr.owner_texture);
                         self.needs_first_upload = false;
                         mr.upload_terrain(&mut self.render_ctx.command_encoder);
+                    }
+
+                    if self.needs_owner_upload {
+                        mr.upload_initial_owners(
+                            &mut self.render_ctx.command_encoder,
+                            &self.render_ctx.context,
+                        );
+                        self.needs_owner_upload = false;
                     }
 
                     // Push dirty terrain tiles to GPU (editor brush strokes).
@@ -1231,27 +1386,7 @@ impl MapEditorSession {
                     let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
                     player_colors[1] = [0.1, 0.6, 0.9, 1.0];
 
-                    let globals = MapGlobals {
-                        camera_pos: [self.camera_x, self.camera_y],
-                        zoom: self.camera_zoom,
-                        time: self.start_time.elapsed().as_secs_f32(),
-                        screen_size: [logical_w, logical_h],
-                        map_size: [self.width as f32, self.height as f32],
-                        border_thickness: 1.0,
-                        border_darkness: 0.0,
-                        shore_thickness: 1.0,
-                        shore_darkness: 1.0,
-                        threat_slots: [[0.0; 4]; 8],
-                        effect_shockwave: 0.0,
-                        effect_breathe: 0.0,
-                        effect_energy_flow: 0.0,
-                        my_player_id: 0.0,
-                        hover_hex,
-                        hover_building_kind: 0.0,
-                        _pad1: 0.0,
-                        fallout_slots: [[0.0; 4]; 8],
-                        nobuild_slots: [[0.0; 4]; 32],
-                    };
+                    let globals = terrain_globals.expect("terrain_globals set in brush mode");
                     let colors_struct = sow_render::PlayerColors {
                         colors: player_colors,
                     };
@@ -1299,21 +1434,6 @@ impl MapEditorSession {
         transition
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn clear_osm_gpu_textures(&mut self) {
-        let ids: Vec<_> = self
-            .osm_picker
-            .textures
-            .drain()
-            .map(|(_, handle)| handle.id())
-            .collect();
-        let tex_manager = self.egui_ctx.tex_manager();
-        let mut manager = tex_manager.write();
-        for id in ids {
-            manager.free(id);
-        }
-    }
-
     #[allow(clippy::type_complexity)]
     pub fn destroy_and_reclaim(
         self,
@@ -1333,7 +1453,9 @@ impl MapEditorSession {
             mr.destroy(&this.render_ctx);
         }
         #[cfg(not(target_arch = "wasm32"))]
-        this.clear_osm_gpu_textures();
+        if let Some(mut underlay) = this.osm.underlay.take() {
+            underlay.destroy(&this.render_ctx);
+        }
         this.render_ctx.reset_command_encoder();
 
         unsafe {
@@ -1348,7 +1470,7 @@ impl MapEditorSession {
             std::ptr::drop_in_place(&mut this.raw_input);
             std::ptr::drop_in_place(&mut this.editor_ui);
             #[cfg(not(target_arch = "wasm32"))]
-            std::ptr::drop_in_place(&mut this.osm_picker);
+            std::ptr::drop_in_place(&mut this.osm);
             std::mem::forget(this);
             (window, surface, render_ctx, gui_painter, client_app)
         }
@@ -1364,13 +1486,16 @@ impl Drop for MapEditorSession {
             mr.destroy(&self.render_ctx);
         }
         #[cfg(not(target_arch = "wasm32"))]
-        self.clear_osm_gpu_textures();
+        if let Some(ref mut underlay) = self.osm.underlay {
+            underlay.destroy(&self.render_ctx);
+        }
         if let Some(mut gp) = self.gui_painter.take() {
             gp.destroy(&self.render_ctx.context);
         }
         if let Some(mut s) = self.surface.take() {
             self.render_ctx.context.destroy_surface(&mut s);
         }
-        self.render_ctx.reset_command_encoder();
+        // The command encoder is destroyed by `RenderContext`'s own `Drop`
+        // when the `render_ctx` field is dropped after this.
     }
 }

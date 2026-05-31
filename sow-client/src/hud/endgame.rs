@@ -4,6 +4,9 @@ use egui::{Align2, Color32, FontId, RichText};
 impl SowApp {
     #[allow(deprecated)]
     pub(crate) fn render_endgame_ui(&mut self, ctx: &egui::Context) {
+        let lang = self.ui.app.settings_state.language;
+        let strings = &sow_lang::get(lang).endgame;
+
         let mut show_endgame = false;
         let mut is_victory = false;
         let mut text_title = "";
@@ -15,35 +18,30 @@ impl SowApp {
                 show_endgame = true;
                 if winner == my_id {
                     is_victory = true;
-                    text_title = "VICTORY";
-                    text_subtitle = "You have conquered the world.".to_string();
+                    text_title = &strings.victory_title;
+                    text_subtitle = strings.victory_subtitle.clone();
                 } else {
                     is_victory = false;
-                    text_title = "DEFEAT";
+                    text_title = &strings.defeat_title;
                     let winner_name = snap
                         .players
                         .iter()
                         .find(|p| p.id == winner)
                         .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    text_subtitle = format!("{} emerged victorious.", winner_name);
+                        .unwrap_or_else(|| sow_lang::get(lang).hud.default_player_name.clone());
+                    text_subtitle = strings.winner_emerged.replace("{}", &winner_name);
                 }
-            } else {
-                if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
-                    if !me.alive && me.has_spawned {
-                        if !self.ui.is_spectating {
-                            show_endgame = true;
-                        }
-                        is_victory = false;
-                        text_title = "DEFEAT";
-                        text_subtitle = "Your empire has fallen.".to_string();
-                    }
+            } else if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
+                if !me.alive && me.has_spawned && !self.ui.is_spectating {
+                    show_endgame = true;
+                    is_victory = false;
+                    text_title = &strings.defeat_title;
+                    text_subtitle = strings.defeat_subtitle.clone();
                 }
             }
         }
 
         if show_endgame {
-            // Dim background
             egui::Area::new(egui::Id::new("endgame_dimmer"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(egui::Pos2::ZERO)
@@ -154,18 +152,16 @@ impl SowApp {
                             Color32::from_rgb(140, 40, 40)
                         };
 
-                        let return_btn = sow_ui::widgets::ThemeButton::new("EXIT")
+                        let return_btn = sow_ui::widgets::ThemeButton::new(&strings.return_to_lobby)
                             .min_size(btn_size)
                             .text_size(if is_mobile { 16.0 } else { 20.0 })
                             .custom_fill(btn_color);
 
                         if ui.add(return_btn).clicked() {
-                            // Disconnect and return to main menu
                             self.net.client = None;
                             self.begin_exit_to_main_menu(true);
                         }
 
-                        // Add SPECTATE button if defeated but the game has not officially ended
                         if !is_victory
                             && self
                                 .sim
@@ -175,10 +171,11 @@ impl SowApp {
                         {
                             ui.add_space(space_mid);
 
-                            let spectate_btn = sow_ui::widgets::ThemeButton::new("SPECTATE")
-                                .min_size(btn_size)
-                                .text_size(if is_mobile { 16.0 } else { 20.0 })
-                                .custom_fill(Color32::from_rgb(60, 60, 60));
+                            let spectate_btn =
+                                sow_ui::widgets::ThemeButton::new(&strings.spectate)
+                                    .min_size(btn_size)
+                                    .text_size(if is_mobile { 16.0 } else { 20.0 })
+                                    .custom_fill(Color32::from_rgb(60, 60, 60));
 
                             if ui.add(spectate_btn).clicked() {
                                 self.ui.is_spectating = true;

@@ -28,18 +28,11 @@ pub struct OsmPickerUiState {
     pub generating: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct OsmPickerTileDraw {
-    pub rect: egui::Rect,
-    pub texture: egui::TextureId,
-}
-
 #[derive(Clone, Debug, Default)]
-pub struct OsmPickerView {
+pub struct OsmPickerChrome {
     pub center_lon: f64,
     pub center_lat: f64,
     pub zoom: u32,
-    pub tiles: Vec<OsmPickerTileDraw>,
     pub selection_screen_rect: Option<egui::Rect>,
 }
 
@@ -73,12 +66,17 @@ pub struct MapEditorUiState {
     pub brush_strength: f64,
     pub spawns: Vec<SpawnRowUi>,
     pub show_new_dialog: bool,
+    pub show_exit_confirm: bool,
+    pub show_export_confirm: bool,
+    pub is_dirty: bool,
     pub show_npcs_panel: bool,
     pub npcs_panel_saved: bool,
     pub new_map_w: u32,
     pub new_map_h: u32,
     pub toast_message: Option<String>,
     pub toast_is_error: bool,
+    pub exporting: bool,
+    pub busy_message: Option<String>,
     /// Set each frame by `draw_map_editor` — click/drag painting only inside this rect.
     pub map_canvas_rect: Option<egui::Rect>,
     toast_last_message: Option<String>,
@@ -101,12 +99,17 @@ impl Default for MapEditorUiState {
             brush_strength: 15.0,
             spawns: Vec::new(),
             show_new_dialog: false,
-            show_npcs_panel: true,
+            show_exit_confirm: false,
+            show_export_confirm: false,
+            is_dirty: false,
+            show_npcs_panel: false,
             npcs_panel_saved: true,
             new_map_w: 400,
             new_map_h: 300,
             toast_message: None,
             toast_is_error: false,
+            exporting: false,
+            busy_message: None,
             map_canvas_rect: None,
             toast_last_message: None,
             toast_started: None,
@@ -133,6 +136,16 @@ impl MapEditorUiState {
         self.toast_is_error = is_error;
         self.toast_started = Some(Instant::now());
     }
+
+    pub fn is_busy(&self) -> bool {
+        self.osm.generating || self.exporting
+    }
+
+    pub fn clear_busy(&mut self) {
+        self.osm.generating = false;
+        self.exporting = false;
+        self.busy_message = None;
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,6 +160,7 @@ pub enum MapEditorAction {
     EnterOsmPicker,
     ExitOsmPicker,
     GenerateFromOsm,
+    Undo,
 }
 
 const TOOLBAR_BTN_H: f32 = 36.0;
@@ -174,11 +188,12 @@ pub fn draw_map_editor(
     ctx: &Context,
     state: &mut MapEditorUiState,
     viewport: MapEditorViewport,
-    osm_view: Option<&OsmPickerView>,
+    osm_chrome: Option<&OsmPickerChrome>,
     lang: sow_lang::Language,
 ) -> MapEditorAction {
     let strings = &sow_lang::get(lang).map_editor;
     let compact = crate::ui::theme::compact_viewport(ctx);
+    let busy = state.is_busy();
     let mut action = MapEditorAction::None;
     state.map_canvas_rect = None;
 
@@ -200,16 +215,21 @@ pub fn draw_map_editor(
             ui.horizontal(|ui| {
                 ui.heading(RichText::new(&strings.title).size(18.0));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if toolbar_button(
-                        ui,
-                        &strings.btn_exit,
-                        ThemeButtonStyle::Tertiary,
-                        Some(rail_fill),
-                    )
-                    .clicked()
-                    {
-                        action = MapEditorAction::Exit;
-                    }
+                    ui.add_enabled_ui(!busy, |ui| {
+                        let exit_resp = toolbar_button(
+                            ui,
+                            &strings.btn_exit,
+                            ThemeButtonStyle::Tertiary,
+                            Some(rail_fill),
+                        );
+                        if exit_resp.clicked() {
+                            if state.is_dirty {
+                                state.show_exit_confirm = true;
+                            } else {
+                                action = MapEditorAction::Exit;
+                            }
+                        }
+                    });
                 });
             });
 
@@ -236,53 +256,86 @@ pub fn draw_map_editor(
 
                 ui.separator();
 
-                if toolbar_button(ui, &strings.btn_new, ThemeButtonStyle::Tertiary, Some(rail_fill))
-                    .clicked()
-                {
-                    action = MapEditorAction::ToggleNewDialog;
-                }
-
-                ui.separator();
-
-                if state.mode == EditorMode::Brush {
+                ui.add_enabled_ui(!busy, |ui| {
                     if toolbar_button(
                         ui,
-                        &strings.btn_from_osm,
-                        ThemeButtonStyle::Secondary,
-                        None,
+                        &strings.btn_new,
+                        ThemeButtonStyle::Tertiary,
+                        Some(rail_fill),
                     )
                     .clicked()
                     {
-                        action = MapEditorAction::EnterOsmPicker;
+                        action = MapEditorAction::ToggleNewDialog;
                     }
-                } else if toolbar_button(
-                    ui,
-                    &strings.btn_back_to_brush,
-                    ThemeButtonStyle::Secondary,
-                    None,
-                )
-                .clicked()
-                {
-                    action = MapEditorAction::ExitOsmPicker;
+                });
+
+                ui.separator();
+
+                if state.mode == EditorMode::Brush {
+                    ui.add_enabled_ui(!busy, |ui| {
+                        if toolbar_button(
+                            ui,
+                            &strings.btn_from_osm,
+                            ThemeButtonStyle::Secondary,
+                            None,
+                        )
+                        .clicked()
+                        {
+                            action = MapEditorAction::EnterOsmPicker;
+                        }
+                    });
+                } else {
+                    ui.add_enabled_ui(!busy, |ui| {
+                        let back_resp = toolbar_button(
+                            ui,
+                            &strings.btn_back_to_brush,
+                            ThemeButtonStyle::Secondary,
+                            None,
+                        )
+                        .on_hover_text(&strings.tooltip_back_to_brush);
+                        if back_resp.clicked() {
+                            action = MapEditorAction::ExitOsmPicker;
+                        }
+                    });
                 }
 
                 ui.separator();
 
                 if state.mode == EditorMode::Brush {
-                    if toolbar_button(ui, &strings.btn_export, ThemeButtonStyle::Primary, None)
-                        .clicked()
-                    {
-                        action = MapEditorAction::Export;
+                    ui.add_enabled_ui(!busy, |ui| {
+                        let export_resp = toolbar_button(
+                            ui,
+                            &strings.btn_export,
+                            ThemeButtonStyle::Primary,
+                            None,
+                        )
+                        .on_hover_text(&strings.tooltip_export);
+                        if export_resp.clicked() {
+                            state.show_export_confirm = true;
+                        }
+                    });
+                } else {
+                    let has_selection = osm_chrome
+                        .and_then(|v| v.selection_screen_rect)
+                        .is_some();
+                    let mut generate_btn = ThemeButton::new(&strings.btn_generate_osm)
+                        .style(if has_selection {
+                            ThemeButtonStyle::Primary
+                        } else {
+                            ThemeButtonStyle::Tertiary
+                        })
+                        .min_size(Vec2::new(TOOLBAR_BTN_MIN_W, TOOLBAR_BTN_H))
+                        .text_size(TOOLBAR_TEXT);
+                    if !has_selection {
+                        generate_btn = generate_btn
+                            .custom_fill(crate::ui::theme::menu_secondary_button());
                     }
-                } else if toolbar_button(
-                    ui,
-                    &strings.btn_generate_osm,
-                    ThemeButtonStyle::Primary,
-                    None,
-                )
-                .clicked()
-                {
-                    action = MapEditorAction::GenerateFromOsm;
+                    let generate_resp = ui.add_enabled(has_selection && !busy, generate_btn);
+                    if !has_selection {
+                        generate_resp.on_hover_text(&strings.msg_osm_no_selection);
+                    } else if generate_resp.clicked() {
+                        action = MapEditorAction::GenerateFromOsm;
+                    }
                 }
 
                 ui.separator();
@@ -298,6 +351,22 @@ pub fn draw_map_editor(
                     .color(crate::ui::theme::text_secondary()),
                 );
             });
+
+            if busy {
+                ui.add_space(6.0);
+                if let Some(ref msg) = state.busy_message {
+                    ui.label(
+                        RichText::new(msg)
+                            .size(13.0)
+                            .color(crate::ui::theme::text_secondary()),
+                    );
+                }
+                ui.add(
+                    egui::ProgressBar::new(0.0)
+                        .animate(true)
+                        .fill(crate::ui::theme::accent_solo_cyan()),
+                );
+            }
         });
 
     egui::Panel::left("tools_panel")
@@ -308,15 +377,17 @@ pub fn draw_map_editor(
             ui.separator();
             ui.add_space(8.0);
 
-            if state.mode == EditorMode::OsmPicker {
-                let view = osm_view.cloned().unwrap_or_default();
+                if state.mode == EditorMode::OsmPicker {
+                let chrome = osm_chrome.cloned().unwrap_or_default();
                 ui.label(RichText::new(&strings.heading_osm).strong());
                 ui.add_space(6.0);
-                ui.label(strings.label_osm_zoom.replace("{}", &view.zoom.to_string()));
-                ui.label(format!(
-                    "Center: {:.4}, {:.4}",
-                    view.center_lon, view.center_lat
-                ));
+                ui.label(strings.label_osm_zoom.replace("{}", &chrome.zoom.to_string()));
+                ui.label(
+                    strings
+                        .label_osm_center
+                        .replacen("{}", &format!("{:.4}", chrome.center_lon), 1)
+                        .replacen("{}", &format!("{:.4}", chrome.center_lat), 1),
+                );
                 ui.add_space(8.0);
                 ui.label(&strings.label_osm_target);
                 ui.add(egui::DragValue::new(&mut state.osm.target_size).range(100..=1000));
@@ -329,11 +400,27 @@ pub fn draw_map_editor(
                 ui.small(&strings.instructions_osm);
                 if state.osm.generating {
                     ui.add_space(8.0);
-                    ui.spinner();
-                    ui.label(&strings.msg_osm_generating);
+                    if let Some(ref msg) = state.busy_message {
+                        ui.label(msg);
+                    }
+                    ui.add(egui::ProgressBar::new(0.0).animate(true));
                 }
             } else {
                 ui.label(RichText::new(&strings.heading_brush).strong());
+                ui.add_space(6.0);
+
+                ui.horizontal(|ui| {
+                    let undo_resp = toolbar_button(
+                        ui,
+                        &strings.btn_undo,
+                        ThemeButtonStyle::Tertiary,
+                        Some(crate::ui::theme::menu_secondary_button()),
+                    )
+                    .on_hover_text(&strings.tooltip_undo);
+                    if undo_resp.clicked() {
+                        action = MapEditorAction::Undo;
+                    }
+                });
                 ui.add_space(6.0);
 
                 ui.label(&strings.label_terrain);
@@ -405,6 +492,13 @@ pub fn draw_map_editor(
                 ui.add_space(30.0);
                 ui.heading(&strings.heading_instructions);
                 ui.small(&strings.instructions_body);
+                if !compact {
+                    ui.add_space(4.0);
+                    ui.small(
+                        RichText::new(&strings.hint_shortcuts)
+                            .color(crate::ui::theme::text_secondary()),
+                    );
+                }
             }
         });
 
@@ -480,8 +574,9 @@ pub fn draw_map_editor(
             let map_rect = ui.max_rect();
             state.map_canvas_rect = Some(map_rect);
             if state.mode == EditorMode::OsmPicker {
-                if let Some(view) = osm_view {
-                    draw_osm_picker_canvas(ui, view);
+                ui.allocate_rect(map_rect, Sense::empty());
+                if let Some(chrome) = osm_chrome {
+                    draw_osm_selection_overlay(ui, chrome);
                 }
             } else {
                 ui.allocate_rect(map_rect, Sense::empty());
@@ -509,22 +604,61 @@ pub fn draw_map_editor(
                     state.new_map_h = state.new_map_h.clamp(100, sow_core::maps::MAX_MAP_AXIS);
                 });
                 ui.add_space(10.0);
-                if ui
-                    .add(
-                        ThemeButton::new(&strings.btn_create_map)
-                            .style(ThemeButtonStyle::Primary)
-                            .text_size(14.0),
-                    )
-                    .clicked()
-                {
-                    action = MapEditorAction::CreateBlankMap;
-                    state.show_new_dialog = false;
-                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            ThemeButton::new(&strings.btn_create_map)
+                                .style(ThemeButtonStyle::Primary)
+                                .text_size(14.0),
+                        )
+                        .clicked()
+                    {
+                        action = MapEditorAction::CreateBlankMap;
+                        state.show_new_dialog = false;
+                    }
+                    ui.add_space(8.0);
+                    if ui
+                        .add(
+                            ThemeButton::new(&strings.btn_cancel)
+                                .style(ThemeButtonStyle::Tertiary)
+                                .text_size(14.0),
+                        )
+                        .clicked()
+                    {
+                        state.show_new_dialog = false;
+                    }
+                });
             });
         if !open {
             state.show_new_dialog = false;
         }
     }
+
+    draw_confirm_dialog(
+        ctx,
+        &strings.confirm_exit_title,
+        &strings.confirm_exit_body,
+        &strings.confirm_yes,
+        &strings.confirm_no,
+        &mut state.show_exit_confirm,
+        compact,
+        || MapEditorAction::Exit,
+        &mut action,
+    );
+
+    let slug = sow_core::maps::map_key(&state.map_name);
+    let export_body = strings.confirm_export_body.replace("{}", &slug);
+    draw_confirm_dialog(
+        ctx,
+        &strings.confirm_export_title,
+        &export_body,
+        &strings.confirm_yes,
+        &strings.confirm_no,
+        &mut state.show_export_confirm,
+        compact,
+        || MapEditorAction::Export,
+        &mut action,
+    );
 
     draw_toast(ctx, state);
 
@@ -571,22 +705,9 @@ fn tile_center_screen(viewport: MapEditorViewport, tx: f32, ty: f32) -> egui::Po
     )
 }
 
-fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView) {
-    let rect = ui.max_rect();
-    ui.allocate_rect(rect, Sense::empty());
-    let painter = ui.painter();
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(30, 30, 30));
-    for tile in &view.tiles {
-        if rect.intersects(tile.rect) {
-            painter.image(
-                tile.texture,
-                tile.rect,
-                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
-        }
-    }
-    if let Some(sel) = view.selection_screen_rect {
+fn draw_osm_selection_overlay(ui: &mut Ui, chrome: &OsmPickerChrome) {
+    if let Some(sel) = chrome.selection_screen_rect {
+        let painter = ui.painter();
         painter.rect_stroke(
             sel,
             0.0,
@@ -659,6 +780,60 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
     }
 }
 
+fn draw_confirm_dialog(
+    ctx: &Context,
+    title: &str,
+    body: &str,
+    yes_label: &str,
+    no_label: &str,
+    open: &mut bool,
+    compact: bool,
+    on_yes: impl FnOnce() -> MapEditorAction,
+    action: &mut MapEditorAction,
+) {
+    if !*open {
+        return;
+    }
+    let mut still_open = true;
+    egui::Window::new(title)
+        .open(&mut still_open)
+        .resizable(false)
+        .collapsible(false)
+        .frame(crate::ui::theme::standard_panel_frame(compact))
+        .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.label(RichText::new(body).size(14.0));
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        ThemeButton::new(yes_label)
+                            .style(ThemeButtonStyle::Primary)
+                            .text_size(14.0),
+                    )
+                    .clicked()
+                {
+                    *action = on_yes();
+                    *open = false;
+                }
+                ui.add_space(8.0);
+                if ui
+                    .add(
+                        ThemeButton::new(no_label)
+                            .style(ThemeButtonStyle::Tertiary)
+                            .text_size(14.0),
+                    )
+                    .clicked()
+                {
+                    *open = false;
+                }
+            });
+        });
+    if !still_open {
+        *open = false;
+    }
+}
+
 fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
     const DISPLAY_SECS: f32 = 2.5;
 
@@ -670,7 +845,8 @@ fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
     }
 
     let is_active = state.toast_message.is_some();
-    let progress = ctx.animate_bool_with_time(egui::Id::new("map_editor_toast"), is_active, 0.22);
+    let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let progress = ctx.animate_bool_with_time(egui::Id::new("map_editor_toast"), is_active, anim);
 
     if progress <= 0.01 && !is_active {
         state.toast_last_message = None;
@@ -700,7 +876,7 @@ fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
         .anchor(Align2::CENTER_BOTTOM, Vec2::new(0.0, -50.0))
         .order(Order::Tooltip)
         .show(ctx, |ui| {
-            egui::Frame::new()
+            let frame_response = egui::Frame::new()
                 .fill(bg_color)
                 .stroke(Stroke::new(1.0_f32, border_color))
                 .corner_radius(6)
@@ -708,5 +884,9 @@ fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
                 .show(ui, |ui| {
                     ui.label(RichText::new(message).color(text_color).size(13.0).strong());
                 });
+            if frame_response.response.clicked() {
+                state.toast_message = None;
+                state.toast_started = None;
+            }
         });
 }

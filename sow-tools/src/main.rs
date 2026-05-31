@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use std::error::Error;
 use std::path::PathBuf;
 
+mod cli_error;
 mod exporter;
 mod image_map;
 mod openfront_import;
@@ -11,7 +12,15 @@ mod rasterizer;
 
 /// Shadows of War map tooling: OSM generation and OpenFront import.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    author,
+    version,
+    about,
+    long_about = "Shadows of War map tooling.\n\n\
+        With no subcommand, generates a map from an OpenStreetMap bounding box:\n\
+        sow-tools --bbox min_lon,min_lat,max_lon,max_lat --name my_map\n\n\
+        Override output root with SOW_MAPS_ROOT (default: assets/maps)."
+)]
 struct Cli {
     #[command(subcommand)]
     sub: Option<Commands>,
@@ -54,6 +63,10 @@ struct ImageMapArgs {
     /// Write default_single_player.ron for this map.
     #[arg(long, default_value_t = false)]
     single_player_config: bool,
+
+    /// Overwrite existing map.bin without prompting
+    #[arg(long, default_value_t = false)]
+    force: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -65,15 +78,15 @@ struct RefreshCatalogArgs {
 /// Generate a map from an OpenStreetMap bounding box.
 #[derive(Parser, Debug)]
 pub struct GenerateArgs {
-    /// Bounding box (min_lon, min_lat, max_lon, max_lat)
+    /// Bounding box (min_lon,min_lat,max_lon,max_lat) in WGS84 decimal degrees
     #[arg(short, long, allow_hyphen_values = true)]
     pub bbox: Option<String>,
 
-    /// Output map name (e.g., 'guadalajara')
+    /// Output map slug under SOW_MAPS_ROOT / assets/maps (e.g. guadalajara)
     #[arg(short, long)]
     pub name: Option<String>,
 
-    /// Scale factor (pixels per degree of longitude)
+    /// Scale factor (pixels per degree of longitude); clamped to mobile-safe max
     #[arg(short, long, default_value_t = 1000.0)]
     pub scale: f64,
 
@@ -84,6 +97,10 @@ pub struct GenerateArgs {
     /// Human-readable map title stored in map.bin (defaults to --name)
     #[arg(long)]
     pub display_name: Option<String>,
+
+    /// Overwrite existing map.bin without prompting
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -96,7 +113,7 @@ struct ImportOpenfrontArgs {
     #[arg(short, long)]
     name: Option<String>,
 
-    /// Maps root directory
+    /// Maps root directory (also set via SOW_MAPS_ROOT env var in exporter)
     #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
 }
@@ -105,21 +122,20 @@ struct ImportOpenfrontArgs {
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
-    match cli.sub {
+    let result: Result<(), Box<dyn Error>> = match cli.sub {
         Some(Commands::ImportOpenfront(import)) => {
             openfront_import::run_import(openfront_import::ImportArgs {
                 input: import.input,
                 name: import.name,
                 maps_root: import.maps_root,
-            })?;
+            })
         }
         Some(Commands::RefreshCatalog(args)) => {
-            openfront_import::refresh_catalog(&args.maps_root)?;
-            println!("Wrote {}", args.maps_root.join("catalog.bin").display());
+            openfront_import::refresh_catalog(&args.maps_root).map(|_| {
+                println!("Wrote {}", args.maps_root.join("catalog.bin").display());
+            })
         }
-        Some(Commands::ImageMap(args)) => {
-            run_image_map(args)?;
-        }
+        Some(Commands::ImageMap(args)) => run_image_map(args),
         None => {
             let args = cli.generate;
             let bbox = args
@@ -134,11 +150,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 args.display_name.as_deref().unwrap_or(&name),
                 args.scale,
                 args.single_player_config,
+                args.force,
             )
-            .await?;
+            .await
         }
-    }
+    };
 
+    if let Err(e) = result {
+        cli_error::exit_user_error("command failed", e);
+    }
     Ok(())
 }
 
@@ -148,6 +168,7 @@ async fn run_generate(
     display_name: &str,
     scale: f64,
     single_player_config: bool,
+    force: bool,
 ) -> Result<(), Box<dyn Error>> {
     let parts: Vec<&str> = bbox.split(',').collect();
     if parts.len() != 4 {
@@ -262,9 +283,11 @@ async fn run_generate(
         terrain_grid,
         spawns,
         single_player_config,
+        force,
     )?;
 
     println!("Generation complete! Saved to assets/maps/{name}");
+    println!("Map data © OpenStreetMap contributors (ODbL). See https://www.openstreetmap.org/copyright");
     Ok(())
 }
 
@@ -304,6 +327,7 @@ fn run_image_map(args: ImageMapArgs) -> Result<(), Box<dyn Error>> {
         map.terrain,
         spawns,
         args.single_player_config,
+        args.force,
     )?;
 
     println!("Generation complete! Saved to assets/maps/{}", args.name);

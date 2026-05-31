@@ -45,48 +45,51 @@ impl SowApp {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                if let Some(sp) = self.gfx.prev_sync_point.take() {
-                    let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
-                }
-                if let Some(mut s) = self.gfx.surface.take() {
-                    if let Some(mut gp) = self.gfx.gui_painter.take() {
-                        gp.destroy(&self.gfx.render_ctx.context);
+                if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                    if let Some(sp) = self.gfx.prev_sync_point.take() {
+                        let _ = render_ctx.context.wait_for(&sp, !0);
                     }
-                    if let Some(mut mr) = self.gfx.map_renderer.take() {
-                        mr.destroy(&self.gfx.render_ctx);
+                    if let Some(mut s) = self.gfx.surface.take() {
+                        if let Some(mut gp) = self.gfx.gui_painter.take() {
+                            gp.destroy(&render_ctx.context);
+                        }
+                        if let Some(mut mr) = self.gfx.map_renderer.take() {
+                            mr.destroy(render_ctx);
+                        }
+                        render_ctx.reset_command_encoder();
+                        render_ctx.context.destroy_surface(&mut s);
                     }
-                    self.gfx
-                        .render_ctx
-                        .reset_command_encoder();
-                    self.gfx.render_ctx.context.destroy_surface(&mut s);
                 }
                 event_loop.exit()
             }
             WindowEvent::SurfaceResized(physical_size) => {
                 if physical_size.width > 0 && physical_size.height > 0 {
-                    if let Some(sp) = self.gfx.prev_sync_point.take() {
-                        let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
-                    }
-                    if let Some(ref mut s) = self.gfx.surface {
-                        let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
-                            gpu::DisplaySync::Block
-                        } else {
-                            gpu::DisplaySync::Tear
-                        };
-                        self.gfx.render_ctx.context.reconfigure_surface(
-                            s,
-                            gpu::SurfaceConfig {
-                                size: gpu::Extent {
-                                    width: physical_size.width,
-                                    height: physical_size.height,
-                                    depth: 1,
+                    if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                        if let Some(sp) = self.gfx.prev_sync_point.take() {
+                            let _ = render_ctx.context.wait_for(&sp, !0);
+                        }
+                        if let Some(ref mut s) = self.gfx.surface {
+                            let display_sync = if cfg!(any(target_os = "android", target_os = "ios"))
+                            {
+                                gpu::DisplaySync::Block
+                            } else {
+                                gpu::DisplaySync::Tear
+                            };
+                            render_ctx.context.reconfigure_surface(
+                                s,
+                                gpu::SurfaceConfig {
+                                    size: gpu::Extent {
+                                        width: physical_size.width,
+                                        height: physical_size.height,
+                                        depth: 1,
+                                    },
+                                    usage: gpu::TextureUsage::TARGET,
+                                    display_sync,
+                                    color_space: gpu::ColorSpace::Srgb,
+                                    ..Default::default()
                                 },
-                                usage: gpu::TextureUsage::TARGET,
-                                display_sync,
-                                color_space: gpu::ColorSpace::Srgb,
-                                ..Default::default()
-                            },
-                        );
+                            );
+                        }
                     }
                     self.input.screen_w = physical_size.width as f32;
                     self.input.screen_h = physical_size.height as f32;
@@ -148,9 +151,9 @@ impl SowApp {
                                 .unwrap_or(false);
 
                             if owner != 0 && owner != my_id && is_allied {
+                                let lang = self.ui.app.settings_state.language;
                                 self.ui.app.hud_state.show_error = Some(
-                                    "You must break the alliance first to send the boat!"
-                                        .to_string(),
+                                    sow_lang::get(lang).hud.err_break_alliance_boat.clone(),
                                 );
                                 let mx = self.input.last_mouse_x;
                                 let my = self.input.last_mouse_y;
@@ -741,7 +744,11 @@ impl SowApp {
 
                 if self.ui.app.hud_state.gold < cost {
                     valid = false;
-                    err_msg = format!("Need {} Gold!", sow_ui::utils::format_number(cost));
+                    let lang = self.ui.app.settings_state.language;
+                    err_msg = sow_lang::get(lang)
+                        .hud
+                        .err_need_gold
+                        .replace("{}", &sow_ui::utils::format_number(cost));
                 } else {
                     match target_res {
                         Ok(_) => {}

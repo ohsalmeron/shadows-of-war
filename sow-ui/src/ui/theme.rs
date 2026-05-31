@@ -13,6 +13,54 @@ pub fn compact_viewport(ctx: &Context) -> bool {
     rect.width() < 480.0 || rect.height() < 600.0
 }
 
+/// Standard UI animation duration; near-instant when reduced motion is enabled.
+#[inline]
+pub fn anim_duration(reduced_motion: bool) -> f32 {
+    if reduced_motion {
+        0.01
+    } else {
+        0.22
+    }
+}
+
+/// Reads `sow_reduced_motion` temp data set at frame start from [`SettingsState`].
+#[inline]
+pub fn anim_duration_from_ctx(ctx: &Context) -> f32 {
+    let reduced = ctx
+        .data(|d| d.get_temp::<bool>(egui::Id::new("sow_reduced_motion")))
+        .unwrap_or(false);
+    anim_duration(reduced)
+}
+
+/// Hover-scale animation duration (slightly snappier than panel transitions).
+#[inline]
+pub fn anim_duration_hover_from_ctx(ctx: &Context) -> f32 {
+    let base = anim_duration_from_ctx(ctx);
+    if base <= 0.02 {
+        base
+    } else {
+        (base * 0.68).max(0.08)
+    }
+}
+
+/// Publish reduced-motion preference for UI animation helpers this frame.
+#[inline]
+pub fn publish_reduced_motion(ctx: &Context, reduced_motion: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("sow_reduced_motion"), reduced_motion));
+}
+
+/// Transparent modal close control (settings, credits).
+pub fn modal_close_button(ui: &mut Ui) -> Response {
+    ui.add(
+        crate::widgets::ThemeButton::new("✖")
+            .style(crate::widgets::ThemeButtonStyle::Tertiary)
+            .custom_fill(Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+            .text_size(20.0)
+            .custom_text_color(text_secondary()),
+    )
+}
+
 /// Cosmic Rush palette
 pub mod palette {
     use egui::Color32;

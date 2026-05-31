@@ -223,11 +223,13 @@ impl SowApp {
                         self.gfx.needs_first_upload = true;
 
                         // Free GPU memory
-                        if let Some(sp) = self.gfx.prev_sync_point.take() {
-                            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
-                        }
-                        if let Some(mut mr) = self.gfx.map_renderer.take() {
-                            mr.destroy(&self.gfx.render_ctx);
+                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                let _ = render_ctx.context.wait_for(&sp, !0);
+                            }
+                            if let Some(mut mr) = self.gfx.map_renderer.take() {
+                                mr.destroy(render_ctx);
+                            }
                         }
 
                         self.ui.app.splash_state.done = true;
@@ -287,30 +289,32 @@ impl SowApp {
 
                         self.sim.map_w = start_msg.config.map_width;
                         self.sim.map_h = start_msg.config.map_height;
-                        if let Some(sp) = self.gfx.prev_sync_point.take() {
-                            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
-                        }
-                        if let Some(mut mr) = self.gfx.map_renderer.take() {
-                            mr.destroy(&self.gfx.render_ctx); // MANDATORY MEMORY LEAK FIX
-                        }
-                        if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                            mover.destroy(&self.gfx.render_ctx);
-                        }
-                        if let Some(ref s) = self.gfx.surface {
-                            let format = s.info().format;
-                            self.gfx.map_renderer =
-                                Some(sow_render::map_renderer::MapRenderer::new(
-                                    &self.gfx.render_ctx.context,
-                                    self.sim.map_w,
-                                    self.sim.map_h,
+                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                let _ = render_ctx.context.wait_for(&sp, !0);
+                            }
+                            if let Some(mut mr) = self.gfx.map_renderer.take() {
+                                mr.destroy(render_ctx);
+                            }
+                            if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                                mover.destroy(render_ctx);
+                            }
+                            if let Some(ref s) = self.gfx.surface {
+                                let format = s.info().format;
+                                self.gfx.map_renderer =
+                                    Some(sow_render::map_renderer::MapRenderer::new(
+                                        &render_ctx.context,
+                                        self.sim.map_w,
+                                        self.sim.map_h,
+                                        format,
+                                        &map_bytes,
+                                    ));
+                                self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                                    &render_ctx.context,
                                     format,
-                                    &map_bytes,
                                 ));
-                            self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                                &self.gfx.render_ctx.context,
-                                format,
-                            ));
-                            self.gfx.needs_first_upload = true;
+                                self.gfx.needs_first_upload = true;
+                            }
                         }
 
                         // Move to step 2: Texture uploading happens automatically next frame

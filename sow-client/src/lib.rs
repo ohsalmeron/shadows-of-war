@@ -227,6 +227,10 @@ impl ApplicationHandler for SowApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        if self.gpu_init_failed {
+            event_loop.exit();
+            return;
+        }
         self.update(event_loop);
         if let Some(win) = self.active_window() {
             win.request_redraw();
@@ -288,4 +292,3 @@ pub fn wasm_main() {
     run_game(event_loop);
 }
 pub mod sim;
-pub mod sound;

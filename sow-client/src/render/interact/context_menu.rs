@@ -395,7 +395,10 @@ impl SowApp {
                                             self.ui.app.hud_state.ask_troops = (ally_troops * 0.10).floor();
                                             ctx.data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 1_usize));
                                         } else {
-                                            self.ui.app.hud_state.show_error = Some("You can only ask resources from allies!".to_string());
+                                            let lang = self.ui.app.settings_state.language;
+                                            self.ui.app.hud_state.show_error = Some(
+                                                sow_lang::get(lang).hud.err_resources_allies_only.clone(),
+                                            );
                                         }
                                     }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));
@@ -404,7 +407,10 @@ impl SowApp {
                                 } else if sector == 1 {
                                     // Right Wedge (Boat) - Launch fleet
                                     if is_allied {
-                                        self.ui.app.hud_state.show_error = Some("You must break the alliance first to send the boat!".to_string());
+                                        let lang = self.ui.app.settings_state.language;
+                                        self.ui.app.hud_state.show_error = Some(
+                                            sow_lang::get(lang).hud.err_break_alliance_boat.clone(),
+                                        );
                                     } else {
                                         let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
                                         self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: tile_idx, troops });
@@ -419,7 +425,13 @@ impl SowApp {
                                             if has_alliance_request {
                                                 self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
                                             } else if has_proposed_alliance {
-                                                self.ui.app.hud_state.show_error = Some("An alliance renewal request is already pending with this player!".to_string());
+                                                let lang = self.ui.app.settings_state.language;
+                                                self.ui.app.hud_state.show_error = Some(
+                                                    sow_lang::get(lang)
+                                                        .hud
+                                                        .err_alliance_renewal_pending
+                                                        .clone(),
+                                                );
                                             } else {
                                                 self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
                                             }
@@ -428,7 +440,13 @@ impl SowApp {
                                         } else if has_alliance_request {
                                             self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
                                         } else if has_proposed_alliance {
-                                            self.ui.app.hud_state.show_error = Some("An alliance request is already pending with this player!".to_string());
+                                            let lang = self.ui.app.settings_state.language;
+                                            self.ui.app.hud_state.show_error = Some(
+                                                sow_lang::get(lang)
+                                                    .hud
+                                                    .err_alliance_request_pending
+                                                    .clone(),
+                                            );
                                         } else {
                                             self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
                                         }

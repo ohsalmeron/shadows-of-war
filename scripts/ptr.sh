@@ -17,7 +17,7 @@ NGINX_SITE="/etc/nginx/sites-available/ptr.shadowsofwar.io"
 SYSTEMD_SERVICE="sow-server-ptr"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
-WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
+WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/wasm-release/sow_client.wasm"
 echo "========================================================="
 echo "🚀 Starting PTR Deployment (Shadows of War -> ptr.shadowsofwar.io)"
 echo "========================================================="
@@ -51,7 +51,7 @@ echo "✅ Version bumped to ${CLEAN_VERSION}"
 
 # 2. Build Backend and Frontend
 echo "==> Compiling Backend and Frontend..."
-RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown
+RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --profile wasm-release -p sow-client --target wasm32-unknown-unknown
 # Try MUSL, fallback to GNU
 if cargo build --release -p sow-server --target x86_64-unknown-linux-musl && cargo build --release -p sow-relay --target x86_64-unknown-linux-musl; then
     SERVER_BIN="target/x86_64-unknown-linux-musl/release/sow-server"
@@ -100,6 +100,8 @@ build_index_html "${LOADER_TEMPLATE}" dist/index.html "${CLEAN_VERSION}" "${JS_F
 
 minify_js_shim "dist/${JS_FILE}"
 
+optimize_wasm_bundle "dist/${WASM_FILE}"
+
 if command -v brotli >/dev/null 2>&1; then
   brotli -f -Z dist/${WASM_FILE} &
   BROTLI_WASM_PID=$!
@@ -115,6 +117,10 @@ sed -e "s/__VERSION__/${CLEAN_VERSION}/g" \
     -e "s/__WASM_FILE__/${WASM_FILE}/g" \
     -e "s/__BUILD_TS__/${BUILD_TS}/g" \
     "${SW_TEMPLATE}" > dist/sw.js
+
+WASM_KB=$(( $(stat -c%s "dist/${WASM_FILE}") / 1024 ))
+JS_KB=$(( $(stat -c%s "dist/${JS_FILE}") / 1024 ))
+echo "Bundle sizes: ${WASM_FILE}=${WASM_KB} KB, ${JS_FILE}=${JS_KB} KB"
 
 # 4. Deployment
 echo "==> [PARALLEL] Pushing to VPS..."

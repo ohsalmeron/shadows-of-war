@@ -53,10 +53,13 @@ futures-util = "0.3"
 redis = "0.27"
 rand = "0.8"
 reqwest = { version = "0.11", features = ["json"] }
-geo = "0.28"
-geo-types = "0.7"
 clap = { version = "4.4", features = ["derive"] }
 toml = "0.8"
+ehttp = { version = "0.5.0", default-features = false }
+libm = "0.2.16"
+axum = "0.8.9"
+tower-http = { version = "0.6.10", features = ["fs", "compression-br", "cors"] }
+futures-channel = "0.3"
 
 [workspace.dependencies.blade-egui]
 path = "blade/blade-egui"
@@ -66,9 +69,6 @@ path = "blade/blade-graphics"
 
 [workspace.dependencies.blade-macros]
 path = "blade/blade-macros"
-
-[workspace.dependencies.blade-particle]
-path = "blade/blade-particle"
 
 [workspace.dependencies.bytemuck]
 version = "1"
@@ -107,8 +107,12 @@ codegen-units = 16
 strip = true
 
 [profile.wasm-release]
-inherits = "deploy"
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
 panic = "abort"
+strip = true
 
 [patch.crates-io]
 egui = { path = "egui/crates/egui" }

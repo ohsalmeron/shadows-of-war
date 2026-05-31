@@ -63,17 +63,6 @@ pub enum UnitType {
     Warship,
 }
 
-impl UnitType {
-    #[inline]
-    pub fn asset(self) -> crate::assets::Asset {
-        match self {
-            UnitType::TransportShip => crate::assets::Asset::TransportShip,
-            UnitType::TradeShip => crate::assets::Asset::TradeShip,
-            UnitType::Warship => crate::assets::Asset::Battleship,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum NukeKind {

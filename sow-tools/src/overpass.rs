@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::rasterizer::CoastlineGeometry;
+use crate::cli_error;
 
 const OVERPASS_SERVERS: [&str; 2] = [
     "https://overpass.kumi.systems/api/interpreter",
@@ -122,9 +123,11 @@ pub async fn fetch_coastlines_tiled(
         failed
     );
     if segments.is_empty() {
-        return Err(
-            "No coastline geometry from Overpass (timeouts or rate limits). Retry later.".into(),
-        );
+        return Err(cli_error::user_error(
+            "fetch coastlines",
+            "No coastline geometry from Overpass (timeouts or rate limits). Retry later.",
+        )
+        .into());
     }
 
     Ok(CoastlineGeometry { segments })

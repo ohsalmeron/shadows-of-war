@@ -14,5 +14,4 @@ egui = { workspace = true }
 log = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
-serde_json = { workspace = true }
 sow-lang = { workspace = true }

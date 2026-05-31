@@ -250,7 +250,26 @@ pub fn draw(
     let font_id = egui::FontId::proportional(if is_mobile { 14.0 } else { 16.0 });
 
     let pct = ((visual_progress * 100.0).clamp(0.0, 100.0)) as i32;
-    let display_text = format!("{} {}%", sow_lang::get(lang).loading_screen.loading, pct);
+    let status = state
+        .status_override
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            if state.status_text.is_empty() {
+                None
+            } else {
+                Some(state.status_text.as_str())
+            }
+        });
+    let display_text = if let Some(phase) = status {
+        if phase.contains('%') {
+            phase.to_string()
+        } else {
+            format!("{} — {}%", phase, pct)
+        }
+    } else {
+        format!("{} {}%", sow_lang::get(lang).loading_screen.loading, pct)
+    };
 
     crate::ui::theme::outlined_text(
         root_ui.painter(),

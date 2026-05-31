@@ -29,49 +29,18 @@ impl MoverSpriteId {
     }
 }
 
-const SPRITE_FILES: &[(&str, &[u8])] = &[
-    (
-        "transport_ship.svg",
-        include_bytes!("../../sow-client/assets/transport_ship.svg"),
-    ),
-    (
-        "trade_ship.svg",
-        include_bytes!("../../sow-client/assets/trade_ship.svg"),
-    ),
-    (
-        "battleship.svg",
-        include_bytes!("../../sow-client/assets/battleship.svg"),
-    ),
-    (
-        "atombomb.png",
-        include_bytes!("../../sow-client/assets/atombomb.png"),
-    ),
-    (
-        "sam_missile.png",
-        include_bytes!("../../sow-client/assets/sam_missile.png"),
-    ),
+const SPRITE_FILES: &[&[u8]] = &[
+    include_bytes!("../../sow-client/assets/transport_ship.png"),
+    include_bytes!("../../sow-client/assets/trade_ship.png"),
+    include_bytes!("../../sow-client/assets/battleship.png"),
+    include_bytes!("../../sow-client/assets/atombomb.png"),
+    include_bytes!("../../sow-client/assets/sam_missile.png"),
 ];
 
-fn rasterize_sprite(bytes: &[u8], is_svg: bool, size: u32) -> Vec<u8> {
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
-    if is_svg {
-        let opt = usvg::Options::default();
-        let tree = usvg::Tree::from_data(bytes, &opt).expect("svg parse");
-        let mut pixmap = tiny_skia::Pixmap::new(size, size).expect("pixmap");
-        let sx = size as f32 / tree.size().width().max(1.0);
-        let sy = size as f32 / tree.size().height().max(1.0);
-        let scale = sx.min(sy);
-        let tx = (size as f32 - tree.size().width() * scale) * 0.5;
-        let ty = (size as f32 - tree.size().height() * scale) * 0.5;
-        let transform = tiny_skia::Transform::from_translate(tx, ty).pre_scale(scale, scale);
-        resvg::render(&tree, transform, &mut pixmap.as_mut());
-        rgba.copy_from_slice(pixmap.data());
-    } else {
-        let img = image::load_from_memory(bytes).expect("png decode");
-        let img = img.resize_exact(size, size, image::imageops::FilterType::Triangle);
-        rgba.copy_from_slice(img.to_rgba8().as_raw());
-    }
-    rgba
+fn rasterize_sprite(bytes: &[u8], size: u32) -> Vec<u8> {
+    let img = image::load_from_memory(bytes).expect("sprite png decode");
+    let img = img.resize_exact(size, size, image::imageops::FilterType::Triangle);
+    img.to_rgba8().into_raw()
 }
 
 pub struct SpriteAtlas {
@@ -101,9 +70,8 @@ impl SpriteAtlas {
         let slice = unsafe { std::slice::from_raw_parts_mut(dst, total) };
         slice.fill(0);
 
-        for (i, (name, bytes)) in SPRITE_FILES.iter().enumerate() {
-            let is_svg = name.ends_with(".svg");
-            let rgba = rasterize_sprite(bytes, is_svg, cell);
+        for (i, bytes) in SPRITE_FILES.iter().enumerate() {
+            let rgba = rasterize_sprite(bytes, cell);
             let col = (i as u32) % cols;
             let row = (i as u32) / cols;
             for y in 0..cell {

@@ -12,6 +12,7 @@
 //!
 //! Usage: cargo run --bin test-relay -- --url wss://shadowsofwar.io/ws/
 
+use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use sow_core::protocol::{ClientMessage, ServerMessage};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -72,12 +73,23 @@ async fn recv(
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(
+    about = "End-to-end integration test for orchestrator → relay handoff",
+    long_about = "Simulates a player joining via the orchestrator WebSocket, waiting for Start, \
+        connecting to the relay, receiving a Turn, then leaving.\n\n\
+        Example:\n  cargo run --bin test-relay -- --url wss://shadowsofwar.io/ws/"
+)]
+struct Args {
+    /// Orchestrator WebSocket URL
+    #[arg(long, default_value = "wss://shadowsofwar.io/ws/")]
+    url: String,
+}
+
 #[tokio::main]
 async fn main() {
-    let url = std::env::args()
-        .skip_while(|a| a != "--url")
-        .nth(1)
-        .unwrap_or_else(|| "wss://shadowsofwar.io/ws/".to_string());
+    let args = Args::parse();
+    let url = args.url;
 
     let version = std::fs::read_to_string(".version")
         .unwrap_or_else(|_| "unknown".to_string())

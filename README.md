@@ -211,6 +211,20 @@ Web builds load [`web/sdk/store_portals.js`](web/sdk/store_portals.js) for `game
 
 WASM bundle size is printed at the end of `cloud.sh package` (CrazyGames Basic Launch limit ~50 MB).
 
+### WASM size (browser / portal builds)
+
+Deploy scripts compile the client with the dedicated **`wasm-release`** profile (`opt-level = "z"`, LTO, strip) instead of plain `--release`:
+
+```bash
+RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --profile wasm-release -p sow-client --target wasm32-unknown-unknown
+```
+
+After `wasm-bindgen`, an optional **`wasm-opt -Oz`** pass (install **binaryen**) shrinks the bundle further before brotli. Both `./scripts/ptr.sh` and `./scripts/cloud.sh` run this automatically when `wasm-opt` is on `PATH`.
+
+Recent slimming (Phase 2): removed Android-only deps from the client crate, dropped `resvg`/`usvg`/`tiny-skia` from mover sprite atlas (pre-baked PNGs), unified workspace dependency pins. Ship mover icons: `transport_ship.png`, `trade_ship.png`, `battleship.png` in `sow-client/assets/`.
+
+**Measured** (post-bindgen, pre-brotli, `wasm-release` profile): ~11.2 MB client WASM; ~10.0 MB after `wasm-opt -Oz` (requires `binaryen`). Brotli (`-Z`) compresses further for CDN delivery.
+
 ## Public launch checklist (AGPL)
 
 Before first **public** release or store monetization:

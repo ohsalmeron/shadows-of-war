@@ -12,9 +12,9 @@ macro_rules! all_assets {
             Port => "port.svg",
             DefensePost => "defense_post.svg",
             MissileSilo => "missile_silo.svg",
-            TradeShip => "trade_ship.svg",
-            TransportShip => "transport_ship.svg",
-            Battleship => "battleship.svg",
+            TradeShip => "trade_ship.png",
+            TransportShip => "transport_ship.png",
+            Battleship => "battleship.png",
             Star => "star.webp",
             Handshake => "handshake.svg",
             AtomBomb => "atombomb.png",
@@ -42,10 +42,6 @@ macro_rules! define_enum_and_methods {
                 match self {
                     $(Asset::$variant => concat!("bytes://", $file)),*
                 }
-            }
-
-            pub fn is_svg(self) -> bool {
-                self.file_name().ends_with(".svg")
             }
         }
     };

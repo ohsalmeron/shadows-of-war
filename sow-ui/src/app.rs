@@ -75,6 +75,7 @@ impl ClientApp {
                 ask_gold: 0.0,
                 ask_troops: 0.0,
                 prev_resource_requests: Vec::new(),
+                transfer_confirm_pending: false,
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
@@ -89,6 +90,8 @@ impl ClientApp {
         ui: &mut egui::Ui,
         cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     ) -> Option<UiAction> {
+        crate::ui::theme::publish_reduced_motion(ui.ctx(), self.settings_state.reduced_motion);
+
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
                 self.asset_loader.ensure_avatars_loaded(ui.ctx());

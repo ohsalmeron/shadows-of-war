@@ -15,9 +15,9 @@ license = "AGPL-3.0-or-later"
 files = [
   "city.svg",
   "missile_silo.svg",
-  "trade_ship.svg",
-  "transport_ship.svg",
-  "battleship.svg",
+  "trade_ship.png",
+  "transport_ship.png",
+  "battleship.png",
   "star.webp",
   "handshake.svg",
   "sam_missile.png",

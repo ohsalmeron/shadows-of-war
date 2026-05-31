@@ -97,6 +97,7 @@ pub struct HudState {
     pub ask_gold: f64,
     pub ask_troops: f64,
     pub prev_resource_requests: Vec<u16>,
+    pub transfer_confirm_pending: bool,
 }
 
 impl HudState {
@@ -472,34 +473,42 @@ fn event_log_icon(message: &str) -> &'static str {
     }
 }
 
-fn format_relative_time(at: Instant) -> String {
+fn format_relative_time(at: Instant, lang: Language) -> String {
+    let strings = &sow_lang::get(lang).hud;
     let secs = at.elapsed().as_secs();
     if secs < 60 {
-        format!("{secs}s ago")
+        strings.event_time_seconds.replace("{}", &secs.to_string())
     } else {
-        format!("{}m ago", secs / 60)
+        strings
+            .event_time_minutes
+            .replace("{}", &(secs / 60).to_string())
     }
 }
 
-fn draw_event_log_tab(ui: &mut egui::Ui, state: &mut HudState, width: f32, compact: bool) {
+fn draw_event_log_tab(
+    ui: &mut egui::Ui,
+    state: &mut HudState,
+    width: f32,
+    compact: bool,
+    lang: Language,
+) {
+    let strings = &sow_lang::get(lang).hud;
     let log_h = if compact { 120.0 } else { 140.0 };
     let now = Instant::now();
 
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new("EVENT LOG")
+            RichText::new(&strings.event_log_title)
                 .size(10.0)
                 .color(crate::ui::theme::text_secondary())
                 .strong(),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .add(
-                    egui::Button::new(RichText::new("Clear").size(10.0))
-                        .fill(crate::ui::theme::menu_secondary_button()),
-                )
-                .clicked()
-            {
+            let clear_btn = crate::widgets::ThemeButton::new(&strings.event_log_clear)
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .custom_fill(crate::ui::theme::menu_secondary_button())
+                .text_size(10.0);
+            if ui.add(clear_btn).clicked() {
                 state.event_log.clear();
                 state.event_log_seen_count = 0;
             }
@@ -511,7 +520,7 @@ fn draw_event_log_tab(ui: &mut egui::Ui, state: &mut HudState, width: f32, compa
         ui.vertical_centered(|ui| {
             ui.label(RichText::new("📋").size(20.0).color(Color32::GRAY));
             ui.label(
-                RichText::new("No events yet.")
+                RichText::new(&strings.event_log_empty)
                     .size(11.0)
                     .color(Color32::GRAY)
                     .italics(),
@@ -564,7 +573,7 @@ fn draw_event_log_tab(ui: &mut egui::Ui, state: &mut HudState, width: f32, compa
                                         .color(text_color),
                                 );
                                 ui.label(
-                                    RichText::new(format_relative_time(entry.spawned_at))
+                                    RichText::new(format_relative_time(entry.spawned_at, lang))
                                         .size(9.0)
                                         .color(crate::ui::theme::text_secondary()),
                                 );
@@ -639,7 +648,7 @@ fn draw_battle_log_tab(
         rows.push((
             DispatchKind::Navy,
             fleet.troops,
-            "Naval fleet".to_string(),
+            strings.naval_fleet_label.clone(),
             None,
             Some(fleet.id),
             fleet.retreating,
@@ -651,7 +660,7 @@ fn draw_battle_log_tab(
         ui.vertical_centered(|ui| {
             ui.label(RichText::new("⚔").size(20.0).color(Color32::GRAY));
             ui.label(
-                RichText::new("No active dispatches.")
+                RichText::new(&strings.battle_log_empty)
                     .size(11.0)
                     .color(Color32::GRAY)
                     .italics(),
@@ -715,17 +724,17 @@ fn draw_battle_log_tab(
                                                         .find(|a| a.id == aid)
                                                         .map(|a| a.owner_id)
                                                         .unwrap_or(0);
-                                                    let btn = egui::Button::new(
-                                                        RichText::new("⚔").size(10.0),
-                                                    )
-                                                    .fill(accent.linear_multiply(0.25))
-                                                    .stroke(Stroke::new(
-                                                        crate::ui::theme::stroke::HAIRLINE,
-                                                        crate::ui::theme::accent_danger_border(),
-                                                    ))
-                                                    .corner_radius(crate::ui::theme::radius::XS);
+                                                    let btn = crate::widgets::ThemeButton::new("⚔")
+                                                        .style(crate::widgets::ThemeButtonStyle::Danger)
+                                                        .custom_fill(accent.linear_multiply(0.25))
+                                                        .stroke(Stroke::new(
+                                                            crate::ui::theme::stroke::HAIRLINE,
+                                                            crate::ui::theme::accent_danger_border(),
+                                                        ))
+                                                        .min_size(vec2(28.0, 28.0))
+                                                        .text_size(10.0);
                                                     if ui
-                                                        .add_sized(vec2(28.0, 28.0), btn)
+                                                        .add(btn)
                                                         .on_hover_text(&strings.hover_retaliate)
                                                         .clicked()
                                                     {
@@ -746,14 +755,12 @@ fn draw_battle_log_tab(
                                             }
                                             DispatchKind::Outgoing => {
                                                 if let Some(aid) = attack_id {
-                                                    if ui
-                                                        .add_sized(
-                                                            vec2(28.0, 28.0),
-                                                            egui::Button::new(
-                                                                RichText::new("X").size(10.0),
-                                                            ),
-                                                        )
-                                                        .clicked()
+                                                    let cancel_btn = crate::widgets::ThemeButton::new("X")
+                                                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                                                        .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                        .min_size(vec2(28.0, 28.0))
+                                                        .text_size(10.0);
+                                                    if ui.add(cancel_btn).clicked()
                                                     {
                                                         cancel_intents.push(
                                                             sow_core::protocol::GameplayIntent::CancelAttack {
@@ -765,14 +772,12 @@ fn draw_battle_log_tab(
                                             }
                                             DispatchKind::Navy => {
                                                 if let Some(fid) = fleet_id {
-                                                    if ui
-                                                        .add_sized(
-                                                            vec2(28.0, 28.0),
-                                                            egui::Button::new(
-                                                                RichText::new("X").size(10.0),
-                                                            ),
-                                                        )
-                                                        .clicked()
+                                                    let cancel_btn = crate::widgets::ThemeButton::new("X")
+                                                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                                                        .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                        .min_size(vec2(28.0, 28.0))
+                                                        .text_size(10.0);
+                                                    if ui.add(cancel_btn).clicked()
                                                     {
                                                         cancel_intents.push(
                                                             sow_core::protocol::GameplayIntent::RecallFleet {
@@ -810,6 +815,8 @@ pub fn draw(
 
     let rect = ui.ctx().content_rect();
     let compact = rect.width() < 768.0 || rect.width() < rect.height() * 1.25;
+    let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
+    let anim_hover = crate::ui::theme::anim_duration_hover_from_ctx(ui.ctx());
 
     let panel_w = if compact {
         ui.ctx().content_rect().width() - 84.0
@@ -943,7 +950,7 @@ pub fn draw(
                                     }
                                     BottomHudTab::EventLog => {
                                         ui.push_id("event_log_tab", |ui| {
-                                            draw_event_log_tab(ui, state, content_w, compact);
+                                            draw_event_log_tab(ui, state, content_w, compact, lang);
                                         });
                                     }
                                 }
@@ -1064,7 +1071,7 @@ pub fn draw(
     let inbox_progress = ui.ctx().animate_bool_with_time(
         egui::Id::new("alliance_inbox_animation"),
         is_inbox_active,
-        0.22,
+        anim,
     );
     if inbox_progress > 0.01 {
         let anim_scale = if is_inbox_active {
@@ -1110,7 +1117,7 @@ pub fn draw(
                                     let w = (ui.available_width() - 6.0) / 2.0;
                                     ui.horizontal(|ui| {
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            crate::widgets::ThemeButton::new("REJECT ALL")
+                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.reject_all)
                                                 .text_size(10.0)
                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1121,7 +1128,7 @@ pub fn draw(
                                             state.show_alliance_inbox = false;
                                         }
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            crate::widgets::ThemeButton::new("ACCEPT ALL")
+                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.accept_all)
                                                 .text_size(10.0)
                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1168,7 +1175,7 @@ pub fn draw(
                                     };
 
                                     // Animate individual card sliding horizontally with spring overshoot!
-                                    let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, 0.22);
+                                    let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, anim);
                                     let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
                                     let card_offset = 30.0 * (1.0 - card_scale.max(0.0));
 
@@ -1277,7 +1284,7 @@ pub fn draw(
                                         requester.name.clone()
                                     };
 
-                                    let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, 0.22);
+                                    let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, anim);
                                     let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
                                     let card_offset = 30.0 * (1.0 - card_scale.max(0.0));
 
@@ -1418,7 +1425,7 @@ pub fn draw(
                         ui.separator();
                         if ui
                             .add(crate::widgets::HudButton::new("😀"))
-                            .on_hover_text("Express Emoji")
+                            .on_hover_text(&sow_lang::get(lang).hud.hover_express_emoji)
                             .clicked()
                         {
                             state.show_emoji_panel = !state.show_emoji_panel;
@@ -1441,7 +1448,7 @@ pub fn draw(
 
                         let attacks_btn = ui
                             .add(crate::widgets::HudButton::new("⚔"))
-                            .on_hover_text("Battle Log");
+                            .on_hover_text(&sow_lang::get(lang).hud.hover_battle_log);
                         if attacks_btn.clicked() {
                             state.bottom_tab = BottomHudTab::BattleLog;
                             state.battle_log_seen_count = total_attacks;
@@ -1520,7 +1527,7 @@ pub fn draw(
     let emoji_progress = ui.ctx().animate_bool_with_time(
         egui::Id::new("emoji_panel_animation"),
         is_emoji_active,
-        0.22,
+        anim,
     );
     if emoji_progress > 0.01 {
         let anim_scale = if is_emoji_active {
@@ -1611,7 +1618,7 @@ pub fn draw(
 
                         ui.vertical_centered(|ui| {
                             ui.label(
-                                RichText::new("hmmm")
+                                RichText::new(&sow_lang::get(lang).hud.emoji_panel_title)
                                     .strong()
                                     .size(13.0 * anim_scale)
                                     .color(border_glow),
@@ -1632,8 +1639,11 @@ pub fn draw(
 
                                     let scale_id =
                                         ui.make_persistent_id(("emoji_scale", emoji_idx));
-                                    let hover_t =
-                                        ui.ctx().animate_bool_with_time(scale_id, is_hovered, 0.15);
+                                    let hover_t = ui.ctx().animate_bool_with_time(
+                                        scale_id,
+                                        is_hovered,
+                                        anim_hover,
+                                    );
 
                                     // Spring calculation (easeOutBack) - optimized to direct multiplications
                                     let spring_t = if hover_t > 0.0 {
@@ -1884,10 +1894,10 @@ pub fn draw(
         state.emoji_panel_just_opened = false;
     }
 
-    draw_transfer_panel(ui, state, cancel_intents);
+    draw_transfer_panel(ui, state, cancel_intents, lang);
     draw_sync_overlay(ui.ctx(), state, lang);
-    draw_betrayal_overlay(ui.ctx(), state, cancel_intents);
-    draw_error_overlay(ui.ctx(), state);
+    draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang);
+    draw_error_overlay(ui.ctx(), state, lang);
 
     action
 }
@@ -2287,7 +2297,9 @@ fn draw_betrayal_overlay(
     ctx: &Context,
     state: &mut HudState,
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
+    lang: Language,
 ) {
+    let strings = &sow_lang::get(lang).hud;
     if let Some((ally_id, intent)) = state.show_betrayal_warning.clone() {
         let screen_rect = ctx.content_rect();
         let compact =
@@ -2334,7 +2346,7 @@ fn draw_betrayal_overlay(
 
                     crate::ui::theme::outlined_label(
                         ui,
-                        "BETRAYAL WARNING",
+                        &strings.betrayal_title,
                         egui::FontId::proportional(if compact { 22.0 } else { 28.0 }),
                         crate::ui::theme::accent_danger(),
                     );
@@ -2371,18 +2383,16 @@ fn draw_betrayal_overlay(
                             ui.spacing_mut().item_spacing.x = 8.0;
                         }
 
-                        // NO button (safe)
-                        let no_btn = egui::Button::new(
-                            RichText::new("NO, KEEP ALLIANCE").size(if compact {
-                                13.0
-                            } else {
-                                16.0
-                            }),
-                        )
-                        .fill(crate::ui::theme::menu_secondary_button())
-                        .corner_radius(8);
-
-                        if ui.add_sized(vec2(btn_w, btn_h), no_btn).clicked() {
+                        if ui
+                            .add_sized(
+                                vec2(btn_w, btn_h),
+                                crate::widgets::ThemeButton::new(&strings.betrayal_keep)
+                                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                                    .custom_fill(crate::ui::theme::menu_secondary_button())
+                                    .text_size(if compact { 13.0 } else { 16.0 }),
+                            )
+                            .clicked()
+                        {
                             state.show_betrayal_warning = None;
                         }
 
@@ -2390,18 +2400,13 @@ fn draw_betrayal_overlay(
                             ui.add_space(16.0);
                         }
 
-                        // YES button (danger)
-                        let yes_btn = egui::Button::new(
-                            RichText::new("YES, BETRAY")
-                                .size(if compact { 13.0 } else { 16.0 })
-                                .strong(),
-                        )
-                        .fill(crate::ui::theme::accent_danger().linear_multiply(0.3))
-                        .stroke(egui::Stroke::new(1.5f32, crate::ui::theme::accent_danger()))
-                        .corner_radius(8);
-
                         if ui
-                            .add_sized(vec2(if compact { btn_w } else { 140.0 }, btn_h), yes_btn)
+                            .add_sized(
+                                vec2(if compact { btn_w } else { 140.0 }, btn_h),
+                                crate::widgets::ThemeButton::new(&strings.betrayal_yes)
+                                    .style(crate::widgets::ThemeButtonStyle::Danger)
+                                    .text_size(if compact { 13.0 } else { 16.0 }),
+                            )
                             .on_hover_cursor(egui::CursorIcon::PointingHand)
                             .clicked()
                         {
@@ -2477,12 +2482,13 @@ fn draw_mobile_selection_bar(
                 let btn_h = 48.0;
 
                 // 1. Info Button
-                let info_btn =
-                    egui::Button::new(RichText::new(&strings.btn_info).strong().size(13.0))
-                        .fill(palette::button_inactive())
-                        .stroke(egui::Stroke::new(1.0_f32, palette::text_muted()))
-                        .corner_radius(6);
-                let _ = ui.add_sized(egui::vec2(btn_w, btn_h), info_btn);
+                let info_btn = crate::widgets::ThemeButton::new(&strings.btn_info)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .custom_fill(palette::button_inactive())
+                    .stroke(egui::Stroke::new(1.0_f32, palette::text_muted()))
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .text_size(13.0);
+                let _ = ui.add(info_btn);
 
                 // 2. Fleet / Delete Button
                 let right_fill = if tile_info.is_own_territory {
@@ -2501,12 +2507,14 @@ fn draw_mobile_selection_bar(
                     &strings.btn_fleft
                 };
 
-                let fleet_btn = egui::Button::new(RichText::new(right_label).strong().size(13.0))
-                    .fill(right_fill.linear_multiply(0.3))
+                let fleet_btn = crate::widgets::ThemeButton::new(right_label)
+                    .style(crate::widgets::ThemeButtonStyle::Primary)
+                    .custom_fill(right_fill.linear_multiply(0.3))
                     .stroke(egui::Stroke::new(1.2_f32, right_glow))
-                    .corner_radius(6);
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .text_size(13.0);
 
-                if ui.add_sized(egui::vec2(btn_w, btn_h), fleet_btn).clicked() {
+                if ui.add(fleet_btn).clicked() {
                     let troops = Some(state.troops * (state.attack_ratio as f64));
                     cancel_intents.push(sow_core::protocol::GameplayIntent::LaunchFleet {
                         target_tile: tile_info.tile_idx,
@@ -2515,12 +2523,13 @@ fn draw_mobile_selection_bar(
                 }
 
                 // 3. Ally Button
-                let ally_btn =
-                    egui::Button::new(RichText::new(&strings.btn_ally).strong().size(13.0))
-                        .fill(palette::button_inactive())
-                        .stroke(egui::Stroke::new(1.0_f32, palette::neon_cyan()))
-                        .corner_radius(6);
-                let _ = ui.add_sized(egui::vec2(btn_w, btn_h), ally_btn);
+                let ally_btn = crate::widgets::ThemeButton::new(&strings.btn_ally)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .custom_fill(palette::button_inactive())
+                    .stroke(egui::Stroke::new(1.0_f32, palette::neon_cyan()))
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .text_size(13.0);
+                let _ = ui.add(ally_btn);
 
                 // 4. Build / Attack Button
                 let left_fill = if tile_info.is_own_territory {
@@ -2584,10 +2593,12 @@ fn draw_mobile_selection_bar(
     }
 }
 
-fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
+fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
+    let strings = &sow_lang::get(lang).hud;
     let is_active = state.show_error.is_some();
+    let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
     let progress =
-        ctx.animate_bool_with_time(egui::Id::new("error_toast_animation"), is_active, 0.22);
+        ctx.animate_bool_with_time(egui::Id::new("error_toast_animation"), is_active, anim);
 
     if progress <= 0.01 && !is_active {
         state.last_error_message = None;
@@ -2644,7 +2655,7 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
         .anchor(egui::Align2::CENTER_TOP, vec2(0.0, current_y))
         .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
-            egui::Frame::new()
+            let frame = egui::Frame::new()
                 .fill(bg_color)
                 .stroke(egui::Stroke::new(1.0_f32, border_color))
                 .corner_radius(6)
@@ -2655,23 +2666,49 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState) {
                         ui.add_space(6.0);
                         ui.label(RichText::new(err_msg).color(text_color).size(12.0).strong());
                     });
+                    ui.label(
+                        RichText::new(&strings.toast_tap_dismiss)
+                            .size(10.0)
+                            .color(text_color.linear_multiply(0.7)),
+                    );
                 });
+            if frame.response.clicked() {
+                state.show_error = None;
+                state.error_display_timer = None;
+            }
         });
 
     // Request repaint so the fade-out/pop-out animation runs smoothly
     ctx.request_repaint();
 }
 
+fn transfer_needs_confirm(state: &HudState, max_gold: f64, max_troops: f64) -> bool {
+    let gold_pct = if max_gold > 0.0 {
+        state.ask_gold / max_gold
+    } else {
+        0.0
+    };
+    let troop_pct = if max_troops > 0.0 {
+        state.ask_troops / max_troops
+    } else {
+        0.0
+    };
+    gold_pct > 0.5 || troop_pct > 0.5
+}
+
 fn draw_transfer_panel(
     ui: &mut egui::Ui,
     state: &mut HudState,
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
+    lang: Language,
 ) {
+    let strings = &sow_lang::get(lang).hud;
     let is_active = state.show_ask_panel.is_some();
+    let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
     let progress = ui.ctx().animate_bool_with_time(
         egui::Id::new("transfer_panel_animation"),
         is_active,
-        0.22,
+        anim,
     );
 
     if progress <= 0.01 && !is_active {
@@ -2772,7 +2809,7 @@ fn draw_transfer_panel(
                     ui.vertical_centered(|ui| {
                         crate::ui::theme::outlined_label(
                             ui,
-                            "🤝 Resource Transfer",
+                            &strings.transfer_title,
                             egui::FontId::proportional(20.0),
                             Color32::WHITE,
                         );
@@ -2794,48 +2831,58 @@ fn draw_transfer_panel(
 
                         // Send Tab Button
                         let is_send = active_tab == 0;
-                        let send_btn = egui::Button::new(
-                            RichText::new("📤 SEND")
-                                .strong()
-                                .size(14.0)
-                                .color(if is_send { Color32::WHITE } else { Color32::GRAY }),
-                        )
-                        .fill(if is_send {
-                            crate::ui::theme::accent_solo_cyan().linear_multiply(0.4)
-                        } else {
-                            crate::ui::theme::menu_secondary_button()
-                        })
-                        .stroke(egui::Stroke::new(
-                            1.5_f32,
-                            if is_send { crate::ui::theme::accent_solo_cyan() } else { Color32::TRANSPARENT },
-                        ))
-                        .corner_radius(8);
+                        let send_btn = crate::widgets::ThemeButton::new(&strings.transfer_send)
+                            .style(if is_send {
+                                crate::widgets::ThemeButtonStyle::Primary
+                            } else {
+                                crate::widgets::ThemeButtonStyle::Tertiary
+                            })
+                            .custom_fill(if is_send {
+                                crate::ui::theme::accent_solo_cyan().linear_multiply(0.4)
+                            } else {
+                                crate::ui::theme::menu_secondary_button()
+                            })
+                            .stroke(egui::Stroke::new(
+                                1.5_f32,
+                                if is_send {
+                                    crate::ui::theme::accent_solo_cyan()
+                                } else {
+                                    Color32::TRANSPARENT
+                                },
+                            ))
+                            .min_size(vec2(tab_w, 32.0))
+                            .text_size(14.0);
 
-                        if ui.add_sized(vec2(tab_w, 32.0), send_btn).clicked() {
+                        if ui.add(send_btn).clicked() {
                             active_tab = 0;
                             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 0_usize));
                         }
 
                         // Request Tab Button
                         let is_req = active_tab == 1;
-                        let req_btn = egui::Button::new(
-                            RichText::new("📥 REQUEST")
-                                .strong()
-                                .size(14.0)
-                                .color(if is_req { Color32::WHITE } else { Color32::GRAY }),
-                        )
-                        .fill(if is_req {
-                            crate::ui::theme::accent_ranked_gold().linear_multiply(0.4)
-                        } else {
-                            crate::ui::theme::menu_secondary_button()
-                        })
-                        .stroke(egui::Stroke::new(
-                            1.5_f32,
-                            if is_req { crate::ui::theme::accent_ranked_gold() } else { Color32::TRANSPARENT },
-                        ))
-                        .corner_radius(8);
+                        let req_btn = crate::widgets::ThemeButton::new(&strings.transfer_request)
+                            .style(if is_req {
+                                crate::widgets::ThemeButtonStyle::Secondary
+                            } else {
+                                crate::widgets::ThemeButtonStyle::Tertiary
+                            })
+                            .custom_fill(if is_req {
+                                crate::ui::theme::accent_ranked_gold().linear_multiply(0.4)
+                            } else {
+                                crate::ui::theme::menu_secondary_button()
+                            })
+                            .stroke(egui::Stroke::new(
+                                1.5_f32,
+                                if is_req {
+                                    crate::ui::theme::accent_ranked_gold()
+                                } else {
+                                    Color32::TRANSPARENT
+                                },
+                            ))
+                            .min_size(vec2(tab_w, 32.0))
+                            .text_size(14.0);
 
-                        if ui.add_sized(vec2(tab_w, 32.0), req_btn).clicked() {
+                        if ui.add(req_btn).clicked() {
                             active_tab = 1;
                             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 1_usize));
                         }
@@ -2963,62 +3010,82 @@ fn draw_transfer_panel(
 
                     ui.add_space(10.0);
 
+                    if state.transfer_confirm_pending {
+                        ui.label(
+                            RichText::new(&strings.transfer_confirm_body)
+                                .size(12.0)
+                                .color(crate::ui::theme::accent_danger()),
+                        );
+                        ui.add_space(8.0);
+                    }
+
                     // --- ACTION BUTTONS ---
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;
 
-                        // Cancel Button
-                        let cancel_btn = egui::Button::new(
-                            RichText::new("CANCEL")
-                                .strong()
-                                .size(14.0)
-                                .color(Color32::LIGHT_GRAY),
-                        )
-                        .fill(crate::ui::theme::menu_secondary_button())
-                        .corner_radius(8);
+                        let cancel_btn = crate::widgets::ThemeButton::new(&strings.transfer_cancel)
+                            .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                            .custom_fill(crate::ui::theme::menu_secondary_button())
+                            .text_size(14.0);
 
                         let btn_w = (ui.available_width() - 10.0) / 2.0;
                         if ui.add_sized(vec2(btn_w, 36.0), cancel_btn).clicked() {
+                            state.transfer_confirm_pending = false;
                             state.show_ask_panel = None;
                         }
 
-                        // Submit Button
                         let is_valid = state.ask_gold > 0.0 || state.ask_troops > 0.0;
-                        let btn_text = if active_tab == 0 { "SEND" } else { "REQUEST" };
-
-                        let submit_btn = egui::Button::new(
-                            RichText::new(btn_text)
-                                .strong()
-                                .size(14.0)
-                                .color(if is_valid { Color32::WHITE } else { Color32::GRAY }),
-                        )
-                        .fill(if is_valid {
-                            accent_color
+                        let btn_text = if state.transfer_confirm_pending {
+                            &strings.transfer_confirm_yes
+                        } else if active_tab == 0 {
+                            &strings.transfer_send
                         } else {
-                            crate::ui::theme::menu_secondary_button()
-                        })
-                        .corner_radius(8);
+                            &strings.transfer_request
+                        };
+
+                        let submit_btn = crate::widgets::ThemeButton::new(btn_text)
+                            .style(if is_valid {
+                                crate::widgets::ThemeButtonStyle::Primary
+                            } else {
+                                crate::widgets::ThemeButtonStyle::Tertiary
+                            })
+                            .custom_fill(if is_valid {
+                                accent_color
+                            } else {
+                                crate::ui::theme::menu_secondary_button()
+                            })
+                            .text_size(14.0);
 
                         let submit_resp = ui.add_sized(vec2(btn_w, 36.0), submit_btn);
                         if is_valid && submit_resp.clicked() {
-                            if active_tab == 0 {
-                                cancel_intents.push(sow_core::protocol::GameplayIntent::SendResources {
-                                    target_player: target_id,
-                                    gold: state.ask_gold,
-                                    troops: state.ask_troops,
-                                });
+                            if transfer_needs_confirm(state, max_gold, max_troops)
+                                && !state.transfer_confirm_pending
+                            {
+                                state.transfer_confirm_pending = true;
                             } else {
-                                cancel_intents.push(sow_core::protocol::GameplayIntent::RequestResources {
-                                    target_player: target_id,
-                                    gold: state.ask_gold,
-                                    troops: state.ask_troops,
-                                });
-                            }
+                                if active_tab == 0 {
+                                    cancel_intents.push(
+                                        sow_core::protocol::GameplayIntent::SendResources {
+                                            target_player: target_id,
+                                            gold: state.ask_gold,
+                                            troops: state.ask_troops,
+                                        },
+                                    );
+                                } else {
+                                    cancel_intents.push(
+                                        sow_core::protocol::GameplayIntent::RequestResources {
+                                            target_player: target_id,
+                                            gold: state.ask_gold,
+                                            troops: state.ask_troops,
+                                        },
+                                    );
+                                }
 
-                            // Reset values and close panel
-                            state.ask_gold = 0.0;
-                            state.ask_troops = 0.0;
-                            state.show_ask_panel = None;
+                                state.ask_gold = 0.0;
+                                state.ask_troops = 0.0;
+                                state.transfer_confirm_pending = false;
+                                state.show_ask_panel = None;
+                            }
                         }
                     });
                 });
@@ -3044,6 +3111,7 @@ fn draw_transfer_panel(
                 }
             }
             if !click_absorbed && is_active {
+                state.transfer_confirm_pending = false;
                 state.show_ask_panel = None;
             }
         }

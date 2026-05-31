@@ -14,7 +14,7 @@ use web_time::{Duration, Instant};
 pub struct GraphicsState {
     pub window: Option<Box<dyn winit::window::Window>>,
     pub surface: Option<blade_graphics::Surface>,
-    pub render_ctx: sow_render::RenderContext,
+    pub render_ctx: Option<sow_render::RenderContext>,
     pub map_renderer: Option<sow_render::MapRenderer>,
     pub mover_renderer: Option<sow_render::MoverRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
@@ -255,6 +255,8 @@ pub struct SowApp {
     #[cfg(target_arch = "wasm32")]
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
     pub map_editor: Option<sow_map::MapEditorSession>,
+    /// Set when Blade/Vulkan init fails; event loop exits on next tick.
+    pub gpu_init_failed: bool,
 }
 
 impl Default for SowApp {
@@ -265,18 +267,7 @@ impl Default for SowApp {
 
 impl SowApp {
     pub fn new() -> Self {
-        #[cfg(target_os = "android")]
-        {
-            android_logger::init_once(
-                android_logger::Config::default()
-                    .with_max_level(log::LevelFilter::Debug)
-                    .with_tag("sow-client"),
-            );
-            std::panic::set_hook(Box::new(|info| {
-                log::error!("PANIC: {}", info);
-            }));
-        }
-        #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+        #[cfg(all(not(target_arch = "wasm32")))]
         {
             let _ = env_logger::builder()
                 .filter_level(log::LevelFilter::Info)
@@ -293,7 +284,7 @@ impl SowApp {
         let current_snapshot: Option<SimSnapshot> = None;
 
         // ── Renderer ────────────────────────────────────────────────────────────
-        let render_ctx = RenderContext::new();
+        let render_ctx: Option<RenderContext> = None;
         let surface: Option<gpu::Surface> = None;
         let map_renderer: Option<MapRenderer> = None;
         let mover_renderer: Option<sow_render::MoverRenderer> = None;
@@ -302,6 +293,16 @@ impl SowApp {
 
         // ── UI State ────────────────────────────────────────────────────────────
         let mut app = ClientApp::new();
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(mql)) = window.match_media("(prefers-reduced-motion: reduce)") {
+                    if mql.matches() {
+                        app.settings_state.reduced_motion = true;
+                    }
+                }
+            }
+        }
         #[cfg(not(target_arch = "wasm32"))]
         {
             if let Ok(bytes) = std::fs::read("assets/maps/catalog.bin") {
@@ -576,6 +577,36 @@ impl SowApp {
             #[cfg(target_arch = "wasm32")]
             ime_bridge,
             map_editor: None,
+            gpu_init_failed: false,
+        }
+    }
+
+    /// Initialize the shared Blade context once; returns false after a fatal error.
+    pub fn ensure_render_ctx(&mut self) -> bool {
+        if self.gfx.render_ctx.is_some() {
+            return true;
+        }
+        if self.gpu_init_failed {
+            return false;
+        }
+        match RenderContext::try_new() {
+            Ok(ctx) => {
+                self.gfx.render_ctx = Some(ctx);
+                true
+            }
+            Err(err) => {
+                self.gpu_init_failed = true;
+                eprintln!(
+                    "Failed to initialize GPU (Vulkan).\n\
+                     On Linux, ensure Vulkan drivers are installed and loaded.\n\
+                     If you use NVIDIA, run `nvidia-smi` — a driver/library version mismatch \
+                     requires a reboot after updating nvidia-utils.\n\
+                     Close other GPU apps if video memory is exhausted.\n\
+                     Details: {err}"
+                );
+                log::error!("GPU init failed: {err}");
+                false
+            }
         }
     }
 
@@ -632,20 +663,23 @@ impl SowApp {
             editor.handle_suspended();
             return;
         }
+        let Some(render_ctx) = self.gfx.render_ctx.as_mut() else {
+            return;
+        };
         if let Some(sp) = self.gfx.prev_sync_point.take() {
-            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+            let _ = render_ctx.context.wait_for(&sp, !0);
         }
         if let Some(mut s) = self.gfx.surface.take() {
             if let Some(mut gp) = self.gfx.gui_painter.take() {
-                gp.destroy(&self.gfx.render_ctx.context);
+                gp.destroy(&render_ctx.context);
             }
             if let Some(mut mr) = self.gfx.map_renderer.take() {
-                mr.destroy(&self.gfx.render_ctx);
+                mr.destroy(render_ctx);
             }
             if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                mover.destroy(&self.gfx.render_ctx);
+                mover.destroy(render_ctx);
             }
-            self.gfx.render_ctx.context.destroy_surface(&mut s);
+            render_ctx.context.destroy_surface(&mut s);
         }
     }
 
@@ -654,6 +688,10 @@ impl SowApp {
         self.net.ws_reconnect_after_resume = true;
         if let Some(ref mut editor) = self.map_editor {
             editor.handle_resumed();
+            return;
+        }
+        if !self.ensure_render_ctx() {
+            event_loop.exit();
             return;
         }
         if self.gfx.window.is_none() {
@@ -729,22 +767,26 @@ impl SowApp {
 
 impl Drop for SowApp {
     fn drop(&mut self) {
+        let Some(render_ctx) = self.gfx.render_ctx.as_mut() else {
+            return;
+        };
         if let Some(sp) = self.gfx.prev_sync_point.take() {
-            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+            let _ = render_ctx.context.wait_for(&sp, !0);
         }
         if let Some(mut mr) = self.gfx.map_renderer.take() {
-            mr.destroy(&self.gfx.render_ctx);
+            mr.destroy(render_ctx);
         }
         if let Some(mut mover) = self.gfx.mover_renderer.take() {
-            mover.destroy(&self.gfx.render_ctx);
+            mover.destroy(render_ctx);
         }
         if let Some(mut gui) = self.gfx.gui_painter.take() {
-            gui.destroy(&self.gfx.render_ctx.context);
+            gui.destroy(&render_ctx.context);
         }
         if let Some(mut s) = self.gfx.surface.take() {
-            self.gfx.render_ctx.context.destroy_surface(&mut s);
+            render_ctx.context.destroy_surface(&mut s);
         }
-        self.gfx.render_ctx.reset_command_encoder();
+        // The command encoder is destroyed by `RenderContext`'s own `Drop`
+        // when the `Option<RenderContext>` field is dropped after this.
     }
 }
 
@@ -776,7 +818,7 @@ impl SowApp {
                 session.destroy_and_reclaim();
             self.gfx.window = window;
             self.gfx.surface = surface;
-            self.gfx.render_ctx = render_ctx;
+            self.gfx.render_ctx = Some(render_ctx);
             self.ui.app = client_app;
             self.ui.app.phase = ClientPhase::MainMenu;
             self.gfx.prev_sync_point = None;
@@ -789,6 +831,7 @@ impl SowApp {
                 &self.ui.egui_ctx,
                 None,
             );
+            self.check_surface();
         }
     }
 

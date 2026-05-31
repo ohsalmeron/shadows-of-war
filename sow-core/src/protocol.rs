@@ -207,20 +207,6 @@ pub struct ServerStartMessage {
     pub relay_port: Option<u16>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
-pub struct TurnLog {
-    pub turns: Vec<Turn>,
-    pub current: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ReplayFile {
-    pub config: crate::game_config::GameConfig,
-    pub seed: u64,
-    pub players: Vec<PlayerInfo>,
-    pub turns: Vec<Turn>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum Team {
     Red,

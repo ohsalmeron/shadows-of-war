@@ -5,32 +5,29 @@ pub struct RenderContext {
     pub command_encoder: gpu::CommandEncoder,
 }
 
-impl Default for RenderContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl RenderContext {
-    pub fn new() -> Self {
+    pub fn try_new() -> Result<Self, gpu::NotSupportedError> {
         let context = unsafe {
             gpu::Context::init(gpu::ContextDesc {
                 presentation: true,
                 validation: cfg!(debug_assertions),
                 overlay: false,
                 ..Default::default()
-            })
-            .expect("Failed to initialize Blade Context")
+            })?
         };
         let command_encoder = context.create_command_encoder(gpu::CommandEncoderDesc {
             name: "main",
             buffer_count: 2,
         });
 
-        Self {
+        Ok(Self {
             context,
             command_encoder,
-        }
+        })
+    }
+
+    pub fn new() -> Self {
+        Self::try_new().expect("Failed to initialize Blade Context")
     }
 
     pub fn create_surface<
@@ -75,5 +72,15 @@ impl RenderContext {
             name: "main",
             buffer_count: 2,
         });
+    }
+}
+
+impl Drop for RenderContext {
+    fn drop(&mut self) {
+        // Blade does not auto-destroy the command encoder when the context is
+        // dropped; without this its internal `_scratch`/`_marker` GPU blocks
+        // leak (reported by the Blade leak checker on every teardown).
+        self.context
+            .destroy_command_encoder(&mut self.command_encoder);
     }
 }

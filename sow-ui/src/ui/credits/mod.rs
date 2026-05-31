@@ -1,6 +1,6 @@
 use crate::UiAction;
 use crate::ui::theme::{accent_solo_cyan, text_secondary};
-use egui::{Align, Color32, Layout, RichText, Stroke};
+use egui::{Align, Color32, Layout, RichText};
 use sow_lang::Language;
 
 fn version_tag() -> String {
@@ -58,16 +58,7 @@ pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiA
                     Color32::WHITE,
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new("✖").size(20.0).color(text_secondary()),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE),
-                        )
-                        .clicked()
-                    {
+                    if crate::ui::theme::modal_close_button(ui).clicked() {
                         action = Some(UiAction::ToggleCredits);
                     }
                 });

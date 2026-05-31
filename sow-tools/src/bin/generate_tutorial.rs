@@ -1,14 +1,28 @@
+use clap::Parser;
 use sow_core::map::MapTile;
 use sow_core::map_file::{self, MapFile, MapSpawn};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Generate the tutorial map under assets/maps/tutorial",
+    long_about = "Builds the fixed tutorial terrain and writes map.bin + catalog.bin.\n\n\
+        Example:\n  cargo run --bin generate-tutorial -- --maps-root assets/maps"
+)]
+struct Args {
+    /// Maps root directory
+    #[arg(long, default_value = "assets/maps")]
+    maps_root: PathBuf,
+}
 
 const WIDTH: u32 = 1000;
 const HEIGHT: u32 = 750;
 const SCALE: f32 = 1000.0 / 800.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
     let width = WIDTH;
     let height = HEIGHT;
     let size = (width * height) as usize;
@@ -112,8 +126,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let output_dir = Path::new("assets/maps/northamerica");
-    fs::create_dir_all(output_dir)?;
+    let output_dir = args.maps_root.join("northamerica");
+    fs::create_dir_all(&output_dir)?;
 
     let terrain_bytes: Vec<u8> = terrain_final.iter().map(|t| t.as_byte()).collect();
     let num_land = terrain_bytes.iter().filter(|b| (*b & 0x80) != 0).count() as u32;
@@ -152,8 +166,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     sow_map::write_square_thumbnail(&preview, &output_dir.join("thumbnail.webp"))?;
     println!("Wrote 1024x1024 thumbnail.webp");
 
-    refresh_catalog(output_dir.parent().unwrap())?;
-    println!("Refreshed assets/maps/catalog.bin");
+    refresh_catalog(&args.maps_root)?;
+    println!("Refreshed {}", args.maps_root.join("catalog.bin").display());
 
     Ok(())
 }

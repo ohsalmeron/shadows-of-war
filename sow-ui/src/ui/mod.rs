@@ -1,7 +1,6 @@
 pub mod animation;
 pub mod asset_loader;
 pub mod credits;
-pub mod endgame;
 pub mod hud;
 pub mod loading_screen;
 pub mod map_editor;

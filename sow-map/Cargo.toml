@@ -17,6 +17,8 @@ sow-lang = { workspace = true }
 
 blade-graphics = { workspace = true }
 blade-egui = { workspace = true }
+blade-macros = { workspace = true }
+bytemuck = { workspace = true }
 egui = { workspace = true }
 
 log = { workspace = true }
@@ -26,7 +28,6 @@ bincode.workspace = true
 crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
-url = { workspace = true }
 brotli = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -40,4 +41,4 @@ js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
-ehttp = "0.5.0"
+ehttp = { workspace = true }

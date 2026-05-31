@@ -17,5 +17,5 @@ wyrand = { workspace = true }
 log = { workspace = true }
 bytemuck = { workspace = true }
 egui = { workspace = true }
-libm = "0.2.16"
+libm = { workspace = true }
 brotli = { workspace = true }

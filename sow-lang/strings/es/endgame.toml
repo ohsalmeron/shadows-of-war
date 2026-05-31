@@ -4,6 +4,7 @@ victory_subtitle = "Has conquistado el mundo entero."
 defeat_subtitle = "Tu imperio ha caído."
 return_to_lobby = "REGRESAR"
 spectate = "ESPECTAR"
+winner_emerged = "{} emergió victorioso."
 
 victory_flavors = [
     "El mundo es tuyo. ¿Y ahora qué?",

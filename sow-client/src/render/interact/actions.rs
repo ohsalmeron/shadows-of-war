@@ -316,6 +316,15 @@ impl SowApp {
                     #[cfg(not(target_arch = "wasm32"))]
                     spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
                 }
+                UiAction::RetryConnection => {
+                    self.ui.app.main_menu_state.error_message = None;
+                    self.ui.app.main_menu_state.is_connecting = true;
+                    let url = self.ui.app.main_menu_state.server_address.clone();
+                    #[cfg(target_arch = "wasm32")]
+                    spawn_sow_client_connect(url, &self.net.connect_tx);
+                    #[cfg(not(target_arch = "wasm32"))]
+                    spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
+                }
                 UiAction::JoinLobby(id) => {
                     let join_msg = sow_core::protocol::ClientMessage::Join {
                         name: self.ui.app.main_menu_state.player_name.clone(),
@@ -406,15 +415,20 @@ impl SowApp {
                     );
                 }
                 UiAction::OpenMapEditor => {
+                    let Some(mut render_ctx) = self.gfx.render_ctx.take() else {
+                        log::error!("Cannot open map editor: GPU context not initialized");
+                        return;
+                    };
                     if let Some(sp) = self.gfx.prev_sync_point.take() {
-                        let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+                        let _ = render_ctx.context.wait_for(&sp, !0);
                     }
                     if let Some(mut mr) = self.gfx.map_renderer.take() {
-                        mr.destroy(&self.gfx.render_ctx);
+                        mr.destroy(&render_ctx);
                     }
                     if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                        mover.destroy(&self.gfx.render_ctx);
+                        mover.destroy(&render_ctx);
                     }
+                    render_ctx.reset_command_encoder();
 
                     let window = self
                         .gfx
@@ -426,7 +440,6 @@ impl SowApp {
                         .surface
                         .take()
                         .expect("No surface to handoff to editor");
-                    let render_ctx = std::mem::take(&mut self.gfx.render_ctx);
                     let gui_painter = self
                         .gfx
                         .gui_painter

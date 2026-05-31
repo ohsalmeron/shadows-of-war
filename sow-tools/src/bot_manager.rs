@@ -11,7 +11,12 @@ use tokio::time::{sleep, Duration};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    author,
+    version,
+    about = "Spawn bot clients for load testing the game server",
+    long_about = None
+)]
 pub struct Args {
     #[arg(short, long, default_value = "wss://shadowsofwar.io/ws/")]
     pub url: String,

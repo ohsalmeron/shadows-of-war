@@ -1,10 +1,31 @@
 //! One-shot migration: legacy raw terrain + manifest.json → SOWM map.bin + catalog.bin
 
+use clap::Parser;
 use serde_json::Value;
 use sow_core::map_file::{self, MapFile, MapSpawn};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Migrate legacy map folders to map.bin + catalog.bin",
+    long_about = "Run from the repo root. Rewrites map.bin, removes manifest.json, and rebuilds catalog.bin.\n\
+        Use --dry-run to preview; pass --yes to skip the confirmation prompt."
+)]
+struct Args {
+    /// Maps root directory
+    #[arg(long, default_value = "assets/maps")]
+    maps_root: PathBuf,
+
+    /// List maps that would be migrated without writing files
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
+
+    /// Skip interactive confirmation (required for destructive runs in CI)
+    #[arg(long, default_value_t = false)]
+    yes: bool,
+}
 
 fn slug(name: &str) -> String {
     sow_core::maps::map_key(name)
@@ -111,9 +132,25 @@ fn load_legacy(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let maps_root = PathBuf::from("assets/maps");
+    let args = Args::parse();
+    let maps_root = args.maps_root;
+
     if !maps_root.is_dir() {
-        eprintln!("Run from repo root; missing {}", maps_root.display());
+        eprintln!(
+            "sow-tools: migrate-maps: run from repo root; missing {}",
+            maps_root.display()
+        );
+        std::process::exit(1);
+    }
+
+    if args.dry_run {
+        println!("Dry run — no files will be modified under {}", maps_root.display());
+    } else if !args.yes {
+        eprintln!(
+            "This will rewrite map.bin files, delete manifest.json / mini_map.bin / maps.json, and rebuild catalog.bin under {}.",
+            maps_root.display()
+        );
+        eprintln!("Re-run with --yes to proceed, or --dry-run to preview.");
         std::process::exit(1);
     }
 
@@ -137,6 +174,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match load_legacy(&key, &map_dir) {
             Ok(map_file) => {
+                if args.dry_run {
+                    println!("Would migrate {key}");
+                    migrated += 1;
+                    continue;
+                }
                 let encoded = map_file::encode(&map_file);
                 let header = map_file::parse_header(&encoded)?;
                 fs::write(map_dir.join("map.bin"), &encoded)?;
@@ -157,6 +199,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 skipped += 1;
             }
         }
+    }
+
+    if args.dry_run {
+        println!("Would migrate {migrated} maps, skip {skipped}");
+        return Ok(());
     }
 
     let catalog = map_file::catalog_from_headers(catalog_items);

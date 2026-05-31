@@ -18,9 +18,14 @@ pub fn draw_left_column(
     let side = crate::ui::map_texture::thumbnail_square_side(ui.available_width(), compact);
 
     if state.lobbies.is_empty() {
+        let label = if state.is_connected {
+            &strings.no_lobbies_yet
+        } else {
+            &strings.waiting_for_lobby
+        };
         crate::ui::theme::outlined_label(
             ui,
-            &strings.waiting_for_lobby,
+            label,
             egui::FontId::proportional(16.0),
             crate::ui::theme::text_secondary(),
         );
@@ -44,16 +49,17 @@ pub fn draw_left_column(
             }
             if thumbnail.is_none() {
                 if let Some(err) = asset_loader.thumbnail_error(&lobby.map_name) {
+                    let _ = err;
                     ui.label(
-                        egui::RichText::new(format!("Thumbnail: {err}"))
+                        egui::RichText::new(&strings.thumbnail_load_failed)
                             .size(11.0)
-                            .color(crate::ui::theme::accent_danger()),
+                            .color(crate::ui::theme::text_secondary()),
                     );
                 } else if asset_loader.thumbnail_in_flight(&lobby.map_name) {
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.label(
-                            egui::RichText::new("Loading thumbnail…")
+                            egui::RichText::new(&strings.loading_thumbnail)
                                 .size(11.0)
                                 .color(crate::ui::theme::text_secondary()),
                         );

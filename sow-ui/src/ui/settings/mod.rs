@@ -18,6 +18,8 @@ pub struct SettingsState {
     pub sfx_volume: f32,
     pub mute_all: bool,
     pub language: Language,
+    pub applied_hint_until: Option<web_time::Instant>,
+    pub reduced_motion: bool,
 }
 
 impl Default for SettingsState {
@@ -28,7 +30,21 @@ impl Default for SettingsState {
             sfx_volume: 0.8,
             mute_all: false,
             language: Language::English,
+            applied_hint_until: None,
+            reduced_motion: false,
         }
+    }
+}
+
+fn touch_applied(state: &mut SettingsState) {
+    state.applied_hint_until = Some(web_time::Instant::now());
+}
+
+fn quality_help<'a>(strings: &'a sow_lang::SettingsStrings, q: &GraphicsQuality) -> &'a str {
+    match q {
+        GraphicsQuality::Low => &strings.quality_low_help,
+        GraphicsQuality::Medium => &strings.quality_medium_help,
+        GraphicsQuality::High => &strings.quality_high_help,
     }
 }
 
@@ -46,7 +62,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
     let progress = root_ui.ctx().animate_bool_with_time(
         egui::Id::new("settings_animation_progress"),
         is_open,
-        0.22,
+        crate::ui::theme::anim_duration(state.reduced_motion),
     );
     if progress <= 0.01 && !is_open {
         return None;
@@ -101,16 +117,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     Color32::WHITE,
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new("✖").size(20.0).color(text_secondary()),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE),
-                        )
-                        .clicked()
-                    {
+                    if crate::ui::theme::modal_close_button(ui).clicked() {
                         action = Some(UiAction::ToggleSettings);
                     }
                 });
@@ -160,9 +167,15 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
 
                     if ui.add(btn).clicked() {
                         state.graphics_quality = q;
+                        touch_applied(state);
                     }
                 }
             });
+            ui.label(
+                RichText::new(quality_help(strings, &state.graphics_quality))
+                    .size(12.0)
+                    .color(text_secondary()),
+            );
 
             ui.add_space(24.0);
 
@@ -176,12 +189,17 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
             ui.add_space(8.0);
 
             ui.horizontal(|ui| {
-                ui.checkbox(
-                    &mut state.mute_all,
-                    RichText::new(&strings.mute_all)
-                        .size(16.0)
-                        .color(text_secondary()),
-                );
+                if ui
+                    .checkbox(
+                        &mut state.mute_all,
+                        RichText::new(&strings.mute_all)
+                            .size(16.0)
+                            .color(text_secondary()),
+                    )
+                    .changed()
+                {
+                    touch_applied(state);
+                }
             });
             ui.add_space(12.0);
 
@@ -193,7 +211,12 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                             .color(text_secondary()),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add(Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(false));
+                        if ui
+                            .add(Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(true))
+                            .changed()
+                        {
+                            touch_applied(state);
+                        }
                     });
                 });
                 ui.add_space(12.0);
@@ -204,7 +227,12 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                             .color(text_secondary()),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add(Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(false));
+                        if ui
+                            .add(Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(true))
+                            .changed()
+                        {
+                            touch_applied(state);
+                        }
                     });
                 });
             });
@@ -219,15 +247,57 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                 Color32::WHITE,
             );
             ui.add_space(8.0);
+            let lang_label = match state.language {
+                Language::English => strings.lang_english.clone(),
+                Language::Spanish => strings.lang_spanish.clone(),
+                _ => strings.lang_english.clone(),
+            };
             egui::ComboBox::from_id_salt("language_select")
-                .selected_text(RichText::new(format!("{:?}", state.language)).size(16.0))
+                .selected_text(RichText::new(&lang_label).size(16.0))
                 .width(if compact { 200.0 } else { 300.0 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut state.language, Language::English, "English");
-                    ui.selectable_value(&mut state.language, Language::Spanish, "Spanish");
-                    ui.selectable_value(&mut state.language, Language::French, "French");
-                    ui.selectable_value(&mut state.language, Language::German, "German");
+                    if ui
+                        .selectable_value(
+                            &mut state.language,
+                            Language::English,
+                            &strings.lang_english,
+                        )
+                        .clicked()
+                    {
+                        touch_applied(state);
+                    }
+                    if ui
+                        .selectable_value(
+                            &mut state.language,
+                            Language::Spanish,
+                            &strings.lang_spanish,
+                        )
+                        .clicked()
+                    {
+                        touch_applied(state);
+                    }
                 });
+
+            if state
+                .applied_hint_until
+                .is_some_and(|t| t.elapsed().as_secs_f32() < 2.0)
+            {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(&strings.settings_applied)
+                        .size(12.0)
+                        .color(accent_solo_cyan()),
+                );
+            }
+
+            ui.add_space(16.0);
+            if ui
+                .checkbox(&mut state.reduced_motion, &strings.reduced_motion)
+                .on_hover_text(&strings.reduced_motion_help)
+                .changed()
+            {
+                touch_applied(state);
+            }
 
             ui.add_space(24.0);
 

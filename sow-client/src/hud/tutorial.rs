@@ -15,6 +15,9 @@ impl SowApp {
             return;
         }
 
+        let lang = self.ui.app.settings_state.language;
+        let strings = &sow_lang::get(lang).tutorial;
+
         // Auto-advance tutorial logic based on snapshot
         if let Some(snap) = &self.sim.current_snapshot {
             let my_id = self.sim.my_player_id.unwrap_or(0);
@@ -32,23 +35,26 @@ impl SowApp {
 
         let (title, desc) = match self.ui.tutorial_step {
             TutorialStep::Welcome => (
-                "Welcome Commander",
-                "Let's establish your empire. Your base is the single tile you own.",
+                strings.step_welcome_title.as_str(),
+                strings.step_welcome_desc.as_str(),
             ),
             TutorialStep::Expansion => (
-                "Expand Territory",
-                "Tap on a neutral (empty) tile next to your border to expand.",
+                strings.step_expansion_title.as_str(),
+                strings.step_expansion_desc.as_str(),
             ),
             TutorialStep::Combat => (
-                "Launch an Attack",
-                "Enemies approach. Drag from your territory into an enemy tile to attack!",
+                strings.step_combat_title.as_str(),
+                strings.step_combat_desc.as_str(),
             ),
-            TutorialStep::Complete => ("You are ready", "Conquer the world! Good luck."),
+            TutorialStep::Complete => (
+                strings.step_complete_title.as_str(),
+                strings.step_complete_desc.as_str(),
+            ),
         };
 
         let mut next_clicked = false;
 
-        egui::Window::new("Tutorial")
+        egui::Window::new(&strings.commander_title)
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -87,9 +93,9 @@ impl SowApp {
                         || self.ui.tutorial_step == TutorialStep::Complete
                     {
                         let btn_text = if self.ui.tutorial_step == TutorialStep::Welcome {
-                            "Next"
+                            &strings.btn_next
                         } else {
-                            "Finish"
+                            &strings.btn_finish
                         };
                         if ui
                             .button(RichText::new(btn_text).color(Color32::WHITE))
@@ -97,15 +103,16 @@ impl SowApp {
                         {
                             next_clicked = true;
                         }
-                    } else {
-                        // Skip button for the action steps
-                        if ui
-                            .button(RichText::new("Skip").color(Color32::GRAY).size(12.0))
-                            .clicked()
-                        {
-                            self.ui.tutorial_step = TutorialStep::Complete;
-                            self.mark_tutorial_completed();
-                        }
+                    } else if ui
+                        .button(
+                            RichText::new(&strings.btn_skip)
+                                .color(Color32::GRAY)
+                                .size(12.0),
+                        )
+                        .clicked()
+                    {
+                        self.ui.tutorial_step = TutorialStep::Complete;
+                        self.mark_tutorial_completed();
                     }
                 });
             });

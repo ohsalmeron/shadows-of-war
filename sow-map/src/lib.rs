@@ -6,6 +6,8 @@ pub mod image_pipeline;
 pub mod thumbnail;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub mod geo_underlay;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod osm_tiles;
 
 pub use editor::MapEditorSession;

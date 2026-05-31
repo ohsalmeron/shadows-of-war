@@ -256,6 +256,48 @@ fn draw_menu_right_panel(
     }
 }
 
+fn draw_map_download_indicator(
+    ctx: &egui::Context,
+    state: &MainMenuState,
+    lang: sow_lang::Language,
+    compact: bool,
+) {
+    if !state.is_downloading_map {
+        return;
+    }
+    let map_name = state
+        .downloading_map_name
+        .as_deref()
+        .unwrap_or("map");
+    let strings = &sow_lang::get(lang).main_menu;
+    let label = strings
+        .downloading_map
+        .replacen("{}", map_name, 1)
+        .replacen("{}", &state.map_download_progress.to_string(), 1);
+    let pad_x = if compact { 24.0 } else { 20.0 };
+    let pad_y = if compact { 96.0 } else { 56.0 };
+
+    egui::Area::new(egui::Id::new("main_menu_map_download"))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-pad_x, pad_y))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(Color32::from_black_alpha(140))
+                .corner_radius(8)
+                .inner_margin(egui::Margin::symmetric(12, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(
+                            egui::RichText::new(label)
+                                .color(crate::ui::theme::accent_solo_cyan())
+                                .size(if compact { 13.0 } else { 14.0 }),
+                        );
+                    });
+                });
+        });
+}
+
 fn draw_connecting_indicator(
     ctx: &egui::Context,
     state: &MainMenuState,
@@ -406,6 +448,7 @@ pub fn draw(
         });
 
     draw_connecting_indicator(root_ui.ctx(), state, lang, compact);
+    draw_map_download_indicator(root_ui.ctx(), state, lang, compact);
 
     if state.show_leader_picker
         && crate::widgets::draw_leader_picker_modal(
@@ -431,6 +474,7 @@ pub fn draw(
 
     if let Some(err_msg) = &state.error_message {
         let mut clear_error = false;
+        let mut retry = false;
 
         // 1. Draw a full-screen backdrop to dim the background and intercept clicks
         egui::Area::new(egui::Id::new("error_modal_backdrop"))
@@ -456,7 +500,7 @@ pub fn draw(
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
-            .fixed_size(egui::vec2(modal_w, 240.0))
+            .fixed_size(egui::vec2(modal_w, 280.0))
             .frame(
                 egui::Frame::new()
                     .fill(crate::ui::theme::panel_bg())
@@ -498,35 +542,50 @@ pub fn draw(
 
                     ui.add_space(16.0);
 
-                    // Center-aligned, beautifully colored error details in uppercase
                     ui.label(
-                        egui::RichText::new(err_msg.to_uppercase())
+                        egui::RichText::new(err_msg.as_str())
                             .size(14.0)
-                            .color(crate::ui::theme::text_secondary())
-                            .strong(),
+                            .color(crate::ui::theme::text_secondary()),
+                    );
+
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new(&strings.connection_error_hint)
+                            .size(12.0)
+                            .color(crate::ui::theme::text_secondary()),
                     );
 
                     ui.add_space(24.0);
 
-                    // Premium dismissal button
-                    let btn_w = if is_mobile {
-                        ui.available_width()
-                    } else {
-                        160.0
-                    };
-                    let dismiss_btn = crate::widgets::ThemeButton::new(&strings.dismiss)
-                        .style(crate::widgets::ThemeButtonStyle::Danger)
-                        .min_size(egui::vec2(btn_w, 40.0));
-
-                    if ui.add(dismiss_btn).clicked() {
-                        clear_error = true;
-                    }
+                    ui.horizontal(|ui| {
+                        let btn_w = if is_mobile {
+                            (ui.available_width() - 12.0) / 2.0
+                        } else {
+                            140.0
+                        };
+                        let retry_btn = crate::widgets::ThemeButton::new(&strings.connection_retry)
+                            .style(crate::widgets::ThemeButtonStyle::Primary)
+                            .min_size(egui::vec2(btn_w, 40.0));
+                        if ui.add(retry_btn).clicked() {
+                            retry = true;
+                        }
+                        ui.add_space(12.0);
+                        let dismiss_btn = crate::widgets::ThemeButton::new(&strings.dismiss)
+                            .style(crate::widgets::ThemeButtonStyle::Danger)
+                            .min_size(egui::vec2(btn_w, 40.0));
+                        if ui.add(dismiss_btn).clicked() {
+                            clear_error = true;
+                        }
+                    });
 
                     ui.add_space(4.0);
                 });
             });
 
-        if clear_error {
+        if retry {
+            state.error_message = None;
+            action = Some(UiAction::RetryConnection);
+        } else if clear_error {
             state.error_message = None;
         }
     }

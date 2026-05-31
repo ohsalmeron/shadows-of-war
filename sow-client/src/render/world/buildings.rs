@@ -1144,31 +1144,39 @@ pub(crate) fn render(
                     {
                         ui.cached_hovered_building_id = Some(b_id);
                         ui.cached_hovered_building_level = b.active_level;
+                        let lang = ui.app.settings_state.language;
+                        let s = &sow_lang::get(lang).hud;
                         ui.cached_hovered_building_tooltip = match b.kind {
                             sow_core::game::BuildingKind::Bunker => {
-                                let title = "🛡️ Defense Tower";
-                                let stat1 = format!(
-                                    "Coverage: {} Hex Radius",
-                                    config.bunker_range.round() as i32
+                                let stat1 = s.build_bunker_coverage.replace(
+                                    "{}",
+                                    &config.bunker_range.round().to_string(),
                                 );
-                                format!("{}\n{}", title, stat1)
+                                format!("{}\n{}", s.build_bunker_title, stat1)
                             }
                             sow_core::game::BuildingKind::Factory => {
-                                let title = "🏭 Industrial Factory";
-                                let stat1 = format!(
-                                    "Gold Generation: +{:.1}/s",
-                                    config.factory_gold_income
+                                let stat1 = s.build_factory_gold.replace(
+                                    "{}",
+                                    &format!("{:.1}", config.factory_gold_income),
                                 );
-                                format!("{}\n{}", title, stat1)
+                                format!("{}\n{}", s.build_factory_title, stat1)
                             }
                             sow_core::game::BuildingKind::Port => {
-                                let title = format!("⚓ Maritime Port (Lvl {})", b.active_level);
-                                let stat1 = "Fleet Support: Enabled".to_string();
-                                let stat2 =
-                                    format!("Troop Income: +{:.1}/s", b.active_level as f64 * 25.0);
-                                let stat3 =
-                                    format!("Gold Income: +{:.1}/s", b.active_level as f64 * 50.0);
-                                format!("{}\n{}\n{}\n{}", title, stat1, stat2, stat3)
+                                let title = s
+                                    .build_port_title
+                                    .replace("{}", &b.active_level.to_string());
+                                let stat2 = s.build_port_troops.replace(
+                                    "{}",
+                                    &format!("{:.1}", b.active_level as f64 * 25.0),
+                                );
+                                let stat3 = s.build_port_gold.replace(
+                                    "{}",
+                                    &format!("{:.1}", b.active_level as f64 * 50.0),
+                                );
+                                format!(
+                                    "{}\n{}\n{}\n{}",
+                                    title, s.build_port_fleet, stat2, stat3
+                                )
                             }
                             _ => String::new(),
                         };

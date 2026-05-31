@@ -418,6 +418,56 @@ impl MapRenderer {
         self.upload_terrain(encoder);
     }
 
+    /// Pack and upload the full owner texture (shore/border/water-neighbor bits).
+    pub fn upload_initial_owners(
+        &mut self,
+        encoder: &mut gpu::CommandEncoder,
+        context: &gpu::Context,
+    ) {
+        let total = (self.width * self.height) as usize;
+        let u32_per_row = self.owner_bytes_per_row / 4;
+        let width = self.width;
+        let height = self.height;
+
+        let dst_ptr = self.owner_buffer.data();
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u32, (u32_per_row * height) as usize)
+        };
+
+        for tile_idx in 0..total as u32 {
+            let i = tile_idx as usize;
+            let x = tile_idx % width;
+            let y = tile_idx / width;
+            let dst = (y * u32_per_row + x) as usize;
+
+            let has_border = compute_has_border(tile_idx, &self.owners, width, height);
+            let mut val = self.owners[i] as u32 | ((self.conquest_flash[i] as u32) << 16);
+            if has_border {
+                val |= 1 << 24;
+            }
+            if self.has_water_neighbor[i] {
+                val |= 1 << 25;
+            }
+            slice[dst] = val;
+        }
+
+        context.sync_buffer(self.owner_buffer);
+
+        let src_piece: gpu::BufferPiece = self.owner_buffer.into();
+        let dst_piece: gpu::TexturePiece = self.owner_texture.into();
+        let mut transfer = encoder.transfer("owner_initial_upload");
+        transfer.copy_buffer_to_texture(
+            src_piece,
+            self.owner_bytes_per_row,
+            dst_piece,
+            gpu::Extent {
+                width: self.width,
+                height: self.height,
+                depth: 1,
+            },
+        );
+    }
+
 
     /// Write dirty ownership tiles to the upload buffer and copy to GPU.
     #[allow(unused_variables)]

@@ -44,13 +44,17 @@ impl SowApp {
             }
             let frame = s.acquire_frame();
 
+            let mut render_ctx = match self.gfx.render_ctx.take() {
+                Some(ctx) => ctx,
+                None => return,
+            };
+
             if let Some(sp) = self.gfx.prev_sync_point.take() {
-                let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+                let _ = render_ctx.context.wait_for(&sp, !0);
             }
 
-            self.gfx.render_ctx.command_encoder.start();
-            self.gfx
-                .render_ctx
+            render_ctx.command_encoder.start();
+            render_ctx
                 .command_encoder
                 .init_texture(frame.texture());
 
@@ -58,16 +62,14 @@ impl SowApp {
             if let Some(ref mut mr) = self.gfx.map_renderer {
                 // Upload map state on first frame or after each tick
                 if self.gfx.needs_first_upload {
-                    self.gfx
-                        .render_ctx
+                    render_ctx
                         .command_encoder
                         .init_texture(mr.terrain_texture);
-                    self.gfx
-                        .render_ctx
+                    render_ctx
                         .command_encoder
                         .init_texture(mr.owner_texture);
                     self.gfx.needs_first_upload = false;
-                    mr.upload_terrain(&mut self.gfx.render_ctx.command_encoder);
+                    mr.upload_terrain(&mut render_ctx.command_encoder);
                 }
 
                 // --- Layer 4: Track and Spawn Detonations ---
@@ -158,8 +160,8 @@ impl SowApp {
                     .unwrap_or(&[]);
 
                 mr.update(
-                    &mut self.gfx.render_ctx.command_encoder,
-                    &self.gfx.render_ctx.context,
+                    &mut render_ctx.command_encoder,
+                    &render_ctx.context,
                     dirty,
                 );
                 for dt in dirty {
@@ -363,7 +365,7 @@ impl SowApp {
                     colors: player_colors,
                 };
                 mr.draw(
-                    &mut self.gfx.render_ctx.command_encoder,
+                    &mut render_ctx.command_encoder,
                     frame.texture_view(),
                     globals,
                     colors_struct,
@@ -374,13 +376,13 @@ impl SowApp {
                 if self.gfx.mover_renderer.is_none() {
                     let surface_format = s.info().format;
                     self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                        &self.gfx.render_ctx.context,
+                        &render_ctx.context,
                         surface_format,
                     ));
                     if let Some(ref mr_mover) = self.gfx.mover_renderer {
                         mr_mover.upload_atlas(
-                            &mut self.gfx.render_ctx.command_encoder,
-                            &self.gfx.render_ctx.context,
+                            &mut render_ctx.command_encoder,
+                            &render_ctx.context,
                         );
                     }
                 }
@@ -415,16 +417,16 @@ impl SowApp {
                         _pad: 0.0,
                     };
                     mover_r.draw(
-                        &mut self.gfx.render_ctx.command_encoder,
+                        &mut render_ctx.command_encoder,
                         frame.texture_view(),
                         mover_globals,
-                        &self.gfx.render_ctx.context,
+                        &render_ctx.context,
                     );
                 }
             }
 
             if !map_drawn {
-                let pass = self.gfx.render_ctx.command_encoder.render(
+                let pass = render_ctx.command_encoder.render(
                     "clear_pass",
                     gpu::RenderTargetSet {
                         colors: &[gpu::RenderTarget {
@@ -437,6 +439,12 @@ impl SowApp {
                 );
                 drop(pass);
             }
+
+            // Restore the context so UI-action handlers (e.g. opening the map
+            // editor) can take ownership of it during `run_ui` below. The
+            // command encoder stays mid-frame on the same object across the
+            // put/re-take, so UI painting continues recording into it.
+            self.gfx.render_ctx = Some(render_ctx);
 
             // ── UI UPDATE ───────────────────────────────────────
             let mut sf = self
@@ -604,6 +612,13 @@ impl SowApp {
                 self.process_ui_actions(ctx, ui_action);
             });
 
+            // Re-take the context for UI painting. If a UI action (map editor)
+            // took ownership during `run_ui`, the editor now drives rendering;
+            // drop this frame and let the editor take over next tick.
+            let Some(mut render_ctx) = self.gfx.render_ctx.take() else {
+                return;
+            };
+
             #[cfg(target_arch = "wasm32")]
             {
                 use sow_ui::app::ClientPhase;
@@ -693,12 +708,12 @@ impl SowApp {
                 };
                 let paint_jobs = self.ui.egui_ctx.tessellate(egui_output.shapes, sf);
                 gp.update_textures(
-                    &mut self.gfx.render_ctx.command_encoder,
+                    &mut render_ctx.command_encoder,
                     &egui_output.textures_delta,
-                    &self.gfx.render_ctx.context,
+                    &render_ctx.context,
                 );
 
-                let mut pass = self.gfx.render_ctx.command_encoder.render(
+                let mut pass = render_ctx.command_encoder.render(
                     "ui_pass",
                     gpu::RenderTargetSet {
                         colors: &[gpu::RenderTarget {
@@ -714,39 +729,40 @@ impl SowApp {
                     &mut pass,
                     &paint_jobs,
                     &screen_desc,
-                    &self.gfx.render_ctx.context,
+                    &render_ctx.context,
                 );
                 drop(pass);
             }
             if let Some(ref mut gp) = self.gfx.gui_painter {
-                gp.sync(&self.gfx.render_ctx.context);
+                gp.sync(&render_ctx.context);
             }
-            self.gfx.render_ctx.command_encoder.present(frame);
-            let sync_point = self
-                .gfx
-                .render_ctx
+            render_ctx.command_encoder.present(frame);
+            let sync_point = render_ctx
                 .context
-                .submit(&mut self.gfx.render_ctx.command_encoder);
+                .submit(&mut render_ctx.command_encoder);
 
             if let Some(ref mut gp) = self.gfx.gui_painter {
                 gp.after_submit(&sync_point);
             }
 
             self.gfx.prev_sync_point = Some(sync_point);
+            self.gfx.render_ctx = Some(render_ctx);
         }
     }
 }
 
 impl SowApp {
     pub fn check_surface(&mut self) {
+        if !self.ensure_render_ctx() {
+            return;
+        }
         if self.gfx.surface.is_none() {
             if let Some(ref win) = self.gfx.window {
                 let sz = win.surface_size();
-                match self
-                    .gfx
-                    .render_ctx
-                    .create_surface(win, sz.width.max(1), sz.height.max(1))
-                {
+                let Some(render_ctx) = self.gfx.render_ctx.take() else {
+                    return;
+                };
+                match render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
                     Ok(s) => {
                         self.input.screen_w = sz.width as f32;
                         self.input.screen_h = sz.height as f32;
@@ -761,13 +777,13 @@ impl SowApp {
                         let format = s.info().format;
 
                         if let Some(sp) = self.gfx.prev_sync_point.take() {
-                            let _ = self.gfx.render_ctx.context.wait_for(&sp, !0);
+                            let _ = render_ctx.context.wait_for(&sp, !0);
                         }
                         if let Some(mut old_mr) = self.gfx.map_renderer.take() {
                             let old_terrain = old_mr.terrain.clone();
-                            old_mr.destroy(&self.gfx.render_ctx);
+                            old_mr.destroy(&render_ctx);
                             self.gfx.map_renderer = Some(sow_render::MapRenderer::new(
-                                &self.gfx.render_ctx.context,
+                                &render_ctx.context,
                                 self.sim.map_w,
                                 self.sim.map_h,
                                 format,
@@ -776,21 +792,22 @@ impl SowApp {
                             self.gfx.needs_first_upload = true;
                         }
                         if let Some(mut old_mover) = self.gfx.mover_renderer.take() {
-                            old_mover.destroy(&self.gfx.render_ctx);
+                            old_mover.destroy(&render_ctx);
                         }
                         self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                            &self.gfx.render_ctx.context,
+                            &render_ctx.context,
                             format,
                         ));
                         if let Some(mut old_gp) = self.gfx.gui_painter.take() {
-                            old_gp.destroy(&self.gfx.render_ctx.context);
+                            old_gp.destroy(&render_ctx.context);
                         }
 
                         self.gfx.gui_painter = Some(blade_egui::GuiPainter::new(
                             s.info(),
-                            &self.gfx.render_ctx.context,
+                            &render_ctx.context,
                         ));
                         self.gfx.surface = Some(s);
+                        self.gfx.render_ctx = Some(render_ctx);
 
                         self.ui.egui_ctx = egui::Context::default();
                         egui_extras::install_image_loaders(&self.ui.egui_ctx);
@@ -798,6 +815,7 @@ impl SowApp {
                         log::info!("Successfully created surface on retry.");
                     }
                     Err(e) => {
+                        self.gfx.render_ctx = Some(render_ctx);
                         log::warn!("Surface creation failed: {:?}", e);
                     }
                 }

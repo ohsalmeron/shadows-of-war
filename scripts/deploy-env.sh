@@ -27,6 +27,36 @@ find_terser() {
     return 1
 }
 
+find_wasm_opt() {
+    if command -v wasm-opt >/dev/null 2>&1; then
+        command -v wasm-opt
+        return 0
+    fi
+    local p
+    for p in /usr/bin/wasm-opt /usr/local/bin/wasm-opt; do
+        if [[ -x "${p}" ]]; then
+            echo "${p}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Shrink wasm-bindgen output before brotli (optional; install binaryen for best size).
+optimize_wasm_bundle() {
+    local wasm_path="$1"
+    local wasm_opt_bin
+    if wasm_opt_bin=$(find_wasm_opt); then
+        echo "==> wasm-opt -Oz (binaryen)..."
+        "${wasm_opt_bin}" -Oz --strip-debug --vacuum \
+            --enable-bulk-memory --enable-nontrapping-float-to-int \
+            "${wasm_path}" -o "${wasm_path}"
+        echo "✅ wasm-opt finished."
+    else
+        echo "⚠️  wasm-opt not found — install binaryen for smaller WASM (Arch: binaryen, Debian: binaryen)"
+    fi
+}
+
 install_cwebp_if_missing() {
     find_cwebp >/dev/null && return 0
     [[ "${SOW_SKIP_TOOL_INSTALL:-}" == "1" ]] && return 1
@@ -63,7 +93,9 @@ check_local_build_tools() {
     fi
 
     terser_cmd=$(find_terser)
-    echo "✅ Build tools: cwebp=${cwebp_bin} brotli=$(command -v brotli) terser=${terser_cmd}"
+    wasm_opt_hint=""
+    find_wasm_opt >/dev/null || wasm_opt_hint=" (wasm-opt/binaryen optional, recommended)"
+    echo "✅ Build tools: cwebp=${cwebp_bin} brotli=$(command -v brotli) terser=${terser_cmd}${wasm_opt_hint}"
 }
 
 check_vps_ready() {

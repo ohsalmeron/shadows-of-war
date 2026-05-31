@@ -25,7 +25,7 @@ BACKEND_DEST_DIR="/home/bizkit/shadowsofwar"
 NGINX_SITE="/etc/nginx/sites-available/shadowsofwar.io"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
-WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
+WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/wasm-release/sow_client.wasm"
 
 print_agpl_release_steps() {
   local tag="v${CLEAN_VERSION}"
@@ -81,7 +81,7 @@ echo "${CLEAN_VERSION}" > "${VERSION_FILE}"
 echo "Version bumped to ${CLEAN_VERSION}"
 
 echo "==> Compiling WASM client..."
-RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --release -p sow-client --target wasm32-unknown-unknown
+RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --profile wasm-release -p sow-client --target wasm32-unknown-unknown
 
 SERVER_BIN=""
 RELAY_BIN=""
@@ -136,6 +136,8 @@ if [[ "${PACKAGE}" -eq 1 && "${PORTAL}" == "crazygames" ]]; then
   inject_crazygames_portal dist/index.html
 fi
 minify_js_shim "dist/${JS_FILE}"
+
+optimize_wasm_bundle "dist/${WASM_FILE}"
 
 if command -v brotli >/dev/null 2>&1; then
   brotli -f -Z "dist/${WASM_FILE}" &
