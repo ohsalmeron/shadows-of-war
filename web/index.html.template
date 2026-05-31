@@ -22,7 +22,9 @@
     <meta name="theme-color" content="#000000">
     <link rel="canonical" href="https://shadowsofwar.io/">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
-    
+
+    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> is injected here only by the package build (scripts/cloud.sh package crazygames). Website/PTR ship nothing. -->
+
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
     <link rel="preload" href="./assets/ui/sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
@@ -46,16 +48,6 @@
             position: absolute;
             bottom: 10px;
             right: 10px;
-            color: rgba(189, 189, 189, 0.71);
-            font-size: 8px;
-            pointer-events: none;
-            z-index: 9999;
-        }
-
-        #credits {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
             color: rgba(189, 189, 189, 0.71);
             font-size: 8px;
             pointer-events: none;
@@ -170,22 +162,39 @@
         <p>Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser without any downloads. Join thousands of players in real-time tactical warfare, expand your empire, and prove your strategic supremacy.</p>
     </div>
     <canvas id="blade" oncontextmenu="return false;"></canvas>
-    <div id="credits">© OpenFront and Contributors</div>
     <div id="version">v__VERSION__</div>
 
     <script src="./sdk/store_portals.js"></script>
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
-        if (window.location.hostname === "appassets.androidplatform.net") {
-            window.SOW_WS_URL = "wss://shadowsofwar.io/ws/";
-            window.SOW_MAPS_URL = window.location.origin + "/assets/assets/maps";
-        }
+        /* PORTAL_BOOT_SLOT: SOW_PORTAL/SOW_WS_URL/SOW_MAPS_URL are injected here only by the CrazyGames package build. */
+        (function () {
+            var h = window.location.hostname;
+            if (h === "appassets.androidplatform.net") {
+                window.SOW_WS_URL = "wss://shadowsofwar.io/ws/";
+                window.SOW_MAPS_URL = window.location.origin + "/assets/assets/maps";
+            } else if (/crazygames\\.com$/i.test(h) || /dev-crazygames\\.com$/i.test(h)) {
+                window.SOW_PORTAL = window.SOW_PORTAL || "crazygames";
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+                window.SOW_MAPS_URL = window.SOW_MAPS_URL || (window.location.origin + "/assets/maps");
+            }
+        })();
     </script>
     <script type="module">
         async function run() {
-            if ('serviceWorker' in navigator && window.location.hostname !== "appassets.androidplatform.net") {
-                navigator.serviceWorker.register('./sw.js', { scope: './' }).catch((err) => {
+            var isPortal = window.SOW_PORTAL === "crazygames"
+                || /crazygames\\.com$/i.test(window.location.hostname)
+                || /dev-crazygames\\.com$/i.test(window.location.hostname);
+
+            if (typeof window.SOW_initPortalSdk === "function") {
+                await window.SOW_initPortalSdk();
+            }
+
+            if ('serviceWorker' in navigator
+                && window.location.hostname !== "appassets.androidplatform.net"
+                && !isPortal) {
+                navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function (err) {
                     console.warn('Service worker registration failed:', err);
                 });
             }

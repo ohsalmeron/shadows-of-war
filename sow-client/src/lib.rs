@@ -44,14 +44,7 @@ fn get_maps_url() -> String {
                 return derived;
             }
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            "https://shadowsofwar.io/assets/maps".to_string()
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            "https://shadowsofwar.io/maps".to_string()
-        }
+        "https://shadowsofwar.io/maps".to_string()
     });
     #[cfg(target_arch = "wasm32")]
     {
@@ -66,8 +59,12 @@ fn get_maps_url() -> String {
                 }
             }
             if !found_in_js {
+                // Self-hosted (website + PTR): maps are served by sow-server via the
+                // nginx `/maps/` proxy, not as static `/assets/maps`. CrazyGames overrides
+                // this with window.SOW_MAPS_URL (origin + /assets/maps) where maps ship as
+                // static files in the package zip.
                 if let Ok(origin) = window.location().origin() {
-                    url = format!("{}/assets/maps", origin);
+                    url = format!("{}/maps", origin);
                 }
             }
         }

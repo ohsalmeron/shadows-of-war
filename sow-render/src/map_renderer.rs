@@ -144,6 +144,38 @@ fn compute_terrain_gradient(x: u32, y: u32, width: u32, height: u32, terrain: &[
     (dx, dy)
 }
 
+fn fill_terrain_buffer(
+    terrain: &[u8],
+    width: u32,
+    height: u32,
+    terrain_bytes_per_row: u32,
+    terrain_slice: &mut [u8],
+) {
+    for y in 0..height {
+        for x in 0..width {
+            let src = (y * width + x) as usize;
+            let dst = (y * terrain_bytes_per_row + x * 4) as usize;
+
+            let terrain_byte = terrain[src];
+            let (dx, dy) = compute_terrain_gradient(x, y, width, height, terrain);
+
+            let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+            let packed_dy = (((dy + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+
+            let seed = (x as u64)
+                .wrapping_mul(374761393)
+                .wrapping_add((y as u64).wrapping_mul(668265263));
+            let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177);
+            let noise_byte = (hash & 0xFF) as u8;
+
+            terrain_slice[dst] = terrain_byte;
+            terrain_slice[dst + 1] = packed_dx;
+            terrain_slice[dst + 2] = packed_dy;
+            terrain_slice[dst + 3] = noise_byte;
+        }
+    }
+}
+
 
 pub struct MapRenderer {
     pub terrain_texture: gpu::Texture,
@@ -243,30 +275,13 @@ impl MapRenderer {
         let terrain_total = (terrain_bytes_per_row * height) as usize;
         let terrain_ptr = terrain_buffer.data();
         let terrain_slice = unsafe { std::slice::from_raw_parts_mut(terrain_ptr, terrain_total) };
-        for y in 0..height {
-            for x in 0..width {
-                let src = (y * width + x) as usize;
-                let dst = (y * terrain_bytes_per_row + x * 4) as usize;
-
-                let terrain_byte = initial_terrain[src];
-                let (dx, dy) = compute_terrain_gradient(x, y, width, height, initial_terrain);
-
-                let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
-                let packed_dy = (((dy + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
-
-                // High-entropy LCG hash for deterministic CPU noise seed per cell
-                let seed = (x as u64)
-                    .wrapping_mul(374761393)
-                    .wrapping_add((y as u64).wrapping_mul(668265263));
-                let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177);
-                let noise_byte = (hash & 0xFF) as u8;
-
-                terrain_slice[dst] = terrain_byte;
-                terrain_slice[dst + 1] = packed_dx;
-                terrain_slice[dst + 2] = packed_dy;
-                terrain_slice[dst + 3] = noise_byte;
-            }
-        }
+        fill_terrain_buffer(
+            initial_terrain,
+            width,
+            height,
+            terrain_bytes_per_row,
+            terrain_slice,
+        );
         context.sync_buffer(terrain_buffer);
 
         // --- Owner texture (R32Uint, dynamic) ---
@@ -380,6 +395,27 @@ impl MapRenderer {
                 depth: 1,
             },
         );
+    }
+
+    /// Rebuild the terrain upload buffer from `self.terrain` and push it to the GPU.
+    /// Used by the map editor when brush strokes change terrain bytes.
+    pub fn sync_terrain_to_gpu(
+        &mut self,
+        encoder: &mut gpu::CommandEncoder,
+        context: &gpu::Context,
+    ) {
+        let terrain_total = (self.terrain_bytes_per_row * self.height) as usize;
+        let terrain_ptr = self.terrain_buffer.data();
+        let terrain_slice = unsafe { std::slice::from_raw_parts_mut(terrain_ptr, terrain_total) };
+        fill_terrain_buffer(
+            &self.terrain,
+            self.width,
+            self.height,
+            self.terrain_bytes_per_row,
+            terrain_slice,
+        );
+        context.sync_buffer(self.terrain_buffer);
+        self.upload_terrain(encoder);
     }
 
 

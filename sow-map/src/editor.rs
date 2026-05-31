@@ -182,8 +182,11 @@ impl MapEditorSession {
         }
     }
 
-    fn pointer_over_ui(&self) -> bool {
-        self.egui_ctx.egui_wants_pointer_input()
+    fn pointer_on_map_canvas(&self) -> bool {
+        let pos = egui::pos2(self.last_mouse_logical_x, self.last_mouse_logical_y);
+        self.editor_ui
+            .map_canvas_rect
+            .is_some_and(|rect| rect.contains(pos))
     }
 
     fn maps_root() -> PathBuf {
@@ -383,7 +386,7 @@ impl MapEditorSession {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                if self.pointer_over_ui() {
+                if self.egui_ctx.egui_wants_pointer_input() {
                     let sf = self.scale_factor() as f32;
                     let (unit, vec_delta) = match delta {
                         winit::event::MouseScrollDelta::LineDelta(x, y) => {
@@ -662,7 +665,7 @@ impl MapEditorSession {
             self.pending_pan = (0.0, 0.0);
         }
 
-        if self.primary_button_down && !self.pointer_over_ui() {
+        if self.primary_button_down && self.pointer_on_map_canvas() {
             self.paint_at_cursor();
         }
 
@@ -701,7 +704,7 @@ impl MapEditorSession {
         self.raw_input.events.clear();
 
         let (logical_w, logical_h) = self.logical_screen();
-        let hover_hex = if !self.pointer_over_ui() {
+        let hover_hex = if self.pointer_on_map_canvas() {
             let world_x = (self.last_mouse_logical_x - self.camera_x) / self.camera_zoom;
             let world_y = (self.last_mouse_logical_y - self.camera_y) / self.camera_zoom;
             [world_x.round(), world_y.round()]
@@ -750,27 +753,16 @@ impl MapEditorSession {
                         mr.upload_terrain(&mut self.render_ctx.command_encoder);
                     }
 
-                    // Push dirty tile indexes to MapRenderer GPU buffer
+                    // Push dirty terrain tiles to GPU (editor brush strokes).
                     if !self.dirty_tiles.is_empty() {
-                        // Sync programmatic changes to MapRenderer raw backing buffer
                         for &idx in &self.dirty_tiles {
                             if idx < self.terrain.len() {
                                 mr.terrain[idx] = self.terrain[idx];
                             }
                         }
-                        let dirty_dt: Vec<sow_core::protocol::DirtyTile> = self
-                            .dirty_tiles
-                            .iter()
-                            .map(|&idx| sow_core::protocol::DirtyTile {
-                                index: idx as u32,
-                                new_owner: 0,
-                                upgrade_level: 0,
-                            })
-                            .collect();
-                        mr.update(
+                        mr.sync_terrain_to_gpu(
                             &mut self.render_ctx.command_encoder,
                             &self.render_ctx.context,
-                            &dirty_dt,
                         );
                         self.dirty_tiles.clear();
                     }

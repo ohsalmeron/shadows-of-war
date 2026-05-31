@@ -74,7 +74,6 @@ pub struct SettingsStrings {
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoadingScreenStrings {
     pub loading: String,
-    pub splash_attribution: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -185,15 +184,16 @@ pub struct CreditsStrings {
     pub title: String,
     pub link: String,
     pub close: String,
+    pub based_on_short: String,
     pub copyright_sow: String,
     pub license_agpl: String,
     pub based_on: String,
-    pub maps_cc: String,
+    pub ai_art: String,
+    pub source_label: String,
+    pub privacy_label: String,
     pub notice: String,
     pub source: String,
     pub privacy: String,
-    pub openfront_footer: String,
-    pub splash_line: String,
 }
 
 #[derive(Debug, Clone)]

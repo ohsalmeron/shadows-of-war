@@ -3,6 +3,17 @@ use crate::ui::theme::{accent_solo_cyan, text_secondary};
 use egui::{Align, Color32, Layout, RichText, Stroke};
 use sow_lang::Language;
 
+fn version_tag() -> String {
+    format!("v{}", include_str!("../../../../.version").trim())
+}
+
+fn source_tag_url() -> String {
+    format!(
+        "https://github.com/ohsalmeron/shadows-of-war/tree/{}",
+        version_tag()
+    )
+}
+
 pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiAction> {
     if !is_open {
         return None;
@@ -67,24 +78,32 @@ pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiA
             ui.add_space(12.0);
 
             let body_size = if compact { 13.0 } else { 14.0 };
-            let lines = [
+            let body = |text: &str| RichText::new(text).size(body_size).color(text_secondary());
+            let link = |text: &str| RichText::new(text).size(body_size).color(accent_solo_cyan());
+
+            let plain_lines = [
                 &strings.copyright_sow,
                 &strings.license_agpl,
                 &strings.based_on,
-                &strings.maps_cc,
+                &strings.ai_art,
                 &strings.notice,
-                &strings.source,
-                &strings.privacy,
             ];
-
-            for line in lines {
-                ui.label(
-                    RichText::new(line.as_str())
-                        .size(body_size)
-                        .color(text_secondary()),
-                );
+            for line in plain_lines {
+                ui.label(body(line));
                 ui.add_space(6.0);
             }
+
+            let tag = version_tag();
+            let tag_url = source_tag_url();
+            ui.horizontal_wrapped(|ui| {
+                ui.label(body(&format!("{} ({}): ", strings.source_label, tag)));
+                ui.hyperlink_to(link(&tag_url), &tag_url);
+            });
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(body(&format!("{}: ", strings.privacy_label)));
+                ui.hyperlink_to(link(&strings.privacy), &strings.privacy);
+            });
 
             ui.add_space(16.0);
             ui.vertical_centered(|ui| {
@@ -98,13 +117,6 @@ pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiA
                     action = Some(UiAction::ToggleCredits);
                 }
             });
-
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new(&strings.splash_line)
-                    .size(11.0)
-                    .color(accent_solo_cyan()),
-            );
         });
 
     action

@@ -1,22 +1,35 @@
 #!/usr/bin/env bash
-# Shadows of War - PTR (Darkrift.ai) Deployment
+# Shadows of War - PTR Deployment (ptr.shadowsofwar.io on GCP VPS)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+# shellcheck source=deploy-env.sh
+source "${ROOT}/scripts/deploy-env.sh"
 # shellcheck source=web-assets.sh
 source "${ROOT}/scripts/web-assets.sh"
 
-VPS_IP="darkrift.ai"
+VPS_IP="shadowsofwar.io"
 VPS_USER="bizkit"
-WEB_DEST_DIR="/var/www/darkrift.ai/html"
-BACKEND_DEST_DIR="/home/bizkit/shadowsofwar"
+WEB_DEST_DIR="/var/www/ptr.shadowsofwar.io/html"
+BACKEND_DEST_DIR="/home/bizkit/shadowsofwar-ptr"
+NGINX_SITE="/etc/nginx/sites-available/ptr.shadowsofwar.io"
+SYSTEMD_SERVICE="sow-server-ptr"
 
 export CARGO_TARGET_DIR="${ROOT}/target"
 WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/release/sow_client.wasm"
 echo "========================================================="
-echo "🚀 Starting PTR Deployment (Shadows of War -> darkrift.ai)"
+echo "🚀 Starting PTR Deployment (Shadows of War -> ptr.shadowsofwar.io)"
 echo "========================================================="
+
+echo "==> Preflight: local build tools..."
+check_local_build_tools
+
+echo "==> Preflight: DNS..."
+ensure_ptr_dns || true
+
+echo "==> Preflight: VPS..."
+check_vps_ready "${VPS_USER}" "${VPS_IP}" "${NGINX_SITE}" "${SYSTEMD_SERVICE}"
 
 # 1. Bump Version
 VERSION_FILE="${ROOT}/.version"
@@ -57,30 +70,6 @@ echo "✅ Rust compilation successful."
 echo "==> Packaging Frontend (wasm-bindgen)..."
 mkdir -p dist
 
-inline_loader_into_index() {
-    python3 - "${ROOT}/web/loader.js" "${ROOT}/dist/index.html" <<'PY'
-import sys
-from pathlib import Path
-
-loader = Path(sys.argv[1])
-html_path = Path(sys.argv[2])
-js = loader.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
-html = html_path.read_text(encoding="utf-8")
-marker = "/* __INLINE_LOADER_JS__ */"
-if marker in html:
-    html = html.replace(marker, js, 1)
-elif '<script src="./loader.js"></script>' in html:
-    html = html.replace(
-        '<script src="./loader.js"></script>',
-        "<script>\n" + js + "\n</script>",
-        1,
-    )
-else:
-    raise SystemExit("index.html: no loader injection point")
-html_path.write_text(html, encoding="utf-8")
-PY
-}
-
 rm -rf dist/*
 
 BUILD_TS=$(date +%s)
@@ -93,6 +82,8 @@ rsync -a assets/ dist/assets/ || true
 copy_web_loader_assets
 cp -a web/favicon_io/* dist/ 2>/dev/null || true
 cp web/sow.svg dist/sow.svg
+mkdir -p dist/sdk
+cp -a web/sdk/. dist/sdk/
 
 LOADER_TEMPLATE="${ROOT}/web/index.html.template"
 SW_TEMPLATE="${ROOT}/web/sw.js.template"
@@ -105,12 +96,7 @@ if [[ ! -f "${SW_TEMPLATE}" ]]; then
   exit 1
 fi
 
-sed -e "s/__VERSION__/${CLEAN_VERSION}/g" \
-    -e "s/__JS_FILE__/${JS_FILE}/g" \
-    -e "s/__WASM_FILE__/${WASM_FILE}/g" \
-    -e "s/__BUILD_TS__/${BUILD_TS}/g" \
-    "${LOADER_TEMPLATE}" > dist/index.html
-inline_loader_into_index
+build_index_html "${LOADER_TEMPLATE}" dist/index.html "${CLEAN_VERSION}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
 
 minify_js_shim "dist/${JS_FILE}"
 
@@ -142,8 +128,8 @@ RSYNC_SERVER_PID=$!
 rsync -avz ${RELAY_BIN} ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/sow-relay &
 RSYNC_RELAY_PID=$!
 
-ssh ${VPS_USER}@${VPS_IP} "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
-rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ ${VPS_USER}@${VPS_IP}:/home/bizkit/shadowsofwar/assets/maps/ &
+ssh ${VPS_USER}@${VPS_IP} "mkdir -p ${BACKEND_DEST_DIR}/assets/maps"
+rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ ${VPS_USER}@${VPS_IP}:${BACKEND_DEST_DIR}/assets/maps/ &
 RSYNC_ASSETS_PID=$!
 
 wait $RSYNC_WEB_PID || { echo "❌ Error subiendo Frontend"; exit 1; }
@@ -152,33 +138,48 @@ wait $RSYNC_RELAY_PID || { echo "❌ Error subiendo Backend (Relay)"; exit 1; }
 wait $RSYNC_ASSETS_PID || { echo "❌ Error subiendo Assets del servidor"; exit 1; }
 echo "✅ VPS sync complete."
 
-# 5. Restart Services
-echo "==> Setting up systemd for sow-server on PTR if not exists..."
-ssh ${VPS_USER}@${VPS_IP} "cat << 'SYSTEMD' | sudo tee /etc/systemd/system/sow-server.service > /dev/null
+# 4.5 Nginx — brotli_static + Cache-Control (idempotent)
+sync_vps_nginx "${VPS_USER}" "${VPS_IP}" "${NGINX_SITE}" "${ROOT}/nginx_config_ptr.conf"
+
+# 5. Restart PTR backend (production sow-server untouched)
+echo "==> Ensuring sow-server-ptr systemd unit and restarting..."
+ssh ${VPS_USER}@${VPS_IP} "cat << 'SYSTEMD' | sudo tee /etc/systemd/system/sow-server-ptr.service > /dev/null
 [Unit]
-Description=Shadows of War Server
+Description=Shadows of War Server (PTR)
 After=network.target
 
 [Service]
 KillMode=process
 Type=simple
 User=bizkit
-WorkingDirectory=/home/bizkit/shadowsofwar
-ExecStart=/home/bizkit/shadowsofwar/sow-server
+WorkingDirectory=${BACKEND_DEST_DIR}
+ExecStart=${BACKEND_DEST_DIR}/sow-server
 Restart=always
 RestartSec=3
 Environment=\"RUST_LOG=info\"
-Environment=\"SOW_WS_LISTEN=0.0.0.0:25565\"
-Environment=\"SOW_MAPS_HTTP_LISTEN=0.0.0.0:25566\"
+Environment=\"SOW_WS_LISTEN=0.0.0.0:25575\"
+Environment=\"SOW_MAPS_HTTP_LISTEN=0.0.0.0:25576\"
 
 [Install]
 WantedBy=multi-user.target
 SYSTEMD"
 
-echo "==> Disabling old darkrift-server and enabling new sow-server..."
-ssh -t ${VPS_USER}@${VPS_IP} "sudo systemctl stop darkrift-server.service || true; sudo systemctl disable darkrift-server.service || true; which redis-server >/dev/null 2>&1 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq redis-server; sudo systemctl daemon-reload; sudo systemctl enable --now sow-server.service; sudo systemctl restart sow-server.service" || { echo "❌ Error reiniciando el servicio"; exit 1; }
+ssh -t ${VPS_USER}@${VPS_IP} "which redis-server >/dev/null 2>&1 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq redis-server; sudo systemctl enable --now sow-redis 2>/dev/null || sudo systemctl enable --now redis-server; sudo systemctl daemon-reload; sudo systemctl enable --now ${SYSTEMD_SERVICE}; sudo systemctl restart ${SYSTEMD_SERVICE}" || { echo "❌ Error reiniciando el servicio PTR"; exit 1; }
+
+if ptr_dns_resolves; then
+  echo "==> Ensuring TLS for ptr.shadowsofwar.io..."
+  ssh ${VPS_USER}@${VPS_IP} "sudo test -f /etc/letsencrypt/live/ptr.shadowsofwar.io/fullchain.pem \
+    || sudo certbot --nginx -d ptr.shadowsofwar.io --non-interactive --agree-tos --register-unsafely-without-email --redirect"
+fi
+
+if ptr_dns_resolves; then
+  verify_prod_headers "https://ptr.shadowsofwar.io" \
+    || echo "⚠️  Header verification failed"
+else
+  echo "⚠️  Skipping live header check (DNS not resolving)"
+fi
 
 echo "========================================================="
 echo "🎉 PTR Deployment Completed Successfully (v${CLEAN_VERSION})!"
-echo "🕹️  Play live: https://darkrift.ai"
+echo "🕹️  Play live: https://ptr.shadowsofwar.io"
 echo "========================================================="

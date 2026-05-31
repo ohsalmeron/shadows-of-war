@@ -1245,35 +1245,40 @@ pub(crate) fn render(
                     .map(|mr| mr.owners.as_slice())
                     .unwrap_or(&[]);
 
-                let snapped_res = crate::input::resolve_building_placement_tile(
+                let terrain = gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.terrain.as_slice())
+                    .unwrap_or(&[]);
+
+                let target_res = crate::input::resolve_build_target_tile(
                     kind,
                     h_col,
                     h_row,
                     sim.map_w,
                     sim.map_h,
                     owners,
-                    ctx.terrain,
+                    terrain,
                     my_id,
                     &snap.buildings,
                 );
 
-                // Detect stackable building nearby (same kind, same owner, not under construction).
-                let stack_dist = sow_core::building::placement::STRUCTURE_MIN_DIST;
-                let stack_target = snap.buildings.iter().find(|b| {
-                    if b.owner_id != my_id || b.kind != kind {
-                        return false;
-                    }
-                    let bx = (b.tile_idx % sim.map_w) as i32;
-                    let by = (b.tile_idx / sim.map_w) as i32;
-                    let dx = h_col - bx;
-                    let dy = h_row - by;
-                    (dx.abs() + dy.abs()) <= stack_dist
+                let stack_target = crate::input::find_stack_target_tile(
+                    kind,
+                    h_col,
+                    h_row,
+                    sim.map_w,
+                    my_id,
+                    &snap.buildings,
+                )
+                .and_then(|tile| {
+                    snap.buildings
+                        .iter()
+                        .find(|b| b.tile_idx == tile && b.owner_id == my_id && b.kind == kind)
                 });
 
-                let (target_tile, is_valid) = match snapped_res {
-                    Ok(t) => (t, true),
-                    Err(_) => (hovered_t, stack_target.is_some()),
-                };
+                let preview_tile = target_res.unwrap_or(hovered_t);
+                let is_valid = target_res.is_ok();
 
                 let cost = {
                     let i = sow_core::game::BuildingKind::ALL
@@ -1284,13 +1289,6 @@ pub(crate) fn render(
                 };
 
                 let has_gold = ui.app.hud_state.gold >= cost;
-
-                // If stacking, draw the preview on the existing building's tile.
-                let preview_tile = if let Some(sb) = stack_target {
-                    sb.tile_idx
-                } else {
-                    target_tile
-                };
                 let tx = (preview_tile % sim.map_w) as f32;
                 let ty = (preview_tile / sim.map_w) as f32;
                 let hex_w_cx = tx + 0.5 + (ty as i32 % 2) as f32 * 0.5;

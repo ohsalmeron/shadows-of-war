@@ -187,10 +187,17 @@ fn draw_menu_right_panel_contents(
 
     ui.add_space(section_gap);
     let strings = &sow_lang::get(lang).main_menu;
+    let credits = &sow_lang::get(lang).credits;
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new(version)
                 .size(12.0)
+                .color(crate::ui::theme::text_secondary()),
+        );
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(&credits.based_on_short)
+                .size(11.0)
                 .color(crate::ui::theme::text_secondary()),
         );
         ui.add_space(8.0);
@@ -523,8 +530,6 @@ pub fn draw(
             state.error_message = None;
         }
     }
-
-    crate::ui::attribution::draw_openfront_footer(root_ui, lang);
 
     action
 }

@@ -15,7 +15,7 @@ macro_rules! all_assets {
             TradeShip => "trade_ship.svg",
             TransportShip => "transport_ship.svg",
             Battleship => "battleship.svg",
-            Star => "star.svg",
+            Star => "star.webp",
             Handshake => "handshake.svg",
             AtomBomb => "atombomb.png",
             SamMissile => "sam_missile.png"

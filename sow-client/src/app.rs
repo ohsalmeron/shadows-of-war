@@ -149,6 +149,7 @@ pub struct UiState {
     pub leaderboard_display:
         std::collections::HashMap<u16, crate::hud::leaderboard::LeaderboardRowDisplay>,
     pub leaderboard_visible_limit: usize,
+    pub leaderboard_paged_through_limit: usize,
     pub leaderboard_search: String,
     pub leaderboard_team_rankings: Vec<crate::hud::leaderboard::TeamRanking>,
     pub leaderboard_prev_search: String,
@@ -520,6 +521,7 @@ impl SowApp {
                 leaderboard_rankings: Vec::new(),
                 leaderboard_display: std::collections::HashMap::new(),
                 leaderboard_visible_limit: crate::hud::leaderboard::INITIAL_VISIBLE_LIMIT,
+                leaderboard_paged_through_limit: 0,
                 leaderboard_search: String::new(),
                 leaderboard_team_rankings: Vec::new(),
                 leaderboard_prev_search: String::new(),
@@ -579,6 +581,9 @@ impl SowApp {
 
     /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
     pub(crate) fn begin_exit_to_main_menu(&mut self, use_loader: bool) {
+        if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
+            crate::store_portals::gameplay_stop();
+        }
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
         self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();

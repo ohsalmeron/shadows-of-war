@@ -14,7 +14,8 @@ Shadows of War is based on OpenFront (https://openfront.io / https://github.com/
 Copyright (c) OpenFront LLC and Contributors, licensed under GNU Affero General Public License v3.0.
 
 OpenFront additional terms (AGPL Section 7) require modified versions to:
-  - Preserve the copyright notice "© OpenFront and Contributors" in visible UI locations.
+  - Display attribution (e.g. "Based on OpenFront") on the main menu.
+  - Include full copyright and license notices in the Credits screen.
   - Not use "OpenFront" as the primary title or imply official endorsement.
 
 MapGenerator (https://github.com/openfrontio/MapGenerator) is referenced for map format

@@ -1190,13 +1190,13 @@ pub fn draw(
                                                             static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
                                                             REGISTER_STAR_ONCE.call_once(|| {
                                                                 ui.ctx().include_bytes(
-                                                                    "bytes://star.svg",
-                                                                    include_bytes!("../../../../sow-client/assets/star.svg").as_slice(),
+                                                                    "bytes://star.webp",
+                                                                    include_bytes!("../../../../sow-client/assets/star.webp").as_slice(),
                                                                 );
                                                             });
                                                             let star_size = 18.0_f32; // bigger size to compensate for native emoji
                                                             let load_res = ui.ctx().try_load_texture(
-                                                                "bytes://star.svg",
+                                                                "bytes://star.webp",
                                                                 egui::TextureOptions::default(),
                                                                 egui::load::SizeHint::Size {
                                                                     width: (star_size * 2.0).round() as u32,
@@ -1677,9 +1677,9 @@ pub fn draw(
                                             std::sync::Once::new();
                                         REGISTER_STAR_ONCE.call_once(|| {
                                             ui.ctx().include_bytes(
-                                                "bytes://star.svg",
+                                                "bytes://star.webp",
                                                 include_bytes!(
-                                                    "../../../../sow-client/assets/star.svg"
+                                                    "../../../../sow-client/assets/star.webp"
                                                 )
                                                 .as_slice(),
                                             );
@@ -1695,7 +1695,7 @@ pub fn draw(
                                             maintain_aspect_ratio: true,
                                         };
                                         let load_res = ui.ctx().try_load_texture(
-                                            "bytes://star.svg",
+                                            "bytes://star.webp",
                                             egui::TextureOptions::default(),
                                             size_hint,
                                         );
@@ -1888,8 +1888,6 @@ pub fn draw(
     draw_sync_overlay(ui.ctx(), state, lang);
     draw_betrayal_overlay(ui.ctx(), state, cancel_intents);
     draw_error_overlay(ui.ctx(), state);
-
-    crate::ui::attribution::draw_openfront_footer(ui, lang);
 
     action
 }

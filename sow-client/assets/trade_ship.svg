@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#404060"/>
-  <text x="32" y="36" text-anchor="middle" fill="#b4b4c8" font-family="sans-serif" font-size="10">TRADE SH</text>
+  <rect width="64" height="64" fill="#1a2030" rx="6"/>
+  <path d="M12,40 L52,40 L44,28 L20,28Z" fill="#4a7a9a"/><rect x="30" y="14" width="4" height="14" fill="#888"/>
 </svg>

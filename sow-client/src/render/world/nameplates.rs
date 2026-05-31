@@ -48,8 +48,8 @@ pub(crate) fn render(
         static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
         REGISTER_STAR_ONCE.call_once(|| {
             painter.ctx().include_bytes(
-                "bytes://star.svg",
-                include_bytes!("../../../assets/star.svg").as_slice(),
+                "bytes://star.webp",
+                include_bytes!("../../../assets/star.webp").as_slice(),
             );
         });
 
@@ -609,7 +609,7 @@ pub(crate) fn render(
                                         maintain_aspect_ratio: true,
                                     };
                                     let load_res = emoji_painter.ctx().try_load_texture(
-                                        "bytes://star.svg",
+                                        "bytes://star.webp",
                                         egui::TextureOptions::default(),
                                         size_hint,
                                     );
@@ -761,7 +761,7 @@ pub(crate) fn render(
                             egui::pos2(cur_x, row12_y + (total_h - avatar_size) / 2.0),
                             egui::vec2(avatar_size, avatar_size),
                         );
-                        let star_uri = "bytes://star.svg";
+                        let star_uri = "bytes://star.webp";
                         let size_hint = egui::load::SizeHint::Size {
                             width: 128,
                             height: 128,
@@ -1364,7 +1364,7 @@ pub(crate) fn render(
                                     maintain_aspect_ratio: true,
                                 };
                                 let load_res = painter.ctx().try_load_texture(
-                                    "bytes://star.svg",
+                                    "bytes://star.webp",
                                     egui::TextureOptions::default(),
                                     size_hint,
                                 );
@@ -1425,7 +1425,7 @@ pub(crate) fn render(
                         egui::pos2(name_pos_start.x, current_y + (h_max - star_size) / 2.0);
                     let star_rect =
                         egui::Rect::from_min_size(star_pos, egui::vec2(star_size, star_size));
-                    let star_uri = "bytes://star.svg";
+                    let star_uri = "bytes://star.webp";
                     let size_hint = egui::load::SizeHint::Size {
                         width: 128,
                         height: 128,

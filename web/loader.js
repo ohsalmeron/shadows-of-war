@@ -4,34 +4,26 @@
 (function () {
     'use strict';
 
-    const FADEOUT_MS = 200;
+    const FADEOUT_MS = 250;
     const BAR_ASPECT = 2064 / 512;
     const MOBILE_BREAKPOINT = 600;
 
     const LAYOUT = {
-        desktop: {
-            barMaxWidth: 400,
-            barWidthRatio: 0.42,
-            bottomRatio: 0.07,
-            bottomMinPx: 64,
-            textSizePx: 13,
-            textNudgePx: -2,
-        },
         portrait: {
             barWidthRatio: 0.76,
             barSidePadPx: 32,
             bottomRatio: 0.06,
-            bottomMinPx: 40,
+            bottomMinPx: 24,
             textSizePx: 11,
             textNudgePx: -1,
         },
         landscape: {
-            barMaxWidth: 340,
-            barWidthRatio: 0.48,
-            bottomRatio: 0.08,
+            barMaxWidth: 480,
+            barWidthRatio: 0.42,
+            bottomRatio: 0.07,
             bottomMinPx: 32,
-            textSizePx: 10,
-            textNudgePx: -1,
+            textSizePx: 13,
+            textNudgePx: -2,
         },
     };
 
@@ -63,10 +55,10 @@
     }
 
     function layoutMode() {
-        if (!isMobile()) {
-            return 'desktop';
+        if (isMobile() && window.innerWidth <= window.innerHeight) {
+            return 'portrait';
         }
-        return window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
+        return 'landscape';
     }
 
     function layoutConfig(mode) {

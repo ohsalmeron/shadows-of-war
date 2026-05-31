@@ -1,6 +1,9 @@
 //! Partner portal SDK hooks (Poki / CrazyGames). No-op when JS helpers are absent.
 
 #[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+
+#[cfg(target_arch = "wasm32")]
 fn call_window_hook(name: &str) {
     let Some(window) = web_sys::window() else {
         return;

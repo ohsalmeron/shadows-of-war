@@ -1,6 +1,5 @@
 pub mod animation;
 pub mod asset_loader;
-pub mod attribution;
 pub mod credits;
 pub mod endgame;
 pub mod hud;

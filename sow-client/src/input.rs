@@ -717,7 +717,7 @@ impl SowApp {
                     .map(|mr| mr.terrain.as_slice())
                     .unwrap_or(&[]);
 
-                let snapped_res = resolve_building_placement_tile(
+                let target_res = resolve_build_target_tile(
                     kind,
                     col,
                     row,
@@ -744,7 +744,7 @@ impl SowApp {
                     valid = false;
                     err_msg = format!("Need {} Gold!", cost);
                 } else {
-                    match snapped_res {
+                    match target_res {
                         Ok(_) => {}
                         Err(msg) => {
                             valid = false;
@@ -756,13 +756,12 @@ impl SowApp {
                 if !valid {
                     self.ui.app.hud_state.show_error = Some(err_msg);
                 } else {
-                    let target_tile = snapped_res.unwrap();
+                    let target_tile = target_res.unwrap();
                     let intent =
                         sow_core::protocol::GameplayIntent::BuildStructure { kind, target_tile };
                     self.send_intent(intent);
                 }
             }
-            self.ui.app.hud_state.selected_building_kind = None;
         } else {
             // Check if we clicked on a Warship we own
             let mut clicked_warships = Vec::new();
@@ -843,6 +842,60 @@ impl SowApp {
         self.input.camera_x = cx - map_x * self.input.camera_zoom;
         self.input.camera_y = cy - map_y * self.input.camera_zoom;
     }
+}
+
+/// Closest same-kind building within stack range of the click (matches server logic).
+pub fn find_stack_target_tile(
+    kind: sow_core::game::BuildingKind,
+    click_x: i32,
+    click_y: i32,
+    map_w: u32,
+    my_id: u16,
+    buildings: &[sow_core::protocol::BuildingSnapshot],
+) -> Option<u32> {
+    let stack_dist = sow_core::building::placement::STRUCTURE_MIN_DIST;
+    let mut best: Option<(i32, u64, u32)> = None;
+    for b in buildings {
+        if b.owner_id != my_id || b.kind != kind {
+            continue;
+        }
+        let bx = (b.tile_idx % map_w) as i32;
+        let by = (b.tile_idx / map_w) as i32;
+        let d = (click_x - bx).abs() + (click_y - by).abs();
+        if d > stack_dist {
+            continue;
+        }
+        let cand = (d, b.id, b.tile_idx);
+        match best {
+            None => best = Some(cand),
+            Some((bd, bid, _)) => {
+                if d < bd || (d == bd && b.id < bid) {
+                    best = Some(cand);
+                }
+            }
+        }
+    }
+    best.map(|(_, _, tile)| tile)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_build_target_tile(
+    kind: sow_core::game::BuildingKind,
+    click_x: i32,
+    click_y: i32,
+    map_w: u32,
+    map_h: u32,
+    owners: &[u16],
+    terrain: &[u8],
+    my_id: u16,
+    buildings: &[sow_core::protocol::BuildingSnapshot],
+) -> Result<u32, &'static str> {
+    if let Some(tile) = find_stack_target_tile(kind, click_x, click_y, map_w, my_id, buildings) {
+        return Ok(tile);
+    }
+    resolve_building_placement_tile(
+        kind, click_x, click_y, map_w, map_h, owners, terrain, my_id, buildings,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -967,4 +1020,84 @@ pub fn resolve_building_placement_tile(
         da.cmp(&db).then_with(|| a.2.cmp(&b.2))
     });
     Ok(valid_land_tiles.first().map(|&(_, _, idx)| idx).unwrap())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sow_core::game::BuildingKind;
+    use sow_core::protocol::BuildingSnapshot;
+
+    fn land_terrain() -> Vec<u8> {
+        vec![0x80; 32 * 32]
+    }
+
+    fn owned_map(w: u32, h: u32, owner: u16) -> Vec<u16> {
+        vec![owner; (w * h) as usize]
+    }
+
+    fn city_snapshot(id: u64, owner: u16, tile_idx: u32) -> BuildingSnapshot {
+        BuildingSnapshot {
+            id,
+            owner_id: owner,
+            tile_idx,
+            kind: BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
+            modules: sow_core::building::CityModules::default(),
+        }
+    }
+
+    #[test]
+    fn click_on_city_resolves_to_city_tile() {
+        let map_w = 32u32;
+        let map_h = 32u32;
+        let my_id = 1u16;
+        let city_tile = 10 * map_w + 10;
+        let buildings = vec![city_snapshot(1, my_id, city_tile)];
+        let owners = owned_map(map_w, map_h, my_id);
+        let terrain = land_terrain();
+
+        let resolved = resolve_build_target_tile(
+            BuildingKind::City,
+            10,
+            10,
+            map_w,
+            map_h,
+            &owners,
+            &terrain,
+            my_id,
+            &buildings,
+        )
+        .expect("click on city should stack");
+
+        assert_eq!(resolved, city_tile);
+    }
+
+    #[test]
+    fn click_far_from_city_snaps_to_spawn_tile() {
+        let map_w = 32u32;
+        let map_h = 32u32;
+        let my_id = 1u16;
+        let city_tile = 5 * map_w + 5;
+        let buildings = vec![city_snapshot(1, my_id, city_tile)];
+        let owners = owned_map(map_w, map_h, my_id);
+        let terrain = land_terrain();
+
+        let resolved = resolve_build_target_tile(
+            BuildingKind::City,
+            20,
+            20,
+            map_w,
+            map_h,
+            &owners,
+            &terrain,
+            my_id,
+            &buildings,
+        )
+        .expect("click far from city should find spawn tile");
+
+        assert_ne!(resolved, city_tile);
+    }
 }

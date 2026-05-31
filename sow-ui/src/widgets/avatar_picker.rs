@@ -351,6 +351,114 @@ fn draw_leader_hero_text(
     });
 }
 
+fn paint_horizontal_gradient_rect(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    left: Color32,
+    right: Color32,
+) {
+    if !rect.is_positive() {
+        return;
+    }
+    let mut mesh = egui::Mesh::default();
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_top(),
+        uv: egui::Pos2::ZERO,
+        color: left,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_top(),
+        uv: egui::Pos2::ZERO,
+        color: right,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: right,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: left,
+    });
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+fn paint_vertical_gradient_rect(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    top: Color32,
+    bottom: Color32,
+) {
+    if !rect.is_positive() {
+        return;
+    }
+    let mut mesh = egui::Mesh::default();
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_top(),
+        uv: egui::Pos2::ZERO,
+        color: top,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_top(),
+        uv: egui::Pos2::ZERO,
+        color: top,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: bottom,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: bottom,
+    });
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+fn leader_picker_column_bottom(ctx: &egui::Context, is_mobile: bool, content_max_x: f32) -> f32 {
+    let back_rect = crate::ui::main_menu::profile::main_menu_avatar_button_rect(ctx);
+    let title_gap = 12.0;
+    let title_font = if is_mobile { 20.0 } else { 28.0 };
+    let title_line_h = title_font + 10.0;
+    let title_top = back_rect.center().y - title_line_h * 0.5;
+    let title_rect = Rect::from_min_max(
+        egui::pos2(back_rect.max.x + title_gap, title_top),
+        egui::pos2(content_max_x, title_top + title_line_h),
+    );
+    back_rect.max.y.max(title_rect.max.y)
+}
+
+fn draw_leader_picker_overlay_gradient(
+    painter: &egui::Painter,
+    screen_rect: Rect,
+    is_mobile: bool,
+) {
+    const PANEL_FRAC: f32 = 0.45;
+    let dark = Color32::from_rgba_unmultiplied(0, 0, 0, 190);
+
+    if is_mobile {
+        let panel_h = screen_rect.height() * PANEL_FRAC;
+        let gradient_rect = Rect::from_min_max(
+            egui::pos2(screen_rect.min.x, screen_rect.max.y - panel_h),
+            screen_rect.max,
+        );
+        paint_vertical_gradient_rect(painter, gradient_rect, Color32::TRANSPARENT, dark);
+    } else {
+        let panel_w = screen_rect.width() * PANEL_FRAC;
+        let gradient_rect = Rect::from_min_max(
+            screen_rect.min,
+            egui::pos2(screen_rect.min.x + panel_w, screen_rect.max.y),
+        );
+        paint_horizontal_gradient_rect(painter, gradient_rect, dark, Color32::TRANSPARENT);
+    }
+}
+
 fn leader_civilization(leader: sow_core::player::Leader) -> sow_core::player::Civilization {
     match leader {
         sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
@@ -622,7 +730,7 @@ fn draw_leader_picker_top_column(
         });
     });
 
-    let column_bottom = back_rect.max.y.max(title_rect.max.y);
+    let column_bottom = leader_picker_column_bottom(ctx, is_mobile, content_max_x);
     (back_response.clicked(), column_bottom)
 }
 
@@ -714,6 +822,8 @@ pub fn draw_leader_picker_modal(
             const DESKTOP_TEXT_W: f32 = 420.0;
             const DESKTOP_NARROW_HERO_H: f32 = 150.0;
             const DESKTOP_NARROW_BREAKPOINT: f32 = 1024.0;
+
+            draw_leader_picker_overlay_gradient(ui.painter(), screen_rect, is_mobile);
 
             let avatar_size = if is_mobile { 64.0 } else { 54.0 };
             let scroll_area_h = avatar_size + 4.0;

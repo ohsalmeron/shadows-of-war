@@ -47,6 +47,8 @@ pub struct MapEditorUiState {
     pub new_map_h: u32,
     pub toast_message: Option<String>,
     pub toast_is_error: bool,
+    /// Set each frame by `draw_map_editor` — click/drag painting only inside this rect.
+    pub map_canvas_rect: Option<egui::Rect>,
     toast_last_message: Option<String>,
     toast_started: Option<Instant>,
 }
@@ -66,6 +68,7 @@ impl Default for MapEditorUiState {
             new_map_h: 300,
             toast_message: None,
             toast_is_error: false,
+            map_canvas_rect: None,
             toast_last_message: None,
             toast_started: None,
         }
@@ -114,6 +117,7 @@ pub fn draw_map_editor(
     let strings = &sow_lang::get(lang).map_editor;
     let compact = crate::ui::theme::compact_viewport(ctx);
     let mut action = MapEditorAction::None;
+    state.map_canvas_rect = None;
 
     let top_frame = crate::ui::theme::map_editor_glass_frame(
         crate::ui::theme::MapEditorGlassPanel::Top,
@@ -331,6 +335,7 @@ pub fn draw_map_editor(
         .frame(Frame::NONE)
         .show_inside(ui, |ui| {
             let map_rect = ui.max_rect();
+            state.map_canvas_rect = Some(map_rect);
             ui.allocate_rect(map_rect, Sense::empty());
             draw_viewport_overlay(ui, viewport, state);
         });

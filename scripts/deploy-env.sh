@@ -68,7 +68,8 @@ check_local_build_tools() {
 
 check_vps_ready() {
     local vps_user="$1" vps_ip="$2" nginx_site="$3"
-    ssh "${vps_user}@${vps_ip}" "NGINX_SITE='${nginx_site}' bash -s" <<'REMOTE'
+    local systemd_service="${4:-sow-server}"
+    ssh "${vps_user}@${vps_ip}" "NGINX_SITE='${nginx_site}' SYSTEMD_SERVICE='${systemd_service}' bash -s" <<'REMOTE'
 set -euo pipefail
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 fail=0
@@ -77,10 +78,10 @@ systemctl is-active --quiet nginx || { echo "❌ nginx not running"; fail=1; }
 dpkg -s libnginx-mod-http-brotli-static >/dev/null 2>&1 \
     || { echo "❌ libnginx-mod-http-brotli-static not installed"; fail=1; }
 [[ -f "${NGINX_SITE}" ]] || { echo "❌ nginx site missing: ${NGINX_SITE}"; fail=1; }
-if systemctl is-active --quiet sow-server 2>/dev/null; then
-    echo "✅ VPS: nginx + brotli-static + sow-server"
+if systemctl is-active --quiet "${SYSTEMD_SERVICE}" 2>/dev/null; then
+    echo "✅ VPS: nginx + brotli-static + ${SYSTEMD_SERVICE}"
 else
-    echo "✅ VPS: nginx + brotli-static (sow-server will restart at end)"
+    echo "✅ VPS: nginx + brotli-static (${SYSTEMD_SERVICE} will restart at end)"
 fi
 exit "${fail}"
 REMOTE
@@ -108,13 +109,16 @@ if [[ -f "${NGINX_SITE}" ]]; then
     remote_hash=$(md5sum "${NGINX_SITE}" | awk '{print $1}')
 fi
 
+site_name="$(basename "${NGINX_SITE}")"
+enabled_site="/etc/nginx/sites-enabled/${site_name}"
+
 if [[ "${remote_hash}" != "${LOCAL_HASH}" ]]; then
     echo "==> Updating nginx site config..."
     sudo cp /tmp/sow-nginx.conf "${NGINX_SITE}"
-    if [[ -f /etc/nginx/sites-enabled/shadowsofwar.io && ! -L /etc/nginx/sites-enabled/shadowsofwar.io ]]; then
-        sudo cp /tmp/sow-nginx.conf /etc/nginx/sites-enabled/shadowsofwar.io
+    if [[ -f "${enabled_site}" && ! -L "${enabled_site}" ]]; then
+        sudo cp /tmp/sow-nginx.conf "${enabled_site}"
     else
-        sudo ln -sf "${NGINX_SITE}" /etc/nginx/sites-enabled/shadowsofwar.io
+        sudo ln -sf "${NGINX_SITE}" "${enabled_site}"
     fi
     changed=1
 else
@@ -143,4 +147,17 @@ verify_prod_headers() {
     curl -fsSI "${base_url}/assets/ui/loader_empty.webp" | grep -qi 'cache-control:.*max-age' \
         || { echo "❌ loader webp missing cache header"; return 1; }
     echo "✅ Live: brotli WASM, cache headers OK (${wasm}, ${js})"
+}
+
+ptr_dns_resolves() {
+    python3 -c "import json,urllib.request; d=json.load(urllib.request.urlopen('https://dns.google/resolve?name=ptr.shadowsofwar.io&type=A',timeout=10)); raise SystemExit(0 if any(a.get('data')=='35.239.160.167' for a in d.get('Answer',[])) else 1)" 2>/dev/null
+}
+
+ensure_ptr_dns() {
+    if ptr_dns_resolves; then
+        echo "✅ DNS: ptr.shadowsofwar.io -> 35.239.160.167"
+        return 0
+    fi
+    echo "⚠️  DNS: ptr.shadowsofwar.io no resuelve — añade registro A en Neubox (Registros DNS): ptr -> 35.239.160.167"
+    return 1
 }

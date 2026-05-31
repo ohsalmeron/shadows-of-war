@@ -79,19 +79,20 @@ else
   green "assets/maps/ index is northamerica-only"
 fi
 
-# 9. credits maps_cc mentions development history
-if grep -q 'development history\|historial de desarrollo' sow-lang/strings/en/credits.toml \
+# 9. OpenFront §7 main-menu attribution
+if grep -q 'based_on_short' sow-lang/strings/en/credits.toml \
    sow-lang/strings/es/credits.toml 2>/dev/null; then
-  green "credits maps_cc documents OpenFront map history"
+  green "based_on_short defined in credits strings (en/es)"
 else
-  red "credits maps_cc missing history note (en/es)"
+  red "based_on_short missing from credits.toml"
 fi
 
-# 10. OpenFront §7 footer string present
-if grep -q 'openfront_footer' sow-lang/strings/en/credits.toml; then
-  green "openfront_footer defined in credits strings"
+# 10. AI art disclosure in Credits
+if grep -q 'ai_art' sow-lang/strings/en/credits.toml \
+   sow-lang/strings/es/credits.toml 2>/dev/null; then
+  green "ai_art disclosure in credits strings (en/es)"
 else
-  red "openfront_footer missing from credits.toml"
+  red "ai_art missing from credits.toml"
 fi
 
 echo ""
