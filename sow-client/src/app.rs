@@ -814,16 +814,18 @@ impl SowApp {
 
     pub(crate) fn teardown_map_editor_and_exit(&mut self) {
         if let Some(session) = self.map_editor.take() {
-            let (window, surface, render_ctx, gui_painter, client_app) =
+            let (window, surface, render_ctx, gui_painter, client_app, egui_ctx) =
                 session.destroy_and_reclaim();
             self.gfx.window = window;
             self.gfx.surface = surface;
             self.gfx.render_ctx = Some(render_ctx);
             self.ui.app = client_app;
             self.ui.app.phase = ClientPhase::MainMenu;
+            self.ui.egui_ctx = egui_ctx;
             self.gfx.prev_sync_point = None;
             self.gfx.needs_first_upload = true;
             self.gfx.gui_painter = gui_painter;
+            self.reset_ui_after_editor();
 
             log::info!("Reclaimed graphics state from map editor session.");
             let _ = sow_map::MapEditorSession::reload_local_map_catalog(
@@ -832,6 +834,22 @@ impl SowApp {
                 None,
             );
             self.check_surface();
+        }
+    }
+
+    /// Re-sync egui input/layout with the reclaimed window after map editor exit.
+    fn reset_ui_after_editor(&mut self) {
+        self.ui.raw_input.events.clear();
+        if let Some(win) = self.gfx.window.as_ref() {
+            let sz = win.surface_size();
+            self.input.screen_w = sz.width as f32;
+            self.input.screen_h = sz.height as f32;
+            let sf = win.scale_factor() as f32;
+            self.ui.egui_ctx.set_pixels_per_point(sf);
+            self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(self.input.screen_w / sf, self.input.screen_h / sf),
+            ));
         }
     }
 
@@ -1005,7 +1023,7 @@ impl SowApp {
                                     .wrapping_add(now_instant.elapsed().as_millis() as u32);
                                 self.ui.death_nameplates.push(
                                     crate::app::DeathNameplateAnimation {
-                                        name: format!("💀 {}", target_name),
+                                        name: format!("🕊️ {}", target_name),
                                         color: player_color,
                                         world_x: wx,
                                         world_y: wy,
@@ -1030,7 +1048,7 @@ impl SowApp {
                                     .find(|p| p.id == conqueror_id)
                                     .map(|p| p.name.clone())
                                     .unwrap_or_else(|| format!("Player {}", conqueror_id));
-                                format!("💀 {} was eliminated by {}!", target_name, conqueror_name)
+                                format!("🕊️ {} was eliminated by {}!", target_name, conqueror_name)
                             };
                             self.ui
                                 .app

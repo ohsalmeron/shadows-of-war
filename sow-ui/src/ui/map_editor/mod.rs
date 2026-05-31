@@ -28,11 +28,18 @@ pub struct OsmPickerUiState {
     pub generating: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct OsmPickerTileDraw {
+    pub rect: egui::Rect,
+    pub texture: egui::TextureId,
+}
+
 #[derive(Clone, Debug, Default)]
-pub struct OsmPickerChrome {
+pub struct OsmPickerView {
     pub center_lon: f64,
     pub center_lat: f64,
     pub zoom: u32,
+    pub tiles: Vec<OsmPickerTileDraw>,
     pub selection_screen_rect: Option<egui::Rect>,
 }
 
@@ -188,7 +195,7 @@ pub fn draw_map_editor(
     ctx: &Context,
     state: &mut MapEditorUiState,
     viewport: MapEditorViewport,
-    osm_chrome: Option<&OsmPickerChrome>,
+    osm_view: Option<&OsmPickerView>,
     lang: sow_lang::Language,
 ) -> MapEditorAction {
     let strings = &sow_lang::get(lang).map_editor;
@@ -315,7 +322,7 @@ pub fn draw_map_editor(
                         }
                     });
                 } else {
-                    let has_selection = osm_chrome
+                    let has_selection = osm_view
                         .and_then(|v| v.selection_screen_rect)
                         .is_some();
                     let mut generate_btn = ThemeButton::new(&strings.btn_generate_osm)
@@ -378,15 +385,15 @@ pub fn draw_map_editor(
             ui.add_space(8.0);
 
                 if state.mode == EditorMode::OsmPicker {
-                let chrome = osm_chrome.cloned().unwrap_or_default();
+                let view = osm_view.cloned().unwrap_or_default();
                 ui.label(RichText::new(&strings.heading_osm).strong());
                 ui.add_space(6.0);
-                ui.label(strings.label_osm_zoom.replace("{}", &chrome.zoom.to_string()));
+                ui.label(strings.label_osm_zoom.replace("{}", &view.zoom.to_string()));
                 ui.label(
                     strings
                         .label_osm_center
-                        .replacen("{}", &format!("{:.4}", chrome.center_lon), 1)
-                        .replacen("{}", &format!("{:.4}", chrome.center_lat), 1),
+                        .replacen("{}", &format!("{:.4}", view.center_lon), 1)
+                        .replacen("{}", &format!("{:.4}", view.center_lat), 1),
                 );
                 ui.add_space(8.0);
                 ui.label(&strings.label_osm_target);
@@ -574,9 +581,8 @@ pub fn draw_map_editor(
             let map_rect = ui.max_rect();
             state.map_canvas_rect = Some(map_rect);
             if state.mode == EditorMode::OsmPicker {
-                ui.allocate_rect(map_rect, Sense::empty());
-                if let Some(chrome) = osm_chrome {
-                    draw_osm_selection_overlay(ui, chrome);
+                if let Some(view) = osm_view {
+                    draw_osm_picker_canvas(ui, view);
                 }
             } else {
                 ui.allocate_rect(map_rect, Sense::empty());
@@ -705,9 +711,22 @@ fn tile_center_screen(viewport: MapEditorViewport, tx: f32, ty: f32) -> egui::Po
     )
 }
 
-fn draw_osm_selection_overlay(ui: &mut Ui, chrome: &OsmPickerChrome) {
-    if let Some(sel) = chrome.selection_screen_rect {
-        let painter = ui.painter();
+fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView) {
+    let rect = ui.max_rect();
+    ui.allocate_rect(rect, Sense::empty());
+    let painter = ui.painter();
+    painter.rect_filled(rect, 0.0, Color32::from_rgb(30, 30, 30));
+    for tile in &view.tiles {
+        if rect.intersects(tile.rect) {
+            painter.image(
+                tile.texture,
+                tile.rect,
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        }
+    }
+    if let Some(sel) = view.selection_screen_rect {
         painter.rect_stroke(
             sel,
             0.0,

@@ -464,8 +464,8 @@ fn event_log_icon(message: &str) -> &'static str {
         "💰"
     } else if message.contains('❌') || lower.contains("rejected") {
         "❌"
-    } else if message.contains('💀') || lower.contains("eliminated") {
-        "💀"
+    } else if message.contains('🕊') || lower.contains("eliminated") {
+        "🕊️"
     } else if message.contains('🎁') || message.contains('🛡') {
         "🎁"
     } else {

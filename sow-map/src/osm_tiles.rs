@@ -91,6 +91,12 @@ impl OsmTileCache {
         self.in_flight.clear();
     }
 
+    /// Drop cached tiles not at the current slippy-map zoom (after wheel zoom).
+    pub fn retain_zoom(&mut self, z: u32) {
+        self.tiles.retain(|k, _| k.z == z);
+        self.in_flight.retain(|k| k.z == z);
+    }
+
     pub fn drain_messages(&mut self) {
         let rx = tile_rx();
         while let Ok(msg) = rx.try_recv() {
