@@ -341,7 +341,8 @@ pub fn draw(
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
-    asset_loader.request_leader_portrait(state.selected_leader, compact);
+    asset_loader.warm_leader_portraits_if_needed(compact, state.selected_leader);
+    asset_loader.request_leader_portrait_priority(state.selected_leader, compact);
     let outer_pad = 16.0;
     let section_gap = if compact { 12.0 } else { 16.0 };
 

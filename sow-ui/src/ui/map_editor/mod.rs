@@ -41,6 +41,9 @@ pub struct OsmPickerView {
     pub zoom: u32,
     pub tiles: Vec<OsmPickerTileDraw>,
     pub selection_screen_rect: Option<egui::Rect>,
+    /// Lon/lat bounds of current selection (for side panel).
+    pub selection_bbox: Option<(f64, f64, f64, f64)>,
+    pub overpass_tile_estimate: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,6 +89,9 @@ pub struct MapEditorUiState {
     pub busy_message: Option<String>,
     /// Set each frame by `draw_map_editor` — click/drag painting only inside this rect.
     pub map_canvas_rect: Option<egui::Rect>,
+    /// Left-drag on OSM map (egui coordinates).
+    pub osm_drag_anchor: Option<egui::Pos2>,
+    pub osm_selection_screen: Option<egui::Rect>,
     toast_last_message: Option<String>,
     toast_started: Option<Instant>,
 }
@@ -118,6 +124,8 @@ impl Default for MapEditorUiState {
             exporting: false,
             busy_message: None,
             map_canvas_rect: None,
+            osm_drag_anchor: None,
+            osm_selection_screen: None,
             toast_last_message: None,
             toast_started: None,
         }
@@ -203,6 +211,10 @@ pub fn draw_map_editor(
     let busy = state.is_busy();
     let mut action = MapEditorAction::None;
     state.map_canvas_rect = None;
+    if state.mode != EditorMode::OsmPicker {
+        state.osm_drag_anchor = None;
+        state.osm_selection_screen = None;
+    }
 
     let top_frame = crate::ui::theme::map_editor_glass_frame(
         crate::ui::theme::MapEditorGlassPanel::Top,
@@ -279,6 +291,7 @@ pub fn draw_map_editor(
                 ui.separator();
 
                 if state.mode == EditorMode::Brush {
+                    #[cfg(not(target_arch = "wasm32"))]
                     ui.add_enabled_ui(!busy, |ui| {
                         if toolbar_button(
                             ui,
@@ -310,9 +323,19 @@ pub fn draw_map_editor(
 
                 if state.mode == EditorMode::Brush {
                     ui.add_enabled_ui(!busy, |ui| {
+                        let export_label = {
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                &strings.btn_export_download
+                            }
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                &strings.btn_export
+                            }
+                        };
                         let export_resp = toolbar_button(
                             ui,
-                            &strings.btn_export,
+                            export_label,
                             ThemeButtonStyle::Primary,
                             None,
                         )
@@ -405,6 +428,30 @@ pub fn draw_map_editor(
                 state.osm.target_size -= state.osm.target_size % 4;
                 ui.add_space(12.0);
                 ui.small(&strings.instructions_osm);
+                if let Some((min_lon, min_lat, max_lon, max_lat)) = view.selection_bbox {
+                    ui.add_space(6.0);
+                    ui.label(
+                        strings
+                            .label_osm_bbox_sw
+                            .replace("{}", &format!("{min_lon:.3}, {min_lat:.3}")),
+                    );
+                    ui.label(
+                        strings
+                            .label_osm_bbox_ne
+                            .replace("{}", &format!("{max_lon:.3}, {max_lat:.3}")),
+                    );
+                    if let Some(n) = view.overpass_tile_estimate {
+                        ui.label(strings.label_osm_overpass_tiles.replace("{}", &n.to_string()));
+                        if n > 144 {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(220, 120, 80),
+                                &strings.hint_osm_overpass_limit,
+                            );
+                        }
+                    }
+                }
+                ui.add_space(8.0);
+                ui.small(&strings.osm_attribution);
                 if state.osm.generating {
                     ui.add_space(8.0);
                     if let Some(ref msg) = state.busy_message {
@@ -582,7 +629,7 @@ pub fn draw_map_editor(
             state.map_canvas_rect = Some(map_rect);
             if state.mode == EditorMode::OsmPicker {
                 if let Some(view) = osm_view {
-                    draw_osm_picker_canvas(ui, view);
+                    draw_osm_picker_canvas(ui, view, state);
                 }
             } else {
                 ui.allocate_rect(map_rect, Sense::empty());
@@ -711,10 +758,10 @@ fn tile_center_screen(viewport: MapEditorViewport, tx: f32, ty: f32) -> egui::Po
     )
 }
 
-fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView) {
+fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView, state: &mut MapEditorUiState) {
     let rect = ui.max_rect();
-    ui.allocate_rect(rect, Sense::empty());
-    let painter = ui.painter();
+    let response = ui.allocate_rect(rect, Sense::click_and_drag());
+    let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, Color32::from_rgb(30, 30, 30));
     for tile in &view.tiles {
         if rect.intersects(tile.rect) {
@@ -726,7 +773,27 @@ fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView) {
             );
         }
     }
-    if let Some(sel) = view.selection_screen_rect {
+
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        if let Some(pos) = response.interact_pointer_pos() {
+            state.osm_drag_anchor = Some(pos);
+        }
+    }
+    if response.dragged_by(egui::PointerButton::Primary) {
+        if let (Some(start), Some(current)) =
+            (state.osm_drag_anchor, response.interact_pointer_pos())
+        {
+            state.osm_selection_screen = Some(egui::Rect::from_two_pos(start, current));
+        }
+    }
+    if response.drag_stopped() {
+        state.osm_drag_anchor = None;
+    }
+
+    let sel = state
+        .osm_selection_screen
+        .or(view.selection_screen_rect);
+    if let Some(sel) = sel {
         painter.rect_stroke(
             sel,
             0.0,

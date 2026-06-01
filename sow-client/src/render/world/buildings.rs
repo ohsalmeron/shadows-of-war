@@ -1504,10 +1504,7 @@ pub(crate) fn render(
                         ),
                     );
 
-                    let text_val = format!(
-                        "-{}",
-                        sow_ui::utils::format_number(deficit.ceil())
-                    );
+                    let text_val = sow_ui::utils::format_gold_shortfall(deficit);
                     let font_size = (zoom_scaled * 0.65 * final_scale).clamp(10.0, 20.0).round();
                     let font_id = egui::FontId::proportional(font_size);
                     let galley = painter.layout_no_wrap(

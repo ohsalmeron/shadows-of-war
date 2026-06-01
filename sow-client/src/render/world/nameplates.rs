@@ -53,7 +53,7 @@ pub(crate) fn render(
             );
         });
 
-        // visible_players is pre-sorted in mod.rs (humans first, nations, by presence desc)
+        // visible_players is pre-sorted in mod.rs (local player last, then humans, nations, presence)
         let mut full_labels_drawn = 0;
         let mut premium_labels_drawn = 0;
 

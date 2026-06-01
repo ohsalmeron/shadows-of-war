@@ -96,7 +96,6 @@ impl ClientApp {
             ClientPhase::MainMenu => {
                 self.asset_loader.ensure_avatars_loaded(ui.ctx());
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
-                self.asset_loader.ensure_leaders_loaded(ui.ctx());
                 main_menu::draw(
                     ui,
                     &mut self.main_menu_state,

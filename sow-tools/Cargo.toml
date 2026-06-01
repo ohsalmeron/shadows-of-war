@@ -23,7 +23,7 @@ path = "src/bin/migrate_maps.rs"
 
 [dependencies]
 sow-core = { workspace = true }
-sow-map = { workspace = true }
+sow-map = { workspace = true, features = ["generator", "osm"] }
 serde = { workspace = true }
 image = { workspace = true }
 serde_json = { workspace = true }

@@ -549,7 +549,8 @@ fn draw_leader_rail(
     ui: &mut egui::Ui,
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
+    is_mobile: bool,
     avatar_size: f32,
     rail_h: f32,
     scroll_track_top_pad: f32,
@@ -592,6 +593,8 @@ fn draw_leader_rail(
                                 ) {
                                     *selected_leader = leader;
                                     *selected_civilization = leader_civilization(leader);
+                                    asset_loader
+                                        .request_leader_portrait_priority(leader, is_mobile);
                                 }
                             }
                             ui.add_space(4.0);
@@ -615,7 +618,8 @@ fn draw_leader_carousel(
     ui: &mut egui::Ui,
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
+    is_mobile: bool,
     avatar_size: f32,
     scroll_area_h: f32,
     panel_w: f32,
@@ -647,6 +651,7 @@ fn draw_leader_carousel(
                             ) {
                                 *selected_leader = leader;
                                 *selected_civilization = leader_civilization(leader);
+                                asset_loader.request_leader_portrait_priority(leader, is_mobile);
                             }
                         }
                         if panel_w > total_carousel_w {
@@ -749,10 +754,7 @@ pub fn draw_leader_picker_modal(
             let screen_rect = ctx.content_rect();
             let is_mobile = crate::ui::theme::compact_viewport(ctx);
 
-            for &leader in &sow_core::player::Leader::ALL {
-                asset_loader.request_leader_portrait(leader, is_mobile);
-            }
-            asset_loader.request_leader_portrait(*selected_leader, is_mobile);
+            asset_loader.request_leader_portrait_priority(*selected_leader, is_mobile);
 
             let content_rect = if is_mobile {
                 let mut rect = screen_rect;
@@ -905,6 +907,7 @@ pub fn draw_leader_picker_modal(
                                 selected_leader,
                                 selected_civilization,
                                 asset_loader,
+                                true,
                                 avatar_size,
                                 scroll_area_h,
                                 content_rect.width(),
@@ -1020,6 +1023,7 @@ pub fn draw_leader_picker_modal(
                         selected_leader,
                         selected_civilization,
                         asset_loader,
+                        false,
                         avatar_size,
                         pick_h,
                         RAIL_SCROLL_TRACK_TOP_PAD,

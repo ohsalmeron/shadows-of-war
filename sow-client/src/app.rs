@@ -828,6 +828,7 @@ impl SowApp {
             self.reset_ui_after_editor();
 
             log::info!("Reclaimed graphics state from map editor session.");
+            #[cfg(not(target_arch = "wasm32"))]
             let _ = sow_map::MapEditorSession::reload_local_map_catalog(
                 &mut self.ui.app,
                 &self.ui.egui_ctx,

@@ -1,5 +1,6 @@
 //! Slippy-map tile fetch + land/water classification for the map editor.
-//! Native-only (uses ehttp). Uses OSM standard tiles for preview and water detection.
+//! Native-only (uses ehttp). OSM Standard tiles power preview and in-editor Generate.
+//! Headless bbox CLI uses vector Overpass in `osm_overpass.rs`.
 
 use crossbeam_channel::{Receiver, Sender};
 use image::RgbaImage;
@@ -8,6 +9,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 pub const TILE_SIZE: u32 = 256;
+pub const MAX_TILE_ZOOM: u32 = 19;
 pub const MAX_TILES_PER_REGION: usize = 144;
 pub const OSM_USER_AGENT: &str = "ShadowsOfWar-MapEditor/1.0 (contact: local-dev)";
 
@@ -78,7 +80,10 @@ impl OsmTileCache {
     }
 
     pub fn request(&mut self, key: TileKey) {
-        if self.tiles.contains_key(&key) || self.in_flight.contains(&key) {
+        if matches!(self.tiles.get(&key), Some(CachedTile::Ready(_))) {
+            return;
+        }
+        if self.in_flight.contains(&key) {
             return;
         }
         self.in_flight.insert(key);
@@ -91,7 +96,6 @@ impl OsmTileCache {
         self.in_flight.clear();
     }
 
-    /// Drop cached tiles not at the current slippy-map zoom (after wheel zoom).
     pub fn retain_zoom(&mut self, z: u32) {
         self.tiles.retain(|k, _| k.z == z);
         self.in_flight.retain(|k| k.z == z);
@@ -214,7 +218,7 @@ fn request_tile_async(key: TileKey) {
     );
     ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
         let send = match result {
-            Ok(res) if res.ok => decode_png_response(&res.bytes).map(|img| {
+            Ok(res) if res.ok => decode_tile_response(&res.bytes).map(|img| {
                 let width = img.width();
                 let height = img.height();
                 TileMessage::Ready {
@@ -237,13 +241,13 @@ fn request_tile_async(key: TileKey) {
     });
 }
 
-fn decode_png_response(bytes: &[u8]) -> Result<RgbaImage, String> {
+fn decode_tile_response(bytes: &[u8]) -> Result<RgbaImage, String> {
     image::load_from_memory(bytes)
         .map_err(|e| e.to_string())
         .map(|img| img.to_rgba8())
 }
 
-/// Stitch tiles covering `world_rect` and crop to it. Blocks until all tiles ready.
+/// Stitch tiles covering a world-px square and crop to it. Blocks until all tiles are ready.
 pub fn fetch_region_blocking(
     cache: &mut OsmTileCache,
     zoom: u32,
@@ -288,7 +292,7 @@ pub fn fetch_region_blocking(
             return Err("Timed out waiting for map tiles".into());
         }
         for key in &keys {
-            if matches!(cache.get(*key), Some(CachedTile::Failed) | None) {
+            if !matches!(cache.get(*key), Some(CachedTile::Ready(_))) {
                 cache.request(*key);
             }
         }
@@ -386,6 +390,12 @@ mod tests {
         let (lon, lat) = world_px_to_lonlat(x, y, 10);
         assert!((lon + 95.0).abs() < 0.01);
         assert!((lat - 40.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn tile_url_is_osm_standard() {
+        let url = tile_url(10, 512, 341);
+        assert!(url.contains("tile.openstreetmap.org"));
     }
 
     #[test]

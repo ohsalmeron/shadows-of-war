@@ -136,8 +136,14 @@ impl SowApp {
                 });
             }
 
-            // Sort once: humans first, then nations, then by presence (descending)
+            // Sort once: local player last (drawn on top), then humans, nations, presence (desc)
+            let my_id = self.sim.my_player_id.unwrap_or(0);
             visible_players.sort_unstable_by(|a, b| {
+                let a_is_me = a.player.id == my_id;
+                let b_is_me = b.player.id == my_id;
+                if a_is_me != b_is_me {
+                    return a_is_me.cmp(&b_is_me);
+                }
                 let a_is_human = a.player.player_type == sow_core::player::PlayerType::Human;
                 let b_is_human = b.player.player_type == sow_core::player::PlayerType::Human;
                 if a_is_human != b_is_human {

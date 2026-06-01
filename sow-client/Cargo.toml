@@ -13,7 +13,6 @@ path = "src/lib.rs"
 [dependencies]
 sow-core = { workspace = true }
 sow-render = { workspace = true }
-sow-map = { workspace = true }
 blade-graphics = { workspace = true }
 
 log = { workspace = true }
@@ -33,14 +32,16 @@ image = { workspace = true }
 url = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+sow-map = { workspace = true, features = ["editor", "generator"] }
 wasm-bindgen-futures = { workspace = true }
 wasm-bindgen = { workspace = true }
 getrandom = { workspace = true, features = ["js"] }
 console_error_panic_hook = { workspace = true }
 console_log = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage", "MediaQueryList"] }
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "HtmlAnchorElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage", "MediaQueryList", "Blob", "Url", "BlobPropertyBag"] }
 js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sow-map = { workspace = true, features = ["editor", "generator", "osm"] }
 env_logger = { workspace = true }
 tokio = { workspace = true }

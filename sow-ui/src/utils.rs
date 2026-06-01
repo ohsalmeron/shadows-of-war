@@ -1,5 +1,16 @@
+/// Snap gold `f64` values that are effectively whole numbers (avoids float noise in UI).
+#[inline]
+fn snap_gold_amount(num: f64) -> f64 {
+    let rounded = num.round();
+    if (num - rounded).abs() < 1e-3 {
+        rounded
+    } else {
+        num
+    }
+}
+
 pub fn format_number(mut num: f64) -> String {
-    num = num.max(0.0);
+    num = snap_gold_amount(num.max(0.0));
     if num >= 10_000_000.0 {
         let value = (num / 100_000.0).floor() / 10.0;
         format!("{:.1}M", value)
@@ -15,6 +26,12 @@ pub fn format_number(mut num: f64) -> String {
         let value = (num / 10.0).floor() / 100.0;
         format!("{:.2}K", value)
     } else {
-        format!("{:.0}", num.floor())
+        format!("{:.0}", num.round())
     }
+}
+
+/// Gold still needed (whole units, compact K/M when large).
+pub fn format_gold_shortfall(deficit: f64) -> String {
+    let whole = snap_gold_amount(deficit.max(0.0).ceil());
+    format!("-{}", format_number(whole))
 }

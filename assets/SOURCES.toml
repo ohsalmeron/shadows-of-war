@@ -22,7 +22,7 @@ files = [
   "handshake.svg",
   "sam_missile.png",
 ]
-notes = "Themed procedural placeholders (gradients/icons) from scripts/generate_placeholder_assets.py."
+notes = "Themed procedural placeholders (gradients/icons) in-repo."
 
 [hud_icons]
 path = "sow-ui/assets/ui/hud/"

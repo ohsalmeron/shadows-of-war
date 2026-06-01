@@ -3,23 +3,26 @@ use blade_graphics as gpu;
 use egui::Context;
 use sow_render::{MapGlobals, MapRenderer, RenderContext};
 use sow_ui::ClientApp;
+#[cfg(feature = "osm")]
 use std::collections::HashMap;
 use std::io::Write;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
 use web_time::Instant;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "osm")]
 use crate::image_pipeline::generate_from_rgba;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "osm")]
 use crate::osm_tiles::{
     classify_osm_to_rgba, fetch_region_blocking, lonlat_to_world_px, pick_fetch_zoom,
-    tiles_covering_rect, world_px_to_lonlat, CachedTile, OsmTileCache, TileKey, TILE_SIZE,
+    tiles_covering_rect, world_px_to_lonlat, CachedTile, OsmTileCache, TileKey, MAX_TILE_ZOOM,
+    TILE_SIZE,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "osm")]
 struct OsmPickerState {
     center_lon: f64,
     center_lat: f64,
@@ -30,19 +33,26 @@ struct OsmPickerState {
     textures: HashMap<TileKey, egui::TextureHandle>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "osm")]
 impl Default for OsmPickerState {
     fn default() -> Self {
         Self {
             center_lon: -95.0,
             center_lat: 40.0,
-            zoom: 4,
+            zoom: 6,
             sel_anchor_world: None,
             sel_corner_world: None,
             cache: OsmTileCache::default(),
             textures: HashMap::new(),
         }
     }
+}
+
+struct MapExportArtifacts {
+    slug: String,
+    map_bytes: Vec<u8>,
+    brotli_bytes: Vec<u8>,
+    thumb_webp: Vec<u8>,
 }
 
 pub struct MapEditorSession {
@@ -83,10 +93,8 @@ pub struct MapEditorSession {
     pub last_frame_time: Instant,
     pub start_time: Instant,
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     osm_picker: OsmPickerState,
-    #[cfg(not(target_arch = "wasm32"))]
-    osm_selecting: bool,
 
     undo_stack: Vec<Vec<u8>>,
     paint_stroke_snapshotted: bool,
@@ -176,10 +184,8 @@ impl MapEditorSession {
             last_frame_time: Instant::now(),
             start_time: Instant::now(),
 
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "osm")]
             osm_picker: OsmPickerState::default(),
-            #[cfg(not(target_arch = "wasm32"))]
-            osm_selecting: false,
 
             undo_stack: Vec::new(),
             paint_stroke_snapshotted: false,
@@ -243,12 +249,14 @@ impl MapEditorSession {
             .is_some_and(|rect| rect.contains(pos))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn maps_root() -> PathBuf {
         std::env::var("SOW_MAPS_ROOT")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("assets/maps"))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn refresh_maps_catalog(maps_root: &Path) -> Result<(), String> {
         let mut items = Vec::new();
         let read_dir = std::fs::read_dir(maps_root).map_err(|e| e.to_string())?;
@@ -275,6 +283,7 @@ impl MapEditorSession {
     }
 
     /// Reload `catalog.bin` from disk into the shared client app (Single Player map list).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_local_map_catalog(
         client_app: &mut sow_ui::ClientApp,
         egui_ctx: &egui::Context,
@@ -428,14 +437,6 @@ impl MapEditorSession {
                         self.pending_pan.0 += dx;
                         self.pending_pan.1 += dy;
                     }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker
-                        && self.osm_selecting
-                        && self.pointer_on_map_canvas()
-                    {
-                        let (wx, wy) = self.screen_to_world_px(logical_x, logical_y);
-                        self.osm_picker.sel_corner_world = Some((wx, wy));
-                    }
                     self.raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(
                         logical_x, logical_y,
                     )));
@@ -473,19 +474,6 @@ impl MapEditorSession {
                     if !pressed {
                         self.paint_stroke_snapshotted = false;
                     }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker
-                        && is_left
-                    {
-                        if pressed && self.pointer_on_map_canvas() {
-                            let (wx, wy) = self.screen_to_world_px(logical_x, logical_y);
-                            self.osm_picker.sel_anchor_world = Some((wx, wy));
-                            self.osm_picker.sel_corner_world = Some((wx, wy));
-                            self.osm_selecting = true;
-                        } else if !pressed {
-                            self.osm_selecting = false;
-                        }
-                    }
                 }
 
                 if primary {
@@ -514,7 +502,7 @@ impl MapEditorSession {
                 };
 
                 if self.pointer_on_map_canvas() {
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(feature = "osm")]
                     if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
                         self.zoom_osm(scroll);
                     } else {
@@ -717,7 +705,7 @@ impl MapEditorSession {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn osm_center_world_px(&self) -> (f64, f64) {
         lonlat_to_world_px(
             self.osm_picker.center_lon,
@@ -726,18 +714,20 @@ impl MapEditorSession {
         )
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn screen_to_world_px(&self, sx: f32, sy: f32) -> (f64, f64) {
         let Some(rect) = self.editor_ui.map_canvas_rect else {
             return self.osm_center_world_px();
         };
+        let sx = sx.clamp(rect.min.x, rect.max.x);
+        let sy = sy.clamp(rect.min.y, rect.max.y);
         let (cx, cy) = self.osm_center_world_px();
         let dx = (sx - rect.center().x) as f64;
         let dy = (sy - rect.center().y) as f64;
         (cx + dx, cy + dy)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn world_px_to_screen(&self, wx: f64, wy: f64) -> egui::Pos2 {
         let (cx, cy) = self.osm_center_world_px();
         let rect = self
@@ -750,7 +740,7 @@ impl MapEditorSession {
         )
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn selection_world_square(&self) -> Option<(f64, f64, f64)> {
         let (ax, ay) = self.osm_picker.sel_anchor_world?;
         let (cx, cy) = self.osm_picker.sel_corner_world?;
@@ -765,7 +755,7 @@ impl MapEditorSession {
         Some((x0, y0, size))
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn update_osm_tiles(&mut self) {
         let Some(rect) = self.editor_ui.map_canvas_rect else {
             return;
@@ -799,7 +789,7 @@ impl MapEditorSession {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn build_osm_view(&self) -> sow_ui::ui::map_editor::OsmPickerView {
         let mut view = sow_ui::ui::map_editor::OsmPickerView {
             center_lon: self.osm_picker.center_lon,
@@ -830,16 +820,34 @@ impl MapEditorSession {
             });
         }
 
-        if let Some((x0, y0, size)) = self.selection_world_square() {
+        if let Some(sel) = self.editor_ui.osm_selection_screen {
+            view.selection_screen_rect = Some(sel);
+        } else if let Some((x0, y0, size)) = self.selection_world_square() {
             let min = self.world_px_to_screen(x0, y0);
             let max = self.world_px_to_screen(x0 + size, y0 + size);
             view.selection_screen_rect = Some(egui::Rect::from_min_max(min, max));
         }
 
+        if let Some((x0, y0, size)) = self.selection_world_square() {
+            let (lon0, lat0) = world_px_to_lonlat(x0, y0, z);
+            let (lon1, lat1) = world_px_to_lonlat(x0 + size, y0 + size, z);
+            let min_lon = lon0.min(lon1);
+            let max_lon = lon0.max(lon1);
+            let min_lat = lat0.min(lat1);
+            let max_lat = lat0.max(lat1);
+            view.selection_bbox = Some((min_lon, min_lat, max_lon, max_lat));
+            let deg_span = (max_lon - min_lon).abs().max((max_lat - min_lat).abs());
+            let fetch_z = pick_fetch_zoom(self.editor_ui.osm.target_size, deg_span);
+            let (wx0, wy0) = lonlat_to_world_px(min_lon, max_lat, fetch_z);
+            let (wx1, wy1) = lonlat_to_world_px(max_lon, min_lat, fetch_z);
+            let keys = tiles_covering_rect(wx0, wy0, wx1, wy1, fetch_z);
+            view.overpass_tile_estimate = Some(keys.len());
+        }
+
         view
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn pan_osm(&mut self, dx: f32, dy: f32) {
         let z = self.osm_picker.zoom;
         let (cx, cy) = self.osm_center_world_px();
@@ -848,11 +856,11 @@ impl MapEditorSession {
         self.osm_picker.center_lat = lat.clamp(-85.0, 85.0);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn zoom_osm(&mut self, delta: f32) {
         let old = self.osm_picker.zoom;
         if delta > 0.0 {
-            self.osm_picker.zoom = (self.osm_picker.zoom + 1).min(18);
+            self.osm_picker.zoom = (self.osm_picker.zoom + 1).min(MAX_TILE_ZOOM);
         } else if delta < 0.0 {
             self.osm_picker.zoom = self.osm_picker.zoom.saturating_sub(1).max(2);
         }
@@ -861,7 +869,7 @@ impl MapEditorSession {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn release_brush_renderer(&mut self) {
         if let Some(sp) = self.prev_sync_point.take() {
             let _ = self.render_ctx.context.wait_for(&sp, !0);
@@ -891,14 +899,28 @@ impl MapEditorSession {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn enter_osm_view(&mut self) {
         self.release_brush_renderer();
         self.osm_picker = OsmPickerState::default();
-        self.osm_selecting = false;
+        self.editor_ui.osm_drag_anchor = None;
+        self.editor_ui.osm_selection_screen = None;
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
+    fn apply_osm_selection_from_screen(&mut self) {
+        let Some(sel) = self.editor_ui.osm_selection_screen else {
+            return;
+        };
+        let min = sel.min;
+        let max = sel.max;
+        let (wx0, wy0) = self.screen_to_world_px(min.x, min.y);
+        let (wx1, wy1) = self.screen_to_world_px(max.x, max.y);
+        self.osm_picker.sel_anchor_world = Some((wx0.min(wx1), wy0.min(wy1)));
+        self.osm_picker.sel_corner_world = Some((wx0.max(wx1), wy0.max(wy1)));
+    }
+
+    #[cfg(feature = "osm")]
     fn refresh_map_renderer_terrain(&mut self) {
         self.dirty_tiles.clear();
         if let Some(mut mr) = self.map_renderer.take() {
@@ -907,7 +929,7 @@ impl MapEditorSession {
         self.ensure_brush_renderer();
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "osm")]
     fn generate_from_osm(&mut self) {
         let lang = self.client_app.settings_state.language;
         let strings = &sow_lang::get(lang).map_editor;
@@ -952,7 +974,7 @@ impl MapEditorSession {
         let encoded = classify_osm_to_rgba(&stitched);
         let water_px = encoded.pixels().filter(|p| p.0[2] == 106).count();
         log::info!(
-            "OSM classify: {}x{} — {} water / {} land pixels (MapGenerator encode)",
+            "OSM classify: {}x{} — {} water / {} land pixels",
             encoded.width(),
             encoded.height(),
             water_px,
@@ -997,37 +1019,30 @@ impl MapEditorSession {
         }
     }
 
-    fn export_map_package(&mut self) {
-        log::info!("Starting native Rust map compilation...");
-        let lang = self.client_app.settings_state.language;
-        let strings = &sow_lang::get(lang).map_editor;
-
+    fn compile_map_package(&self) -> Result<MapExportArtifacts, String> {
         if !sow_core::maps::map_within_pixel_budget(self.width, self.height) {
-            self.notify_error(format!(
+            return Err(format!(
                 "Map is {}x{} ({} pixels); max is {}.",
                 self.width,
                 self.height,
                 self.width as u64 * self.height as u64,
                 sow_core::maps::MAX_MAP_PIXELS
             ));
-            return;
         }
 
-        self.editor_ui.exporting = true;
-        self.editor_ui.busy_message = Some(strings.msg_compiling.clone());
-        self.notify_info(&strings.msg_compiling);
+        let slug = sow_core::maps::map_key(&self.editor_ui.map_name);
+        if slug.is_empty() {
+            return Err("Map name must contain at least one letter or number.".into());
+        }
 
-        // Translate current map layout canvas bytes back to RGBA pixels for our high-fidelity generator
         let mut pixels = vec![[0u8; 4]; (self.width * self.height) as usize];
         for (i, &byte) in self.terrain.iter().enumerate() {
             let is_land = (byte & 0b10000000) != 0;
             let mag = byte & 0b00011111;
-
-            let mut blue = 106u8; // default water blue
+            let mut blue = 106u8;
             if is_land {
                 blue = (mag as u16 + 140).min(200) as u8;
             }
-
             pixels[i] = [0, 0, blue, 255];
         }
 
@@ -1038,87 +1053,134 @@ impl MapEditorSession {
             pixels,
             remove_small: true,
         };
+        let result = crate::generator::generate_map(args)?;
 
-        match crate::generator::generate_map(args) {
-            Ok(result) => {
-                let slug = sow_core::maps::map_key(&self.editor_ui.map_name);
-                if slug.is_empty() {
-                    self.editor_ui.clear_busy();
-                    self.notify_error("Map name must contain at least one letter or number.");
-                    return;
-                }
-                let maps_root = Self::maps_root();
-                let out_dir = maps_root.join(&slug);
-                if let Err(e) = std::fs::create_dir_all(&out_dir) {
-                    self.editor_ui.clear_busy();
-                    self.notify_error(format!("Failed to create path: {}", e));
-                    return;
-                }
+        let spawns: Vec<sow_core::map_file::MapSpawn> = self
+            .editor_ui
+            .spawns
+            .iter()
+            .map(|s| sow_core::map_file::MapSpawn {
+                name: s.name.clone(),
+                flag: s.flag.clone(),
+                x: s.x,
+                y: s.y,
+            })
+            .collect();
+        let map_file = sow_core::map_file::MapFile {
+            display_name: self.editor_ui.map_name.clone(),
+            width: result.width,
+            height: result.height,
+            num_land_tiles: result.num_land_tiles,
+            spawns,
+            terrain: result.map_data,
+        };
+        let map_bytes = sow_core::map_file::encode(&map_file);
 
-                let spawns: Vec<sow_core::map_file::MapSpawn> = self
-                    .editor_ui
-                    .spawns
-                    .iter()
-                    .map(|s| sow_core::map_file::MapSpawn {
-                        name: s.name.clone(),
-                        flag: s.flag.clone(),
-                        x: s.x,
-                        y: s.y,
-                    })
-                    .collect();
-                let map_file = sow_core::map_file::MapFile {
-                    display_name: self.editor_ui.map_name.clone(),
-                    width: result.width,
-                    height: result.height,
-                    num_land_tiles: result.num_land_tiles,
-                    spawns,
-                    terrain: result.map_data,
-                };
-                let map_bytes = sow_core::map_file::encode(&map_file);
+        let mut brotli_bytes = Vec::new();
+        {
+            let mut writer = brotli::CompressorWriter::new(&mut brotli_bytes, 4096, 11, 22);
+            writer
+                .write_all(&map_bytes)
+                .map_err(|e| e.to_string())?;
+            writer.flush().map_err(|e| e.to_string())?;
+        }
 
-                let mut brotli_out = Vec::new();
-                let brotli_ok = (|| {
-                    let mut writer = brotli::CompressorWriter::new(&mut brotli_out, 4096, 11, 22);
-                    writer.write_all(&map_bytes)?;
-                    writer.flush()?;
-                    Ok::<(), std::io::Error>(())
-                })()
-                .is_ok();
+        use image::{DynamicImage, RgbaImage};
+        let rgba = RgbaImage::from_raw(
+            self.width,
+            self.height,
+            thumb_pixels
+                .iter()
+                .flat_map(|p| p.iter().copied())
+                .collect(),
+        )
+        .ok_or_else(|| "thumbnail pixel buffer size mismatch".to_string())?;
+        let thumb_webp =
+            crate::thumbnail::encode_square_thumbnail_webp(&DynamicImage::ImageRgba8(rgba))?;
 
-                let wrote_map = std::fs::write(out_dir.join("map.bin"), &map_bytes).is_ok();
-                let wrote_br = brotli_ok
-                    && std::fs::write(out_dir.join("map.bin.br"), &brotli_out).is_ok();
-                let wrote_thumb = crate::thumbnail::write_square_thumbnail_from_pixels(
-                    self.width,
-                    self.height,
-                    &thumb_pixels,
-                    &out_dir.join("thumbnail.webp"),
-                )
-                .is_ok();
+        Ok(MapExportArtifacts {
+            slug,
+            map_bytes,
+            brotli_bytes,
+            thumb_webp,
+        })
+    }
 
-                if wrote_map && wrote_br && wrote_thumb {
-                    match Self::refresh_maps_catalog(&maps_root) {
-                        Ok(()) => {
-                            if let Err(e) = Self::reload_local_map_catalog(
-                                &mut self.client_app,
-                                &self.egui_ctx,
-                                Some(&slug),
-                            ) {
-                                self.notify_info(format!("{} (catalog reload: {})", strings.msg_saved, e));
-                            } else {
-                                self.notify_info(&strings.msg_saved_sp);
-                            }
-                        }
-                        Err(e) => {
-                            self.notify_info(format!("{} (catalog: {})", strings.msg_saved, e));
-                        }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn write_map_package_native(&mut self, artifacts: MapExportArtifacts, strings: &sow_lang::MapEditorStrings) {
+        let maps_root = Self::maps_root();
+        let out_dir = maps_root.join(&artifacts.slug);
+        if let Err(e) = std::fs::create_dir_all(&out_dir) {
+            self.notify_error(format!("Failed to create path: {e}"));
+            return;
+        }
+
+        let wrote_map = std::fs::write(out_dir.join("map.bin"), &artifacts.map_bytes).is_ok();
+        let wrote_br =
+            std::fs::write(out_dir.join("map.bin.br"), &artifacts.brotli_bytes).is_ok();
+        let wrote_thumb = std::fs::write(out_dir.join("thumbnail.webp"), &artifacts.thumb_webp).is_ok();
+
+        if wrote_map && wrote_br && wrote_thumb {
+            match Self::refresh_maps_catalog(&maps_root) {
+                Ok(()) => {
+                    if let Err(e) = Self::reload_local_map_catalog(
+                        &mut self.client_app,
+                        &self.egui_ctx,
+                        Some(&artifacts.slug),
+                    ) {
+                        self.notify_info(format!(
+                            "{} (catalog reload: {e})",
+                            strings.msg_saved
+                        ));
+                    } else {
+                        self.notify_info(&strings.msg_saved_sp);
                     }
-                } else {
-                    self.notify_error(&strings.msg_write_failed);
+                }
+                Err(e) => {
+                    self.notify_info(format!("{} (catalog: {e})", strings.msg_saved));
                 }
             }
+        } else {
+            self.notify_error(&strings.msg_write_failed);
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn download_map_package_wasm(&mut self, artifacts: MapExportArtifacts, strings: &sow_lang::MapEditorStrings) {
+        let prefix = &artifacts.slug;
+        crate::wasm_export::trigger_download(
+            &format!("{prefix}/map.bin"),
+            &artifacts.map_bytes,
+        );
+        crate::wasm_export::trigger_download(
+            &format!("{prefix}/map.bin.br"),
+            &artifacts.brotli_bytes,
+        );
+        crate::wasm_export::trigger_download(
+            &format!("{prefix}/thumbnail.webp"),
+            &artifacts.thumb_webp,
+        );
+        self.notify_info(&strings.msg_saved_download);
+    }
+
+    fn export_map_package(&mut self) {
+        log::info!("Compiling map package from editor...");
+        let lang = self.client_app.settings_state.language;
+        let strings = &sow_lang::get(lang).map_editor;
+
+        self.editor_ui.exporting = true;
+        self.editor_ui.busy_message = Some(strings.msg_compiling.clone());
+        self.notify_info(&strings.msg_compiling);
+
+        match self.compile_map_package() {
+            Ok(artifacts) => {
+                #[cfg(not(target_arch = "wasm32"))]
+                self.write_map_package_native(artifacts, strings);
+                #[cfg(target_arch = "wasm32")]
+                self.download_map_package_wasm(artifacts, strings);
+            }
             Err(e) => {
-                self.notify_error(format!("Compilation error: {}", e));
+                self.notify_error(format!("Compilation error: {e}"));
             }
         }
         self.editor_ui.clear_busy();
@@ -1154,12 +1216,12 @@ impl MapEditorSession {
         self.editor_ui.width = self.width;
         self.editor_ui.height = self.height;
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "osm")]
         if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
             self.update_osm_tiles();
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "osm")]
         let osm_view = if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
             Some(self.build_osm_view())
         } else {
@@ -1186,8 +1248,13 @@ impl MapEditorSession {
             );
         });
 
+        #[cfg(feature = "osm")]
+        if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
+            self.apply_osm_selection_from_screen();
+        }
+
         if self.dragging {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "osm")]
             if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::OsmPicker {
                 self.pan_osm(self.pending_pan.0, self.pending_pan.1);
             } else {
@@ -1254,7 +1321,7 @@ impl MapEditorSession {
                 self.mark_dirty();
             }
             sow_ui::ui::map_editor::MapEditorAction::EnterOsmPicker => {
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "osm")]
                 {
                     self.editor_ui.npcs_panel_saved = self.editor_ui.show_npcs_panel;
                     self.editor_ui.show_npcs_panel = false;
@@ -1265,15 +1332,16 @@ impl MapEditorSession {
             sow_ui::ui::map_editor::MapEditorAction::ExitOsmPicker => {
                 self.editor_ui.mode = sow_ui::ui::map_editor::EditorMode::Brush;
                 self.editor_ui.show_npcs_panel = self.editor_ui.npcs_panel_saved;
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "osm")]
                 {
-                    self.osm_selecting = false;
+                    self.editor_ui.osm_drag_anchor = None;
+                    self.editor_ui.osm_selection_screen = None;
                     self.osm_picker.textures.clear();
                 }
                 self.ensure_brush_renderer();
             }
             sow_ui::ui::map_editor::MapEditorAction::GenerateFromOsm => {
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "osm")]
                 self.generate_from_osm();
             }
             sow_ui::ui::map_editor::MapEditorAction::Undo => {
@@ -1331,7 +1399,7 @@ impl MapEditorSession {
                 );
 
                 // OSM mode: black clear; map tiles are drawn by egui in the central panel.
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "osm")]
                 if !draw_terrain {
                     let _pass = self.render_ctx.command_encoder.render(
                         "osm_bg_clear",
@@ -1480,7 +1548,7 @@ impl MapEditorSession {
             std::ptr::drop_in_place(&mut this.dirty_tiles);
             std::ptr::drop_in_place(&mut this.raw_input);
             std::ptr::drop_in_place(&mut this.editor_ui);
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "osm")]
             std::ptr::drop_in_place(&mut this.osm_picker);
             std::mem::forget(this);
             (window, surface, render_ctx, gui_painter, client_app, egui_ctx)

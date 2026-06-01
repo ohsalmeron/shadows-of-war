@@ -34,7 +34,7 @@ egui = { version = "0.34", default-features = false }
 egui_extras = { path = "egui/crates/egui_extras", default-features = false, features = ["svg", "image", "webp"] }
 image = { version = "0.25.10", default-features = false, features = ["webp", "png"] }
 sow-lang = { path = "sow-lang" }
-sow-map = { path = "sow-map" }
+sow-map = { path = "sow-map", default-features = false }
 sow-ui = { path = "sow-ui" }
 winit = { path = "winit/winit", features = ["android-native-activity"] }
 brotli = "8.0.2"

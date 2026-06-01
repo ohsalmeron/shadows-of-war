@@ -238,11 +238,20 @@ pub struct MapEditorStrings {
     pub msg_compiling: String,
     pub msg_saved: String,
     pub msg_saved_sp: String,
+    pub msg_saved_download: String,
     pub msg_write_failed: String,
+    pub btn_export_download: String,
     pub msg_osm_generating: String,
+    pub msg_osm_classifying: String,
     pub msg_osm_generated: String,
     pub msg_osm_failed: String,
     pub msg_osm_no_selection: String,
+    pub msg_osm_selection_too_large: String,
+    pub label_osm_bbox_sw: String,
+    pub label_osm_bbox_ne: String,
+    pub label_osm_overpass_tiles: String,
+    pub hint_osm_overpass_limit: String,
+    pub osm_attribution: String,
     pub btn_cancel: String,
     pub btn_undo: String,
     pub confirm_exit_title: String,
@@ -255,7 +264,6 @@ pub struct MapEditorStrings {
     pub tooltip_undo: String,
     pub tooltip_back_to_brush: String,
     pub tooltip_export: String,
-    pub msg_osm_classifying: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

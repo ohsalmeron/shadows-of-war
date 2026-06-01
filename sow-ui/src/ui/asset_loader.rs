@@ -1,6 +1,9 @@
 use egui::TextureHandle;
 use sow_core::player::Leader;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+
+/// Max leader portrait HTTP requests at once (wasm).
+pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 2;
 
 /// Desktop vs mobile leader portrait variant (for streamed assets on wasm32).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,6 +41,10 @@ pub struct AssetLoader {
     /// Queued leader portrait fetches (wasm32); drained by sow-client network layer.
     pub leaders_fetch_pending: Vec<LeaderPortraitKey>,
     pub leaders_in_flight: HashSet<LeaderPortraitKey>,
+    /// Raw portrait bytes awaiting decode (keeps main thread responsive on wasm).
+    leader_decode_pending: VecDeque<(LeaderPortraitKey, Vec<u8>)>,
+    leader_warmup_done_mobile: bool,
+    leader_warmup_done_desktop: bool,
 }
 
 impl Default for AssetLoader {
@@ -82,6 +89,9 @@ impl AssetLoader {
             hud_icons: HashMap::new(),
             leaders_fetch_pending: Vec::new(),
             leaders_in_flight: HashSet::new(),
+            leader_decode_pending: VecDeque::new(),
+            leader_warmup_done_mobile: false,
+            leader_warmup_done_desktop: false,
         }
     }
 
@@ -95,26 +105,103 @@ impl AssetLoader {
 
     /// Queue a leader portrait download on wasm32 (no-op when already loaded or in flight).
     pub fn request_leader_portrait(&mut self, leader: Leader, mobile: bool) {
+        self.queue_leader_portrait_fetch(leader, mobile, false);
+    }
+
+    /// Same as [`request_leader_portrait`] but jumps ahead of other pending fetches.
+    pub fn request_leader_portrait_priority(&mut self, leader: Leader, mobile: bool) {
+        self.queue_leader_portrait_fetch(leader, mobile, true);
+    }
+
+    fn queue_leader_portrait_fetch(&mut self, leader: Leader, mobile: bool, front: bool) {
         let key = LeaderPortraitKey { leader, mobile };
         if self.leader_portrait_loaded(key) || self.leaders_in_flight.contains(&key) {
             return;
         }
-        if !self
-            .leaders_fetch_pending
-            .iter()
-            .any(|pending| *pending == key)
-        {
+        if self.leaders_fetch_pending.iter().any(|pending| *pending == key) {
+            if front {
+                self.leaders_fetch_pending.retain(|pending| *pending != key);
+                self.leaders_fetch_pending.insert(0, key);
+            }
+            return;
+        }
+        if front {
+            self.leaders_fetch_pending.insert(0, key);
+        } else {
             self.leaders_fetch_pending.push(key);
         }
     }
 
-    /// Drain pending leader portrait requests for the client to fetch over HTTP.
-    pub fn drain_leader_fetch_pending(&mut self) -> Vec<LeaderPortraitKey> {
-        let pending: Vec<_> = self.leaders_fetch_pending.drain(..).collect();
-        for key in &pending {
-            self.leaders_in_flight.insert(*key);
+    /// Schedule background fetch of every leader portrait for the active layout variant.
+    pub fn warm_leader_portraits(&mut self, mobile: bool, selected: Leader) {
+        let done = if mobile {
+            &mut self.leader_warmup_done_mobile
+        } else {
+            &mut self.leader_warmup_done_desktop
+        };
+        if *done {
+            return;
         }
-        pending
+        *done = true;
+
+        self.request_leader_portrait_priority(selected, mobile);
+        for &leader in &Leader::ALL {
+            if leader != selected {
+                self.request_leader_portrait(leader, mobile);
+            }
+        }
+    }
+
+    /// Start warmup for a new mobile/desktop variant after viewport layout changes.
+    pub fn warm_leader_portraits_if_needed(&mut self, mobile: bool, selected: Leader) {
+        let done = if mobile {
+            self.leader_warmup_done_mobile
+        } else {
+            self.leader_warmup_done_desktop
+        };
+        if !done {
+            self.warm_leader_portraits(mobile, selected);
+        }
+    }
+
+    pub fn leader_portrait_ready(&self, leader: Leader, mobile: bool) -> bool {
+        self.leader_portrait_loaded(LeaderPortraitKey { leader, mobile })
+    }
+
+    /// Pop the next portrait key to fetch (priority first), marking it in-flight.
+    pub fn take_next_leader_fetch_pending(
+        &mut self,
+        priority: LeaderPortraitKey,
+    ) -> Option<LeaderPortraitKey> {
+        loop {
+            if self.leaders_in_flight.len() >= MAX_LEADER_FETCHES_IN_FLIGHT {
+                return None;
+            }
+
+            let key = if let Some(i) = self
+                .leaders_fetch_pending
+                .iter()
+                .position(|pending| *pending == priority)
+            {
+                self.leaders_fetch_pending.remove(i)
+            } else if !self.leaders_fetch_pending.is_empty() {
+                self.leaders_fetch_pending.remove(0)
+            } else {
+                return None;
+            };
+
+            if self.leader_portrait_loaded(key) {
+                continue;
+            }
+
+            self.leaders_in_flight.insert(key);
+            return Some(key);
+        }
+    }
+
+    pub fn note_leader_portrait_fetch_failed(&mut self, leader: Leader, mobile: bool) {
+        let key = LeaderPortraitKey { leader, mobile };
+        self.leaders_in_flight.remove(&key);
     }
 
     pub fn leader_portrait_filename(key: LeaderPortraitKey) -> String {
@@ -123,46 +210,61 @@ impl AssetLoader {
         format!("{name_lower}_{form}.webp")
     }
 
-    pub fn ingest_leader_portrait(
-        &mut self,
-        ctx: &egui::Context,
-        leader: Leader,
-        mobile: bool,
-        bytes: &[u8],
-    ) {
-        let key = LeaderPortraitKey { leader, mobile };
-        self.leaders_in_flight.remove(&key);
-
-        let mut image = match image::load_from_memory(bytes) {
-            Ok(img) => img,
-            Err(e) => {
-                log::warn!(
-                    "Failed to decode leader portrait {:?} mobile={}: {}",
-                    leader,
-                    mobile,
-                    e
-                );
-                return;
-            }
-        };
+    fn decode_leader_portrait_bytes(bytes: &[u8]) -> Result<egui::ColorImage, String> {
+        let mut image = image::load_from_memory(bytes)
+            .map_err(|e| format!("decode: {e}"))?;
         if image.width() > 2048 || image.height() > 2048 {
             image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
         }
         let image_rgba = image.to_rgba8();
         let size = [image_rgba.width() as _, image_rgba.height() as _];
         let pixels = image_rgba.as_flat_samples();
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-        let name_lower = leader.name().to_lowercase().replace(' ', "_");
-        let tex_name = if mobile {
-            format!("leader_{name_lower}_mobile")
-        } else {
-            format!("leader_{name_lower}_desktop")
-        };
-        let texture = ctx.load_texture(tex_name, color_image, egui::TextureOptions::LINEAR);
-        if mobile {
-            self.leader_mobile_images.insert(leader, texture);
-        } else {
-            self.leader_desktop_images.insert(leader, texture);
+        Ok(egui::ColorImage::from_rgba_unmultiplied(
+            size,
+            pixels.as_slice(),
+        ))
+    }
+
+    pub fn enqueue_leader_portrait_bytes(&mut self, leader: Leader, mobile: bool, bytes: Vec<u8>) {
+        let key = LeaderPortraitKey { leader, mobile };
+        self.leaders_in_flight.remove(&key);
+        self.leader_decode_pending.push_back((key, bytes));
+    }
+
+    /// Decode and upload at most `max_per_frame` queued portraits (wasm budget: 1).
+    pub fn process_leader_decode_budget(&mut self, ctx: &egui::Context, max_per_frame: usize) {
+        for _ in 0..max_per_frame {
+            let Some((key, bytes)) = self.leader_decode_pending.pop_front() else {
+                break;
+            };
+            let leader = key.leader;
+            let mobile = key.mobile;
+
+            let color_image = match Self::decode_leader_portrait_bytes(&bytes) {
+                Ok(img) => img,
+                Err(e) => {
+                    log::warn!(
+                        "Failed to decode leader portrait {:?} mobile={}: {}",
+                        leader,
+                        mobile,
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let name_lower = leader.name().to_lowercase().replace(' ', "_");
+            let tex_name = if mobile {
+                format!("leader_{name_lower}_mobile")
+            } else {
+                format!("leader_{name_lower}_desktop")
+            };
+            let texture = ctx.load_texture(tex_name, color_image, egui::TextureOptions::LINEAR);
+            if mobile {
+                self.leader_mobile_images.insert(leader, texture);
+            } else {
+                self.leader_desktop_images.insert(leader, texture);
+            }
         }
     }
 

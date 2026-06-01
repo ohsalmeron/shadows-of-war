@@ -23,7 +23,7 @@
     <link rel="canonical" href="https://shadowsofwar.io/">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
 
-    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> is injected here only by the package build (scripts/cloud.sh package crazygames). Website/PTR ship nothing. -->
+    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> is injected here only by ./scripts/sow.sh package. Website/PTR ship nothing. -->
 
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">

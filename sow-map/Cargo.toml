@@ -9,36 +9,49 @@ license = "AGPL-3.0-or-later"
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
+[features]
+default = ["editor", "generator", "osm"]
+editor = [
+    "generator",
+    "dep:sow-render",
+    "dep:sow-ui",
+    "dep:blade-graphics",
+    "dep:blade-egui",
+    "dep:blade-macros",
+    "dep:bytemuck",
+    "dep:egui",
+    "dep:winit",
+]
+generator = ["dep:image", "dep:brotli"]
+osm = [
+    "generator",
+    "dep:ehttp",
+    "dep:reqwest",
+    "dep:tokio",
+    "dep:serde",
+    "dep:serde_json",
+]
+
 [dependencies]
 sow-core = { workspace = true }
-sow-render = { workspace = true }
-sow-ui = { workspace = true }
 sow-lang = { workspace = true }
-
-blade-graphics = { workspace = true }
-blade-egui = { workspace = true }
-blade-macros = { workspace = true }
-bytemuck = { workspace = true }
-egui = { workspace = true }
-
 log = { workspace = true }
-env_logger = { workspace = true }
-winit = { workspace = true }
 bincode.workspace = true
 crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
-image = { workspace = true }
-brotli = { workspace = true }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-futures = { workspace = true }
-wasm-bindgen = { workspace = true }
-getrandom = { workspace = true, features = ["js"] }
-console_error_panic_hook = { workspace = true }
-console_log = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
-js-sys = { workspace = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
-ehttp = { workspace = true }
+sow-render = { workspace = true, optional = true }
+sow-ui = { workspace = true, optional = true }
+blade-graphics = { workspace = true, optional = true }
+blade-egui = { workspace = true, optional = true }
+blade-macros = { workspace = true, optional = true }
+bytemuck = { workspace = true, optional = true }
+egui = { workspace = true, optional = true }
+winit = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+brotli = { workspace = true, optional = true }
+ehttp = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread"] }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

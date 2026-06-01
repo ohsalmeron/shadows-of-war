@@ -9,7 +9,17 @@ impl SowApp {
         self.poll_thumbnail_fetches();
 
         #[cfg(target_arch = "wasm32")]
-        self.poll_leader_portrait_fetches();
+        {
+            if self.ui.app.phase == ClientPhase::MainMenu {
+                let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+                let selected = self.ui.app.main_menu_state.selected_leader;
+                self.ui
+                    .app
+                    .asset_loader
+                    .warm_leader_portraits_if_needed(mobile, selected);
+            }
+            self.poll_leader_portrait_fetches();
+        }
 
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
@@ -115,12 +125,27 @@ impl SowApp {
                     mobile,
                     bytes,
                 } => {
-                    self.ui.app.asset_loader.ingest_leader_portrait(
-                        &self.ui.egui_ctx,
+                    self.ui.app.asset_loader.enqueue_leader_portrait_bytes(
                         leader,
                         mobile,
-                        &bytes,
+                        bytes,
                     );
+                }
+                MapDownloadEvent::LeaderPortraitFailed {
+                    leader,
+                    mobile,
+                    reason,
+                } => {
+                    log::warn!(
+                        "Leader portrait fetch failed for {:?} mobile={}: {}",
+                        leader,
+                        mobile,
+                        reason
+                    );
+                    self.ui
+                        .app
+                        .asset_loader
+                        .note_leader_portrait_fetch_failed(leader, mobile);
                 }
                 MapDownloadEvent::Error(e) => {
                     log::error!("Map download aborted: {}", e);
@@ -134,6 +159,12 @@ impl SowApp {
                 }
             }
         }
+
+        #[cfg(target_arch = "wasm32")]
+        self.ui
+            .app
+            .asset_loader
+            .process_leader_decode_budget(&self.ui.egui_ctx, 1);
     }
 
     fn poll_thumbnail_fetches(&mut self) {
@@ -202,15 +233,29 @@ impl SowApp {
 
     #[cfg(target_arch = "wasm32")]
     fn poll_leader_portrait_fetches(&mut self) {
-        let pending = self.ui.app.asset_loader.drain_leader_fetch_pending();
-        if pending.is_empty() {
-            return;
-        }
+        use sow_ui::ui::asset_loader::{AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT};
+
+        let compact = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+        let priority_leader = self.ui.app.main_menu_state.selected_leader;
+        let priority = LeaderPortraitKey {
+            leader: priority_leader,
+            mobile: compact,
+        };
+
         let assets_base = get_assets_url();
         let cache_bust = get_assets_cache_bust();
-        for key in pending {
-            let filename =
-                sow_ui::ui::asset_loader::AssetLoader::leader_portrait_filename(key);
+
+        while self.ui.app.asset_loader.leaders_in_flight.len() < MAX_LEADER_FETCHES_IN_FLIGHT {
+            let Some(key) = self
+                .ui
+                .app
+                .asset_loader
+                .take_next_leader_fetch_pending(priority)
+            else {
+                break;
+            };
+
+            let filename = AssetLoader::leader_portrait_filename(key);
             let url = if cache_bust.is_empty() {
                 format!(
                     "{}/ui/leaders/{}",
@@ -230,20 +275,27 @@ impl SowApp {
             let mobile = key.mobile;
             let request = ehttp::Request::get(&url);
             ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-                if let Ok(res) = result {
-                    if res.ok {
+                match result {
+                    Ok(res) if res.ok => {
                         let _ = tx.send(MapDownloadEvent::LeaderPortraitReady {
                             leader,
                             mobile,
                             bytes: res.bytes,
                         });
-                    } else {
-                        log::warn!(
-                            "Leader portrait fetch failed for {:?} mobile={}: HTTP {}",
+                    }
+                    Ok(res) => {
+                        let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
                             leader,
                             mobile,
-                            res.status
-                        );
+                            reason: format!("HTTP {}", res.status),
+                        });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
+                            leader,
+                            mobile,
+                            reason: e.to_string(),
+                        });
                     }
                 }
             });

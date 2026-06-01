@@ -151,6 +151,11 @@ pub enum MapDownloadEvent {
         mobile: bool,
         bytes: Vec<u8>,
     },
+    LeaderPortraitFailed {
+        leader: sow_core::player::Leader,
+        mobile: bool,
+        reason: String,
+    },
     Progress(String, u8),
     Error(String),
 }
@@ -177,6 +182,8 @@ mod web_loader_assets;
 pub mod net;
 pub mod render;
 pub mod store_portals;
+#[cfg(target_arch = "wasm32")]
+mod map_download;
 
 use app::SowApp;
 use winit::application::ApplicationHandler;
@@ -239,6 +246,8 @@ impl ApplicationHandler for SowApp {
 }
 
 pub fn run_game(event_loop: winit::event_loop::EventLoop) {
+    #[cfg(target_arch = "wasm32")]
+    map_download::install_wasm_map_export_hook();
     let app = SowApp::new();
     let _ = event_loop.run_app(app);
 }
