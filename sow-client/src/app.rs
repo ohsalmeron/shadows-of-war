@@ -48,6 +48,8 @@ pub struct SimState {
     pub map_w: u32,
     pub map_h: u32,
     pub offline_tick_timer: f32,
+    /// Wall-clock anchor for offline sim pacing (decoupled from render interp).
+    pub offline_last_update: web_time::Instant,
     pub offline_intents: Vec<sow_core::protocol::GameplayIntent>,
     pub last_synced_cost_tick: Option<u64>,
     pub tile_upgrades: Vec<u32>,
@@ -237,6 +239,14 @@ pub struct TaskState {
     pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
 }
 
+/// Deferred map editor GPU handoff while the splash loader is visible (native only).
+#[cfg(not(target_arch = "wasm32"))]
+pub enum PendingMapEditorOp {
+    None,
+    Open,
+    Close(sow_map::MapEditorSession),
+}
+
 pub struct SowApp {
     pub gfx: GraphicsState,
     pub net: NetState,
@@ -253,8 +263,13 @@ pub struct SowApp {
     #[cfg(target_arch = "wasm32")]
     pub(crate) web_loader_hidden: bool,
     #[cfg(target_arch = "wasm32")]
+    pub(crate) web_loader_ingest_wait: u32,
+    #[cfg(target_arch = "wasm32")]
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
+    #[cfg(not(target_arch = "wasm32"))]
     pub map_editor: Option<sow_map::MapEditorSession>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub pending_map_editor: PendingMapEditorOp,
     /// Set when Blade/Vulkan init fails; event loop exits on next tick.
     pub gpu_init_failed: bool,
 }
@@ -293,6 +308,7 @@ impl SowApp {
 
         // ── UI State ────────────────────────────────────────────────────────────
         let mut app = ClientApp::new();
+        crate::map_cache::hydrate_asset_maps(&mut app.asset_loader.maps);
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(window) = web_sys::window() {
@@ -344,6 +360,8 @@ impl SowApp {
         let wasm_doc_was_visible: bool = true;
         #[cfg(target_arch = "wasm32")]
         let web_loader_hidden: bool = false;
+        #[cfg(target_arch = "wasm32")]
+        let web_loader_ingest_wait: u32 = 0;
         #[cfg(target_arch = "wasm32")]
         let ime_bridge = crate::ime::WasmImeBridge::new();
 
@@ -439,7 +457,7 @@ impl SowApp {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if std::path::Path::new("sow_tutorial_completed.txt").exists() {
+            if crate::paths::tutorial_completed_path().exists() {
                 tutorial_completed = true;
             }
         }
@@ -480,6 +498,7 @@ impl SowApp {
                 map_w,
                 map_h,
                 offline_tick_timer: 0.0,
+                offline_last_update: web_time::Instant::now(),
                 offline_intents: Vec::new(),
                 last_synced_cost_tick: None,
                 tile_upgrades: Vec::new(),
@@ -575,8 +594,13 @@ impl SowApp {
             #[cfg(target_arch = "wasm32")]
             web_loader_hidden,
             #[cfg(target_arch = "wasm32")]
+            web_loader_ingest_wait,
+            #[cfg(target_arch = "wasm32")]
             ime_bridge,
+            #[cfg(not(target_arch = "wasm32"))]
             map_editor: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_map_editor: PendingMapEditorOp::None,
             gpu_init_failed: false,
         }
     }
@@ -645,6 +669,76 @@ impl SowApp {
         self.ui.is_spectating = false;
     }
 
+    /// Enter the EnterGame splash (fade-in, progress bar, fade-out to Playing).
+    pub(crate) fn begin_enter_game_loader(&mut self) {
+        self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
+        let lang = self.ui.app.settings_state.language;
+        self.ui.app.splash_state.reset_anim(
+            sow_ui::ui::loading_screen::SplashJob::EnterGame,
+            lang,
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn begin_map_editor_enter_loader(&mut self) {
+        self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
+        let lang = self.ui.app.settings_state.language;
+        self.ui.app.splash_state.reset_anim(
+            sow_ui::ui::loading_screen::SplashJob::MapEditorEnter,
+            lang,
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn begin_map_editor_exit_loader(&mut self) {
+        self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
+        let lang = self.ui.app.settings_state.language;
+        self.ui.app.splash_state.reset_anim(
+            sow_ui::ui::loading_screen::SplashJob::MapEditorExit,
+            lang,
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn request_map_editor_exit(&mut self) {
+        let Some(session) = self.map_editor.take() else {
+            return;
+        };
+        self.pending_map_editor = PendingMapEditorOp::Close(session);
+        self.begin_map_editor_exit_loader();
+    }
+
+    /// Whether the map/mover GPU path should paint this frame (hidden during splash loads).
+    pub(crate) fn should_draw_world(&self) -> bool {
+        use sow_ui::app::ClientPhase;
+        use sow_ui::ui::loading_screen::SplashJob;
+
+        match self.ui.app.phase {
+            ClientPhase::Playing => true,
+            ClientPhase::Splash => {
+                let s = &self.ui.app.splash_state;
+                matches!(s.job, SplashJob::EnterGame)
+                    && s.done
+                    && s.fadeout_start.is_some()
+                || {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        matches!(
+                            s.job,
+                            SplashJob::MapEditorEnter | SplashJob::MapEditorExit
+                        ) && s.done
+                            && s.fadeout_start.is_some()
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        false
+                    }
+                }
+            }
+            ClientPhase::MainMenu => false,
+        }
+    }
+
     #[inline]
     pub(crate) fn ws_on_relay(&self) -> bool {
         self.net.ws_url.contains("/relay/") || self.net.ws_url.contains("2557")
@@ -652,6 +746,7 @@ impl SowApp {
 
     /// Window used for input/redraw: map editor session owns it while editing.
     pub fn active_window(&self) -> Option<&dyn winit::window::Window> {
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(editor) = self.map_editor.as_ref() {
             return editor.window_ref();
         }
@@ -659,6 +754,7 @@ impl SowApp {
     }
 
     pub fn handle_suspended(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(ref mut editor) = self.map_editor {
             editor.handle_suspended();
             return;
@@ -686,6 +782,7 @@ impl SowApp {
     pub fn handle_resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         // App or tab foregrounded — retry WS soon if the socket died in the background.
         self.net.ws_reconnect_after_resume = true;
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(ref mut editor) = self.map_editor {
             editor.handle_resumed();
             return;
@@ -791,13 +888,15 @@ impl Drop for SowApp {
 }
 
 impl SowApp {
+    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
     pub fn update(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
+        #[cfg(not(target_arch = "wasm32"))]
         if self.map_editor.is_some() {
             if let Some(mut session) = self.map_editor.take() {
                 let action = session.update(event_loop);
                 self.map_editor = Some(session);
                 if let Some(sow_ui::UiAction::LeaveLobby) = action {
-                    self.teardown_map_editor_and_exit();
+                    self.request_map_editor_exit();
                 }
             }
             return;
@@ -812,34 +911,9 @@ impl SowApp {
         self.update_sim(now);
     }
 
-    pub(crate) fn teardown_map_editor_and_exit(&mut self) {
-        if let Some(session) = self.map_editor.take() {
-            let (window, surface, render_ctx, gui_painter, client_app, egui_ctx) =
-                session.destroy_and_reclaim();
-            self.gfx.window = window;
-            self.gfx.surface = surface;
-            self.gfx.render_ctx = Some(render_ctx);
-            self.ui.app = client_app;
-            self.ui.app.phase = ClientPhase::MainMenu;
-            self.ui.egui_ctx = egui_ctx;
-            self.gfx.prev_sync_point = None;
-            self.gfx.needs_first_upload = true;
-            self.gfx.gui_painter = gui_painter;
-            self.reset_ui_after_editor();
-
-            log::info!("Reclaimed graphics state from map editor session.");
-            #[cfg(not(target_arch = "wasm32"))]
-            let _ = sow_map::MapEditorSession::reload_local_map_catalog(
-                &mut self.ui.app,
-                &self.ui.egui_ctx,
-                None,
-            );
-            self.check_surface();
-        }
-    }
-
-    /// Re-sync egui input/layout with the reclaimed window after map editor exit.
-    fn reset_ui_after_editor(&mut self) {
+    /// Re-sync egui input/layout with the reclaimed window after map editor exit (native).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn reset_ui_after_editor(&mut self) {
         self.ui.raw_input.events.clear();
         if let Some(win) = self.gfx.window.as_ref() {
             let sz = win.surface_size();
@@ -918,6 +992,8 @@ impl SowApp {
                 self.sim.tile_upgrades = vec![0; (map_w * map_h) as usize];
                 self.time.interp.set_tick_dur_ms(self.sim.config.tick_rate_ms);
                 self.time.interp.stamp_applied(web_time::Instant::now());
+                self.sim.offline_tick_timer = 0.0;
+                self.sim.offline_last_update = web_time::Instant::now();
                 self.ui.mover_scene = crate::render::world::movers::MoverScene::new();
 
                 self.input.camera_zoom = 0.5;

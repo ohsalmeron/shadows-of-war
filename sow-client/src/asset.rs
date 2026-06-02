@@ -9,17 +9,7 @@ impl SowApp {
         self.poll_thumbnail_fetches();
 
         #[cfg(target_arch = "wasm32")]
-        {
-            if self.ui.app.phase == ClientPhase::MainMenu {
-                let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
-                let selected = self.ui.app.main_menu_state.selected_leader;
-                self.ui
-                    .app
-                    .asset_loader
-                    .warm_leader_portraits_if_needed(mobile, selected);
-            }
-            self.poll_leader_portrait_fetches();
-        }
+        self.poll_leader_portrait_fetches();
 
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
@@ -82,6 +72,7 @@ impl SowApp {
                 }
                 MapDownloadEvent::MapReady(map_name, bytes) => {
                     self.ui.app.asset_loader.maps_in_flight.remove(&map_name);
+                    crate::map_cache::persist(&map_name, &bytes);
                     self.ui
                         .app
                         .asset_loader
@@ -161,10 +152,18 @@ impl SowApp {
         }
 
         #[cfg(target_arch = "wasm32")]
-        self.ui
-            .app
-            .asset_loader
-            .process_leader_decode_budget(&self.ui.egui_ctx, 1);
+        if self.ui.app.phase == ClientPhase::MainMenu {
+            let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+            let selected = self.ui.app.main_menu_state.selected_leader;
+            let focus = sow_ui::ui::asset_loader::LeaderPortraitKey {
+                leader: selected,
+                mobile,
+            };
+            self.ui
+                .app
+                .asset_loader
+                .process_leader_decode_budget(&self.ui.egui_ctx, 1, focus);
+        }
     }
 
     fn poll_thumbnail_fetches(&mut self) {

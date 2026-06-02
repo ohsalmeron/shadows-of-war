@@ -278,10 +278,19 @@ pub fn draw_modal(
                                                 ui.label(&strings.no_maps_found);
                                             } else {
                                                 for map_entry in catalog {
+                                                    let label = if loader.has_map(&map_entry.key) {
+                                                        format!(
+                                                            "{}{}",
+                                                            map_entry.display_name,
+                                                            strings.map_offline_tag
+                                                        )
+                                                    } else {
+                                                        map_entry.display_name.clone()
+                                                    };
                                                     ui.selectable_value(
                                                         &mut config.map_name,
                                                         map_entry.key.clone(),
-                                                        map_entry.display_name.as_str(),
+                                                        label,
                                                     );
                                                 }
                                             }

@@ -2,8 +2,8 @@ use egui::TextureHandle;
 use sow_core::player::Leader;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-/// Max leader portrait HTTP requests at once (wasm).
-pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 2;
+/// Max leader portrait HTTP requests at once (wasm) — only one hero is shown at a time.
+pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 1;
 
 /// Desktop vs mobile leader portrait variant (for streamed assets on wasm32).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,8 +43,8 @@ pub struct AssetLoader {
     pub leaders_in_flight: HashSet<LeaderPortraitKey>,
     /// Raw portrait bytes awaiting decode (keeps main thread responsive on wasm).
     leader_decode_pending: VecDeque<(LeaderPortraitKey, Vec<u8>)>,
-    leader_warmup_done_mobile: bool,
-    leader_warmup_done_desktop: bool,
+    /// Portrait currently shown / being loaded (drops stale fetch+decode work).
+    leader_portrait_focus: Option<LeaderPortraitKey>,
 }
 
 impl Default for AssetLoader {
@@ -90,8 +90,7 @@ impl AssetLoader {
             leaders_fetch_pending: Vec::new(),
             leaders_in_flight: HashSet::new(),
             leader_decode_pending: VecDeque::new(),
-            leader_warmup_done_mobile: false,
-            leader_warmup_done_desktop: false,
+            leader_portrait_focus: None,
         }
     }
 
@@ -132,35 +131,25 @@ impl AssetLoader {
         }
     }
 
-    /// Schedule background fetch of every leader portrait for the active layout variant.
-    pub fn warm_leader_portraits(&mut self, mobile: bool, selected: Leader) {
-        let done = if mobile {
-            &mut self.leader_warmup_done_mobile
-        } else {
-            &mut self.leader_warmup_done_desktop
-        };
-        if *done {
+    /// Fetch/decode only this leader+layout; cancels queued work for other heroes.
+    pub fn set_leader_portrait_focus(&mut self, leader: Leader, mobile: bool) {
+        let key = LeaderPortraitKey { leader, mobile };
+        if self.leader_portrait_focus == Some(key) {
             return;
         }
-        *done = true;
-
-        self.request_leader_portrait_priority(selected, mobile);
-        for &leader in &Leader::ALL {
-            if leader != selected {
-                self.request_leader_portrait(leader, mobile);
-            }
+        self.leader_portrait_focus = Some(key);
+        self.leaders_fetch_pending.retain(|pending| *pending == key);
+        self.leader_decode_pending.retain(|(pending, _)| *pending == key);
+        if !self.leader_portrait_loaded(key) {
+            self.request_leader_portrait_priority(leader, mobile);
         }
     }
 
-    /// Start warmup for a new mobile/desktop variant after viewport layout changes.
-    pub fn warm_leader_portraits_if_needed(&mut self, mobile: bool, selected: Leader) {
-        let done = if mobile {
-            self.leader_warmup_done_mobile
+    pub fn leader_portrait_texture(&self, leader: Leader, mobile: bool) -> Option<&TextureHandle> {
+        if mobile {
+            self.leader_mobile_images.get(&leader)
         } else {
-            self.leader_warmup_done_desktop
-        };
-        if !done {
-            self.warm_leader_portraits(mobile, selected);
+            self.leader_desktop_images.get(&leader)
         }
     }
 
@@ -228,15 +217,36 @@ impl AssetLoader {
     pub fn enqueue_leader_portrait_bytes(&mut self, leader: Leader, mobile: bool, bytes: Vec<u8>) {
         let key = LeaderPortraitKey { leader, mobile };
         self.leaders_in_flight.remove(&key);
+        if self.leader_portrait_focus != Some(key) {
+            return;
+        }
         self.leader_decode_pending.push_back((key, bytes));
     }
 
-    /// Decode and upload at most `max_per_frame` queued portraits (wasm budget: 1).
-    pub fn process_leader_decode_budget(&mut self, ctx: &egui::Context, max_per_frame: usize) {
+    fn drop_stale_leader_decodes(&mut self) {
+        let Some(focus) = self.leader_portrait_focus else {
+            self.leader_decode_pending.clear();
+            return;
+        };
+        self.leader_decode_pending
+            .retain(|(key, _)| *key == focus);
+    }
+
+    /// Decode and upload at most `max_per_frame` queued portraits for the focused leader.
+    pub fn process_leader_decode_budget(
+        &mut self,
+        ctx: &egui::Context,
+        max_per_frame: usize,
+        focus: LeaderPortraitKey,
+    ) {
+        self.drop_stale_leader_decodes();
         for _ in 0..max_per_frame {
-            let Some((key, bytes)) = self.leader_decode_pending.pop_front() else {
-                break;
-            };
+            let idx = self
+                .leader_decode_pending
+                .iter()
+                .position(|(key, _)| *key == focus);
+            let Some(i) = idx else { break };
+            let (key, bytes) = self.leader_decode_pending.remove(i).unwrap();
             let leader = key.leader;
             let mobile = key.mobile;
 
@@ -507,6 +517,7 @@ impl AssetLoader {
     }
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
+        #[cfg(not(target_arch = "wasm32"))]
         if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
             let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
             if let Some(color_image) =
@@ -521,6 +532,10 @@ impl AssetLoader {
 
         #[cfg(target_arch = "wasm32")]
         {
+            if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
+                self.request_thumbnail(sow_core::maps::DEFAULT_MAP_KEY);
+            }
+            let _ = ctx;
             // Splash/bar textures are transferred from the HTML boot loader at WASM boot.
             return;
         }

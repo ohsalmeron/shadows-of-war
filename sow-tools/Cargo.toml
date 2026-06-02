@@ -21,6 +21,10 @@ path = "src/bin/generate_tutorial.rs"
 name = "migrate-maps"
 path = "src/bin/migrate_maps.rs"
 
+[[bin]]
+name = "write-play-catalog"
+path = "src/bin/write_play_catalog.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 sow-map = { workspace = true, features = ["generator", "osm"] }

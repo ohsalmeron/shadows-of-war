@@ -2,6 +2,7 @@
 //! Native-only (uses ehttp). OSM Standard tiles power preview and in-editor Generate.
 //! Headless bbox CLI uses vector Overpass in `osm_overpass.rs`.
 
+use crate::heightmap::WorldHeightmap;
 use crossbeam_channel::{Receiver, Sender};
 use image::RgbaImage;
 use std::collections::{HashMap, HashSet};
@@ -351,17 +352,49 @@ pub fn is_water_pixel(r: u8, g: u8, b: u8, a: u8) -> bool {
     false
 }
 
-/// Convert stitched OSM tiles to OpenFront MapGenerator pixel encoding (full resolution).
-/// Water → blue 106; land → blue 140 (flat plains).
-pub fn classify_osm_to_rgba(img: &RgbaImage) -> RgbaImage {
-    let mut out = RgbaImage::new(img.width(), img.height());
-    for (src, dst) in img.pixels().zip(out.pixels_mut()) {
-        let [r, g, b, a] = src.0;
-        dst.0 = if is_water_pixel(r, g, b, a) {
-            [0, 0, 106, 255]
+/// Convert stitched OSM tiles to OpenFront MapGenerator pixel encoding.
+///
+/// Water mask from OSM Standard tiles; land elevation blue channel from `heightmap`.
+pub fn classify_osm_to_rgba_with_heightmap(
+    img: &RgbaImage,
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+    heightmap: &WorldHeightmap,
+) -> RgbaImage {
+    let w = img.width();
+    let h = img.height();
+    let mut out = RgbaImage::new(w, h);
+    let lon_span = max_lon - min_lon;
+    let lat_span = max_lat - min_lat;
+
+    for y in 0..h {
+        let lat = if h <= 1 {
+            max_lat
         } else {
-            [0, 0, 140, 255]
+            max_lat - (y as f64 / (h - 1) as f64) * lat_span
         };
+        for x in 0..w {
+            let lon = if w <= 1 {
+                min_lon
+            } else {
+                min_lon + (x as f64 / (w - 1) as f64) * lon_span
+            };
+            let [r, g, b, a] = img.get_pixel(x, y).0;
+            let px = if is_water_pixel(r, g, b, a) {
+                [0, 0, 106, 255]
+            } else {
+                let hm_blue = heightmap.sample_openfront_blue(lon, lat);
+                let blue = if hm_blue == 106 {
+                    140
+                } else {
+                    hm_blue.clamp(140, 200)
+                };
+                [0, 0, blue, 255]
+            };
+            out.put_pixel(x, y, image::Rgba(px));
+        }
     }
     out
 }
@@ -399,22 +432,37 @@ mod tests {
     }
 
     #[test]
-    fn classify_osm_water_and_plains() {
+    fn classify_osm_water_and_land_elevation() {
+        let mut hm_img = RgbaImage::new(360, 180);
+        for y in 0..180 {
+            for x in 0..360 {
+                hm_img.put_pixel(x, y, image::Rgba([0, 0, 140, 255]));
+            }
+        }
+        hm_img.put_pixel(181, 90, image::Rgba([0, 0, 190, 255]));
+        let hm = WorldHeightmap::from_image(hm_img);
+
         let mut img = RgbaImage::new(2, 1);
         img.put_pixel(0, 0, image::Rgba([170, 211, 223, 255]));
         img.put_pixel(1, 0, image::Rgba([242, 239, 233, 255]));
-        let encoded = classify_osm_to_rgba(&img);
+        let encoded = classify_osm_to_rgba_with_heightmap(&img, -1.0, 0.0, 1.0, 0.0, &hm);
         assert_eq!(encoded.get_pixel(0, 0).0[2], 106);
-        assert_eq!(encoded.get_pixel(1, 0).0[2], 140);
+        assert!(
+            encoded.get_pixel(1, 0).0[2] >= 179,
+            "land should inherit heightmap mountain blue"
+        );
     }
 
     #[test]
-    fn hillshade_land_still_plains() {
-        let mut img = RgbaImage::new(2, 1);
-        img.put_pixel(0, 0, image::Rgba([80, 100, 60, 255]));
-        img.put_pixel(1, 0, image::Rgba([230, 235, 210, 255]));
-        let encoded = classify_osm_to_rgba(&img);
-        assert_eq!(encoded.get_pixel(0, 0).0[2], 140);
-        assert_eq!(encoded.get_pixel(1, 0).0[2], 140);
+    fn classify_osm_land_uses_heightmap_blue() {
+        let mut hm_img = RgbaImage::new(1, 1);
+        hm_img.put_pixel(0, 0, image::Rgba([0, 0, 156, 255]));
+        let hm = WorldHeightmap::from_image(hm_img);
+
+        let mut img = RgbaImage::new(1, 1);
+        img.put_pixel(0, 0, image::Rgba([242, 239, 233, 255]));
+        let encoded =
+            classify_osm_to_rgba_with_heightmap(&img, 0.0, 0.0, 0.0, 0.0, &hm);
+        assert_eq!(encoded.get_pixel(0, 0).0[2], 156);
     }
 }

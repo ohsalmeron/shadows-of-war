@@ -35,6 +35,7 @@ blade/
 scripts/__pycache__/
 scripts/git-filter-repo
 dist/
+dist-wasm-size-check/
 winit/
 egui/
 android/

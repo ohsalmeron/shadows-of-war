@@ -31,6 +31,7 @@ pub struct MainMenuState {
     pub show_single_player_setup: bool,
     pub single_player_config: Box<sow_core::game_config::GameConfig>,
     pub error_message: Option<String>,
+    pub leader_backdrop: crate::widgets::LeaderBackdropTransition,
 }
 
 impl Default for MainMenuState {
@@ -107,6 +108,28 @@ impl Default for MainMenuState {
                     .as_millis() as u64,
                 ..Default::default()
             }),
+            leader_backdrop: {
+                let leader = match web_time::SystemTime::now()
+                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+                    % 12
+                {
+                    0 => sow_core::player::Leader::Caesar,
+                    1 => sow_core::player::Leader::Cleopatra,
+                    2 => sow_core::player::Leader::Ragnar,
+                    3 => sow_core::player::Leader::SunTzu,
+                    4 => sow_core::player::Leader::Alexander,
+                    5 => sow_core::player::Leader::GenghisKhan,
+                    6 => sow_core::player::Leader::RichardTheLionheart,
+                    7 => sow_core::player::Leader::Vercingetorix,
+                    8 => sow_core::player::Leader::Boudica,
+                    9 => sow_core::player::Leader::LadySixSky,
+                    10 => sow_core::player::Leader::Leonidas,
+                    _ => sow_core::player::Leader::Napoleon,
+                };
+                crate::widgets::LeaderBackdropTransition::new(leader)
+            },
 
 
             error_message: None,
@@ -341,8 +364,6 @@ pub fn draw(
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
-    asset_loader.warm_leader_portraits_if_needed(compact, state.selected_leader);
-    asset_loader.request_leader_portrait_priority(state.selected_leader, compact);
     let outer_pad = 16.0;
     let section_gap = if compact { 12.0 } else { 16.0 };
 
@@ -356,37 +377,18 @@ pub fn draw(
                 .inner_margin(outer_pad),
         )
         .show_inside(root_ui, |ui| {
-            // Draw high-fidelity selected leader background texture
             let screen_rect = ui.ctx().content_rect();
             let is_mobile = compact;
-
-            let background_tex = if is_mobile {
-                asset_loader
-                    .leader_mobile_images
-                    .get(&state.selected_leader)
-            } else {
-                asset_loader
-                    .leader_desktop_images
-                    .get(&state.selected_leader)
-            };
-
-            if let Some(texture) = background_tex {
-                let uv = crate::widgets::avatar_picker::leader_background_cover_uv(
-                    screen_rect.size(),
-                    texture.size_vec2(),
+            if !state.show_leader_picker {
+                crate::widgets::draw_leader_hero_backdrop(
+                    ui,
+                    screen_rect,
+                    state.selected_leader,
                     is_mobile,
-                );
-                ui.painter().image(
-                    texture.id(),
-                    screen_rect,
-                    uv,
-                    Color32::WHITE,
-                );
-            } else {
-                ui.painter().rect_filled(
-                    screen_rect,
-                    0.0,
-                    Color32::from_rgba_unmultiplied(10, 10, 15, 255),
+                    asset_loader,
+                    &mut state.leader_backdrop,
+                    &strings.loading_leader_portrait,
+                    false,
                 );
             }
 
@@ -457,6 +459,8 @@ pub fn draw(
             &mut state.selected_leader,
             &mut state.selected_civilization,
             asset_loader,
+            &mut state.leader_backdrop,
+            lang,
         )
     {
         state.show_leader_picker = false;

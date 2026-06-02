@@ -163,7 +163,26 @@
         layout();
         window.addEventListener('resize', layout);
         window.addEventListener('orientationchange', layout);
+        wireTextureExportOnLoad(root);
         startProgress();
+    }
+
+    function wireTextureExportOnLoad(loaderRoot) {
+        const ids = [
+            'splash-bg',
+            'splash-desktop',
+            'splash-mobile',
+            'loader-bar-empty',
+            'loader-bar-full',
+        ];
+        for (const id of ids) {
+            const img = loaderRoot.querySelector('#' + id);
+            if (!img) continue;
+            img.addEventListener('load', exportWebLoaderTextures);
+            if (img.complete) {
+                exportWebLoaderTextures();
+            }
+        }
     }
 
     function teardown() {
@@ -201,11 +220,8 @@
 
     /** Snapshot boot loader images for egui enter/exit splashes (called from WASM before fade). */
     function exportWebLoaderTextures() {
-        if (window.__SOW_LOADER_TEXTURES__) {
-            return window.__SOW_LOADER_TEXTURES__;
-        }
         if (!root) {
-            return null;
+            return window.__SOW_LOADER_TEXTURES__ || null;
         }
 
         const desktopEl = document.getElementById('splash-desktop');
@@ -224,7 +240,7 @@
             splashMobile = rgbaFromImg(splashBg);
         }
 
-        const out = {};
+        const out = window.__SOW_LOADER_TEXTURES__ || {};
         const loaderEmpty = rgbaFromImg(emptyEl);
         const loaderFull = rgbaFromImg(fullEl);
 

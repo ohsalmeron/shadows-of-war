@@ -17,6 +17,8 @@ pub enum SplashJob {
     Boot,
     EnterGame,
     ExitGame,
+    MapEditorEnter,
+    MapEditorExit,
 }
 
 pub struct SplashState {

@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::app::PendingMapEditorOp;
 use crate::app::SowApp;
 use crate::EngineInitEvent;
 use sow_core::game_config::GameConfig;
@@ -22,6 +24,114 @@ pub(crate) fn hide_web_loader() {
 }
 
 impl SowApp {
+    fn release_client_game_gpu(&mut self) {
+        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                let _ = render_ctx.context.wait_for(&sp, !0);
+            }
+            if let Some(mut mr) = self.gfx.map_renderer.take() {
+                mr.destroy(render_ctx);
+            }
+            if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                mover.destroy(render_ctx);
+            }
+            render_ctx.reset_command_encoder();
+        }
+    }
+
+    fn cleanup_game_session_stub(&mut self) {
+        let config = GameConfig {
+            map_width: 1,
+            map_height: 1,
+            nation_count: 0,
+            bot_count: 0,
+            ..Default::default()
+        };
+        self.dispatch_sim_command(SimCommand::Init {
+            config: Box::new(config),
+            seed: 0,
+            map_bytes: vec![0b10000000],
+            players: vec![],
+        });
+        self.sim.turn_queue.clear();
+        self.ui.label_positions.clear();
+        self.sim.current_snapshot = None;
+        self.gfx.needs_first_upload = true;
+        self.release_client_game_gpu();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn finish_map_editor_open_handoff(&mut self) {
+        let Some(render_ctx) = self.gfx.render_ctx.take() else {
+            log::error!("Map editor handoff: GPU context not initialized");
+            self.pending_map_editor = PendingMapEditorOp::None;
+            self.ui.app.phase = ClientPhase::MainMenu;
+            return;
+        };
+        let window = self
+            .gfx
+            .window
+            .take()
+            .expect("No window to handoff to map editor");
+        let surface = self
+            .gfx
+            .surface
+            .take()
+            .expect("No surface to handoff to map editor");
+        let gui_painter = self
+            .gfx
+            .gui_painter
+            .take()
+            .expect("No gui_painter to handoff to map editor");
+        let egui_ctx = self.ui.egui_ctx.clone();
+        let client_app = std::mem::take(&mut self.ui.app);
+
+        let session = sow_map::MapEditorSession::new(
+            window,
+            surface,
+            render_ctx,
+            gui_painter,
+            egui_ctx.clone(),
+            client_app,
+        );
+        self.map_editor = Some(session);
+        self.ui.egui_ctx = egui_ctx;
+        self.ui.app = sow_ui::ClientApp::new();
+        self.pending_map_editor = PendingMapEditorOp::None;
+        self.gfx.prev_sync_point = None;
+        log::info!("Map editor session started after loader");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn apply_editor_reclaim(
+        &mut self,
+        window: Option<Box<dyn winit::window::Window>>,
+        surface: Option<blade_graphics::Surface>,
+        render_ctx: sow_render::RenderContext,
+        gui_painter: Option<blade_egui::GuiPainter>,
+        client_app: sow_ui::ClientApp,
+        egui_ctx: egui::Context,
+    ) {
+        self.gfx.window = window;
+        self.gfx.surface = surface;
+        self.gfx.render_ctx = Some(render_ctx);
+        self.ui.app = client_app;
+        self.ui.app.phase = ClientPhase::MainMenu;
+        self.ui.egui_ctx = egui_ctx;
+        self.gfx.prev_sync_point = None;
+        self.gfx.needs_first_upload = true;
+        self.gfx.gui_painter = gui_painter;
+        self.reset_ui_after_editor();
+        log::info!("Reclaimed graphics state from map editor session.");
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = sow_map::MapEditorSession::reload_local_map_catalog(
+            &mut self.ui.app,
+            &self.ui.egui_ctx,
+            None,
+        );
+        self.check_surface();
+    }
+
     pub fn update_loader(&mut self) {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
             let has_map = self.ui.app.main_menu_state.cached_map.is_some();
@@ -135,6 +245,20 @@ impl SowApp {
         }
         // Poll engine init channel
         if self.ui.app.phase == sow_ui::app::ClientPhase::Splash {
+            #[cfg(target_arch = "wasm32")]
+            {
+                use sow_ui::ui::loading_screen::SplashJob;
+                if matches!(
+                    self.ui.app.splash_state.job,
+                    SplashJob::EnterGame | SplashJob::ExitGame
+                ) {
+                    crate::web_loader_assets::ensure_splash_textures_from_web_loader(
+                        &self.ui.egui_ctx,
+                        &mut self.ui.app.asset_loader,
+                    );
+                }
+            }
+
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
                     self.ui
@@ -162,18 +286,24 @@ impl SowApp {
                     };
 
                     if boot_ready {
-                        self.ui.app.splash_state.done = true;
                         #[cfg(target_arch = "wasm32")]
                         {
-                            // HTML overlay owns boot; map catalog streams in background.
-                            crate::web_loader_assets::try_ingest_web_loader_textures(
+                            if !crate::web_loader_assets::ensure_boot_web_loader_textures(
                                 &self.ui.egui_ctx,
                                 &mut self.ui.app.asset_loader,
-                            );
+                                &mut self.web_loader_ingest_wait,
+                            ) {
+                                return;
+                            }
+                            self.ui.app.splash_state.done = true;
                             self.ui.app.phase = ClientPhase::MainMenu;
                             hide_web_loader();
                             crate::store_portals::load_stop();
                             self.web_loader_hidden = true;
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            self.ui.app.splash_state.done = true;
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         if self.ui.app.splash_state.target_phase.is_none() {
@@ -202,42 +332,124 @@ impl SowApp {
                             self.ui.app.splash_state.frames_drawn = 0;
                         }
                     } else if step == 2 && self.ui.app.splash_state.frames_drawn > 1 {
-                        // Clean the engine state
-                        let config = GameConfig {
-                            map_width: 1,
-                            map_height: 1,
-                            nation_count: 0,
-                            bot_count: 0,
-                            ..Default::default()
-                        };
-                        self.dispatch_sim_command(SimCommand::Init {
-                            config: Box::new(config),
-                            seed: 0,
-                            map_bytes: vec![0b10000000], // 1 land tile
-                            players: vec![],
-                        });
-                        self.sim.turn_queue.clear();
-                        self.ui.label_positions.clear();
-
-                        self.sim.current_snapshot = None;
-                        self.gfx.needs_first_upload = true;
-
-                        // Free GPU memory
-                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                            if let Some(sp) = self.gfx.prev_sync_point.take() {
-                                let _ = render_ctx.context.wait_for(&sp, !0);
-                            }
-                            if let Some(mut mr) = self.gfx.map_renderer.take() {
-                                mr.destroy(render_ctx);
-                            }
-                        }
-
+                        self.cleanup_game_session_stub();
                         self.ui.app.splash_state.done = true;
                         if self.ui.app.splash_state.target_phase.is_none() {
                             self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
                         }
                     }
                 }
+                #[cfg(not(target_arch = "wasm32"))]
+                sow_ui::ui::loading_screen::SplashJob::MapEditorEnter => {
+                    if matches!(self.pending_map_editor, PendingMapEditorOp::Open) {
+                    let step = self.ui.app.splash_state.gpu_load_step;
+                    if step == 0 {
+                        self.ui.app.splash_state.status_text =
+                            "Preparing map editor...".to_string();
+                        self.ui.app.splash_state.progress = 0.2;
+                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                                let _ = render_ctx.context.wait_for(&sp, !0);
+                            }
+                        }
+                        self.ui.app.splash_state.gpu_load_step = 1;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 1 && self.ui.app.splash_state.frames_drawn > 1 {
+                        self.ui.app.splash_state.status_text =
+                            "Releasing game resources...".to_string();
+                        self.ui.app.splash_state.progress = 0.45;
+                        self.release_client_game_gpu();
+                        self.ui.app.splash_state.gpu_load_step = 2;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 2 && self.ui.app.splash_state.frames_drawn > 1 {
+                        if self.sim.engine.is_some() {
+                            self.cleanup_game_session_stub();
+                        }
+                        self.ui.app.splash_state.status_text =
+                            "Opening map editor...".to_string();
+                        self.ui.app.splash_state.progress = 0.65;
+                        self.ui.app.splash_state.gpu_load_step = 3;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 3 && self.ui.app.splash_state.frames_drawn > 1 {
+                        self.ui.app.splash_state.status_text =
+                            "Opening map editor...".to_string();
+                        self.ui.app.splash_state.progress = 0.85;
+                        self.ui.app.splash_state.done = true;
+                        if self.ui.app.splash_state.target_phase.is_none() {
+                            self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
+                        }
+                        self.ui.app.splash_state.gpu_load_step = 4;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 4
+                        && self.ui.app.phase == ClientPhase::MainMenu
+                        && self.ui.app.splash_state.frames_drawn > 1
+                    {
+                        self.finish_map_editor_open_handoff();
+                        self.ui.app.splash_state.gpu_load_step = 5;
+                    }
+                    }
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                sow_ui::ui::loading_screen::SplashJob::MapEditorExit => {
+                    if matches!(
+                        self.pending_map_editor,
+                        PendingMapEditorOp::Close(_)
+                    ) {
+                    let step = self.ui.app.splash_state.gpu_load_step;
+                    if step == 0 {
+                        self.ui.app.splash_state.status_text =
+                            "Closing map editor...".to_string();
+                        self.ui.app.splash_state.progress = 0.2;
+                        self.ui.app.splash_state.gpu_load_step = 1;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 1 && self.ui.app.splash_state.frames_drawn > 1 {
+                        if let PendingMapEditorOp::Close(ref mut session) =
+                            self.pending_map_editor
+                        {
+                            session.teardown_gpu();
+                        }
+                        self.ui.app.splash_state.status_text =
+                            "Reclaiming display...".to_string();
+                        self.ui.app.splash_state.progress = 0.5;
+                        self.ui.app.splash_state.gpu_load_step = 2;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 2 && self.ui.app.splash_state.frames_drawn > 1 {
+                        if let PendingMapEditorOp::Close(session) =
+                            std::mem::replace(&mut self.pending_map_editor, PendingMapEditorOp::None)
+                        {
+                            let (window, surface, render_ctx, gui_painter, client_app, egui_ctx) =
+                                session.destroy_and_reclaim();
+                            self.apply_editor_reclaim(
+                                window,
+                                surface,
+                                render_ctx,
+                                gui_painter,
+                                client_app,
+                                egui_ctx,
+                            );
+                        }
+                        self.ui.app.splash_state.status_text =
+                            "Cleaning up...".to_string();
+                        self.ui.app.splash_state.progress = 0.75;
+                        self.ui.app.splash_state.gpu_load_step = 3;
+                        self.ui.app.splash_state.frames_drawn = 0;
+                    } else if step == 3 && self.ui.app.splash_state.frames_drawn > 1 {
+                        if self.sim.engine.is_some() {
+                            self.cleanup_game_session_stub();
+                        } else {
+                            self.release_client_game_gpu();
+                        }
+                        self.ui.app.splash_state.done = true;
+                        if self.ui.app.splash_state.target_phase.is_none() {
+                            self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
+                        }
+                        self.ui.app.splash_state.gpu_load_step = 4;
+                    }
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                sow_ui::ui::loading_screen::SplashJob::MapEditorEnter
+                | sow_ui::ui::loading_screen::SplashJob::MapEditorExit => {}
                 sow_ui::ui::loading_screen::SplashJob::EnterGame => {
                     while let Ok(event) = self.tasks.engine_init_rx.try_recv() {
                         match event {
@@ -348,11 +560,12 @@ impl SowApp {
                         if self.ui.app.splash_state.target_phase.is_none() {
                             self.ui.app.splash_state.target_phase =
                                 Some(sow_ui::app::ClientPhase::Playing);
+                            crate::store_portals::gameplay_start();
                         }
 
                         // Clear pending init data to completely finish EnterGame phase
                         self.tasks.pending_engine_init_data = None;
-                        log::info!("First snapshot received, releasing loader!");
+                        log::info!("EnterGame load complete; fading out loader");
 
                         if let Some(c) = self.net.client.as_ref() {
                             if let (Some(lid), Some(pid)) =

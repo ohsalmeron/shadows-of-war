@@ -17,6 +17,7 @@ impl SowApp {
             sow_core::register_game_assets(&self.ui.egui_ctx);
         });
 
+        #[cfg(not(target_arch = "wasm32"))]
         if self.map_editor.is_some() {
             return;
         }
@@ -37,6 +38,8 @@ impl SowApp {
                 let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
             }
         }
+
+        let draw_world = self.should_draw_world();
 
         if let Some(ref mut s) = self.gfx.surface {
             if let Some(win) = self.gfx.window.as_ref() {
@@ -60,7 +63,7 @@ impl SowApp {
 
             let mut map_drawn = false;
             if let Some(ref mut mr) = self.gfx.map_renderer {
-                // Upload map state on first frame or after each tick
+                // Upload map state on first frame or after each tick (runs during splash for loader step 2).
                 if self.gfx.needs_first_upload {
                     render_ctx
                         .command_encoder
@@ -72,6 +75,7 @@ impl SowApp {
                     mr.upload_terrain(&mut render_ctx.command_encoder);
                 }
 
+                if draw_world {
                 // --- Layer 4: Track and Spawn Detonations ---
                 let mut new_detonations = Vec::new();
                 if let Some(snap) = &self.sim.current_snapshot {
@@ -423,6 +427,7 @@ impl SowApp {
                         &render_ctx.context,
                     );
                 }
+                }
             }
 
             if !map_drawn {
@@ -515,8 +520,12 @@ impl SowApp {
                     (self.ui.app.main_menu_state.wait_timer_secs - self.ui.raw_input.predicted_dt)
                         .max(0.0);
             }
+            // Offline: spawn countdown comes from sim snapshots (tick-paced). Frame-based
+            // decay here ran too fast on high-refresh native vs WASM ~60 Hz.
             if let Some(ref mut secs) = self.ui.app.hud_state.spawn_timer_secs {
-                *secs = (*secs - self.ui.raw_input.predicted_dt).max(0.0);
+                if self.net.client.is_some() {
+                    *secs = (*secs - self.ui.raw_input.predicted_dt).max(0.0);
+                }
             }
             if let Some(ref mut sync) = self.ui.app.hud_state.sync_state {
                 sync.time_remaining =

@@ -27,7 +27,16 @@ impl SowApp {
                 }
             }
             log::warn!("Failed to fetch map catalog.bin");
-            let _ = tx.send(MapDownloadEvent::CatalogReady(Vec::new()));
+            let cached = crate::map_cache::catalog_from_cache();
+            if cached.is_empty() {
+                let _ = tx.send(MapDownloadEvent::CatalogReady(Vec::new()));
+            } else {
+                log::info!(
+                    "Using {} map(s) from offline cache for catalog",
+                    cached.len()
+                );
+                let _ = tx.send(MapDownloadEvent::CatalogReady(cached));
+            }
         });
     }
 

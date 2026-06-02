@@ -434,7 +434,7 @@ fn leader_picker_column_bottom(ctx: &egui::Context, is_mobile: bool, content_max
     back_rect.max.y.max(title_rect.max.y)
 }
 
-fn draw_leader_picker_overlay_gradient(
+pub(crate) fn draw_leader_picker_overlay_gradient(
     painter: &egui::Painter,
     screen_rect: Rect,
     is_mobile: bool,
@@ -550,7 +550,6 @@ fn draw_leader_rail(
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
-    is_mobile: bool,
     avatar_size: f32,
     rail_h: f32,
     scroll_track_top_pad: f32,
@@ -593,8 +592,6 @@ fn draw_leader_rail(
                                 ) {
                                     *selected_leader = leader;
                                     *selected_civilization = leader_civilization(leader);
-                                    asset_loader
-                                        .request_leader_portrait_priority(leader, is_mobile);
                                 }
                             }
                             ui.add_space(4.0);
@@ -619,7 +616,6 @@ fn draw_leader_carousel(
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
-    is_mobile: bool,
     avatar_size: f32,
     scroll_area_h: f32,
     panel_w: f32,
@@ -651,7 +647,6 @@ fn draw_leader_carousel(
                             ) {
                                 *selected_leader = leader;
                                 *selected_civilization = leader_civilization(leader);
-                                asset_loader.request_leader_portrait_priority(leader, is_mobile);
                             }
                         }
                         if panel_w > total_carousel_w {
@@ -744,6 +739,8 @@ pub fn draw_leader_picker_modal(
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
+    leader_backdrop: &mut crate::widgets::leader_backdrop::LeaderBackdropTransition,
+    lang: sow_lang::Language,
 ) -> bool {
     let mut close = false;
 
@@ -753,8 +750,6 @@ pub fn draw_leader_picker_modal(
         .show(ctx, |ui| {
             let screen_rect = ctx.content_rect();
             let is_mobile = crate::ui::theme::compact_viewport(ctx);
-
-            asset_loader.request_leader_portrait_priority(*selected_leader, is_mobile);
 
             let content_rect = if is_mobile {
                 let mut rect = screen_rect;
@@ -785,6 +780,18 @@ pub fn draw_leader_picker_modal(
                 close = true;
             }
 
+            let loading_label = &sow_lang::get(lang).main_menu.loading_leader_portrait;
+            crate::widgets::leader_backdrop::draw_leader_hero_backdrop(
+                ui,
+                screen_rect,
+                *selected_leader,
+                is_mobile,
+                asset_loader,
+                leader_backdrop,
+                loading_label,
+                true,
+            );
+
             let reign_dates = match *selected_leader {
                 sow_core::player::Leader::Caesar => "Reigned 49 – 44 BC",
                 sow_core::player::Leader::Cleopatra => "Reigned 51 – 30 BC",
@@ -800,21 +807,6 @@ pub fn draw_leader_picker_modal(
                 sow_core::player::Leader::Napoleon => "Reigned 1804 – 1814 AD",
             };
 
-            // --- FULLSCREEN IMMERSIVE BACKDROP PORTRAIT (COVER ASPECT RATIO, NO STRETCH) ---
-            if is_mobile {
-                if let Some(tex) = asset_loader.leader_mobile_images.get(selected_leader) {
-                    let uv = leader_background_cover_uv(screen_rect.size(), tex.size_vec2(), is_mobile);
-                    ui.painter()
-                        .image(tex.id(), screen_rect, uv, Color32::WHITE);
-                }
-            } else {
-                if let Some(tex) = asset_loader.leader_desktop_images.get(selected_leader) {
-                    let uv = leader_background_cover_uv(screen_rect.size(), tex.size_vec2(), is_mobile);
-                    ui.painter()
-                        .image(tex.id(), screen_rect, uv, Color32::WHITE);
-                }
-            }
-
             const CONFIRM_BTN_H: f32 = 44.0;
             const CONFIRM_BTN_W_MOBILE: f32 = 200.0;
             const CONFIRM_GAP: f32 = 12.0;
@@ -824,8 +816,6 @@ pub fn draw_leader_picker_modal(
             const DESKTOP_TEXT_W: f32 = 420.0;
             const DESKTOP_NARROW_HERO_H: f32 = 150.0;
             const DESKTOP_NARROW_BREAKPOINT: f32 = 1024.0;
-
-            draw_leader_picker_overlay_gradient(ui.painter(), screen_rect, is_mobile);
 
             let avatar_size = if is_mobile { 64.0 } else { 54.0 };
             let scroll_area_h = avatar_size + 4.0;
@@ -907,7 +897,6 @@ pub fn draw_leader_picker_modal(
                                 selected_leader,
                                 selected_civilization,
                                 asset_loader,
-                                true,
                                 avatar_size,
                                 scroll_area_h,
                                 content_rect.width(),
@@ -1023,7 +1012,6 @@ pub fn draw_leader_picker_modal(
                         selected_leader,
                         selected_civilization,
                         asset_loader,
-                        false,
                         avatar_size,
                         pick_h,
                         RAIL_SCROLL_TRACK_TOP_PAD,

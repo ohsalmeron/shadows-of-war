@@ -16,10 +16,12 @@ use winit::window::{Window, WindowId};
 #[cfg(feature = "osm")]
 use crate::image_pipeline::generate_from_rgba;
 #[cfg(feature = "osm")]
+use crate::heightmap::{terrain_stats_from_packed, WorldHeightmap};
+#[cfg(feature = "osm")]
 use crate::osm_tiles::{
-    classify_osm_to_rgba, fetch_region_blocking, lonlat_to_world_px, pick_fetch_zoom,
-    tiles_covering_rect, world_px_to_lonlat, CachedTile, OsmTileCache, TileKey, MAX_TILE_ZOOM,
-    TILE_SIZE,
+    classify_osm_to_rgba_with_heightmap, fetch_region_blocking, lonlat_to_world_px,
+    pick_fetch_zoom, tiles_covering_rect, world_px_to_lonlat, CachedTile, OsmTileCache, TileKey,
+    MAX_TILE_ZOOM, TILE_SIZE,
 };
 
 #[cfg(feature = "osm")]
@@ -942,6 +944,7 @@ impl MapEditorSession {
         self.editor_ui.osm.generating = true;
         self.editor_ui.busy_message = Some(strings.msg_osm_generating.clone());
         self.notify_info(&strings.msg_osm_generating);
+        self.egui_ctx.request_repaint();
 
         let z = self.osm_picker.zoom;
         let (lon0, lat0) = world_px_to_lonlat(x0, y0, z);
@@ -967,32 +970,51 @@ impl MapEditorSession {
                 return;
             }
         };
+        self.egui_ctx.request_repaint();
 
         self.editor_ui.busy_message = Some(strings.msg_osm_classifying.clone());
+        self.egui_ctx.request_repaint();
+
+        let heightmap = match WorldHeightmap::load() {
+            Ok(hm) => hm,
+            Err(e) => {
+                self.editor_ui.clear_busy();
+                self.notify_error(strings.msg_osm_failed.replace("{}", &e));
+                return;
+            }
+        };
+
+        let min_lon = lon0.min(lon1);
+        let max_lon = lon0.max(lon1);
+        let min_lat = lat0.min(lat1);
+        let max_lat = lat0.max(lat1);
 
         let dst = target - (target % 4);
-        let encoded = classify_osm_to_rgba(&stitched);
+        let encoded = classify_osm_to_rgba_with_heightmap(
+            &stitched,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+            &heightmap,
+        );
         let water_px = encoded.pixels().filter(|p| p.0[2] == 106).count();
+        let elevated_land = encoded
+            .pixels()
+            .filter(|p| p.0[2] > 140 && p.0[2] <= 200)
+            .count();
         log::info!(
-            "OSM classify: {}x{} — {} water / {} land pixels",
+            "OSM classify: {}x{} — {} water / {} land pixels ({} with elevation > plains)",
             encoded.width(),
             encoded.height(),
             water_px,
-            encoded.pixels().len() - water_px
+            encoded.pixels().len() - water_px,
+            elevated_land
         );
 
         match generate_from_rgba(&encoded, Some((dst, dst))) {
             Ok(result) => {
-                let land_tiles = result
-                    .map_data
-                    .iter()
-                    .filter(|b| (**b & 0b1000_0000) != 0)
-                    .count();
-                log::info!(
-                    "OSM pipeline: {} land tiles, {} water tiles",
-                    land_tiles,
-                    result.map_data.len() - land_tiles
-                );
+                terrain_stats_from_packed(&result.map_data).log_summary();
 
                 self.width = result.width;
                 self.height = result.height;
@@ -1516,6 +1538,17 @@ impl MapEditorSession {
         transition
     }
 
+    /// Wait for in-flight GPU work and destroy editor map textures (splash exit step 1).
+    pub fn teardown_gpu(&mut self) {
+        if let Some(sp) = self.prev_sync_point.take() {
+            let _ = self.render_ctx.context.wait_for(&sp, !0);
+        }
+        if let Some(mut mr) = self.map_renderer.take() {
+            mr.destroy(&self.render_ctx);
+        }
+        self.render_ctx.reset_command_encoder();
+    }
+
     #[allow(clippy::type_complexity)]
     pub fn destroy_and_reclaim(
         self,
@@ -1529,13 +1562,7 @@ impl MapEditorSession {
     ) {
         let mut this = std::mem::ManuallyDrop::new(self);
 
-        if let Some(sp) = this.prev_sync_point.take() {
-            let _ = this.render_ctx.context.wait_for(&sp, !0);
-        }
-        if let Some(mut mr) = this.map_renderer.take() {
-            mr.destroy(&this.render_ctx);
-        }
-        this.render_ctx.reset_command_encoder();
+        this.teardown_gpu();
 
         unsafe {
             let window = std::ptr::read(&this.window);
@@ -1558,12 +1585,7 @@ impl MapEditorSession {
 
 impl Drop for MapEditorSession {
     fn drop(&mut self) {
-        if let Some(sp) = self.prev_sync_point.take() {
-            let _ = self.render_ctx.context.wait_for(&sp, !0);
-        }
-        if let Some(mut mr) = self.map_renderer.take() {
-            mr.destroy(&self.render_ctx);
-        }
+        self.teardown_gpu();
         if let Some(mut gp) = self.gui_painter.take() {
             gp.destroy(&self.render_ctx.context);
         }

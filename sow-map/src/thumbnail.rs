@@ -5,7 +5,11 @@ use image::imageops::FilterType;
 use image::{DynamicImage, ExtendedColorType, RgbaImage};
 use std::path::Path;
 
-pub const THUMBNAIL_SIZE: u32 = 1024;
+/// Lobby / catalog preview edge length (keep small for WASM/CDN).
+pub const THUMBNAIL_SIZE: u32 = 512;
+
+/// Target lossy WebP quality when re-encoding via `cwebp` (see `reencode_thumbnail_file`).
+pub const THUMBNAIL_WEBP_QUALITY: u8 = 80;
 
 pub fn encode_square_thumbnail_webp(img: &DynamicImage) -> Result<Vec<u8>, String> {
     let cropped = center_crop_square(img);
@@ -16,7 +20,11 @@ pub fn encode_square_thumbnail_webp(img: &DynamicImage) -> Result<Vec<u8>, Strin
 
 pub fn write_square_thumbnail(img: &DynamicImage, path: &Path) -> Result<(), String> {
     let bytes = encode_square_thumbnail_webp(img)?;
-    std::fs::write(path, bytes).map_err(|e| e.to_string())
+    std::fs::write(path, bytes).map_err(|e| e.to_string())?;
+    if let Err(e) = reencode_thumbnail_file(path) {
+        log::warn!("thumbnail cwebp pass skipped ({}): {}", path.display(), e);
+    }
+    Ok(())
 }
 
 pub fn write_square_thumbnail_from_rgba(rgba: &RgbaImage, path: &Path) -> Result<(), String> {
@@ -84,6 +92,58 @@ fn encode_lossless_webp(rgba: &RgbaImage) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Lossy pass with system `cwebp` when available (smaller committed assets).
+pub fn reencode_thumbnail_file(path: &Path) -> Result<(), String> {
+    let cwebp = which_cwebp()?;
+    let tmp = path.with_extension("webp.tmp");
+    let status = std::process::Command::new(&cwebp)
+        .args([
+            "-q",
+            &THUMBNAIL_WEBP_QUALITY.to_string(),
+            "-resize",
+            &THUMBNAIL_SIZE.to_string(),
+            &THUMBNAIL_SIZE.to_string(),
+            path.to_str().ok_or_else(|| "invalid thumbnail path".to_string())?,
+            "-o",
+            tmp.to_str().ok_or_else(|| "invalid tmp path".to_string())?,
+        ])
+        .status()
+        .map_err(|e| format!("cwebp: {e}"))?;
+    if !status.success() {
+        return Err(format!("cwebp failed for {}", path.display()));
+    }
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+fn which_cwebp() -> Result<String, String> {
+    if let Ok(p) = std::process::Command::new("cwebp")
+        .arg("-version")
+        .output()
+    {
+        if p.status.success() {
+            return Ok("cwebp".to_string());
+        }
+    }
+    for p in ["/usr/bin/cwebp", "/usr/local/bin/cwebp"] {
+        if std::path::Path::new(p).is_executable() {
+            return Ok(p.to_string());
+        }
+    }
+    Err("cwebp not found (install libwebp-utils)".to_string())
+}
+
+trait PathExt {
+    fn is_executable(&self) -> bool;
+}
+
+impl PathExt for std::path::Path {
+    fn is_executable(&self) -> bool {
+        std::fs::metadata(self)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+    }
+}
+
 fn color_from_terrain_byte(byte: u8) -> [u8; 4] {
     let is_land = (byte & 0x80) != 0;
     let shoreline = (byte & 0x40) != 0;
@@ -129,10 +189,16 @@ mod tests {
     use image::GenericImageView;
 
     #[test]
-    fn square_thumbnail_is_1024() {
+    fn square_thumbnail_is_512_and_compact() {
         let img = DynamicImage::new_rgba8(2800, 1448);
         let bytes = encode_square_thumbnail_webp(&img).unwrap();
         let decoded = image::load_from_memory(&bytes).unwrap();
-        assert_eq!(decoded.dimensions(), (1024, 1024));
+        assert_eq!(decoded.dimensions(), (THUMBNAIL_SIZE, THUMBNAIL_SIZE));
+        // Lossless 512² should stay well under legacy 1MB 1024² blobs.
+        assert!(
+            bytes.len() < 400_000,
+            "thumbnail too large: {} bytes",
+            bytes.len()
+        );
     }
 }

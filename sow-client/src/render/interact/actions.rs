@@ -1,6 +1,6 @@
 use crate::app::SowApp;
 use crate::{get_build_version, spawn_sow_client_connect};
-use sow_ui::{app::ClientPhase, UiAction};
+use sow_ui::UiAction;
 
 impl SowApp {
     pub(crate) fn process_ui_actions(
@@ -13,11 +13,9 @@ impl SowApp {
                 UiAction::StartTutorial => {
                     self.net.is_offline = true;
                     self.sim.offline_tick_timer = 0.0;
+                    self.sim.offline_last_update = web_time::Instant::now();
                     self.net.client = None;
-                    self.ui.app.phase = ClientPhase::Splash;
-                    self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
-                    self.ui.app.splash_state.frames_drawn = 0;
-                    self.ui.app.splash_state.gpu_load_step = 0;
+                    self.begin_enter_game_loader();
                     self.sim.my_player_id = Some(1);
                     self.sim.my_lobby_id = Some(0);
 
@@ -30,7 +28,9 @@ impl SowApp {
                         }
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    let _ = std::fs::remove_file("sow_tutorial_completed.txt");
+                    {
+                        let _ = std::fs::remove_file(crate::paths::tutorial_completed_path());
+                    }
 
                     let map_name = sow_core::maps::DEFAULT_MAP_KEY.to_string();
                     self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());
@@ -162,11 +162,9 @@ impl SowApp {
                 UiAction::StartSinglePlayer(config) => {
                     self.net.is_offline = true;
                     self.sim.offline_tick_timer = 0.0;
+                    self.sim.offline_last_update = web_time::Instant::now();
                     self.net.client = None;
-                    self.ui.app.phase = ClientPhase::Splash;
-                    self.ui.app.splash_state.job = sow_ui::ui::loading_screen::SplashJob::EnterGame;
-                    self.ui.app.splash_state.frames_drawn = 0;
-                    self.ui.app.splash_state.gpu_load_step = 0;
+                    self.begin_enter_game_loader();
                     self.sim.my_player_id = Some(1);
                     self.sim.my_lobby_id = Some(0);
 
@@ -185,9 +183,10 @@ impl SowApp {
                             log::warn!("Map '{}' not in catalog.bin", map_id);
                         }
                     }
-                    if let Some(payload) =
-                        sow_core::maps::load_map_br_payload(&map_id, None)
-                    {
+                    if let Some(payload) = sow_core::maps::load_map_br_payload(
+                        &map_id,
+                        crate::map_cache::load(&map_id),
+                    ) {
                         if let Ok(map_file) =
                             sow_core::maps::load_map_from_payload(&payload)
                         {
@@ -414,50 +413,22 @@ impl SowApp {
                         self.input.screen_h * 0.5,
                     );
                 }
+                #[cfg(not(target_arch = "wasm32"))]
                 UiAction::OpenMapEditor => {
-                    let Some(mut render_ctx) = self.gfx.render_ctx.take() else {
+                    if self.gfx.render_ctx.is_none() {
                         log::error!("Cannot open map editor: GPU context not initialized");
                         return;
-                    };
-                    if let Some(sp) = self.gfx.prev_sync_point.take() {
-                        let _ = render_ctx.context.wait_for(&sp, !0);
                     }
-                    if let Some(mut mr) = self.gfx.map_renderer.take() {
-                        mr.destroy(&render_ctx);
+                    if !matches!(self.pending_map_editor, crate::app::PendingMapEditorOp::None)
+                        || self.map_editor.is_some()
+                    {
+                        return;
                     }
-                    if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                        mover.destroy(&render_ctx);
-                    }
-                    render_ctx.reset_command_encoder();
-
-                    let window = self
-                        .gfx
-                        .window
-                        .take()
-                        .expect("No window to handoff to editor");
-                    let surface = self
-                        .gfx
-                        .surface
-                        .take()
-                        .expect("No surface to handoff to editor");
-                    let gui_painter = self
-                        .gfx
-                        .gui_painter
-                        .take()
-                        .expect("No gui_painter to handoff to editor");
-                    let egui_ctx = self.ui.egui_ctx.clone();
-                    let client_app = std::mem::take(&mut self.ui.app);
-
-                    let session = sow_map::MapEditorSession::new(
-                        window,
-                        surface,
-                        render_ctx,
-                        gui_painter,
-                        egui_ctx,
-                        client_app,
-                    );
-                    self.map_editor = Some(session);
+                    self.begin_map_editor_enter_loader();
+                    self.pending_map_editor = crate::app::PendingMapEditorOp::Open;
                 }
+                #[cfg(target_arch = "wasm32")]
+                UiAction::OpenMapEditor => {}
             }
         }
     }

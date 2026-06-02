@@ -96,20 +96,24 @@ impl SowApp {
                     }
                 }
             } else {
-                // Singleplayer: offline tick generation and HUD updates
+                // Singleplayer: pace ticks from wall clock + lobby tick_rate_ms (same as relay).
+                const MAX_OFFLINE_TICKS_PER_FRAME: u32 = 10;
+                const MAX_OFFLINE_CATCHUP_SECS: f32 = 0.25;
+
+                let tick_secs = (self.sim.config.tick_rate_ms / 1000.0).max(0.001);
                 let dt = now
-                    .duration_since(self.time.interp.last_applied_at)
-                    .as_secs_f32();
+                    .duration_since(self.sim.offline_last_update)
+                    .as_secs_f32()
+                    .min(MAX_OFFLINE_CATCHUP_SECS);
+                self.sim.offline_last_update = now;
+                self.sim.offline_tick_timer += dt;
 
-                let mut safe_dt = dt;
-                if safe_dt > 0.1 {
-                    safe_dt = 0.05;
-                } // Clamp to prevent tick burst
-                self.sim.offline_tick_timer += safe_dt;
-
-                while self.sim.offline_tick_timer >= 0.05 {
-                    // 20 TPS (50ms) offline cadence
-                    self.sim.offline_tick_timer -= 0.05;
+                let mut ticks_this_frame = 0u32;
+                while self.sim.offline_tick_timer >= tick_secs
+                    && ticks_this_frame < MAX_OFFLINE_TICKS_PER_FRAME
+                {
+                    self.sim.offline_tick_timer -= tick_secs;
+                    ticks_this_frame += 1;
 
                     let raw_intents = std::mem::take(&mut self.sim.offline_intents);
                     let mut stamped_intents = Vec::with_capacity(raw_intents.len());
@@ -192,28 +196,6 @@ impl SowApp {
                 self.sync_building_costs();
             }
         }
-        // Snapshot is now instantly updated by dispatch_sim_command
-        if self.ui.app.splash_state.gpu_load_step == 3 && self.sim.current_snapshot.is_some() {
-            self.ui.app.splash_state.gpu_load_step = 4;
-            self.ui.app.phase = sow_ui::app::ClientPhase::Playing;
-            crate::store_portals::gameplay_start();
-
-            // Clear pending init data to completely finish EnterGame phase
-            self.tasks.pending_engine_init_data = None;
-            log::info!("First snapshot received, releasing loader!");
-
-            if let Some(c) = self.net.client.as_ref() {
-                if let (Some(lid), Some(pid)) = (self.sim.my_lobby_id, self.sim.my_player_id) {
-                    let ready_msg = sow_core::protocol::ClientMessage::Ready {
-                        lobby_id: lid,
-                        player_id: pid,
-                    };
-                    let json = bincode::serialize(&ready_msg).unwrap();
-                    c.send(json);
-                }
-            }
-        }
-
         if self.ui.app.phase == sow_ui::app::ClientPhase::Playing
             && !self.input.has_snapped_camera_to_spawn
         {

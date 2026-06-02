@@ -55,13 +55,26 @@ self.addEventListener('activate', (event) => {
 });
 
 function isHtmlEntry(pathname) {
-    return pathname === '/' || pathname.endsWith('/') || pathname.endsWith('/index.html');
+    return (
+        pathname.endsWith('/index.html') ||
+        pathname.endsWith('/play') ||
+        pathname.endsWith('/play/')
+    );
 }
 
 function isStaticUiAsset(pathname) {
     return (
         pathname.endsWith('/sow.svg') ||
-        pathname.startsWith('/assets/ui/')
+        pathname.includes('/assets/ui/')
+    );
+}
+
+function isCachedMapAsset(pathname) {
+    return (
+        pathname.includes('/assets/maps/') &&
+        (pathname.endsWith('/map.bin.br') ||
+            pathname.endsWith('/thumbnail.webp') ||
+            pathname.endsWith('/catalog.bin'))
     );
 }
 
@@ -91,6 +104,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (isStaticUiAsset(url.pathname)) {
+        event.respondWith(cacheFirst(req));
+        return;
+    }
+
+    if (isCachedMapAsset(url.pathname)) {
         event.respondWith(cacheFirst(req));
         return;
     }

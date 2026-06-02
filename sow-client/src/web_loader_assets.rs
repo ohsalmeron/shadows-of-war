@@ -107,3 +107,48 @@ pub(crate) fn try_ingest_web_loader_textures(
         false
     }
 }
+
+/// Max frames to wait for HTML loader images before leaving boot without full splash textures.
+#[cfg(target_arch = "wasm32")]
+const BOOT_INGEST_MAX_WAIT_FRAMES: u32 = 300;
+
+/// Try ingest each frame until all four splash textures are ready or timeout.
+/// Returns `true` when boot may proceed to main menu and hide the HTML loader.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn ensure_boot_web_loader_textures(
+    ctx: &egui::Context,
+    asset_loader: &mut AssetLoader,
+    wait_frames: &mut u32,
+) -> bool {
+    if asset_loader.ui_splash_ready() {
+        return true;
+    }
+
+    try_ingest_web_loader_textures(ctx, asset_loader);
+
+    if asset_loader.ui_splash_ready() {
+        return true;
+    }
+
+    *wait_frames = wait_frames.saturating_add(1);
+    if *wait_frames >= BOOT_INGEST_MAX_WAIT_FRAMES {
+        log::warn!(
+            "Web boot loader texture ingest timed out after {} frames",
+            BOOT_INGEST_MAX_WAIT_FRAMES
+        );
+        return true;
+    }
+
+    false
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn ensure_splash_textures_from_web_loader(
+    ctx: &egui::Context,
+    asset_loader: &mut AssetLoader,
+) {
+    if asset_loader.ui_splash_ready() {
+        return;
+    }
+    try_ingest_web_loader_textures(ctx, asset_loader);
+}

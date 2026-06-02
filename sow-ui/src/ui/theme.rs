@@ -548,17 +548,22 @@ pub fn text_secondary() -> Color32 {
 }
 
 pub fn apply_theme(ctx: &Context) {
-    let mut fonts = egui::FontDefinitions::default();
+    // JockeyOne only — do not pull in egui bundled default/emoji font blobs.
+    let mut fonts = egui::FontDefinitions {
+        font_data: Default::default(),
+        families: Default::default(),
+    };
     fonts.font_data.insert(
         "Default".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_TTF)),
     );
-
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec!["Default".to_owned()],
+    );
     fonts
         .families
-        .get_mut(&egui::FontFamily::Proportional)
-        .unwrap()
-        .insert(0, "Default".to_owned());
+        .insert(egui::FontFamily::Monospace, vec!["Default".to_owned()]);
     ctx.set_fonts(fonts);
 
     let mut style = Style {

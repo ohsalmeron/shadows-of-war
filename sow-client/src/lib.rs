@@ -182,6 +182,8 @@ mod web_loader_assets;
 pub mod net;
 pub mod render;
 pub mod store_portals;
+mod map_cache;
+mod paths;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
 
@@ -208,12 +210,13 @@ impl ApplicationHandler for SowApp {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(ref mut editor) = self.map_editor {
             if editor.window_id() != Some(window_id) {
                 return;
             }
             if matches!(event, winit::event::WindowEvent::CloseRequested) {
-                self.teardown_map_editor_and_exit();
+                self.request_map_editor_exit();
                 if let Some(win) = self.gfx.window.as_ref() {
                     win.request_redraw();
                 }

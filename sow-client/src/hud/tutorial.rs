@@ -138,7 +138,11 @@ impl SowApp {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _ = std::fs::write("sow_tutorial_completed.txt", "true");
+            let path = crate::paths::tutorial_completed_path();
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(path, "true");
         }
     }
 }

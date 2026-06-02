@@ -39,12 +39,24 @@ One entrypoint for build, deploy, and portal packaging. Legacy names (`cloud.sh`
 | Command | Short | What it builds | When to use it |
 |---------|-------|----------------|----------------|
 | **local** | `l` | **Debug** native `sow-server`, `sow-relay`, 2× `sow-client` (no WASM) | Rapid native prototyping — faster compile times than release or web builds |
-| **ptr** | `p` | `wasm-release` client + same `dist/` layout as production (no CrazyGames SDK) | Staging on ptr.shadowsofwar.io — edge cases, multiplayer debugging against prod-like assets |
-| **cloud** | `c` | Same web bundle as ptr + deploy to shadowsofwar.io | Stable public web when you intend to ship |
-| **package** | `pkg` | Same WASM pipeline as cloud, plus CrazyGames HTML slots + zip | Portal upload only (e.g. CrazyGames) — no VPS deploy |
+| **ptr** | `p` | Same as cloud on ptr.shadowsofwar.io | Staging — edge cases and prod-like web debugging |
+| **cloud** | `c` | `dist/play/` + `sow-site` SSR + deploy | Landing at `/`, game at `/play/`, legal at `/privacy` and `/terms` |
+| **package** | `pkg` | Same WASM as cloud, portal HTML slots + zip of `dist/play/` only | Portal upload (CrazyGames) — no SSR, no landing pages |
+| **site** | — | `sow-site` SSR only (local dev) | Edit landing/legal copy: `./scripts/sow.sh site` |
 | **android** | `a` | APK (`native`/`n` or `webview`/`w`) | Mobile builds |
 
-Examples: `./scripts/sow.sh l` · `./scripts/sow.sh p` · `./scripts/sow.sh c` · `./scripts/sow.sh a n` · `./scripts/sow.sh a w`
+Examples: `./scripts/sow.sh l` · `./scripts/sow.sh p` · `./scripts/sow.sh c` · `./scripts/sow.sh site` · `./scripts/sow.sh a n`
+
+#### Website vs game vs portals
+
+| Surface | URL / artifact | What ships |
+|---------|----------------|------------|
+| **Marketing + legal** | `https://shadowsofwar.io/` · `/privacy` · `/terms` | Leptos SSR (`sow-site`) — HTML only, no WASM |
+| **Web game** | `https://shadowsofwar.io/play/` | Static shell from [`web/`](web/) — loader + brotli WASM (~10 MB) |
+| **CrazyGames / Poki** | `shadows-of-war-crazygames.zip` | Contents of `dist/play/` at zip root — game only, smallest size |
+| **Portals** | — | No `sow-site`, no landing pages; privacy URL in store metadata + in-game Credits |
+
+Local dev: `./scripts/sow.sh site` (SSR pages) · `cd dist/play && python -m http.server 8080` after `./scripts/sow.sh pkg` (game shell smoke test).
 
 #### Interruption and failures
 
@@ -60,7 +72,7 @@ All commands use `set -e` so a failed step stops the script instead of continuin
 `cloud` and `package` share one WASM build path (`wasm-release`, `wasm-bindgen`, loader assets, brotli). They are **not** separate asset pipelines.
 
 - **cloud / ptr** ship `index.html` **without** the CrazyGames SDK CDN (website/PTR detect host at runtime).
-- **package** runs the same `dist/` assembly, then fills `PORTAL_SDK_SLOT` / `PORTAL_BOOT_SLOT` in the template and zips `dist/`. Zipping `dist/` after a normal `cloud` deploy would upload the **wrong** HTML for CrazyGames.
+- **package** runs the same `dist/play/` assembly, then fills portal HTML slots and zips **`dist/play/`** at the archive root. Zipping after `cloud` without portal injection would upload the **wrong** HTML for CrazyGames.
 - **package** is **lighter** than cloud: no `sow-server`/`sow-relay` build and no `rsync`.
 
 See [Partner platforms](#partner-platforms-crazygames--poki) for the upload checklist.
@@ -175,13 +187,16 @@ Shadows of War uses a single **SOWM** artifact per map (`map.bin` / `map.bin.br`
 The runtime game reads **`map.bin`**: one byte per map cell (`MapTile` in `sow-core`). That format is **not** a slippy-map PNG. Preview tiles and shipped terrain are separate layers.
 
 ```
-  [Optional] OSM Standard preview tiles    [Build] Game terrain
-  256×256 PNG, lon/lat for selection    →   map.bin MapTile grid
-         │                                  land / ocean / shore / magnitude
-         │ (does NOT feed generate)              ↑
-         └────────────────────────────────────────┘
-                    Overpass vector OSM
-                    OR OpenFront image.png
+  OSM Standard tiles (coast mask)     OpenFront world heightmap (elevation)
+         │                                    │
+         └──────────┬─────────────────────────┘
+                    ▼
+         classify → generate_from_rgba (MapGenerator pipeline)
+                    ▼
+              map.bin MapTile grid
+
+  Alternative: sow-tools --bbox (Overpass coasts, flat plains)
+  Alternative: sow-tools image-map / import-openfront (painted image.png only)
 ```
 
 **What a `MapTile` byte means** (see `sow-core/src/map.rs`):
@@ -205,7 +220,7 @@ Used by OpenFrontIO’s Go MapGenerator and ported to `sow-map/src/image_pipelin
 
 No coordinates API: the PNG **is** the source of truth. OSM is only involved if a human (or tool) drew coastlines into that PNG.
 
-**Path B — OSM bbox via `sow-tools` / map editor Generate (coordinates → geometry)**
+**Path B — OSM bbox via `sow-tools` CLI (Overpass vector)**
 
 Input: bounding box `min_lon,min_lat,max_lon,max_lat` and **scale** (pixels per degree).
 
@@ -214,34 +229,27 @@ Input: bounding box `min_lon,min_lat,max_lon,max_lat` and **scale** (pixels per 
    - Coastlines: OSM ways tagged `natural=coastline` with geometry.
    - Inland water (optional): `natural=water`, `bay`, `landuse=water`, etc.
    - Places: `place=city|town|…` nodes for spawn candidates.
-3. **Rasterize** (`sow-map/src/osm_coast.rs`):
-   - Project lon/lat → map pixel polylines.
-   - Draw coast barriers → flood ocean from map edges → flood-fill land from bbox center → tag ocean + shoreline.
-   - Stamp lake polygons as pure water.
-   - **All generated land starts as flat plains** (magnitude 0); no hills from OSM or from preview tiles.
-4. **Spawns**: map `place=*` nodes to grid cells, or fallback scatter on land.
-5. **Export** to `assets/maps/<name>/` (`sow-tools/src/exporter.rs`).
+3. **Rasterize** (`sow-map/src/osm_coast.rs`): coast barriers, ocean flood, shoreline.
+4. **Spawns** and export to `assets/maps/<name>/`.
 
-This path uses **OpenStreetMap vector data**, not rendered map tiles. It does **not** use OpenFront blue-channel rules unless you later paint over the result in the editor.
+Land elevation is still **flat plains** on this path (no heightmap stamp yet). Use Path A or the map editor for mountains.
 
-**Path C — Map editor only**
+**Path C — Map editor OSM Generate (hybrid raster + heightmap)**
 
-- **Brush**: edit `MapTile` bytes directly on the grid (same format as shipped maps).
-- **OSM picker preview**: fetches **raster tiles** for display while you drag a selection square; **Generate** runs Path B on the selection bbox (Overpass), not on tile pixels.
+Native-only (`sow-map` feature `osm`).
 
-**Pre-rendered raster tiles (preview only)**
+1. **Preview / coast mask**: fetch [OSM Standard](https://tile.openstreetmap.org/) tiles for the selection; classify water via `#aad3df` palette (`sow-map/src/osm_tiles.rs`).
+2. **Elevation**: sample OpenFront `giantworldmap` blue channel per lon/lat (`sow-map/src/heightmap.rs`) from, in order: `SOW_HEIGHTMAP_PATH`, `MapGenerator/assets/maps/giantworldmap/image.png`, `OpenFrontIO/map-generator/...`, or shipped `assets/heightmaps/world.png`.
+3. **`generate_from_rgba`**: same MapGenerator pipeline as Path A (islands/lakes, downscale, ocean, shoreline, pack full `MapTile` indices).
 
-The map editor fetches [OSM Standard](https://tile.openstreetmap.org/) PNG tiles (`256×256` per zoom/x/y) so you can see geography while dragging a selection. **Generate** still uses Path B (Overpass coastlines), not tile pixels.
-
-- Preview tiles are **not** the OpenFront `image.png` encoding; do not feed them into `generate_from_rgba` without a custom classifier.
-- **Weight**: one HTTP request per visible tile; editor caches tiles. Overpass generate is separate (geometry JSON).
-- Editor generate rejects selections that span more than **4** Overpass grid cells (~15°×10° each); zoom in and select smaller.
+- **Brush**: edit `MapTile` bytes directly on the grid.
+- One HTTP request per preview tile (cached). Generate is synchronous (no Overpass).
 
 | Goal | Use |
 |------|-----|
-| Pick a region on a familiar map | OSM Standard preview + Path B generate |
-| Correct **coast** without maritime line artifacts | Path B Overpass, not raster tile copy |
-| **Mountains / highlands** on the shipped map | Path A PNG, or brush after Path B |
+| Pick a region on a familiar map | Map editor OSM picker + Generate (Path C) |
+| **Mountains / highlands** from real geography | Path C or Path A (`image-map` / painted PNG) |
+| Headless coast-only export with city spawns | Path B `sow-tools --bbox` |
 
 ### OpenFront mapper workflow (Layer 1b)
 
@@ -309,9 +317,9 @@ Splash screens, avatars, and leader portraits were created with Gemini, Meta AI,
 cd dist && python -m http.server 8080   # smoke-test locally
 ```
 
-The `package` subcommand reuses the production WASM build, copies `web/sdk/` and `web/privacy.html`, sets portal WS to `wss://shadowsofwar.io/ws/` for multiplayer, loads the CrazyGames SDK v3 CDN, and skips service workers on CrazyGames hosts. Production deploy: `./scripts/sow.sh cloud`.
+The `package` subcommand reuses the production WASM build, copies `web/sdk/`, sets portal WS to `wss://shadowsofwar.io/ws/` for multiplayer, loads the CrazyGames SDK v3 CDN, and skips service workers on CrazyGames hosts. Production deploy: `./scripts/sow.sh cloud`.
 
-Web builds load [`web/sdk/store_portals.js`](web/sdk/store_portals.js) for `gameplayStart` / `gameplayStop` and loading hooks. Privacy policy: [web/privacy.html](web/privacy.html).
+Web builds load [`web/sdk/store_portals.js`](web/sdk/store_portals.js) for `gameplayStart` / `gameplayStop` and loading hooks. Privacy policy: https://shadowsofwar.io/privacy (SSR via `sow-site`).
 
 ### CrazyGames Developer Portal checklist
 
