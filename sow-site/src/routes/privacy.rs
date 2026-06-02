@@ -61,7 +61,7 @@ pub fn PrivacyPage() -> impl IntoView {
                 "."
             </p>
 
-            <p><a href="/#game-stage">"← Play game"</a></p>
+            <p><a href="https://play.shadowsofwar.io/">"← Play game"</a></p>
         </SiteLayout>
     }
 }

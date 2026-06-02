@@ -1,11 +1,11 @@
-mod game_manifest;
 mod layout;
 mod routes;
 
 use axum::{
     body::Body,
-    http::{header, Request, Response},
+    http::{header, Request, Response, StatusCode},
     middleware::{self, Next},
+    response::IntoResponse,
     routing::get,
     Router,
 };
@@ -13,6 +13,7 @@ use leptos::prelude::*;
 use leptos_axum::render_app_to_stream;
 use routes::{HomePage, PrivacyPage, TermsPage};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use tower_http::trace::TraceLayer;
 
 /// Leptos SSR streams start at `<html>`; prepend doctype for standards mode + Lighthouse.
@@ -37,6 +38,27 @@ async fn prepend_html_doctype(req: Request<Body>, next: Next) -> Response<Body> 
     out.extend_from_slice(b"<!DOCTYPE html>\n");
     out.extend_from_slice(&bytes);
     Response::from_parts(parts, Body::from(out))
+}
+
+async fn serve_static_file(candidates: &[&str], content_type: &'static str) -> impl IntoResponse {
+    for rel in candidates {
+        let path = PathBuf::from(rel);
+        if path.is_file() {
+            if let Ok(bytes) = tokio::fs::read(&path).await {
+                return (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, content_type)],
+                    bytes,
+                )
+                    .into_response();
+            }
+        }
+    }
+    StatusCode::NOT_FOUND.into_response()
+}
+
+async fn serve_sow_svg() -> impl IntoResponse {
+    serve_static_file(&["dist/sow.svg", "web/sow.svg"], "image/svg+xml").await
 }
 
 #[tokio::main]
@@ -65,6 +87,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
+        .route("/sow.svg", get(serve_sow_svg))
         .merge(html_routes)
         .layer(TraceLayer::new_for_http());
 

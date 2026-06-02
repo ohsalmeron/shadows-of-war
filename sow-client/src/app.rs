@@ -795,9 +795,7 @@ impl SowApp {
             }
             #[cfg(target_arch = "wasm32")]
             let mut attributes = {
-                let window = web_sys::window().unwrap();
-                let w = window.inner_width().unwrap().as_f64().unwrap();
-                let h = window.inner_height().unwrap().as_f64().unwrap();
+                let (w, h) = crate::web_canvas::canvas_logical_size();
                 winit::window::WindowAttributes::default()
                     .with_title("Shadows of War")
                     .with_surface_size(winit::dpi::LogicalSize::new(w, h))

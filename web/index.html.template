@@ -179,6 +179,10 @@
             } else if (/crazygames\\.com$/i.test(h) || /dev-crazygames\\.com$/i.test(h)) {
                 window.SOW_PORTAL = window.SOW_PORTAL || "crazygames";
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+            } else if (h === "play.shadowsofwar.io") {
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+            } else if (h === "ptr.shadowsofwar.io") {
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ptr.shadowsofwar.io/ws/";
             }
         })();
     </script>

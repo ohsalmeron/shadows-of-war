@@ -107,6 +107,8 @@ mod paths;
 mod map_cache;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
+#[cfg(target_arch = "wasm32")]
+mod web_canvas;
 
 use app::SowApp;
 use winit::application::ApplicationHandler;

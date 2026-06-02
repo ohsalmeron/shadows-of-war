@@ -23,9 +23,7 @@ impl SowApp {
         }
         #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
-            let web_win = web_sys::window().unwrap();
-            let w = web_win.inner_width().unwrap().as_f64().unwrap();
-            let h = web_win.inner_height().unwrap().as_f64().unwrap();
+            let (w, h) = crate::web_canvas::canvas_logical_size();
 
             // Use the logical size and sf to calculate current physical size
             let sf = win.scale_factor();

@@ -4,7 +4,7 @@ Shadows of War — Third-Party Notices
 Copyright (c) 2024–2026 Omar Hernandez Salmeron
 
 Licensed under GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).
-See LICENSE and COPYRIGHT.
+See LICENSE (repo root) and legal/COPYRIGHT.
 
 
 Derivative work
@@ -26,7 +26,7 @@ Other components
 
 Fonts: SIL Open Font License — assets/fonts/
 Art and maps: assets/SOURCES.toml, assets/maps/SOURCES.toml
-Rust dependency licenses: NOTICE.deps (run ./scripts/generate_notice_deps.sh)
+Rust dependency licenses: legal/NOTICE.deps (run ./scripts/generate_notice_deps.sh)
 
 
 Vendored forks (local path dependencies)

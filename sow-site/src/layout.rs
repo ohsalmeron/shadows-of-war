@@ -6,13 +6,9 @@ pub fn SiteLayout(
     description: String,
     canonical: String,
     #[prop(optional)] og_title: Option<String>,
-    #[prop(default = String::new())]
-    game_manifest_json: String,
     children: Children,
 ) -> impl IntoView {
     let og = og_title.unwrap_or_else(|| title.clone());
-    let embed_game = !game_manifest_json.is_empty();
-    let manifest = game_manifest_json;
 
     view! {
         <html lang="en">
@@ -37,17 +33,12 @@ pub fn SiteLayout(
                 <meta prop:property="twitter:description" content=description.clone()/>
 
                 <style>{SITE_CSS}</style>
-
-                {embed_game.then(|| view! {
-                    <script type="application/json" id="sow-game-manifest">{manifest}</script>
-                    <script src="/boot.js" defer></script>
-                })}
             </head>
             <body>
                 <header class="site-header">
                     <a href="/" class="brand">"Shadows of War"</a>
                     <nav>
-                        <a href="/#game-stage">"Play"</a>
+                        <a href="https://play.shadowsofwar.io/">"Play"</a>
                         <a href="/privacy">"Privacy"</a>
                         <a href="/terms">"Terms"</a>
                     </nav>
@@ -109,7 +100,7 @@ const SITE_CSS: &str = r#"
     .site-header nav a:hover { color: #fff; }
     .site-main {
         flex: 1;
-        max-width: 960px;
+        max-width: 720px;
         margin: 0 auto;
         padding: 2rem 1.5rem;
         width: 100%;
@@ -129,7 +120,7 @@ const SITE_CSS: &str = r#"
     .hero h1 {
         font-size: 2.25rem;
         color: #fff;
-        margin-bottom: 0.75rem;
+        margin: 0 0 0.75rem;
     }
     .hero p {
         font-size: 1.05rem;
@@ -137,137 +128,17 @@ const SITE_CSS: &str = r#"
         max-width: 540px;
         margin: 0 auto 1.5rem;
     }
-    h1, h2 { color: #fff; }
-    ul { padding-left: 1.25rem; }
-
-    #game-stage {
-        width: 100%;
-        margin: 0 auto 2rem;
-        position: relative;
-        background: #0a0a0f;
-        border-radius: 8px;
-        overflow: hidden;
-        border: 1px solid #2a2a38;
-    }
-    @media (min-aspect-ratio: 4/3) {
-        #game-stage { aspect-ratio: 16 / 9; }
-    }
-    @media (min-aspect-ratio: 3/4) and (max-aspect-ratio: 4/3) {
-        #game-stage { aspect-ratio: 1 / 1; }
-    }
-    @media (max-aspect-ratio: 3/4) {
-        #game-stage { aspect-ratio: 9 / 16; }
-    }
-    #game-stage canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-    }
-    #game-stage #version {
-        position: absolute;
-        bottom: 4%;
-        right: 3%;
-        color: rgba(189, 189, 189, 0.71);
-        font-size: 0.5rem;
-        pointer-events: none;
-        z-index: 9999;
-    }
-    #game-play-overlay {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(10, 10, 15, 0.55);
-        z-index: 2;
-    }
-    #game-play-btn {
+    .play-btn {
+        display: inline-block;
         padding: 0.85rem 2.5rem;
         background: #3d6b8e;
         color: #fff;
-        border: none;
+        text-decoration: none;
         border-radius: 6px;
         font-weight: 600;
         font-size: 1.1rem;
-        cursor: pointer;
-        font-family: inherit;
     }
-    #game-play-btn:hover { background: #4a7fa8; }
-    #game-play-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    .game-stage--active #game-play-overlay { display: none; }
-
-    #game-stage #web-loader {
-        position: absolute;
-        inset: 0;
-        z-index: 10000;
-        background-color: #0a0a0f;
-        overflow: hidden;
-    }
-    #game-stage #web-loader .splash-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center;
-        pointer-events: none;
-    }
-    #game-stage #web-loader .loader-bar-wrap {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        pointer-events: none;
-        overflow: visible;
-    }
-    #game-stage #web-loader .loader-bar-wrap .loader-text {
-        top: 50%;
-        left: 50%;
-        z-index: 2;
-    }
-    #game-stage #web-loader .loader-bar-empty {
-        display: block;
-        width: 100%;
-        height: 100%;
-    }
-    #game-stage #web-loader .loader-bar-fill {
-        position: absolute;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: 0%;
-        overflow: hidden;
-        will-change: width;
-    }
-    #game-stage #web-loader .loader-bar-full {
-        display: block;
-        height: 100%;
-        width: auto;
-        max-width: none;
-    }
-    #game-stage #web-loader .loader-text {
-        position: absolute;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        margin: 0;
-        line-height: 1;
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        font-weight: 600;
-        color: #fff;
-        text-shadow:
-            0 2px 0 #000,
-            0 4px 0 #000,
-            -1px -1px 0 #000,
-            1px -1px 0 #000,
-            -1px 1px 0 #000,
-            1px 1px 0 #000;
-        white-space: nowrap;
-        pointer-events: none;
-    }
-    @media (prefers-reduced-motion: reduce) {
-        #game-stage #web-loader { transition: none; }
-    }
+    .play-btn:hover { background: #4a7fa8; }
+    h1, h2 { color: #fff; }
+    ul { padding-left: 1.25rem; }
 "#;

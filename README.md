@@ -28,22 +28,33 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-client` | Game executable (native + WASM) |
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
-| `sow-site` | Leptos SSR (website) |
+| `sow-site` | Leptos SSR (landing + legal pages) |
 | `assets/` | All shipped art (maps, UI, icons, fonts) |
 | `web/` | Browser shell and portal SDK hooks |
 | `scripts/sow.sh` | Build, deploy, package |
+| `deploy/nginx/` | VPS nginx site configs (synced by `sow.sh deploy`) |
+| `legal/` | COPYRIGHT, NOTICE, NOTICE.deps |
+| `docs/` | Contributor guide, VFX notes, leader reference |
 
+## Web hosts
+
+| Host | Role |
+|------|------|
+| `shadowsofwar.io` | Leptos landing + legal (links to play subdomain) |
+| `play.shadowsofwar.io` | Production game shell (auto-load WASM) |
+| `ptr.shadowsofwar.io` | Staging game shell |
+| `shadowsofwar.io/assets`, `/maps`, `/ws` | Shared CDN for all shells |
+
+Local dev: `./scripts/sow.sh site` (landing) and `./scripts/sow.sh play` (game shell on port 8080).
 
 ## License
 
 Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](COPYRIGHT) and [NOTICE](NOTICE).
+Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](legal/COPYRIGHT) and [NOTICE](legal/NOTICE).
 
-**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront LLC and Contributors, AGPL-3.0-or-later). Required notices appear in [NOTICE](NOTICE) and in-game **Credits**—not in game marketing. See [LICENSE](LICENSE) for full terms.
+**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront LLC and Contributors, AGPL-3.0-or-later). Required notices appear in [NOTICE](legal/NOTICE) and in-game **Credits**—not in game marketing. See [LICENSE](LICENSE) for full terms.
 
 ## Contributing
 
-Contributions welcome. Open an issue for large changes.
-
-Fork → branch → PR. Maintainer review required before merge.
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).

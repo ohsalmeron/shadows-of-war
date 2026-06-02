@@ -15,6 +15,7 @@ Usage: ./scripts/sow.sh <command> [args]
   cloud|c            Deploy production web to shadowsofwar.io
   package|pkg [portal]  Build dist/play/ + portal zip (default: crazygames)
   site               Run sow-site SSR locally (landing + legal pages)
+  play [port]        Serve dist/play/ locally (default port 8080)
   android|a [native|n|webview|w]
 
 Legacy wrappers: ./scripts/cloud.sh, ptr.sh, local.sh, android.sh
@@ -127,7 +128,6 @@ sow_assemble_play_dist() {
   mkdir -p "${ROOT}/dist"
   cp web/sow.svg "${ROOT}/dist/sow.svg"
   write_game_manifest "${play}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
-  sow_assemble_site_assets "${BUILD_TS}"
   echo "Bundle sizes: ${WASM_FILE}=$(( $(stat -c%s "${play}/${WASM_FILE}") / 1024 )) KB, ${JS_FILE}=$(( $(stat -c%s "${play}/${JS_FILE}") / 1024 )) KB"
 }
 
@@ -136,24 +136,11 @@ write_game_manifest() {
   cat > "${play}/game-manifest.json" <<EOF
 {"js":"${js}","wasm":"${wasm}","build_ts":"${ts}","version":"${CLEAN_VERSION}"}
 EOF
-  cp "${play}/game-manifest.json" "${ROOT}/sow-site/game-manifest.json"
   cp "${play}/game-manifest.json" "${ROOT}/dist/game-manifest.json"
-}
-
-sow_assemble_site_assets() {
-  local build_ts="$1"
-  local play="${ROOT}/dist/play"
-  cp "${ROOT}/web/boot.js" "${ROOT}/dist/boot.js"
-  minify_js_shim "${ROOT}/dist/boot.js"
-  cp "${ROOT}/web/loader.js" "${play}/loader.js"
-  minify_js_shim "${play}/loader.js"
-  sed -e "s/__BUILD_TS__/${build_ts}/g" \
-    "${ROOT}/web/sw-site.js.template" > "${ROOT}/dist/sw.js"
 }
 
 sow_build_site() {
   echo "==> Compiling sow-site (SSR)..."
-  export SOW_GAME_MANIFEST_PATH="${ROOT}/sow-site/game-manifest.json"
   if cargo build --release -p sow-site --target x86_64-unknown-linux-musl 2>/dev/null; then
     SITE_BIN="${CARGO_TARGET_DIR}/x86_64-unknown-linux-musl/release/sow-site"
   else
@@ -165,12 +152,8 @@ sow_build_site() {
 deploy_sow_site_systemd() {
   local u="$1" h="$2" unit="$3" listen="$4" workdir="$5" bin_remote="$6"
   local unit_file="${unit%.service}.service"
-  local manifest="${ROOT}/sow-site/game-manifest.json"
   ssh "${u}@${h}" "mkdir -p '${workdir}'"
   rsync -avz "${SITE_BIN}" "${u}@${h}:${bin_remote}"
-  if [[ -f "${manifest}" ]]; then
-    rsync -avz "${manifest}" "${u}@${h}:${workdir}/game-manifest.json"
-  fi
   ssh "${u}@${h}" "UNIT='${unit_file}' LISTEN='${listen}' WORKDIR='${workdir}' BIN='${bin_remote}' bash -s" <<'REMOTE'
 set -euo pipefail
 cat << SYSTEMD | sudo tee "/etc/systemd/system/${UNIT}" > /dev/null
@@ -183,7 +166,6 @@ Type=simple
 User=bizkit
 WorkingDirectory=${WORKDIR}
 Environment="SOW_SITE_LISTEN=${LISTEN}"
-Environment="SOW_GAME_MANIFEST_PATH=${WORKDIR}/game-manifest.json"
 ExecStart=${BIN}
 Restart=always
 RestartSec=3
@@ -412,8 +394,13 @@ REMOTE
 
 verify_prod_headers() {
   local base_url="$1"
-  local play_url="${base_url%/}/play/"
-  local wasm js
+  local marketing_url play_url wasm js
+  marketing_url="${base_url%/}"
+  if [[ "${marketing_url}" == "https://ptr.shadowsofwar.io" ]]; then
+    play_url="${marketing_url}/"
+  else
+    play_url="https://play.shadowsofwar.io/"
+  fi
   wasm=$(curl -fsS "${play_url}game-manifest.json" | grep -oE 'sow_client_[0-9]+_bg\.wasm' | head -1) \
     || wasm=$(curl -fsS "${play_url}" 2>/dev/null | grep -oE 'sow_client_[0-9]+_bg\.wasm' | head -1) \
     || return 1
@@ -424,13 +411,13 @@ verify_prod_headers() {
   echo "==> Verifying live headers..."
   curl -fsSI -H 'Accept-Encoding: br' "${play_url}${wasm}" | grep -qi 'content-encoding: br' \
     || { echo "❌ WASM not served with brotli"; return 1; }
-  curl -fsSI "${base_url%/}/boot.js" | grep -qi 'cache-control' \
-    || { echo "❌ /boot.js missing cache header"; return 1; }
+  if [[ "${marketing_url}" == "https://shadowsofwar.io" ]]; then
+    curl -fsS "${marketing_url}/health" | grep -qi '^ok$' \
+      || { echo "❌ sow-site /health failed"; return 1; }
+  fi
   curl -fsSI "${play_url}assets/ui/loader_empty.webp" | grep -qi 'cache-control:.*max-age' \
     || { echo "❌ loader webp missing cache header"; return 1; }
-  curl -fsS "${base_url%/}/health" | grep -qi '^ok$' \
-    || { echo "❌ sow-site /health failed"; return 1; }
-  echo "✅ Live: brotli WASM, cache headers, sow-site OK (${wasm}, ${js})"
+  echo "✅ Live: brotli WASM, cache headers OK (${wasm}, ${js})"
 }
 
 ptr_dns_resolves() {
@@ -653,25 +640,24 @@ cmd_cloud() {
   stage_published_assets "${ROOT}/dist/assets-publish"
   sow_build_site
   local u=bizkit h=35.239.160.167
-  ssh "${u}@${h}" "mkdir -p /var/www/shadowsofwar.io/html/play"
-  rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/shadowsofwar.io/html/play/" & w1=$!
+  ssh "${u}@${h}" "mkdir -p /var/www/shadowsofwar.io/html /var/www/play.shadowsofwar.io/html"
+  rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/play.shadowsofwar.io/html/" & w1=$!
   deploy_prod_published_assets "${u}" "${h}" & w6=$!
   rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/shadowsofwar.io/html/sow.svg" & w5=$!
-  rsync -avz "${ROOT}/dist/boot.js" "${u}@${h}:/var/www/shadowsofwar.io/html/boot.js" & w7=$!
-  rsync -avz "${ROOT}/dist/sw.js" "${u}@${h}:/var/www/shadowsofwar.io/html/sw.js" & w8=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-relay" & w3=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ "${u}@${h}:/home/bizkit/shadowsofwar/assets/maps/" & w4=$!
-  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}" "${w7}" "${w8}"
+  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}"
   verify_prod_published_assets
-  sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" "${ROOT}/nginx_config.conf"
+  sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" "${ROOT}/deploy/nginx/shadowsofwar.io.conf"
+  sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/play.shadowsofwar.io" "${ROOT}/deploy/nginx/play.conf"
   deploy_sow_site_systemd "${u}" "${h}" "sow-site" "127.0.0.1:8787" \
     "/home/bizkit/shadowsofwar" "/home/bizkit/shadowsofwar/sow-site"
   ssh -t "${u}@${h}" "sudo systemctl enable --now sow-redis 2>/dev/null; sudo systemctl restart sow-server"
   verify_prod_headers "https://shadowsofwar.io" || true
-  echo "Deployed v${CLEAN_VERSION} -> https://shadowsofwar.io"
+  echo "Deployed v${CLEAN_VERSION} -> https://shadowsofwar.io (play: https://play.shadowsofwar.io)"
   print_agpl_release_steps
 }
 
@@ -691,25 +677,20 @@ cmd_ptr() {
   fi
   sow_assemble_play_dist ""
   stage_published_assets "${ROOT}/dist/assets-publish"
-  sow_build_site
   local u=bizkit h=shadowsofwar.io
-  ssh "${u}@${h}" "mkdir -p /var/www/ptr.shadowsofwar.io/html/play /var/www/ptr.shadowsofwar.io/html/assets"
-  rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/play/" & w1=$!
-  rsync -avz --delete "${ROOT}/dist/assets-publish/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/assets/" & w6=$!
+  ssh "${u}@${h}" "mkdir -p /var/www/ptr.shadowsofwar.io/html"
+  rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/" & w1=$!
   rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/sow.svg" & w5=$!
-  rsync -avz "${ROOT}/dist/boot.js" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/boot.js" & w8=$!
-  rsync -avz "${ROOT}/dist/sw.js" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/sw.js" & w9=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-relay" & w3=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ "${u}@${h}:/home/bizkit/shadowsofwar-ptr/assets/maps/" & w4=$!
-  deploy_prod_published_assets "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}" & w7=$!
-  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}" "${w7}" "${w8}" "${w9}"
+  deploy_prod_published_assets "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}" & w6=$!
+  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}"
   verify_prod_published_assets
-  sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/ptr.shadowsofwar.io" "${ROOT}/nginx_config_ptr.conf"
-  deploy_sow_site_systemd "${u}" "${h}" "sow-site-ptr" "127.0.0.1:8788" \
-    "/home/bizkit/shadowsofwar-ptr" "/home/bizkit/shadowsofwar-ptr/sow-site"
+  sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/ptr.shadowsofwar.io" "${ROOT}/deploy/nginx/ptr.conf"
+  ssh "${u}@${h}" "systemctl is-active --quiet sow-site-ptr 2>/dev/null && sudo systemctl disable --now sow-site-ptr || true"
   ssh "${u}@${h}" "cat << 'SYSTEMD' | sudo tee /etc/systemd/system/sow-server-ptr.service > /dev/null
 [Unit]
 Description=Shadows of War Server (PTR)
@@ -734,9 +715,24 @@ SYSTEMD"
 }
 
 cmd_site() {
-  export SOW_GAME_MANIFEST_PATH="${ROOT}/sow-site/game-manifest.json"
   echo "==> sow-site SSR on http://127.0.0.1:8787 (Ctrl+C to stop)"
+  echo "    Game shell: ./scripts/sow.sh play  ->  http://127.0.0.1:8080/"
   cargo run -p sow-site
+}
+
+cmd_play() {
+  local port="${1:-8080}"
+  if [[ ! -f "${ROOT}/dist/play/index.html" ]]; then
+    echo "dist/play/ missing — run: ./scripts/sow.sh package"
+    exit 1
+  fi
+  echo "==> Serving dist/play/ at http://127.0.0.1:${port}/ (Ctrl+C to stop)"
+  cd "${ROOT}/dist/play"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -m http.server "${port}" --bind 127.0.0.1
+  else
+    python -m http.server "${port}" --bind 127.0.0.1
+  fi
 }
 
 cmd_local() {
@@ -1040,6 +1036,7 @@ main() {
     c|cloud)   cmd_cloud "$@" ;;
     package|pkg) cmd_package "$@" ;;
     site)    cmd_site "$@" ;;
+    play)    cmd_play "$@" ;;
     a|android)
       case "${1:-native}" in
         n|native)  shift || true; cmd_android native "$@" ;;
