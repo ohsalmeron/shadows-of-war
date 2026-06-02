@@ -1530,7 +1530,7 @@ impl MapEditorSession {
                     .render_ctx
                     .context
                     .submit(&mut self.render_ctx.command_encoder);
-                gp.after_submit(&sync_point);
+                gp.after_submit(&sync_point, &self.render_ctx.context);
                 self.prev_sync_point = Some(sync_point);
             }
         }

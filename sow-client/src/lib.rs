@@ -182,8 +182,9 @@ mod web_loader_assets;
 pub mod net;
 pub mod render;
 pub mod store_portals;
-mod map_cache;
+#[cfg(not(target_arch = "wasm32"))]
 mod paths;
+mod map_cache;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
 

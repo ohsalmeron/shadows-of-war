@@ -219,7 +219,8 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, ()> {
         }
         let mut n = 0u32;
         for (i, &c) in chunk.iter().enumerate() {
-            n |= (val(c) as u32) << (18 - 6 * i);
+            let v = val(c).ok_or(())?;
+            n |= (v as u32) << (18 - 6 * i);
         }
         out.push((n >> 16) as u8);
         if chunk.len() > 2 {

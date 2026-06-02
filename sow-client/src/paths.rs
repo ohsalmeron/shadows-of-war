@@ -1,5 +1,7 @@
 //! Native preference / cache directories (no CWD litter).
 
+#![cfg(not(target_arch = "wasm32"))]
+
 use std::path::PathBuf;
 
 /// Base directory for Shadows of War local data on native targets.

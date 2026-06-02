@@ -6,6 +6,14 @@ use sow_ui::app::ClientPhase;
 
 impl SowApp {
     pub fn update_assets(&mut self) {
+        for key in crate::map_cache::list_cached_keys() {
+            if !self.ui.app.asset_loader.maps.contains_key(&key) {
+                if let Some(bytes) = crate::map_cache::load(&key) {
+                    self.ui.app.asset_loader.maps.insert(key, bytes);
+                }
+            }
+        }
+
         self.poll_thumbnail_fetches();
 
         #[cfg(target_arch = "wasm32")]

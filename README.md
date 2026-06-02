@@ -1,368 +1,141 @@
-# ⚔️ Shadows of War (SoW)
+# Shadows of War
 
-A high-performance, **deterministic lockstep** Real-Time Strategy (RTS) engine written in pure Rust. **Shadows of War** is engineered from the ground up to achieve 100% simulation parity across WebAssembly (WASM) browser clients and Native (Desktop) clients using a unified core architecture and a custom GPU rendering pipeline.
+**[shadowsofwar.io](https://shadowsofwar.io)** — MMORTS in Rust. Expand territory, lead civilizations, and outlast rival **nations** and **tribes** on real-world maps. Alliances, leaders, and massive-scale lockstep combat—60 ticks per second in the browser or on desktop.
 
----
+The simulation runs with **bare-metal discipline**: zero-allocation core (`sow-core`), binary lockstep networking, custom GPU renderer—same logic on native and WebAssembly.
 
-## 🏗️ Architecture
-
-The project is structured as a multi-crate Rust workspace to strictly enforce separation of concerns between the deterministic simulation, networking, and platform-specific rendering:
-
-### Core Simulation
-* **`sow-core`**: The heart of the engine. A deterministic, zero-allocation simulation loop. It handles the game state, lockstep execution, territory expansion, and bot AI mechanics. *Must remain 100% deterministic.*
-
-### Rendering & Graphics
-* **`sow-render`**: A custom, high-performance GPU pipeline built on top of [blade-graphics](https://github.com/kvark/blade). Uses shared memory upload buffers and custom WGSL shaders to pack and render the simulation state efficiently.
-* **`sow-ui`**: The immediate mode GUI built using `egui` and `blade-egui`. Handles lobbies, menus, and in-game HUDs seamlessly over the native rendering context.
-* **`sow-client`**: The primary game executable. Wires `winit` for windowing/input, runs the background loading threads, and binds `sow-core` state directly to the `sow-render` pipeline and `sow-ui`.
-
-### Networking
-* **`sow-server`**: An authoritative matchmaking and lobby server. Handles WebSocket connections, orchestrates the `ClientReadyMessage` handshake, and broadcasts uniform game configurations and lockstep turn data to clients.
-* **`sow-net`**: The shared networking protocol defining the serialized JSON messages used for the lockstep synchronization.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-* **Rust**: Latest stable toolchain (`rustup`).
-* **Python 3**: Required for the cluster script.
-* **Vulkan / GPU Drivers**: Required for the native `blade-graphics` renderer.
-* **Vendored forks** (required for a from-scratch clone): clone `egui/`, `winit/`, and `blade/` next to this repo at the commits pinned in [NOTICE](NOTICE).
-
-### Deploy (`scripts/sow.sh`)
-
-One entrypoint for build, deploy, and portal packaging. Legacy names (`cloud.sh`, `ptr.sh`, etc.) are thin wrappers that call the same script.
-
-#### When to use which
-
-| Command | Short | What it builds | When to use it |
-|---------|-------|----------------|----------------|
-| **local** | `l` | **Debug** native `sow-server`, `sow-relay`, 2× `sow-client` (no WASM) | Rapid native prototyping — faster compile times than release or web builds |
-| **ptr** | `p` | Same as cloud on ptr.shadowsofwar.io | Staging — edge cases and prod-like web debugging |
-| **cloud** | `c` | `dist/play/` + `sow-site` SSR + deploy | Landing at `/`, game at `/play/`, legal at `/privacy` and `/terms` |
-| **package** | `pkg` | Same WASM as cloud, portal HTML slots + zip of `dist/play/` only | Portal upload (CrazyGames) — no SSR, no landing pages |
-| **site** | — | `sow-site` SSR only (local dev) | Edit landing/legal copy: `./scripts/sow.sh site` |
-| **android** | `a` | APK (`native`/`n` or `webview`/`w`) | Mobile builds |
-
-Examples: `./scripts/sow.sh l` · `./scripts/sow.sh p` · `./scripts/sow.sh c` · `./scripts/sow.sh site` · `./scripts/sow.sh a n`
-
-#### Website vs game vs portals
-
-| Surface | URL / artifact | What ships |
-|---------|----------------|------------|
-| **Marketing + legal** | `https://shadowsofwar.io/` · `/privacy` · `/terms` | Leptos SSR (`sow-site`) — HTML only, no WASM |
-| **Web game** | `https://shadowsofwar.io/play/` | Static shell from [`web/`](web/) — loader + brotli WASM (~10 MB) |
-| **CrazyGames / Poki** | `shadows-of-war-crazygames.zip` | Contents of `dist/play/` at zip root — game only, smallest size |
-| **Portals** | — | No `sow-site`, no landing pages; privacy URL in store metadata + in-game Credits |
-
-Local dev: `./scripts/sow.sh site` (SSR pages) · `cd dist/play && python -m http.server 8080` after `./scripts/sow.sh pkg` (game shell smoke test).
-
-#### Interruption and failures
-
-All commands use `set -e` so a failed step stops the script instead of continuing blindly.
-
-- **local (`l`)**: `trap` on EXIT/INT/TERM kills server, clients, and clears Redis port keys — safe to Ctrl+C or close the terminal mid-run.
-- **package (`pkg`)**: Abort leaves a partial `dist/`; delete `dist/` and re-run.
-- **ptr / cloud**: Abort stops rsync/ssh; the VPS may be mid-sync — re-run the same command to converge.
-- **android**: Gradle/cargo errors exit immediately; fix the error and re-run.
-
-#### CrazyGames vs cloud (same pipeline, different HTML)
-
-`cloud` and `package` share one WASM build path (`wasm-release`, `wasm-bindgen`, loader assets, brotli). They are **not** separate asset pipelines.
-
-- **cloud / ptr** ship `index.html` **without** the CrazyGames SDK CDN (website/PTR detect host at runtime).
-- **package** runs the same `dist/play/` assembly, then fills portal HTML slots and zips **`dist/play/`** at the archive root. Zipping after `cloud` without portal injection would upload the **wrong** HTML for CrazyGames.
-- **package** is **lighter** than cloud: no `sow-server`/`sow-relay` build and no `rsync`.
-
-See [Partner platforms](#partner-platforms-crazygames--poki) for the upload checklist.
-
-#### Rust (`sow-tools`)
-
-Deploy and packaging stay in bash for now. [`sow-tools`](sow-tools/) handles maps and data import. A future phase may add `cargo run -p sow-tools -- package` for cross-platform parity; that is not required today.
-
-**Requires on PATH:** `cargo`, `wasm-bindgen`, `brotli`, `cwebp`, `terser` or `npx` (optional: `wasm-opt` / binaryen for smaller WASM).
-
-### Launching the Cluster
-The easiest way to run the project during development is to use the provided Python cluster script, which automatically builds the server and spawns multiple native clients.
-
-```bash
-# From the repository root
-./scripts/run_cluster.py
-```
-
-This script will:
-1. Compile the workspace in debug mode.
-2. Launch the `sow-server` matchmaking daemon.
-3. Launch 2 instances of `sow-client` connected to the local server.
-
-### iPhone / iPad (Xcode)
-
-Open [`ios/sow_ios.xcodeproj`](ios/sow_ios.xcodeproj), set your **Team** on the **ShadowsOfWar** target (Signing & Capabilities), plug in the device, choose it as the run destination, then Run. The **Rust** build phase compiles `sow-client` and installs it as the app executable (same idea as the Bevy mobile template). One-time: `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`.
-
----
-
-## 🧠 Technical Highlights & Recent Design Choices
-
-### Manifest-Driven Spawning & Historical AI Names
-* **The Problem**: In previous engine iterations, when maps defined a specific set of historically accurate nations in `manifest.json` (e.g., 52 nations for Europe), any bots spawned beyond this count (e.g. up to 120 Nations and 650 Tribes) were assigned generic procedural names like `Nation 73` and `Tribe 17`. Furthermore, a legacy engine optimization in `build_snapshot` explicitly stripped string names for bots to reduce serialization payloads, forcing the UI to permanently fall back to these generic names.
-* **The Fix**: 
-    1. Removed the aggressive string-stripping in `build_snapshot` as modern hardware handles 700+ short string clones instantaneously.
-    2. Implemented a deterministic `FALLBACK_TRIBES` pool inside `sow-core/src/tribes.rs` containing over 670 real-world historical tribes and nations (e.g., Picts, Xhosa, Comanches, Purépecha). 
-    3. Fixed bot ID assignment overlapping by calculating the starting index of Tribes dynamically from the `nation_count` rather than a hardcoded `200`.
-    4. The `spawn_ai` orchestrator now pulls uniquely from a randomly shuffled, deterministic array of these fallback names once the `manifest.json` coordinate-locked names are exhausted. This completely eliminates generic procedural bot names from the game and maintains flawless lockstep consistency across all multiplayer clients.
-
-### Binary Synchronization (Bincode vs JSON)
-To support massive scale RTS combat, `sow-core` uses a strict lockstep model. All clients and the server share the exact identical `GameConfig` (such as `bot_count = 1000`). Only player *inputs* are sent over the network.
-* **Design Choice**: The network layer was migrated from JSON to strict binary serialization using `bincode` over persistent WebSockets.
-* **Reasoning**: An RTS engine transmits dense numeric arrays (unit coordinates, spawn intents, ticks) up to 60 times a second. Binary packing drastically reduces bandwidth footprint and CPU parsing overhead compared to JSON, crucial for hitting 60 FPS on the single-threaded WASM client.
-* **The "Envelope" Paradigm**: Binary lacks JSON's human-readable metadata, making it prone to silent deserialization failures. To prevent catastrophic packet misrouting, we wrapped all network traffic in strict `ServerMessage` and `ClientMessage` tagged enums. This enforces schema discipline at the Rust type-system level, using the enum discriminant to safely route raw byte payloads.
-
-### Premium 2D Visuals with "Toaster" Memory Footprint
-Instead of relying on heavy 3D rendering or massive 4K textures, `Shadows of War` leverages extremely lightweight math:
-* **Tiled Water Texture**: The water noise asset is a tiny `256x256` raw binary file (exactly 64 KB). The sampler uses `AddressMode::Repeat` to endlessly tile it across the infinite ocean. This keeps the VRAM usage near zero while retaining infinite map scalability.
-* **4-Octave Noise Shader**: To replicate the gorgeous, rippling aesthetics of expensive 3D ray-traced water, `map.wgsl` samples the tiny 64 KB texture four times at varying speeds, scales, and opposing trajectories. By interpolating vibrant `pool_dark` and `pool_light` colors and applying sharp, non-linear specular highlights, we achieve a dynamic, premium "WebGPU-Water" appearance entirely in a 2D fragment shader.
-
-### Non-Blocking Background Instantiation
-* **Design Choice**: Generating pathfinding chunks, water geometry, and unrolling the map state is highly CPU intensive. Doing this on the main thread would freeze the application and panic the OS watchdog.
-* **Solution**: Upon receiving the `ServerStartMessage`, `sow-client` spins up an OS-level `std::thread` to crunch the map generation. Meanwhile, the main loop drops into an asynchronous `Loading` phase, effortlessly rendering the 60 FPS `sow-ui` Loading Screen until the background thread pipes the constructed `GameState` over a crossbeam channel.
-
-### State Machine & Phase Transitions (Avoiding Race Conditions)
-The engine strictly separates the UI state (`ClientPhase`) from the deterministic simulation state (`GamePhase`) to avoid race conditions. 
-* **`ClientPhase`** (UI Layer): `Splash` -> `MainMenu` -> `Playing`
-* **`GamePhase`** (Simulation Layer): `Lobby` -> `Spawning` (Deployment) -> `Playing` -> `GameOver`
-
-**The Lifecycle Cue Flow:**
-1. **Lobby & Loading**: The user connects and waits. `ClientPhase::MainMenu`.
-2. **Init / Map Download**: The map is downloaded, engine spins up in the background. `ClientPhase::Splash` (loading screen). The map is instantiated.
-3. **Deployment Phase (`GamePhase::Spawning`)**: The loading screen finishes (`gpu_load_step == 4`). The client swaps to `ClientPhase::Playing` so the HUD and map are visible, **BUT** the engine is still in `GamePhase::Spawning`. In this phase, the simulation ticks process only placement logic, not combat/movement. The user clicks to deploy.
-4. **Game Starts (`GamePhase::Playing`)**: Once the spawn timer ends, the engine swaps to `GamePhase::Playing`. 
-* **Important Rule**: **Never tie player-specific logic (like camera snapping to their base)** to the end of the Loading Screen. It must execute only after the player has actually deployed (detected by checking their `tile_count > 0` and observing the transition into `GamePhase::Playing`), ensuring it works flawlessly for both multiplayer and single-player.
-
-### Offline Network Integrity (Single-Player Mode)
-* **Design Choice**: In Single-Player mode, the local deterministic simulation is run directly on the client, completely bypassing the network.
-* **Input Routing Trap**: During the Map Loading `Splash` phase, background reconnection routines can accidentally re-establish a WebSocket connection to the multiplayer orchestrator. If this occurs, local `GameplayIntent`s (such as Spawning) are inadvertently routed to the remote server instead of the offline engine, causing severe visual and mechanical desyncs.
-* **Solution**: The engine strictly enforces a `!is_offline` constraint on the core reconnection loop. This guarantees that `self.net.client` remains completely `None` during offline matches, ensuring all user clicks are immediately captured by `offline_intents` and processed instantly by the local simulation tick.
-
-### Custom GPU Pipeline (`blade-graphics`)
-* The map state is efficiently bit-packed into `u32` arrays by the CPU (16 bits for Owner ID, 8 bits for Terrain).
-* Uploaded to the GPU via Shared Memory buffers perfectly synchronized with `wait_for` lifecycle barriers to prevent use-after-free `invalid size` driver panics.
-* Rendered using a custom `map.wgsl` shader that performs coordinate projection, bit-unpacking, and color mapping entirely on the GPU.
-
-### WebAssembly (WASM) & WebGL Stability
-Achieving true 1:1 cross-platform stability on WebAssembly required extensive patches to the underlying `blade-graphics` GLES abstraction:
-* **Split Buffer Architecture:** WebGL strictly prohibits binding the same `WebGLBuffer` as both an `ARRAY_BUFFER` and `ELEMENT_ARRAY_BUFFER`. To prevent immediate `INVALID_OPERATION` crashes on WASM, `blade-graphics` now maintains a dual-buffer system, dynamically copying and binding index data to a dedicated `raw_index` target under the hood.
-* **Canvas Cropping & DPI scaling:** Winit 0.29 on WASM properly scales the inline CSS, but natively fails to update the actual DOM `<canvas width="...">` properties during resize events. This caused WebGL to map high-res 2000x1600 framebuffers into small 800x600 canvases, severely cropping the output. We resolved this by bypassing `winit` and forcibly syncing the canvas DOM attributes with the physical surface extent inside `reconfigure_surface`. We also reverted `sow-client` to utilize `LogicalSize`, ensuring Winit accurately multiplies CSS logic by the browser's `devicePixelRatio` without manual, erroneous `scale_factor` overrides.
-* **Texture Unit Collisions:** WebGL lacks explicit `layout(binding=X)`. Consequently, the graphics API was assigning all uniform samplers to texture unit `0`, causing `egui` (FLOAT textures) and `sow-render` (UINT textures) to overwrite one another. We implemented a dynamic `next_texture_slot` assignment in the pipeline creation, guaranteeing deterministic, sequential texture unit mapping.
-* **Non-Blocking Synchronisation:** WebGL2 sets `MAX_CLIENT_WAIT_TIMEOUT_WEBGL` to `0`, strictly forbidding blocking the main browser thread. `blade` originally attempted to block for 1 second, crashing the context. The engine now conditionally passes a `0` timeout exclusively on `wasm32`, forcing a clean, non-blocking polling architecture.
-* **Event Loop Starvation (`ControlFlow`):** In `winit`, using `ControlFlow::Poll` forces the event loop to spin continuously without yielding. On native platforms this needlessly burns CPU, but on WebGL (Firefox/Chrome) it is catastrophic. It completely starves the browser's `requestAnimationFrame` compositor, reducing the game to a buggy ~15 FPS. The engine must explicitly use `ControlFlow::Wait` and trigger `window.request_redraw()` to properly sync with the browser's vsync refresh rate.
-* **SVG vs PNG Rendering Overhead:** While `egui_extras` supports native SVG loading via `resvg`, it relies on heavy CPU vector math to rasterize the SVG into a flat texture buffer before uploading it to the WebGL context. If an SVG (e.g., UI icons floating above players) scales continuously with the camera zoom, `resvg` is forced to re-rasterize and re-upload a new texture every single frame, crippling WebGL performance. Using pre-rasterized PNGs completely eliminates this CPU math, allowing the GPU to effortlessly stretch the static texture using hardware interpolation at zero cost.
-
-### Legacy Android & GLES Compatibility (Mali-T720)
-Achieving seamless performance on "shitty" low-end hardware (like older Androids with Mali-T720 GPUs) required deep modifications to the GLES backend of the engine:
-* **Manual Buffer Synchronization**: Modern Androids (e.g., Galaxy S9+) support `GL_EXT_buffer_storage` allowing zero-copy "coherent" memory mapping between CPU and GPU. Older OpenGL ES 3.1 hardware lacks this, meaning we had to surgically instrument `BufferBelt` allocations and `MapRenderer` uploads to explicitly flush and execute `sync_buffer()` (`gl.buffer_sub_data`) **before** `context.submit()` to prevent transparent/corrupted frames.
-* **Uniform Block Binding Hacks**: Legacy GLSL compilers often strip variable names or rename struct blocks. We modified the `blade-graphics` shader reflection pipeline to include a robust fallback chain (checking by struct type name, indexing, and parameter sizes) so older Android drivers can correctly map and bind our UI uniform buffers.
-* **Scissor Coordinates**: OpenGL operates with a bottom-left origin, while `egui` and `wgpu` rely on top-left. We baked coordinate inversion logic directly into `set_scissor_rect` at the driver level to render the native UI perfectly across all mobile devices.
-* **Fragment Shader FP16 Precision Trap**: Android GLES hardware (specifically Adreno/Mali) aggressively downgrades fragment shader integer math (`i32`) to `mediump` (16-bit Float hardware) to save battery. This caused our map coordinate bounds math (e.g., `pixel_x + 1`) to hit the 11-bit mantissa ceiling and silently truncate on large maps (e.g., `2500 + 1 = 2500`), totally breaking neighbor-checking for territory borders.
-* **CPU-Side Directional Bit-Packing for Thin Borders**: To permanently bypass Android GPU optimizer bugs while maintaining the ability to draw razor-thin territory outlines, we use a hybrid directional bit-packing approach. The CPU evaluates the 4 adjacent neighbors during the lockstep `dirty_tiles` loop in `O(1)` time, and explicitly packs the 4 directional borders into the top 4 unused bits of the 32-bit texture payload (Bit 31: Up, 30: Down, 29: Left, 28: Right). The fragment shader simply reads these 4 bits and applies precise mathematical clipping (`fract`) to draw the borders exactly on the outer edge, allowing customizable thickness without any heavy GPU-side neighbor checking. This ensures 100% compatibility across legacy Android devices with perfect performance.
-
-### Egui Font Fallback Crashes
-* **The Trap**: When overriding `egui`'s `FontDefinitions` to register custom `.ttf` weights (e.g., `Bold` or `Thin`), manually defining the fallback lists (like `vec!["Bold", "Default"]`) implicitly drops `egui`'s internal emoji fonts. The moment the UI attempts to render an emoji (like ⚔ or ★), `epaint` immediately panics with `No font data found for "emoji"` because the fallback chain was severed.
-* **The Fix**: Instead of hardcoding the fallback lists and trying to guess `egui`'s internal font keys, we dynamically clone the fallback vector directly from `egui::FontFamily::Proportional` (which is guaranteed to contain the correctly configured emoji fallbacks) and securely prepend our custom font names to it (`bold_family.insert(0, "Bold".to_owned())`).
-
----
-
-## Map authoring (paint, OpenFront import, OSM)
-
-Shadows of War uses a single **SOWM** artifact per map (`map.bin` / `map.bin.br` with embedded spawns). Three creation paths mirror the OpenFront community workflow:
-
-| Layer | Tool | Output |
-|-------|------|--------|
-| **Paint** | In-game Map Editor (`sow-client` main menu) | `assets/maps/<name>/` via Compile & Export |
-| **OpenFront import** | `sow-tools import-openfront` | Same SOWM layout from `image.png` + `info.json` or legacy `map.bin` + `manifest.json` |
-| **OSM region** | `sow-tools` bbox CLI | Overpass fetch → rasterizer → spawns from `place=*` nodes |
-
-### Map pipeline (how data flows)
-
-The runtime game reads **`map.bin`**: one byte per map cell (`MapTile` in `sow-core`). That format is **not** a slippy-map PNG. Preview tiles and shipped terrain are separate layers.
-
-```
-  OSM Standard tiles (coast mask)     OpenFront world heightmap (elevation)
-         │                                    │
-         └──────────┬─────────────────────────┘
-                    ▼
-         classify → generate_from_rgba (MapGenerator pipeline)
-                    ▼
-              map.bin MapTile grid
-
-  Alternative: sow-tools --bbox (Overpass coasts, flat plains)
-  Alternative: sow-tools image-map / import-openfront (painted image.png only)
-```
-
-**What a `MapTile` byte means** (see `sow-core/src/map.rs`):
-
-| Bits | Meaning |
-|------|---------|
-| Land (bit 7) | 1 = land, 0 = water |
-| Shoreline | coast transition |
-| Ocean | exterior sea (vs inland lake) |
-| Magnitude 0–31 | On land: plains (0–9), highlands (10–19), mountains (20+). On water: distance-to-shore for rendering |
-
-**Path A — OpenFront / MapGenerator (canonical for elevation)**
-
-Used by OpenFrontIO’s Go MapGenerator and ported to `sow-map/src/image_pipeline.rs` and `sow-map/src/generator.rs`.
-
-1. Author paints **`image.png`** where pixel **blue channel encodes terrain** (not real-world DEM):
-   - Water: `blue == 106` (or very low alpha)
-   - Land: `blue` 140–200 → elevation → magnitude after pipeline
-2. **`generate_from_rgba`** (or `generate_map`): classify pixels → remove tiny islands/lakes → downscale to mobile budget (~1M cells) → mark ocean + shoreline + water depth → **pack** into `MapTile` bytes.
-3. **`sow-tools import-openfront`** reads `image.png` + `info.json` (nation spawns) → writes `map.bin`, `map.bin.br`, `thumbnail.webp`.
-
-No coordinates API: the PNG **is** the source of truth. OSM is only involved if a human (or tool) drew coastlines into that PNG.
-
-**Path B — OSM bbox via `sow-tools` CLI (Overpass vector)**
-
-Input: bounding box `min_lon,min_lat,max_lon,max_lat` and **scale** (pixels per degree).
-
-1. **Dimensions**: `map_dims_for_bbox` → width×height (aligned to 4, capped by `MAX_MAP_PIXELS`).
-2. **Overpass** (`sow-map/src/osm_overpass.rs`): tiled HTTP queries to public Overpass servers.
-   - Coastlines: OSM ways tagged `natural=coastline` with geometry.
-   - Inland water (optional): `natural=water`, `bay`, `landuse=water`, etc.
-   - Places: `place=city|town|…` nodes for spawn candidates.
-3. **Rasterize** (`sow-map/src/osm_coast.rs`): coast barriers, ocean flood, shoreline.
-4. **Spawns** and export to `assets/maps/<name>/`.
-
-Land elevation is still **flat plains** on this path (no heightmap stamp yet). Use Path A or the map editor for mountains.
-
-**Path C — Map editor OSM Generate (hybrid raster + heightmap)**
-
-Native-only (`sow-map` feature `osm`).
-
-1. **Preview / coast mask**: fetch [OSM Standard](https://tile.openstreetmap.org/) tiles for the selection; classify water via `#aad3df` palette (`sow-map/src/osm_tiles.rs`).
-2. **Elevation**: sample OpenFront `giantworldmap` blue channel per lon/lat (`sow-map/src/heightmap.rs`) from, in order: `SOW_HEIGHTMAP_PATH`, `MapGenerator/assets/maps/giantworldmap/image.png`, `OpenFrontIO/map-generator/...`, or shipped `assets/heightmaps/world.png`.
-3. **`generate_from_rgba`**: same MapGenerator pipeline as Path A (islands/lakes, downscale, ocean, shoreline, pack full `MapTile` indices).
-
-- **Brush**: edit `MapTile` bytes directly on the grid.
-- One HTTP request per preview tile (cached). Generate is synchronous (no Overpass).
-
-| Goal | Use |
-|------|-----|
-| Pick a region on a familiar map | Map editor OSM picker + Generate (Path C) |
-| **Mountains / highlands** from real geography | Path C or Path A (`image-map` / painted PNG) |
-| Headless coast-only export with city spawns | Path B `sow-tools --bbox` |
-
-### OpenFront mapper workflow (Layer 1b)
-
-1. Author in OpenFront style: paint `image.png` (blue channel = water), place nations in `info.json` (`name`, `flag`, `coordinates`).
-2. From the repo root, import into SOW:
-
-```bash
-cargo run -p sow-tools -- import-openfront \
-  --input path/to/OpenFrontIO/map-generator/assets/maps/europe \
-  --name europe
-```
-
-Or re-pack an existing shipped folder that already has `map.bin`:
-
-```bash
-cargo run -p sow-tools -- import-openfront --input assets/maps/europe
-```
-
-This writes `map.bin`, `map.bin.br`, `thumbnail.webp`, and refreshes `assets/maps/catalog.bin`.
-
-### OSM bbox generation (Layer 2)
-
-```bash
-cargo run -p sow-tools -- \
-  --bbox "-103.4,20.6,-103.3,20.7" \
-  --name guadalajara \
-  --scale 1000
-```
-
-Set `SOW_MAPS_ROOT` to override the output directory (default: `assets/maps`). Requires network access to the public Overpass API.
-
-### Map editor OSM picker (preview tiles)
-
-Preview uses `tile.openstreetmap.org` (OSM Standard). **Generate from Selection** runs Path B (Overpass) on the selection bbox only — not preview pixels. Side panel shows lon/lat bounds and estimated Overpass tile count (max 4). Attribution: © OpenStreetMap contributors.
-
-**OSM attribution:** Maps built from Overpass must credit [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Hand-painted and OpenFront PNG imports have no OSM obligation unless they incorporate OSM-derived geometry.
-
----
-
-## 📝 Development Notes & Rules
-
-* **Zero-Allocation Hot Path**: The `sow-core` simulation loop (`engine.tick()`) must avoid dynamic memory allocation (`Vec::push`, `Box::new`, etc.) to prevent stutters and ensure consistent frame times.
-* **GPU Resource Lifecycle**: Native `blade-graphics` resources must be explicitly destroyed (`map_renderer.destroy(&render_ctx)`) during phase transitions or `CloseRequested` window events. Ensure you call `context.wait_for(...)` on the inflight command buffer **before** triggering the destructors to avoid driver memory corruption.
-
----
+**License:** [AGPL-3.0-or-later](LICENSE) · **Play:** [shadowsofwar.io/play/](https://shadowsofwar.io/play/) · **Source:** [github.com/ohsalmeron/shadows-of-war](https://github.com/ohsalmeron/shadows-of-war)
 
 ## License
 
-Shadows of War is free software licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
+Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](COPYRIGHT).
+Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](COPYRIGHT) and [NOTICE](NOTICE).
 
-This project is a derivative work based on [OpenFront](https://openfront.io) (© OpenFront LLC and Contributors, AGPL-3.0). Owned art (avatars, splash, select leader portraits, and core building icons) is restored; remaining sprites use themed procedural placeholders. Only the `northamerica` map ships in-repo. Third-party notices: [NOTICE](NOTICE).
+**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront LLC and Contributors, AGPL-3.0-or-later). Required notices appear in [NOTICE](NOTICE) and in-game **Credits**—not in game marketing. See [LICENSE](LICENSE) for full terms.
 
-## AI-generated art (store submission)
+## Features
 
-Splash screens, avatars, and leader portraits were created with Gemini, Meta AI, and Midjourney. Prompt history and iteration notes live in [`leaders.md`](leaders.md) (internal roster; share with Poki/CrazyGames on request). Verify each tool’s Terms of Service allows commercial redistribution in compiled game binaries before store submission. See [`assets/SOURCES.toml`](assets/SOURCES.toml).
+- **MMORTS gameplay:** Territory control, structures, diplomacy, and large-scale battles
+- **Civilizations & leaders:** Named nations, tribes, and leader identity on world maps
+- **Alliance system:** Coordinate with other players for defense and expansion
+- **Deterministic lockstep:** Identical simulation on every client; only inputs cross the network
+- **High performance:** Rust core, zero-alloc tick loop, compact WASM client (~10 MB brotli)
+- **Cross-platform:** Web, native desktop, iOS, Android
+- **Map tools:** In-game editor, OSM regions, heightmap import pipeline
 
-## Partner platforms (CrazyGames / Poki)
+## Prerequisites
 
-### Build portal zip (CrazyGames)
+- **Rust** (latest stable via `rustup`)
+- **Python 3** (local cluster script)
+- **Vulkan / GPU drivers** (native client)
+- **Vendored forks** for a from-scratch clone: `egui/`, `winit/`, `blade/` at commits in [NOTICE](NOTICE)
 
-```bash
-./scripts/sow.sh package              # → shadows-of-war-crazygames.zip + dist/
-cd dist && python -m http.server 8080   # smoke-test locally
-```
+Web/deploy builds also need on `PATH`: `cargo`, `wasm-bindgen`, `brotli`, `cwebp` (optional: `wasm-opt` from binaryen).
 
-The `package` subcommand reuses the production WASM build, copies `web/sdk/`, sets portal WS to `wss://shadowsofwar.io/ws/` for multiplayer, loads the CrazyGames SDK v3 CDN, and skips service workers on CrazyGames hosts. Production deploy: `./scripts/sow.sh cloud`.
-
-Web builds load [`web/sdk/store_portals.js`](web/sdk/store_portals.js) for `gameplayStart` / `gameplayStop` and loading hooks. Privacy policy: https://shadowsofwar.io/privacy (SSR via `sow-site`).
-
-### CrazyGames Developer Portal checklist
-
-1. Create account at [developer.crazygames.com](https://developer.crazygames.com) → **Submit game** → upload `shadows-of-war-crazygames.zip`.
-2. Metadata: title *Shadows of War*, genre strategy/io, **English**, 800×800 cover + short gameplay video.
-3. QA notes for reviewers:
-   - Derivative of OpenFront (AGPL); "Based on OpenFront" on main menu; full notices in Credits.
-   - Character art and splash screens are AI-generated by the developer (Gemini / Meta / Midjourney); prompts documented in `leaders.md`.
-   - **Single Player** works offline; **Multiplayer** connects to `wss://shadowsofwar.io/ws/`.
-   - How to play: Main Menu → Single Player, or connect and join ranked.
-4. Test **Basic Launch** preview: confirm SDK loading events, single-player boot, and multiplayer join to your server.
-5. After metrics look good, request **Full Launch** (ads) if desired.
-
-WASM bundle size is printed at the end of `./scripts/sow.sh package` (CrazyGames Basic Launch limit ~50 MB).
-
-### WASM size (browser / portal builds)
-
-Deploy scripts compile the client with the dedicated **`wasm-release`** profile (`opt-level = "z"`, LTO, strip) instead of plain `--release`:
+## Installation
 
 ```bash
-RUSTFLAGS="-C target-feature=-bulk-memory" cargo build --profile wasm-release -p sow-client --target wasm32-unknown-unknown
+git clone https://github.com/ohsalmeron/shadows-of-war.git
+cd shadows-of-war
 ```
 
-After `wasm-bindgen`, an optional **`wasm-opt -Oz`** pass (install **binaryen**) shrinks the bundle further before brotli. `./scripts/sow.sh ptr` and `./scripts/sow.sh cloud` run this automatically when `wasm-opt` is on `PATH`.
+Install Rust targets as needed (`rustup target add wasm32-unknown-unknown` for web builds).
 
-Recent slimming (Phase 2): removed Android-only deps from the client crate, dropped `resvg`/`usvg`/`tiny-skia` from mover sprite atlas (pre-baked PNGs), unified workspace dependency pins. Ship mover icons: `transport_ship.png`, `trade_ship.png`, `battleship.png` in `sow-client/assets/`.
+## Running the game
 
-**Measured** (post-bindgen, pre-brotli, `wasm-release` profile): ~11.2 MB client WASM; ~10.0 MB after `wasm-opt -Oz` (requires `binaryen`). Brotli (`-Z`) compresses further for CDN delivery.
+### Local development (fastest)
 
-## Public launch checklist (AGPL)
+Native server + two clients (debug):
 
-Before first **public** release or store monetization:
+```bash
+./scripts/sow.sh l
+# or
+./scripts/run_cluster.py
+```
 
-1. Commit and push your branch.
-2. **Make the GitHub repo public** — [github.com/ohsalmeron/shadows-of-war](https://github.com/ohsalmeron/shadows-of-war) → Settings → Change repository visibility.
-3. Deploy or package (`./scripts/sow.sh cloud` or `./scripts/sow.sh package`). The script prints the `git tag` command; push the tag so Credits links work (`git push origin v$(cat .version)`).
-4. Upload `shadows-of-war-crazygames.zip` to the CrazyGames Developer Portal (see checklist below).
+### Web / production builds
 
-Credits in-game link to `https://github.com/ohsalmeron/shadows-of-war/tree/v<version>` matching `.version`.
+All build and deploy flows go through **`scripts/sow.sh`**:
 
-## Corresponding Source (AGPL §13)
+| Command | Alias | Use |
+|---------|-------|-----|
+| `local` | `l` | Debug native server + clients |
+| `ptr` | `p` | Staging → ptr.shadowsofwar.io |
+| `cloud` | `c` | Production site + `/play/` WASM |
+| `package` | `pkg` | Portal zip (CrazyGames) |
+| `site` | — | Landing/legal SSR only (`sow-site`) |
+| `android` | `a` | APK (`n` native / `w` webview) |
 
-The production server at https://shadowsofwar.io runs `sow-server` and `sow-relay` from this repository. Corresponding source for any deployed version is available at the matching git tag or commit shown in the client build (`SOW_BUILD_VERSION`).
+Examples:
+
+```bash
+./scripts/sow.sh l          # local multiplayer smoke test
+./scripts/sow.sh site       # SSR dev (/, /privacy, /terms)
+./scripts/sow.sh pkg        # dist/play + portal zip
+./scripts/sow.sh c          # full production deploy
+```
+
+After `pkg`, smoke-test the web shell: `cd dist/play && python -m http.server 8080`.
+
+### iOS
+
+Open [`ios/sow_ios.xcodeproj`](ios/sow_ios.xcodeproj), set signing Team, run on device. One-time: `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`.
+
+## Development tools
+
+```bash
+cargo build -p sow-client          # native client
+cargo test -p sow-core             # simulation tests (core changes must be tested)
+cargo run -p sow-tools -- --help   # map CLI
+```
+
+**Rules for contributors**
+
+- `sow-core` hot path (`engine.tick()`): no heap allocation in the tick loop
+- `sow-core` changes: add or update tests
+- GPU resources: destroy via `map_renderer.destroy` after `context.wait_for` on inflight work
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
+## Project structure
+
+| Crate / path | Role |
+|--------------|------|
+| `sow-core` | Deterministic simulation (WASM-safe) |
+| `sow-net` | Wire protocol (`bincode`, message envelopes) |
+| `sow-server` | Matchmaking / lobby server |
+| `sow-relay` | Relay for production |
+| `sow-render` | GPU map pipeline (`blade-graphics`, WGSL) |
+| `sow-ui` | Menus and HUD (`egui`) |
+| `sow-client` | Game executable (native + WASM) |
+| `sow-map` | Map editor + generation |
+| `sow-tools` | CLI: OSM bbox, heightmap import |
+| `sow-site` | Leptos SSR (marketing, legal) |
+| `web/` | Browser shell and portal SDK hooks |
+| `assets/maps/` | Shipped maps (`northamerica` in-repo) |
+| `scripts/sow.sh` | Build, deploy, package |
+
+## Map authoring
+
+Runtime maps are **`map.bin`** (+ `map.bin.br`) per region. Three ways to author:
+
+| Method | How |
+|--------|-----|
+| **Paint** | In-game Map Editor → Compile & Export |
+| **Heightmap** | `cargo run -p sow-tools -- import-openfront --input <folder> --name <name>` |
+| **OSM bbox** | `cargo run -p sow-tools -- --bbox "min_lon,min_lat,max_lon,max_lat" --name <name> --scale 1000` |
+
+OSM-derived maps must credit [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Do not bulk-cache `tile.openstreetmap.org`. Record bbox in `assets/maps/SOURCES.toml`.
+
+Hand-painted / heightmap-only maps have no OSM obligation unless they include OSM geometry.
+
+## Store & deploy notes
+
+- **CrazyGames:** `./scripts/sow.sh package` → `shadows-of-war-crazygames.zip`; privacy URL https://shadowsofwar.io/privacy
+- **AGPL source:** production runs `sow-server` + `sow-relay`; matching source at git tag in `SOW_BUILD_VERSION` / Credits link
+- **AI art:** splash, avatars, leader portraits (Gemini, Meta AI, Midjourney)—see `assets/SOURCES.toml` and `leaders.md` for store disclosure
+- **Launch:** push repo, tag version (`git push origin v$(cat .version)`), deploy with `./scripts/sow.sh cloud`
 
 ```bash
 git clone https://github.com/ohsalmeron/shadows-of-war.git
@@ -370,21 +143,8 @@ cd shadows-of-war
 cargo build --release -p sow-server -p sow-relay
 ```
 
-## OpenStreetMap Compliance
+## Contributing
 
-Maps generated via `sow-tools` from OpenStreetMap data must credit [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Requirements:
+Contributions welcome. Open an issue for large changes. Keep PRs focused; test `sow-core` when touching simulation.
 
-- Do **not** use `tile.openstreetmap.org` as your own CDN or tile cache.
-- Overpass API: use an identifiable User-Agent (`ShadowsOfWar-MapEditor/1.0` in the map editor, same string for `sow-tools`), respect rate limits, and avoid hammering public instances.
-- Map editor preview tiles: `tile.openstreetmap.org` with User-Agent `ShadowsOfWar-MapEditor/1.0`; credit © OpenStreetMap contributors in the editor UI. Do not bulk-cache or redistribute tiles.
-- Store the Overpass query bbox in `assets/maps/SOURCES.toml` for each OSM-derived map.
-- Mark OSM maps with `source = "osm"` in SOURCES.toml.
-
-Hand-painted maps and OpenFront-format imports have no OSM obligation unless they incorporate OSM data.
-
-See also [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
-
-## Map Attribution
-
-Only the `northamerica` map is included in `assets/maps/`. See `assets/maps/SOURCES.toml`. OpenFront-derived maps were removed from the repository; CC-BY-SA map history is documented in NOTICE and README.
-
+Fork → branch → PR. Maintainer review required before merge.

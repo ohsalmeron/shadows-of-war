@@ -816,7 +816,7 @@ if marker not in html:
 html_path.write_text(html.replace(marker, js, 1), encoding="utf-8")
 PY
 
-  rsync -a "${ROOT}/assets/" "${ASSETS_DIR}/assets/" || true
+  sow_stage_play_assets "${ASSETS_DIR}" "crazygames"
   copy_web_loader_assets "${ASSETS_DIR}/assets/ui"
   cp "${ROOT}/web/sow.svg" "${ASSETS_DIR}/sow.svg" || true
 
