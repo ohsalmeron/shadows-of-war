@@ -59,6 +59,9 @@ impl AssetConfig {
                 return url;
             }
         }
+        if let Some(url) = Self::origin_subpath("/maps") {
+            return url;
+        }
         if let Ok(ws) = std::env::var("SOW_WS_URL") {
             if let Some(derived) = maps_url_from_ws_url(&ws) {
                 return derived;
@@ -76,6 +79,9 @@ impl AssetConfig {
                 return url;
             }
         }
+        if let Some(url) = Self::origin_subpath("/assets") {
+            return url;
+        }
         format!("{DEFAULT_CDN}/assets")
     }
 
@@ -86,6 +92,21 @@ impl AssetConfig {
             }
         }
         String::new()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn origin_subpath(path: &str) -> Option<String> {
+        let window = web_sys::window()?;
+        let origin = window.location().origin().ok()?;
+        if origin.is_empty() {
+            return None;
+        }
+        Some(format!("{origin}{path}"))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn origin_subpath(_path: &str) -> Option<String> {
+        None
     }
 
     #[cfg(target_arch = "wasm32")]

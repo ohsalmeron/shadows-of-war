@@ -29,9 +29,9 @@ Art and maps: assets/SOURCES.toml, assets/maps/SOURCES.toml
 Rust dependency licenses: NOTICE.deps (run ./scripts/generate_notice_deps.sh)
 
 
-Vendored forks (local path dependencies)
-----------------------------------------
+Pinned dependencies (Cargo.toml)
+------------------------------
 
-- egui / egui_extras — MIT OR Apache-2.0 — pin 8f0919f9659679dff73791897183c3c86d0e5601
-- winit — Apache-2.0 — pin c4afadbfabf7b1e7989b40b493db1a4c7bd8ff4e
-- blade-graphics / blade-egui — MIT — pin c75cf5d68d67d23df79b5a620c2b3d3910137aaf
+- egui / egui_extras — MIT OR Apache-2.0 — crates.io 0.34
+- winit — Apache-2.0 — crates.io 0.31.0-beta.2
+- blade-graphics / blade-egui / blade-macros — MIT — git https://github.com/ohsalmeron/blade.git rev 1b20c3fe593964fe418f62ac103f44eedcb76ecd

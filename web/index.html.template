@@ -168,8 +168,9 @@
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
-        window.SOW_MAPS_URL = window.SOW_MAPS_URL || "https://shadowsofwar.io/maps";
-        window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "https://shadowsofwar.io/assets";
+        /* Same-origin maps/assets for website + PTR; CrazyGames package injects production CDN. */
+        window.SOW_MAPS_URL = window.SOW_MAPS_URL || (window.location.origin + "/maps");
+        window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || (window.location.origin + "/assets");
         /* PORTAL_BOOT_SLOT: SOW_PORTAL/SOW_WS_URL overrides injected by CrazyGames package build. */
         (function () {
             var h = window.location.hostname;
