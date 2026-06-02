@@ -17,7 +17,7 @@ Usage: ./scripts/sow.sh <command> [args]
   cloud|c            Deploy production (game + site + backend)
   cloud-game         Deploy play shell + WASM + assets + backend only
   cloud-site         Deploy sow-web/site static marketing + nginx only
-  package|pkg [portal]  Build dist/game-shell/ + portal zip (default: crazygames)
+  package|pkg [portal]  Build dist/game-shell/ + portal zip (crazygames | poki; default crazygames)
   site               Serve sow-web/site locally (landing + legal pages)
   play [port]        Serve game shell locally (default port 8080)
   android|a [native|n|webview|w]
@@ -117,6 +117,7 @@ sow_assemble_game_shell() {
   mkdir -p "${play}/sdk" && cp -a "${SOW_WEB_SHELL}/sdk/." "${play}/sdk/"
   build_index_html "${SOW_WEB_SHELL}/index.html.template" "${play}/index.html" "${CLEAN_VERSION}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
   [[ "${portal}" == "crazygames" ]] && inject_crazygames_portal "${play}/index.html"
+  [[ "${portal}" == "poki" ]] && inject_poki_portal "${play}/index.html"
   minify_js_shim "${play}/${JS_FILE}"
   optimize_wasm_bundle "${play}/${WASM_FILE}"
   if command -v brotli >/dev/null 2>&1; then
@@ -607,6 +608,33 @@ if not (replaced_sdk and replaced_boot):
     raise SystemExit(
         f"inject_crazygames_portal: missing slot(s) sdk={replaced_sdk} boot={replaced_boot}"
     )
+html_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+}
+
+# Poki package build: set portal boot vars only (Poki injects PokiSDK from the host page).
+inject_poki_portal() {
+    local html_path="$1"
+    local boot_js='        window.SOW_PORTAL = "poki"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps"; window.SOW_ASSETS_URL = "https://shadowsofwar.io/assets";'
+    python3 - "${html_path}" "${boot_js}" <<'PY'
+import sys
+from pathlib import Path
+
+html_path = Path(sys.argv[1])
+boot_js = sys.argv[2]
+lines = html_path.read_text(encoding="utf-8").splitlines()
+out = []
+replaced_boot = False
+for line in lines:
+    if "PORTAL_BOOT_SLOT" in line:
+        out.append(boot_js)
+        replaced_boot = True
+    elif "PORTAL_SDK_SLOT" in line:
+        continue
+    else:
+        out.append(line)
+if not replaced_boot:
+    raise SystemExit("inject_poki_portal: missing PORTAL_BOOT_SLOT")
 html_path.write_text("\n".join(out) + "\n", encoding="utf-8")
 PY
 }

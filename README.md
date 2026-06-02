@@ -1,6 +1,6 @@
 # Shadows of War
 
-**[shadowsofwar.io](https://shadowsofwar.io)** — Online MMORTS. Expand territory, lead civilizations, and compete with rival nations and tribes on world maps. Form alliances, choose leaders, and fight for control in the browser or on desktop.
+**[shadowsofwar.io](https://shadowsofwar.io)** — Free, open-source MMORTS: world maps, civilizations, alliances, expansion, and economy. Play on web or native desktop and mobile.
 
 Rust workspace: shared game logic for web (WASM) and native clients.
 

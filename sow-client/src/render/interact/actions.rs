@@ -19,18 +19,8 @@ impl SowApp {
                     self.sim.my_player_id = Some(1);
                     self.sim.my_lobby_id = Some(0);
 
-                    self.ui.tutorial_completed = false;
+                    self.ui.tutorial_active = true;
                     self.ui.tutorial_step = crate::hud::tutorial::TutorialStep::Welcome;
-                    #[cfg(target_arch = "wasm32")]
-                    if let Some(window) = web_sys::window() {
-                        if let Ok(Some(storage)) = window.local_storage() {
-                            let _ = storage.remove_item("sow_tutorial_completed");
-                        }
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        let _ = std::fs::remove_file(crate::paths::tutorial_completed_path());
-                    }
 
                     let map_name = sow_core::maps::DEFAULT_MAP_KEY.to_string();
                     self.ui.app.main_menu_state.downloading_map_name = Some(map_name.clone());

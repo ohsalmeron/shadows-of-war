@@ -143,7 +143,8 @@ pub struct UiState {
     pub raw_input: egui::RawInput,
 
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
-    pub tutorial_completed: bool,
+    /// True only while the player started the offline tutorial from the main menu.
+    pub tutorial_active: bool,
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
@@ -430,26 +431,6 @@ impl SowApp {
         let last_ping_time = Instant::now();
         let last_frame_time = Instant::now();
 
-        let mut tutorial_completed = false;
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(window) = web_sys::window() {
-                if let Ok(Some(val)) = window.local_storage().and_then(|s| {
-                    Ok(s.and_then(|st| st.get_item("sow_tutorial_completed").ok().flatten()))
-                }) {
-                    if val == "true" {
-                        tutorial_completed = true;
-                    }
-                }
-            }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if crate::paths::tutorial_completed_path().exists() {
-                tutorial_completed = true;
-            }
-        }
-
         Self {
             gfx: GraphicsState {
                 window,
@@ -522,7 +503,7 @@ impl SowApp {
                 raw_input,
 
                 label_positions: std::collections::HashMap::new(),
-                tutorial_completed,
+                tutorial_active: false,
                 tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
                 show_leaderboard: false,
                 leaderboard_timer: 0.0,
@@ -643,6 +624,7 @@ impl SowApp {
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
+        self.ui.tutorial_active = false;
         if use_loader {
             self.ui.app.phase = ClientPhase::Splash;
             let lang = self.ui.app.settings_state.language;

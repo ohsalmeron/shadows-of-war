@@ -3,27 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shadows of War - Epic Multiplayer Grand Strategy Game</title>
-    <meta name="description" content="Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser!">
-    <meta name="keywords" content="strategy game, multiplayer strategy, io game, browser game, grand strategy, conquest, free to play">
+    <title>Shadows of War — Free Open-Source MMORTS Strategy Game</title>
+    <meta name="description" content="Free, open-source MMORTS on world maps. Play solo offline or join online multiplayer: lead civilizations, forge alliances, expand territory, and grow your economy in massive real-time strategy battles.">
+    <meta name="keywords" content="MMORTS, free to play, open source game, multiplayer real-time strategy, world maps, civilizations, alliances, territorial expansion, economy, strategy game, Shadows of War">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://shadowsofwar.io/">
-    <meta property="og:title" content="Shadows of War - Epic Multiplayer Grand Strategy Game">
-    <meta property="og:description" content="Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser!">
+    <meta property="og:url" content="https://play.shadowsofwar.io/">
+    <meta property="og:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
+    <meta property="og:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
+    <meta property="og:image" content="https://shadowsofwar.io/assets/ui/sow-splash-desktop.webp">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://shadowsofwar.io/">
-    <meta property="twitter:title" content="Shadows of War - Epic Multiplayer Grand Strategy Game">
-    <meta property="twitter:description" content="Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser!">
+    <meta property="twitter:url" content="https://play.shadowsofwar.io/">
+    <meta property="twitter:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
+    <meta property="twitter:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
+    <meta property="twitter:image" content="https://shadowsofwar.io/assets/ui/sow-splash-desktop.webp">
 
+    <meta name="application-name" content="Shadows of War">
+    <meta property="og:site_name" content="Shadows of War">
     <meta name="theme-color" content="#000000">
-    <link rel="canonical" href="https://shadowsofwar.io/">
+    <link rel="canonical" href="https://play.shadowsofwar.io/">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
 
-    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> is injected here only by ./scripts/sow.sh package. Website/PTR ship nothing. -->
+    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by ./scripts/sow.sh package crazygames only. Poki loads SDK from the host frame — no script here. -->
 
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
@@ -157,9 +161,10 @@
 <body>
     <div id="web-loader" aria-live="polite" aria-busy="true"></div>
 
+    <!-- Portal store listings (Poki, CrazyGames, etc.) may scrape index.html for title/description. -->
     <div style="display: none;" aria-hidden="true">
         <h1>Shadows of War</h1>
-        <p>Command massive armies, conquer territories, and dominate your opponents in Shadows of War, an intense multiplayer grand strategy web game. Play instantly in your browser without any downloads. Join thousands of players in real-time tactical warfare, expand your empire, and prove your strategic supremacy.</p>
+        <p>Shadows of War is a free, open-source MMORTS strategy game on world maps. Play solo offline or join online multiplayer lobbies: lead civilizations, forge alliances, expand territory, and grow your economy in massive real-time battles. Free to play on CrazyGames, Poki, and shadowsofwar.io.</p>
     </div>
     <canvas id="blade" oncontextmenu="return false;"></canvas>
     <div id="version">v__VERSION__</div>
@@ -171,13 +176,18 @@
         /* Streamed maps/assets from prod nginx /maps and /assets (single source of truth). */
         window.SOW_MAPS_URL = window.SOW_MAPS_URL || "https://shadowsofwar.io/maps";
         window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "https://shadowsofwar.io/assets";
-        /* PORTAL_BOOT_SLOT: SOW_PORTAL/SOW_WS_URL overrides injected by CrazyGames package build. */
+        /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by ./scripts/sow.sh package (crazygames | poki). */
         (function () {
             var h = window.location.hostname;
+            var ref = document.referrer || "";
             if (h === "appassets.androidplatform.net") {
                 window.SOW_WS_URL = "wss://shadowsofwar.io/ws/";
             } else if (/crazygames\\.com$/i.test(h) || /dev-crazygames\\.com$/i.test(h)) {
                 window.SOW_PORTAL = window.SOW_PORTAL || "crazygames";
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+            } else if (/poki\\.com$/i.test(h) || /poki-gdn\\.com$/i.test(h) || /poki\\.io$/i.test(h)
+                || /poki\\.com/i.test(ref) || /poki-gdn\\.com/i.test(ref)) {
+                window.SOW_PORTAL = window.SOW_PORTAL || "poki";
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
             } else if (h === "play.shadowsofwar.io") {
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
@@ -188,9 +198,12 @@
     </script>
     <script type="module">
         async function run() {
-            var isPortal = window.SOW_PORTAL === "crazygames"
-                || /crazygames\\.com$/i.test(window.location.hostname)
-                || /dev-crazygames\\.com$/i.test(window.location.hostname);
+            var host = window.location.hostname;
+            var ref = document.referrer || "";
+            var isPortal = window.SOW_PORTAL === "crazygames" || window.SOW_PORTAL === "poki"
+                || /crazygames\\.com$/i.test(host) || /dev-crazygames\\.com$/i.test(host)
+                || /poki\\.com$/i.test(host) || /poki-gdn\\.com$/i.test(host) || /poki\\.io$/i.test(host)
+                || /poki\\.com/i.test(ref) || /poki-gdn\\.com/i.test(ref);
 
             if (typeof window.SOW_initPortalSdk === "function") {
                 await window.SOW_initPortalSdk();

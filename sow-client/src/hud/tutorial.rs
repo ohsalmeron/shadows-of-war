@@ -11,7 +11,7 @@ pub enum TutorialStep {
 
 impl SowApp {
     pub(crate) fn render_tutorial_ui(&mut self, ctx: &egui::Context) {
-        if self.ui.tutorial_completed {
+        if !self.ui.tutorial_active {
             return;
         }
 
@@ -28,7 +28,7 @@ impl SowApp {
                     && snap.attacks.iter().any(|a| a.owner_id == my_id)
                 {
                     self.ui.tutorial_step = TutorialStep::Complete;
-                    self.mark_tutorial_completed();
+                    self.end_tutorial_session();
                 }
             }
         }
@@ -112,7 +112,7 @@ impl SowApp {
                         .clicked()
                     {
                         self.ui.tutorial_step = TutorialStep::Complete;
-                        self.mark_tutorial_completed();
+                        self.end_tutorial_session();
                     }
                 });
             });
@@ -121,28 +121,12 @@ impl SowApp {
             if self.ui.tutorial_step == TutorialStep::Welcome {
                 self.ui.tutorial_step = TutorialStep::Expansion;
             } else if self.ui.tutorial_step == TutorialStep::Complete {
-                self.mark_tutorial_completed();
+                self.end_tutorial_session();
             }
         }
     }
 
-    fn mark_tutorial_completed(&mut self) {
-        self.ui.tutorial_completed = true;
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(window) = web_sys::window() {
-                if let Ok(Some(storage)) = window.local_storage() {
-                    let _ = storage.set_item("sow_tutorial_completed", "true");
-                }
-            }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let path = crate::paths::tutorial_completed_path();
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(path, "true");
-        }
+    fn end_tutorial_session(&mut self) {
+        self.ui.tutorial_active = false;
     }
 }

@@ -219,6 +219,15 @@ impl SowApp {
                                 self.ui.app.hud_state.selected_building_kind = None;
                             }
                         }
+
+                        // Deselect building/nuke tools (Escape exits browser fullscreen on portals).
+                        if code == winit::keyboard::KeyCode::KeyQ
+                            && (self.ui.app.hud_state.selected_building_kind.is_some()
+                                || self.ui.app.hud_state.selected_nuke_kind.is_some())
+                        {
+                            self.ui.app.hud_state.selected_building_kind = None;
+                            self.ui.app.hud_state.selected_nuke_kind = None;
+                        }
                     }
                 }
 
@@ -255,9 +264,9 @@ impl SowApp {
                                 repeat: false,
                                 modifiers: self.ui.raw_input.modifiers,
                             });
-                        } else if *named == winit::keyboard::NamedKey::Escape {
-                            self.ui.app.hud_state.selected_building_kind = None;
-                            self.ui.app.hud_state.selected_nuke_kind = None;
+                        } else if *named == winit::keyboard::NamedKey::Escape
+                            && self.ui.app.phase != ClientPhase::Playing
+                        {
                             self.ui.raw_input.events.push(egui::Event::Key {
                                 key: egui::Key::Escape,
                                 physical_key: None,

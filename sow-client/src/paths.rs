@@ -18,11 +18,6 @@ pub fn native_data_dir() -> PathBuf {
     PathBuf::from(".shadows-of-war")
 }
 
-/// Persisted tutorial completion flag (native).
-pub fn tutorial_completed_path() -> PathBuf {
-    native_data_dir().join("tutorial_completed")
-}
-
 /// Directory for cached `map.bin.br` payloads (native).
 pub fn map_cache_dir() -> PathBuf {
     native_data_dir().join("maps")

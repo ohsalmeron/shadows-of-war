@@ -28,7 +28,20 @@
     }
   }
 
+  function isOnPoki() {
+    if (window.SOW_PORTAL === "poki") {
+      return true;
+    }
+    var h = window.location.hostname || "";
+    if (/poki\.com$/i.test(h) || /poki-gdn\.com$/i.test(h) || /poki\.io$/i.test(h)) {
+      return true;
+    }
+    var ref = document.referrer || "";
+    return /poki\.com/i.test(ref) || /poki-gdn\.com/i.test(ref);
+  }
+
   window.SOW_isOnCrazyGames = isOnCrazyGames;
+  window.SOW_isOnPoki = isOnPoki;
 
   window.SOW_initPortalSdk = async function () {
     if (!isOnCrazyGames()) {
@@ -96,4 +109,18 @@
   };
 
   window.SOW_portalLoadStart();
+
+  // CrazyGames: avoid Ctrl/Cmd+W closing the tab while the game is fullscreen.
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (!document.fullscreenElement) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "w" || e.key === "W")) {
+        e.preventDefault();
+      }
+    },
+    true
+  );
 })();
