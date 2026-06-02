@@ -108,6 +108,15 @@ pub fn draw(
                         ui.label(body(line));
                         ui.add_space(8.0);
                     }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(body(&strings.assets_license));
+                        ui.add_space(4.0);
+                        ui.hyperlink_to(
+                            link("LICENSE-ASSETS"),
+                            &strings.assets_license_url,
+                        );
+                    });
+                    ui.add_space(8.0);
 
                     let tag = version_tag();
                     let tag_url = source_tag_url();

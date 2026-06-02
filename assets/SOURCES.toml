@@ -34,6 +34,7 @@ path = "assets/ui/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "Per tool Terms of Service — verify redistribution rights"
+status = "pending_tos_review"
 files = ["sow-splash-desktop.webp", "sow-splash-mobile.webp"]
 
 [loaders]
@@ -47,15 +48,19 @@ status = "themed_placeholder"
 path = "assets/avatars/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
-license = "Per tool Terms of Service — verify redistribution before store release"
-ai_dossier = "leaders.md (prompts and roster; provide to Poki/CrazyGames on request)"
+license = "CC-BY-SA-4.0"
+license_doc = "docs/legal/LICENSE-ASSETS"
+ai_dossier = "docs/leaders/README.md (prompts and roster; provide to Poki/CrazyGames on request)"
+notes = "Verify each AI tool ToS allows redistribution before store release."
 
 [leader_portraits]
 path = "assets/ui/leaders/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
-license = "Per tool Terms of Service — verify redistribution before store release"
-ai_dossier = "leaders.md"
+license = "CC-BY-SA-4.0"
+license_doc = "docs/legal/LICENSE-ASSETS"
+ai_dossier = "docs/leaders/README.md"
+notes = "Verify each AI tool ToS allows redistribution before store release."
 restored = [
   "alexander",
   "caesar",

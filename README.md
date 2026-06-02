@@ -29,23 +29,23 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-client` | Game executable (native + WASM) |
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
-| `sow-site` | Leptos SSR (landing + legal pages) |
+| `sow-web/site/` | Marketing site (static HTML: landing, privacy, terms) |
+| `sow-web/shell/` | Game shell (WASM loader, index template, portal SDK) |
 | `assets/` | All shipped art (maps, UI, icons, fonts) |
-| `web/` | Browser shell and portal SDK hooks |
 | `scripts/sow.sh` | Build, deploy, package |
 | `deploy/` | nginx VPS configs, Android/iOS shells, release keystore (local) |
-| `docs/` | CONTRIBUTING, legal notices, VFX notes, leader reference |
+| `docs/leaders/` | Leader AI dossier (12 regions, chronological); see `docs/leaders/README.md` |
 
 ## Web hosts
 
 | Host | Role |
 |------|------|
-| `shadowsofwar.io` | Leptos landing + legal (links to play subdomain) |
+| `shadowsofwar.io` | Static marketing site (links to play subdomain) |
 | `play.shadowsofwar.io` | Production game shell (auto-load WASM) |
 | `ptr.shadowsofwar.io` | Staging game shell |
 | `shadowsofwar.io/assets`, `/maps`, `/ws` | Shared CDN for all shells |
 
-Local dev: `./scripts/sow.sh site` (landing at :8787) and `./scripts/sow.sh play` (fullscreen game shell at :8080). The marketing site only links to the game; it does not embed WASM.
+Local dev: `./scripts/sow.sh site` (static `sow-web/site` at :8787) and `./scripts/sow.sh play` (fullscreen game shell at :8080 after `package`). The marketing site only links to the game; it does not embed WASM.
 
 Deploy: `./scripts/sow.sh cloud` (full), `cloud-game` (WASM + play host + backend), or `cloud-site` (SSR landing only). First-time play host needs DNS `play` → VPS, then `cloud-game` runs certbot for `play.shadowsofwar.io` if the certificate is missing.
 
@@ -53,9 +53,19 @@ Deploy: `./scripts/sow.sh cloud` (full), `cloud-game` (WASM + play host + backen
 
 Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](docs/legal/COPYRIGHT) and [NOTICE](docs/legal/NOTICE).
+Copyright holder and third-party notices: [docs/legal/COPYRIGHT](docs/legal/COPYRIGHT) and [docs/legal/NOTICE](docs/legal/NOTICE).
 
-**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront LLC and Contributors, AGPL-3.0-or-later). Required notices appear in [NOTICE](docs/legal/NOTICE) and in-game **Credits**—not in game marketing. See [LICENSE](LICENSE) for full terms.
+**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront Inc. and Contributors, AGPL-3.0-or-later). See [LICENSE](LICENSE) for full terms.
+
+### Attribution policy
+
+| Surface | What to show |
+|---------|----------------|
+| In-game UI | `© Shadows of War`, AGPL line, **Based on OpenFront**, links to source and [NOTICE](docs/legal/NOTICE) (Credits modal + main menu) |
+| Marketing site (`sow-web/site/`) | Brand footer + OpenFront + AGPL + source link — no personal name |
+| Repo legal files (`docs/legal/`) | Full copyright holder name (required when conveying source) |
+
+Do not put the copyright holder’s personal name on marketing copy, social bios, or landing hero text.
 
 ## Contributing
 

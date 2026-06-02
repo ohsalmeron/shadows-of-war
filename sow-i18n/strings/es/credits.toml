@@ -4,9 +4,11 @@ close = "CERRAR"
 
 based_on_short = "Basado en OpenFront"
 
-copyright_sow = "Shadows of War — Copyright (c) Omar Hernandez Salmeron"
+copyright_sow = "© Shadows of War"
 license_agpl = "Licenciado bajo GNU Affero General Public License v3.0 o posterior (AGPL-3.0-or-later)"
 based_on = "Basado en OpenFront (https://openfront.io) — © OpenFront and Contributors"
+assets_license = "Retratos de líderes y avatares en el repositorio: CC BY-SA 4.0"
+assets_license_url = "https://github.com/ohsalmeron/shadows-of-war/blob/master/docs/legal/LICENSE-ASSETS"
 source_label = "Código fuente"
 privacy_label = "Privacidad"
 notice = "Avisos de terceros:"

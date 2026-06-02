@@ -11,7 +11,8 @@ Derivative work
 ---------------
 
 Incorporates OpenFront (https://openfront.io, https://github.com/openfrontio/OpenFrontIO).
-Copyright (c) OpenFront LLC and Contributors. AGPL-3.0-or-later.
+Copyright (c) OpenFront Inc. and Contributors. AGPL-3.0-or-later.
+Player-facing UI uses "OpenFront and Contributors" per upstream; legal entity per openfrontio/OpenFrontIO LICENSING.md.
 
 
 Map tooling
@@ -25,7 +26,9 @@ Other components
 ----------------
 
 Fonts: SIL Open Font License — assets/fonts/
-Art and maps: assets/SOURCES.toml, assets/maps/SOURCES.toml
+Shipped leader portraits and avatars: CC BY-SA 4.0 — docs/legal/LICENSE-ASSETS
+Other art: assets/SOURCES.toml (per-section license)
+Maps: assets/maps/SOURCES.toml
 Rust dependency licenses: docs/legal/NOTICE.deps (run ./scripts/generate_notice_deps.sh)
 
 

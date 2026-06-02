@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 export CARGO_TARGET_DIR="${ROOT}/target"
+SOW_WEB_SHELL="${ROOT}/sow-web/shell"
+SOW_WEB_SITE="${ROOT}/sow-web/site"
 
 usage() {
   cat <<EOF
@@ -14,9 +16,9 @@ Usage: ./scripts/sow.sh <command> [args]
   ptr|p              Deploy staging web to ptr.shadowsofwar.io
   cloud|c            Deploy production (game + site + backend)
   cloud-game         Deploy play shell + WASM + assets + backend only
-  cloud-site         Deploy sow-site SSR + marketing nginx only
+  cloud-site         Deploy sow-web/site static marketing + nginx only
   package|pkg [portal]  Build dist/game-shell/ + portal zip (default: crazygames)
-  site               Run sow-site SSR locally (landing + legal pages)
+  site               Serve sow-web/site locally (landing + legal pages)
   play [port]        Serve game shell locally (default port 8080)
   android|a [native|n|webview|w]
 
@@ -110,10 +112,10 @@ sow_assemble_game_shell() {
   wasm_bindgen_bin=$(find_wasm_bindgen)
   "${wasm_bindgen_bin}" --out-dir "${play}" --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
   stage_core_assets "${play}"
-  cp -a web/favicon_io/* "${play}/" 2>/dev/null || true
-  cp web/sow.svg "${play}/sow.svg"
-  mkdir -p "${play}/sdk" && cp -a web/sdk/. "${play}/sdk/"
-  build_index_html "${ROOT}/web/index.html.template" "${play}/index.html" "${CLEAN_VERSION}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
+  cp -a "${SOW_WEB_SHELL}/favicon_io/"* "${play}/" 2>/dev/null || true
+  cp "${SOW_WEB_SHELL}/sow.svg" "${play}/sow.svg"
+  mkdir -p "${play}/sdk" && cp -a "${SOW_WEB_SHELL}/sdk/." "${play}/sdk/"
+  build_index_html "${SOW_WEB_SHELL}/index.html.template" "${play}/index.html" "${CLEAN_VERSION}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
   [[ "${portal}" == "crazygames" ]] && inject_crazygames_portal "${play}/index.html"
   minify_js_shim "${play}/${JS_FILE}"
   optimize_wasm_bundle "${play}/${WASM_FILE}"
@@ -125,10 +127,10 @@ sow_assemble_game_shell() {
   fi
   sed -e "s/__VERSION__/${CLEAN_VERSION}/g" -e "s/__JS_FILE__/${JS_FILE}/g" \
     -e "s/__WASM_FILE__/${WASM_FILE}/g" -e "s/__BUILD_TS__/${BUILD_TS}/g" \
-    "${ROOT}/web/sw.js.template" > "${play}/sw.js"
+    "${SOW_WEB_SHELL}/sw.js.template" > "${play}/sw.js"
   prune_querystring_artifacts "${play}"
   mkdir -p "${ROOT}/dist"
-  cp web/sow.svg "${ROOT}/dist/sow.svg"
+  cp "${SOW_WEB_SHELL}/sow.svg" "${ROOT}/dist/sow.svg"
   write_game_manifest "${play}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
   echo "Bundle sizes: ${WASM_FILE}=$(( $(stat -c%s "${play}/${WASM_FILE}") / 1024 )) KB, ${JS_FILE}=$(( $(stat -c%s "${play}/${JS_FILE}") / 1024 )) KB"
 }
@@ -139,50 +141,6 @@ write_game_manifest() {
 {"js":"${js}","wasm":"${wasm}","build_ts":"${ts}","version":"${CLEAN_VERSION}"}
 EOF
 }
-
-sow_build_site() {
-  echo "==> Compiling sow-site (SSR)..."
-  if cargo build --release -p sow-site --target x86_64-unknown-linux-musl 2>/dev/null; then
-    SITE_BIN="${CARGO_TARGET_DIR}/x86_64-unknown-linux-musl/release/sow-site"
-  else
-    cargo build --release -p sow-site
-    SITE_BIN="${CARGO_TARGET_DIR}/release/sow-site"
-  fi
-}
-
-deploy_sow_site_systemd() {
-  local u="$1" h="$2" unit="$3" listen="$4" workdir="$5" bin_remote="$6"
-  local unit_file="${unit%.service}.service"
-  ssh "${u}@${h}" "mkdir -p '${workdir}'"
-  rsync -avz "${SITE_BIN}" "${u}@${h}:${bin_remote}"
-  ssh "${u}@${h}" "UNIT='${unit_file}' LISTEN='${listen}' WORKDIR='${workdir}' BIN='${bin_remote}' bash -s" <<'REMOTE'
-set -euo pipefail
-cat << SYSTEMD | sudo tee "/etc/systemd/system/${UNIT}" > /dev/null
-[Unit]
-Description=Shadows of War SSR site
-After=network.target
-
-[Service]
-Type=simple
-User=bizkit
-WorkingDirectory=${WORKDIR}
-Environment="SOW_SITE_LISTEN=${LISTEN}"
-ExecStart=${BIN}
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-SYSTEMD
-sudo rm -f "/etc/systemd/system/${UNIT%.service}"
-sudo systemctl daemon-reload
-sudo systemctl enable --now "${UNIT}"
-sudo systemctl restart "${UNIT}"
-systemctl is-active --quiet "${UNIT}"
-echo "✅ ${UNIT} running on ${LISTEN}"
-REMOTE
-}
-
 
 # Deploy environment checks (sourced by cloud.sh / ptr.sh).
 
@@ -442,7 +400,7 @@ verify_marketing_landing_only() {
   echo "${html}" | grep -q 'play.shadowsofwar.io' \
     || { echo "❌ marketing page missing play subdomain link"; return 1; }
   curl -fsS "${marketing_url}/health" | grep -qi '^ok$' \
-    || { echo "❌ sow-site /health failed"; return 1; }
+    || { echo "❌ marketing /health failed"; return 1; }
   echo "✅ Marketing host is landing-only"
 }
 
@@ -582,10 +540,10 @@ copy_web_loader_assets() {
     copy_leader_portraits "${dest}/leaders"
 }
 
-# Inline web/loader.js into the loader marker of a built dist/index.html.
+# Inline sow-web/shell/loader.js into the loader marker of a built dist/index.html.
 inline_loader_into_index() {
     local html_path="$1"
-    python3 - "${ROOT}/web/loader.js" "${html_path}" <<'PY'
+    python3 - "${SOW_WEB_SHELL}/loader.js" "${html_path}" <<'PY'
 import sys
 from pathlib import Path
 
@@ -608,7 +566,7 @@ html_path.write_text(html, encoding="utf-8")
 PY
 }
 
-# Render web/index.html.template -> dist/index.html with build tokens, then inline loader.js.
+# Render sow-web/shell/index.html.template -> dist/index.html with build tokens, then inline loader.js.
 # Portal SDK / boot vars are NOT templated here (one HTML for website + PTR + CrazyGames base).
 # CrazyGames-only injection is handled separately by inject_crazygames_portal.
 build_index_html() {
@@ -736,13 +694,11 @@ cmd_cloud_game() {
 }
 
 _deploy_cloud_site() {
-  sow_build_site
   local u=bizkit h=35.239.160.167
   cleanup_legacy_marketing_static "${u}" "${h}"
-  rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/shadowsofwar.io/html/sow.svg"
+  ssh "${u}@${h}" "sudo systemctl disable --now sow-site 2>/dev/null || true"
+  rsync -avz --delete "${SOW_WEB_SITE}/" "${u}@${h}:/var/www/shadowsofwar.io/html/"
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" "${ROOT}/deploy/nginx/shadowsofwar.io.conf"
-  deploy_sow_site_systemd "${u}" "${h}" "sow-site" "127.0.0.1:8787" \
-    "/home/bizkit/shadowsofwar" "/home/bizkit/shadowsofwar/sow-site"
   verify_marketing_landing_only "https://shadowsofwar.io"
   echo "Site deployed v${CLEAN_VERSION} -> https://shadowsofwar.io/"
 }
@@ -818,9 +774,10 @@ SYSTEMD"
 }
 
 cmd_site() {
-  echo "==> sow-site SSR on http://127.0.0.1:8787 (Ctrl+C to stop)"
+  echo "==> Marketing site (sow-web/site) on http://127.0.0.1:8787 — refresh browser after edits"
   echo "    Game shell: ./scripts/sow.sh play  ->  http://127.0.0.1:8080/"
-  cargo run -p sow-site
+  cd "${SOW_WEB_SITE}"
+  python3 -m http.server 8787
 }
 
 cmd_play() {
@@ -1062,7 +1019,7 @@ EOF
   # Compile HTML template
   CLEAN_VERSION=$(cat "${ROOT}/.version" 2>/dev/null || echo "0.1.0")
   BUILD_TS=$(date +%s)
-  LOADER_TEMPLATE="${ROOT}/web/index.html.template"
+  LOADER_TEMPLATE="${SOW_WEB_SHELL}/index.html.template"
   [[ -f "${LOADER_TEMPLATE}" ]] || fail "HTML template missing: ${LOADER_TEMPLATE}"
 
   sed -e "s/__VERSION__/${CLEAN_VERSION}/g" \
@@ -1071,7 +1028,7 @@ EOF
       -e "s/__BUILD_TS__/${BUILD_TS}/g" \
       "${LOADER_TEMPLATE}" > "${ASSETS_DIR}/index.html"
 
-  python3 - "${ROOT}/web/loader.js" "${ASSETS_DIR}/index.html" <<'PY'
+  python3 - "${SOW_WEB_SHELL}/loader.js" "${ASSETS_DIR}/index.html" <<'PY'
 import sys
 from pathlib import Path
 loader = Path(sys.argv[1])
@@ -1085,7 +1042,7 @@ html_path.write_text(html.replace(marker, js, 1), encoding="utf-8")
 PY
 
   stage_core_assets "${ASSETS_DIR}"
-  cp "${ROOT}/web/sow.svg" "${ASSETS_DIR}/sow.svg" || true
+  cp "${SOW_WEB_SHELL}/sow.svg" "${ASSETS_DIR}/sow.svg" || true
 
   cyan "📦 Compiling Android WebView App..."
   cd "${ROOT}/deploy/android"
@@ -1140,8 +1097,8 @@ main() {
     cloud-game)     cmd_cloud_game "$@" ;;
     cloud-site)     cmd_cloud_site "$@" ;;
     package|pkg) cmd_package "$@" ;;
-    site)    cmd_site "$@" ;;
-    play)    cmd_play "$@" ;;
+    site)   cmd_site "$@" ;;
+    play)   cmd_play "$@" ;;
     a|android)
       case "${1:-native}" in
         n|native)  shift || true; cmd_android native "$@" ;;

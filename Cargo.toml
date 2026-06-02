@@ -10,7 +10,6 @@ members = [
     "sow-relay",
     "sow-i18n",
     "sow-map",
-    "sow-site",
 ]
 exclude = ["blade", "winit", "egui"]
 resolver = "2"

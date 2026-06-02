@@ -1,0 +1,40 @@
+# Shadows of War — Asset License
+
+Game **code** is licensed under AGPL-3.0-or-later (see LICENSE at repo root).
+
+The following **art assets** in this repository are licensed under the
+[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)
+(CC BY-SA 4.0), unless marked otherwise in `assets/SOURCES.toml`:
+
+- `assets/ui/leaders/` — leader portrait images
+- `assets/avatars/` — player avatar images
+
+Copyright (c) 2024–2026 Omar Hernandez Salmeron (Shadows of War).
+
+## You may
+
+- Share and adapt the assets for any purpose, including commercially
+- Use them in forks and mods, provided you follow CC BY-SA 4.0
+
+## You must
+
+- Give appropriate credit (attribution)
+- Indicate if changes were made
+- Distribute derivatives under the same license (ShareAlike)
+
+## Suggested attribution
+
+> © Shadows of War — leader portrait (CC BY-SA 4.0)
+
+## AI-generated assets
+
+Files listed under `[avatars]` and `[leader_portraits]` in `assets/SOURCES.toml`
+were produced with AI tools. Redistribution under CC BY-SA 4.0 assumes the
+copyright holder has rights to license those outputs per each tool’s terms of
+service. Assets marked with a pending ToS review in SOURCES.toml are not
+licensed for redistribution until confirmed.
+
+## Other assets
+
+Fonts, placeholders, icons, and maps may use different licenses — see
+`assets/SOURCES.toml`, `assets/maps/SOURCES.toml`, and docs/legal/NOTICE.
