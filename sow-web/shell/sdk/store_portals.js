@@ -129,8 +129,13 @@
     }
   };
 
+  // Midgame ads are for Full Launch only. Basic Launch forbids ads (see bannersDisabledBasicLaunch).
+  function portalAdsEnabled() {
+    return window.SOW_ENABLE_PORTAL_ADS === true;
+  }
+
   function requestCrazyGamesMidgameAd() {
-    if (!crazyGamesSdkReady() || window.SOW_adPlaying) {
+    if (!portalAdsEnabled() || !crazyGamesSdkReady() || window.SOW_adPlaying) {
       return;
     }
     var ad = window.CrazyGames.SDK.ad;

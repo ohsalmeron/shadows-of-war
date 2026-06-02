@@ -701,15 +701,12 @@ cmd_package() {
   esac
   sow_compile_wasm_release
   sow_assemble_game_shell "${portal}"
-  local z="shadows-of-war-${portal}.zip"
-  rm -f "${ROOT}/${z}"
-  (cd "${ROOT}/dist/game-shell" && zip -r -q "../../${z}" .)
-  echo "Portal package: ${ROOT}/${z} ($(du -sh "${ROOT}/${z}" | cut -f1))"
+  echo "Portal package ready: ${ROOT}/dist/game-shell/ ($(du -sh "${ROOT}/dist/game-shell" | cut -f1))"
   if [[ -f "${ROOT}/dist/game-shell/"*_bg.wasm.br ]]; then
     echo "WASM .br: $(du -sh "${ROOT}"/dist/game-shell/*_bg.wasm.br | cut -f1)"
   fi
   echo ""
-  echo "CrazyGames upload: drag ALL files inside dist/game-shell/ (not the .zip)."
+  echo "Portal upload: select ALL files and folders inside dist/game-shell/ (index.html at upload root)."
   echo "  ${ROOT}/dist/game-shell/"
   print_agpl_release_steps
 }

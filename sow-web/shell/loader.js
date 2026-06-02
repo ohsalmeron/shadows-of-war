@@ -46,7 +46,7 @@
         img.onerror = function () {
             attempt += 1;
             if (attempt < variants.length) {
-                img.src = assetUrl(variants[attempt]);
+                setImgSrc(img, assetUrl(variants[attempt]));
             }
         };
     }
@@ -57,6 +57,28 @@
             return path + '?v=' + encodeURIComponent(v);
         }
         return path;
+    }
+
+    function isCrossOriginAssetUrl(url) {
+        try {
+            const resolved = new URL(url, window.location.href);
+            return resolved.origin !== window.location.origin;
+        } catch {
+            return false;
+        }
+    }
+
+    /** Set src after crossOrigin so CDN boot art can be read in canvas (portal iframe). */
+    function setImgSrc(img, url) {
+        if (!img || !url) {
+            return;
+        }
+        if (isCrossOriginAssetUrl(url)) {
+            img.crossOrigin = 'anonymous';
+        } else {
+            img.removeAttribute('crossorigin');
+        }
+        img.src = url;
     }
 
     let root = null;
@@ -125,8 +147,17 @@
             loaderText.style.fontSize = cfg.textSizePx + 'px';
             loaderText.style.marginTop = cfg.textNudgePx + 'px';
         }
-        if (splashBg && splashBg.src !== new URL(splashSrc(), window.location.href).href) {
-            splashBg.src = splashSrc();
+        if (splashBg) {
+            const nextSplash = splashSrc();
+            let current = '';
+            try {
+                current = splashBg.src;
+            } catch {
+                current = '';
+            }
+            if (current !== new URL(nextSplash, window.location.href).href) {
+                setImgSrc(splashBg, nextSplash);
+            }
         }
     }
 
@@ -182,6 +213,9 @@
         barFull = document.getElementById('loader-bar-full');
         loaderText = document.getElementById('loader-text');
 
+        for (const img of root.querySelectorAll('img[src]')) {
+            setImgSrc(img, img.getAttribute('src'));
+        }
         for (const [id, file] of [
             ['splash-bg', isMobile() ? 'sow-splash-mobile.webp' : 'sow-splash-desktop.webp'],
             ['splash-desktop', 'sow-splash-desktop.webp'],
@@ -243,12 +277,16 @@
         canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
-        const data = ctx.getImageData(0, 0, w, h);
-        return {
-            width: w,
-            height: h,
-            rgba: new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength),
-        };
+        try {
+            const data = ctx.getImageData(0, 0, w, h);
+            return {
+                width: w,
+                height: h,
+                rgba: new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength),
+            };
+        } catch {
+            return null;
+        }
     }
 
     /** Snapshot boot loader images for egui enter/exit splashes (called from WASM before fade). */

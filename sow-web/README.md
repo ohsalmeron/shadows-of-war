@@ -34,9 +34,7 @@ Build the CrazyGames shell (injects SDK v3 + `SOW_PORTAL=crazygames` boot vars):
 ./scripts/sow.sh package crazygames
 ```
 
-**CrazyGames upload:** the dev portal does **not** accept `.zip` files. Drag the **contents** of `dist/game-shell/` into the upload zone (must include `index.html` at the root of the upload). Select all files and folders inside `dist/game-shell/` (Ctrl+A in your file manager), not the parent folder name alone.
-
-A convenience zip is also written to `shadows-of-war-crazygames.zip` (backup / Poki-style hosts only).
+**CrazyGames upload:** the dev portal does **not** accept `.zip` files. `./scripts/sow.sh package crazygames` writes only to `dist/game-shell/`. Select every file and folder inside that directory (Ctrl+A) and upload them so `index.html` is at the upload root—not the `game-shell` folder name alone.
 
 **Before submit — manual QA**
 
@@ -44,7 +42,10 @@ A convenience zip is also written to `shadows-of-war-crazygames.zip` (backup / P
 |-------|----------------|
 | Boot | `SOW_initPortalSdk()` → `SOW_portalLoadStart` → WASM loads → `load_stop` when main menu appears |
 | SDK init | Console shows `CrazyGames SDK init OK (env=…)`; `crazygames-sdk-v3.js` in built `index.html` head (no `async`) |
-| Gameplay ads | `gameplayStart` when entering a match; `gameplayStop` when returning to main menu |
+| First gameplay start (QA auto) | In preview, start **solo skirmish** or **tutorial** once after main menu — `gameplayStart` only fires on match enter, not on menu |
+| Loading start/stop (QA auto) | Console: SDK loading start/stop before main menu |
+| Basic Launch ads | No `requestAd` until Full Launch (`SOW_ENABLE_PORTAL_ADS` stays off); `hasAdblock` still runs |
+| Gameplay hooks | `gameplayStart` when entering a match; `gameplayStop` when returning to main menu |
 | Service worker | Not registered on portal hosts (shell skips SW when `SOW_PORTAL` or crazygames hostname) |
 | Solo | Single-player skirmish works offline |
 | Multiplayer | Main menu connects to `wss://shadowsofwar.io/ws/`; can join a lobby |
