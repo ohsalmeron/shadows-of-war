@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Regenerate legal/NOTICE.deps from Cargo.lock (third-party Rust crates only).
+# Regenerate docs/legal/NOTICE.deps from Cargo.lock (third-party Rust crates only).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/legal/NOTICE.deps"
+OUT="$ROOT/docs/legal/NOTICE.deps"
 
 python3 - "$ROOT" "$OUT" <<'PY'
 import json

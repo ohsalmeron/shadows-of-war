@@ -1145,7 +1145,7 @@ pub(crate) fn render(
                         ui.cached_hovered_building_id = Some(b_id);
                         ui.cached_hovered_building_level = b.active_level;
                         let lang = ui.app.settings_state.language;
-                        let s = &sow_lang::get(lang).hud;
+                        let s = &sow_i18n::get(lang).hud;
                         ui.cached_hovered_building_tooltip = match b.kind {
                             sow_core::game::BuildingKind::Bunker => {
                                 let stat1 = s.build_bunker_coverage.replace(

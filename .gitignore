@@ -9,7 +9,7 @@ resources/.DS_Store
 .env*
 OpenFrontIO/
 MapGenerator/
-keystores/
+deploy/keystores/
 sow-client/signing.local.toml
 .DS_Store
 .clinic/
@@ -38,5 +38,5 @@ dist/
 dist-wasm-size-check/
 winit/
 egui/
-android/
+deploy/android/
 shadows-of-war*/

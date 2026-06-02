@@ -9,9 +9,9 @@ pub fn draw_queue_overlay(
     action_min_h: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let compact = super::lobby_compact_layout(ui.ctx());
 
     // Get lobby information
@@ -146,7 +146,7 @@ pub fn draw_queue_overlay(
             // 3. Bottom Button Area
             ui.add_space(8.0);
             ui.vertical_centered(|ui| {
-                let cancel = crate::widgets::ThemeButton::new(&sow_lang::get(lang).main_menu.leave_lobby)
+                let cancel = crate::widgets::ThemeButton::new(&sow_i18n::get(lang).main_menu.leave_lobby)
                     .style(crate::widgets::ThemeButtonStyle::Danger)
                     .min_size(egui::vec2(200.0, action_min_h));
                 if ui.add(cancel).clicked() {
@@ -163,9 +163,9 @@ fn draw_map_briefing(
     lobby: &sow_core::protocol::LobbyInfo,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     is_mobile: bool,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     Frame::NONE
         .fill(crate::ui::theme::nickname_field_bg())
         .stroke(Stroke::new(
@@ -347,9 +347,9 @@ fn draw_ready_room(
     ui: &mut Ui,
     lobby: &sow_core::protocol::LobbyInfo,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     Frame::NONE
         .fill(crate::ui::theme::nickname_field_bg())
         .stroke(Stroke::new(

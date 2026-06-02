@@ -27,14 +27,8 @@
         },
     };
 
-    function assetBase() {
-        const b = window.SOW_LOADER_BASE;
-        if (!b) return './';
-        return b.endsWith('/') ? b : b + '/';
-    }
-
     function assetPath(file) {
-        return assetBase() + 'assets/ui/' + file;
+        return './assets/ui/' + file;
     }
 
     function assetUrl(path) {
@@ -84,11 +78,6 @@
     }
 
     function stageSize() {
-        const stage = document.getElementById('game-stage');
-        if (stage) {
-            const r = stage.getBoundingClientRect();
-            return { w: r.width, h: r.height };
-        }
         return { w: window.innerWidth, h: window.innerHeight };
     }
 
@@ -132,7 +121,7 @@
     function startProgress() {
         if (!barFill) return;
         const t0 = performance.now();
-        const durationMs = 12000;
+        const durationMs = 2500;
 
         function tick(now) {
             if (!barFill || finishing) return;
@@ -147,16 +136,12 @@
         rafId = requestAnimationFrame(tick);
     }
 
-    function loaderHost() {
-        return document.getElementById('game-stage') || document.body;
-    }
-
     function buildDom() {
         root = document.getElementById('web-loader');
         if (!root) {
             root = document.createElement('div');
             root.id = 'web-loader';
-            loaderHost().appendChild(root);
+            document.body.appendChild(root);
         }
 
         root.innerHTML = `
@@ -301,7 +286,7 @@
     window.exportWebLoaderTextures = exportWebLoaderTextures;
     window.SOW_initWebLoader = initWebLoader;
 
-    // CrazyGames /play/ shell: #web-loader exists in HTML and auto-starts.
+    // Game shell (play subdomain / portal): #web-loader in index.html auto-starts.
     if (document.getElementById('web-loader')) {
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initWebLoader);

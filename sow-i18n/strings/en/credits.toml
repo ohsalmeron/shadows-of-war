@@ -10,6 +10,6 @@ based_on = "Based on OpenFront (https://openfront.io) — © OpenFront and Contr
 source_label = "Source"
 privacy_label = "Privacy"
 notice = "Third-party notices:"
-notice_url = "https://github.com/ohsalmeron/shadows-of-war/blob/master/legal/NOTICE"
+notice_url = "https://github.com/ohsalmeron/shadows-of-war/blob/master/docs/legal/NOTICE"
 source = "https://github.com/ohsalmeron/shadows-of-war"
 privacy = "https://shadowsofwar.io/privacy"

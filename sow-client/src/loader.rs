@@ -260,7 +260,11 @@ impl SowApp {
                         .asset_loader
                         .ensure_ui_assets_loaded(&self.ui.egui_ctx);
 
-                    let boot_ready = !self.ui.app.asset_loader.avatars.is_empty()
+                    let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
+                    #[cfg(target_arch = "wasm32")]
+                    let boot_ready = avatars_ready;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let boot_ready = avatars_ready
                         && self.ui.app.asset_loader.ui_splash_ready()
                         && self.ui.app.asset_loader.default_leader_ready();
 

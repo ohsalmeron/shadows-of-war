@@ -34,7 +34,7 @@ osm = [
 
 [dependencies]
 sow-core = { workspace = true }
-sow-lang = { workspace = true }
+sow-i18n = { workspace = true }
 log = { workspace = true }
 bincode.workspace = true
 crossbeam-channel = { workspace = true }

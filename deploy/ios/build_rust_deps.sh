@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Rust binary for the active Xcode SDK (device or simulator), then
 # `lipo`s per-arch artifacts into the path Xcode expects as the app executable.
-# Open: shadows-of-war/ios/sow_ios.xcodeproj
+# Open: shadows-of-war/deploy/ios/sow_ios.xcodeproj
 
 set -eux
 
@@ -49,7 +49,7 @@ for arch in $ARCHS; do
       ;;
   esac
 
-  REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
   cargo build $RELFLAG --target "$TARGET" --bin sow-client --manifest-path "$REPO_ROOT/Cargo.toml"
 
   EXECUTABLES="$EXECUTABLES $DERIVED_FILE_DIR/cargo/$TARGET/$PROFILE/sow-client"

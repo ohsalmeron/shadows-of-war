@@ -179,7 +179,7 @@ fn draw_menu_right_panel_contents(
     compact: bool,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
     let version = format!("v{}", include_str!("../../../../.version").trim());
 
@@ -209,8 +209,8 @@ fn draw_menu_right_panel_contents(
     );
 
     ui.add_space(section_gap);
-    let strings = &sow_lang::get(lang).main_menu;
-    let credits = &sow_lang::get(lang).credits;
+    let strings = &sow_i18n::get(lang).main_menu;
+    let credits = &sow_i18n::get(lang).credits;
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new(version)
@@ -250,7 +250,7 @@ fn draw_menu_right_panel(
     compact: bool,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
     if compact {
         draw_menu_right_panel_contents(
@@ -282,7 +282,7 @@ fn draw_menu_right_panel(
 fn draw_map_download_indicator(
     ctx: &egui::Context,
     state: &MainMenuState,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
     compact: bool,
 ) {
     if !state.is_downloading_map {
@@ -292,7 +292,7 @@ fn draw_map_download_indicator(
         .downloading_map_name
         .as_deref()
         .unwrap_or("map");
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let label = strings
         .downloading_map
         .replacen("{}", map_name, 1)
@@ -324,14 +324,14 @@ fn draw_map_download_indicator(
 fn draw_connecting_indicator(
     ctx: &egui::Context,
     state: &MainMenuState,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
     compact: bool,
 ) {
     if state.is_connected {
         return;
     }
 
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let pad_x = if compact { 24.0 } else { 20.0 };
     let pad_y = if compact { 56.0 } else { 20.0 };
 
@@ -360,7 +360,7 @@ pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
@@ -368,7 +368,7 @@ pub fn draw(
     let section_gap = if compact { 12.0 } else { 16.0 };
 
     let action_min_h = if compact { 64.0 } else { 72.0 };
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
 
     CentralPanel::default()
         .frame(

@@ -1,5 +1,5 @@
 use egui::Color32;
-use sow_lang::Language;
+use sow_i18n::Language;
 
 const FADEIN_DURATION: f64 = 0.25;
 const FADEOUT_DURATION: f64 = 0.25;
@@ -270,7 +270,7 @@ pub fn draw(
             format!("{} — {}%", phase, pct)
         }
     } else {
-        format!("{} {}%", sow_lang::get(lang).loading_screen.loading, pct)
+        format!("{} {}%", sow_i18n::get(lang).loading_screen.loading, pct)
     };
 
     crate::ui::theme::outlined_text(

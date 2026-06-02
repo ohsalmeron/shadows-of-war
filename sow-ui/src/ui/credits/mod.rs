@@ -1,7 +1,7 @@
 use crate::UiAction;
 use crate::ui::theme::{accent_solo_cyan, text_secondary};
 use egui::{Align, Color32, Layout, RichText, ScrollArea};
-use sow_lang::Language;
+use sow_i18n::Language;
 
 fn version_tag() -> String {
     format!("v{}", include_str!("../../../../.version").trim())
@@ -24,7 +24,7 @@ pub fn draw(
         return None;
     }
 
-    let strings = &sow_lang::get(lang).credits;
+    let strings = &sow_i18n::get(lang).credits;
     let mut action = None;
     let compact = root_ui.ctx().content_rect().width() < 768.0;
     let panel_w = if compact {

@@ -667,7 +667,7 @@ impl MapEditorSession {
         let (lw, lh) = self.logical_screen();
         self.camera_x = lw * 0.5 - (self.width as f32 * 0.5) * self.camera_zoom;
         self.camera_y = lh * 0.5 - (self.height as f32 * 0.5) * self.camera_zoom;
-        let msg = sow_lang::get(self.client_app.settings_state.language)
+        let msg = sow_i18n::get(self.client_app.settings_state.language)
             .map_editor
             .msg_blank_created
             .clone();
@@ -934,7 +934,7 @@ impl MapEditorSession {
     #[cfg(feature = "osm")]
     fn generate_from_osm(&mut self) {
         let lang = self.client_app.settings_state.language;
-        let strings = &sow_lang::get(lang).map_editor;
+        let strings = &sow_i18n::get(lang).map_editor;
 
         let Some((x0, y0, size)) = self.selection_world_square() else {
             self.notify_error(&strings.msg_osm_no_selection);
@@ -1129,7 +1129,7 @@ impl MapEditorSession {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn write_map_package_native(&mut self, artifacts: MapExportArtifacts, strings: &sow_lang::MapEditorStrings) {
+    fn write_map_package_native(&mut self, artifacts: MapExportArtifacts, strings: &sow_i18n::MapEditorStrings) {
         let maps_root = Self::maps_root();
         let out_dir = maps_root.join(&artifacts.slug);
         if let Err(e) = std::fs::create_dir_all(&out_dir) {
@@ -1168,7 +1168,7 @@ impl MapEditorSession {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn download_map_package_wasm(&mut self, artifacts: MapExportArtifacts, strings: &sow_lang::MapEditorStrings) {
+    fn download_map_package_wasm(&mut self, artifacts: MapExportArtifacts, strings: &sow_i18n::MapEditorStrings) {
         let prefix = &artifacts.slug;
         crate::wasm_export::trigger_download(
             &format!("{prefix}/map.bin"),
@@ -1188,7 +1188,7 @@ impl MapEditorSession {
     fn export_map_package(&mut self) {
         log::info!("Compiling map package from editor...");
         let lang = self.client_app.settings_state.language;
-        let strings = &sow_lang::get(lang).map_editor;
+        let strings = &sow_i18n::get(lang).map_editor;
 
         self.editor_ui.exporting = true;
         self.editor_ui.busy_message = Some(strings.msg_compiling.clone());
@@ -1333,13 +1333,13 @@ impl MapEditorSession {
                     name: format!("Nation {}", idx),
                     flag: "🏳".to_string(),
                 });
-                self.notify_info(&sow_lang::get(lang).map_editor.msg_spawn_placed);
+                self.notify_info(&sow_i18n::get(lang).map_editor.msg_spawn_placed);
                 self.mark_dirty();
             }
             sow_ui::ui::map_editor::MapEditorAction::RemoveSpawn(idx) => {
                 self.push_undo_snapshot();
                 self.editor_ui.spawns.remove(idx);
-                self.notify_info(&sow_lang::get(lang).map_editor.msg_spawn_removed);
+                self.notify_info(&sow_i18n::get(lang).map_editor.msg_spawn_removed);
                 self.mark_dirty();
             }
             sow_ui::ui::map_editor::MapEditorAction::EnterOsmPicker => {

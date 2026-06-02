@@ -204,9 +204,9 @@ pub fn draw_map_editor(
     state: &mut MapEditorUiState,
     viewport: MapEditorViewport,
     osm_view: Option<&OsmPickerView>,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) -> MapEditorAction {
-    let strings = &sow_lang::get(lang).map_editor;
+    let strings = &sow_i18n::get(lang).map_editor;
     let compact = crate::ui::theme::compact_viewport(ctx);
     let busy = state.is_busy();
     let mut action = MapEditorAction::None;

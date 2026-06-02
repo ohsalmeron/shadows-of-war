@@ -153,7 +153,7 @@ impl SowApp {
                             if owner != 0 && owner != my_id && is_allied {
                                 let lang = self.ui.app.settings_state.language;
                                 self.ui.app.hud_state.show_error = Some(
-                                    sow_lang::get(lang).hud.err_break_alliance_boat.clone(),
+                                    sow_i18n::get(lang).hud.err_break_alliance_boat.clone(),
                                 );
                                 let mx = self.input.last_mouse_x;
                                 let my = self.input.last_mouse_y;
@@ -745,7 +745,7 @@ impl SowApp {
                 if self.ui.app.hud_state.gold < cost {
                     valid = false;
                     let lang = self.ui.app.settings_state.language;
-                    err_msg = sow_lang::get(lang)
+                    err_msg = sow_i18n::get(lang)
                         .hud
                         .err_need_gold
                         .replace("{}", &sow_ui::utils::format_number(cost));

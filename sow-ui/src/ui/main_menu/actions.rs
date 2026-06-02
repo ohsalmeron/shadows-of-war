@@ -9,9 +9,9 @@ pub fn draw_right_column(
     action_min_h: f32,
     compact: bool,
     action: &mut Option<UiAction>,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let solo_primary = if compact { 24.0 } else { 28.0 };
     let rail_btn_fill = crate::ui::theme::menu_secondary_button();
 

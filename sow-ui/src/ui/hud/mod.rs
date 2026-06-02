@@ -1,7 +1,7 @@
 use crate::UiAction;
 use egui::{pos2, vec2, Align2, Color32, Context, RichText, Slider, Stroke};
 use sow_core::protocol::{AttackSnapshot, FleetSnapshot, PlayerSnapshot};
-use sow_lang::Language;
+use sow_i18n::Language;
 use web_time::{Duration, Instant};
 
 pub mod icons;
@@ -474,7 +474,7 @@ fn event_log_icon(message: &str) -> &'static str {
 }
 
 fn format_relative_time(at: Instant, lang: Language) -> String {
-    let strings = &sow_lang::get(lang).hud;
+    let strings = &sow_i18n::get(lang).hud;
     let secs = at.elapsed().as_secs();
     if secs < 60 {
         strings.event_time_seconds.replace("{}", &secs.to_string())
@@ -492,7 +492,7 @@ fn draw_event_log_tab(
     compact: bool,
     lang: Language,
 ) {
-    let strings = &sow_lang::get(lang).hud;
+    let strings = &sow_i18n::get(lang).hud;
     let log_h = if compact { 120.0 } else { 140.0 };
     let now = Instant::now();
 
@@ -603,7 +603,7 @@ fn draw_battle_log_tab(
         return;
     }
 
-    let strings = &sow_lang::get(lang).hud;
+    let strings = &sow_i18n::get(lang).hud;
     let log_h = if compact { 120.0 } else { 140.0 };
 
     let mut rows: Vec<(DispatchKind, f64, String, Option<u64>, Option<u64>, bool)> = Vec::new();
@@ -1011,7 +1011,7 @@ pub fn draw(
                 ui.horizontal(|ui| {
                     let btn_resp = ui
                         .add(crate::widgets::HudButton::new("📩"))
-                        .on_hover_text(&sow_lang::get(lang).hud.inbox_title);
+                        .on_hover_text(&sow_i18n::get(lang).hud.inbox_title);
                     if btn_resp.clicked() {
                         state.show_alliance_inbox = !state.show_alliance_inbox;
                     }
@@ -1043,7 +1043,7 @@ pub fn draw(
 
                     if ui
                         .add(crate::widgets::HudButton::new("⚙"))
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_settings)
+                        .on_hover_text(&sow_i18n::get(lang).hud.hover_settings)
                         .clicked()
                     {
                         action = Some(UiAction::ToggleSettings);
@@ -1053,7 +1053,7 @@ pub fn draw(
                             crate::widgets::HudButton::new("✖")
                                 .color(Color32::from_rgb(255, 100, 100)),
                         )
-                        .on_hover_text(&sow_lang::get(lang).hud.hover_exit)
+                        .on_hover_text(&sow_i18n::get(lang).hud.hover_exit)
                         .clicked()
                     {
                         action = Some(UiAction::LeaveLobby);
@@ -1106,7 +1106,7 @@ pub fn draw(
                                 // Title "ALLIANCES"
                                 crate::ui::theme::outlined_label(
                                     ui,
-                                    &sow_lang::get(lang).hud.inbox_title,
+                                    &sow_i18n::get(lang).hud.inbox_title,
                                     egui::FontId::proportional(12.0),
                                     crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress),
                                 );
@@ -1117,7 +1117,7 @@ pub fn draw(
                                     let w = (ui.available_width() - 6.0) / 2.0;
                                     ui.horizontal(|ui| {
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.reject_all)
+                                            crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.reject_all)
                                                 .text_size(10.0)
                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1128,7 +1128,7 @@ pub fn draw(
                                             state.show_alliance_inbox = false;
                                         }
                                         if ui.add_sized(egui::vec2(w, 24.0),
-                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.accept_all)
+                                            crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.accept_all)
                                                 .text_size(10.0)
                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1146,7 +1146,7 @@ pub fn draw(
                                 if requests.is_empty() && resource_requests.is_empty() {
                                     crate::ui::theme::outlined_label(
                                         ui,
-                                        &sow_lang::get(lang).hud.inbox_empty,
+                                        &sow_i18n::get(lang).hud.inbox_empty,
                                         egui::FontId::proportional(11.0),
                                         Color32::GRAY.linear_multiply(inbox_progress),
                                     );
@@ -1224,11 +1224,11 @@ pub fn draw(
                                                             crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
                                                             let prompt = if is_renewal {
                                                                 match lang {
-                                                                    sow_lang::Language::Spanish => "¡quiere renovar la alianza!".to_string(),
+                                                                    sow_i18n::Language::Spanish => "¡quiere renovar la alianza!".to_string(),
                                                                     _ => "wants to renew your alliance!".to_string(),
                                                                 }
                                                             } else {
-                                                                sow_lang::get(lang).hud.inbox_wants_ally.clone()
+                                                                sow_i18n::get(lang).hud.inbox_wants_ally.clone()
                                                             };
                                                             crate::ui::theme::outlined_label(ui, &prompt, egui::FontId::proportional(10.5), Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress));
                                                         });
@@ -1239,7 +1239,7 @@ pub fn draw(
                                                     let is_last = total_notifications == 1;
                                                     ui.horizontal(|ui| {
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
-                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_accept)
+                                                            crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1248,7 +1248,7 @@ pub fn draw(
                                                             if is_last { state.show_alliance_inbox = false; }
                                                         }
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
-                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_reject)
+                                                            crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1321,7 +1321,7 @@ pub fn draw(
                                                     let is_last = total_notifications == 1;
                                                     ui.horizontal(|ui| {
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
-                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_accept)
+                                                            crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1330,7 +1330,7 @@ pub fn draw(
                                                             if is_last { state.show_alliance_inbox = false; }
                                                         }
                                                         if ui.add_sized(egui::vec2(bw, 24.0),
-                                                            crate::widgets::ThemeButton::new(&sow_lang::get(lang).hud.btn_reject)
+                                                            crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1403,21 +1403,21 @@ pub fn draw(
                     ui.vertical_centered(|ui| {
                         if ui
                             .add(crate::widgets::HudButton::new("+"))
-                            .on_hover_text(&sow_lang::get(lang).hud.hover_zoom_in)
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_zoom_in)
                             .clicked()
                         {
                             action = Some(UiAction::ZoomIn);
                         }
                         if ui
                             .add(crate::widgets::HudButton::new("-"))
-                            .on_hover_text(&sow_lang::get(lang).hud.hover_zoom_out)
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_zoom_out)
                             .clicked()
                         {
                             action = Some(UiAction::ZoomOut);
                         }
                         if ui
                             .add(crate::widgets::HudButton::new("⌖"))
-                            .on_hover_text(&sow_lang::get(lang).hud.hover_center_camera)
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_center_camera)
                             .clicked()
                         {
                             action = Some(UiAction::CenterCamera);
@@ -1425,7 +1425,7 @@ pub fn draw(
                         ui.separator();
                         if ui
                             .add(crate::widgets::HudButton::new("😀"))
-                            .on_hover_text(&sow_lang::get(lang).hud.hover_express_emoji)
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_express_emoji)
                             .clicked()
                         {
                             state.show_emoji_panel = !state.show_emoji_panel;
@@ -1448,7 +1448,7 @@ pub fn draw(
 
                         let attacks_btn = ui
                             .add(crate::widgets::HudButton::new("⚔"))
-                            .on_hover_text(&sow_lang::get(lang).hud.hover_battle_log);
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_battle_log);
                         if attacks_btn.clicked() {
                             state.bottom_tab = BottomHudTab::BattleLog;
                             state.battle_log_seen_count = total_attacks;
@@ -1618,7 +1618,7 @@ pub fn draw(
 
                         ui.vertical_centered(|ui| {
                             ui.label(
-                                RichText::new(&sow_lang::get(lang).hud.emoji_panel_title)
+                                RichText::new(&sow_i18n::get(lang).hud.emoji_panel_title)
                                     .strong()
                                     .size(13.0 * anim_scale)
                                     .color(border_glow),
@@ -2071,7 +2071,7 @@ fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool, lang: Language)
         }
         crate::ui::theme::outlined_label(
             ui,
-            &sow_lang::get(lang).hud.spawn_choose_location,
+            &sow_i18n::get(lang).hud.spawn_choose_location,
             egui::FontId::proportional(if compact { 16.0 } else { 20.0 }),
             crate::ui::theme::accent_ranked_gold_hover(),
         );
@@ -2079,7 +2079,7 @@ fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool, lang: Language)
             RichText::new(format!(
                 "{:.1}{}",
                 secs,
-                sow_lang::get(lang).hud.spawn_seconds_remaining
+                sow_i18n::get(lang).hud.spawn_seconds_remaining
             ))
             .size(14.0)
             .color(Color32::from_rgb(220, 230, 220)),
@@ -2208,7 +2208,7 @@ fn draw_controls_tab(
 
 fn draw_sync_overlay(ctx: &Context, state: &HudState, lang: Language) {
     if let Some(sync) = &state.sync_state {
-        let strings = &sow_lang::get(lang).hud;
+        let strings = &sow_i18n::get(lang).hud;
         let screen_rect = ctx.content_rect();
         ctx.layer_painter(egui::LayerId::new(
             egui::Order::Foreground,
@@ -2297,7 +2297,7 @@ fn draw_betrayal_overlay(
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     lang: Language,
 ) {
-    let strings = &sow_lang::get(lang).hud;
+    let strings = &sow_i18n::get(lang).hud;
     if let Some((ally_id, intent)) = state.show_betrayal_warning.clone() {
         let screen_rect = ctx.content_rect();
         let compact =
@@ -2435,7 +2435,7 @@ fn draw_mobile_selection_bar(
     if let Some(tile_info) = &state.selected_tile {
         use crate::ui::theme::palette;
         use egui::RichText;
-        let strings = &sow_lang::get(lang).hud;
+        let strings = &sow_i18n::get(lang).hud;
 
         if tile_info.is_spawning {
             return;
@@ -2592,7 +2592,7 @@ fn draw_mobile_selection_bar(
 }
 
 fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
-    let strings = &sow_lang::get(lang).hud;
+    let strings = &sow_i18n::get(lang).hud;
     let is_active = state.show_error.is_some();
     let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
     let progress =
@@ -2700,7 +2700,7 @@ fn draw_transfer_panel(
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     lang: Language,
 ) {
-    let strings = &sow_lang::get(lang).hud;
+    let strings = &sow_i18n::get(lang).hud;
     let is_active = state.show_ask_panel.is_some();
     let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
     let progress = ui.ctx().animate_bool_with_time(

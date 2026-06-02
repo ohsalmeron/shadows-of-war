@@ -18,7 +18,7 @@ blade-graphics = { workspace = true }
 log = { workspace = true }
 winit = { workspace = true }
 sow-ui = { workspace = true }
-sow-lang = { workspace = true }
+sow-i18n = { workspace = true }
 egui = { workspace = true }
 blade-egui = { workspace = true }
 bincode.workspace = true

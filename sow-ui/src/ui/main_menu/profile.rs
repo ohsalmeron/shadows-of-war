@@ -32,9 +32,9 @@ pub fn draw_user_profile_header(
     state: &mut MainMenuState,
     compact: bool,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let desired_width = if compact { ui.available_width() } else { 280.0 };
     let desired_height = 56.0;
 

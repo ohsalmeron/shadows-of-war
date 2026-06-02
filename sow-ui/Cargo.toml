@@ -14,4 +14,4 @@ egui = { workspace = true }
 log = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
-sow-lang = { workspace = true }
+sow-i18n = { workspace = true }

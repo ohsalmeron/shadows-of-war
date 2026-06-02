@@ -397,7 +397,7 @@ impl SowApp {
                                         } else {
                                             let lang = self.ui.app.settings_state.language;
                                             self.ui.app.hud_state.show_error = Some(
-                                                sow_lang::get(lang).hud.err_resources_allies_only.clone(),
+                                                sow_i18n::get(lang).hud.err_resources_allies_only.clone(),
                                             );
                                         }
                                     }
@@ -409,7 +409,7 @@ impl SowApp {
                                     if is_allied {
                                         let lang = self.ui.app.settings_state.language;
                                         self.ui.app.hud_state.show_error = Some(
-                                            sow_lang::get(lang).hud.err_break_alliance_boat.clone(),
+                                            sow_i18n::get(lang).hud.err_break_alliance_boat.clone(),
                                         );
                                     } else {
                                         let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
@@ -427,7 +427,7 @@ impl SowApp {
                                             } else if has_proposed_alliance {
                                                 let lang = self.ui.app.settings_state.language;
                                                 self.ui.app.hud_state.show_error = Some(
-                                                    sow_lang::get(lang)
+                                                    sow_i18n::get(lang)
                                                         .hud
                                                         .err_alliance_renewal_pending
                                                         .clone(),
@@ -442,7 +442,7 @@ impl SowApp {
                                         } else if has_proposed_alliance {
                                             let lang = self.ui.app.settings_state.language;
                                             self.ui.app.hud_state.show_error = Some(
-                                                sow_lang::get(lang)
+                                                sow_i18n::get(lang)
                                                     .hud
                                                     .err_alliance_request_pending
                                                     .clone(),

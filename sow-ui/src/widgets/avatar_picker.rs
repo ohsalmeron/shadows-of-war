@@ -740,7 +740,7 @@ pub fn draw_leader_picker_modal(
     selected_civilization: &mut sow_core::player::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     leader_backdrop: &mut crate::widgets::leader_backdrop::LeaderBackdropTransition,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) -> bool {
     let mut close = false;
 
@@ -780,7 +780,7 @@ pub fn draw_leader_picker_modal(
                 close = true;
             }
 
-            let loading_label = &sow_lang::get(lang).main_menu.loading_leader_portrait;
+            let loading_label = &sow_i18n::get(lang).main_menu.loading_leader_portrait;
             crate::widgets::leader_backdrop::draw_leader_hero_backdrop(
                 ui,
                 screen_rect,

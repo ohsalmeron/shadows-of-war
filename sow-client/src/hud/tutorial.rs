@@ -16,7 +16,7 @@ impl SowApp {
         }
 
         let lang = self.ui.app.settings_state.language;
-        let strings = &sow_lang::get(lang).tutorial;
+        let strings = &sow_i18n::get(lang).tutorial;
 
         // Auto-advance tutorial logic based on snapshot
         if let Some(snap) = &self.sim.current_snapshot {

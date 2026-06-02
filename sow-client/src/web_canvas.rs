@@ -1,5 +1,5 @@
-//! Web canvas layout size — used instead of `window.innerWidth/Height` so embedded
-//! `#blade` (CSS-sized to `#game-stage`) matches the WASM render surface.
+//! Web canvas layout size from `#blade` client dimensions (fullscreen shell),
+//! falling back to the viewport when the canvas is not laid out yet.
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;

@@ -25,6 +25,7 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-relay` | Relay for games |
 | `sow-render` | GPU map pipeline (`blade-graphics`, WGSL) |
 | `sow-ui` | Menus and HUD (`egui`) |
+| `sow-i18n` | Localized UI strings (`strings/{en,es}/`) |
 | `sow-client` | Game executable (native + WASM) |
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
@@ -32,9 +33,8 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `assets/` | All shipped art (maps, UI, icons, fonts) |
 | `web/` | Browser shell and portal SDK hooks |
 | `scripts/sow.sh` | Build, deploy, package |
-| `deploy/nginx/` | VPS nginx site configs (synced by `sow.sh deploy`) |
-| `legal/` | COPYRIGHT, NOTICE, NOTICE.deps |
-| `docs/` | Contributor guide, VFX notes, leader reference |
+| `deploy/` | nginx VPS configs, Android/iOS shells, release keystore (local) |
+| `docs/` | CONTRIBUTING, legal notices, VFX notes, leader reference |
 
 ## Web hosts
 
@@ -45,15 +45,17 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `ptr.shadowsofwar.io` | Staging game shell |
 | `shadowsofwar.io/assets`, `/maps`, `/ws` | Shared CDN for all shells |
 
-Local dev: `./scripts/sow.sh site` (landing) and `./scripts/sow.sh play` (game shell on port 8080).
+Local dev: `./scripts/sow.sh site` (landing at :8787) and `./scripts/sow.sh play` (fullscreen game shell at :8080). The marketing site only links to the game; it does not embed WASM.
+
+Deploy: `./scripts/sow.sh cloud` (full), `cloud-game` (WASM + play host + backend), or `cloud-site` (SSR landing only). First-time play host needs DNS `play` → VPS, then `cloud-game` runs certbot for `play.shadowsofwar.io` if the certificate is missing.
 
 ## License
 
 Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](legal/COPYRIGHT) and [NOTICE](legal/NOTICE).
+Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](docs/legal/COPYRIGHT) and [NOTICE](docs/legal/NOTICE).
 
-**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront LLC and Contributors, AGPL-3.0-or-later). Required notices appear in [NOTICE](legal/NOTICE) and in-game **Credits**—not in game marketing. See [LICENSE](LICENSE) for full terms.
+**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront LLC and Contributors, AGPL-3.0-or-later). Required notices appear in [NOTICE](docs/legal/NOTICE) and in-game **Credits**—not in game marketing. See [LICENSE](LICENSE) for full terms.
 
 ## Contributing
 

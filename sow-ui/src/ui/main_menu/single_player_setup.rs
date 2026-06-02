@@ -122,12 +122,12 @@ pub fn draw_modal(
     state: &mut MainMenuState,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     action: &mut Option<UiAction>,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
     is_mobile: bool,
 ) {
     state.single_player_config.player_leader = state.selected_leader;
     state.single_player_config.player_civilization = state.selected_civilization;
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let mut close = false;
 
     // 1. Draw a simple full-screen dimming backdrop to intercept clicks without duplicating background images

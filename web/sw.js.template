@@ -55,11 +55,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isHtmlEntry(pathname) {
-    return (
-        pathname.endsWith('/index.html') ||
-        pathname.endsWith('/play') ||
-        pathname.endsWith('/play/')
-    );
+    return pathname === '/' || pathname.endsWith('/index.html');
 }
 
 function isStaticUiAsset(pathname) {

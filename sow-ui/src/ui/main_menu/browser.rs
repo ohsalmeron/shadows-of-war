@@ -12,9 +12,9 @@ pub fn draw_left_column(
     compact: bool,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_lang::Language,
+    lang: sow_i18n::Language,
 ) {
-    let strings = &sow_lang::get(lang).main_menu;
+    let strings = &sow_i18n::get(lang).main_menu;
     let side = crate::ui::map_texture::thumbnail_square_side(ui.available_width(), compact);
 
     if state.lobbies.is_empty() {

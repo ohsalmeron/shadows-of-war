@@ -4161,7 +4161,7 @@ dependencies = [
  "js-sys",
  "log",
  "sow-core",
- "sow-lang",
+ "sow-i18n",
  "sow-map",
  "sow-net",
  "sow-render",
@@ -4190,7 +4190,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sow-lang"
+name = "sow-i18n"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -4216,7 +4216,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sow-core",
- "sow-lang",
+ "sow-i18n",
  "sow-render",
  "sow-ui",
  "tokio",
@@ -4344,7 +4344,7 @@ dependencies = [
  "image",
  "log",
  "sow-core",
- "sow-lang",
+ "sow-i18n",
  "sow-net",
  "sow-render",
  "web-time",

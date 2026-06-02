@@ -5,7 +5,7 @@ impl SowApp {
     #[allow(deprecated)]
     pub(crate) fn render_endgame_ui(&mut self, ctx: &egui::Context) {
         let lang = self.ui.app.settings_state.language;
-        let strings = &sow_lang::get(lang).endgame;
+        let strings = &sow_i18n::get(lang).endgame;
 
         let mut show_endgame = false;
         let mut is_victory = false;
@@ -28,7 +28,7 @@ impl SowApp {
                         .iter()
                         .find(|p| p.id == winner)
                         .map(|p| p.name.clone())
-                        .unwrap_or_else(|| sow_lang::get(lang).hud.default_player_name.clone());
+                        .unwrap_or_else(|| sow_i18n::get(lang).hud.default_player_name.clone());
                     text_subtitle = strings.winner_emerged.replace("{}", &winner_name);
                 }
             } else if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {

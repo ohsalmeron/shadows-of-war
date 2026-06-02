@@ -3,7 +3,7 @@ use crate::ui::theme::{
 };
 use crate::UiAction;
 use egui::{Align, Color32, Layout, RichText, Slider, Stroke};
-pub use sow_lang::Language;
+pub use sow_i18n::Language;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GraphicsQuality {
@@ -40,7 +40,7 @@ fn touch_applied(state: &mut SettingsState) {
     state.applied_hint_until = Some(web_time::Instant::now());
 }
 
-fn quality_help<'a>(strings: &'a sow_lang::SettingsStrings, q: &GraphicsQuality) -> &'a str {
+fn quality_help<'a>(strings: &'a sow_i18n::SettingsStrings, q: &GraphicsQuality) -> &'a str {
     match q {
         GraphicsQuality::Low => &strings.quality_low_help,
         GraphicsQuality::Medium => &strings.quality_medium_help,
@@ -57,7 +57,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
         520.0
     };
 
-    let strings = &sow_lang::get(state.language).settings;
+    let strings = &sow_i18n::get(state.language).settings;
 
     let progress = root_ui.ctx().animate_bool_with_time(
         egui::Id::new("settings_animation_progress"),

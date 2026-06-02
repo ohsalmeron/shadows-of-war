@@ -8,7 +8,7 @@ members = [
     "sow-ui",
     "sow-tools",
     "sow-relay",
-    "sow-lang",
+    "sow-i18n",
     "sow-map",
     "sow-site",
 ]
@@ -33,7 +33,7 @@ web-time = "1.1"
 wyrand = "0.2"
 egui = { version = "0.34", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["webp", "png"] }
-sow-lang = { path = "sow-lang" }
+sow-i18n = { path = "sow-i18n" }
 sow-map = { path = "sow-map", default-features = false }
 sow-ui = { path = "sow-ui" }
 winit = { path = "winit/winit", features = ["android-native-activity"] }

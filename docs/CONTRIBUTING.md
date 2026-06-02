@@ -18,7 +18,7 @@ Thank you for your interest in contributing!
 - Keep changes focused — one logical change per PR when possible.
 - Update `assets/SOURCES.toml` and `assets/maps/SOURCES.toml` if you add or replace assets.
 - Document OSM-derived maps with `source = "osm"` and attribution in SOURCES.toml.
-- Do not commit secrets, keystores, `.env` files, or `OpenFrontIO/proprietary/` assets.
+- Do not commit secrets, `deploy/keystores/`, `.env` files, or `OpenFrontIO/proprietary/` assets.
 
 ## License
 
