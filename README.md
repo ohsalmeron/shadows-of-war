@@ -1,8 +1,8 @@
 # Shadows of War
 
-**[shadowsofwar.io](https://shadowsofwar.io)** — MMORTS in Rust. Expand territory, lead civilizations, and outlast rival **nations** and **tribes** on real-world maps. Alliances, leaders, and massive-scale lockstep combat—60 ticks per second in the browser or on desktop.
+**[shadowsofwar.io](https://shadowsofwar.io)** — Online MMORTS. Expand territory, lead civilizations, and compete with rival nations and tribes on world maps. Form alliances, choose leaders, and fight for control in the browser or on desktop.
 
-The simulation runs with **bare-metal discipline**: zero-allocation core (`sow-core`), binary lockstep networking, custom GPU renderer—same logic on native and WebAssembly.
+Rust workspace: shared game logic for web (WASM) and native clients.
 
 **License:** [AGPL-3.0-or-later](LICENSE) · **Play:** [shadowsofwar.io/play/](https://shadowsofwar.io/play/) · **Source:** [github.com/ohsalmeron/shadows-of-war](https://github.com/ohsalmeron/shadows-of-war)
 
@@ -17,12 +17,11 @@ Copyright (c) 2024–2026 Omar Hernandez Salmeron. See [COPYRIGHT](COPYRIGHT) an
 ## Features
 
 - **MMORTS gameplay:** Territory control, structures, diplomacy, and large-scale battles
-- **Civilizations & leaders:** Named nations, tribes, and leader identity on world maps
-- **Alliance system:** Coordinate with other players for defense and expansion
-- **Deterministic lockstep:** Identical simulation on every client; only inputs cross the network
-- **High performance:** Rust core, zero-alloc tick loop, compact WASM client (~10 MB brotli)
+- **Civilizations & leaders:** Nations, tribes, and leader identity on world maps
+- **Alliances:** Coordinate with other players for defense and expansion
+- **Multiplayer & single-player:** Online matches and offline play
 - **Cross-platform:** Web, native desktop, iOS, Android
-- **Map tools:** In-game editor, OSM regions, heightmap import pipeline
+- **Map tools:** In-game editor, real-world regions, import pipeline
 
 ## Prerequisites
 
