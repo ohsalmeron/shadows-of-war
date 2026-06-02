@@ -40,6 +40,13 @@ for lic in sorted(by_license.keys(), key=str.lower):
         lines.append(f"- {crate}")
     lines.append("")
 
+lines.append("### Vendored path dependencies (not in Cargo.lock)")
+lines.append("")
+lines.append("- egui / egui_extras — MIT OR Apache-2.0 (pin in NOTICE)")
+lines.append("- winit — Apache-2.0 (pin in NOTICE)")
+lines.append("- blade-graphics / blade-egui — MIT (pin in NOTICE)")
+lines.append("")
+
 with open(out_path, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
 print(f"Wrote {out_path} ({sum(len(v) for v in by_license.values())} crates)")

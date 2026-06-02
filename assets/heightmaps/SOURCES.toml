@@ -1,6 +1,0 @@
-# Heightmap assets for OSM editor Generate (elevation sampling).
-
-[world]
-source = "openfront"
-attribution = "OpenFront MapGenerator giantworldmap asset (see NOTICE)."
-notes = "Equirectangular copy of MapGenerator/assets/maps/giantworldmap/image.png. Blue channel encodes land elevation per MapGenerator rules."

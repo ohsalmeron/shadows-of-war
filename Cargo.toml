@@ -12,6 +12,7 @@ members = [
     "sow-map",
     "sow-site",
 ]
+exclude = ["blade", "winit", "egui"]
 resolver = "2"
 
 [workspace.package]
@@ -31,12 +32,12 @@ serde_json = "1"
 web-time = "1.1"
 wyrand = "0.2"
 egui = { version = "0.34", default-features = false }
-egui_extras = { version = "0.34", default-features = false, features = ["svg", "image", "webp"] }
+egui_extras = { path = "egui/crates/egui_extras", default-features = false, features = ["svg", "image", "webp"] }
 image = { version = "0.25.10", default-features = false, features = ["webp", "png"] }
 sow-lang = { path = "sow-lang" }
 sow-map = { path = "sow-map", default-features = false }
 sow-ui = { path = "sow-ui" }
-winit = { version = "0.31.0-beta.2", features = ["android-native-activity"] }
+winit = { path = "winit/winit", features = ["android-native-activity"] }
 brotli = "8.0.2"
 crossbeam-channel = "0.5.15"
 url = "2.5.8"
@@ -62,19 +63,13 @@ tower-http = { version = "0.6.10", features = ["fs", "compression-br", "cors"] }
 futures-channel = "0.3"
 
 [workspace.dependencies.blade-egui]
-git = "https://github.com/ohsalmeron/blade.git"
-rev = "1b20c3fe593964fe418f62ac103f44eedcb76ecd"
-package = "blade-egui"
+path = "blade/blade-egui"
 
 [workspace.dependencies.blade-graphics]
-git = "https://github.com/ohsalmeron/blade.git"
-rev = "1b20c3fe593964fe418f62ac103f44eedcb76ecd"
-package = "blade-graphics"
+path = "blade/blade-graphics"
 
 [workspace.dependencies.blade-macros]
-git = "https://github.com/ohsalmeron/blade.git"
-rev = "1b20c3fe593964fe418f62ac103f44eedcb76ecd"
-package = "blade-macros"
+path = "blade/blade-macros"
 
 [workspace.dependencies.bytemuck]
 version = "1"
@@ -119,3 +114,6 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[patch.crates-io]
+egui = { path = "egui/crates/egui" }
