@@ -32,7 +32,7 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-web/site/` | Marketing site (static HTML: landing, privacy, terms) |
 | `sow-web/shell/` | Game shell (WASM loader, index template, portal SDK) |
 | `assets/` | All shipped art (maps, UI, icons, fonts) |
-| `scripts/sow.sh` | Build, deploy, package |
+| `scripts/sow.sh` | Build, local dev, deploy (`local`, `crazygames`, `cloud`, …) |
 | `deploy/` | nginx VPS configs, Android/iOS shells, release keystore (local) |
 | `docs/leaders/` | Leader AI dossier (12 regions, chronological); see `docs/leaders/README.md` |
 
@@ -45,9 +45,46 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `ptr.shadowsofwar.io` | Staging game shell |
 | `shadowsofwar.io/assets`, `/maps`, `/ws` | Shared CDN for all shells |
 
-Local dev: `./scripts/sow.sh site` (static `sow-web/site` at :8787) and `./scripts/sow.sh play` (fullscreen game shell at :8080 after `package`). The marketing site only links to the game; it does not embed WASM.
+## Commands (copy-paste)
 
-Deploy: `./scripts/sow.sh cloud` (full), `cloud-game` (WASM + play host + backend), or `cloud-site` (SSR landing only). First-time play host needs DNS `play` → VPS, then `cloud-game` runs certbot for `play.shadowsofwar.io` if the certificate is missing.
+Each web pipeline writes its **own** folder under `dist/`. WASM shells do not copy static files; **`assets/static`** is a **symlink** to repo [`assets/static/`](assets/static/) in `dist/crazygames/` (and `local` uses the same for dev). Streamed leaders/maps load via client CDN URLs.
+
+| Command | Output | Purpose |
+|---------|--------|---------|
+| `./scripts/local.sh` | `dist/play/` + assets symlink | Browser game at http://127.0.0.1:8080 |
+| `./scripts/native.sh` | *(no `dist/`)* | Rust server + 2 clients (fast logic debug) |
+| `./scripts/crazygames.sh` | `dist/crazygames/` | Portal upload (always rebuilds; `--sync-cdn` refreshes prod leaders) |
+| `./scripts/poki.sh` | `dist/poki/` | Poki portal upload folder |
+| `./scripts/cloud-game.sh` | `dist/play/` → VPS | Production play.shadowsofwar.io |
+| `./scripts/ptr.sh` | `dist/ptr/` → VPS | Staging ptr.shadowsofwar.io |
+| `./scripts/cloud.sh` | `dist/play/` + marketing | Full prod (incremental; `--force` to redeploy) |
+| `./scripts/sow.sh site` | *(none)* | Marketing pages at http://127.0.0.1:8787 |
+| `./scripts/android.sh webview` | APK | Android WebView build |
+
+Equivalent without wrappers: `./scripts/sow.sh local`, `crazygames`, `poki`, `cloud-game`, `ptr`, `cloud`, `native`, `site`.
+
+**Try locally**
+
+```bash
+./scripts/local.sh
+# open http://127.0.0.1:8080/
+```
+
+**Try CrazyGames build**
+
+```bash
+./scripts/crazygames.sh          # always rebuilds dist/crazygames/
+./scripts/crazygames.sh --sync-cdn   # also push streamed leaders to prod CDN first
+# upload everything inside dist/crazygames/ (assets/static is a symlink)
+```
+
+**Ship production play**
+
+```bash
+./scripts/cloud-game.sh
+```
+
+Details: [sow-web/README.md](sow-web/README.md).
 
 ## License
 

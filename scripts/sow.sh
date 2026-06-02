@@ -12,18 +12,23 @@ usage() {
   cat <<EOF
 Usage: ./scripts/sow.sh <command> [args]
 
-  local|l            Debug native server + 2 clients (fast iteration)
-  ptr|p              Deploy staging web to ptr.shadowsofwar.io
-  cloud|c            Deploy production (game + site + backend)
-  cloud-game         Deploy play shell + WASM + assets + backend only
-  cloud-site         Deploy sow-web/site static marketing + nginx only
-  package|pkg [portal]  Sync streamed CDN + build portal zip (crazygames | poki; default crazygames)
-  site               Serve sow-web/site locally (landing + legal pages)
-  play [port]        Serve game shell locally (default port 8080)
+  local|l [port]     Browser WASM shell at http://127.0.0.1:8080 (builds dist/play if needed)
+  native|n           Native sow-server + 2 sow-clients (Rust binaries, fast iteration)
+  crazygames [--sync-cdn]  Build dist/crazygames/ (always rebuilds; --sync-cdn updates prod CDN)
+  poki               Build dist/poki/ for portal upload (+ sync prod CDN)
+  ptr|p              Deploy dist/ptr → ptr.shadowsofwar.io
+  cloud|c [--force]  Full prod deploy (incremental skip; --force redeploys)
+  cloud-game         Deploy dist/play → play.shadowsofwar.io + backend + CDN
+  cloud-site         Deploy sow-web/site → shadowsofwar.io only
+  site               Marketing pages locally (:8787)
   android|a [native|n|webview|w]
 
-Legacy wrappers: ./scripts/cloud.sh, ptr.sh, local.sh, android.sh
+Wrappers (same as above): local.sh native.sh crazygames.sh poki.sh ptr.sh cloud-game.sh cloud.sh android.sh
 EOF
+}
+
+sow_load_version() {
+  CLEAN_VERSION=$(cat "${ROOT}/.version" 2>/dev/null || echo "0.1.0")
 }
 
 sow_bump_version() {
@@ -61,17 +66,78 @@ sow_compile_wasm_release() {
 ASSETS_STATIC="${ROOT}/assets/static"
 ASSETS_STREAMED="${ROOT}/assets/streamed"
 
+DIST_PLAY="${ROOT}/dist/play"
+DIST_PTR="${ROOT}/dist/ptr"
+DIST_CRAZYGAMES="${ROOT}/dist/crazygames"
+DIST_POKI="${ROOT}/dist/poki"
+DIST_CLOUD_STAMP="${ROOT}/dist/.sow-cloud-stamp"
+
 stage_static_maps_and_fonts() {
-  local play="$1"
-  mkdir -p "${play}/assets/fonts" "${play}/assets/maps/northamerica"
-  rsync -a "${ASSETS_STATIC}/fonts/" "${play}/assets/fonts/"
+  local assets_root="$1"
+  mkdir -p "${assets_root}/fonts" "${assets_root}/maps/northamerica"
+  rsync -a "${ASSETS_STATIC}/fonts/" "${assets_root}/fonts/"
   cp -a "${ASSETS_STATIC}/maps/northamerica/map.bin.br" \
     "${ASSETS_STATIC}/maps/northamerica/thumbnail.webp" \
-    "${play}/assets/maps/northamerica/"
+    "${assets_root}/maps/northamerica/"
   cargo run -q -p sow-tools --bin write-play-catalog -- \
     --maps-root "${ASSETS_STATIC}/maps" \
-    --output "${play}/assets/maps/catalog.bin" \
+    --output "${assets_root}/maps/catalog.bin" \
     northamerica
+}
+
+# Android WebView APK assets tree (not web dist — web shells use shadowsofwar.io CDN).
+stage_core_assets() {
+  local dest_root="$1"
+  echo "==> Staging Android assets under ${dest_root}/assets/"
+  mkdir -p "${dest_root}/assets"
+  stage_static_maps_and_fonts "${dest_root}/assets"
+  copy_static_ui_webp "${dest_root}/assets/static/ui"
+}
+
+# Symlink repo assets/static into a shell dir (no copies). Used by portal dist + local dev.
+link_shell_assets_symlink() {
+  local shell_dir="$1"
+  rm -rf "${shell_dir}/assets"
+  mkdir -p "${shell_dir}/assets"
+  ln -sfn "${ASSETS_STATIC}" "${shell_dir}/assets/static"
+}
+
+link_local_repo_assets() {
+  link_shell_assets_symlink "$1"
+  echo "==> $1/assets/static → ${ASSETS_STATIC}"
+}
+
+portal_shell_assets_ok() {
+  local dir="$1"
+  [[ -L "${dir}/assets/static" ]] \
+    && [[ "$(readlink -f "${dir}/assets/static")" == "$(readlink -f "${ASSETS_STATIC}")" ]]
+}
+
+cloud_deploy_stamp() {
+  {
+    find "${ROOT}/sow-client" "${ROOT}/sow-ui" "${ROOT}/sow-core" "${SOW_WEB_SHELL}" \
+      "${ROOT}/sow-web/site" "${ROOT}/sow-server" "${ROOT}/sow-relay" \
+      -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.js' -o -name '*.template' -o -name '*.html' -o -name '*.css' \) \
+      2>/dev/null || true
+    [[ -f "${ROOT}/Cargo.lock" ]] && echo "${ROOT}/Cargo.lock"
+    echo "${ROOT}/scripts/sow.sh"
+  } | LC_ALL=C sort -u | while read -r f; do
+    [[ -f "${f}" ]] && sha256sum "${f}"
+  done | sha256sum | awk '{print $1}'
+}
+
+cloud_deploy_up_to_date() {
+  [[ -f "${DIST_CLOUD_STAMP}" ]] \
+    && [[ "$(cat "${DIST_CLOUD_STAMP}")" == "$(cloud_deploy_stamp)" ]] || return 1
+  [[ -f "${DIST_PLAY}/index.html" ]] || return 1
+  compgen -G "${DIST_PLAY}/"*_bg.wasm >/dev/null 2>&1 || return 1
+  compgen -G "${DIST_PLAY}/"*_bg.wasm.br >/dev/null 2>&1 || return 1
+  [[ ! -e "${DIST_PLAY}/assets" ]]
+}
+
+echo_crazygames_upload_hint() {
+  echo "Upload: every file inside ${DIST_CRAZYGAMES}/ (index.html at upload root)."
+  echo "If the portal rejects symlinks: rsync -aL ${DIST_CRAZYGAMES}/ /tmp/cg-upload/ and upload that."
 }
 
 # Resized loader/splash webp for local shell (./assets/static/ui/) or CDN publish tree.
@@ -88,21 +154,6 @@ copy_static_ui_webp() {
   "${cwebp_bin}" -q 82 -resize 1032 256 "${ui_src}/loader_full.webp" -o "${dest}/loader_full.webp"
   "${cwebp_bin}" -q 82 -resize 720 1280 "${ui_src}/sow-splash-mobile.webp" -o "${dest}/sow-splash-mobile.webp"
   cp "${ui_src}/sow-splash-desktop.webp" "${dest}/sow-splash-desktop.webp"
-}
-
-stage_core_assets() {
-  local play="$1"
-  local portal="${2:-}"
-  echo "==> Staging shell assets (fonts, northamerica map, UI boot)"
-  stage_static_maps_and_fonts "${play}"
-  case "${portal}" in
-    crazygames|poki)
-      echo "==> Portal package: UI boot art streams from CDN (no local assets/static/ui)"
-      ;;
-    *)
-      copy_static_ui_webp "${play}/assets/static/ui"
-      ;;
-  esac
 }
 
 prune_querystring_artifacts() {
@@ -124,40 +175,109 @@ if removed:
 PY
 }
 
+verify_dist_layout() {
+  local dir="$1" profile="$2"
+  case "${profile}" in
+    crazygames|poki)
+      compgen -G "${dir}/"*_bg.wasm.br >/dev/null \
+        || { echo "❌ ${dir}: missing *_bg.wasm.br"; return 1; }
+      if compgen -G "${dir}/"*_bg.wasm >/dev/null 2>&1; then
+        echo "❌ ${dir}: raw .wasm must not be in portal dist"
+        return 1
+      fi
+      portal_shell_assets_ok "${dir}" \
+        || { echo "❌ ${dir}: missing assets/static symlink to ${ASSETS_STATIC}"; return 1; }
+      ;;
+    selfhosted)
+      compgen -G "${dir}/"*_bg.wasm >/dev/null \
+        || { echo "❌ ${dir}: missing raw *_bg.wasm"; return 1; }
+      compgen -G "${dir}/"*_bg.wasm.br >/dev/null \
+        || { echo "❌ ${dir}: missing *_bg.wasm.br"; return 1; }
+      if [[ -e "${dir}/assets" ]]; then
+        echo "❌ ${dir}: shell must not bundle assets/ (CDN: shadowsofwar.io/assets)"
+        return 1
+      fi
+      ;;
+    *)
+      echo "❌ verify_dist_layout: unknown profile ${profile}"
+      return 1
+      ;;
+  esac
+  echo "✅ Dist layout OK (${dir}, ${profile})"
+}
+
+# profile: selfhosted | crazygames | poki — out_dir: dist/play, dist/ptr, dist/crazygames, etc.
 sow_assemble_game_shell() {
-  local portal="${1:-}"
-  local play="${ROOT}/dist/game-shell"
-  echo "==> Packaging game shell (dist/game-shell/)..."
-  mkdir -p "${play}" && rm -rf "${play:?}"/*
+  local profile="${1:?profile required}"
+  local out_dir="${2:?out_dir required}"
+  local portal=""
+  case "${profile}" in
+    selfhosted) portal="" ;;
+    crazygames|poki) portal="${profile}" ;;
+    *)
+      echo "❌ unknown shell profile: ${profile}"
+      return 1
+      ;;
+  esac
+  echo "==> Packaging game shell (${out_dir}/)..."
+  mkdir -p "${out_dir}" && rm -rf "${out_dir:?}"/*
+  sow_load_version
   BUILD_TS=$(date +%s)
   JS_FILE="sow_client_${BUILD_TS}.js"
   WASM_FILE="sow_client_${BUILD_TS}_bg.wasm"
   local wasm_bindgen_bin
   wasm_bindgen_bin=$(find_wasm_bindgen)
-  "${wasm_bindgen_bin}" --out-dir "${play}" --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
-  stage_core_assets "${play}" "${portal}"
-  cp -a "${SOW_WEB_SHELL}/favicon_io/"* "${play}/" 2>/dev/null || true
-  cp "${SOW_WEB_SHELL}/sow.svg" "${play}/sow.svg"
-  mkdir -p "${play}/sdk" && cp -a "${SOW_WEB_SHELL}/sdk/." "${play}/sdk/"
-  build_index_html "${SOW_WEB_SHELL}/index.html.template" "${play}/index.html" "${CLEAN_VERSION}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}" "${portal}"
-  [[ "${portal}" == "crazygames" ]] && inject_crazygames_portal "${play}/index.html"
-  [[ "${portal}" == "poki" ]] && inject_poki_portal "${play}/index.html"
-  minify_js_shim "${play}/${JS_FILE}"
-  optimize_wasm_bundle "${play}/${WASM_FILE}"
+  "${wasm_bindgen_bin}" --out-dir "${out_dir}" --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
+  cp -a "${SOW_WEB_SHELL}/favicon_io/"* "${out_dir}/" 2>/dev/null || true
+  cp "${SOW_WEB_SHELL}/sow.svg" "${out_dir}/sow.svg"
+  mkdir -p "${out_dir}/sdk" && cp -a "${SOW_WEB_SHELL}/sdk/." "${out_dir}/sdk/"
+  build_index_html "${SOW_WEB_SHELL}/index.html.template" "${out_dir}/index.html" \
+    "${CLEAN_VERSION}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}" "${portal}"
+  [[ "${portal}" == "crazygames" ]] && inject_crazygames_portal "${out_dir}/index.html"
+  [[ "${portal}" == "poki" ]] && inject_poki_portal "${out_dir}/index.html"
+  minify_js_shim "${out_dir}/${JS_FILE}"
+  optimize_wasm_bundle "${out_dir}/${WASM_FILE}"
+  local wasm_load="${WASM_FILE}" js_load="${JS_FILE}"
   if command -v brotli >/dev/null 2>&1; then
-    brotli -f -Z "${play}/${WASM_FILE}" & p1=$!
-    brotli -f -Z "${play}/${JS_FILE}" & p2=$!
+    brotli -f -Z "${out_dir}/${WASM_FILE}" & p1=$!
+    brotli -f -Z "${out_dir}/${JS_FILE}" & p2=$!
     wait "${p1}" "${p2}"
-    echo "Brotli compression finished."
+    local wasm_br_kb js_br_kb
+    wasm_br_kb=$(( $(stat -c%s "${out_dir}/${WASM_FILE}.br") / 1024 ))
+    js_br_kb=$(( $(stat -c%s "${out_dir}/${JS_FILE}.br") / 1024 ))
+    echo "Brotli: ${WASM_FILE}.br=${wasm_br_kb} KB, ${JS_FILE}.br=${js_br_kb} KB"
+    case "${portal}" in
+      crazygames|poki)
+        echo "==> Portal: .br only (~${wasm_br_kb} KB wasm); assets/static symlinked from repo"
+        rm -f "${out_dir}/${WASM_FILE}" "${out_dir}/${JS_FILE}"
+        wasm_load="${WASM_FILE}.br"
+        js_load="${JS_FILE}.br"
+        sed -i \
+          -e "s|./${JS_FILE}|./${js_load}|g" -e "s|${JS_FILE}|${js_load}|g" \
+          -e "s|./${WASM_FILE}|./${wasm_load}|g" -e "s|${WASM_FILE}|${wasm_load}|g" \
+          "${out_dir}/index.html"
+        ;;
+      *)
+        echo "Self-hosted: raw + .br; nginx brotli_static serves .br at .wasm/.js when Accept-Encoding: br"
+        ;;
+    esac
+  else
+    echo "⚠️  brotli not found — shipping uncompressed WASM/JS only"
   fi
-  sed -e "s/__VERSION__/${CLEAN_VERSION}/g" -e "s/__JS_FILE__/${JS_FILE}/g" \
-    -e "s/__WASM_FILE__/${WASM_FILE}/g" -e "s/__BUILD_TS__/${BUILD_TS}/g" \
-    "${SOW_WEB_SHELL}/sw.js.template" > "${play}/sw.js"
-  prune_querystring_artifacts "${play}"
-  mkdir -p "${ROOT}/dist"
-  cp "${SOW_WEB_SHELL}/sow.svg" "${ROOT}/dist/sow.svg"
-  write_game_manifest "${play}" "${JS_FILE}" "${WASM_FILE}" "${BUILD_TS}"
-  echo "Bundle sizes: ${WASM_FILE}=$(( $(stat -c%s "${play}/${WASM_FILE}") / 1024 )) KB, ${JS_FILE}=$(( $(stat -c%s "${play}/${JS_FILE}") / 1024 )) KB"
+  case "${profile}" in
+    selfhosted)
+      echo "==> Shell-only dist; static art/maps/fonts from CDN (SOW_ASSETS_URL / SOW_MAPS_URL)"
+      sed -e "s/__VERSION__/${CLEAN_VERSION}/g" -e "s/__JS_FILE__/${js_load}/g" \
+        -e "s/__WASM_FILE__/${wasm_load}/g" -e "s/__BUILD_TS__/${BUILD_TS}/g" \
+        "${SOW_WEB_SHELL}/sw.js.template" > "${out_dir}/sw.js"
+      write_game_manifest "${out_dir}" "${js_load}" "${wasm_load}" "${BUILD_TS}"
+      ;;
+    crazygames|poki)
+      link_shell_assets_symlink "${out_dir}"
+      ;;
+  esac
+  prune_querystring_artifacts "${out_dir}"
+  echo "Load paths: ${wasm_load}, ${js_load}"
 }
 
 write_game_manifest() {
@@ -330,6 +450,17 @@ exit "${fail}"
 REMOTE
 }
 
+# /var/www/* is root-owned on the VPS; deploy user needs sudo + chown before rsync.
+ensure_vps_dirs() {
+    local u="$1" h="$2"
+    shift 2
+    local d quoted=""
+    for d in "$@"; do
+        quoted+="$(printf ' %q' "${d}")"
+    done
+    ssh "${u}@${h}" "sudo mkdir -p${quoted} && sudo chown -R ${u}:${u}${quoted}"
+}
+
 sync_vps_nginx() {
     local vps_user="$1" vps_ip="$2" nginx_site="$3" local_conf="$4"
     local local_hash
@@ -385,9 +516,30 @@ play_host_url() {
   fi
 }
 
+verify_play_tls_cert() {
+  local host="${1:-play.shadowsofwar.io}"
+  echo "==> Verifying TLS certificate for ${host}..."
+  local subject
+  subject=$(echo | openssl s_client -connect "${host}:443" -servername "${host}" 2>/dev/null \
+    | openssl x509 -noout -subject 2>/dev/null) || true
+  if [[ -z "${subject}" ]]; then
+    echo "❌ Could not read TLS certificate for ${host}"
+    return 1
+  fi
+  if [[ "${subject}" != *"${host}"* ]]; then
+    echo "❌ Wrong TLS certificate for ${host}: ${subject}"
+    echo "   Run ./scripts/sow.sh cloud-game (cloud-site does not issue the play subdomain cert)."
+    return 1
+  fi
+  echo "✅ TLS certificate OK (${subject})"
+}
+
 verify_play_host() {
   local play_url="$1"
   local html wasm js
+  if [[ "${play_url}" == *"play.shadowsofwar.io"* ]]; then
+    verify_play_tls_cert "play.shadowsofwar.io" || return 1
+  fi
   echo "==> Verifying game shell at ${play_url}..."
   curl -fsS "${play_url}game-manifest.json" | grep -q 'sow_client_' \
     || { echo "❌ game-manifest.json missing or invalid on play host"; return 1; }
@@ -408,8 +560,8 @@ verify_play_host() {
     || return 1
   curl -fsSI -H 'Accept-Encoding: br' "${play_url}${wasm}" | grep -qi 'content-encoding: br' \
     || { echo "❌ WASM not served with brotli on play host"; return 1; }
-  curl -fsSI "${play_url}assets/static/ui/loader_empty.webp" | grep -qi 'cache-control:.*max-age' \
-    || { echo "❌ loader webp missing cache header on play host"; return 1; }
+  curl -fsSI "https://shadowsofwar.io/assets/static/ui/loader_empty.webp" | grep -qi 'cache-control:.*max-age' \
+    || { echo "❌ CDN loader webp missing cache header (run cloud-game or crazygames to sync assets)"; return 1; }
   echo "✅ Play host OK (${wasm}, ${js})"
 }
 
@@ -439,9 +591,14 @@ verify_prod_headers() {
   fi
 }
 
+play_tls_cert_present() {
+  local u="$1" h="$2"
+  ssh "${u}@${h}" "sudo test -f /etc/letsencrypt/live/play.shadowsofwar.io/fullchain.pem"
+}
+
 ensure_play_tls_cert() {
   local u="$1" h="$2"
-  if ssh "${u}@${h}" "test -f /etc/letsencrypt/live/play.shadowsofwar.io/fullchain.pem"; then
+  if play_tls_cert_present "${u}" "${h}"; then
     echo "✅ TLS: play.shadowsofwar.io certificate present"
     return 0
   fi
@@ -451,7 +608,7 @@ ensure_play_tls_cert() {
     -d play.shadowsofwar.io \
     --non-interactive --agree-tos --register-unsafely-without-email \
     || sudo certbot certonly --nginx -d play.shadowsofwar.io --non-interactive --agree-tos --register-unsafely-without-email"
-  ssh "${u}@${h}" "test -f /etc/letsencrypt/live/play.shadowsofwar.io/fullchain.pem" \
+  play_tls_cert_present "${u}" "${h}" \
     || { echo "❌ certbot failed for play.shadowsofwar.io — see README Web hosts"; return 1; }
   echo "✅ TLS: play.shadowsofwar.io certificate installed"
 }
@@ -552,7 +709,6 @@ sow_sync_streamed_cdn() {
     rsync -avz "${ASSETS_STREAMED}/" "${u}@${h}:${PROD_ASSETS_PATH}/streamed/"
     sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" \
         "${ROOT}/deploy/nginx/shadowsofwar.io.conf"
-    verify_prod_published_assets
 }
 
 # Boot loader/splash webp only (cloud-game / cloud). Not used for portal zip builds.
@@ -560,10 +716,12 @@ sow_sync_static_ui_cdn() {
     local u="${1:-${PROD_ASSETS_USER}}" h="${2:-${PROD_ASSETS_HOST}}"
     echo "==> Syncing static boot UI (${u}@${h}:${PROD_ASSETS_PATH}/static/ui/)"
     check_local_build_tools
-    mkdir -p "${ROOT}/dist/assets-publish/static/ui"
-    copy_static_ui_webp "${ROOT}/dist/assets-publish/static/ui"
+    local ui_stage
+    ui_stage=$(mktemp -d)
+    copy_static_ui_webp "${ui_stage}"
     ssh "${u}@${h}" "mkdir -p ${PROD_ASSETS_PATH}/static/ui"
-    rsync -avz "${ROOT}/dist/assets-publish/static/ui/" "${u}@${h}:${PROD_ASSETS_PATH}/static/ui/"
+    rsync -avz "${ui_stage}/" "${u}@${h}:${PROD_ASSETS_PATH}/static/ui/"
+    rm -rf "${ui_stage}"
 }
 
 # Inline sow-web/shell/loader.js into the loader marker of a built dist/index.html.
@@ -597,13 +755,8 @@ PY
 # CrazyGames-only injection is handled separately by inject_crazygames_portal.
 build_index_html() {
     local template="$1" out="$2" version="$3" js_file="$4" wasm_file="$5" build_ts="$6"
-    local portal="${7:-}"
-    local assets_ui_base="./assets/static/ui/"
-    case "${portal}" in
-        crazygames|poki)
-            assets_ui_base="https://shadowsofwar.io/assets/static/ui/"
-            ;;
-    esac
+    # $7 portal profile unused here — static UI always on prod CDN (shells do not ship assets/).
+    local assets_ui_base="https://shadowsofwar.io/assets/static/ui/"
     sed -e "s/__VERSION__/${version}/g" \
         -e "s/__JS_FILE__/${js_file}/g" \
         -e "s/__WASM_FILE__/${wasm_file}/g" \
@@ -687,27 +840,68 @@ minify_js_shim() {
         && mv "${js_file}.min" "${js_file}"
 }
 
-cmd_package() {
-  local portal="${1:-crazygames}"
-  echo "Packaging for portal: ${portal}"
+# dist/play + dist/assets — no SSH, no version bump (cloud-game bumps before deploy).
+build_play_dist() {
+  check_local_build_tools
+  rm -rf "${ROOT}/dist/assets"
+  sow_compile_wasm_release
+  sow_assemble_game_shell selfhosted "${DIST_PLAY}"
+  verify_dist_layout "${DIST_PLAY}" selfhosted
+  echo "Play dist ready: ${DIST_PLAY}/ ($(du -sh "${DIST_PLAY}" | cut -f1), shell only — assets on CDN)"
+}
+
+_portal_sync_cdn_prereq() {
+  check_vps_ready "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}" \
+    "/etc/nginx/sites-available/shadowsofwar.io"
+  sow_sync_streamed_cdn
+  verify_prod_published_assets
+}
+
+_portal_build_prereq() {
   check_local_build_tools
   sow_bump_version
-  case "${portal}" in
-    crazygames|poki)
-      check_vps_ready "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}" \
-        "/etc/nginx/sites-available/shadowsofwar.io"
-      sow_sync_streamed_cdn
-      ;;
-  esac
-  sow_compile_wasm_release
-  sow_assemble_game_shell "${portal}"
-  echo "Portal package ready: ${ROOT}/dist/game-shell/ ($(du -sh "${ROOT}/dist/game-shell" | cut -f1))"
-  if [[ -f "${ROOT}/dist/game-shell/"*_bg.wasm.br ]]; then
-    echo "WASM .br: $(du -sh "${ROOT}"/dist/game-shell/*_bg.wasm.br | cut -f1)"
+  _portal_sync_cdn_prereq
+}
+
+cmd_crazygames() {
+  local sync_cdn=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --sync-cdn) sync_cdn=1; shift ;;
+      -h|--help)
+        echo "Usage: ./scripts/sow.sh crazygames [--sync-cdn]"
+        echo "  --sync-cdn  Push streamed leaders to prod CDN before building (optional)"
+        exit 0
+        ;;
+      *)
+        echo "❌ Unknown option: $1"
+        exit 1
+        ;;
+    esac
+  done
+  check_local_build_tools
+  if [[ "${sync_cdn}" -eq 1 ]]; then
+    _portal_sync_cdn_prereq
   fi
-  echo ""
-  echo "Portal upload: select ALL files and folders inside dist/game-shell/ (index.html at upload root)."
-  echo "  ${ROOT}/dist/game-shell/"
+  sow_bump_version
+  sow_compile_wasm_release
+  sow_assemble_game_shell crazygames "${DIST_CRAZYGAMES}"
+  verify_dist_layout "${DIST_CRAZYGAMES}" crazygames
+  echo "CrazyGames ready: ${DIST_CRAZYGAMES}/ ($(du -sh "${DIST_CRAZYGAMES}" | cut -f1))"
+  if compgen -G "${DIST_CRAZYGAMES}/"*_bg.wasm.br >/dev/null; then
+    echo "WASM brotli: $(du -ch "${DIST_CRAZYGAMES}/"*_bg.wasm.br 2>/dev/null | tail -1 | cut -f1)"
+  fi
+  echo "==> ${DIST_CRAZYGAMES}/assets/static → ${ASSETS_STATIC}"
+  echo_crazygames_upload_hint
+  print_agpl_release_steps
+}
+
+cmd_poki() {
+  _portal_build_prereq
+  sow_compile_wasm_release
+  sow_assemble_game_shell poki "${DIST_POKI}"
+  verify_dist_layout "${DIST_POKI}" poki
+  echo "Poki ready: ${DIST_POKI}/ ($(du -sh "${DIST_POKI}" | cut -f1))"
   print_agpl_release_steps
 }
 
@@ -728,12 +922,13 @@ cloud_build_server_binaries() {
 
 _deploy_cloud_game() {
   local u=bizkit h=35.239.160.167
-  sow_compile_wasm_release
+  build_play_dist
   read -r sb rb <<< "$(cloud_build_server_binaries)"
-  sow_assemble_game_shell ""
   sow_sync_streamed_cdn "${u}" "${h}"
-  ssh "${u}@${h}" "mkdir -p /var/www/play.shadowsofwar.io/html /home/bizkit/shadowsofwar/assets/maps"
-  rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/game-shell/" "${u}@${h}:/var/www/play.shadowsofwar.io/html/" & w1=$!
+  ensure_vps_dirs "${u}" "${h}" \
+    /var/www/play.shadowsofwar.io/html \
+    /home/bizkit/shadowsofwar/assets/maps
+  rsync -avzL --delete --exclude='*.bin' "${DIST_PLAY}/" "${u}@${h}:/var/www/play.shadowsofwar.io/html/" & w1=$!
   sow_sync_static_ui_cdn "${u}" "${h}" & w6=$!
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-relay" & w3=$!
@@ -742,12 +937,15 @@ _deploy_cloud_game() {
   wait "${w1}" "${w2}" "${w3}" "${w4}" "${w6}"
   verify_prod_published_assets
   local play_nginx="${ROOT}/deploy/nginx/play.conf"
-  if ! ssh "${u}@${h}" "test -f /etc/letsencrypt/live/play.shadowsofwar.io/fullchain.pem"; then
+  if ! play_tls_cert_present "${u}" "${h}"; then
     play_nginx="${ROOT}/deploy/nginx/play-bootstrap.conf"
   fi
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/play.shadowsofwar.io" "${play_nginx}"
   ensure_play_tls_cert "${u}" "${h}"
+  play_tls_cert_present "${u}" "${h}" \
+    || { echo "❌ play.shadowsofwar.io TLS cert missing — fix certbot/DNS before enabling play.conf"; return 1; }
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/play.shadowsofwar.io" "${ROOT}/deploy/nginx/play.conf"
+  verify_play_tls_cert "play.shadowsofwar.io" || return 1
   ssh -t "${u}@${h}" "sudo systemctl enable --now sow-redis 2>/dev/null; sudo systemctl restart sow-server"
   verify_play_host "$(play_host_url "https://shadowsofwar.io")"
   echo "Game deployed v${CLEAN_VERSION} -> https://play.shadowsofwar.io/"
@@ -765,8 +963,15 @@ _deploy_cloud_site() {
   local u=bizkit h=35.239.160.167
   cleanup_legacy_marketing_static "${u}" "${h}"
   ssh "${u}@${h}" "sudo systemctl disable --now sow-site 2>/dev/null || true"
-  rsync -avz --delete "${SOW_WEB_SITE}/" "${u}@${h}:/var/www/shadowsofwar.io/html/"
+  ensure_vps_dirs "${u}" "${h}" /var/www/shadowsofwar.io/html "${PROD_ASSETS_PATH}"
+  # Never --delete under html/assets/ — CDN (streamed leaders, static ui, fonts) lives there.
+  rsync -avz --delete --exclude 'assets/' "${SOW_WEB_SITE}/" "${u}@${h}:/var/www/shadowsofwar.io/html/"
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" "${ROOT}/deploy/nginx/shadowsofwar.io.conf"
+  sow_sync_streamed_cdn "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}"
+  sow_sync_static_ui_cdn "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}"
+  ssh "${u}@${h}" "mkdir -p ${PROD_ASSETS_PATH}/fonts"
+  rsync -avz "${ASSETS_STATIC}/fonts/" "${u}@${h}:${PROD_ASSETS_PATH}/fonts/"
+  verify_prod_published_assets
   verify_marketing_landing_only "https://shadowsofwar.io"
   echo "Site deployed v${CLEAN_VERSION} -> https://shadowsofwar.io/"
 }
@@ -778,11 +983,36 @@ cmd_cloud_site() {
 }
 
 cmd_cloud() {
+  local force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      -h|--help)
+        echo "Usage: ./scripts/sow.sh cloud [--force]"
+        echo "  Full prod: play host + marketing + backend + CDN"
+        echo "  Skips rebuild/rsync when inputs unchanged (only incremental command)."
+        echo "  --force   Redeploy even if stamp matches"
+        exit 0
+        ;;
+      *)
+        echo "❌ Unknown option: $1"
+        exit 1
+        ;;
+    esac
+  done
   check_local_build_tools
   check_vps_ready "bizkit" "35.239.160.167" "/etc/nginx/sites-available/shadowsofwar.io"
+  if [[ "${force}" -eq 0 ]] && cloud_deploy_up_to_date; then
+    sow_load_version
+    verify_prod_headers "https://shadowsofwar.io" || return 1
+    echo "✅ Cloud deploy up to date — no rebuild/rsync (use --force to redeploy)"
+    return 0
+  fi
   sow_bump_version
   _deploy_cloud_game
   _deploy_cloud_site
+  mkdir -p "${ROOT}/dist"
+  cloud_deploy_stamp > "${DIST_CLOUD_STAMP}"
   verify_prod_headers "https://shadowsofwar.io"
   echo "Full production deploy v${CLEAN_VERSION} complete."
   print_agpl_release_steps
@@ -802,18 +1032,18 @@ cmd_ptr() {
     cargo build --release -p sow-relay --target x86_64-unknown-linux-gnu
     sb=target/x86_64-unknown-linux-gnu/release/sow-server; rb=target/x86_64-unknown-linux-gnu/release/sow-relay
   fi
-  sow_assemble_game_shell ""
+  sow_assemble_game_shell selfhosted "${DIST_PTR}"
+  verify_dist_layout "${DIST_PTR}" selfhosted
   local u=bizkit h=shadowsofwar.io
   sow_sync_streamed_cdn "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}"
-  ssh "${u}@${h}" "mkdir -p /var/www/ptr.shadowsofwar.io/html"
-  rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/game-shell/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/" & w1=$!
-  rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/sow.svg" & w5=$!
+  ensure_vps_dirs "${u}" "${h}" /var/www/ptr.shadowsofwar.io/html
+  rsync -avzL --delete --exclude='*.bin' "${DIST_PTR}/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/" & w1=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-relay" & w3=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/static/maps/ "${u}@${h}:/home/bizkit/shadowsofwar-ptr/assets/maps/" & w4=$!
-  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}"
+  wait "${w1}" "${w2}" "${w3}" "${w4}"
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/ptr.shadowsofwar.io" "${ROOT}/deploy/nginx/ptr.conf"
   ssh "${u}@${h}" "systemctl is-active --quiet sow-site-ptr 2>/dev/null && sudo systemctl disable --now sow-site-ptr || true"
   ssh "${u}@${h}" "cat << 'SYSTEMD' | sudo tee /etc/systemd/system/sow-server-ptr.service > /dev/null
@@ -841,19 +1071,22 @@ SYSTEMD"
 
 cmd_site() {
   echo "==> Marketing site (sow-web/site) on http://127.0.0.1:8787 — refresh browser after edits"
-  echo "    Game shell: ./scripts/sow.sh play  ->  http://127.0.0.1:8080/"
+  echo "    Game shell: ./scripts/sow.sh local  ->  http://127.0.0.1:8080/"
   cd "${SOW_WEB_SITE}"
   python3 -m http.server 8787
 }
 
-cmd_play() {
+# Browser WASM shell (dist/play). Prod deploy is cloud-game, not this.
+cmd_local() {
   local port="${1:-8080}"
-  if [[ ! -f "${ROOT}/dist/game-shell/index.html" ]]; then
-    echo "dist/game-shell/ missing — run: ./scripts/sow.sh package"
-    exit 1
+  if [[ ! -f "${DIST_PLAY}/index.html" ]]; then
+    echo "==> Building ${DIST_PLAY}/ for local browser..."
+    build_play_dist
   fi
-  echo "==> Serving dist/game-shell/ at http://127.0.0.1:${port}/ (Ctrl+C to stop)"
-  cd "${ROOT}/dist/game-shell"
+  link_local_repo_assets "${DIST_PLAY}"
+  echo "==> Local browser shell http://127.0.0.1:${port}/ (Ctrl+C to stop)"
+  echo "    Boot art: CDN + optional ${DIST_PLAY}/assets/static → repo (symlink)"
+  cd "${DIST_PLAY}"
   if command -v python3 >/dev/null 2>&1; then
     python3 -m http.server "${port}" --bind 127.0.0.1
   else
@@ -861,7 +1094,7 @@ cmd_play() {
   fi
 }
 
-cmd_local() {
+cmd_native() {
   sow_bump_version
   killall sow-server sow-client sow-relay 2>/dev/null || true
   SERVER_PID="" CLIENT1_PID="" CLIENT2_PID="" REDIS_PID=""
@@ -1157,14 +1390,15 @@ main() {
   local cmd="${1:-}"
   shift || true
   case "${cmd}" in
-    l|local)   cmd_local "$@" ;;
-    p|ptr)     cmd_ptr "$@" ;;
+    l|local)        cmd_local "$@" ;;
+    n|native)       cmd_native "$@" ;;
+    crazygames)     cmd_crazygames "$@" ;;
+    poki)           cmd_poki "$@" ;;
+    p|ptr)          cmd_ptr "$@" ;;
     c|cloud)        cmd_cloud "$@" ;;
     cloud-game)     cmd_cloud_game "$@" ;;
     cloud-site)     cmd_cloud_site "$@" ;;
-    package|pkg) cmd_package "$@" ;;
-    site)   cmd_site "$@" ;;
-    play)   cmd_play "$@" ;;
+    site)           cmd_site "$@" ;;
     a|android)
       case "${1:-native}" in
         n|native)  shift || true; cmd_android native "$@" ;;
