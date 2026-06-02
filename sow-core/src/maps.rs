@@ -161,27 +161,27 @@ pub fn bundled_map_br(key: &str) -> Option<&'static [u8]> {
     }
 }
 
-/// Read `map.bin.br` from `assets/maps/<key>/` when running native from the repo root.
+/// Read `map.bin.br` from `assets/static/maps/<key>/` when running native from the repo root.
 #[cfg(feature = "std")]
 #[inline]
 pub fn read_map_br_from_repo(key: &str) -> Option<Vec<u8>> {
-    let path = std::path::Path::new("assets/maps")
+    let path = std::path::Path::new("assets/static/maps")
         .join(map_key(key))
         .join("map.bin.br");
     std::fs::read(path).ok()
 }
 
-/// Read `thumbnail.webp` from `assets/maps/<key>/` when running native from the repo root.
+/// Read `thumbnail.webp` from `assets/static/maps/<key>/` when running native from the repo root.
 #[cfg(feature = "std")]
 #[inline]
 pub fn read_thumbnail_webp_from_repo(key: &str) -> Option<Vec<u8>> {
-    let path = std::path::Path::new("assets/maps")
+    let path = std::path::Path::new("assets/static/maps")
         .join(map_key(key))
         .join("thumbnail.webp");
     std::fs::read(path).ok()
 }
 
-/// Repo `assets/maps`, valid cached download, then compile-time bundled bytes.
+/// Repo `assets/static/maps`, valid cached download, then compile-time bundled bytes.
 #[inline]
 pub fn load_map_br_payload(key: &str, cached: Option<Vec<u8>>) -> Option<Vec<u8>> {
     #[cfg(feature = "std")]

@@ -12,14 +12,14 @@
     <meta property="og:url" content="https://play.shadowsofwar.io/">
     <meta property="og:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="og:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
-    <meta property="og:image" content="https://shadowsofwar.io/assets/ui/sow-splash-desktop.webp">
+    <meta property="og:image" content="https://shadowsofwar.io/assets/static/ui/sow-splash-desktop.webp">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://play.shadowsofwar.io/">
     <meta property="twitter:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="twitter:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
-    <meta property="twitter:image" content="https://shadowsofwar.io/assets/ui/sow-splash-desktop.webp">
+    <meta property="twitter:image" content="https://shadowsofwar.io/assets/static/ui/sow-splash-desktop.webp">
 
     <meta name="application-name" content="Shadows of War">
     <meta property="og:site_name" content="Shadows of War">
@@ -31,9 +31,9 @@
 
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
-    <link rel="preload" href="./assets/ui/sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
-    <link rel="preload" href="./assets/ui/sow-splash-mobile.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
-    <link rel="preload" href="./assets/ui/loader_empty.webp?v=__BUILD_TS__" as="image" type="image/webp" fetchpriority="high">
+    <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
+    <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-mobile.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
+    <link rel="preload" href="__ASSETS_UI_BASE__loader_empty.webp?v=__BUILD_TS__" as="image" type="image/webp" fetchpriority="high">
     <style>
         body, html {
             margin: 0;
@@ -207,6 +207,9 @@
 
             if (typeof window.SOW_initPortalSdk === "function") {
                 await window.SOW_initPortalSdk();
+            }
+            if (typeof window.SOW_portalLoadStart === "function") {
+                window.SOW_portalLoadStart();
             }
 
             if ('serviceWorker' in navigator

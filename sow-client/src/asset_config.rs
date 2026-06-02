@@ -38,17 +38,28 @@ impl AssetConfig {
         )
     }
 
-    pub fn leader_portrait_url(&self, filename: &str) -> String {
-        let base = format!(
-            "{}/ui/leaders/{}",
-            self.assets_base.trim_end_matches('/'),
-            filename
-        );
+    /// Canonical streamed path first, then legacy `ui/leaders/` (prod may still serve the old layout).
+    pub fn leader_portrait_urls(&self, filename: &str) -> Vec<String> {
+        let base = self.assets_base.trim_end_matches('/');
+        let paths = [
+            format!("{base}/streamed/leaders/{filename}"),
+            format!("{base}/ui/leaders/{filename}"),
+        ];
         if self.cache_bust.is_empty() {
-            base
+            paths.into_iter().map(String::from).collect()
         } else {
-            format!("{base}?v={}", self.cache_bust)
+            paths
+                .into_iter()
+                .map(|p| format!("{p}?v={}", self.cache_bust))
+                .collect()
         }
+    }
+
+    pub fn leader_portrait_url(&self, filename: &str) -> String {
+        self.leader_portrait_urls(filename)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn resolve_maps_base() -> String {

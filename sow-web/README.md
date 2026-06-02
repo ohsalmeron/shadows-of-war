@@ -11,6 +11,8 @@ Browser-facing assets for Shadows of War (HTML/JS only). Game logic lives in `so
 
 **Portals** — `./scripts/sow.sh package crazygames` injects CrazyGames SDK; `./scripts/sow.sh package poki` sets `SOW_PORTAL=poki` boot only (host provides PokiSDK).
 
+**Assets layout** — `assets/static/` ships in `dist/game-shell` (fonts, maps, HUD, loaders on self-hosted play). `assets/streamed/` is CDN-only (leader portraits). Portal zips omit streamed art and local boot UI (CDN via `SOW_ASSETS_URL`). `./scripts/sow.sh package crazygames` (and `poki`) rsyncs streamed leaders to prod and verifies URLs before building the zip.
+
 **Rules for agents**
 
 - Never embed WASM or game boot code in `site/`.
@@ -26,20 +28,22 @@ Browser-facing assets for Shadows of War (HTML/JS only). Game logic lives in `so
 
 ## CrazyGames submission checklist
 
-Build the portal zip (injects CrazyGames SDK v3 + `SOW_PORTAL=crazygames` boot vars):
+Build the CrazyGames shell (injects SDK v3 + `SOW_PORTAL=crazygames` boot vars):
 
 ```bash
 ./scripts/sow.sh package crazygames
 ```
 
-Output: `shadows-of-war-crazygames.zip` at repo root. Upload that archive to CrazyGames dev portal.
+**CrazyGames upload:** the dev portal does **not** accept `.zip` files. Drag the **contents** of `dist/game-shell/` into the upload zone (must include `index.html` at the root of the upload). Select all files and folders inside `dist/game-shell/` (Ctrl+A in your file manager), not the parent folder name alone.
+
+A convenience zip is also written to `shadows-of-war-crazygames.zip` (backup / Poki-style hosts only).
 
 **Before submit — manual QA**
 
 | Check | Pass criteria |
 |-------|----------------|
-| Boot | `SOW_portalLoadStart` → WASM loads → `load_stop` when main menu appears |
-| SDK init | `SOW_initPortalSdk()` runs; no console errors from CrazyGames SDK |
+| Boot | `SOW_initPortalSdk()` → `SOW_portalLoadStart` → WASM loads → `load_stop` when main menu appears |
+| SDK init | Console shows `CrazyGames SDK init OK (env=…)`; `crazygames-sdk-v3.js` in built `index.html` head (no `async`) |
 | Gameplay ads | `gameplayStart` when entering a match; `gameplayStop` when returning to main menu |
 | Service worker | Not registered on portal hosts (shell skips SW when `SOW_PORTAL` or crazygames hostname) |
 | Solo | Single-player skirmish works offline |
@@ -48,7 +52,8 @@ Output: `shadows-of-war-crazygames.zip` at repo root. Upload that archive to Cra
 | Escape | Does not deselect HUD tools during play (use **Q** to clear building/nuke selection) |
 | Tutorial | Overlay only after main-menu **TUTORIAL** button (never on lobby/multiplayer by default) |
 | Listing copy | Hidden `<h1>`/`<p>` in `shell/index.html.template` matches solo + online MMORTS |
-| Covers | Use `assets/ui/sow-splash-desktop.webp` / `sow-splash-mobile.webp` — genre-accurate MMORTS art |
+| Covers | Use `assets/static/ui/sow-splash-desktop.webp` / `sow-splash-mobile.webp` |
+| CDN art | Leaders + portal boot UI stream from `shadowsofwar.io/assets/streamed/` and `/assets/static/ui/` — not in portal upload |
 
 **Official docs**
 

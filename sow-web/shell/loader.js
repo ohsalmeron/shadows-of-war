@@ -27,8 +27,28 @@
         },
     };
 
+    function assetPathVariants(file) {
+        const base = window.SOW_ASSETS_URL;
+        if (base && typeof base === 'string') {
+            const root = base.replace(/\/$/, '');
+            return [root + '/static/ui/' + file, root + '/ui/' + file];
+        }
+        return ['./assets/static/ui/' + file, './assets/ui/' + file];
+    }
+
     function assetPath(file) {
-        return './assets/ui/' + file;
+        return assetPathVariants(file)[0];
+    }
+
+    function wireAssetFallback(img, file) {
+        const variants = assetPathVariants(file);
+        let attempt = 0;
+        img.onerror = function () {
+            attempt += 1;
+            if (attempt < variants.length) {
+                img.src = assetUrl(variants[attempt]);
+            }
+        };
     }
 
     function assetUrl(path) {
@@ -161,6 +181,17 @@
         barFill = document.getElementById('loader-bar-fill');
         barFull = document.getElementById('loader-bar-full');
         loaderText = document.getElementById('loader-text');
+
+        for (const [id, file] of [
+            ['splash-bg', isMobile() ? 'sow-splash-mobile.webp' : 'sow-splash-desktop.webp'],
+            ['splash-desktop', 'sow-splash-desktop.webp'],
+            ['splash-mobile', 'sow-splash-mobile.webp'],
+            ['loader-bar-empty', 'loader_empty.webp'],
+            ['loader-bar-full', 'loader_full.webp'],
+        ]) {
+            const img = document.getElementById(id);
+            if (img) wireAssetFallback(img, file);
+        }
 
         layout();
         window.addEventListener('resize', layout);

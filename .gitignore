@@ -27,7 +27,7 @@ src/assets/
 dump.rdb
 *debug*.txt
 eslint_out.txt
-/leaders/
+# Legacy; leader portraits live under assets/streamed/leaders/
 wasm-pack*.*
 .cursor/
 blade/
@@ -36,6 +36,7 @@ scripts/__pycache__/
 scripts/git-filter-repo
 dist/
 dist-wasm-size-check/
+shadows-of-war-*.zip
 winit/
 egui/
 deploy/android/

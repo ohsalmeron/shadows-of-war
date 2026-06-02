@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[command(name = "write-play-catalog")]
 struct Args {
     /// Maps root (e.g. assets/maps)
-    #[arg(long, default_value = "assets/maps")]
+    #[arg(long, default_value = "assets/static/maps")]
     maps_root: PathBuf,
     /// Output catalog.bin path
     #[arg(short, long)]

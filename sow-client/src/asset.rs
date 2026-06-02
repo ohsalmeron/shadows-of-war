@@ -221,6 +221,54 @@ impl SowApp {
         });
     }
 
+    fn fetch_leader_portrait_at(
+        urls: Vec<String>,
+        index: usize,
+        tx: crossbeam_channel::Sender<MapDownloadEvent>,
+        leader: sow_core::player::Leader,
+        mobile: bool,
+    ) {
+        let Some(url) = urls.get(index) else {
+            let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
+                leader,
+                mobile,
+                reason: "no leader portrait URLs".to_string(),
+            });
+            return;
+        };
+        let url = url.clone();
+        let urls = urls.clone();
+        let request = ehttp::Request::get(&url);
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            match result {
+                Ok(res) if res.ok => {
+                    let _ = tx.send(MapDownloadEvent::LeaderPortraitReady {
+                        leader,
+                        mobile,
+                        bytes: res.bytes,
+                    });
+                }
+                Ok(res) if res.status == 404 && index + 1 < urls.len() => {
+                    Self::fetch_leader_portrait_at(urls, index + 1, tx, leader, mobile);
+                }
+                Ok(res) => {
+                    let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
+                        leader,
+                        mobile,
+                        reason: format!("HTTP {}", res.status),
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
+                        leader,
+                        mobile,
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        });
+    }
+
     fn poll_leader_portrait_fetches(&mut self) {
         use sow_ui::ui::asset_loader::{AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT};
 
@@ -242,42 +290,17 @@ impl SowApp {
             };
 
             let filename = AssetLoader::leader_portrait_filename(key);
-            let url = self.asset_config.leader_portrait_url(&filename);
+            let urls = self.asset_config.leader_portrait_urls(&filename);
             log::debug!(
-                "Fetching leader portrait {:?} mobile={} url={}",
+                "Fetching leader portrait {:?} mobile={} urls={:?}",
                 key.leader,
                 key.mobile,
-                url
+                urls
             );
             let tx = self.tasks.map_tx.clone();
             let leader = key.leader;
             let mobile = key.mobile;
-            let request = ehttp::Request::get(&url);
-            ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-                match result {
-                    Ok(res) if res.ok => {
-                        let _ = tx.send(MapDownloadEvent::LeaderPortraitReady {
-                            leader,
-                            mobile,
-                            bytes: res.bytes,
-                        });
-                    }
-                    Ok(res) => {
-                        let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
-                            leader,
-                            mobile,
-                            reason: format!("HTTP {}", res.status),
-                        });
-                    }
-                    Err(e) => {
-                        let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
-                            leader,
-                            mobile,
-                            reason: e.to_string(),
-                        });
-                    }
-                }
-            });
+            Self::fetch_leader_portrait_at(urls, 0, tx, leader, mobile);
         }
     }
 }

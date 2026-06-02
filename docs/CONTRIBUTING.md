@@ -24,7 +24,7 @@ Static HTML lives in `sow-web/site/` (landing, privacy, terms). The WASM game sh
 ## Pull requests
 
 - Keep changes focused — one logical change per PR when possible.
-- Update `assets/SOURCES.toml` and `assets/maps/SOURCES.toml` if you add or replace assets.
+- Update `assets/SOURCES.toml` and `assets/static/maps/SOURCES.toml` if you add or replace assets.
 - New shipped art (portraits, avatars): default to **CC BY-SA 4.0** per `docs/legal/LICENSE-ASSETS`; verify AI tool ToS before setting `license = "CC-BY-SA-4.0"`.
 - Document OSM-derived maps with `source = "osm"` and attribution in SOURCES.toml.
 - Do not commit secrets, `deploy/keystores/`, `.env` files, or `OpenFrontIO/proprietary/` assets.
@@ -41,7 +41,7 @@ Inbound contributions = outbound under AGPL-3.0-or-later. No separate CLA is req
 
 - **Player-facing UI:** brand (`© Shadows of War`), OpenFront attribution on the main menu, full notices in Credits — see README “Attribution policy”.
 - **Marketing HTML:** same footer pattern as `sow-web/site/`; do not add the copyright holder’s personal name.
-- **Legal files:** update only under `docs/legal/` (COPYRIGHT, NOTICE, LICENSE-ASSETS). Run `./scripts/generate_notice_deps.sh` when Rust deps change.
+- **Legal files:** update only under `docs/legal/` (COPYRIGHT, NOTICE, LICENSE-ASSETS). Optionally run `./scripts/generate_notice_deps.sh` when `Cargo.lock` changes (refreshes `NOTICE.deps`; not part of deploy).
 - **Upstream OpenFront:** legal entity is OpenFront Inc. and Contributors (see their LICENSING.md); player UI uses “OpenFront and Contributors”.
 
 ## Code of conduct

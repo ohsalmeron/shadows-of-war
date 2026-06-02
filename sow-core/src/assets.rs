@@ -7,7 +7,7 @@ macro_rules! repo_asset_bytes {
     ($path:expr) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../assets/",
+            "/../assets/static/",
             $path
         ))
     };

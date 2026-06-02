@@ -668,39 +668,45 @@ impl AssetLoader {
 
     pub fn ensure_leaders_loaded(&mut self, ctx: &egui::Context) {
         const DEFAULT: Leader = Leader::Caesar;
-        let desktop_key = LeaderPortraitKey {
-            leader: DEFAULT,
-            mobile: false,
-        };
-        if !self.leader_portrait_loaded(desktop_key) {
-            let bytes = sow_core::repo_asset_bytes!("ui/leaders/caesar_desktop.webp");
-            if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
-                let texture = ctx.load_texture(
-                    "leader_caesar_desktop",
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                );
-                self.leader_desktop_images.insert(DEFAULT, texture);
-                self.last_ready_portrait = Some(desktop_key);
-            }
-        }
-        let mobile_key = LeaderPortraitKey {
-            leader: DEFAULT,
-            mobile: true,
-        };
-        if !self.leader_portrait_loaded(mobile_key) {
-            let bytes = sow_core::repo_asset_bytes!("ui/leaders/caesar_mobile.webp");
-            if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
-                let texture = ctx.load_texture(
-                    "leader_caesar_mobile",
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                );
-                self.leader_mobile_images.insert(DEFAULT, texture);
-                if self.last_ready_portrait.is_none() {
-                    self.last_ready_portrait = Some(mobile_key);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use std::path::Path;
+            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/streamed/leaders");
+            for mobile in [false, true] {
+                let key = LeaderPortraitKey {
+                    leader: DEFAULT,
+                    mobile,
+                };
+                if self.leader_portrait_loaded(key) {
+                    continue;
+                }
+                let filename = Self::leader_portrait_filename(key);
+                let path = base.join(&filename);
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
+                if let Ok(color_image) = Self::decode_leader_portrait_bytes(&bytes) {
+                    let name = if mobile {
+                        "leader_caesar_mobile"
+                    } else {
+                        "leader_caesar_desktop"
+                    };
+                    let texture =
+                        ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR);
+                    if mobile {
+                        self.leader_mobile_images.insert(DEFAULT, texture);
+                    } else {
+                        self.leader_desktop_images.insert(DEFAULT, texture);
+                    }
+                    self.last_ready_portrait = Some(key);
                 }
             }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = ctx;
+            self.request_leader_portrait_priority(DEFAULT, false);
+            self.request_leader_portrait_priority(DEFAULT, true);
         }
     }
 
@@ -762,7 +768,7 @@ mod tests {
         use sow_core::player::Leader;
         use std::path::Path;
 
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/ui/leaders");
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/streamed/leaders");
         for leader in Leader::ALL {
             for mobile in [false, true] {
                 let filename =

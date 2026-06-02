@@ -70,6 +70,6 @@ pub fn lookup(name: &str) -> Option<MapCatalogEntry> {
 
 pub fn maps_root() -> PathBuf {
     std::env::var("SOW_MAPS_ROOT").map(PathBuf::from).unwrap_or_else(|_| {
-        PathBuf::from("assets/maps")
+        PathBuf::from("assets/static/maps")
     })
 }

@@ -255,7 +255,7 @@ impl MapEditorSession {
     fn maps_root() -> PathBuf {
         std::env::var("SOW_MAPS_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("assets/maps"))
+            .unwrap_or_else(|_| PathBuf::from("assets/static/maps"))
     }
 
     #[cfg(not(target_arch = "wasm32"))]

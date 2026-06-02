@@ -17,10 +17,10 @@ const CACHE_NAME = 'sow-__BUILD_TS__';
 
 const PRECACHE = [
     './sow.svg',
-    './assets/ui/sow-splash-desktop.webp?v=__BUILD_TS__',
-    './assets/ui/sow-splash-mobile.webp?v=__BUILD_TS__',
-    './assets/ui/loader_empty.webp?v=__BUILD_TS__',
-    './assets/ui/loader_full.webp?v=__BUILD_TS__',
+    './assets/static/ui/sow-splash-desktop.webp?v=__BUILD_TS__',
+    './assets/static/ui/sow-splash-mobile.webp?v=__BUILD_TS__',
+    './assets/static/ui/loader_empty.webp?v=__BUILD_TS__',
+    './assets/static/ui/loader_full.webp?v=__BUILD_TS__',
 ];
 
 self.addEventListener('install', (event) => {
@@ -61,7 +61,7 @@ function isHtmlEntry(pathname) {
 function isStaticUiAsset(pathname) {
     return (
         pathname.endsWith('/sow.svg') ||
-        pathname.includes('/assets/ui/')
+        pathname.includes('/assets/static/ui/')
     );
 }
 

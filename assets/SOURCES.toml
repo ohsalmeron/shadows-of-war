@@ -1,15 +1,16 @@
 # Asset provenance tracker for Shadows of War.
+# Layout: assets/static/ (bundled in dist + WASM embeds), assets/streamed/ (CDN only).
 # source: placeholder | original | ai_generated | google_fonts | svg_repo
 
 [game_icons_owned]
-path = "assets/icons/"
+path = "assets/static/icons/"
 source = "original"
 license = "AGPL-3.0-or-later"
 files = ["factory.svg", "port.svg", "defense_post.svg", "atombomb.png"]
 notes = "Original Shadows of War art restored from pre-wipe commit."
 
 [game_icons_placeholder]
-path = "assets/icons/"
+path = "assets/static/icons/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = [
@@ -25,12 +26,12 @@ files = [
 notes = "Themed procedural placeholders (gradients/icons) in-repo."
 
 [hud_icons]
-path = "assets/ui/hud/"
+path = "assets/static/ui/hud/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 
 [splash]
-path = "assets/ui/"
+path = "assets/static/ui/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "Per tool Terms of Service — verify redistribution rights"
@@ -38,14 +39,14 @@ status = "pending_tos_review"
 files = ["sow-splash-desktop.webp", "sow-splash-mobile.webp"]
 
 [loaders]
-path = "assets/ui/"
+path = "assets/static/ui/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = ["loader_empty.webp", "loader_full.webp"]
 status = "themed_placeholder"
 
 [avatars]
-path = "assets/avatars/"
+path = "assets/static/avatars/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "CC-BY-SA-4.0"
@@ -54,13 +55,13 @@ ai_dossier = "docs/leaders/README.md (prompts and roster; provide to Poki/CrazyG
 notes = "Verify each AI tool ToS allows redistribution before store release."
 
 [leader_portraits]
-path = "assets/ui/leaders/"
+path = "assets/streamed/leaders/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "CC-BY-SA-4.0"
 license_doc = "docs/legal/LICENSE-ASSETS"
 ai_dossier = "docs/leaders/README.md"
-notes = "Verify each AI tool ToS allows redistribution before store release."
+notes = "Streamed from CDN; not bundled in portal upload."
 restored = [
   "alexander",
   "caesar",
@@ -80,19 +81,19 @@ themed_placeholder = [
 ]
 
 [diplomacy_ui]
-path = "assets/icons/"
+path = "assets/static/icons/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = ["request.webp", "handshake.webp", "betray.webp", "nameplate.webp"]
 
 [back_svg]
-path = "assets/icons/back.svg"
+path = "assets/static/icons/back.svg"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 notes = "Replaced SVG Repo asset with TBD placeholder."
 
 [fonts]
-path = "assets/fonts/"
+path = "assets/static/fonts/"
 source = "google_fonts"
 license = "SIL Open Font License 1.1"
 files = [
@@ -104,4 +105,4 @@ files = [
 ]
 
 [maps]
-notes = "Only northamerica shipped. OpenFront-derived maps removed from assets/maps/."
+notes = "Only northamerica shipped under assets/static/maps/. OpenFront-derived maps removed."

@@ -1,4 +1,4 @@
-//! Gameplay HUD bottom-tab icons (`assets/ui/hud/hud_<name>.webp`).
+//! Gameplay HUD bottom-tab icons (`assets/static/ui/hud/hud_<name>.webp`).
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum HudIcon {

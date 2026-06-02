@@ -101,5 +101,5 @@ pub fn export_map(
 fn maps_root() -> PathBuf {
     std::env::var("SOW_MAPS_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("assets/maps"))
+        .unwrap_or_else(|_| PathBuf::from("assets/static/maps"))
 }

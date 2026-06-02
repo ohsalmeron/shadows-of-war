@@ -6,8 +6,8 @@ The following **art assets** in this repository are licensed under the
 [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)
 (CC BY-SA 4.0), unless marked otherwise in `assets/SOURCES.toml`:
 
-- `assets/ui/leaders/` — leader portrait images
-- `assets/avatars/` — player avatar images
+- `assets/streamed/leaders/` — leader portrait images (CDN)
+- `assets/static/avatars/` — player avatar images (bundled in client for now)
 
 Copyright (c) 2024–2026 Omar Hernandez Salmeron (Shadows of War).
 

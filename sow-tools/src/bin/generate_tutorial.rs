@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
 #[command(
-    about = "Generate the tutorial map under assets/maps/tutorial",
+    about = "Generate the tutorial map under assets/static/maps/tutorial",
     long_about = "Builds the fixed tutorial terrain and writes map.bin + catalog.bin.\n\n\
-        Example:\n  cargo run --bin generate-tutorial -- --maps-root assets/maps"
+        Example:\n  cargo run --bin generate-tutorial -- --maps-root assets/static/maps"
 )]
 struct Args {
     /// Maps root directory
-    #[arg(long, default_value = "assets/maps")]
+    #[arg(long, default_value = "assets/static/maps")]
     maps_root: PathBuf,
 }
 
