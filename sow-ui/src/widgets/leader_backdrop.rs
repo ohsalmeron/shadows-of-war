@@ -137,7 +137,7 @@ fn draw_page_turn(
     asset_loader: &AssetLoader,
     transition: &LeaderBackdropTransition,
     turn_t: f32,
-    target_ready: bool,
+    incoming_tex: Option<&egui::TextureHandle>,
     loading_label: &str,
 ) {
     let w = screen_rect.width();
@@ -160,10 +160,8 @@ fn draw_page_turn(
         paint_portrait_clipped(ui, screen_rect, out_rect, tex, mobile, out_alpha);
     }
 
-    if target_ready {
-        if let Some(tex) = asset_loader.leader_portrait_texture(transition.anim_leader, mobile) {
-            paint_portrait_clipped(ui, screen_rect, in_rect, tex, mobile, in_alpha);
-        }
+    if let Some(tex) = incoming_tex {
+        paint_portrait_clipped(ui, screen_rect, in_rect, tex, mobile, in_alpha);
     } else if in_alpha > 0.001 {
         ui.painter()
             .with_clip_rect(screen_rect)
@@ -240,8 +238,9 @@ pub fn draw_leader_hero_backdrop(
         transition.displayed_leader = selected;
     }
 
-    let target_ready = asset_loader.leader_portrait_ready(transition.anim_leader, mobile);
-    advance_phase(transition, target_ready, now);
+    let incoming_tex = asset_loader.best_leader_portrait_texture(transition.anim_leader, mobile);
+    let incoming_ready = incoming_tex.is_some();
+    advance_phase(transition, incoming_ready, now);
 
     ui.painter().rect_filled(
         screen_rect,
@@ -250,10 +249,8 @@ pub fn draw_leader_hero_backdrop(
     );
 
     if reduced_motion {
-        if target_ready {
-            if let Some(tex) = asset_loader.leader_portrait_texture(transition.anim_leader, mobile) {
-                paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
-            }
+        if let Some(tex) = incoming_tex {
+            paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
             transition.settle_to_steady();
         } else {
             draw_loading_page(ui, screen_rect, loading_label, 1.0);
@@ -261,7 +258,7 @@ pub fn draw_leader_hero_backdrop(
         if draw_picker_gradient {
             draw_leader_picker_overlay_gradient(ui.painter(), screen_rect, mobile);
         }
-        if transition.phase != BackdropPhase::Steady || !target_ready {
+        if transition.phase != BackdropPhase::Steady {
             ui.ctx().request_repaint();
         }
         return selection_changed;
@@ -278,23 +275,20 @@ pub fn draw_leader_hero_backdrop(
                 asset_loader,
                 transition,
                 turn_t,
-                target_ready,
+                incoming_tex,
                 loading_label,
             );
         }
         BackdropPhase::Loading => {
-            draw_loading_page(ui, screen_rect, loading_label, 1.0);
-            if target_ready {
-                if let Some(tex) = asset_loader.leader_portrait_texture(transition.anim_leader, mobile) {
-                    paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
-                }
+            if let Some(tex) = incoming_tex {
+                paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
+            } else {
+                draw_loading_page(ui, screen_rect, loading_label, 1.0);
             }
         }
         BackdropPhase::Steady => {
-            if target_ready {
-                if let Some(tex) = asset_loader.leader_portrait_texture(transition.anim_leader, mobile) {
-                    paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
-                }
+            if let Some(tex) = incoming_tex {
+                paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
             } else {
                 draw_loading_page(ui, screen_rect, loading_label, 1.0);
             }
@@ -305,7 +299,7 @@ pub fn draw_leader_hero_backdrop(
         draw_leader_picker_overlay_gradient(ui.painter(), screen_rect, mobile);
     }
 
-    if transition.phase != BackdropPhase::Steady || !target_ready {
+    if transition.phase != BackdropPhase::Steady {
         ui.ctx().request_repaint();
     }
 

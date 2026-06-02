@@ -666,7 +666,7 @@ fn draw_leader_picker_back_button(
     REGISTER_BACK_ONCE.call_once(|| {
         ctx.include_bytes(
             "bytes://back.svg",
-            include_bytes!("../../../sow-client/assets/back.svg").as_slice(),
+            sow_core::repo_asset_bytes!("icons/back.svg").as_slice(),
         );
     });
 

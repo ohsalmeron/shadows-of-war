@@ -2,14 +2,14 @@
 # source: placeholder | original | ai_generated | google_fonts | svg_repo
 
 [game_icons_owned]
-path = "sow-client/assets/"
+path = "assets/icons/"
 source = "original"
 license = "AGPL-3.0-or-later"
 files = ["factory.svg", "port.svg", "defense_post.svg", "atombomb.png"]
 notes = "Original Shadows of War art restored from pre-wipe commit."
 
 [game_icons_placeholder]
-path = "sow-client/assets/"
+path = "assets/icons/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = [
@@ -25,33 +25,33 @@ files = [
 notes = "Themed procedural placeholders (gradients/icons) in-repo."
 
 [hud_icons]
-path = "sow-ui/assets/ui/hud/"
+path = "assets/ui/hud/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 
 [splash]
-path = "sow-ui/assets/ui/"
+path = "assets/ui/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "Per tool Terms of Service — verify redistribution rights"
 files = ["sow-splash-desktop.webp", "sow-splash-mobile.webp"]
 
 [loaders]
-path = "sow-ui/assets/ui/"
+path = "assets/ui/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = ["loader_empty.webp", "loader_full.webp"]
 status = "themed_placeholder"
 
 [avatars]
-path = "sow-ui/assets/avatars/"
+path = "assets/avatars/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "Per tool Terms of Service — verify redistribution before store release"
 ai_dossier = "leaders.md (prompts and roster; provide to Poki/CrazyGames on request)"
 
 [leader_portraits]
-path = "sow-ui/assets/ui/leaders/"
+path = "assets/ui/leaders/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "Per tool Terms of Service — verify redistribution before store release"
@@ -75,13 +75,13 @@ themed_placeholder = [
 ]
 
 [diplomacy_ui]
-path = "sow-client/assets/"
+path = "assets/icons/"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = ["request.webp", "handshake.webp", "betray.webp", "nameplate.webp"]
 
 [back_svg]
-path = "sow-client/assets/back.svg"
+path = "assets/icons/back.svg"
 source = "placeholder"
 license = "AGPL-3.0-or-later"
 notes = "Replaced SVG Repo asset with TBD placeholder."

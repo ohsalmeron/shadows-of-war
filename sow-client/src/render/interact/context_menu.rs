@@ -275,7 +275,7 @@ impl SowApp {
                                     *handshake_reg = true;
                                     painter.ctx().include_bytes(
                                         sow_core::assets::Asset::Handshake.uri(),
-                                        include_bytes!("../../../assets/handshake.svg").as_slice(),
+                                        sow_core::repo_asset_bytes!("icons/handshake.svg").as_slice(),
                                     );
                                 }
                                 let size_val = (26.0 + 8.0 * hover_t) * scale * 2.0;

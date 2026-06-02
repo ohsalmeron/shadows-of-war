@@ -1,6 +1,7 @@
 use egui::TextureHandle;
 use sow_core::player::Leader;
 use std::collections::{HashMap, HashSet, VecDeque};
+use web_time::{Duration, Instant};
 
 /// Max leader portrait HTTP requests at once (wasm) — only one hero is shown at a time.
 pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 1;
@@ -10,6 +11,14 @@ pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 1;
 pub struct LeaderPortraitKey {
     pub leader: Leader,
     pub mobile: bool,
+}
+
+#[derive(Debug, Clone)]
+struct PortraitRetryState {
+    attempts: u32,
+    next_retry_at: Instant,
+    last_error: String,
+    permanent: bool,
 }
 
 pub struct AssetLoader {
@@ -45,6 +54,10 @@ pub struct AssetLoader {
     leader_decode_pending: VecDeque<(LeaderPortraitKey, Vec<u8>)>,
     /// Portrait currently shown / being loaded (drops stale fetch+decode work).
     leader_portrait_focus: Option<LeaderPortraitKey>,
+    /// Retry policy state per failed leader portrait fetch.
+    leader_retry_state: HashMap<LeaderPortraitKey, PortraitRetryState>,
+    /// Last portrait we successfully uploaded; used as a non-blocking fallback.
+    last_ready_portrait: Option<LeaderPortraitKey>,
 }
 
 impl Default for AssetLoader {
@@ -91,6 +104,8 @@ impl AssetLoader {
             leaders_in_flight: HashSet::new(),
             leader_decode_pending: VecDeque::new(),
             leader_portrait_focus: None,
+            leader_retry_state: HashMap::new(),
+            last_ready_portrait: None,
         }
     }
 
@@ -115,6 +130,9 @@ impl AssetLoader {
     fn queue_leader_portrait_fetch(&mut self, leader: Leader, mobile: bool, front: bool) {
         let key = LeaderPortraitKey { leader, mobile };
         if self.leader_portrait_loaded(key) || self.leaders_in_flight.contains(&key) {
+            return;
+        }
+        if !self.leader_retry_ready(key, Instant::now()) {
             return;
         }
         if self.leaders_fetch_pending.iter().any(|pending| *pending == key) {
@@ -157,13 +175,40 @@ impl AssetLoader {
         self.leader_portrait_loaded(LeaderPortraitKey { leader, mobile })
     }
 
+    /// Choose the best available texture for rendering without blocking:
+    /// target -> last uploaded portrait -> bundled Caesar for this layout.
+    pub fn fallback_leader_portrait_texture(&self, mobile: bool) -> Option<&TextureHandle> {
+        if let Some(last) = self.last_ready_portrait {
+            if last.mobile == mobile {
+                if let Some(tex) = self.leader_portrait_texture(last.leader, mobile) {
+                    return Some(tex);
+                }
+            }
+        }
+        self.leader_portrait_texture(Leader::Caesar, mobile)
+    }
+
+    pub fn best_leader_portrait_texture(
+        &self,
+        leader: Leader,
+        mobile: bool,
+    ) -> Option<&TextureHandle> {
+        self.leader_portrait_texture(leader, mobile)
+            .or_else(|| self.fallback_leader_portrait_texture(mobile))
+    }
+
     /// Pop the next portrait key to fetch (priority first), marking it in-flight.
     pub fn take_next_leader_fetch_pending(
         &mut self,
         priority: LeaderPortraitKey,
     ) -> Option<LeaderPortraitKey> {
+        let now = Instant::now();
+        let mut checked = 0usize;
         loop {
             if self.leaders_in_flight.len() >= MAX_LEADER_FETCHES_IN_FLIGHT {
+                return None;
+            }
+            if checked >= self.leaders_fetch_pending.len() {
                 return None;
             }
 
@@ -182,15 +227,63 @@ impl AssetLoader {
             if self.leader_portrait_loaded(key) {
                 continue;
             }
+            if !self.leader_retry_ready(key, now) {
+                self.leaders_fetch_pending.push(key);
+                checked += 1;
+                continue;
+            }
 
             self.leaders_in_flight.insert(key);
             return Some(key);
         }
     }
 
-    pub fn note_leader_portrait_fetch_failed(&mut self, leader: Leader, mobile: bool) {
+    pub fn note_leader_portrait_fetch_failed(
+        &mut self,
+        leader: Leader,
+        mobile: bool,
+        reason: impl Into<String>,
+    ) {
         let key = LeaderPortraitKey { leader, mobile };
         self.leaders_in_flight.remove(&key);
+        let now = Instant::now();
+        let reason = reason.into();
+        let permanent = reason.contains("404");
+        let attempts = self
+            .leader_retry_state
+            .get(&key)
+            .map(|state| state.attempts.saturating_add(1))
+            .unwrap_or(1);
+        let exp = attempts.saturating_sub(1).min(4);
+        let delay_ms = 500u64.saturating_mul(1u64 << exp);
+        self.leader_retry_state.insert(
+            key,
+            PortraitRetryState {
+                attempts,
+                next_retry_at: now + Duration::from_millis(delay_ms),
+                last_error: reason,
+                permanent,
+            },
+        );
+
+        if self.leader_portrait_focus == Some(key)
+            && !permanent
+            && !self.leaders_fetch_pending.iter().any(|pending| *pending == key)
+        {
+            self.leaders_fetch_pending.push(key);
+        }
+    }
+
+    pub fn leader_retry_debug(&self, leader: Leader, mobile: bool) -> Option<(u32, Duration, &str)> {
+        let key = LeaderPortraitKey { leader, mobile };
+        let state = self.leader_retry_state.get(&key)?;
+        let now = Instant::now();
+        let remaining = if state.next_retry_at > now {
+            state.next_retry_at - now
+        } else {
+            Duration::from_millis(0)
+        };
+        Some((state.attempts, remaining, state.last_error.as_str()))
     }
 
     pub fn leader_portrait_filename(key: LeaderPortraitKey) -> String {
@@ -217,6 +310,7 @@ impl AssetLoader {
     pub fn enqueue_leader_portrait_bytes(&mut self, leader: Leader, mobile: bool, bytes: Vec<u8>) {
         let key = LeaderPortraitKey { leader, mobile };
         self.leaders_in_flight.remove(&key);
+        self.leader_retry_state.remove(&key);
         if self.leader_portrait_focus != Some(key) {
             return;
         }
@@ -275,6 +369,8 @@ impl AssetLoader {
             } else {
                 self.leader_desktop_images.insert(leader, texture);
             }
+            self.last_ready_portrait = Some(key);
+            self.leader_retry_state.remove(&key);
         }
     }
 
@@ -419,40 +515,40 @@ impl AssetLoader {
         for &leader in &sow_core::player::Leader::ALL {
             let avatar_bytes = match leader {
                 sow_core::player::Leader::Caesar => {
-                    include_bytes!("../../assets/avatars/caesar.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/caesar.webp").as_slice()
                 }
                 sow_core::player::Leader::Cleopatra => {
-                    include_bytes!("../../assets/avatars/cleopatra.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/cleopatra.webp").as_slice()
                 }
                 sow_core::player::Leader::Ragnar => {
-                    include_bytes!("../../assets/avatars/ragnar.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/ragnar.webp").as_slice()
                 }
                 sow_core::player::Leader::SunTzu => {
-                    include_bytes!("../../assets/avatars/sun_tzu.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/sun_tzu.webp").as_slice()
                 }
                 sow_core::player::Leader::Alexander => {
-                    include_bytes!("../../assets/avatars/alexander.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/alexander.webp").as_slice()
                 }
                 sow_core::player::Leader::GenghisKhan => {
-                    include_bytes!("../../assets/avatars/genghis_khan.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/genghis_khan.webp").as_slice()
                 }
                 sow_core::player::Leader::RichardTheLionheart => {
-                    include_bytes!("../../assets/avatars/richard_the_lionheart.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/richard_the_lionheart.webp").as_slice()
                 }
                 sow_core::player::Leader::Vercingetorix => {
-                    include_bytes!("../../assets/avatars/vercingetorix.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/vercingetorix.webp").as_slice()
                 }
                 sow_core::player::Leader::Boudica => {
-                    include_bytes!("../../assets/avatars/boudica.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/boudica.webp").as_slice()
                 }
                 sow_core::player::Leader::LadySixSky => {
-                    include_bytes!("../../assets/avatars/lady_six_sky.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/lady_six_sky.webp").as_slice()
                 }
                 sow_core::player::Leader::Leonidas => {
-                    include_bytes!("../../assets/avatars/leonidas.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/leonidas.webp").as_slice()
                 }
                 sow_core::player::Leader::Napoleon => {
-                    include_bytes!("../../assets/avatars/napoleon.webp").as_slice()
+                    sow_core::repo_asset_bytes!("avatars/napoleon.webp").as_slice()
                 }
             };
             let name_lower = leader.name().to_lowercase().replace(' ', "_");
@@ -464,7 +560,7 @@ impl AssetLoader {
 
         self.avatar_fallback = Some(load_image(
             "avatar_null",
-            include_bytes!("../../assets/avatars/null.webp"),
+            sow_core::repo_asset_bytes!("avatars/null.webp"),
         ));
     }
 
@@ -522,7 +618,7 @@ impl AssetLoader {
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
         if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
-            let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
+            let bytes = sow_core::repo_asset_bytes!("maps/northamerica/thumbnail.webp");
             if let Some(color_image) =
                 crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
             {
@@ -554,19 +650,19 @@ impl AssetLoader {
 
         self.ui_loader_empty = Some(load_image(
             "ui_loader_empty",
-            include_bytes!("../../assets/ui/loader_empty.webp"),
+            sow_core::repo_asset_bytes!("ui/loader_empty.webp"),
         ));
         self.ui_loader_full = Some(load_image(
             "ui_loader_full",
-            include_bytes!("../../assets/ui/loader_full.webp"),
+            sow_core::repo_asset_bytes!("ui/loader_full.webp"),
         ));
         self.splash_desktop = Some(load_image(
             "sow_splash_desktop",
-            include_bytes!("../../assets/ui/sow-splash-desktop.webp"),
+            sow_core::repo_asset_bytes!("ui/sow-splash-desktop.webp"),
         ));
         self.splash_mobile = Some(load_image(
             "sow_splash_mobile",
-            include_bytes!("../../assets/ui/sow-splash-mobile.webp"),
+            sow_core::repo_asset_bytes!("ui/sow-splash-mobile.webp"),
         ));
     }
 
@@ -577,7 +673,7 @@ impl AssetLoader {
             mobile: false,
         };
         if !self.leader_portrait_loaded(desktop_key) {
-            let bytes = include_bytes!("../../assets/ui/leaders/caesar_desktop.webp");
+            let bytes = sow_core::repo_asset_bytes!("ui/leaders/caesar_desktop.webp");
             if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
                 let texture = ctx.load_texture(
                     "leader_caesar_desktop",
@@ -585,6 +681,7 @@ impl AssetLoader {
                     egui::TextureOptions::LINEAR,
                 );
                 self.leader_desktop_images.insert(DEFAULT, texture);
+                self.last_ready_portrait = Some(desktop_key);
             }
         }
         let mobile_key = LeaderPortraitKey {
@@ -592,7 +689,7 @@ impl AssetLoader {
             mobile: true,
         };
         if !self.leader_portrait_loaded(mobile_key) {
-            let bytes = include_bytes!("../../assets/ui/leaders/caesar_mobile.webp");
+            let bytes = sow_core::repo_asset_bytes!("ui/leaders/caesar_mobile.webp");
             if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
                 let texture = ctx.load_texture(
                     "leader_caesar_mobile",
@@ -600,6 +697,9 @@ impl AssetLoader {
                     egui::TextureOptions::LINEAR,
                 );
                 self.leader_mobile_images.insert(DEFAULT, texture);
+                if self.last_ready_portrait.is_none() {
+                    self.last_ready_portrait = Some(mobile_key);
+                }
             }
         }
     }
@@ -633,6 +733,15 @@ impl AssetLoader {
     }
 }
 
+impl AssetLoader {
+    fn leader_retry_ready(&self, key: LeaderPortraitKey, now: Instant) -> bool {
+        self.leader_retry_state
+            .get(&key)
+            .map(|state| !state.permanent && state.next_retry_at <= now)
+            .unwrap_or(true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -643,7 +752,28 @@ mod tests {
 
     #[test]
     fn test_thumbnail_decoding() {
-        let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
+        let bytes = sow_core::repo_asset_bytes!("maps/northamerica/thumbnail.webp");
         assert!(image::load_from_memory(bytes).is_ok());
+    }
+
+    #[test]
+    fn leader_portrait_assets_present() {
+        use crate::ui::asset_loader::{AssetLoader, LeaderPortraitKey};
+        use sow_core::player::Leader;
+        use std::path::Path;
+
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/ui/leaders");
+        for leader in Leader::ALL {
+            for mobile in [false, true] {
+                let filename =
+                    AssetLoader::leader_portrait_filename(LeaderPortraitKey { leader, mobile });
+                let path = base.join(&filename);
+                assert!(
+                    path.is_file(),
+                    "missing leader portrait: {}",
+                    path.display()
+                );
+            }
+        }
     }
 }

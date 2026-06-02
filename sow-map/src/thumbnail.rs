@@ -5,7 +5,7 @@ use image::imageops::FilterType;
 use image::{DynamicImage, ExtendedColorType, RgbaImage};
 use std::path::Path;
 
-/// Lobby / catalog preview edge length (keep small for WASM/CDN).
+/// Lobby / catalog preview edge length (keep small for WASM/catalog fetch).
 pub const THUMBNAIL_SIZE: u32 = 512;
 
 /// Target lossy WebP quality when re-encoding via `cwebp` (see `reencode_thumbnail_file`).

@@ -1,6 +1,7 @@
 //! Single asset URL configuration for every client target (native, web, CrazyGames).
 
-const DEFAULT_CDN: &str = "https://shadowsofwar.io";
+/// Production site origin for streamed maps/assets (nginx static, not a third-party CDN).
+const DEFAULT_ORIGIN: &str = "https://shadowsofwar.io";
 
 #[derive(Clone, Debug)]
 pub struct AssetConfig {
@@ -11,7 +12,7 @@ pub struct AssetConfig {
 }
 
 impl AssetConfig {
-    /// Resolve once at boot: JS globals (wasm) → env vars → CDN defaults.
+    /// Resolve once at boot: JS globals (wasm) → env vars → production origin defaults.
     pub fn resolve() -> Self {
         let maps_base = Self::resolve_maps_base();
         let assets_base = Self::resolve_assets_base();
@@ -59,15 +60,12 @@ impl AssetConfig {
                 return url;
             }
         }
-        if let Some(url) = Self::origin_subpath("/maps") {
-            return url;
-        }
         if let Ok(ws) = std::env::var("SOW_WS_URL") {
             if let Some(derived) = maps_url_from_ws_url(&ws) {
                 return derived;
             }
         }
-        format!("{DEFAULT_CDN}/maps")
+        format!("{DEFAULT_ORIGIN}/maps")
     }
 
     fn resolve_assets_base() -> String {
@@ -79,10 +77,7 @@ impl AssetConfig {
                 return url;
             }
         }
-        if let Some(url) = Self::origin_subpath("/assets") {
-            return url;
-        }
-        format!("{DEFAULT_CDN}/assets")
+        format!("{DEFAULT_ORIGIN}/assets")
     }
 
     fn resolve_cache_bust() -> String {
@@ -92,21 +87,6 @@ impl AssetConfig {
             }
         }
         String::new()
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn origin_subpath(path: &str) -> Option<String> {
-        let window = web_sys::window()?;
-        let origin = window.location().origin().ok()?;
-        if origin.is_empty() {
-            return None;
-        }
-        Some(format!("{origin}{path}"))
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn origin_subpath(_path: &str) -> Option<String> {
-        None
     }
 
     #[cfg(target_arch = "wasm32")]

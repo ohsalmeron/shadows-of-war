@@ -28,9 +28,9 @@ impl HudIcon {
 
     pub fn bytes(self) -> &'static [u8] {
         match self {
-            Self::Controls => include_bytes!("../../../assets/ui/hud/hud_controls.webp"),
-            Self::BattleLog => include_bytes!("../../../assets/ui/hud/hud_battle_log.webp"),
-            Self::Logs => include_bytes!("../../../assets/ui/hud/hud_logs.webp"),
+            Self::Controls => sow_core::repo_asset_bytes!("ui/hud/hud_controls.webp"),
+            Self::BattleLog => sow_core::repo_asset_bytes!("ui/hud/hud_battle_log.webp"),
+            Self::Logs => sow_core::repo_asset_bytes!("ui/hud/hud_logs.webp"),
         }
     }
 }

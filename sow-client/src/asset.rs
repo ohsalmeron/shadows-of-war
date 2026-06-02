@@ -139,7 +139,22 @@ impl SowApp {
                     self.ui
                         .app
                         .asset_loader
-                        .note_leader_portrait_fetch_failed(leader, mobile);
+                        .note_leader_portrait_fetch_failed(leader, mobile, reason.clone());
+                    if let Some((attempt, retry_in, last_error)) = self
+                        .ui
+                        .app
+                        .asset_loader
+                        .leader_retry_debug(leader, mobile)
+                    {
+                        log::debug!(
+                            "Leader portrait retry scheduled for {:?} mobile={} attempt={} retry_in_ms={} last_error={}",
+                            leader,
+                            mobile,
+                            attempt,
+                            retry_in.as_millis(),
+                            last_error
+                        );
+                    }
                 }
                 MapDownloadEvent::Error(e) => {
                     log::error!("Map download aborted: {}", e);
@@ -228,6 +243,12 @@ impl SowApp {
 
             let filename = AssetLoader::leader_portrait_filename(key);
             let url = self.asset_config.leader_portrait_url(&filename);
+            log::debug!(
+                "Fetching leader portrait {:?} mobile={} url={}",
+                key.leader,
+                key.mobile,
+                url
+            );
             let tx = self.tasks.map_tx.clone();
             let leader = key.leader;
             let mobile = key.mobile;

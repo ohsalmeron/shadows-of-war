@@ -1,6 +1,18 @@
 use egui::Context;
 use serde::{Deserialize, Serialize};
 
+/// Embed a file from the workspace-root [`assets/`] tree (resolved via `sow-core` manifest).
+#[macro_export]
+macro_rules! repo_asset_bytes {
+    ($path:expr) => {
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../assets/",
+            $path
+        ))
+    };
+}
+
 // 1. Single source of truth for all assets and their filenames.
 #[macro_export]
 macro_rules! all_assets {
@@ -53,7 +65,7 @@ all_assets!(define_enum_and_methods);
 macro_rules! define_game_icon_table {
     ($($variant:ident => $file:expr),* $(,)?) => {
         const GAME_ICON_FILES: &[(&str, &[u8])] = &[
-            $(($file, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../sow-client/assets/", $file)))),*
+            $(($file, $crate::repo_asset_bytes!(concat!("icons/", $file)))),*
         ];
     };
 }

@@ -29,6 +29,7 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
 | `sow-site` | Leptos SSR (website) |
+| `assets/` | All shipped art (maps, UI, icons, fonts) |
 | `web/` | Browser shell and portal SDK hooks |
 | `scripts/sow.sh` | Build, deploy, package |
 

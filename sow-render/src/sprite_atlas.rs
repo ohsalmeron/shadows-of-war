@@ -30,11 +30,11 @@ impl MoverSpriteId {
 }
 
 const SPRITE_FILES: &[&[u8]] = &[
-    include_bytes!("../../sow-client/assets/transport_ship.png"),
-    include_bytes!("../../sow-client/assets/trade_ship.png"),
-    include_bytes!("../../sow-client/assets/battleship.png"),
-    include_bytes!("../../sow-client/assets/atombomb.png"),
-    include_bytes!("../../sow-client/assets/sam_missile.png"),
+    sow_core::repo_asset_bytes!("icons/transport_ship.png"),
+    sow_core::repo_asset_bytes!("icons/trade_ship.png"),
+    sow_core::repo_asset_bytes!("icons/battleship.png"),
+    sow_core::repo_asset_bytes!("icons/atombomb.png"),
+    sow_core::repo_asset_bytes!("icons/sam_missile.png"),
 ];
 
 fn rasterize_sprite(bytes: &[u8], size: u32) -> Vec<u8> {

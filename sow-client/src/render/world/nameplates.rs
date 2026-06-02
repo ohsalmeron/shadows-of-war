@@ -1,8 +1,8 @@
 use super::*;
 
-const REQUEST_WEBP: &[u8] = include_bytes!("../../../assets/request.webp");
-const HANDSHAKE_WEBP: &[u8] = include_bytes!("../../../assets/handshake.webp");
-const BETRAY_WEBP: &[u8] = include_bytes!("../../../assets/betray.webp");
+const REQUEST_WEBP: &[u8] = sow_core::repo_asset_bytes!("icons/request.webp");
+const HANDSHAKE_WEBP: &[u8] = sow_core::repo_asset_bytes!("icons/handshake.webp");
+const BETRAY_WEBP: &[u8] = sow_core::repo_asset_bytes!("icons/betray.webp");
 
 /// Damped spring overshoot: approaches 1.0 with a single bounce.
 #[inline]
@@ -49,7 +49,7 @@ pub(crate) fn render(
         REGISTER_STAR_ONCE.call_once(|| {
             painter.ctx().include_bytes(
                 "bytes://star.webp",
-                include_bytes!("../../../assets/star.webp").as_slice(),
+                sow_core::repo_asset_bytes!("icons/star.webp").as_slice(),
             );
         });
 

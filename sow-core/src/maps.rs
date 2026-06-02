@@ -156,7 +156,7 @@ pub fn load_map_from_payload(bytes: &[u8]) -> Result<MapFile, crate::map_file::M
 #[inline]
 pub fn bundled_map_br(key: &str) -> Option<&'static [u8]> {
     match map_key(key).as_str() {
-        "northamerica" => Some(include_bytes!("../../assets/maps/northamerica/map.bin.br")),
+        "northamerica" => Some(crate::repo_asset_bytes!("maps/northamerica/map.bin.br")),
         _ => None,
     }
 }

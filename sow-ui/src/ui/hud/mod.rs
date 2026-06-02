@@ -1198,7 +1198,7 @@ pub fn draw(
                                                             REGISTER_STAR_ONCE.call_once(|| {
                                                                 ui.ctx().include_bytes(
                                                                     "bytes://star.webp",
-                                                                    include_bytes!("../../../../sow-client/assets/star.webp").as_slice(),
+                                                                    sow_core::repo_asset_bytes!("icons/star.webp").as_slice(),
                                                                 );
                                                             });
                                                             let star_size = 18.0_f32; // bigger size to compensate for native emoji
@@ -1688,9 +1688,7 @@ pub fn draw(
                                         REGISTER_STAR_ONCE.call_once(|| {
                                             ui.ctx().include_bytes(
                                                 "bytes://star.webp",
-                                                include_bytes!(
-                                                    "../../../../sow-client/assets/star.webp"
-                                                )
+                                                sow_core::repo_asset_bytes!("icons/star.webp")
                                                 .as_slice(),
                                             );
                                         });

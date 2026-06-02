@@ -68,12 +68,31 @@ stage_core_assets() {
   copy_web_loader_assets "${play}/assets/ui"
 }
 
-stage_cdn_assets() {
+stage_published_assets() {
   local dest="$1"
-  echo "==> Staging CDN assets tree (${dest})"
+  echo "==> Staging nginx-published assets tree (${dest})"
   mkdir -p "${dest}/fonts"
   rsync -a "${ROOT}/assets/fonts/" "${dest}/fonts/"
   copy_web_loader_assets "${dest}/ui"
+}
+
+prune_querystring_artifacts() {
+  local root_dir="$1"
+  python3 - "${root_dir}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+removed = 0
+for path in root.rglob("*"):
+    if not path.is_file():
+        continue
+    if "?v=" in path.name:
+        path.unlink(missing_ok=True)
+        removed += 1
+if removed:
+    print(f"Removed {removed} querystring artifact file(s) under {root}")
+PY
 }
 
 sow_assemble_play_dist() {
@@ -84,7 +103,9 @@ sow_assemble_play_dist() {
   BUILD_TS=$(date +%s)
   JS_FILE="sow_client_${BUILD_TS}.js"
   WASM_FILE="sow_client_${BUILD_TS}_bg.wasm"
-  "${HOME}/.cargo/bin/wasm-bindgen" --out-dir "${play}" --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
+  local wasm_bindgen_bin
+  wasm_bindgen_bin=$(find_wasm_bindgen)
+  "${wasm_bindgen_bin}" --out-dir "${play}" --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
   stage_core_assets "${play}"
   cp -a web/favicon_io/* "${play}/" 2>/dev/null || true
   cp web/sow.svg "${play}/sow.svg"
@@ -102,6 +123,7 @@ sow_assemble_play_dist() {
   sed -e "s/__VERSION__/${CLEAN_VERSION}/g" -e "s/__JS_FILE__/${JS_FILE}/g" \
     -e "s/__WASM_FILE__/${WASM_FILE}/g" -e "s/__BUILD_TS__/${BUILD_TS}/g" \
     "${ROOT}/web/sw.js.template" > "${play}/sw.js"
+  prune_querystring_artifacts "${play}"
   mkdir -p "${ROOT}/dist"
   cp web/sow.svg "${ROOT}/dist/sow.svg"
   echo "Bundle sizes: ${WASM_FILE}=$(( $(stat -c%s "${play}/${WASM_FILE}") / 1024 )) KB, ${JS_FILE}=$(( $(stat -c%s "${play}/${JS_FILE}") / 1024 )) KB"
@@ -210,6 +232,47 @@ optimize_wasm_bundle() {
     fi
 }
 
+wasm_bindgen_version_from_lock() {
+  awk '
+    /^name = "wasm-bindgen"$/ {
+      getline
+      if ($1 == "version") {
+        gsub(/"/, "", $3)
+        print $3
+        exit
+      }
+    }
+  ' "${ROOT}/Cargo.lock"
+}
+
+ensure_wasm_bindgen_cli() {
+  local want="$1"
+  local bindgen_bin="${HOME}/.cargo/bin/wasm-bindgen"
+  local have=""
+
+  if [[ -x "${bindgen_bin}" ]]; then
+    have=$("${bindgen_bin}" --version 2>/dev/null | awk '{print $2}' || true)
+    if [[ "${have}" == "${want}" ]]; then
+      echo "${bindgen_bin}"
+      return 0
+    fi
+  fi
+
+  echo "==> Installing wasm-bindgen-cli ${want} (CLI was ${have:-missing})..."
+  cargo install -f wasm-bindgen-cli --version "${want}"
+  echo "${bindgen_bin}"
+}
+
+find_wasm_bindgen() {
+  local want
+  want=$(wasm_bindgen_version_from_lock)
+  if [[ -z "${want}" ]]; then
+    echo "❌ Could not read wasm-bindgen version from Cargo.lock" >&2
+    return 1
+  fi
+  ensure_wasm_bindgen_cli "${want}"
+}
+
 install_cwebp_if_missing() {
     find_cwebp >/dev/null && return 0
     [[ "${SOW_SKIP_TOOL_INSTALL:-}" == "1" ]] && return 1
@@ -227,7 +290,7 @@ install_cwebp_if_missing() {
 
 check_local_build_tools() {
     local missing=()
-    local cwebp_bin terser_cmd
+    local cwebp_bin terser_cmd wasm_bindgen_bin
 
     if ! cwebp_bin=$(find_cwebp); then
         install_cwebp_if_missing || missing+=("cwebp (Arch: libwebp-utils, Debian: webp)")
@@ -235,8 +298,9 @@ check_local_build_tools() {
     fi
 
     command -v brotli >/dev/null 2>&1 || missing+=("brotli")
-    command -v wasm-bindgen >/dev/null 2>&1 || [[ -x "${HOME}/.cargo/bin/wasm-bindgen" ]] \
-        || missing+=("wasm-bindgen (cargo install wasm-bindgen-cli)")
+    if ! wasm_bindgen_bin=$(find_wasm_bindgen); then
+        missing+=("wasm-bindgen-cli (auto-install failed)")
+    fi
     find_terser >/dev/null || missing+=("terser or npx")
 
     if ((${#missing[@]})); then
@@ -248,7 +312,7 @@ check_local_build_tools() {
     terser_cmd=$(find_terser)
     wasm_opt_hint=""
     find_wasm_opt >/dev/null || wasm_opt_hint=" (wasm-opt/binaryen optional, recommended)"
-    echo "✅ Build tools: cwebp=${cwebp_bin} brotli=$(command -v brotli) terser=${terser_cmd}${wasm_opt_hint}"
+    echo "✅ Build tools: cwebp=${cwebp_bin} brotli=$(command -v brotli) wasm-bindgen=${wasm_bindgen_bin} terser=${terser_cmd}${wasm_opt_hint}"
 }
 
 check_vps_ready() {
@@ -351,20 +415,77 @@ ensure_ptr_dns() {
 }
 
 
+PROD_ASSETS_USER="bizkit"
+PROD_ASSETS_HOST="35.239.160.167"
+PROD_ASSETS_PATH="/var/www/shadowsofwar.io/html/assets"
+
+check_leader_portraits_complete() {
+    local leaders_src="${ROOT}/assets/ui/leaders"
+    python3 - "${leaders_src}" <<'PY'
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+# Keep in sync with sow_core::player::Leader::ALL display names.
+leaders = [
+    "Caesar", "Cleopatra", "Ragnar", "Sun Tzu", "Alexander", "Genghis Khan",
+    "Richard the Lionheart", "Vercingetorix", "Boudica", "Lady Six Sky",
+    "Leonidas", "Napoleon",
+]
+missing = []
+for name in leaders:
+    slug = name.lower().replace(" ", "_")
+    for form in ("desktop", "mobile"):
+        path = src / f"{slug}_{form}.webp"
+        if not path.is_file():
+            missing.append(path)
+if missing:
+    print("❌ Missing leader portrait file(s):", file=sys.stderr)
+    for path in missing:
+        print(f"   {path}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
 copy_leader_portraits() {
     local dest="${1:-dist/assets/ui/leaders}"
-    local leaders_src="${ROOT}/sow-ui/assets/ui/leaders"
+    local leaders_src="${ROOT}/assets/ui/leaders"
     if [[ ! -d "${leaders_src}" ]]; then
         echo "❌ Missing leader portraits: ${leaders_src}"
         exit 1
     fi
+    check_leader_portraits_complete
     mkdir -p "${dest}"
     cp -a "${leaders_src}/." "${dest}/"
 }
 
+deploy_prod_published_assets() {
+    local u="${1:-${PROD_ASSETS_USER}}" h="${2:-${PROD_ASSETS_HOST}}"
+    echo "==> Deploying prod published assets (${u}@${h}:${PROD_ASSETS_PATH})"
+    ssh "${u}@${h}" "mkdir -p ${PROD_ASSETS_PATH}"
+    rsync -avz --delete "${ROOT}/dist/assets-publish/" "${u}@${h}:${PROD_ASSETS_PATH}/"
+}
+
+verify_prod_published_assets() {
+    local base="https://shadowsofwar.io/assets"
+    local path code
+    echo "==> Verifying prod published assets..."
+    for path in \
+        "ui/leaders/caesar_desktop.webp" \
+        "ui/leaders/richard_the_lionheart_desktop.webp" \
+        "fonts/JockeyOne-Regular.ttf"; do
+        code=$(curl -sS -o /dev/null -w "%{http_code}" "${base}/${path}")
+        if [[ "${code}" != "200" ]]; then
+            echo "❌ prod published asset failed: ${base}/${path} -> HTTP ${code}"
+            return 1
+        fi
+    done
+    echo "✅ prod published assets OK"
+}
+
 copy_web_loader_assets() {
     local dest="${1:-dist/assets/ui}"
-    local ui_src="${ROOT}/sow-ui/assets/ui"
+    local ui_src="${ROOT}/assets/ui"
     local cwebp_bin
     mkdir -p "${dest}"
 
@@ -497,12 +618,12 @@ cmd_cloud() {
     sb=target/x86_64-unknown-linux-gnu/release/sow-server; rb=target/x86_64-unknown-linux-gnu/release/sow-relay
   fi
   sow_assemble_play_dist ""
-  stage_cdn_assets "${ROOT}/dist/cdn"
+  stage_published_assets "${ROOT}/dist/assets-publish"
   sow_build_site
   local u=bizkit h=35.239.160.167
-  ssh "${u}@${h}" "mkdir -p /var/www/shadowsofwar.io/html/play /var/www/shadowsofwar.io/html/assets"
+  ssh "${u}@${h}" "mkdir -p /var/www/shadowsofwar.io/html/play"
   rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/shadowsofwar.io/html/play/" & w1=$!
-  rsync -avz --delete "${ROOT}/dist/cdn/" "${u}@${h}:/var/www/shadowsofwar.io/html/assets/" & w6=$!
+  deploy_prod_published_assets "${u}" "${h}" & w6=$!
   rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/shadowsofwar.io/html/sow.svg" & w5=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-server" & w2=$!
@@ -510,6 +631,7 @@ cmd_cloud() {
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ "${u}@${h}:/home/bizkit/shadowsofwar/assets/maps/" & w4=$!
   wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}"
+  verify_prod_published_assets
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" "${ROOT}/nginx_config.conf"
   deploy_sow_site_systemd "${u}" "${h}" "sow-site" "127.0.0.1:8787" \
     "/home/bizkit/shadowsofwar" "/home/bizkit/shadowsofwar/sow-site"
@@ -534,19 +656,21 @@ cmd_ptr() {
     sb=target/x86_64-unknown-linux-gnu/release/sow-server; rb=target/x86_64-unknown-linux-gnu/release/sow-relay
   fi
   sow_assemble_play_dist ""
-  stage_cdn_assets "${ROOT}/dist/cdn"
+  stage_published_assets "${ROOT}/dist/assets-publish"
   sow_build_site
   local u=bizkit h=shadowsofwar.io
   ssh "${u}@${h}" "mkdir -p /var/www/ptr.shadowsofwar.io/html/play /var/www/ptr.shadowsofwar.io/html/assets"
   rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/play/" & w1=$!
-  rsync -avz --delete "${ROOT}/dist/cdn/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/assets/" & w6=$!
+  rsync -avz --delete "${ROOT}/dist/assets-publish/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/assets/" & w6=$!
   rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/sow.svg" & w5=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-relay" & w3=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ "${u}@${h}:/home/bizkit/shadowsofwar-ptr/assets/maps/" & w4=$!
-  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}"
+  deploy_prod_published_assets "${PROD_ASSETS_USER}" "${PROD_ASSETS_HOST}" & w7=$!
+  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}" "${w7}"
+  verify_prod_published_assets
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/ptr.shadowsofwar.io" "${ROOT}/nginx_config_ptr.conf"
   deploy_sow_site_systemd "${u}" "${h}" "sow-site-ptr" "127.0.0.1:8788" \
     "/home/bizkit/shadowsofwar-ptr" "/home/bizkit/shadowsofwar-ptr/sow-site"
@@ -794,8 +918,10 @@ EOF
   mkdir -p "${ASSETS_DIR}"
   rm -rf "${ASSETS_DIR:?}"/*
 
-  # Run wasm-bindgen
-  ~/.cargo/bin/wasm-bindgen --out-dir "${ASSETS_DIR}" --target web --out-name "sow_client" --no-typescript "${WASM_IN}"
+  # Run wasm-bindgen (version matched to Cargo.lock)
+  local wasm_bindgen_bin
+  wasm_bindgen_bin=$(find_wasm_bindgen)
+  "${wasm_bindgen_bin}" --out-dir "${ASSETS_DIR}" --target web --out-name "sow_client" --no-typescript "${WASM_IN}"
 
   # Compile HTML template
   CLEAN_VERSION=$(cat "${ROOT}/.version" 2>/dev/null || echo "0.1.0")

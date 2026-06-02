@@ -27,7 +27,7 @@ src/assets/
 dump.rdb
 *debug*.txt
 eslint_out.txt
-leaders/
+/leaders/
 wasm-pack*.*
 .cursor/
 blade/

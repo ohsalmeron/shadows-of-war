@@ -1,8 +1,7 @@
 use crate::app::SowApp;
 use crate::hud::avatar::paint_circular_avatar;
 use crate::hud::nameplate::nameplate_matte_player_rgb;
-use egui::{Align, Align2, Color32, FontId, Layout, Pos2, RichText, Stroke, Vec2, Vec2b};
-use egui_extras::{Column, TableBuilder};
+use egui::{Align, Align2, Color32, FontId, Layout, Pos2, RichText, Sense, Stroke, Vec2};
 use sow_core::player::{Leader, PlayerType};
 use sow_core::protocol::{PlayerSnapshot, Team};
 use std::collections::HashSet;
@@ -55,6 +54,20 @@ impl LeaderboardMetrics {
                 troops_col_w: 80.0,
             }
         }
+    }
+
+    fn avatar_col_w(&self) -> f32 {
+        self.avatar_radius * 2.0 + 8.0
+    }
+
+    fn name_col_w(&self) -> f32 {
+        (self.panel_width
+            - self.rank_badge
+            - self.avatar_col_w()
+            - self.control_col_w
+            - self.troops_col_w
+            - 8.0)
+            .max(80.0)
     }
 }
 
@@ -258,34 +271,35 @@ fn paint_player_icon(
     );
 }
 
-fn configure_leaderboard_table<'a>(
-    ui: &'a mut egui::Ui,
-    metrics: &LeaderboardMetrics,
-    id_salt: impl std::hash::Hash,
-    max_scroll_height: f32,
-    vscroll: bool,
-) -> TableBuilder<'a> {
-    TableBuilder::new(ui)
-        .id_salt(id_salt)
-        .striped(true)
-        .resizable(false)
-        .cell_layout(Layout::left_to_right(Align::Center))
-        .column(Column::exact(metrics.rank_badge))
-        .column(Column::exact(metrics.avatar_radius * 2.0 + 8.0))
-        .column(Column::remainder().at_least(80.0).clip(true))
-        .column(Column::exact(metrics.control_col_w))
-        .column(Column::exact(metrics.troops_col_w))
-        .min_scrolled_height(0.0)
-        .max_scroll_height(max_scroll_height)
-        .auto_shrink(Vec2b::new(false, false))
-        .vscroll(vscroll)
-}
-
-fn header_label(text: &str) -> RichText {
-    RichText::new(text)
-        .strong()
-        .size(10.0)
-        .color(Color32::from_gray(120))
+fn paint_leaderboard_header(ui: &mut egui::Ui, metrics: &LeaderboardMetrics) {
+    ui.horizontal(|ui| {
+        ui.allocate_exact_size(Vec2::new(metrics.rank_badge, TABLE_HEADER_H), Sense::hover());
+        ui.allocate_exact_size(
+            Vec2::new(metrics.avatar_col_w(), TABLE_HEADER_H),
+            Sense::hover(),
+        );
+        ui.allocate_ui_with_layout(
+            Vec2::new(metrics.name_col_w(), TABLE_HEADER_H),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.label(header_label("Player"));
+            },
+        );
+        ui.allocate_ui_with_layout(
+            Vec2::new(metrics.control_col_w, TABLE_HEADER_H),
+            Layout::right_to_left(Align::Center),
+            |ui| {
+                ui.label(header_label("Control"));
+            },
+        );
+        ui.allocate_ui_with_layout(
+            Vec2::new(metrics.troops_col_w, TABLE_HEADER_H),
+            Layout::right_to_left(Align::Center),
+            |ui| {
+                ui.label(header_label("Troops"));
+            },
+        );
+    });
 }
 
 struct RowPaintCtx<'a> {
@@ -294,13 +308,14 @@ struct RowPaintCtx<'a> {
     my_id: Option<u16>,
 }
 
-fn fill_player_table_row(
-    row: &mut egui_extras::TableRow<'_, '_>,
+fn paint_leaderboard_player_row(
+    ui: &mut egui::Ui,
     ctx: &RowPaintCtx<'_>,
     metrics: &LeaderboardMetrics,
     rank_idx: usize,
     ranking: &LeaderboardRanking,
     is_sticky_self: bool,
+    striped: bool,
 ) {
     let rank_1based = rank_idx + 1;
     let player_id = ranking.id;
@@ -310,77 +325,114 @@ fn fill_player_table_row(
     let display = ctx.app.ui.leaderboard_display.get(&player_id).cloned();
     let use_portrait = rank_1based <= 3 || highlight;
 
-    row.set_selected(highlight);
+    let row_fill = if highlight {
+        Color32::from_rgba_unmultiplied(250, 204, 21, 28)
+    } else if striped {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 8)
+    } else {
+        Color32::TRANSPARENT
+    };
 
-    row.col(|ui| {
-        if highlight {
-            let (accent, _) = ui.allocate_exact_size(
-                Vec2::new(3.0, metrics.row_height - 4.0),
-                egui::Sense::hover(),
-            );
-            ui.painter().rect_filled(
-                accent,
-                2.0,
-                sow_ui::ui::theme::accent_ranked_gold(),
-            );
-        }
-        paint_rank_badge(ui, rank_1based, metrics);
-    });
-
-    row.col(|ui| {
-        if let Some(ref row_display) = display {
-            paint_player_icon(ui, ctx.app, row_display, use_portrait, metrics);
-        } else {
-            ui.label(RichText::new("…").color(Color32::GRAY));
-        }
-    });
-
-    row.col(|ui| {
-        if let Some(ref row_display) = display {
-            let mut name_text = row_display.name.clone();
-            if highlight {
-                name_text = format!("YOU — {name_text}");
-            }
+    egui::Frame::new()
+        .fill(row_fill)
+        .inner_margin(egui::Margin::symmetric(0, 0))
+        .show(ui, |ui| {
+            ui.set_min_height(metrics.row_height);
             ui.horizontal(|ui| {
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(&name_text)
-                            .size(metrics.name_font)
-                            .color(if highlight {
-                                sow_ui::ui::theme::accent_ranked_gold()
-                            } else {
-                                Color32::from_gray(235)
-                            })
-                            .strong(),
-                    )
-                    .truncate(),
+                ui.allocate_ui_with_layout(
+                    Vec2::new(metrics.rank_badge, metrics.row_height),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        if highlight {
+                            let (accent, _) = ui.allocate_exact_size(
+                                Vec2::new(3.0, metrics.row_height - 4.0),
+                                Sense::hover(),
+                            );
+                            ui.painter().rect_filled(
+                                accent,
+                                2.0,
+                                sow_ui::ui::theme::accent_ranked_gold(),
+                            );
+                        }
+                        paint_rank_badge(ui, rank_1based, metrics);
+                    },
                 );
-                if let Some(emoji) = &row_display.active_emoji {
-                    ui.label(RichText::new(emoji).size(12.0));
-                }
+
+                ui.allocate_ui_with_layout(
+                    Vec2::new(metrics.avatar_col_w(), metrics.row_height),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        if let Some(ref row_display) = display {
+                            paint_player_icon(ui, ctx.app, row_display, use_portrait, metrics);
+                        } else {
+                            ui.label(RichText::new("…").color(Color32::GRAY));
+                        }
+                    },
+                );
+
+                ui.allocate_ui_with_layout(
+                    Vec2::new(metrics.name_col_w(), metrics.row_height),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        if let Some(ref row_display) = display {
+                            let mut name_text = row_display.name.clone();
+                            if highlight {
+                                name_text = format!("YOU — {name_text}");
+                            }
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&name_text)
+                                            .size(metrics.name_font)
+                                            .color(if highlight {
+                                                sow_ui::ui::theme::accent_ranked_gold()
+                                            } else {
+                                                Color32::from_gray(235)
+                                            })
+                                            .strong(),
+                                    )
+                                    .truncate(),
+                                );
+                                if let Some(emoji) = &row_display.active_emoji {
+                                    ui.label(RichText::new(emoji).size(12.0));
+                                }
+                            });
+                        }
+                    },
+                );
+
+                ui.allocate_ui_with_layout(
+                    Vec2::new(metrics.control_col_w, metrics.row_height),
+                    Layout::right_to_left(Align::Center),
+                    |ui| {
+                        ui.label(
+                            RichText::new(format!("{control_pct:.1}%"))
+                                .font(FontId::monospace(metrics.stat_font))
+                                .color(Color32::WHITE),
+                        );
+                    },
+                );
+
+                ui.allocate_ui_with_layout(
+                    Vec2::new(metrics.troops_col_w, metrics.row_height),
+                    Layout::right_to_left(Align::Center),
+                    |ui| {
+                        ui.label(
+                            RichText::new(sow_ui::utils::format_number(ranking.troops))
+                                .font(FontId::monospace(metrics.stat_font))
+                                .color(Color32::from_gray(220)),
+                        );
+                    },
+                );
             });
-        }
-    });
-
-    row.col(|ui| {
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(
-                RichText::new(format!("{control_pct:.1}%"))
-                    .font(FontId::monospace(metrics.stat_font))
-                    .color(Color32::WHITE),
-            );
         });
-    });
+}
 
-    row.col(|ui| {
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(
-                RichText::new(sow_ui::utils::format_number(ranking.troops))
-                    .font(FontId::monospace(metrics.stat_font))
-                    .color(Color32::from_gray(220)),
-            );
-        });
-    });
+fn header_label(text: &str) -> RichText {
+    RichText::new(text)
+        .strong()
+        .size(10.0)
+        .color(Color32::from_gray(120))
 }
 
 fn paint_team_row(
@@ -693,43 +745,25 @@ impl SowApp {
                 my_id,
             };
 
-            let scroll_output = configure_leaderboard_table(
-                ui,
-                metrics,
-                "leaderboard_players",
-                table_scroll_h,
-                true,
-            )
-            .header(TABLE_HEADER_H, |mut header| {
-                header.col(|_ui| {});
-                header.col(|_ui| {});
-                header.col(|ui| {
-                    ui.label(header_label("Player"));
+            paint_leaderboard_header(ui, metrics);
+
+            let scroll_output = egui::ScrollArea::vertical()
+                .id_salt("leaderboard_players")
+                .max_height(table_scroll_h)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (i, (rank_idx, ranking)) in visible_rows.iter().enumerate() {
+                        paint_leaderboard_player_row(
+                            ui,
+                            &row_ctx,
+                            metrics,
+                            *rank_idx,
+                            ranking,
+                            false,
+                            i % 2 == 1,
+                        );
+                    }
                 });
-                header.col(|ui| {
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(header_label("Control"));
-                    });
-                });
-                header.col(|ui| {
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(header_label("Troops"));
-                    });
-                });
-            })
-            .body(|body| {
-                body.rows(metrics.row_height, visible_rows.len(), |mut row| {
-                    let (rank_idx, ranking) = &visible_rows[row.index()];
-                    fill_player_table_row(
-                        &mut row,
-                        &row_ctx,
-                        metrics,
-                        *rank_idx,
-                        ranking,
-                        false,
-                    );
-                });
-            });
 
             if !search_active {
                 let state = &scroll_output.state;
@@ -761,25 +795,15 @@ impl SowApp {
                             total_land_tiles,
                             my_id: Some(my_id),
                         };
-                        configure_leaderboard_table(
+                        paint_leaderboard_player_row(
                             ui,
+                            &sticky_ctx,
                             metrics,
-                            "leaderboard_sticky_self",
-                            metrics.row_height,
+                            *rank_idx,
+                            ranking,
+                            true,
                             false,
-                        )
-                        .body(|mut body| {
-                            body.row(metrics.row_height, |mut row| {
-                                fill_player_table_row(
-                                    &mut row,
-                                    &sticky_ctx,
-                                    metrics,
-                                    *rank_idx,
-                                    ranking,
-                                    true,
-                                );
-                            });
-                        });
+                        );
                     }
                 }
             }
