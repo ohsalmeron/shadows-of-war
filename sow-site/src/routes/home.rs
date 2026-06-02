@@ -22,10 +22,8 @@ pub fn HomePage() -> impl IntoView {
             <section>
                 <h2>"About"</h2>
                 <p>
-                    "Shadows of War is a derivative work based on "
-                    <a href="https://openfront.io">"OpenFront"</a>
-                    ", rebuilt in Rust with new leaders, visuals, and map tooling. "
-                    "Single-player works offline; multiplayer connects to our public server."
+                    "Command civilizations and tribes on world maps. "
+                    "Single-player works offline; multiplayer uses our public server."
                 </p>
             </section>
         </SiteLayout>

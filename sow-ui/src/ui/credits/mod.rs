@@ -1,6 +1,6 @@
 use crate::UiAction;
 use crate::ui::theme::{accent_solo_cyan, text_secondary};
-use egui::{Align, Color32, Layout, RichText};
+use egui::{Align, Color32, Layout, RichText, ScrollArea};
 use sow_lang::Language;
 
 fn version_tag() -> String {
@@ -14,7 +14,12 @@ fn source_tag_url() -> String {
     )
 }
 
-pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiAction> {
+pub fn draw(
+    root_ui: &mut egui::Ui,
+    is_open: bool,
+    lang: Language,
+    reduced_motion: bool,
+) -> Option<UiAction> {
     if !is_open {
         return None;
     }
@@ -25,8 +30,17 @@ pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiA
     let panel_w = if compact {
         root_ui.ctx().content_rect().width() - 32.0
     } else {
-        560.0
+        520.0
     };
+
+    let progress = root_ui.ctx().animate_bool_with_time(
+        egui::Id::new("credits_animation_progress"),
+        is_open,
+        crate::ui::theme::anim_duration(reduced_motion),
+    );
+    if progress <= 0.01 {
+        return None;
+    }
 
     let screen_rect = root_ui.ctx().content_rect();
     root_ui
@@ -38,16 +52,27 @@ pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiA
         .rect_filled(
             screen_rect,
             0.0,
-            Color32::from_black_alpha(200),
+            Color32::from_black_alpha((200.0 * progress) as u8),
         );
+
+    let y_offset = if is_open {
+        let t = progress;
+        if t >= 1.0 {
+            0.0
+        } else {
+            -80.0 * (1.0 - t)
+        }
+    } else {
+        0.0
+    };
 
     egui::Window::new("credits_modal")
         .title_bar(false)
         .collapsible(false)
         .resizable(false)
         .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .fixed_size(egui::vec2(panel_w, 0.0))
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
+        .fixed_size(egui::vec2(panel_w, if compact { 420.0 } else { 380.0 }))
         .frame(crate::ui::theme::standard_panel_frame(compact))
         .show(root_ui.ctx(), |ui| {
             ui.horizontal(|ui| {
@@ -64,45 +89,51 @@ pub fn draw(root_ui: &mut egui::Ui, is_open: bool, lang: Language) -> Option<UiA
                 });
             });
 
-            ui.add_space(12.0);
+            ui.add_space(8.0);
             ui.separator();
-            ui.add_space(12.0);
+            ui.add_space(8.0);
 
             let body_size = if compact { 13.0 } else { 14.0 };
             let body = |text: &str| RichText::new(text).size(body_size).color(text_secondary());
             let link = |text: &str| RichText::new(text).size(body_size).color(accent_solo_cyan());
 
-            let plain_lines = [
-                &strings.copyright_sow,
-                &strings.license_agpl,
-                &strings.based_on,
-                &strings.ai_art,
-                &strings.notice,
-            ];
-            for line in plain_lines {
-                ui.label(body(line));
-                ui.add_space(6.0);
-            }
+            ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for line in [
+                        &strings.copyright_sow,
+                        &strings.license_agpl,
+                        &strings.based_on,
+                    ] {
+                        ui.label(body(line));
+                        ui.add_space(8.0);
+                    }
 
-            let tag = version_tag();
-            let tag_url = source_tag_url();
-            ui.horizontal_wrapped(|ui| {
-                ui.label(body(&format!("{} ({}): ", strings.source_label, tag)));
-                ui.hyperlink_to(link(&tag_url), &tag_url);
-            });
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(body(&format!("{}: ", strings.privacy_label)));
-                ui.hyperlink_to(link(&strings.privacy), &strings.privacy);
-            });
+                    let tag = version_tag();
+                    let tag_url = source_tag_url();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(body(&format!("{} ({}) ", strings.source_label, tag)));
+                        ui.hyperlink_to(link(&tag_url), &tag_url);
+                    });
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(body(&format!("{}: ", strings.privacy_label)));
+                        ui.hyperlink_to(link(&strings.privacy), &strings.privacy);
+                    });
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(body(&strings.notice));
+                        ui.hyperlink_to(link("NOTICE"), &strings.notice_url);
+                    });
+                });
 
-            ui.add_space(16.0);
+            ui.add_space(12.0);
             ui.vertical_centered(|ui| {
                 let close_btn = crate::widgets::ThemeButton::new(&strings.close)
                     .style(crate::widgets::ThemeButtonStyle::Primary)
                     .min_size(egui::vec2(
-                        if compact { ui.available_width() } else { 180.0 },
-                        44.0,
+                        if compact { ui.available_width() } else { 160.0 },
+                        40.0,
                     ));
                 if ui.add(close_btn).clicked() {
                     action = Some(UiAction::ToggleCredits);

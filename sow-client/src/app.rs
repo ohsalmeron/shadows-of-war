@@ -260,10 +260,9 @@ pub struct SowApp {
     pub tokio_rt: tokio::runtime::Runtime,
     #[cfg(target_arch = "wasm32")]
     pub wasm_doc_was_visible: bool,
+    pub asset_config: crate::AssetConfig,
     #[cfg(target_arch = "wasm32")]
     pub(crate) web_loader_hidden: bool,
-    #[cfg(target_arch = "wasm32")]
-    pub(crate) web_loader_ingest_wait: u32,
     #[cfg(target_arch = "wasm32")]
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
     #[cfg(not(target_arch = "wasm32"))]
@@ -307,6 +306,7 @@ impl SowApp {
         let window: Option<Box<dyn winit::window::Window>> = None;
 
         // ── UI State ────────────────────────────────────────────────────────────
+        let asset_config = crate::AssetConfig::resolve();
         let mut app = ClientApp::new();
         crate::map_cache::hydrate_asset_maps(&mut app.asset_loader.maps);
         #[cfg(target_arch = "wasm32")]
@@ -316,15 +316,6 @@ impl SowApp {
                     if mql.matches() {
                         app.settings_state.reduced_motion = true;
                     }
-                }
-            }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Ok(bytes) = std::fs::read("assets/maps/catalog.bin") {
-                if let Ok(catalog) = sow_core::map_file::parse_catalog(&bytes) {
-                    app.main_menu_state.apply_map_catalog(&catalog.entries);
-                    app.asset_loader.map_catalog = Some(catalog.entries);
                 }
             }
         }
@@ -360,8 +351,6 @@ impl SowApp {
         let wasm_doc_was_visible: bool = true;
         #[cfg(target_arch = "wasm32")]
         let web_loader_hidden: bool = false;
-        #[cfg(target_arch = "wasm32")]
-        let web_loader_ingest_wait: u32 = 0;
         #[cfg(target_arch = "wasm32")]
         let ime_bridge = crate::ime::WasmImeBridge::new();
 
@@ -589,12 +578,11 @@ impl SowApp {
             },
             #[cfg(not(target_arch = "wasm32"))]
             tokio_rt,
+            asset_config,
             #[cfg(target_arch = "wasm32")]
             wasm_doc_was_visible,
             #[cfg(target_arch = "wasm32")]
             web_loader_hidden,
-            #[cfg(target_arch = "wasm32")]
-            web_loader_ingest_wait,
             #[cfg(target_arch = "wasm32")]
             ime_bridge,
             #[cfg(not(target_arch = "wasm32"))]

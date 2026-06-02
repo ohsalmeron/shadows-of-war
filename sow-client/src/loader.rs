@@ -245,20 +245,6 @@ impl SowApp {
         }
         // Poll engine init channel
         if self.ui.app.phase == sow_ui::app::ClientPhase::Splash {
-            #[cfg(target_arch = "wasm32")]
-            {
-                use sow_ui::ui::loading_screen::SplashJob;
-                if matches!(
-                    self.ui.app.splash_state.job,
-                    SplashJob::EnterGame | SplashJob::ExitGame
-                ) {
-                    crate::web_loader_assets::ensure_splash_textures_from_web_loader(
-                        &self.ui.egui_ctx,
-                        &mut self.ui.app.asset_loader,
-                    );
-                }
-            }
-
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
                     self.ui
@@ -274,36 +260,18 @@ impl SowApp {
                         .asset_loader
                         .ensure_ui_assets_loaded(&self.ui.egui_ctx);
 
-                    let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
-                    #[cfg(target_arch = "wasm32")]
-                    let boot_ready = avatars_ready;
-                    #[cfg(not(target_arch = "wasm32"))]
-                    let boot_ready = {
-                        let leaders_ready =
-                            !self.ui.app.asset_loader.leader_desktop_images.is_empty();
-                        let ui_ready = self.ui.app.asset_loader.ui_loader_empty.is_some();
-                        avatars_ready && leaders_ready && ui_ready
-                    };
+                    let boot_ready = !self.ui.app.asset_loader.avatars.is_empty()
+                        && self.ui.app.asset_loader.ui_splash_ready()
+                        && self.ui.app.asset_loader.default_leader_ready();
 
                     if boot_ready {
+                        self.ui.app.splash_state.done = true;
                         #[cfg(target_arch = "wasm32")]
                         {
-                            if !crate::web_loader_assets::ensure_boot_web_loader_textures(
-                                &self.ui.egui_ctx,
-                                &mut self.ui.app.asset_loader,
-                                &mut self.web_loader_ingest_wait,
-                            ) {
-                                return;
-                            }
-                            self.ui.app.splash_state.done = true;
                             self.ui.app.phase = ClientPhase::MainMenu;
                             hide_web_loader();
                             crate::store_portals::load_stop();
                             self.web_loader_hidden = true;
-                        }
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            self.ui.app.splash_state.done = true;
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         if self.ui.app.splash_state.target_phase.is_none() {

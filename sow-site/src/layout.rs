@@ -33,15 +33,13 @@ pub fn SiteLayout(
                 </main>
                 <footer class="site-footer">
                     <p>
-                        "Shadows of War — Copyright (c) Omar Hernandez Salmeron. "
+                        "Shadows of War © Omar Hernandez Salmeron. "
                         "Based on "
                         <a href="https://openfront.io">"OpenFront"</a>
-                        ". Licensed under "
+                        " — © OpenFront and Contributors. "
                         <a href="https://www.gnu.org/licenses/agpl-3.0.html">"AGPL-3.0-or-later"</a>
-                        "."
-                    </p>
-                    <p>
-                        <a href="https://github.com/ohsalmeron/shadows-of-war">"Source on GitHub"</a>
+                        " · "
+                        <a href="https://github.com/ohsalmeron/shadows-of-war">"Source"</a>
                     </p>
                 </footer>
             </body>

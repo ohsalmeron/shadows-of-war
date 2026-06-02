@@ -516,8 +516,11 @@ impl AssetLoader {
         true
     }
 
+    pub fn default_leader_ready(&self) -> bool {
+        self.leader_portrait_ready(sow_core::player::Leader::Caesar, false)
+    }
+
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
-        #[cfg(not(target_arch = "wasm32"))]
         if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
             let bytes = include_bytes!("../../../assets/maps/northamerica/thumbnail.webp");
             if let Some(color_image) =
@@ -530,59 +533,75 @@ impl AssetLoader {
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
-                self.request_thumbnail(sow_core::maps::DEFAULT_MAP_KEY);
-            }
-            let _ = ctx;
-            // Splash/bar textures are transferred from the HTML boot loader at WASM boot.
+        if self.ui_loader_empty.is_some() {
             return;
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if self.ui_loader_empty.is_some() {
-                return;
+        let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
+            let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
+
+            if image.width() > 2048 || image.height() > 2048 {
+                image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
             }
 
-            let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
-                let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
+            let image_rgba = image.to_rgba8();
+            let size = [image_rgba.width() as _, image_rgba.height() as _];
+            let pixels = image_rgba.as_flat_samples();
+            let color_image =
+                egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
+        };
 
-                if image.width() > 2048 || image.height() > 2048 {
-                    image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
-                }
-
-                let image_rgba = image.to_rgba8();
-                let size = [image_rgba.width() as _, image_rgba.height() as _];
-                let pixels = image_rgba.as_flat_samples();
-                let color_image =
-                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
-            };
-
-            self.ui_loader_empty = Some(load_image(
-                "ui_loader_empty",
-                include_bytes!("../../assets/ui/loader_empty.webp"),
-            ));
-            self.ui_loader_full = Some(load_image(
-                "ui_loader_full",
-                include_bytes!("../../assets/ui/loader_full.webp"),
-            ));
-            self.splash_desktop = Some(load_image(
-                "sow_splash_desktop",
-                include_bytes!("../../assets/ui/sow-splash-desktop.webp"),
-            ));
-            self.splash_mobile = Some(load_image(
-                "sow_splash_mobile",
-                include_bytes!("../../assets/ui/sow-splash-mobile.webp"),
-            ));
-        }
+        self.ui_loader_empty = Some(load_image(
+            "ui_loader_empty",
+            include_bytes!("../../assets/ui/loader_empty.webp"),
+        ));
+        self.ui_loader_full = Some(load_image(
+            "ui_loader_full",
+            include_bytes!("../../assets/ui/loader_full.webp"),
+        ));
+        self.splash_desktop = Some(load_image(
+            "sow_splash_desktop",
+            include_bytes!("../../assets/ui/sow-splash-desktop.webp"),
+        ));
+        self.splash_mobile = Some(load_image(
+            "sow_splash_mobile",
+            include_bytes!("../../assets/ui/sow-splash-mobile.webp"),
+        ));
     }
 
     pub fn ensure_leaders_loaded(&mut self, ctx: &egui::Context) {
-        // Leader portraits are streamed by sow-client over HTTP on all targets.
-        let _ = ctx;
+        const DEFAULT: Leader = Leader::Caesar;
+        let desktop_key = LeaderPortraitKey {
+            leader: DEFAULT,
+            mobile: false,
+        };
+        if !self.leader_portrait_loaded(desktop_key) {
+            let bytes = include_bytes!("../../assets/ui/leaders/caesar_desktop.webp");
+            if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
+                let texture = ctx.load_texture(
+                    "leader_caesar_desktop",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.leader_desktop_images.insert(DEFAULT, texture);
+            }
+        }
+        let mobile_key = LeaderPortraitKey {
+            leader: DEFAULT,
+            mobile: true,
+        };
+        if !self.leader_portrait_loaded(mobile_key) {
+            let bytes = include_bytes!("../../assets/ui/leaders/caesar_mobile.webp");
+            if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
+                let texture = ctx.load_texture(
+                    "leader_caesar_mobile",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.leader_mobile_images.insert(DEFAULT, texture);
+            }
+        }
     }
 
     pub fn ensure_hud_icons_loaded(&mut self, ctx: &egui::Context) {

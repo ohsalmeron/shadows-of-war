@@ -277,10 +277,10 @@ pub struct CreditsStrings {
     pub copyright_sow: String,
     pub license_agpl: String,
     pub based_on: String,
-    pub ai_art: String,
     pub source_label: String,
     pub privacy_label: String,
     pub notice: String,
+    pub notice_url: String,
     pub source: String,
     pub privacy: String,
 }

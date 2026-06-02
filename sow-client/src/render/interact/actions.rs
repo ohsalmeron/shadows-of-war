@@ -92,7 +92,7 @@ impl SowApp {
                     } else {
                         self.ui.app.main_menu_state.is_downloading_map = true;
                         self.ui.app.main_menu_state.cached_map = None;
-                        let maps_base = crate::get_maps_url();
+                        let maps_base = self.asset_config.maps_base.clone();
                         let url = format!(
                             "{}/{}/map.bin.br",
                             maps_base.trim_end_matches('/'),
@@ -244,7 +244,7 @@ impl SowApp {
                         self.ui.app.main_menu_state.is_downloading_map = true;
                         self.ui.app.main_menu_state.cached_map = None;
                         self.ui.app.main_menu_state.cached_map_key = None;
-                        let maps_base = crate::get_maps_url();
+                        let maps_base = self.asset_config.maps_base.clone();
                         let url =
                             format!("{}/{}/map.bin.br", maps_base.trim_end_matches('/'), map_id);
                         let tx = self.tasks.map_tx.clone();

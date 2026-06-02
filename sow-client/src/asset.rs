@@ -1,7 +1,5 @@
 use crate::app::SowApp;
-use crate::{get_maps_url, MapDownloadEvent};
-#[cfg(target_arch = "wasm32")]
-use crate::{get_assets_cache_bust, get_assets_url};
+use crate::MapDownloadEvent;
 use sow_ui::app::ClientPhase;
 
 impl SowApp {
@@ -15,8 +13,6 @@ impl SowApp {
         }
 
         self.poll_thumbnail_fetches();
-
-        #[cfg(target_arch = "wasm32")]
         self.poll_leader_portrait_fetches();
 
         // Poll map download channel
@@ -107,7 +103,6 @@ impl SowApp {
                                     )
                                     .unwrap(),
                                 );
-                                // Also send Ready to Orchestrator to signal we are prepared for handoff
                                 c.send(
                                     bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
                                         lobby_id: lid,
@@ -149,7 +144,6 @@ impl SowApp {
                 MapDownloadEvent::Error(e) => {
                     log::error!("Map download aborted: {}", e);
                     self.ui.app.main_menu_state.is_downloading_map = false;
-                    // Optionally return to main menu or show error
                     self.ui.app.phase = ClientPhase::MainMenu;
                     self.ui.app.main_menu_state.is_waiting = false;
                     self.ui.app.main_menu_state.pending_join_lobby_id = None;
@@ -159,7 +153,6 @@ impl SowApp {
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
         if self.ui.app.phase == ClientPhase::MainMenu {
             let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
             let selected = self.ui.app.main_menu_state.selected_leader;
@@ -182,34 +175,9 @@ impl SowApp {
     }
 
     pub(crate) fn start_thumbnail_fetch(&mut self, map_name: String) {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Some(bytes) = sow_core::maps::read_thumbnail_webp_from_repo(&map_name) {
-                match self.ui.app.asset_loader.ingest_thumbnail(
-                    &self.ui.egui_ctx,
-                    &map_name,
-                    &bytes,
-                ) {
-                    Ok(()) => {
-                        log::debug!("Loaded map thumbnail from repo: {}", map_name);
-                        return;
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "Repo thumbnail decode failed for {}: {}",
-                            map_name,
-                            e
-                        );
-                    }
-                }
-            }
-        }
-
-        let url = format!(
-            "{}/{}/thumbnail.webp",
-            get_maps_url().trim_end_matches('/'),
-            map_name
-        );
+        let url = self
+            .asset_config
+            .map_url(&map_name, "thumbnail.webp");
         let tx = self.tasks.map_tx.clone();
         let map_name_for_closure = map_name.clone();
         let request = ehttp::Request::get(&url);
@@ -238,7 +206,6 @@ impl SowApp {
         });
     }
 
-    #[cfg(target_arch = "wasm32")]
     fn poll_leader_portrait_fetches(&mut self) {
         use sow_ui::ui::asset_loader::{AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT};
 
@@ -248,9 +215,6 @@ impl SowApp {
             leader: priority_leader,
             mobile: compact,
         };
-
-        let assets_base = get_assets_url();
-        let cache_bust = get_assets_cache_bust();
 
         while self.ui.app.asset_loader.leaders_in_flight.len() < MAX_LEADER_FETCHES_IN_FLIGHT {
             let Some(key) = self
@@ -263,20 +227,7 @@ impl SowApp {
             };
 
             let filename = AssetLoader::leader_portrait_filename(key);
-            let url = if cache_bust.is_empty() {
-                format!(
-                    "{}/ui/leaders/{}",
-                    assets_base.trim_end_matches('/'),
-                    filename
-                )
-            } else {
-                format!(
-                    "{}/ui/leaders/{}?v={}",
-                    assets_base.trim_end_matches('/'),
-                    filename,
-                    cache_bust
-                )
-            };
+            let url = self.asset_config.leader_portrait_url(&filename);
             let tx = self.tasks.map_tx.clone();
             let leader = key.leader;
             let mobile = key.mobile;

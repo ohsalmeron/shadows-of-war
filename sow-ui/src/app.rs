@@ -131,17 +131,33 @@ impl ClientApp {
             crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
         if let Some(UiAction::ToggleSettings) = settings_action {
             self.is_settings_open = !self.is_settings_open;
+            if self.is_settings_open {
+                self.is_credits_open = false;
+            }
         } else if let Some(UiAction::ToggleSettings) = action {
             self.is_settings_open = !self.is_settings_open;
+            if self.is_settings_open {
+                self.is_credits_open = false;
+            }
             action = None;
         }
 
-        let credits_action =
-            crate::ui::credits::draw(ui, self.is_credits_open, self.settings_state.language);
+        let credits_action = crate::ui::credits::draw(
+            ui,
+            self.is_credits_open,
+            self.settings_state.language,
+            self.settings_state.reduced_motion,
+        );
         if let Some(UiAction::ToggleCredits) = credits_action {
             self.is_credits_open = !self.is_credits_open;
+            if self.is_credits_open {
+                self.is_settings_open = false;
+            }
         } else if let Some(UiAction::ToggleCredits) = action {
             self.is_credits_open = !self.is_credits_open;
+            if self.is_credits_open {
+                self.is_settings_open = false;
+            }
             action = None;
         }
 

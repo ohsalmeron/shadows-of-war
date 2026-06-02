@@ -37,11 +37,10 @@ pub fn TermsPage() -> impl IntoView {
 
             <h2>"Intellectual property"</h2>
             <p>
-                "Game source is licensed under AGPL-3.0-or-later. Shadows of War is a derivative "
-                "work based on OpenFront (© OpenFront LLC and Contributors). See in-game Credits "
-                "and "
-                <a href="https://github.com/ohsalmeron/shadows-of-war">"GitHub"</a>
-                " for notices."
+                "Source is AGPL-3.0-or-later. Based on OpenFront — © OpenFront and Contributors. "
+                "See in-game Credits and "
+                <a href="https://github.com/ohsalmeron/shadows-of-war">"GitHub NOTICE"</a>
+                "."
             </p>
 
             <h2>"Disclaimer"</h2>

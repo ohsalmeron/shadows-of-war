@@ -24,88 +24,10 @@ fn get_build_version() -> String {
     }
 }
 
-fn maps_url_from_ws_url(ws_url: &str) -> Option<String> {
-    let rest = ws_url
-        .strip_prefix("wss://")
-        .or_else(|| ws_url.strip_prefix("ws://"))?;
-    let host = rest.split('/').next()?.split(':').next()?;
-    if host == "127.0.0.1" || host == "localhost" {
-        Some("http://127.0.0.1:25566/maps".to_string())
-    } else {
-        Some(format!("https://{host}/maps"))
-    }
-}
-
-fn get_maps_url() -> String {
-    #[allow(unused_mut)]
-    let mut url = std::env::var("SOW_MAPS_URL").unwrap_or_else(|_| {
-        if let Ok(ws) = std::env::var("SOW_WS_URL") {
-            if let Some(derived) = maps_url_from_ws_url(&ws) {
-                return derived;
-            }
-        }
-        "https://shadowsofwar.io/maps".to_string()
-    });
-    #[cfg(target_arch = "wasm32")]
-    {
-        if let Some(window) = web_sys::window() {
-            let mut found_in_js = false;
-            if let Ok(val) =
-                js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_MAPS_URL"))
-            {
-                if let Some(s) = val.as_string() {
-                    url = s;
-                    found_in_js = true;
-                }
-            }
-            if !found_in_js {
-                // Self-hosted (website + PTR): maps are served by sow-server via the
-                // nginx `/maps/` proxy, not as static `/assets/maps`. CrazyGames overrides
-                // this with window.SOW_MAPS_URL (origin + /assets/maps) where maps ship as
-                // static files in the package zip.
-                if let Ok(origin) = window.location().origin() {
-                    url = format!("{}/maps", origin);
-                }
-            }
-        }
-    }
-    url
-}
-
-#[cfg(target_arch = "wasm32")]
-fn get_assets_url() -> String {
-    #[allow(unused_mut)]
-    let mut url =
-        std::env::var("SOW_ASSETS_URL").unwrap_or_else(|_| "https://shadowsofwar.io/assets".to_string());
-    #[cfg(target_arch = "wasm32")]
-    {
-        if let Some(window) = web_sys::window() {
-            if let Ok(origin) = window.location().origin() {
-                url = format!("{}/assets", origin);
-            }
-        }
-    }
-    url
-}
-
-/// Deploy timestamp injected by index.html; busts browser + service-worker image caches.
-#[cfg(target_arch = "wasm32")]
-fn get_assets_cache_bust() -> String {
-    if let Some(window) = web_sys::window() {
-        if let Ok(val) =
-            js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_BUILD_TS"))
-        {
-            if let Some(s) = val.as_string() {
-                if s != "__BUILD_TS__" && !s.is_empty() {
-                    return s;
-                }
-            }
-        }
-    }
-    String::new()
-}
-
+mod asset_config;
 mod config;
+
+pub use asset_config::AssetConfig;
 
 /// Allow very wide map views (scroll / pinch clamp to this minimum).
 const CAMERA_MIN_ZOOM: f32 = 0.75;
@@ -177,8 +99,6 @@ pub mod hud;
 mod ime;
 pub mod input;
 pub mod loader;
-#[cfg(target_arch = "wasm32")]
-mod web_loader_assets;
 pub mod net;
 pub mod render;
 pub mod store_portals;

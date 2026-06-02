@@ -2,8 +2,10 @@
 
 use sow_core::maps::{self, MapCatalogEntry};
 
+#[cfg(target_arch = "wasm32")]
 const STORAGE_KEY_PREFIX: &str = "sow_map_br_v1:";
 
+#[cfg(target_arch = "wasm32")]
 fn storage_key(map_key: &str) -> String {
     format!("{STORAGE_KEY_PREFIX}{}", maps::map_key(map_key))
 }
@@ -126,12 +128,6 @@ pub fn list_cached_keys() -> Vec<String> {
     }
 }
 
-/// Whether a map can be started without network (bundled WASM bytes or disk cache).
-pub fn is_available_offline(map_key: &str) -> bool {
-    let key = maps::map_key(map_key);
-    maps::map_payload_available(&key) || load(&key).is_some()
-}
-
 /// Build catalog entries from cached map headers (offline fallback).
 pub fn catalog_from_cache() -> Vec<MapCatalogEntry> {
     let mut entries = Vec::new();
@@ -176,6 +172,7 @@ fn base64_decode(encoded: &str) -> Option<Vec<u8>> {
     decode_base64(encoded).ok()
 }
 
+#[cfg(target_arch = "wasm32")]
 fn encode_base64(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
@@ -200,6 +197,7 @@ fn encode_base64(data: &[u8]) -> String {
     out
 }
 
+#[cfg(target_arch = "wasm32")]
 fn decode_base64(input: &str) -> Result<Vec<u8>, ()> {
     fn val(c: u8) -> Option<u8> {
         match c {

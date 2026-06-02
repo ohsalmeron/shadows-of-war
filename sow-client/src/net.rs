@@ -1,5 +1,5 @@
 use crate::app::SowApp;
-use crate::{get_build_version, get_maps_url, spawn_sow_client_connect, MapDownloadEvent};
+use crate::{get_build_version, spawn_sow_client_connect, MapDownloadEvent};
 use sow_ui::app::ClientPhase;
 use web_time::{Duration, Instant};
 
@@ -13,7 +13,7 @@ impl SowApp {
         self.ui.app.asset_loader.catalog_in_flight = true;
         let url = format!(
             "{}/catalog.bin",
-            get_maps_url().trim_end_matches('/')
+            self.asset_config.maps_base.trim_end_matches('/')
         );
         let tx = self.tasks.map_tx.clone();
         let request = ehttp::Request::get(&url);
@@ -305,7 +305,7 @@ impl SowApp {
                                 self.ui.app.main_menu_state.lobbies = broadcast.lobbies.clone();
                             }
 
-                            let maps_base = get_maps_url();
+                            let maps_base = self.asset_config.maps_base.clone();
                             let (_, maps_to_fetch) = self
                                 .ui
                                 .app
@@ -464,7 +464,7 @@ impl SowApp {
                                 self.ui.app.main_menu_state.is_downloading_map = true;
                                 self.ui.app.main_menu_state.cached_map = None;
 
-                                let maps_base = get_maps_url();
+                                let maps_base = self.asset_config.maps_base.clone();
                                 let url = format!(
                                     "{}/{}/map.bin.br",
                                     maps_base.trim_end_matches('/'),

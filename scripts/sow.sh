@@ -53,24 +53,27 @@ sow_compile_wasm_release() {
   WASM_IN="${CARGO_TARGET_DIR}/wasm32-unknown-unknown/wasm-release/sow_client.wasm"
 }
 
-sow_stage_play_assets() {
+stage_core_assets() {
   local play="$1"
-  local portal="${2:-}"
-  mkdir -p "${play}/assets/fonts"
+  echo "==> Staging minimal core assets (fonts, northamerica, UI boot)"
+  mkdir -p "${play}/assets/fonts" "${play}/assets/maps/northamerica"
   rsync -a "${ROOT}/assets/fonts/" "${play}/assets/fonts/"
-  if [[ "${portal}" == "crazygames" ]]; then
-    echo "==> Portal assets (crazygames): northamerica only, no heightmaps"
-    mkdir -p "${play}/assets/maps/northamerica"
-    cp -a "${ROOT}/assets/maps/northamerica/map.bin.br" \
-      "${ROOT}/assets/maps/northamerica/thumbnail.webp" \
-      "${play}/assets/maps/northamerica/"
-    cargo run -q -p sow-tools --bin write-play-catalog -- \
-      --maps-root "${ROOT}/assets/maps" \
-      --output "${play}/assets/maps/catalog.bin" \
-      northamerica
-  else
-    echo "==> Web play shell: maps via sow-server /maps (not under /play/assets)"
-  fi
+  cp -a "${ROOT}/assets/maps/northamerica/map.bin.br" \
+    "${ROOT}/assets/maps/northamerica/thumbnail.webp" \
+    "${play}/assets/maps/northamerica/"
+  cargo run -q -p sow-tools --bin write-play-catalog -- \
+    --maps-root "${ROOT}/assets/maps" \
+    --output "${play}/assets/maps/catalog.bin" \
+    northamerica
+  copy_web_loader_assets "${play}/assets/ui"
+}
+
+stage_cdn_assets() {
+  local dest="$1"
+  echo "==> Staging CDN assets tree (${dest})"
+  mkdir -p "${dest}/fonts"
+  rsync -a "${ROOT}/assets/fonts/" "${dest}/fonts/"
+  copy_web_loader_assets "${dest}/ui"
 }
 
 sow_assemble_play_dist() {
@@ -82,8 +85,7 @@ sow_assemble_play_dist() {
   JS_FILE="sow_client_${BUILD_TS}.js"
   WASM_FILE="sow_client_${BUILD_TS}_bg.wasm"
   "${HOME}/.cargo/bin/wasm-bindgen" --out-dir "${play}" --target web --out-name "sow_client_${BUILD_TS}" --no-typescript "${WASM_IN}"
-  sow_stage_play_assets "${play}" "${portal}"
-  copy_web_loader_assets "${play}/assets/ui"
+  stage_core_assets "${play}"
   cp -a web/favicon_io/* "${play}/" 2>/dev/null || true
   cp web/sow.svg "${play}/sow.svg"
   mkdir -p "${play}/sdk" && cp -a web/sdk/. "${play}/sdk/"
@@ -422,7 +424,7 @@ build_index_html() {
 inject_crazygames_portal() {
     local html_path="$1"
     local sdk_tag='    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js" async></script>'
-    local boot_js='        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = window.location.origin + "/assets/maps";'
+    local boot_js='        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps"; window.SOW_ASSETS_URL = "https://shadowsofwar.io/assets";'
     python3 - "${html_path}" "${sdk_tag}" "${boot_js}" <<'PY'
 import sys
 from pathlib import Path
@@ -495,17 +497,19 @@ cmd_cloud() {
     sb=target/x86_64-unknown-linux-gnu/release/sow-server; rb=target/x86_64-unknown-linux-gnu/release/sow-relay
   fi
   sow_assemble_play_dist ""
+  stage_cdn_assets "${ROOT}/dist/cdn"
   sow_build_site
   local u=bizkit h=35.239.160.167
-  ssh "${u}@${h}" "mkdir -p /var/www/shadowsofwar.io/html/play"
+  ssh "${u}@${h}" "mkdir -p /var/www/shadowsofwar.io/html/play /var/www/shadowsofwar.io/html/assets"
   rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/shadowsofwar.io/html/play/" & w1=$!
+  rsync -avz --delete "${ROOT}/dist/cdn/" "${u}@${h}:/var/www/shadowsofwar.io/html/assets/" & w6=$!
   rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/shadowsofwar.io/html/sow.svg" & w5=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar/sow-relay" & w3=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ "${u}@${h}:/home/bizkit/shadowsofwar/assets/maps/" & w4=$!
-  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}"
+  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}"
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/shadowsofwar.io" "${ROOT}/nginx_config.conf"
   deploy_sow_site_systemd "${u}" "${h}" "sow-site" "127.0.0.1:8787" \
     "/home/bizkit/shadowsofwar" "/home/bizkit/shadowsofwar/sow-site"
@@ -530,17 +534,19 @@ cmd_ptr() {
     sb=target/x86_64-unknown-linux-gnu/release/sow-server; rb=target/x86_64-unknown-linux-gnu/release/sow-relay
   fi
   sow_assemble_play_dist ""
+  stage_cdn_assets "${ROOT}/dist/cdn"
   sow_build_site
   local u=bizkit h=shadowsofwar.io
-  ssh "${u}@${h}" "mkdir -p /var/www/ptr.shadowsofwar.io/html/play"
+  ssh "${u}@${h}" "mkdir -p /var/www/ptr.shadowsofwar.io/html/play /var/www/ptr.shadowsofwar.io/html/assets"
   rsync -avz --delete --exclude='*.bin' "${ROOT}/dist/play/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/play/" & w1=$!
+  rsync -avz --delete "${ROOT}/dist/cdn/" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/assets/" & w6=$!
   rsync -avz "${ROOT}/dist/sow.svg" "${u}@${h}:/var/www/ptr.shadowsofwar.io/html/sow.svg" & w5=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr"
   rsync -avz "${sb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-server" & w2=$!
   rsync -avz "${rb}" "${u}@${h}:/home/bizkit/shadowsofwar-ptr/sow-relay" & w3=$!
   ssh "${u}@${h}" "mkdir -p /home/bizkit/shadowsofwar-ptr/assets/maps"
   rsync -avz --exclude='map.bin' --exclude='mini_map.bin' --exclude='manifest.json' --exclude='maps.json' assets/maps/ "${u}@${h}:/home/bizkit/shadowsofwar-ptr/assets/maps/" & w4=$!
-  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}"
+  wait "${w1}" "${w2}" "${w3}" "${w4}" "${w5}" "${w6}"
   sync_vps_nginx "${u}" "${h}" "/etc/nginx/sites-available/ptr.shadowsofwar.io" "${ROOT}/nginx_config_ptr.conf"
   deploy_sow_site_systemd "${u}" "${h}" "sow-site-ptr" "127.0.0.1:8788" \
     "/home/bizkit/shadowsofwar-ptr" "/home/bizkit/shadowsofwar-ptr/sow-site"
@@ -816,8 +822,7 @@ if marker not in html:
 html_path.write_text(html.replace(marker, js, 1), encoding="utf-8")
 PY
 
-  sow_stage_play_assets "${ASSETS_DIR}" "crazygames"
-  copy_web_loader_assets "${ASSETS_DIR}/assets/ui"
+  stage_core_assets "${ASSETS_DIR}"
   cp "${ROOT}/web/sow.svg" "${ASSETS_DIR}/sow.svg" || true
 
   cyan "📦 Compiling Android WebView App..."

@@ -1,12 +1,8 @@
 Shadows of War
 Copyright (c) 2024–2026 Omar Hernandez Salmeron
 
-This program is a derivative work based on OpenFront
-(https://github.com/openfrontio/OpenFrontIO), which is
-Copyright (c) OpenFront LLC and Contributors, licensed under
-GNU Affero General Public License v3.0.
+Incorporates OpenFront (https://github.com/openfrontio/OpenFrontIO).
+Copyright (c) OpenFront LLC and Contributors. AGPL-3.0-or-later.
 
-All Shadows of War source code is licensed under GNU AGPL v3.0-or-later.
-See LICENSE for the full license text.
-
-Third-party assets and dependencies are listed in NOTICE.
+Licensed under GNU Affero General Public License v3.0 or later. See LICENSE.
+Third-party notices: NOTICE and NOTICE.deps.
