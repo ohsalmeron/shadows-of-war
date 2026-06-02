@@ -27,12 +27,15 @@
         },
     };
 
-    const ASSETS = {
-        splashDesktop: './assets/ui/sow-splash-desktop.webp',
-        splashMobile: './assets/ui/sow-splash-mobile.webp',
-        loaderEmpty: './assets/ui/loader_empty.webp',
-        loaderFull: './assets/ui/loader_full.webp',
-    };
+    function assetBase() {
+        const b = window.SOW_LOADER_BASE;
+        if (!b) return './';
+        return b.endsWith('/') ? b : b + '/';
+    }
+
+    function assetPath(file) {
+        return assetBase() + 'assets/ui/' + file;
+    }
 
     function assetUrl(path) {
         const v = window.SOW_BUILD_TS;
@@ -75,15 +78,25 @@
     }
 
     function splashSrc() {
-        return assetUrl(isMobile() ? ASSETS.splashMobile : ASSETS.splashDesktop);
+        return assetUrl(
+            isMobile() ? assetPath('sow-splash-mobile.webp') : assetPath('sow-splash-desktop.webp')
+        );
+    }
+
+    function stageSize() {
+        const stage = document.getElementById('game-stage');
+        if (stage) {
+            const r = stage.getBoundingClientRect();
+            return { w: r.width, h: r.height };
+        }
+        return { w: window.innerWidth, h: window.innerHeight };
     }
 
     function layout() {
         if (!root) return;
         const mode = layoutMode();
         const cfg = layoutConfig(mode);
-        const screenW = window.innerWidth;
-        const screenH = window.innerHeight;
+        const { w: screenW, h: screenH } = stageSize();
         const barWidth = barWidthFor(mode, screenW);
         const barHeight = barWidth / BAR_ASPECT;
         const bottomPadding = Math.max(screenH * cfg.bottomRatio, cfg.bottomMinPx);
@@ -134,22 +147,26 @@
         rafId = requestAnimationFrame(tick);
     }
 
+    function loaderHost() {
+        return document.getElementById('game-stage') || document.body;
+    }
+
     function buildDom() {
         root = document.getElementById('web-loader');
         if (!root) {
             root = document.createElement('div');
             root.id = 'web-loader';
-            document.body.appendChild(root);
+            loaderHost().appendChild(root);
         }
 
         root.innerHTML = `
             <img id="splash-bg" class="splash-bg" alt="" decoding="async" fetchpriority="high" src="${splashSrc()}">
-            <img id="splash-desktop" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.splashDesktop)}" hidden>
-            <img id="splash-mobile" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.splashMobile)}" hidden>
+            <img id="splash-desktop" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('sow-splash-desktop.webp'))}" hidden>
+            <img id="splash-mobile" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('sow-splash-mobile.webp'))}" hidden>
             <div id="loader-bar-wrap" class="loader-bar-wrap">
-                <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${assetUrl(ASSETS.loaderEmpty)}">
+                <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('loader_empty.webp'))}">
                 <div id="loader-bar-fill" class="loader-bar-fill">
-                    <img id="loader-bar-full" class="loader-bar-full" alt="" decoding="async" fetchpriority="low" src="${assetUrl(ASSETS.loaderFull)}">
+                    <img id="loader-bar-full" class="loader-bar-full" alt="" decoding="async" fetchpriority="low" src="${assetUrl(assetPath('loader_full.webp'))}">
                 </div>
                 <p id="loader-text" class="loader-text">Loading...</p>
             </div>
@@ -276,15 +293,20 @@
         }, 160);
     }
 
-    function init() {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-            return;
-        }
+    function initWebLoader() {
         buildDom();
     }
 
     window.hideWebLoader = finish;
     window.exportWebLoaderTextures = exportWebLoaderTextures;
-    init();
+    window.SOW_initWebLoader = initWebLoader;
+
+    // CrazyGames /play/ shell: #web-loader exists in HTML and auto-starts.
+    if (document.getElementById('web-loader')) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initWebLoader);
+        } else {
+            initWebLoader();
+        }
+    }
 })();

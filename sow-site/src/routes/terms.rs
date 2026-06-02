@@ -56,7 +56,7 @@ pub fn TermsPage() -> impl IntoView {
                 " for data handling."
             </p>
 
-            <p><a href="/play/">"← Play game"</a></p>
+            <p><a href="/#game-stage">"← Play game"</a></p>
         </SiteLayout>
     }
 }

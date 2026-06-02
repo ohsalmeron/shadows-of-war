@@ -30,6 +30,7 @@ eslint_out.txt
 /leaders/
 wasm-pack*.*
 .cursor/
+sow-site/game-manifest.json
 blade/
 .idea/
 scripts/__pycache__/

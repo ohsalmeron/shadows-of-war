@@ -1,3 +1,4 @@
+mod game_manifest;
 mod layout;
 mod routes;
 
