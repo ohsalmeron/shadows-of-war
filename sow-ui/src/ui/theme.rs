@@ -6,11 +6,19 @@ use egui::{
     Response, Sense, Stroke, StrokeKind, Style, TextStyle, TextureHandle, Ui, Vec2, Visuals,
 };
 
-/// Phone/narrow layout: stacked main menu + mobile leader art below this width.
+/// Phone/narrow layout: stacked main menu + mobile leader art.
+///
+/// Uses width and height together so short-wide portal embeds (e.g. CrazyGames desktop QA)
+/// stay on desktop layout when `width >= 600` even if `height < 600`.
 #[inline]
 pub fn compact_viewport(ctx: &Context) -> bool {
     let rect = ctx.content_rect();
-    rect.width() < 480.0 || rect.height() < 600.0
+    let w = rect.width();
+    let h = rect.height();
+    if w < 480.0 {
+        return true;
+    }
+    w < 600.0 && h < 600.0
 }
 
 /// Standard UI animation duration; near-instant when reduced motion is enabled.

@@ -4,39 +4,52 @@ Browser-facing assets for Shadows of War (HTML/JS only). Game logic is in the WA
 
 | Subfolder | Product | Deploy target |
 |-----------|---------|---------------|
-| **`site/`** | Marketing — landing, privacy, terms | `shadowsofwar.io` (`cloud-site`) |
-| **`shell/`** | WASM loader, `index.html.template`, portal SDK | `dist/play`, `dist/ptr`, `dist/crazygames`, `dist/poki` |
+| **`site/`** | Marketing — landing, privacy, terms | `shadowsofwar.io` (manual / separate) |
+| **`shell/`** | WASM loader, `index.html.template`, portal SDK | `dist/play`, `dist/ptr`, `dist/crazygames` |
 
-## Commands (copy-paste)
+## Build & deploy (`sow-dist`)
 
-| Script | Writes | Notes |
-|--------|--------|-------|
-| `./scripts/local.sh` | `dist/play/` | WASM shell; `assets/static` symlink (local dev) |
-| `./scripts/crazygames.sh` | `dist/crazygames/` | Always rebuilds; `.br` WASM/JS + SDK + `assets/static` symlink |
-| `./scripts/crazygames.sh --sync-cdn` | same | Also sync streamed leaders to prod CDN first |
-| `./scripts/poki.sh` | `dist/poki/` | Poki portal (full rebuild + CDN prereq) |
-| `./scripts/cloud-game.sh` | `dist/play/` → VPS | Prod play host (always full deploy) |
-| `./scripts/cloud.sh` | `dist/play/` + site → VPS | Full prod (incremental; `--force` to redeploy) |
+All packaging goes through the Rust CLI. Output stays under `dist/`.
+
+```bash
+cargo run -p sow-dist -- cg
+cargo run -p sow-dist -- cg -v            # portal release (increment .version)
+cargo run -p sow-dist -- play
+cargo run -p sow-dist -- ptr
+```
+
+| Command | Writes | Notes |
+|---------|--------|-------|
+| `cg` (`crazygames`) | `dist/crazygames/` | Portal `.br` shell + `assets/static/`; upload whole folder |
+| `play` | `dist/play/` → VPS | Self-hosted shell + `assets/static/`; boot/leaders from prod CDN |
+| `ptr` | `dist/ptr/` → VPS | Same as play on staging host |
+
+**CDN:** `assets/cdn/` is synced only to `https://shadowsofwar.io/assets/cdn/` (parallel with WASM build). It is **not** copied into `dist/*`.
+
+**Runtime:** Loader and WASM use `SOW_ASSETS_URL` → prod CDN for boot UI and leader portraits.
 
 ## `dist/crazygames/` layout
 
-- `index.html`, `sow_client_*.wasm.br`, `sow_client_*.js.br`, `sdk/`, favicons
-- `assets/static` → symlink to repo `assets/static/` (not copied)
+- `index.html` (loads `sow_client.js.br` / `sow_client_bg.wasm.br`)
+- `assets/static/` — fonts, maps metadata, UI sources bundled for portal
+- `sdk/`, favicons
+- No `assets/cdn/` — CrazyGames loads art from prod CDN
 
-Streamed portraits and maps: client `SOW_ASSETS_URL` / `SOW_MAPS_URL` (prod CDN). No VPS sync on a normal `crazygames.sh` run.
+## CrazyGames QA (layout & resize)
 
-**Upload:** all files inside `dist/crazygames/`. If the portal rejects symlinks:
+WASM sizes from `#blade` `clientWidth`/`clientHeight` (not the top-level window). UI compact mode uses **width and height together**: wide-short desktop player frames (e.g. ~900×520) use **desktop** menu layout; portrait phones (`width < 480`) stay compact.
 
-```bash
-rsync -aL dist/crazygames/ /tmp/cg-upload/
-```
+| Check | Pass criteria |
+|-------|----------------|
+| Desktop QA layout | Main menu is horizontal (side panel), not a full-height vertical scroll stack |
+| Resize | Drag the browser window on self-hosted `play` or CG QA; map and UI reflow with the canvas |
+| Portrait phone | Narrow width still uses compact stack + mobile leader art |
 
 ## Quick start
 
 ```bash
-./scripts/crazygames.sh
-./scripts/local.sh    # http://127.0.0.1:8080/
-./scripts/cloud-game.sh
+cargo run -p sow-dist -- crazygames
+cargo run -p sow-dist -- play
 ```
 
 **Docs:** [CrazyGames SDK](https://docs.crazygames.com/sdk/)

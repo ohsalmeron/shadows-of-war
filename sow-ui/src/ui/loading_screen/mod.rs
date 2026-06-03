@@ -152,7 +152,7 @@ pub fn draw(
     let screen_rect = root_ui.max_rect();
     let screen_w = screen_rect.width();
     let screen_h = screen_rect.height();
-    let is_mobile = screen_w < 600.0;
+    let is_mobile = crate::ui::theme::compact_viewport(root_ui.ctx());
     let alpha = (state.opacity * 255.0) as u8;
 
     let background_tex = if is_mobile {

@@ -1,5 +1,8 @@
-//! Web canvas layout size from `#blade` client dimensions (fullscreen shell),
+//! Web canvas layout size from `#blade` client dimensions (fullscreen shell or portal iframe),
 //! falling back to the viewport when the canvas is not laid out yet.
+//!
+//! This is the single source of truth on wasm32 for GPU surface size, egui `screen_rect`,
+//! and [`sow_ui::ui::theme::compact_viewport`] (via synced logical points).
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;

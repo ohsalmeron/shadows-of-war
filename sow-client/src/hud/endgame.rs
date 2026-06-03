@@ -52,7 +52,7 @@ impl SowApp {
                 });
 
             let screen_width = ctx.content_rect().width();
-            let is_mobile = screen_width < 600.0;
+            let is_mobile = sow_ui::ui::theme::compact_viewport(ctx);
 
             let (
                 title_size,

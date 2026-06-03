@@ -95,9 +95,15 @@ impl SowApp {
                     self.input.screen_h = physical_size.height as f32;
                     let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                     self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                    let sf = self
+                        .gfx
+                        .window
+                        .as_ref()
+                        .map_or(1.0, |w| w.scale_factor() as f32)
+                        .max(0.01);
                     self.ui.raw_input.screen_rect = Some(Rect::from_min_size(
                         Pos2::ZERO,
-                        Vec2::new(self.input.screen_w, self.input.screen_h),
+                        Vec2::new(self.input.screen_w / sf, self.input.screen_h / sf),
                     ));
                     if let Some(win) = self.gfx.window.as_ref() {
                         win.request_redraw();

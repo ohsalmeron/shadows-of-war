@@ -24,16 +24,26 @@ impl SowApp {
         #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
             let (w, h) = crate::web_canvas::canvas_logical_size();
+            let sf = win.scale_factor() as f32;
+            let logical_w = w as f32;
+            let logical_h = h as f32;
+            let expected_w = logical_w * sf;
+            let expected_h = logical_h * sf;
 
-            // Use the logical size and sf to calculate current physical size
-            let sf = win.scale_factor();
-            let expected_w = (w * sf) as u32;
-            let expected_h = (h * sf) as u32;
-
-            if expected_w.abs_diff(self.input.screen_w as u32) > 1
-                || expected_h.abs_diff(self.input.screen_h as u32) > 1
+            if (expected_w - self.input.screen_w).abs() > 1.0
+                || (expected_h - self.input.screen_h).abs() > 1.0
             {
                 let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
+                self.input.screen_w = expected_w;
+                self.input.screen_h = expected_h;
+                let zmax =
+                    camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+                self.input.camera_zoom =
+                    self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(logical_w, logical_h),
+                ));
             }
         }
 
@@ -777,9 +787,10 @@ impl SowApp {
                             camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                         self.input.camera_zoom =
                             self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                        let sf = win.scale_factor() as f32;
                         self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
                             egui::Pos2::ZERO,
-                            egui::Vec2::new(self.input.screen_w, self.input.screen_h),
+                            egui::vec2(self.input.screen_w / sf.max(0.01), self.input.screen_h / sf.max(0.01)),
                         ));
                         let format = s.info().format;
 
