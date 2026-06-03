@@ -1,3 +1,4 @@
+mod assets;
 mod cdn;
 mod deploy;
 mod package;

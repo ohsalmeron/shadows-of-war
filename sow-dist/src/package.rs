@@ -1,3 +1,4 @@
+use crate::assets::UI_FONT_FILE;
 use crate::paths::{Paths, PORTAL_JS, PORTAL_WASM};
 use crate::process;
 use crate::wasm;
@@ -271,9 +272,12 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
     if dir.join("assets/cdn").exists() {
         bail!("{} must not contain assets/cdn/ (CDN is remote only)", dir.display());
     }
-    let font = dir.join("assets/static/fonts/PressStart2P-Regular.ttf");
+    let font = dir.join("assets/static/fonts").join(UI_FONT_FILE);
     if !font.is_file() {
-        bail!("{} missing assets/static/fonts/PressStart2P-Regular.ttf", dir.display());
+        bail!(
+            "{} missing assets/static/fonts/{UI_FONT_FILE}",
+            dir.display()
+        );
     }
     match profile {
         Profile::Crazygames => {

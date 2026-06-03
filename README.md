@@ -70,12 +70,26 @@ Details: [sow-web/README.md](sow-web/README.md).
 
 | Pipeline | Source | Destination |
 |----------|--------|-------------|
-| CDN (every deploy, parallel) | `assets/cdn/` | `shadowsofwar.io/html/assets/cdn/` (rsync) |
+| CDN (every deploy, parallel) | `assets/cdn/` + `assets/static/fonts/` | `shadowsofwar.io/html/assets/cdn/` and `/assets/fonts/` (rsync) |
 | WASM dist | `sow-web/shell` + compiled client | `dist/play`, `dist/ptr`, or `dist/crazygames` |
 | Static in dist | `assets/static/` | `dist/*/assets/static/` |
 | Maps on server | `assets/static/maps/` | VPS sow-server maps dir (play/ptr deploy) |
+| Server binaries | `sow-server`, `sow-relay` (built on deploy) | VPS home dirs + `systemctl restart sow-server` |
+| Marketing HTML | `sow-web/site/` | Manual (not part of `sow-dist`) |
 
 Boot UI and leader portraits load from the CDN URL at runtime, not from files inside `dist/`.
+
+### What `sow-dist play` updates
+
+| Artifact | Picked up by play deploy? | Server restart needed? |
+|----------|---------------------------|-------------------------|
+| Game UI, Credits, i18n (WASM) | Yes — `dist/play` → play.shadowsofwar.io | No |
+| Boot UI, leader portraits, marketing font | Yes — CDN rsync → shadowsofwar.io | No |
+| Map `.br` files on disk | Yes — rsync to sow-server maps dir | No |
+| `sow-server` / `sow-relay` code | Yes — binary rsync + restart | Yes (automatic on deploy) |
+| Credits / legal text on GitHub | Only after you push; in-game links use `.version` tag | No |
+
+There is no server API for Credits or menu strings — the WASM client bundle is the source of truth.
 
 ## License
 

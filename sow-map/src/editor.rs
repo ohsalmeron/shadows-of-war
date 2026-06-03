@@ -284,7 +284,7 @@ impl MapEditorSession {
         std::fs::write(maps_root.join("catalog.bin"), catalog_bytes).map_err(|e| e.to_string())
     }
 
-    /// Reload `catalog.bin` from disk into the shared client app (Single Player map list).
+    /// Reload `catalog.bin` from disk into the shared client app (SOLO map list).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_local_map_catalog(
         client_app: &mut sow_ui::ClientApp,

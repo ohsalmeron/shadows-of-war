@@ -1,3 +1,4 @@
+use crate::assets::UI_FONT_FILE;
 use crate::paths::{Paths, PROD_ASSETS_PATH, PROD_HOST, PROD_USER};
 use crate::process;
 use crate::tools;
@@ -42,6 +43,7 @@ pub fn sync_to_prod(paths: &Paths) -> Result<()> {
         &[&remote, &format!("chmod -R a+rX {PROD_ASSETS_PATH}/cdn")],
         None,
     )?;
+    sync_marketing_fonts(paths, &remote)?;
     sync_marketing_nginx(paths)?;
     verify_prod_cdn()?;
     println!("✅ CDN pipeline OK");
@@ -111,6 +113,40 @@ fn check_leader_portraits(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+fn sync_marketing_fonts(paths: &Paths, remote: &str) -> Result<()> {
+    let font_path = paths.assets_static.join("fonts").join(UI_FONT_FILE);
+    if !font_path.is_file() {
+        bail!(
+            "missing {} (canonical UI font; see sow-dist/src/assets.rs)",
+            font_path.display()
+        );
+    }
+    println!("==> Syncing fonts → {PROD_USER}@{PROD_HOST}:{PROD_ASSETS_PATH}/fonts/");
+    process::run(
+        "ssh",
+        &[remote, &format!("mkdir -p {PROD_ASSETS_PATH}/fonts")],
+        None,
+    )?;
+    let src = format!("{}/", paths.assets_static.join("fonts").display());
+    let dst = format!("{remote}:{PROD_ASSETS_PATH}/fonts/");
+    process::run(
+        "rsync",
+        &[
+            "-avz",
+            "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r",
+            &src,
+            &dst,
+        ],
+        None,
+    )?;
+    process::run(
+        "ssh",
+        &[remote, &format!("chmod -R a+rX {PROD_ASSETS_PATH}/fonts")],
+        None,
+    )?;
+    Ok(())
+}
+
 fn sync_marketing_nginx(paths: &Paths) -> Result<()> {
     let local = paths.deploy_nginx.join("shadowsofwar.io.conf");
     let remote = format!("{PROD_USER}@{PROD_HOST}");
@@ -142,12 +178,13 @@ fn verify_prod_cdn() -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
-    for url in [
-        "https://shadowsofwar.io/assets/cdn/leaders/caesar_desktop.webp",
-        "https://shadowsofwar.io/assets/cdn/ui/loader_empty.webp",
-        "https://shadowsofwar.io/assets/fonts/PressStart2P-Regular.ttf",
-    ] {
-        let resp = client.head(url).send().context(url)?;
+    let urls = [
+        "https://shadowsofwar.io/assets/cdn/leaders/caesar_desktop.webp".to_string(),
+        "https://shadowsofwar.io/assets/cdn/ui/loader_empty.webp".to_string(),
+        format!("https://shadowsofwar.io/assets/fonts/{UI_FONT_FILE}"),
+    ];
+    for url in urls {
+        let resp = client.head(&url).send().with_context(|| url.clone())?;
         if !resp.status().is_success() {
             bail!("CDN verify failed: {url} → {}", resp.status());
         }

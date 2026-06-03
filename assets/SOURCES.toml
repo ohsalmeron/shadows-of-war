@@ -98,13 +98,7 @@ notes = "Replaced SVG Repo asset with TBD placeholder."
 path = "assets/static/fonts/"
 source = "google_fonts"
 license = "SIL Open Font License 1.1"
-files = [
-  "PressStart2P-Regular.ttf",
-  "CinzelDecorative-Black.ttf",
-  "PressStart2P-Regular.ttf",
-  "Quintessential-Regular.ttf",
-  "StackSansNotch-Light.ttf",
-]
+files = ["PressStart2P-Regular.ttf"]
 
 [maps]
 notes = "Only northamerica shipped under assets/static/maps/. OpenFront-derived maps removed."

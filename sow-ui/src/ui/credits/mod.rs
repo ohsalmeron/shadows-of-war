@@ -14,6 +14,20 @@ fn source_tag_url() -> String {
     )
 }
 
+const GITHUB_REPO: &str = "https://github.com/ohsalmeron/shadows-of-war";
+
+fn legal_blob_url(path: &str) -> String {
+    format!("{GITHUB_REPO}/blob/{}/{}", version_tag(), path)
+}
+
+fn assets_license_url() -> String {
+    legal_blob_url("docs/legal/LICENSE-ASSETS")
+}
+
+fn notice_url() -> String {
+    legal_blob_url("docs/legal/NOTICE")
+}
+
 pub fn draw(
     root_ui: &mut egui::Ui,
     is_open: bool,
@@ -111,10 +125,8 @@ pub fn draw(
                     ui.horizontal_wrapped(|ui| {
                         ui.label(body(&strings.assets_license));
                         ui.add_space(4.0);
-                        ui.hyperlink_to(
-                            link("LICENSE-ASSETS"),
-                            &strings.assets_license_url,
-                        );
+                        let assets_url = assets_license_url();
+                        ui.hyperlink_to(link("LICENSE-ASSETS"), &assets_url);
                     });
                     ui.add_space(8.0);
 
@@ -132,7 +144,8 @@ pub fn draw(
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.label(body(&strings.notice));
-                        ui.hyperlink_to(link("NOTICE"), &strings.notice_url);
+                        let notice = notice_url();
+                        ui.hyperlink_to(link("NOTICE"), &notice);
                     });
                 });
 

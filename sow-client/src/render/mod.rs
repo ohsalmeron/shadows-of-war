@@ -740,6 +740,8 @@ impl SowApp {
             self.ime_bridge
                 .sync_from_egui_ime(egui_output.platform_output.ime);
 
+            crate::platform_output::handle_egui_platform_output(&egui_output.platform_output);
+
             self.ui.raw_input.events.clear();
 
             // ── DRAWING UI ──────────────────────────────────────────

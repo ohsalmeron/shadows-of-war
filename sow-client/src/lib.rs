@@ -113,6 +113,7 @@ pub mod store_portals;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;
 mod map_cache;
+mod platform_output;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
 #[cfg(target_arch = "wasm32")]

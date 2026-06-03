@@ -1,0 +1,18 @@
+Third-Party Notices for Shadows of War
+======================================
+
+This game incorporates material from OpenFront (OpenFrontIO), copyright OpenFront Inc.
+and Contributors, licensed under AGPL-3.0-or-later.
+
+Fonts
+-----
+Press Start 2P (SIL Open Font License 1.1)
+https://fonts.google.com/specimen/Press+Start+2P
+
+Rust dependencies
+-----------------
+See docs/legal/NOTICE.deps (generated from Cargo.lock; not required for player runtime).
+
+Other assets
+------------
+See assets/SOURCES.toml and docs/legal/LICENSE-ASSETS for art licensing.

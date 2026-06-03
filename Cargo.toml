@@ -60,6 +60,7 @@ libm = "0.2.16"
 axum = "0.8.9"
 tower-http = { version = "0.6.10", features = ["fs", "compression-br", "cors"] }
 futures-channel = "0.3"
+open = "5.3"
 
 [workspace.dependencies.blade-egui]
 path = "blade/blade-egui"
