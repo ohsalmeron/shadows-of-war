@@ -755,6 +755,17 @@ pub fn hud_icon_rail_spacing(ui: &mut egui::Ui) {
 }
 
 #[inline]
+pub fn fullscreen_screen_frame(compact: bool) -> egui::Frame {
+    let margin = if compact { 16 } else { 24 };
+    egui::Frame::new()
+        .fill(Color32::from_rgb(8, 10, 14))
+        .stroke(Stroke::NONE)
+        .corner_radius(CornerRadius::ZERO)
+        .inner_margin(Margin::same(margin))
+        .shadow(egui::Shadow::NONE)
+}
+
+#[inline]
 pub fn standard_panel_frame(compact: bool) -> egui::Frame {
     if compact {
         egui::Frame::new()

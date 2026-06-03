@@ -10,6 +10,27 @@ body {
     flex-direction: column;
 }
 a { color: #7ec8e3; }
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+.skip-link:focus {
+    position: fixed;
+    left: 1rem;
+    top: 1rem;
+    z-index: 10001;
+    width: auto;
+    height: auto;
+    padding: 0.5rem 1rem;
+    background: #3d6b8e;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 6px;
+}
 .site-header {
     display: flex;
     align-items: center;
@@ -115,6 +136,7 @@ a { color: #7ec8e3; }
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.5s ease;
+    overscroll-behavior: none;
 }
 .hero-cover {
     position: absolute;
@@ -264,6 +286,7 @@ body.game-active {
         width: 100%;
         height: 100%;
         border: 0;
+        overscroll-behavior: none;
     }
 }
 @media (min-width: 481px) {

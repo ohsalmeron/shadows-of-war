@@ -720,21 +720,9 @@ impl SowApp {
                     .unwrap()
                     .dyn_into::<web_sys::HtmlCanvasElement>()
                     .unwrap();
-                let is_mobile = window
-                    .navigator()
-                    .user_agent()
-                    .map(|ua| {
-                        let ua = ua.to_lowercase();
-                        ua.contains("mobi")
-                            || ua.contains("android")
-                            || ua.contains("iphone")
-                            || ua.contains("ipad")
-                            || ua.contains("touch")
-                    })
-                    .unwrap_or(false);
                 let web_attrs = winit::platform::web::WindowAttributesWeb::default()
                     .with_canvas(Some(canvas))
-                    .with_prevent_default(is_mobile);
+                    .with_prevent_default(true);
                 attributes = attributes.with_platform_attributes(Box::new(web_attrs));
                 crate::ime::ensure_canvas_tabindex();
             }

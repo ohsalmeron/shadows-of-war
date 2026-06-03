@@ -9,3 +9,6 @@ pub const SPAWN_RADIUS: u32 = 5;
 
 /// Feature gate for incomplete missile gameplay (Silo + SAM interception loop).
 pub const ENABLE_MISSILE_STRUCTURES: bool = true;
+
+/// Temporary: hide bottom HUD log tabs; show troop/gold bar + buildings only.
+pub const ENABLE_BOTTOM_HUD_LOG_TABS: bool = false;

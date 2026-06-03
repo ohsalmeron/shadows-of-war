@@ -39,8 +39,8 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 
 | Host | Role |
 |------|------|
-| `shadowsofwar.io` | Marketing + shared CDN (`/assets/cdn/`, fonts, maps API) |
-| `play.shadowsofwar.io` | Production game shell |
+| `shadowsofwar.io` | Marketing site + shared CDN (`/assets/cdn/`, fonts, maps API). **Play in browser:** [shadowsofwar.io](https://shadowsofwar.io/) |
+| `play.shadowsofwar.io` | Full-screen game shell (share link) |
 | `ptr.shadowsofwar.io` | Staging game shell |
 
 ## Commands (`sow-dist`)
@@ -75,7 +75,7 @@ Details: [sow-web/README.md](sow-web/README.md).
 | Static in dist | `assets/static/` | `dist/*/assets/static/` |
 | Maps on server | `assets/static/maps/` | VPS sow-server maps dir (play/ptr deploy) |
 | Server binaries | `sow-server`, `sow-relay` (built on deploy) | VPS home dirs + `systemctl restart sow-server` |
-| Marketing HTML | `sow-web/site/` | Manual (not part of `sow-dist`) |
+| Marketing HTML | `sow-web/site/` | `shadowsofwar.io/html/` (via `sow-dist play` rsync) |
 
 Boot UI and leader portraits load from the CDN URL at runtime, not from files inside `dist/`.
 

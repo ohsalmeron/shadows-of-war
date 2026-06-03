@@ -1,7 +1,7 @@
 use super::MainMenuState;
 use crate::ui::theme;
 use crate::UiAction;
-use egui::{Color32, CornerRadius, Margin, RichText, Stroke};
+use egui::{Color32, CornerRadius, Margin, RichText, ScrollArea, Stroke};
 
 fn setting_card(
     ui: &mut egui::Ui,
@@ -25,15 +25,14 @@ fn setting_card(
                 theme::text_secondary(),
             );
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                content(ui);
-            });
+            content(ui);
         });
     });
 }
 
 fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::RangeInclusive<u32>) {
     ui.horizontal_centered(|ui| {
+        ui.set_width(ui.available_width());
         let total_w = ui.available_width();
         let qty_w = 64.0;
         let spacing = 12.0;
@@ -76,6 +75,7 @@ fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::Range
 
 fn draw_custom_slider_u64(ui: &mut egui::Ui, value: &mut u64, range: std::ops::RangeInclusive<u64>) {
     ui.horizontal_centered(|ui| {
+        ui.set_width(ui.available_width());
         let total_w = ui.available_width();
         let qty_w = 64.0;
         let spacing = 12.0;
@@ -142,7 +142,11 @@ pub fn draw_modal(
 
     let screen_rect = ctx.content_rect();
     let pad = if is_mobile { 32.0 } else { 50.0 };
-    let inner_size = screen_rect.size() - egui::vec2(pad, pad);
+    let panel_size = if is_mobile {
+        screen_rect.size()
+    } else {
+        screen_rect.size() - egui::vec2(pad, pad)
+    };
     let action_bar_h = if is_mobile {
         (44.0 + 8.0 + 44.0) * scale
     } else {
@@ -152,350 +156,333 @@ pub fn draw_modal(
     let item_gap = 12.0 * scale;
     let use_two_columns = !is_mobile || screen_rect.height() < 520.0;
 
-    egui::Area::new(egui::Id::new("single_player_setup_modal"))
+    let anchor = if is_mobile {
+        egui::Align2::LEFT_TOP
+    } else {
+        egui::Align2::CENTER_CENTER
+    };
+
+    egui::Window::new("single_player_setup_modal")
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
         .order(egui::Order::Foreground)
-        .fixed_pos(screen_rect.min)
+        .anchor(anchor, egui::vec2(0.0, 0.0))
+        .fixed_size(panel_size)
+        .frame(theme::standard_panel_frame(is_mobile))
         .show(ctx, |ui| {
-            ui.set_min_size(screen_rect.size());
-            theme::standard_panel_frame(is_mobile).show(ui, |ui| {
-                if is_mobile {
-                    ui.set_min_height(inner_size.y);
-                } else {
-                    ui.set_min_size(inner_size);
-                }
+            ui.vertical_centered(|ui| {
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &strings.single_player_skirmish,
+                    egui::FontId::proportional(if is_mobile { 24.0 } else { 32.0 } * scale),
+                    Color32::WHITE,
+                );
+                ui.label(
+                    egui::RichText::new(&strings.config_simulation)
+                        .size(12.0 * scale)
+                        .color(theme::text_secondary())
+                        .strong(),
+                );
+            });
 
-                ui.vertical_centered(|ui| {
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &strings.single_player_skirmish,
-                        egui::FontId::proportional(if is_mobile { 24.0 } else { 32.0 } * scale),
-                        Color32::WHITE,
-                    );
-                    ui.label(
-                        egui::RichText::new(&strings.config_simulation)
-                            .size(12.0 * scale)
-                            .color(theme::text_secondary())
-                            .strong(),
-                    );
-                });
+            ui.add_space(section_gap);
 
-                ui.add_space(section_gap);
+            ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .max_height((ui.available_height() - action_bar_h - section_gap).max(0.0))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.spacing_mut().item_spacing = egui::vec2(0.0, item_gap);
+                    if let Some(catalog) = &asset_loader.map_catalog {
+                        state.apply_map_catalog(catalog);
+                    }
+                    let map_name = state.single_player_config.map_name.clone();
+                    asset_loader.request_thumbnail(&map_name);
+                    let loader = &*asset_loader;
+                    let config = &mut state.single_player_config;
 
-                let middle_h =
-                    (ui.available_height() - action_bar_h - section_gap).max(0.0);
+                    let draw_preview =
+                        |ui: &mut egui::Ui,
+                         config: &sow_core::game_config::GameConfig,
+                         max_h: f32| {
+                            let thumbnail = loader.thumbnail(&config.map_name);
+                            let aspect = 1.77_f32;
+                            let w = ui.available_width();
+                            let h = (w / aspect).min(max_h.max(48.0));
+                            let rect = ui
+                                .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
+                                .0;
 
-                ui.allocate_ui_with_layout(
-                    egui::vec2(ui.available_width(), middle_h),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.spacing_mut().item_spacing = egui::vec2(0.0, item_gap);
-                        if let Some(catalog) = &asset_loader.map_catalog {
-                            state.apply_map_catalog(catalog);
-                        }
-                        let map_name = state.single_player_config.map_name.clone();
-                        asset_loader.request_thumbnail(&map_name);
-                        let loader = &*asset_loader;
-                        let config = &mut state.single_player_config;
-
-                        let draw_preview =
-                            |ui: &mut egui::Ui,
-                             config: &sow_core::game_config::GameConfig,
-                             max_h: f32| {
-                                let thumbnail = loader.thumbnail(&config.map_name);
-                                let aspect = 1.77_f32;
-                                let w = ui.available_width();
-                                let h = (w / aspect).min(max_h.max(48.0));
-                                let rect = ui
-                                    .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
-                                    .0;
-
-                                if let Some(tex) = thumbnail {
-                                    crate::ui::map_texture::draw_map_thumbnail(
-                                        ui.painter(),
-                                        tex.id(),
-                                        rect,
-                                        1.0,
-                                    );
-                                } else {
-                                    ui.painter().rect_filled(
-                                        rect,
-                                        12.0,
-                                        Color32::from_black_alpha(120),
-                                    );
-                                    let status = if let Some(err) =
-                                        loader.thumbnail_error(&config.map_name)
-                                    {
-                                        format!("Thumbnail: {err}")
-                                    } else if loader.thumbnail_in_flight(&config.map_name) {
-                                        strings.loading_maps.to_string()
-                                    } else {
-                                        strings.no_preview.to_string()
-                                    };
-                                    crate::ui::theme::outlined_text(
-                                        ui.painter(),
-                                        rect.center(),
-                                        egui::Align2::CENTER_CENTER,
-                                        &status,
-                                        egui::FontId::proportional(14.0),
-                                        theme::text_secondary(),
-                                        Color32::BLACK,
-                                    );
-                                }
-
-                                ui.painter().rect_stroke(
+                            if let Some(tex) = thumbnail {
+                                crate::ui::map_texture::draw_map_thumbnail(
+                                    ui.painter(),
+                                    tex.id(),
                                     rect,
-                                    12.0_f32,
-                                    Stroke::new(1.5_f32, theme::menu_panel_border_glow()),
-                                    egui::StrokeKind::Inside,
+                                    1.0,
                                 );
-                            };
+                            } else {
+                                ui.painter().rect_filled(
+                                    rect,
+                                    12.0,
+                                    Color32::from_black_alpha(120),
+                                );
+                                let status = if let Some(err) =
+                                    loader.thumbnail_error(&config.map_name)
+                                {
+                                    format!("Thumbnail: {err}")
+                                } else if loader.thumbnail_in_flight(&config.map_name) {
+                                    strings.loading_maps.to_string()
+                                } else {
+                                    strings.no_preview.to_string()
+                                };
+                                crate::ui::theme::outlined_text(
+                                    ui.painter(),
+                                    rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    &status,
+                                    egui::FontId::proportional(14.0),
+                                    theme::text_secondary(),
+                                    Color32::BLACK,
+                                );
+                            }
 
-                        let draw_map_picker =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, &strings.map_selection, is_mobile, |ui| {
-                                    ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
-                                    let selected_label = loader
-                                        .map_catalog
-                                        .as_ref()
-                                        .and_then(|c| {
-                                            sow_core::maps::catalog_lookup(c, &config.map_name)
-                                        })
-                                        .map(|e| e.display_name.as_str())
-                                        .unwrap_or(config.map_name.as_str());
-                                    egui::ComboBox::from_id_salt("sp_map")
-                                        .width(ui.available_width() - 8.0)
-                                        .selected_text(RichText::new(selected_label).size(16.0))
-                                        .show_ui(ui, |ui| {
-                                            if let Some(catalog) = &loader.map_catalog {
-                                                if catalog.is_empty() {
-                                                    ui.label(&strings.no_maps_found);
-                                                } else {
-                                                    for map_entry in catalog {
-                                                        let label = if loader.has_map(&map_entry.key)
-                                                        {
-                                                            format!(
-                                                                "{}{}",
-                                                                map_entry.display_name,
-                                                                strings.map_offline_tag
-                                                            )
-                                                        } else {
-                                                            map_entry.display_name.clone()
-                                                        };
-                                                        ui.selectable_value(
-                                                            &mut config.map_name,
-                                                            map_entry.key.clone(),
-                                                            label,
-                                                        );
-                                                    }
-                                                }
+                            ui.painter().rect_stroke(
+                                rect,
+                                12.0_f32,
+                                Stroke::new(1.5_f32, theme::menu_panel_border_glow()),
+                                egui::StrokeKind::Inside,
+                            );
+                        };
+
+                    let draw_map_picker =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, &strings.map_selection, is_mobile, |ui| {
+                                ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
+                                let selected_label = loader
+                                    .map_catalog
+                                    .as_ref()
+                                    .and_then(|c| {
+                                        sow_core::maps::catalog_lookup(c, &config.map_name)
+                                    })
+                                    .map(|e| e.display_name.as_str())
+                                    .unwrap_or(config.map_name.as_str());
+                                egui::ComboBox::from_id_salt("sp_map")
+                                    .width(ui.available_width())
+                                    .selected_text(RichText::new(selected_label).size(16.0))
+                                    .show_ui(ui, |ui| {
+                                        if let Some(catalog) = &loader.map_catalog {
+                                            if catalog.is_empty() {
+                                                ui.label(&strings.no_maps_found);
                                             } else {
-                                                ui.label(&strings.loading_maps);
+                                                for map_entry in catalog {
+                                                    let label = if loader.has_map(&map_entry.key)
+                                                    {
+                                                        format!(
+                                                            "{}{}",
+                                                            map_entry.display_name,
+                                                            strings.map_offline_tag
+                                                        )
+                                                    } else {
+                                                        map_entry.display_name.clone()
+                                                    };
+                                                    ui.selectable_value(
+                                                        &mut config.map_name,
+                                                        map_entry.key.clone(),
+                                                        label,
+                                                    );
+                                                }
                                             }
-                                        });
-                                });
-                            };
+                                        } else {
+                                            ui.label(&strings.loading_maps);
+                                        }
+                                    });
+                            });
+                        };
 
-                        let draw_diff =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, &strings.bot_difficulty, is_mobile, |ui| {
-                                    ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
-                                    egui::ComboBox::from_id_salt("sp_diff")
-                                        .width(ui.available_width() - 8.0)
-                                        .selected_text(
-                                            RichText::new(format!("{:?}", config.bot_difficulty))
-                                                .size(16.0),
-                                        )
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                &mut config.bot_difficulty,
-                                                sow_core::game_config::BotDifficulty::Vanilla,
-                                                "Vanilla",
+                    let draw_diff =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, &strings.bot_difficulty, is_mobile, |ui| {
+                                ui.style_mut().spacing.button_padding = egui::vec2(14.0, 8.0);
+                                egui::ComboBox::from_id_salt("sp_diff")
+                                    .width(ui.available_width())
+                                    .selected_text(
+                                        RichText::new(format!("{:?}", config.bot_difficulty))
+                                            .size(16.0),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut config.bot_difficulty,
+                                            sow_core::game_config::BotDifficulty::Vanilla,
+                                            "Vanilla",
+                                        );
+                                        ui.selectable_value(
+                                            &mut config.bot_difficulty,
+                                            sow_core::game_config::BotDifficulty::Terminator,
+                                            "Terminator",
+                                        );
+                                    });
+                            });
+                        };
+
+                    let draw_leader_picker =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, "ACTIVE LEADER & CIVILIZATION", is_mobile, |ui| {
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 4.0;
+
+                                    let leader = config.player_leader;
+                                    let civ = config.player_civilization;
+                                    let emoji = leader.menu_emoji();
+
+                                    ui.horizontal(|ui| {
+                                        ui.label(RichText::new(emoji).size(20.0));
+                                        ui.add_space(4.0);
+                                        ui.vertical(|ui| {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{} ({})",
+                                                    leader.name(),
+                                                    civ.name()
+                                                ))
+                                                .strong()
+                                                .color(Color32::WHITE)
+                                                .size(13.0),
                                             );
-                                            ui.selectable_value(
-                                                &mut config.bot_difficulty,
-                                                sow_core::game_config::BotDifficulty::Terminator,
-                                                "Terminator",
+                                            ui.label(
+                                                RichText::new(leader.perk_description())
+                                                    .size(10.5)
+                                                    .color(theme::accent_solo_cyan())
+                                                    .strong(),
                                             );
-                                        });
-                                });
-                            };
-
-                        let draw_leader_picker =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, "ACTIVE LEADER & CIVILIZATION", is_mobile, |ui| {
-                                    ui.vertical(|ui| {
-                                        ui.spacing_mut().item_spacing.y = 4.0;
-
-                                        let leader = config.player_leader;
-                                        let civ = config.player_civilization;
-                                        let emoji = leader.menu_emoji();
-
-                                        ui.horizontal(|ui| {
-                                            ui.label(RichText::new(emoji).size(20.0));
-                                            ui.add_space(4.0);
-                                            ui.vertical(|ui| {
-                                                ui.label(
-                                                    RichText::new(format!(
-                                                        "{} ({})",
-                                                        leader.name(),
-                                                        civ.name()
-                                                    ))
-                                                    .strong()
-                                                    .color(Color32::WHITE)
-                                                    .size(13.0),
-                                                );
-                                                ui.label(
-                                                    RichText::new(leader.perk_description())
-                                                        .size(10.5)
-                                                        .color(theme::accent_solo_cyan())
-                                                        .strong(),
-                                                );
-                                            });
                                         });
                                     });
                                 });
-                            };
-
-                        let draw_bots =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, &strings.tribes_count, is_mobile, |ui| {
-                                    draw_custom_slider(ui, &mut config.bot_count, 0..=1000);
-                                });
-                            };
-
-                        let draw_nations =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, &strings.nations_count, is_mobile, |ui| {
-                                    draw_custom_slider(ui, &mut config.nation_count, 0..=400);
-                                });
-                            };
-
-                        let draw_spawn =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, &strings.random_spawning, is_mobile, |ui| {
-                                    let btn_text = if config.random_spawn {
-                                        "ON ✔"
-                                    } else {
-                                        "OFF ❌"
-                                    };
-                                    let btn =
-                                        egui::Button::new(RichText::new(btn_text).strong().size(14.0))
-                                            .fill(if config.random_spawn {
-                                                theme::accent_solo_cyan()
-                                            } else {
-                                                theme::menu_secondary_button()
-                                            })
-                                            .corner_radius(12.0)
-                                            .min_size(egui::vec2(100.0, 36.0 * scale));
-
-                                    if ui.add(btn).clicked() {
-                                        config.random_spawn = !config.random_spawn;
-                                    }
-                                });
-                            };
-
-                        let draw_seed_picker =
-                            |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                                setting_card(ui, "WORLD SEED", is_mobile, |ui| {
-                                    draw_custom_slider_u64(ui, &mut config.seed, 1..=9999);
-                                });
-                            };
-
-                        let preview_max_h = if use_two_columns {
-                            (middle_h * 0.38).max(60.0)
-                        } else {
-                            (middle_h * 0.22).max(48.0)
+                            });
                         };
 
-                        if use_two_columns {
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 24.0;
-                                let col_w = (ui.available_width() - 24.0) / 2.0;
-                                let col_h = ui.available_height();
-
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(col_w, col_h),
-                                    egui::Layout::top_down(egui::Align::Min),
-                                    |ui| {
-                                        ui.spacing_mut().item_spacing.y = item_gap;
-                                        draw_preview(ui, config, preview_max_h);
-                                        draw_map_picker(ui, config);
-                                        draw_diff(ui, config);
-                                        draw_seed_picker(ui, config);
-                                    },
-                                );
-
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(col_w, col_h),
-                                    egui::Layout::top_down(egui::Align::Min),
-                                    |ui| {
-                                        ui.spacing_mut().item_spacing.y = item_gap;
-                                        draw_leader_picker(ui, config);
-                                        draw_bots(ui, config);
-                                        draw_nations(ui, config);
-                                        draw_spawn(ui, config);
-                                    },
-                                );
+                    let draw_bots =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, &strings.tribes_count, is_mobile, |ui| {
+                                draw_custom_slider(ui, &mut config.bot_count, 0..=1000);
                             });
-                        } else {
-                            draw_leader_picker(ui, config);
-                            draw_preview(ui, config, preview_max_h);
-                            draw_map_picker(ui, config);
-                            draw_diff(ui, config);
-                            draw_bots(ui, config);
-                            draw_nations(ui, config);
-                            draw_spawn(ui, config);
-                            draw_seed_picker(ui, config);
-                        }
-                    },
-                );
+                        };
 
-                ui.add_space(section_gap);
+                    let draw_nations =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, &strings.nations_count, is_mobile, |ui| {
+                                draw_custom_slider(ui, &mut config.nation_count, 0..=400);
+                            });
+                        };
 
-                let btn_h = 44.0 * scale;
-                let (btn_w, _) = if is_mobile {
-                    (ui.available_width(), btn_h)
-                } else {
-                    (220.0, 50.0 * scale)
-                };
+                    let draw_spawn =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, &strings.random_spawning, is_mobile, |ui| {
+                                let btn_text = if config.random_spawn {
+                                    "ON ✔"
+                                } else {
+                                    "OFF ❌"
+                                };
+                                let btn =
+                                    egui::Button::new(RichText::new(btn_text).strong().size(14.0))
+                                        .fill(if config.random_spawn {
+                                            theme::accent_solo_cyan()
+                                        } else {
+                                            theme::menu_secondary_button()
+                                        })
+                                        .corner_radius(12.0)
+                                        .min_size(egui::vec2(100.0, 36.0 * scale));
 
-                ui.vertical_centered(|ui| {
-                    if !is_mobile {
+                                if ui.add(btn).clicked() {
+                                    config.random_spawn = !config.random_spawn;
+                                }
+                            });
+                        };
+
+                    let draw_seed_picker =
+                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
+                            setting_card(ui, "WORLD SEED", is_mobile, |ui| {
+                                draw_custom_slider_u64(ui, &mut config.seed, 1..=9999);
+                            });
+                        };
+
+                    let scroll_h = ui.available_height();
+                    let preview_max_h = if use_two_columns {
+                        (scroll_h * 0.38).max(60.0)
+                    } else {
+                        (scroll_h * 0.22).max(48.0)
+                    };
+
+                    if use_two_columns {
                         ui.horizontal(|ui| {
-                            let spacing = 24.0;
-                            let total_w = btn_w * 2.0 + spacing;
-                            let remaining = (ui.available_width() - total_w) / 2.0;
-                            ui.add_space(remaining);
+                            ui.set_width(ui.available_width());
+                            let col_gap = 24.0;
+                            let col_w = ((ui.available_width() - col_gap) / 2.0).max(0.0);
 
-                            let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
-                                .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                .min_size(egui::vec2(btn_w, btn_h.max(50.0 * scale)))
-                                .text_size(18.0);
+                            ui.vertical(|ui| {
+                                ui.set_width(col_w);
+                                ui.spacing_mut().item_spacing.y = item_gap;
+                                draw_preview(ui, config, preview_max_h);
+                                draw_map_picker(ui, config);
+                                draw_diff(ui, config);
+                                draw_seed_picker(ui, config);
+                            });
 
-                            if ui.add(cancel_btn).clicked() {
-                                close = true;
-                            }
+                            ui.add_space(col_gap);
 
-                            ui.add_space(spacing);
-
-                            let start_btn =
-                                crate::widgets::ThemeButton::new(&strings.start_simulation)
-                                    .style(crate::widgets::ThemeButtonStyle::Primary)
-                                    .min_size(egui::vec2(btn_w, btn_h.max(50.0 * scale)))
-                                    .text_size(18.0);
-
-                            if ui.add(start_btn).clicked() {
-                                *action = Some(UiAction::StartSinglePlayer(Box::new(
-                                    *state.single_player_config.clone(),
-                                )));
-                                close = true;
-                            }
+                            ui.vertical(|ui| {
+                                ui.set_width(col_w);
+                                ui.spacing_mut().item_spacing.y = item_gap;
+                                draw_leader_picker(ui, config);
+                                draw_bots(ui, config);
+                                draw_nations(ui, config);
+                                draw_spawn(ui, config);
+                            });
                         });
                     } else {
+                        draw_leader_picker(ui, config);
+                        draw_preview(ui, config, preview_max_h);
+                        draw_map_picker(ui, config);
+                        draw_diff(ui, config);
+                        draw_bots(ui, config);
+                        draw_nations(ui, config);
+                        draw_spawn(ui, config);
+                        draw_seed_picker(ui, config);
+                    }
+                });
+
+            ui.add_space(section_gap);
+
+            let btn_h = 44.0 * scale;
+            let (btn_w, _) = if is_mobile {
+                (ui.available_width(), btn_h)
+            } else {
+                (220.0, 50.0 * scale)
+            };
+
+            ui.vertical_centered(|ui| {
+                if !is_mobile {
+                    ui.horizontal(|ui| {
+                        let spacing = 24.0;
+                        let total_w = btn_w * 2.0 + spacing;
+                        let remaining = (ui.available_width() - total_w) / 2.0;
+                        ui.add_space(remaining);
+
+                        let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
+                            .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                            .min_size(egui::vec2(btn_w, btn_h.max(50.0 * scale)))
+                            .text_size(18.0);
+
+                        if ui.add(cancel_btn).clicked() {
+                            close = true;
+                        }
+
+                        ui.add_space(spacing);
+
                         let start_btn =
                             crate::widgets::ThemeButton::new(&strings.start_simulation)
                                 .style(crate::widgets::ThemeButtonStyle::Primary)
-                                .min_size(egui::vec2(btn_w, btn_h))
+                                .min_size(egui::vec2(btn_w, btn_h.max(50.0 * scale)))
                                 .text_size(18.0);
 
                         if ui.add(start_btn).clicked() {
@@ -504,19 +491,32 @@ pub fn draw_modal(
                             )));
                             close = true;
                         }
-
-                        ui.add_space(8.0);
-
-                        let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
-                            .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    });
+                } else {
+                    let start_btn =
+                        crate::widgets::ThemeButton::new(&strings.start_simulation)
+                            .style(crate::widgets::ThemeButtonStyle::Primary)
                             .min_size(egui::vec2(btn_w, btn_h))
                             .text_size(18.0);
 
-                        if ui.add(cancel_btn).clicked() {
-                            close = true;
-                        }
+                    if ui.add(start_btn).clicked() {
+                        *action = Some(UiAction::StartSinglePlayer(Box::new(
+                            *state.single_player_config.clone(),
+                        )));
+                        close = true;
                     }
-                });
+
+                    ui.add_space(8.0);
+
+                    let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
+                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .text_size(18.0);
+
+                    if ui.add(cancel_btn).clicked() {
+                        close = true;
+                    }
+                }
             });
         });
 

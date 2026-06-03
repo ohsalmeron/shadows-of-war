@@ -47,6 +47,8 @@
             display: block;
             width: 100%;
             height: 100%;
+            touch-action: none;
+            overscroll-behavior: none;
         }
         #version {
             position: absolute;

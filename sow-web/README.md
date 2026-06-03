@@ -4,7 +4,7 @@ Browser-facing assets for Shadows of War (HTML/JS only). Game logic is in the WA
 
 | Subfolder | Product | Deploy target |
 |-----------|---------|---------------|
-| **`site/`** | Marketing — landing, privacy, terms | `shadowsofwar.io` (manual / separate) |
+| **`site/`** | Marketing — landing, privacy, terms | `shadowsofwar.io` (via `sow-dist play`) |
 | **`shell/`** | WASM loader, `index.html.template`, portal SDK | `dist/play`, `dist/ptr`, `dist/crazygames` |
 
 ## Build & deploy (`sow-dist`)
@@ -73,6 +73,18 @@ Privacy and Terms body text for the marketing site **and** in-game Settings moda
 | Desktop QA layout | Main menu is horizontal (side panel), not a full-height vertical scroll stack |
 | Resize | Drag the browser window on self-hosted `play` or CG QA; map and UI reflow smoothly |
 | Portrait phone | Narrow width still uses compact stack + mobile leader art |
+
+## Search Console (SEO)
+
+After verifying the property in [Google Search Console](https://search.google.com/search-console):
+
+1. **Sitemaps** → submit `sitemap.xml` (3 URLs: `/`, `/privacy`, `/terms`). Use **OPEN SITEMAP** in GSC to confirm raw XML loads in the browser.
+2. If GSC shows **Sitemap could not be read** from an old submission: **Remove sitemap** → wait a minute → **Add a new sitemap** → `sitemap.xml` → wait 24–48h for re-read.
+3. **URL Inspection** → `https://shadowsofwar.io/` → Test live URL → **Request indexing**.
+4. Optional: [Rich Results Test](https://search.google.com/test/rich-results) and [PageSpeed Insights](https://pagespeed.web.dev/) on `/` (before clicking Play).
+5. After deploy, re-request indexing if marketing HTML changed.
+
+Live checks: `robots.txt` and `sitemap.xml` at site root (`Content-Type: application/xml`); home page has `VideoGame` JSON-LD, canonical, and no WASM until Play. `cargo run -p sow-dist -- play` runs sitemap verification after deploy.
 
 ## Quick start
 

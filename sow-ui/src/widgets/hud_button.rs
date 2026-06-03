@@ -24,9 +24,9 @@ impl HudButton {
 impl Widget for HudButton {
     fn ui(self, ui: &mut Ui) -> Response {
         let size = if cfg!(target_os = "android") {
-            48.0
+            24.0
         } else {
-            32.0
+            24.0
         };
         let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
 

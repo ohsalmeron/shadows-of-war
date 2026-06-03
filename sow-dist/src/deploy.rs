@@ -76,6 +76,7 @@ pub fn deploy_play(paths: &Paths) -> Result<()> {
     )?;
     verify_play_host("https://play.shadowsofwar.io/")?;
     verify_marketing_embed("https://shadowsofwar.io/")?;
+    verify_sitemap("https://shadowsofwar.io/sitemap.xml")?;
     Ok(())
 }
 
@@ -347,5 +348,45 @@ pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
         bail!("game-embed.js missing on marketing host");
     }
     println!("✅ Marketing embed OK");
+    Ok(())
+}
+
+pub fn verify_sitemap(sitemap_url: &str) -> Result<()> {
+    println!("==> Verifying sitemap at {sitemap_url}");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    let res = client
+        .get(sitemap_url)
+        .header("User-Agent", "Googlebot")
+        .send()
+        .context("sitemap fetch")?;
+    if !res.status().is_success() {
+        bail!("sitemap.xml returned {}", res.status());
+    }
+    let ctype = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    if !ctype.contains("xml") {
+        bail!("sitemap Content-Type must be xml, got: {ctype}");
+    }
+    let body = res.text()?;
+    if !body.contains("<urlset") || !body.contains("</urlset>") {
+        bail!("sitemap.xml is not a valid urlset document");
+    }
+    let url_count = body.matches("<loc>").count();
+    if url_count < 3 {
+        bail!("sitemap.xml expected at least 3 URLs, found {url_count}");
+    }
+    for path in ["/", "/privacy", "/terms"] {
+        let loc = format!("https://shadowsofwar.io{path}");
+        if !body.contains(&loc) {
+            bail!("sitemap.xml missing {loc}");
+        }
+    }
+    println!("✅ Sitemap OK ({url_count} URLs, Content-Type: {ctype})");
     Ok(())
 }
