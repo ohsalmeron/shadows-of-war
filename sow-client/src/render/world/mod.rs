@@ -263,6 +263,7 @@ impl SowApp {
                 egui::Order::Middle,
                 egui::Id::new("floating_notices"),
             ));
+            let visual_config = ClientVisualConfig::default();
 
             // Render death nameplate animations
             self.ui.death_nameplates.retain(|anim| {
@@ -313,7 +314,9 @@ impl SowApp {
                     1.0
                 };
                 // Quantize to whole pixels so egui's glyph atlas cache is reused across frames
-                let font_size = (40.0 * scale).round().max(1.0);
+                let font_size = (visual_config.death_nameplate_font_size * scale)
+                    .round()
+                    .max(1.0);
 
                 // Fade alpha (linear approximation of powf(0.6))
                 let alpha = if t < 0.15 {
@@ -403,7 +406,9 @@ impl SowApp {
                         1.0
                     };
                     // Quantize to whole pixels for egui glyph atlas cache reuse
-                    let font_size = (32.0 * bounce_scale).round().max(1.0);
+                    let font_size = (visual_config.gold_reward_notice_font_size * bounce_scale)
+                        .round()
+                        .max(1.0);
 
                     // Layout text ONCE, then paint the galley 7 times
                     let font_id = egui::FontId::proportional(font_size);

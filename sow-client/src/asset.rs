@@ -183,7 +183,11 @@ impl SowApp {
             }
         }
 
-        if self.ui.app.phase == ClientPhase::MainMenu {
+        if self.ui.app.phase == ClientPhase::MainMenu
+            || (self.ui.app.phase == ClientPhase::Splash
+                && self.ui.app.splash_state.job
+                    == sow_ui::ui::loading_screen::SplashJob::Boot)
+        {
             let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
             let selected = self.ui.app.main_menu_state.selected_leader;
             let focus = sow_ui::ui::asset_loader::LeaderPortraitKey {

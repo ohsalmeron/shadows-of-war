@@ -37,7 +37,9 @@ cargo run -p sow-dist -- ptr
 
 ## CrazyGames QA (layout & resize)
 
-**Sizing:** On fullscreen shells (play, CrazyGames), WASM uses `window.innerWidth`/`innerHeight` so live browser resize works. When `#blade` is materially smaller than the viewport (site embed), WASM uses canvas `clientWidth`/`clientHeight` instead.
+**Sizing:** On fullscreen shells (play, CrazyGames), WASM uses `window.innerWidth`/`innerHeight` when canvas width matches the viewport (avoids stale `clientHeight` after resize). When `#blade` is materially **narrower** than the viewport (site embed), WASM uses canvas `clientWidth`/`clientHeight`.
+
+**Native dev:** `cargo run --bin sow-client` loads boot splash/loader from `assets/static/ui/` or `assets/cdn/ui/` at runtime (those files may only exist under `cdn/` after CDN prep). Boot splash preloads the random main-menu leader portrait from CDN (not Caesar by default).
 
 **Layout:** UI compact mode uses width and height together: wide-short desktop player frames (e.g. ~900×520) use **desktop** menu layout; portrait phones (`width < 480`) stay compact.
 

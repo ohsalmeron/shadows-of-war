@@ -271,9 +271,9 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
     if dir.join("assets/cdn").exists() {
         bail!("{} must not contain assets/cdn/ (CDN is remote only)", dir.display());
     }
-    let font = dir.join("assets/static/fonts/JockeyOne-Regular.ttf");
+    let font = dir.join("assets/static/fonts/PressStart2P-Regular.ttf");
     if !font.is_file() {
-        bail!("{} missing assets/static/fonts/JockeyOne-Regular.ttf", dir.display());
+        bail!("{} missing assets/static/fonts/PressStart2P-Regular.ttf", dir.display());
     }
     match profile {
         Profile::Crazygames => {

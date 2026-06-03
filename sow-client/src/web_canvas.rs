@@ -11,9 +11,9 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
-/// Canvas client dimensions differ from the viewport by more than this → embedded.
+/// Width slack: canvas spans viewport width → fullscreen (use inner*, not stale clientHeight).
 #[cfg(target_arch = "wasm32")]
-const EMBED_SLACK_PX: f64 = 48.0;
+const FULLSCREEN_WIDTH_SLACK_PX: f64 = 48.0;
 
 #[cfg(target_arch = "wasm32")]
 fn window_inner_size(window: &web_sys::Window) -> (f64, f64) {
@@ -37,7 +37,12 @@ pub fn canvas_logical_size() -> (f64, f64) {
                 if cw > 0 && ch > 0 {
                     let cw = cw as f64;
                     let ch = ch as f64;
-                    if (inner_w - cw).abs() > EMBED_SLACK_PX || (inner_h - ch).abs() > EMBED_SLACK_PX {
+                    // Fullscreen: width matches viewport; height may lag after winit binds canvas.
+                    if (inner_w - cw).abs() <= FULLSCREEN_WIDTH_SLACK_PX {
+                        return (inner_w, inner_h);
+                    }
+                    // Embed: canvas materially narrower than the window (#game-stage, etc.).
+                    if cw + FULLSCREEN_WIDTH_SLACK_PX < inner_w {
                         return (cw, ch);
                     }
                 }

@@ -145,7 +145,7 @@ fn verify_prod_cdn() -> Result<()> {
     for url in [
         "https://shadowsofwar.io/assets/cdn/leaders/caesar_desktop.webp",
         "https://shadowsofwar.io/assets/cdn/ui/loader_empty.webp",
-        "https://shadowsofwar.io/assets/fonts/JockeyOne-Regular.ttf",
+        "https://shadowsofwar.io/assets/fonts/PressStart2P-Regular.ttf",
     ] {
         let resp = client.head(url).send().context(url)?;
         if !resp.status().is_success() {

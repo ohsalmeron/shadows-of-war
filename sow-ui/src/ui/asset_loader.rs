@@ -210,17 +210,14 @@ impl AssetLoader {
         self.leader_portrait_loaded(LeaderPortraitKey { leader, mobile })
     }
 
-    /// Choose the best available texture for rendering without blocking:
-    /// target -> last uploaded portrait -> bundled Caesar for this layout.
+    /// Last successfully uploaded portrait for this layout (no Caesar default).
     pub fn fallback_leader_portrait_texture(&self, mobile: bool) -> Option<&TextureHandle> {
         if let Some(last) = self.last_ready_portrait {
             if last.mobile == mobile {
-                if let Some(tex) = self.leader_portrait_texture(last.leader, mobile) {
-                    return Some(tex);
-                }
+                return self.leader_portrait_texture(last.leader, mobile);
             }
         }
-        self.leader_portrait_texture(Leader::Caesar, mobile)
+        None
     }
 
     pub fn best_leader_portrait_texture(
@@ -693,8 +690,8 @@ impl AssetLoader {
         true
     }
 
-    pub fn default_leader_ready(&self) -> bool {
-        self.leader_portrait_ready(sow_core::player::Leader::Caesar, false)
+    pub fn boot_leader_ready(&self, leader: Leader, mobile: bool) -> bool {
+        self.leader_portrait_ready(leader, mobile)
     }
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
@@ -725,6 +722,20 @@ impl AssetLoader {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
+            fn read_ui_webp(filename: &str) -> Vec<u8> {
+                use std::path::Path;
+                let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+                let static_p = base.join("../assets/static/ui").join(filename);
+                let cdn_p = base.join("../assets/cdn/ui").join(filename);
+                std::fs::read(&static_p)
+                    .or_else(|_| std::fs::read(&cdn_p))
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "missing UI asset {filename} in assets/static/ui or assets/cdn/ui: {e}"
+                        )
+                    })
+            }
+
             let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
                 let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
 
@@ -740,36 +751,26 @@ impl AssetLoader {
                 ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
             };
 
-            self.ui_loader_empty = Some(load_image(
-                "ui_loader_empty",
-                sow_core::repo_asset_bytes!("ui/loader_empty.webp"),
-            ));
-            self.ui_loader_full = Some(load_image(
-                "ui_loader_full",
-                sow_core::repo_asset_bytes!("ui/loader_full.webp"),
-            ));
-            self.splash_desktop = Some(load_image(
-                "sow_splash_desktop",
-                sow_core::repo_asset_bytes!("ui/sow-splash-desktop.webp"),
-            ));
-            self.splash_mobile = Some(load_image(
-                "sow_splash_mobile",
-                sow_core::repo_asset_bytes!("ui/sow-splash-mobile.webp"),
-            ));
+            let loader_empty = read_ui_webp("loader_empty.webp");
+            let loader_full = read_ui_webp("loader_full.webp");
+            let splash_desktop = read_ui_webp("sow-splash-desktop.webp");
+            let splash_mobile = read_ui_webp("sow-splash-mobile.webp");
+
+            self.ui_loader_empty = Some(load_image("ui_loader_empty", &loader_empty));
+            self.ui_loader_full = Some(load_image("ui_loader_full", &loader_full));
+            self.splash_desktop = Some(load_image("sow_splash_desktop", &splash_desktop));
+            self.splash_mobile = Some(load_image("sow_splash_mobile", &splash_mobile));
         }
     }
 
-    pub fn ensure_leaders_loaded(&mut self, ctx: &egui::Context) {
-        const DEFAULT: Leader = Leader::Caesar;
+    /// Preload menu hero portraits for `leader` (boot splash), not a fixed Caesar default.
+    pub fn ensure_boot_leader_loaded(&mut self, ctx: &egui::Context, leader: Leader) {
         #[cfg(not(target_arch = "wasm32"))]
         {
             use std::path::Path;
             let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/cdn/leaders");
             for mobile in [false, true] {
-                let key = LeaderPortraitKey {
-                    leader: DEFAULT,
-                    mobile,
-                };
+                let key = LeaderPortraitKey { leader, mobile };
                 if self.leader_portrait_loaded(key) {
                     continue;
                 }
@@ -779,17 +780,18 @@ impl AssetLoader {
                     continue;
                 };
                 if let Ok(color_image) = Self::decode_leader_portrait_bytes(&bytes) {
-                    let name = if mobile {
-                        "leader_caesar_mobile"
+                    let name_lower = leader.name().to_lowercase().replace(' ', "_");
+                    let tex_name = if mobile {
+                        format!("leader_{name_lower}_mobile")
                     } else {
-                        "leader_caesar_desktop"
+                        format!("leader_{name_lower}_desktop")
                     };
                     let texture =
-                        ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR);
+                        ctx.load_texture(&tex_name, color_image, egui::TextureOptions::LINEAR);
                     if mobile {
-                        self.leader_mobile_images.insert(DEFAULT, texture);
+                        self.leader_mobile_images.insert(leader, texture);
                     } else {
-                        self.leader_desktop_images.insert(DEFAULT, texture);
+                        self.leader_desktop_images.insert(leader, texture);
                     }
                     self.last_ready_portrait = Some(key);
                 }
@@ -798,8 +800,8 @@ impl AssetLoader {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = ctx;
-            self.request_leader_portrait_priority(DEFAULT, false);
-            self.request_leader_portrait_priority(DEFAULT, true);
+            self.request_leader_portrait_priority(leader, false);
+            self.request_leader_portrait_priority(leader, true);
         }
     }
 

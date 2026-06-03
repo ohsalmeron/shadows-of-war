@@ -247,26 +247,66 @@ impl SowApp {
         if self.ui.app.phase == sow_ui::app::ClientPhase::Splash {
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
+                    let leader = self.ui.app.main_menu_state.selected_leader;
+                    let mobile =
+                        sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+
                     self.ui
                         .app
                         .asset_loader
                         .ensure_avatars_loaded(&self.ui.egui_ctx);
-                    self.ui
-                        .app
-                        .asset_loader
-                        .ensure_leaders_loaded(&self.ui.egui_ctx);
-                    self.ui
-                        .app
-                        .asset_loader
-                        .ensure_ui_assets_loaded(&self.ui.egui_ctx);
-
                     let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
-                    #[cfg(target_arch = "wasm32")]
-                    let boot_ready = avatars_ready;
-                    #[cfg(not(target_arch = "wasm32"))]
-                    let boot_ready = avatars_ready
-                        && self.ui.app.asset_loader.ui_splash_ready()
-                        && self.ui.app.asset_loader.default_leader_ready();
+                    if !avatars_ready {
+                        self.ui.app.splash_state.status_text =
+                            "Loading avatars…".to_string();
+                        self.ui.app.splash_state.progress =
+                            self.ui.app.splash_state.progress.max(0.1);
+                    } else {
+                        self.ui
+                            .app
+                            .asset_loader
+                            .ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                        let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
+                        if !ui_ready {
+                            self.ui.app.splash_state.status_text =
+                                "Loading UI…".to_string();
+                            self.ui.app.splash_state.progress =
+                                self.ui.app.splash_state.progress.max(0.35);
+                        } else {
+                            self.ui.app.asset_loader.ensure_boot_leader_loaded(
+                                &self.ui.egui_ctx,
+                                leader,
+                            );
+                            self.ui.app.asset_loader.set_leader_portrait_focus(
+                                leader,
+                                mobile,
+                            );
+                            let hero_ready = self
+                                .ui
+                                .app
+                                .asset_loader
+                                .boot_leader_ready(leader, mobile);
+                            if !hero_ready {
+                                self.ui.app.splash_state.status_text = format!(
+                                    "Loading {}…",
+                                    leader.name()
+                                );
+                                self.ui.app.splash_state.progress =
+                                    self.ui.app.splash_state.progress.max(0.65);
+                            } else {
+                                self.ui.app.splash_state.progress =
+                                    self.ui.app.splash_state.progress.max(0.9);
+                            }
+                        }
+                    }
+
+                    let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
+                    let hero_ready = self
+                        .ui
+                        .app
+                        .asset_loader
+                        .boot_leader_ready(leader, mobile);
+                    let boot_ready = avatars_ready && ui_ready && hero_ready;
 
                     if boot_ready {
                         self.ui.app.splash_state.done = true;
@@ -281,8 +321,6 @@ impl SowApp {
                         if self.ui.app.splash_state.target_phase.is_none() {
                             self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
                         }
-                    } else {
-                        self.ui.app.splash_state.status_text = "Loading game assets...".to_string();
                     }
                 }
                 sow_ui::ui::loading_screen::SplashJob::ExitGame => {

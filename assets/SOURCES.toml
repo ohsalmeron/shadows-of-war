@@ -99,7 +99,7 @@ path = "assets/static/fonts/"
 source = "google_fonts"
 license = "SIL Open Font License 1.1"
 files = [
-  "JockeyOne-Regular.ttf",
+  "PressStart2P-Regular.ttf",
   "CinzelDecorative-Black.ttf",
   "PressStart2P-Regular.ttf",
   "Quintessential-Regular.ttf",
