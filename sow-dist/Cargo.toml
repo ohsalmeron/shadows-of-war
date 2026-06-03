@@ -2,7 +2,7 @@
 name = "sow-dist"
 version = "0.1.0"
 edition = "2021"
-description = "Shadows of War — WASM dist build and deploy (play, ptr, crazygames)"
+description = "Shadows of War — WASM dist build and deploy (play, ptr, crazygames, localsite)"
 license = "AGPL-3.0-or-later"
 
 [[bin]]

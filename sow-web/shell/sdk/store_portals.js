@@ -18,7 +18,14 @@
   /**
    * True when embedded on CrazyGames (iframe, referrer, or package boot var).
    */
+  function isSiteEmbed() {
+    return window.SOW_PORTAL === "site";
+  }
+
   function isOnCrazyGames() {
+    if (isSiteEmbed()) {
+      return false;
+    }
     if (window.SOW_PORTAL === "crazygames") {
       return true;
     }
@@ -48,6 +55,9 @@
   }
 
   function isOnPoki() {
+    if (isSiteEmbed()) {
+      return false;
+    }
     if (window.SOW_PORTAL === "poki") {
       return true;
     }
@@ -79,6 +89,7 @@
     });
   }
 
+  window.SOW_isSiteEmbed = isSiteEmbed;
   window.SOW_isOnCrazyGames = isOnCrazyGames;
   window.SOW_isOnPoki = isOnPoki;
   window.SOW_portalAdPause = portalAdPause;
@@ -110,7 +121,7 @@
   };
 
   window.SOW_portalGameplayStart = function () {
-    if (window.SOW_adPlaying) {
+    if (isSiteEmbed() || window.SOW_adPlaying) {
       return;
     }
     if (typeof PokiSDK !== "undefined" && PokiSDK.gameplayStart) {
@@ -179,6 +190,9 @@
   };
 
   window.SOW_portalLoadStart = function () {
+    if (isSiteEmbed()) {
+      return;
+    }
     if (typeof PokiSDK !== "undefined" && PokiSDK.loadStart) {
       PokiSDK.loadStart();
     }
@@ -214,11 +228,11 @@
     }
   };
 
-  // CrazyGames: avoid Ctrl/Cmd+W closing the tab while the game is fullscreen.
+  // CrazyGames: avoid Ctrl/Cmd+W closing the tab while the game is fullscreen (not site embed).
   document.addEventListener(
     "keydown",
     function (e) {
-      if (!document.fullscreenElement) {
+      if (isSiteEmbed() || !document.fullscreenElement) {
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "w" || e.key === "W")) {

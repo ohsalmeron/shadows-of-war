@@ -16,15 +16,34 @@ cargo run -p sow-dist -- cg
 cargo run -p sow-dist -- cg -v            # portal release (increment .version)
 cargo run -p sow-dist -- play
 cargo run -p sow-dist -- ptr
+cargo run -p sow-dist -- localsite          # local marketing + iframe embed (alias: ls)
 ```
 
 | Command | Writes | Notes |
 |---------|--------|-------|
 | `cg` (`crazygames`) | `dist/crazygames/` | Portal `.br` shell + `assets/static/`; upload whole folder |
-| `play` | `dist/play/` → VPS | Self-hosted shell + `assets/static/`; boot/leaders from prod CDN |
+| `play` | `dist/play/` → VPS | Fullscreen shell on `play.shadowsofwar.io`; marketing site on `shadowsofwar.io` |
 | `ptr` | `dist/ptr/` → VPS | Same as play on staging host |
+| `localsite` (`ls`) | `dist/site-dev/www/` | **Local only:** build + serve; iframe → `/game/`; prod wss/maps/CDN at runtime |
 
-**CDN:** `assets/cdn/` is synced only to `https://shadowsofwar.io/assets/cdn/` (parallel with WASM build). It is **not** copied into `dist/*`.
+**CDN:** `assets/cdn/` is synced only to `https://shadowsofwar.io/assets/cdn/` (parallel with WASM build on `play` / `ptr` / `cg`). It is **not** copied into `dist/*`. **`localsite` skips CDN sync** so local rebuilds never touch the VPS.
+
+## Dual entry: iframe embed + play subdomain
+
+| URL | Experience |
+|-----|------------|
+| **`https://shadowsofwar.io/`** | Marketing HTML; **Play** embeds the game shell in-page (desktop) or fullscreen iframe (mobile ≤480px) |
+| **`https://play.shadowsofwar.io/`** | Full game shell, auto-load WASM — share link / “Open full screen” |
+
+Marketing [`site/index.html`](site/index.html) + [`site/game-embed.js`](site/game-embed.js) lazy-load an iframe to `play.shadowsofwar.io` (prod) or `/game/index.html` (localsite). No WASM on the marketing page itself.
+
+```bash
+cargo run -p sow-dist -- localsite   # or: ls — builds, then http://127.0.0.1:8787/
+```
+
+**Desktop:** Play shows a CrazyGames-style player frame above About; marketing stays visible. **Mobile (≤480px):** Play opens a fullscreen overlay; **Back to site** clears the iframe. Optional: `--build-only`, `--port 8787`.
+
+Cloud `play` / `cg` / `ptr` use separate `dist/*` trees; `localsite` never overwrites them.
 
 **Runtime:** Loader and WASM use `SOW_ASSETS_URL` → prod CDN for boot UI and leader portraits.
 
@@ -58,6 +77,7 @@ Privacy and Terms body text for the marketing site **and** in-game Settings moda
 ## Quick start
 
 ```bash
+cargo run -p sow-dist -- localsite   # local embed QA
 cargo run -p sow-dist -- crazygames
 cargo run -p sow-dist -- play
 ```

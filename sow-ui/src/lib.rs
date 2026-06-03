@@ -13,7 +13,6 @@ pub enum UiAction {
     JoinLobby(u64),
     LeaveLobby,
     StartSinglePlayer(Box<sow_core::game_config::GameConfig>),
-    StartTutorial,
     SetAttackRatio(f32),
     CenterCamera,
     /// Pan + zoom camera to world-space tile coords (col, row).

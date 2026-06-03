@@ -42,8 +42,8 @@ impl Default for ClientVisualConfig {
             nameplate_tribe_size: 12.0,
             nameplate_premium_size: 12.0,
             nameplate_disconnected_emoji_scale: 8.0,
-            death_nameplate_font_size: 40.0,
-            gold_reward_notice_font_size: 32.0,
+            death_nameplate_font_size: 16.0,
+            gold_reward_notice_font_size: 16.0,
 
             // Android UI Theme Settings (Main Menu)
             top_bar_color: [15, 15, 20, 255],    // Dark gray

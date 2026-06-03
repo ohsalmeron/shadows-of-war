@@ -27,6 +27,16 @@ pub fn viewport_scale(ctx: &Context) -> f32 {
     (ctx.content_rect().height() / 720.0).clamp(0.55, 1.0)
 }
 
+/// Outer width of the main-menu left rail (content + optional glass frame inset).
+#[inline]
+pub fn menu_rail_panel_width(available_w: f32, compact: bool) -> f32 {
+    if compact {
+        return available_w.min(360.0);
+    }
+    // Fixed ~300px content column; desktop glass frame adds 20px inner margin per side.
+    (340.0_f32).min(available_w)
+}
+
 /// Standard UI animation duration; near-instant when reduced motion is enabled.
 #[inline]
 pub fn anim_duration(reduced_motion: bool) -> f32 {

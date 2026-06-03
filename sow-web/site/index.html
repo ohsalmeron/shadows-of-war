@@ -19,6 +19,8 @@
     <meta property="twitter:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="twitter:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
     <meta property="twitter:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
+    <link rel="preload" as="image" href="/assets/cdn/ui/sow-splash-desktop.webp" type="image/webp" media="(min-width:481px)" fetchpriority="high">
+    <link rel="preload" as="image" href="/assets/cdn/ui/sow-splash-mobile.webp" type="image/webp" media="(max-width:480px)">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -38,17 +40,32 @@
     <header class="site-header">
         <a href="/" class="brand">Shadows of War</a>
         <nav>
-            <a href="https://play.shadowsofwar.io/">Play</a>
+            <button type="button" class="nav-play" id="sow-nav-play">Play</button>
+            <a href="https://play.shadowsofwar.io/" class="nav-play-tab" target="_blank" rel="noopener">Full screen</a>
             <a href="/privacy">Privacy</a>
             <a href="/terms">Terms</a>
         </nav>
     </header>
     <main class="site-main">
-        <div class="hero">
-            <h1>Shadows of War</h1>
-            <p>Lead civilizations on world maps in Shadows of War, a free, open-source MMORTS. Forge alliances, expand territory, and balance economy in massive multiplayer real-time strategy battles.</p>
-            <a href="https://play.shadowsofwar.io/" class="play-btn">Play Now</a>
-        </div>
+        <section id="sow-game-stage" class="sow-stage">
+            <iframe id="sow-game-frame" class="sow-stage__frame" title="Shadows of War" allow="fullscreen"></iframe>
+            <div id="hero-cover" class="hero-cover">
+                <div class="hero-cover__bg" aria-hidden="true"></div>
+                <div class="hero-cover__inner">
+                    <span class="hero-eyebrow">Free · Open Source · Browser MMORTS</span>
+                    <h1>Shadows of War</h1>
+                    <p class="hero-tag">Lead civilizations on world maps. Forge alliances, expand territory, and out-economy your rivals in massive real-time battles.</p>
+                    <ul class="hero-feats">
+                        <li>World Maps</li>
+                        <li>Alliances</li>
+                        <li>Real-Time Battles</li>
+                        <li>No Install</li>
+                    </ul>
+                    <button type="button" class="play-btn play-btn--hero" id="sow-play-btn">Play Now</button>
+                    <p class="play-alt"><a href="https://play.shadowsofwar.io/" target="_blank" rel="noopener">or open full screen</a></p>
+                </div>
+            </div>
+        </section>
         <section>
             <h2>About Shadows of War</h2>
             <p>Shadows of War is a free-to-play, open-source massive multiplayer online real-time strategy game. Command civilizations on world maps, form alliances with other players, expand your territory, and manage economy while fighting large-scale battles online.</p>
@@ -58,5 +75,12 @@
     <footer class="site-footer">
         <p>© Shadows of War · Based on <a href="https://openfront.io">OpenFront</a> — © OpenFront and Contributors · <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0-or-later</a> · <a href="https://github.com/ohsalmeron/shadows-of-war">Source</a></p>
     </footer>
+
+    <div id="game-overlay" class="game-overlay" hidden>
+        <button type="button" id="game-restore-btn" class="game-restore-btn" aria-label="Back to site">Back to site</button>
+        <iframe id="sow-game-frame-mobile" title="Shadows of War" allow="fullscreen"></iframe>
+    </div>
+
+    <script src="/game-embed.js"></script>
 </body>
 </html>

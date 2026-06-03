@@ -4,6 +4,7 @@ mod deploy;
 mod package;
 mod paths;
 mod process;
+mod serve;
 mod tools;
 mod version;
 mod wasm;
@@ -47,6 +48,17 @@ enum Command {
         #[command(flatten)]
         opts: VersionOpts,
     },
+    /// Local marketing + iframe embed: build wasm, stage www, serve (one pipeline).
+    #[command(name = "localsite", visible_alias = "ls")]
+    Localsite {
+        #[command(flatten)]
+        opts: VersionOpts,
+        #[arg(short, long, default_value_t = 8787)]
+        port: u16,
+        /// Build only; do not start the static server.
+        #[arg(long)]
+        build_only: bool,
+    },
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -73,6 +85,11 @@ fn main() -> Result<()> {
         Command::Crazygames { opts } => cmd_crazygames(&paths, opts.version),
         Command::Play { opts } => cmd_play(&paths, opts.version),
         Command::Ptr { opts } => cmd_ptr(&paths, opts.version),
+        Command::Localsite {
+            opts,
+            port,
+            build_only,
+        } => cmd_localsite(&paths, opts.version, port, build_only),
     }
 }
 
@@ -123,4 +140,30 @@ fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
     deploy::deploy_ptr(paths)?;
     println!("PTR deployed v{version} → https://ptr.shadowsofwar.io/");
     Ok(())
+}
+
+fn cmd_localsite(
+    paths: &Paths,
+    increment_version: bool,
+    port: u16,
+    build_only: bool,
+) -> Result<()> {
+    let version = resolve_version(paths, increment_version)?;
+    println!("==> localsite v{version} (no CDN sync, no brotli, prod APIs at runtime)");
+    wasm::compile(paths)?;
+    package::build(
+        paths,
+        Profile::SiteDev,
+        &paths.dist_site_dev_game,
+        &version,
+    )?;
+    package::stage_site_www(paths)?;
+    let www = &paths.dist_site_dev_www;
+    println!("Localsite ready: {}", www.display());
+    if build_only {
+        println!("  --build-only: skipped server (re-run without flag to serve)");
+        return Ok(());
+    }
+    println!("  → http://127.0.0.1:{port}/ (iframe embed, prod wss/CDN)");
+    serve::serve_site_dev(paths, port)
 }

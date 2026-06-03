@@ -12,6 +12,8 @@ use walkdir::WalkDir;
 pub enum Profile {
     SelfHosted,
     Crazygames,
+    /// Local marketing iframe embed: raw wasm/js in www/game/, prod APIs, no brotli/deploy/CDN.
+    SiteDev,
 }
 
 pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> Result<()> {
@@ -37,7 +39,7 @@ pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> 
         .to_string();
 
     let (js_file, wasm_file, bindgen_name) = match profile {
-        Profile::Crazygames => (
+        Profile::Crazygames | Profile::SiteDev => (
             PORTAL_JS.to_string(),
             PORTAL_WASM.to_string(),
             "sow_client".to_string(),
@@ -63,14 +65,18 @@ pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> 
         &build_ts,
         profile,
     )?;
-    if matches!(profile, Profile::Crazygames) {
-        inject_crazygames(out_dir.join("index.html"))?;
+    match profile {
+        Profile::Crazygames => inject_crazygames(out_dir.join("index.html"))?,
+        Profile::SiteDev => inject_site_embed(out_dir.join("index.html"))?,
+        Profile::SelfHosted => {}
     }
 
     let js_path = out_dir.join(&js_file);
     let wasm_path = out_dir.join(&wasm_file);
-    wasm::minify_js(&js_path)?;
-    wasm::optimize_wasm(paths, &wasm_path)?;
+    if !matches!(profile, Profile::SiteDev) {
+        wasm::minify_js(&js_path)?;
+        wasm::optimize_wasm(paths, &wasm_path)?;
+    }
 
     let (js_load, wasm_load) = match profile {
         Profile::Crazygames => {
@@ -87,6 +93,10 @@ pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> 
             wasm::brotli_file(&wasm_path)?;
             wasm::brotli_file(&js_path)?;
             write_sw(paths, out_dir, version, &js_file, &wasm_file, &build_ts)?;
+            write_manifest(out_dir, version, &js_file, &wasm_file, &build_ts)?;
+            (js_file.clone(), wasm_file.clone())
+        }
+        Profile::SiteDev => {
             write_manifest(out_dir, version, &js_file, &wasm_file, &build_ts)?;
             (js_file.clone(), wasm_file.clone())
         }
@@ -114,6 +124,7 @@ fn copy_shell_extras(paths: &Paths, out: &Path) -> Result<()> {
         }
     }
     fs::copy(paths.shell.join("sow.svg"), out.join("sow.svg"))?;
+    fs::copy(paths.shell.join("loader.js"), out.join("loader.js"))?;
     copy_dir_all(&paths.shell.join("sdk"), &out.join("sdk"))?;
     Ok(())
 }
@@ -178,29 +189,40 @@ fn inline_loader(paths: &Paths, html_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn inject_crazygames(html_path: PathBuf) -> Result<()> {
-    let sdk = r#"    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>"#;
-    let boot = r#"        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps";"#;
+fn inject_portal_slots(html_path: PathBuf, sdk_line: Option<&str>, boot_line: &str) -> Result<()> {
     let mut lines: Vec<String> = fs::read_to_string(&html_path)?
         .lines()
         .map(String::from)
         .collect();
-    let mut sdk_ok = false;
+    let mut sdk_ok = sdk_line.is_none();
     let mut boot_ok = false;
     for line in &mut lines {
         if line.contains("PORTAL_SDK_SLOT") {
-            *line = sdk.to_string();
+            if let Some(sdk) = sdk_line {
+                *line = sdk.to_string();
+            }
             sdk_ok = true;
         } else if line.contains("PORTAL_BOOT_SLOT") {
-            *line = boot.to_string();
+            *line = boot_line.to_string();
             boot_ok = true;
         }
     }
     if !sdk_ok || !boot_ok {
-        bail!("inject_crazygames: missing portal slots");
+        bail!("inject_portal_slots: missing portal slots in {}", html_path.display());
     }
     fs::write(html_path, lines.join("\n") + "\n")?;
     Ok(())
+}
+
+fn inject_crazygames(html_path: PathBuf) -> Result<()> {
+    let sdk = r#"    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>"#;
+    let boot = r#"        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps";"#;
+    inject_portal_slots(html_path, Some(sdk), boot)
+}
+
+fn inject_site_embed(html_path: PathBuf) -> Result<()> {
+    let boot = r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps"; window.SOW_ASSETS_URL = "https://shadowsofwar.io/assets";"#;
+    inject_portal_slots(html_path, None, boot)
 }
 
 fn patch_index_br(index: PathBuf, js: &str, wasm: &str, js_br: &str, wasm_br: &str) -> Result<()> {
@@ -304,7 +326,36 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
                 bail!("missing raw *_bg.wasm");
             }
         }
+        Profile::SiteDev => {
+            if !dir.join(PORTAL_WASM).is_file() {
+                bail!("missing {PORTAL_WASM}");
+            }
+            if !dir.join(PORTAL_JS).is_file() {
+                bail!("missing {PORTAL_JS}");
+            }
+        }
     }
     println!("✅ Dist layout OK ({})", dir.display());
+    Ok(())
+}
+
+/// Merge marketing site + game shell into `dist/site-dev/www/` (iframe → `/game/`).
+pub fn stage_site_www(paths: &Paths) -> Result<()> {
+    let www = &paths.dist_site_dev_www;
+    let game = &paths.dist_site_dev_game;
+    if !game.join("index.html").is_file() {
+        bail!(
+            "missing {} — run package::build(SiteDev) first",
+            game.join("index.html").display()
+        );
+    }
+    if www.exists() {
+        fs::remove_dir_all(www)?;
+    }
+    fs::create_dir_all(www)?;
+    println!("==> Staging site → {}", www.display());
+    copy_dir_all(&paths.site_web, www)?;
+    println!("==> Staging game shell → {}", www.join("game").display());
+    copy_dir_all(game, &www.join("game"))?;
     Ok(())
 }

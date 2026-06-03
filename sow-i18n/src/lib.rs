@@ -11,7 +11,6 @@ pub enum Language {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MainMenuStrings {
-    pub play_tutorial: String,
     pub single_player: String,
     pub ranked_match: String,
     pub settings: String,

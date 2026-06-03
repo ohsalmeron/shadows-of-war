@@ -63,7 +63,8 @@ pub fn thumbnail_square_side_bounded(
     if max_height <= 0.0 {
         return width_side;
     }
-    width_side.min(max_height * 0.92)
+    // Only shrink when vertical budget is tight; never grow past width-based size.
+    width_side.min((max_height - 2.0).max(48.0))
 }
 
 /// Full-opaque map thumbnail (albedo only — no alpha compositing tricks).

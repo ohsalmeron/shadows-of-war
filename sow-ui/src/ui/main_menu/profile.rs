@@ -30,13 +30,13 @@ pub fn main_menu_avatar_button_rect(ctx: &egui::Context) -> Rect {
 pub fn draw_user_profile_header(
     ui: &mut Ui,
     state: &mut MainMenuState,
-    compact: bool,
+    _compact: bool,
     profile_height: f32,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let desired_width = if compact { ui.available_width() } else { 280.0 };
+    let desired_width = ui.available_width();
     let desired_height = profile_height;
 
     let (rect, response) = ui.allocate_exact_size(

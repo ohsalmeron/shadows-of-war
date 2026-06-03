@@ -7,29 +7,45 @@ pub fn deploy_play(paths: &Paths) -> Result<()> {
     let u = PROD_USER;
     let h = PROD_HOST;
     let remote = format!("{u}@{h}");
-    println!("==> Deploying play → play.shadowsofwar.io");
-    ensure_dirs(&remote, &["/var/www/play.shadowsofwar.io/html", "/home/bizkit/shadowsofwar/assets/maps"])?;
+    println!("==> Deploying play → play.shadowsofwar.io + marketing site → shadowsofwar.io");
+    ensure_dirs(
+        &remote,
+        &[
+            "/var/www/play.shadowsofwar.io/html",
+            "/var/www/shadowsofwar.io/html",
+            "/home/bizkit/shadowsofwar/assets/maps",
+        ],
+    )?;
     let (sb, rb) = build_server_binaries(paths)?;
     let dist = format!("{}/", paths.dist_play.display());
-    let html = format!("{remote}:/var/www/play.shadowsofwar.io/html/");
+    let play_html = format!("{remote}:/var/www/play.shadowsofwar.io/html/");
+    let main_html = format!("{remote}:/var/www/shadowsofwar.io/html/");
+    let site = format!("{}/", paths.site_web.display());
     let maps = format!("{}/", paths.assets_static.join("maps").display());
     std::thread::scope(|s| -> Result<()> {
-        let a = s.spawn(|| process::run("rsync", &["-avzL", "--delete", "--exclude=*.bin", &dist, &html], None));
-        let b = s.spawn(|| {
+        let a = s.spawn(|| {
+            process::run(
+                "rsync",
+                &["-avzL", "--delete", "--exclude=*.bin", &dist, &play_html],
+                None,
+            )
+        });
+        let b = s.spawn(|| process::run("rsync", &["-avz", &site, &main_html], None));
+        let d = s.spawn(|| {
             process::run(
                 "rsync",
                 &["-avz", &sb, &format!("{remote}:/home/bizkit/shadowsofwar/sow-server")],
                 None,
             )
         });
-        let c = s.spawn(|| {
+        let e = s.spawn(|| {
             process::run(
                 "rsync",
                 &["-avz", &rb, &format!("{remote}:/home/bizkit/shadowsofwar/sow-relay")],
                 None,
             )
         });
-        let d = s.spawn(|| {
+        let f = s.spawn(|| {
             process::run(
                 "rsync",
                 &[
@@ -46,17 +62,20 @@ pub fn deploy_play(paths: &Paths) -> Result<()> {
         });
         a.join().unwrap()?;
         b.join().unwrap()?;
-        c.join().unwrap()?;
         d.join().unwrap()?;
+        e.join().unwrap()?;
+        f.join().unwrap()?;
         Ok(())
     })?;
     sync_play_nginx(paths, &remote)?;
+    sync_main_nginx(paths, &remote)?;
     process::run(
         "ssh",
         &[&remote, "sudo systemctl enable --now sow-redis 2>/dev/null; sudo systemctl restart sow-server"],
         None,
     )?;
     verify_play_host("https://play.shadowsofwar.io/")?;
+    verify_marketing_embed("https://shadowsofwar.io/")?;
     Ok(())
 }
 
@@ -199,6 +218,12 @@ fn sync_play_nginx(paths: &Paths, remote: &str) -> Result<()> {
     Ok(())
 }
 
+fn sync_main_nginx(paths: &Paths, remote: &str) -> Result<()> {
+    let conf = paths.deploy_nginx.join("shadowsofwar.io.conf");
+    scp_nginx_site(remote, &conf, "shadowsofwar.io")?;
+    Ok(())
+}
+
 fn sync_ptr_nginx(paths: &Paths, remote: &str) -> Result<()> {
     let conf = paths.deploy_nginx.join("ptr.conf");
     scp_nginx_site(remote, &conf, "ptr.shadowsofwar.io")?;
@@ -296,5 +321,31 @@ pub fn verify_play_host(play_url: &str) -> Result<()> {
         bail!("missing sow_client bundle reference");
     }
     println!("✅ Play host OK");
+    Ok(())
+}
+
+pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
+    println!("==> Verifying marketing embed at {home_url}");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    let html = client.get(home_url).send().context("index")?.text()?;
+    if !html.contains("sow-game-stage") || !html.contains("game-embed.js") {
+        bail!("marketing index missing iframe embed");
+    }
+    if !html.contains("iframe") {
+        bail!("marketing index missing iframe player");
+    }
+    if html.contains("sow_client_") {
+        bail!("marketing index must not reference WASM bundle before Play click");
+    }
+    let embed = client
+        .get(format!("{home_url}game-embed.js"))
+        .send()
+        .context("game-embed.js")?;
+    if !embed.status().is_success() {
+        bail!("game-embed.js missing on marketing host");
+    }
+    println!("✅ Marketing embed OK");
     Ok(())
 }

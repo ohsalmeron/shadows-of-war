@@ -170,57 +170,32 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     Some(rest[0].clone())
 }
 
-fn menu_footer_height(section_gap: f32, action_min_h: f32, _compact: bool) -> f32 {
-    let secondary_h = (action_min_h - 10.0).max(action_min_h * 0.875);
-    let settings_h = action_min_h * 0.75;
-    section_gap + action_min_h + section_gap + secondary_h + section_gap + settings_h + section_gap + 18.0
+fn menu_meta_footer_height(section_gap: f32) -> f32 {
+    section_gap * 0.5 + 14.0 + 4.0 + 14.0
 }
 
-#[allow(clippy::too_many_arguments)]
-fn draw_menu_right_panel_contents(
+fn menu_footer_height(section_gap: f32, action_min_h: f32) -> f32 {
+    let secondary_h = (action_min_h - 10.0).max(action_min_h * 0.875);
+    let settings_h = action_min_h * 0.75;
+    action_min_h
+        + section_gap
+        + secondary_h
+        + section_gap
+        + settings_h
+        + menu_meta_footer_height(section_gap)
+        + 6.0
+}
+
+fn draw_menu_footer(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
     section_gap: f32,
     action_min_h: f32,
     compact: bool,
-    profile_height: f32,
     action: &mut Option<UiAction>,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
+    version: &str,
 ) {
-    let version = format!("v{}", include_str!("../../../../.version").trim());
-    let footer_h = menu_footer_height(section_gap, action_min_h, compact);
-
-    profile::draw_user_profile_header(
-        ui,
-        state,
-        compact,
-        profile_height,
-        asset_loader,
-        lang,
-    );
-
-    ui.add_space(section_gap);
-
-    let middle_h = (ui.available_height() - footer_h).max(0.0);
-    ui.allocate_ui_with_layout(
-        egui::vec2(ui.available_width(), middle_h),
-        Layout::top_down(Align::Min),
-        |ui| {
-            browser::draw_left_column(
-                ui,
-                state,
-                section_gap,
-                action_min_h,
-                compact,
-                middle_h,
-                action,
-                asset_loader,
-                lang,
-            );
-        },
-    );
-
     actions::draw_right_column(
         ui,
         state,
@@ -231,22 +206,24 @@ fn draw_menu_right_panel_contents(
         lang,
     );
 
-    ui.add_space(section_gap);
+    ui.add_space(section_gap * 0.5);
     let strings = &sow_i18n::get(lang).main_menu;
     let credits = &sow_i18n::get(lang).credits;
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(version)
-                .size(12.0)
-                .color(crate::ui::theme::text_secondary()),
-        );
-        ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new(&credits.based_on_short)
-                .size(11.0)
-                .color(crate::ui::theme::text_secondary()),
-        );
-        ui.add_space(8.0);
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(version)
+                    .size(12.0)
+                    .color(crate::ui::theme::text_secondary()),
+            );
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new(&credits.based_on_short)
+                    .size(11.0)
+                    .color(crate::ui::theme::text_secondary()),
+            );
+        });
         if ui
             .add(
                 egui::Button::new(
@@ -265,6 +242,71 @@ fn draw_menu_right_panel_contents(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn draw_menu_right_panel_contents(
+    ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    section_gap: f32,
+    action_min_h: f32,
+    compact: bool,
+    profile_height: f32,
+    panel_inner_h: f32,
+    action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_i18n::Language,
+) {
+    let version = format!("v{}", include_str!("../../../../.version").trim());
+    let footer_h = menu_footer_height(section_gap, action_min_h);
+    let header_h = profile_height + section_gap;
+    // Cap lobby thumbnail on short viewports only — never allocate a flex middle band.
+    let max_lobby_h =
+        (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
+    let panel_w = ui.available_width();
+
+    let panel_rect = egui::Rect::from_min_size(
+        ui.cursor().min,
+        egui::vec2(panel_w, panel_inner_h),
+    );
+
+    ui.scope_builder(egui::UiBuilder::new().max_rect(panel_rect), |ui| {
+        profile::draw_user_profile_header(
+            ui,
+            state,
+            compact,
+            profile_height,
+            asset_loader,
+            lang,
+        );
+
+        ui.add_space(section_gap);
+
+        browser::draw_left_column(
+            ui,
+            state,
+            section_gap,
+            action_min_h,
+            compact,
+            max_lobby_h,
+            action,
+            asset_loader,
+            lang,
+        );
+
+        ui.add_space(section_gap);
+
+        draw_menu_footer(
+            ui,
+            state,
+            section_gap,
+            action_min_h,
+            compact,
+            action,
+            lang,
+            &version,
+        );
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw_menu_right_panel(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -272,37 +314,48 @@ fn draw_menu_right_panel(
     action_min_h: f32,
     compact: bool,
     profile_height: f32,
+    panel_outer_h: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    if compact {
-        draw_menu_right_panel_contents(
-            ui,
-            state,
-            section_gap,
-            action_min_h,
-            compact,
-            profile_height,
-            action,
-            asset_loader,
-            lang,
-        );
-    } else {
-        crate::ui::theme::menu_right_panel_frame(false).show(ui, |ui| {
-            draw_menu_right_panel_contents(
-                ui,
-                state,
-                section_gap,
-                action_min_h,
-                compact,
-                profile_height,
-                action,
-                asset_loader,
-                lang,
-            );
-        });
-    }
+    let panel_w = ui.available_width();
+
+    ui.allocate_ui_with_layout(
+        egui::vec2(panel_w, panel_outer_h),
+        Layout::top_down(Align::Min),
+        |ui| {
+            if compact {
+                draw_menu_right_panel_contents(
+                    ui,
+                    state,
+                    section_gap,
+                    action_min_h,
+                    compact,
+                    profile_height,
+                    panel_outer_h,
+                    action,
+                    asset_loader,
+                    lang,
+                );
+            } else {
+                crate::ui::theme::menu_right_panel_frame(false).show(ui, |ui| {
+                    draw_menu_right_panel_contents(
+                        ui,
+                        state,
+                        section_gap,
+                        action_min_h,
+                        compact,
+                        profile_height,
+                        ui.available_height(),
+                        action,
+                        asset_loader,
+                        lang,
+                    );
+                });
+            }
+        },
+    );
 }
 
 fn draw_map_download_indicator(
@@ -433,11 +486,8 @@ pub fn draw(
             }
 
             let content_h = ui.available_height();
-            let panel_w = if compact {
-                ui.available_width()
-            } else {
-                (ui.available_width() / 3.0).clamp(340.0, 460.0)
-            };
+            let panel_w =
+                crate::ui::theme::menu_rail_panel_width(ui.available_width(), compact);
 
             ui.allocate_ui_with_layout(
                 egui::vec2(panel_w, content_h),
@@ -450,6 +500,7 @@ pub fn draw(
                         action_min_h,
                         compact,
                         profile_height,
+                        content_h,
                         &mut action,
                         asset_loader,
                         lang,

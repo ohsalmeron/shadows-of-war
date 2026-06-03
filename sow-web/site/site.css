@@ -35,7 +35,7 @@ a { color: #7ec8e3; }
 .site-header nav a:hover { color: #fff; }
 .site-main {
     flex: 1;
-    max-width: 720px;
+    max-width: 960px;
     margin: 0 auto;
     padding: 2rem 1.5rem;
     width: 100%;
@@ -48,21 +48,6 @@ a { color: #7ec8e3; }
     color: #888;
     text-align: center;
 }
-.hero {
-    text-align: center;
-    padding: 1rem 0 2rem;
-}
-.hero h1 {
-    font-size: 2.25rem;
-    color: #fff;
-    margin: 0 0 0.75rem;
-}
-.hero p {
-    font-size: 1.05rem;
-    color: #b0b0bc;
-    max-width: 540px;
-    margin: 0 auto 1.5rem;
-}
 .play-btn {
     display: inline-block;
     padding: 0.85rem 2.5rem;
@@ -72,7 +57,237 @@ a { color: #7ec8e3; }
     border-radius: 6px;
     font-weight: 600;
     font-size: 1.1rem;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
 }
 .play-btn:hover { background: #4a7fa8; }
+.play-btn--hero {
+    padding: 1rem 3rem;
+    font-size: 1.2rem;
+    border-radius: 8px;
+    box-shadow: 0 0 24px rgba(61, 107, 142, 0.45);
+    animation: play-glow 2.4s ease-in-out infinite;
+}
+@keyframes play-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(61, 107, 142, 0.35); }
+    50% { box-shadow: 0 0 32px rgba(74, 127, 168, 0.55); }
+}
+.play-alt {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+}
+.play-alt a { color: rgba(255, 255, 255, 0.55); }
+.nav-play {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #bdbdc8;
+    cursor: pointer;
+}
+.nav-play:hover { color: #fff; }
+.nav-play-tab {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+/* Hero / game stage — same footprint, morph on Play */
+.sow-stage {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    height: min(70vh, 720px);
+    min-height: 400px;
+    margin: 0 0 2rem;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #0a0a0f;
+    box-sizing: border-box;
+}
+.sow-stage__frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+}
+.hero-cover {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s linear 0.45s;
+    will-change: opacity, transform;
+    z-index: 1;
+}
+.hero-cover__bg {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(
+            to bottom,
+            rgba(10, 10, 15, 0.55) 0%,
+            rgba(10, 10, 15, 0.72) 45%,
+            rgba(10, 10, 15, 0.88) 100%
+        ),
+        center / cover no-repeat url("/assets/cdn/ui/sow-splash-desktop.webp");
+    transform: scale(1);
+    animation: hero-kenburns 18s ease-in-out infinite alternate;
+}
+@keyframes hero-kenburns {
+    from { transform: scale(1); }
+    to { transform: scale(1.06); }
+}
+.hero-cover__inner {
+    position: relative;
+    z-index: 1;
+    max-width: 540px;
+    padding: 1.5rem;
+}
+.hero-eyebrow {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9ec4dc;
+}
+.hero-cover h1 {
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    color: #fff;
+    margin: 0 0 0.75rem;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+.hero-tag {
+    font-size: 1.05rem;
+    color: #d0d0dc;
+    margin: 0 auto 1.25rem;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+.hero-feats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0 0 1.5rem;
+    padding: 0;
+}
+.hero-feats li {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #e8e8f0;
+    background: rgba(10, 10, 20, 0.45);
+    backdrop-filter: blur(4px);
+}
+.sow-stage.playing .hero-cover {
+    opacity: 0;
+    transform: scale(1.03);
+    pointer-events: none;
+    visibility: hidden;
+}
+.sow-stage.playing .sow-stage__frame {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.game-active {
+    overflow: hidden;
+}
+.game-overlay[hidden] {
+    display: none !important;
+}
+.game-overlay {
+    display: none;
+}
+.game-restore-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10003;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    background: rgba(10, 10, 15, 0.85);
+    color: #e0e0e0;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.game-restore-btn:hover {
+    background: rgba(30, 30, 40, 0.95);
+    color: #fff;
+}
+
+@media (max-width: 480px) {
+    .sow-stage {
+        height: min(78vh, 560px);
+        min-height: 320px;
+    }
+    .hero-cover__bg {
+        background:
+            linear-gradient(
+                to bottom,
+                rgba(10, 10, 15, 0.55) 0%,
+                rgba(10, 10, 15, 0.78) 50%,
+                rgba(10, 10, 15, 0.92) 100%
+            ),
+            center / cover no-repeat url("/assets/cdn/ui/sow-splash-mobile.webp");
+    }
+    .hero-feats li {
+        font-size: 0.72rem;
+        padding: 0.3rem 0.6rem;
+    }
+    .sow-stage__frame {
+        display: none;
+    }
+    .game-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: #0a0a0f;
+        overflow: hidden;
+    }
+    #sow-game-frame-mobile {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+    }
+}
+@media (min-width: 481px) {
+    .game-overlay {
+        display: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hero-cover__bg {
+        animation: none;
+    }
+    .play-btn--hero {
+        animation: none;
+    }
+    .hero-cover,
+    .sow-stage__frame {
+        transition: none;
+    }
+    .sow-stage.playing .hero-cover {
+        transition: none;
+    }
+}
+
 h1, h2 { color: #fff; }
 ul { padding-left: 1.25rem; }
+.hero-feats { padding-left: 0; }
