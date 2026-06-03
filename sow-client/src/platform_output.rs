@@ -14,9 +14,11 @@ fn open_url(url: &str, new_tab: bool) {
     {
         let _ = new_tab;
         if let Some(window) = web_sys::window() {
-            let target = if new_tab { "_blank" } else { "_self" };
-            if let Err(e) = window.open_with_url_and_target(url, target) {
-                log::warn!("failed to open url {url}: {e:?}");
+            // Always new tab on web — game shell must not navigate away.
+            match window.open_with_url_and_target(url, "_blank") {
+                Ok(None) => log::warn!("popup blocked opening url {url}"),
+                Err(e) => log::warn!("failed to open url {url}: {e:?}"),
+                Ok(Some(_)) => {}
             }
         }
     }

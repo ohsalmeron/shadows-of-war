@@ -18,6 +18,8 @@ pub struct ClientApp {
     pub asset_loader: asset_loader::AssetLoader,
     pub is_settings_open: bool,
     pub is_credits_open: bool,
+    pub is_privacy_open: bool,
+    pub is_terms_open: bool,
     pub settings_state: crate::ui::settings::SettingsState,
 }
 
@@ -81,6 +83,8 @@ impl ClientApp {
             asset_loader: asset_loader::AssetLoader::new(),
             is_settings_open: false,
             is_credits_open: false,
+            is_privacy_open: false,
+            is_terms_open: false,
             settings_state: crate::ui::settings::SettingsState::default(),
         }
     }
@@ -95,6 +99,9 @@ impl ClientApp {
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
                 self.asset_loader.ensure_avatars_loaded(ui.ctx());
+                #[cfg(target_arch = "wasm32")]
+                self.asset_loader
+                    .request_avatar_priority(self.main_menu_state.selected_leader);
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
                 main_menu::draw(
                     ui,
@@ -129,17 +136,19 @@ impl ClientApp {
 
         let settings_action =
             crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
-        if let Some(UiAction::ToggleSettings) = settings_action {
-            self.is_settings_open = !self.is_settings_open;
-            if self.is_settings_open {
-                self.is_credits_open = false;
+        if let Some(ref toggle) = settings_action {
+            self.apply_modal_toggle(toggle);
+        } else if let Some(ref toggle) = action {
+            if matches!(
+                toggle,
+                UiAction::ToggleSettings
+                    | UiAction::ToggleCredits
+                    | UiAction::TogglePrivacy
+                    | UiAction::ToggleTerms
+            ) {
+                self.apply_modal_toggle(toggle);
+                action = None;
             }
-        } else if let Some(UiAction::ToggleSettings) = action {
-            self.is_settings_open = !self.is_settings_open;
-            if self.is_settings_open {
-                self.is_credits_open = false;
-            }
-            action = None;
         }
 
         let credits_action = crate::ui::credits::draw(
@@ -148,19 +157,87 @@ impl ClientApp {
             self.settings_state.language,
             self.settings_state.reduced_motion,
         );
-        if let Some(UiAction::ToggleCredits) = credits_action {
-            self.is_credits_open = !self.is_credits_open;
-            if self.is_credits_open {
-                self.is_settings_open = false;
+        if let Some(ref toggle) = credits_action {
+            self.apply_modal_toggle(toggle);
+        } else if let Some(ref toggle) = action {
+            if matches!(toggle, UiAction::ToggleCredits) {
+                self.apply_modal_toggle(toggle);
+                action = None;
             }
-        } else if let Some(UiAction::ToggleCredits) = action {
-            self.is_credits_open = !self.is_credits_open;
-            if self.is_credits_open {
-                self.is_settings_open = false;
+        }
+
+        let privacy_action = crate::ui::legal_doc::draw(
+            ui,
+            sow_i18n::privacy(self.settings_state.language),
+            self.is_privacy_open,
+            UiAction::TogglePrivacy,
+            "privacy",
+            self.settings_state.reduced_motion,
+        );
+        if let Some(ref toggle) = privacy_action {
+            self.apply_modal_toggle(toggle);
+        } else if let Some(ref toggle) = action {
+            if matches!(toggle, UiAction::TogglePrivacy) {
+                self.apply_modal_toggle(toggle);
+                action = None;
             }
-            action = None;
+        }
+
+        let terms_action = crate::ui::legal_doc::draw(
+            ui,
+            sow_i18n::terms(self.settings_state.language),
+            self.is_terms_open,
+            UiAction::ToggleTerms,
+            "terms",
+            self.settings_state.reduced_motion,
+        );
+        if let Some(ref toggle) = terms_action {
+            self.apply_modal_toggle(toggle);
+        } else if let Some(ref toggle) = action {
+            if matches!(toggle, UiAction::ToggleTerms) {
+                self.apply_modal_toggle(toggle);
+                action = None;
+            }
         }
 
         action
+    }
+
+    fn apply_modal_toggle(&mut self, action: &UiAction) {
+        match action {
+            UiAction::ToggleSettings => {
+                self.is_settings_open = !self.is_settings_open;
+                if self.is_settings_open {
+                    self.is_credits_open = false;
+                    self.is_privacy_open = false;
+                    self.is_terms_open = false;
+                }
+            }
+            UiAction::ToggleCredits => {
+                self.is_credits_open = !self.is_credits_open;
+                if self.is_credits_open {
+                    self.is_settings_open = false;
+                    self.is_privacy_open = false;
+                    self.is_terms_open = false;
+                }
+            }
+            UiAction::TogglePrivacy => {
+                self.is_privacy_open = !self.is_privacy_open;
+                if self.is_privacy_open {
+                    self.is_settings_open = false;
+                    self.is_credits_open = false;
+                    self.is_terms_open = false;
+                }
+            }
+            UiAction::ToggleTerms => {
+                self.is_terms_open = !self.is_terms_open;
+                if self.is_terms_open {
+                    self.is_settings_open = false;
+                    self.is_credits_open = false;
+                    self.is_privacy_open = false;
+                }
+            }
+            _ => {}
+        }
     }
 }

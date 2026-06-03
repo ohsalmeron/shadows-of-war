@@ -15,7 +15,6 @@ pub struct MainMenuStrings {
     pub single_player: String,
     pub ranked_match: String,
     pub settings: String,
-    pub map_editor: String,
     pub waiting_for_lobby: String,
     pub no_lobbies_yet: String,
     pub nickname_hint: String,
@@ -82,6 +81,8 @@ pub struct SettingsStrings {
     pub lang_spanish: String,
     pub back_button: String,
     pub credits_licenses: String,
+    pub privacy_policy: String,
+    pub terms_of_service: String,
     pub settings_applied: String,
     pub reduced_motion: String,
     pub reduced_motion_help: String,
@@ -195,6 +196,7 @@ pub struct TutorialStrings {
     pub btn_skip: String,
 }
 
+#[cfg(feature = "map-editor")]
 #[derive(Debug, Clone, Deserialize)]
 pub struct MapEditorStrings {
     pub title: String,
@@ -281,7 +283,31 @@ pub struct CreditsStrings {
     pub source_label: String,
     pub privacy_label: String,
     pub notice: String,
-    pub privacy: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegalLink {
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegalSection {
+    pub heading: String,
+    #[serde(default)]
+    pub paragraphs: Vec<String>,
+    #[serde(default)]
+    pub bullets: Vec<String>,
+    #[serde(default)]
+    pub links: Vec<LegalLink>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegalDocument {
+    pub title: String,
+    pub updated: String,
+    pub close: String,
+    pub sections: Vec<LegalSection>,
 }
 
 #[derive(Debug, Clone)]
@@ -292,17 +318,67 @@ pub struct LanguageStrings {
     pub endgame: EndgameStrings,
     pub hud: HudStrings,
     pub tutorial: TutorialStrings,
+    #[cfg(feature = "map-editor")]
     pub map_editor: MapEditorStrings,
     pub credits: CreditsStrings,
 }
 
 static EN_STRINGS: OnceLock<LanguageStrings> = OnceLock::new();
 static ES_STRINGS: OnceLock<LanguageStrings> = OnceLock::new();
+static PRIVACY_EN: OnceLock<LegalDocument> = OnceLock::new();
+static TERMS_EN: OnceLock<LegalDocument> = OnceLock::new();
 
+fn parse_legal(toml: &str) -> LegalDocument {
+    toml::from_str(toml).expect("Failed to parse legal document TOML")
+}
+
+/// Privacy policy (English; embedded from sow-web).
+pub fn privacy(_lang: Language) -> &'static LegalDocument {
+    PRIVACY_EN.get_or_init(|| {
+        parse_legal(include_str!("../../sow-web/site/legal/privacy.en.toml"))
+    })
+}
+
+/// Terms of service (English; embedded from sow-web).
+pub fn terms(_lang: Language) -> &'static LegalDocument {
+    TERMS_EN.get_or_init(|| {
+        parse_legal(include_str!("../../sow-web/site/legal/terms.en.toml"))
+    })
+}
+
+#[cfg(not(feature = "map-editor"))]
 pub fn get(lang: Language) -> &'static LanguageStrings {
     match lang {
         Language::Spanish => ES_STRINGS.get_or_init(|| {
             load_language(
+                include_str!("../strings/es/main_menu.toml"),
+                include_str!("../strings/es/settings.toml"),
+                include_str!("../strings/es/loading_screen.toml"),
+                include_str!("../strings/es/endgame.toml"),
+                include_str!("../strings/es/hud.toml"),
+                include_str!("../strings/es/tutorial.toml"),
+                include_str!("../strings/es/credits.toml"),
+            )
+        }),
+        _ => EN_STRINGS.get_or_init(|| {
+            load_language(
+                include_str!("../strings/en/main_menu.toml"),
+                include_str!("../strings/en/settings.toml"),
+                include_str!("../strings/en/loading_screen.toml"),
+                include_str!("../strings/en/endgame.toml"),
+                include_str!("../strings/en/hud.toml"),
+                include_str!("../strings/en/tutorial.toml"),
+                include_str!("../strings/en/credits.toml"),
+            )
+        }),
+    }
+}
+
+#[cfg(feature = "map-editor")]
+pub fn get(lang: Language) -> &'static LanguageStrings {
+    match lang {
+        Language::Spanish => ES_STRINGS.get_or_init(|| {
+            load_language_with_map_editor(
                 include_str!("../strings/es/main_menu.toml"),
                 include_str!("../strings/es/settings.toml"),
                 include_str!("../strings/es/loading_screen.toml"),
@@ -314,7 +390,7 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
             )
         }),
         _ => EN_STRINGS.get_or_init(|| {
-            load_language(
+            load_language_with_map_editor(
                 include_str!("../strings/en/main_menu.toml"),
                 include_str!("../strings/en/settings.toml"),
                 include_str!("../strings/en/loading_screen.toml"),
@@ -328,7 +404,30 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
     }
 }
 
+#[cfg(not(feature = "map-editor"))]
 fn load_language(
+    main_menu_toml: &str,
+    settings_toml: &str,
+    loading_screen_toml: &str,
+    endgame_toml: &str,
+    hud_toml: &str,
+    tutorial_toml: &str,
+    credits_toml: &str,
+) -> LanguageStrings {
+    LanguageStrings {
+        main_menu: toml::from_str(main_menu_toml).expect("Failed to parse main_menu.toml"),
+        settings: toml::from_str(settings_toml).expect("Failed to parse settings.toml"),
+        loading_screen: toml::from_str(loading_screen_toml)
+            .expect("Failed to parse loading_screen.toml"),
+        endgame: toml::from_str(endgame_toml).expect("Failed to parse endgame.toml"),
+        hud: toml::from_str(hud_toml).expect("Failed to parse hud.toml"),
+        tutorial: toml::from_str(tutorial_toml).expect("Failed to parse tutorial.toml"),
+        credits: toml::from_str(credits_toml).expect("Failed to parse credits.toml"),
+    }
+}
+
+#[cfg(feature = "map-editor")]
+fn load_language_with_map_editor(
     main_menu_toml: &str,
     settings_toml: &str,
     loading_screen_toml: &str,

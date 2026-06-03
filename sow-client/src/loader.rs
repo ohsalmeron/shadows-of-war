@@ -1,5 +1,3 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::app::PendingMapEditorOp;
 use crate::app::SowApp;
 use crate::EngineInitEvent;
 use sow_core::game_config::GameConfig;
@@ -8,6 +6,19 @@ use sow_ui::app::ClientPhase;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
+
+/// Empty splash status → loading screen shows i18n `loading_screen.loading` + progress %.
+fn splash_show_loading(splash: &mut sow_ui::ui::loading_screen::SplashState) {
+    splash.status_text.clear();
+}
+
+fn splash_show_loading_progress(
+    splash: &mut sow_ui::ui::loading_screen::SplashState,
+    progress: f32,
+) {
+    splash_show_loading(splash);
+    splash.progress = splash.progress.max(progress);
+}
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn hide_web_loader() {
@@ -60,78 +71,6 @@ impl SowApp {
         self.release_client_game_gpu();
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn finish_map_editor_open_handoff(&mut self) {
-        let Some(render_ctx) = self.gfx.render_ctx.take() else {
-            log::error!("Map editor handoff: GPU context not initialized");
-            self.pending_map_editor = PendingMapEditorOp::None;
-            self.ui.app.phase = ClientPhase::MainMenu;
-            return;
-        };
-        let window = self
-            .gfx
-            .window
-            .take()
-            .expect("No window to handoff to map editor");
-        let surface = self
-            .gfx
-            .surface
-            .take()
-            .expect("No surface to handoff to map editor");
-        let gui_painter = self
-            .gfx
-            .gui_painter
-            .take()
-            .expect("No gui_painter to handoff to map editor");
-        let egui_ctx = self.ui.egui_ctx.clone();
-        let client_app = std::mem::take(&mut self.ui.app);
-
-        let session = sow_map::MapEditorSession::new(
-            window,
-            surface,
-            render_ctx,
-            gui_painter,
-            egui_ctx.clone(),
-            client_app,
-        );
-        self.map_editor = Some(session);
-        self.ui.egui_ctx = egui_ctx;
-        self.ui.app = sow_ui::ClientApp::new();
-        self.pending_map_editor = PendingMapEditorOp::None;
-        self.gfx.prev_sync_point = None;
-        log::info!("Map editor session started after loader");
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_editor_reclaim(
-        &mut self,
-        window: Option<Box<dyn winit::window::Window>>,
-        surface: Option<blade_graphics::Surface>,
-        render_ctx: sow_render::RenderContext,
-        gui_painter: Option<blade_egui::GuiPainter>,
-        client_app: sow_ui::ClientApp,
-        egui_ctx: egui::Context,
-    ) {
-        self.gfx.window = window;
-        self.gfx.surface = surface;
-        self.gfx.render_ctx = Some(render_ctx);
-        self.ui.app = client_app;
-        self.ui.app.phase = ClientPhase::MainMenu;
-        self.ui.egui_ctx = egui_ctx;
-        self.gfx.prev_sync_point = None;
-        self.gfx.needs_first_upload = true;
-        self.gfx.gui_painter = gui_painter;
-        self.reset_ui_after_editor();
-        log::info!("Reclaimed graphics state from map editor session.");
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = sow_map::MapEditorSession::reload_local_map_catalog(
-            &mut self.ui.app,
-            &self.ui.egui_ctx,
-            None,
-        );
-        self.check_surface();
-    }
-
     pub fn update_loader(&mut self) {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
             let has_map = self.ui.app.main_menu_state.cached_map.is_some();
@@ -139,19 +78,16 @@ impl SowApp {
             if !has_map {
                 self.tasks.engine_init_queued_msg = Some(start_msg);
 
-                // Keep splash screen updated with map download progress
-                self.ui.app.splash_state.status_text = format!(
-                    "Downloading Map... {}%",
-                    self.ui.app.main_menu_state.map_download_progress
+                let pct = self.ui.app.main_menu_state.map_download_progress;
+                log::debug!("Map download progress: {pct}%");
+                splash_show_loading_progress(
+                    &mut self.ui.app.splash_state,
+                    pct as f32 / 100.0,
                 );
-                self.ui.app.splash_state.progress =
-                    self.ui.app.main_menu_state.map_download_progress as f32 / 100.0;
             } else {
                 log::info!("Map downloaded, computing heavy init in background");
 
-                self.ui.app.splash_state.status_text =
-                    "Computing terrain and water geometry...".to_string();
-                self.ui.app.splash_state.progress = 0.1;
+                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.1);
 
                 let cached_map = self.ui.app.main_menu_state.cached_map.take();
                 let mut start_msg_clone = start_msg.clone();
@@ -159,8 +95,6 @@ impl SowApp {
                 let tx = self.tasks.engine_init_tx.clone();
 
                 let init_logic = move || {
-                    let _ = tx.send(EngineInitEvent::Status("Decompressing map...".to_string()));
-
                     let parsed_map = cached_map.as_ref().and_then(|bytes| {
                         sow_core::maps::load_map_from_payload(bytes)
                             .map_err(|e| {
@@ -184,10 +118,6 @@ impl SowApp {
                     };
                     start_msg_clone.config.map_width = w;
                     start_msg_clone.config.map_height = h;
-
-                    let _ = tx.send(EngineInitEvent::Status(
-                        "Computing terrain and water geometry...".to_string(),
-                    ));
 
                     let mut state = sow_core::game::GameState::new(
                         start_msg_clone.seed,
@@ -251,52 +181,33 @@ impl SowApp {
                     let mobile =
                         sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
 
+                    splash_show_loading(&mut self.ui.app.splash_state);
+
                     self.ui
                         .app
                         .asset_loader
-                        .ensure_avatars_loaded(&self.ui.egui_ctx);
-                    let avatars_ready = !self.ui.app.asset_loader.avatars.is_empty();
-                    if !avatars_ready {
-                        self.ui.app.splash_state.status_text =
-                            "Loading avatars…".to_string();
-                        self.ui.app.splash_state.progress =
-                            self.ui.app.splash_state.progress.max(0.1);
+                        .ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                    let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
+                    if !ui_ready {
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.35);
                     } else {
-                        self.ui
+                        self.ui.app.asset_loader.ensure_boot_leader_loaded(
+                            &self.ui.egui_ctx,
+                            leader,
+                        );
+                        self.ui.app.asset_loader.set_leader_portrait_focus(
+                            leader,
+                            mobile,
+                        );
+                        let hero_ready = self
+                            .ui
                             .app
                             .asset_loader
-                            .ensure_ui_assets_loaded(&self.ui.egui_ctx);
-                        let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
-                        if !ui_ready {
-                            self.ui.app.splash_state.status_text =
-                                "Loading UI…".to_string();
-                            self.ui.app.splash_state.progress =
-                                self.ui.app.splash_state.progress.max(0.35);
+                            .boot_leader_ready(leader, mobile);
+                        if !hero_ready {
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.65);
                         } else {
-                            self.ui.app.asset_loader.ensure_boot_leader_loaded(
-                                &self.ui.egui_ctx,
-                                leader,
-                            );
-                            self.ui.app.asset_loader.set_leader_portrait_focus(
-                                leader,
-                                mobile,
-                            );
-                            let hero_ready = self
-                                .ui
-                                .app
-                                .asset_loader
-                                .boot_leader_ready(leader, mobile);
-                            if !hero_ready {
-                                self.ui.app.splash_state.status_text = format!(
-                                    "Loading {}…",
-                                    leader.name()
-                                );
-                                self.ui.app.splash_state.progress =
-                                    self.ui.app.splash_state.progress.max(0.65);
-                            } else {
-                                self.ui.app.splash_state.progress =
-                                    self.ui.app.splash_state.progress.max(0.9);
-                            }
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.9);
                         }
                     }
 
@@ -306,7 +217,7 @@ impl SowApp {
                         .app
                         .asset_loader
                         .boot_leader_ready(leader, mobile);
-                    let boot_ready = avatars_ready && ui_ready && hero_ready;
+                    let boot_ready = ui_ready && hero_ready;
 
                     if boot_ready {
                         self.ui.app.splash_state.done = true;
@@ -326,18 +237,16 @@ impl SowApp {
                 sow_ui::ui::loading_screen::SplashJob::ExitGame => {
                     let step = self.ui.app.splash_state.gpu_load_step;
                     if step == 0 {
-                        self.ui.app.splash_state.status_text =
-                            "Reconnecting to Orchestrator...".to_string();
-                        self.ui.app.splash_state.progress = 0.2;
+                        log::info!("Exit game splash: reconnecting to orchestrator");
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.2);
                         self.ui.app.splash_state.gpu_load_step = 1;
                         self.ui.app.splash_state.frames_drawn = 0;
                     } else if step == 1 {
                         // Wait for connection to orchestrator or timeout (3 seconds @ 60fps = 180 frames)
                         if self.net.client.is_some() || self.ui.app.splash_state.frames_drawn > 180
                         {
-                            self.ui.app.splash_state.status_text =
-                                "Cleaning up Game Session...".to_string();
-                            self.ui.app.splash_state.progress = 0.5;
+                            log::info!("Exit game splash: cleaning up game session");
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.5);
                             self.ui.app.splash_state.gpu_load_step = 2;
                             self.ui.app.splash_state.frames_drawn = 0;
                         }
@@ -349,132 +258,25 @@ impl SowApp {
                         }
                     }
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                sow_ui::ui::loading_screen::SplashJob::MapEditorEnter => {
-                    if matches!(self.pending_map_editor, PendingMapEditorOp::Open) {
-                    let step = self.ui.app.splash_state.gpu_load_step;
-                    if step == 0 {
-                        self.ui.app.splash_state.status_text =
-                            "Preparing map editor...".to_string();
-                        self.ui.app.splash_state.progress = 0.2;
-                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                            if let Some(sp) = self.gfx.prev_sync_point.take() {
-                                let _ = render_ctx.context.wait_for(&sp, !0);
-                            }
-                        }
-                        self.ui.app.splash_state.gpu_load_step = 1;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 1 && self.ui.app.splash_state.frames_drawn > 1 {
-                        self.ui.app.splash_state.status_text =
-                            "Releasing game resources...".to_string();
-                        self.ui.app.splash_state.progress = 0.45;
-                        self.release_client_game_gpu();
-                        self.ui.app.splash_state.gpu_load_step = 2;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 2 && self.ui.app.splash_state.frames_drawn > 1 {
-                        if self.sim.engine.is_some() {
-                            self.cleanup_game_session_stub();
-                        }
-                        self.ui.app.splash_state.status_text =
-                            "Opening map editor...".to_string();
-                        self.ui.app.splash_state.progress = 0.65;
-                        self.ui.app.splash_state.gpu_load_step = 3;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 3 && self.ui.app.splash_state.frames_drawn > 1 {
-                        self.ui.app.splash_state.status_text =
-                            "Opening map editor...".to_string();
-                        self.ui.app.splash_state.progress = 0.85;
-                        self.ui.app.splash_state.done = true;
-                        if self.ui.app.splash_state.target_phase.is_none() {
-                            self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
-                        }
-                        self.ui.app.splash_state.gpu_load_step = 4;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 4
-                        && self.ui.app.phase == ClientPhase::MainMenu
-                        && self.ui.app.splash_state.frames_drawn > 1
-                    {
-                        self.finish_map_editor_open_handoff();
-                        self.ui.app.splash_state.gpu_load_step = 5;
-                    }
-                    }
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                sow_ui::ui::loading_screen::SplashJob::MapEditorExit => {
-                    if matches!(
-                        self.pending_map_editor,
-                        PendingMapEditorOp::Close(_)
-                    ) {
-                    let step = self.ui.app.splash_state.gpu_load_step;
-                    if step == 0 {
-                        self.ui.app.splash_state.status_text =
-                            "Closing map editor...".to_string();
-                        self.ui.app.splash_state.progress = 0.2;
-                        self.ui.app.splash_state.gpu_load_step = 1;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 1 && self.ui.app.splash_state.frames_drawn > 1 {
-                        if let PendingMapEditorOp::Close(ref mut session) =
-                            self.pending_map_editor
-                        {
-                            session.teardown_gpu();
-                        }
-                        self.ui.app.splash_state.status_text =
-                            "Reclaiming display...".to_string();
-                        self.ui.app.splash_state.progress = 0.5;
-                        self.ui.app.splash_state.gpu_load_step = 2;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 2 && self.ui.app.splash_state.frames_drawn > 1 {
-                        if let PendingMapEditorOp::Close(session) =
-                            std::mem::replace(&mut self.pending_map_editor, PendingMapEditorOp::None)
-                        {
-                            let (window, surface, render_ctx, gui_painter, client_app, egui_ctx) =
-                                session.destroy_and_reclaim();
-                            self.apply_editor_reclaim(
-                                window,
-                                surface,
-                                render_ctx,
-                                gui_painter,
-                                client_app,
-                                egui_ctx,
-                            );
-                        }
-                        self.ui.app.splash_state.status_text =
-                            "Cleaning up...".to_string();
-                        self.ui.app.splash_state.progress = 0.75;
-                        self.ui.app.splash_state.gpu_load_step = 3;
-                        self.ui.app.splash_state.frames_drawn = 0;
-                    } else if step == 3 && self.ui.app.splash_state.frames_drawn > 1 {
-                        if self.sim.engine.is_some() {
-                            self.cleanup_game_session_stub();
-                        } else {
-                            self.release_client_game_gpu();
-                        }
-                        self.ui.app.splash_state.done = true;
-                        if self.ui.app.splash_state.target_phase.is_none() {
-                            self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
-                        }
-                        self.ui.app.splash_state.gpu_load_step = 4;
-                    }
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                sow_ui::ui::loading_screen::SplashJob::MapEditorEnter
-                | sow_ui::ui::loading_screen::SplashJob::MapEditorExit => {}
                 sow_ui::ui::loading_screen::SplashJob::EnterGame => {
                     while let Ok(event) = self.tasks.engine_init_rx.try_recv() {
                         match event {
                             EngineInitEvent::Status(msg) => {
-                                self.ui.app.splash_state.status_text = msg;
+                                log::debug!("[loader] {msg}");
+                                splash_show_loading(&mut self.ui.app.splash_state);
                             }
                             EngineInitEvent::Progress(prog) => {
                                 self.ui.app.splash_state.progress = prog;
                             }
                             EngineInitEvent::Complete(state, water, start_msg) => {
-                                log::info!("Engine initialization complete in background thread.");
-                                self.ui.app.splash_state.status_text =
-                                    "Allocating GPU Memory...".to_string();
-                                self.ui.app.splash_state.progress = 0.95;
-                                self.ui.app.splash_state.frames_drawn = 0; // Reset to ensure we draw the new text
+                                log::info!(
+                                    "Engine initialization complete; allocating GPU memory"
+                                );
+                                splash_show_loading_progress(
+                                    &mut self.ui.app.splash_state,
+                                    0.95,
+                                );
+                                self.ui.app.splash_state.frames_drawn = 0;
                                 self.ui.app.splash_state.gpu_load_step = 1;
                                 self.tasks.pending_engine_init_data =
                                     Some((*state, water, *start_msg));
@@ -542,9 +344,8 @@ impl SowApp {
                         // Move to step 2: Texture uploading happens automatically next frame
                         self.ui.app.splash_state.gpu_load_step = 2;
                         self.ui.app.splash_state.frames_drawn = 0;
-                        self.ui.app.splash_state.progress = 0.98;
-                        self.ui.app.splash_state.status_text =
-                            "Uploading Map Texture...".to_string();
+                        log::info!("Enter game splash: uploading map texture");
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.98);
 
                         // Re-insert pending data so we stay in this block until Step 4
                         self.tasks.pending_engine_init_data = Some((state, water, start_msg));
@@ -552,9 +353,7 @@ impl SowApp {
                 } else if step == 2 && !self.gfx.needs_first_upload {
                     // Step 2 Finished: GPU Texture is uploaded!
                     self.ui.app.splash_state.gpu_load_step = 3;
-                    self.ui.app.splash_state.progress = 0.99;
-                    self.ui.app.splash_state.status_text =
-                        "Simulating Initial Expansions...".to_string();
+                    splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
                 } else if step == 3 && self.sim.current_snapshot.is_some() {
                     let ready_to_release = if self.net.is_offline {
                         true
@@ -590,9 +389,7 @@ impl SowApp {
                             }
                         }
                     } else {
-                        self.ui.app.splash_state.progress = 0.99;
-                        self.ui.app.splash_state.status_text =
-                            "Connecting to game server...".to_string();
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
                         if self.ui.app.splash_state.frames_drawn % 120 == 0 {
                             log::warn!(
                                 "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, phase={:?}",

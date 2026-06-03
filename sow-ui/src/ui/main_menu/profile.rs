@@ -31,12 +31,13 @@ pub fn draw_user_profile_header(
     ui: &mut Ui,
     state: &mut MainMenuState,
     compact: bool,
+    profile_height: f32,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     let desired_width = if compact { ui.available_width() } else { 280.0 };
-    let desired_height = 56.0;
+    let desired_height = profile_height;
 
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(desired_width, desired_height),
@@ -63,7 +64,7 @@ pub fn draw_user_profile_header(
     );
 
     // --- 1. Leader Avatar Picker (Button on the left) ---
-    let avatar_size = 40.0;
+    let avatar_size = (profile_height * 0.72).clamp(32.0, 40.0);
     let avatar_rect = egui::Rect::from_min_size(
         egui::pos2(
             rect.min.x + 8.0,

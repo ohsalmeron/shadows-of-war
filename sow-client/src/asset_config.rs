@@ -59,6 +59,20 @@ impl AssetConfig {
             .unwrap_or_default()
     }
 
+    /// Leader rail / HUD avatars on prod CDN (`/assets/cdn/avatars/`).
+    pub fn avatar_urls(&self, filename: &str) -> Vec<String> {
+        let base = self.assets_base.trim_end_matches('/');
+        let paths = [format!("{base}/cdn/avatars/{filename}")];
+        if self.cache_bust.is_empty() {
+            paths.into_iter().map(String::from).collect()
+        } else {
+            paths
+                .into_iter()
+                .map(|p| format!("{p}?v={}", self.cache_bust))
+                .collect()
+        }
+    }
+
     /// Boot loader/splash webp on prod CDN (`/assets/cdn/ui/`).
     pub fn boot_ui_asset_urls(&self, filename: &str) -> Vec<String> {
         let base = self.assets_base.trim_end_matches('/');

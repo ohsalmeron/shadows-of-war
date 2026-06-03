@@ -28,6 +28,10 @@ cargo run -p sow-dist -- ptr
 
 **Runtime:** Loader and WASM use `SOW_ASSETS_URL` → prod CDN for boot UI and leader portraits.
 
+## Legal copy
+
+Privacy and Terms body text for the marketing site **and** in-game Settings modals lives in [`site/legal/*.en.toml`](site/legal/privacy.en.toml). Edit those TOML files first; keep [`site/privacy/index.html`](site/privacy/index.html) and [`site/terms/index.html`](site/terms/index.html) in sync manually (HTML files note the TOML source in a comment).
+
 ## `dist/crazygames/` layout
 
 - `index.html` (loads `sow_client.js.br` / `sow_client_bg.wasm.br`)
@@ -37,9 +41,11 @@ cargo run -p sow-dist -- ptr
 
 ## CrazyGames QA (layout & resize)
 
-**Sizing:** On fullscreen shells (play, CrazyGames), WASM uses `window.innerWidth`/`innerHeight` when canvas width matches the viewport (avoids stale `clientHeight` after resize). When `#blade` is materially **narrower** than the viewport (site embed), WASM uses canvas `clientWidth`/`clientHeight`.
+**Sizing:** WASM uses `window.innerWidth` / `innerHeight` (same as pre-embed builds). Drag-resize on play or CrazyGames should grow and shrink without letterboxing gaps; `SurfaceResized` drives the GPU surface.
 
-**Native dev:** `cargo run --bin sow-client` loads boot splash/loader from `assets/static/ui/` or `assets/cdn/ui/` at runtime (those files may only exist under `cdn/` after CDN prep). Boot splash preloads the random main-menu leader portrait from CDN (not Caesar by default).
+**Native dev:** `cargo run --bin sow-client` loads boot splash/loader from `assets/static/ui/` or `assets/cdn/ui/` at runtime (those files may only exist under `cdn/` after CDN prep). Boot splash preloads the random main-menu leader portrait from CDN (not Caesar by default). Leader rail avatars load from `SOW_ASSETS_URL/cdn/avatars/` on wasm (not embedded in the binary).
+
+**CDN art:** Leader portraits, boot UI webp, and avatars are under `/assets/cdn/` on shadowsofwar.io; portal zips do not ship `assets/cdn/`.
 
 **Layout:** UI compact mode uses width and height together: wide-short desktop player frames (e.g. ~900×520) use **desktop** menu layout; portrait phones (`width < 480`) stay compact.
 

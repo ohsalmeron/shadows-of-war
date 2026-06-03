@@ -22,6 +22,7 @@ pub enum UiAction {
     ZoomOut,
     ToggleSettings,
     ToggleCredits,
+    TogglePrivacy,
+    ToggleTerms,
     ToggleDevSidebar,
-    OpenMapEditor,
 }

@@ -15,3 +15,7 @@ log = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 sow-i18n = { workspace = true }
+
+[features]
+default = []
+map-editor = ["sow-i18n/map-editor"]

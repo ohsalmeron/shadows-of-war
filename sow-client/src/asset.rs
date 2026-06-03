@@ -15,6 +15,7 @@ impl SowApp {
         self.poll_thumbnail_fetches();
         self.poll_leader_portrait_fetches();
         self.poll_boot_ui_fetches();
+        self.poll_avatar_fetches();
 
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
@@ -139,6 +140,31 @@ impl SowApp {
                 MapDownloadEvent::BootUiFailed { kind, reason } => {
                     log::warn!("Boot UI fetch failed for {:?}: {}", kind, reason);
                     self.ui.app.asset_loader.note_boot_ui_fetch_failed(kind);
+                }
+                MapDownloadEvent::AvatarReady { leader, bytes } => {
+                    let key = match leader {
+                        Some(l) => sow_ui::ui::asset_loader::AvatarFetchKey::Leader(l),
+                        None => sow_ui::ui::asset_loader::AvatarFetchKey::Fallback,
+                    };
+                    match self.ui.app.asset_loader.ingest_avatar_webp_bytes(
+                        &self.ui.egui_ctx,
+                        key,
+                        &bytes,
+                    ) {
+                        Ok(()) => log::debug!("Loaded avatar {:?}", key),
+                        Err(e) => log::warn!("Failed to ingest avatar {:?}: {e}", key),
+                    }
+                }
+                MapDownloadEvent::AvatarFailed { leader, reason } => {
+                    let key = match leader {
+                        Some(l) => sow_ui::ui::asset_loader::AvatarFetchKey::Leader(l),
+                        None => sow_ui::ui::asset_loader::AvatarFetchKey::Fallback,
+                    };
+                    log::warn!("Avatar fetch failed for {:?}: {reason}", key);
+                    self.ui
+                        .app
+                        .asset_loader
+                        .note_avatar_fetch_failed(key, reason);
                 }
                 MapDownloadEvent::LeaderPortraitFailed {
                     leader,
@@ -342,6 +368,79 @@ impl SowApp {
             log::debug!("Fetching boot UI {:?} urls={:?}", kind, urls);
             let tx = self.tasks.map_tx.clone();
             Self::fetch_boot_ui_at(urls, 0, tx, kind);
+        }
+    }
+
+    fn fetch_avatar_at(
+        urls: Vec<String>,
+        index: usize,
+        tx: crossbeam_channel::Sender<MapDownloadEvent>,
+        leader: Option<sow_core::player::Leader>,
+    ) {
+        let Some(url) = urls.get(index) else {
+            let _ = tx.send(MapDownloadEvent::AvatarFailed {
+                leader,
+                reason: "no avatar URLs".to_string(),
+            });
+            return;
+        };
+        let url = url.clone();
+        let urls = urls.clone();
+        let request = ehttp::Request::get(&url);
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            match result {
+                Ok(res) if res.ok => {
+                    let _ = tx.send(MapDownloadEvent::AvatarReady {
+                        leader,
+                        bytes: res.bytes,
+                    });
+                }
+                Ok(res) if res.status == 404 && index + 1 < urls.len() => {
+                    Self::fetch_avatar_at(urls, index + 1, tx, leader);
+                }
+                Ok(res) => {
+                    let _ = tx.send(MapDownloadEvent::AvatarFailed {
+                        leader,
+                        reason: format!("HTTP {}", res.status),
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(MapDownloadEvent::AvatarFailed {
+                        leader,
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        });
+    }
+
+    fn poll_avatar_fetches(&mut self) {
+        use sow_ui::ui::asset_loader::{
+            AssetLoader, AvatarFetchKey, MAX_AVATAR_FETCHES_IN_FLIGHT,
+        };
+
+        let priority_leader = self.ui.app.main_menu_state.selected_leader;
+        let priority = AvatarFetchKey::Leader(priority_leader);
+
+        while self.ui.app.asset_loader.avatars_in_flight.len() < MAX_AVATAR_FETCHES_IN_FLIGHT {
+            let Some(key) = self
+                .ui
+                .app
+                .asset_loader
+                .take_next_avatar_fetch_pending(priority)
+            else {
+                break;
+            };
+
+            let filename = AssetLoader::avatar_filename(key);
+            let urls = self.asset_config.avatar_urls(&filename);
+            let leader = match key {
+                AvatarFetchKey::Fallback => None,
+                AvatarFetchKey::Leader(l) => Some(l),
+            };
+            log::debug!("Fetching avatar {:?} urls={:?}", key, urls);
+            let tx = self.tasks.map_tx.clone();
+            Self::fetch_avatar_at(urls, 0, tx, leader);
         }
     }
 

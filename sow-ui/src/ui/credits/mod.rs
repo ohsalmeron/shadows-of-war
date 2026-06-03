@@ -39,6 +39,7 @@ pub fn draw(
     }
 
     let strings = &sow_i18n::get(lang).credits;
+    let settings_strings = &sow_i18n::get(lang).settings;
     let mut action = None;
     let compact = root_ui.ctx().content_rect().width() < 768.0;
     let panel_w = if compact {
@@ -139,7 +140,16 @@ pub fn draw(
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.label(body(&format!("{}: ", strings.privacy_label)));
-                        ui.hyperlink_to(link(&strings.privacy), &strings.privacy);
+                        if ui
+                            .add(
+                                egui::Button::new(link(&settings_strings.privacy_policy))
+                                    .fill(egui::Color32::TRANSPARENT)
+                                    .stroke(egui::Stroke::NONE),
+                            )
+                            .clicked()
+                        {
+                            action = Some(UiAction::TogglePrivacy);
+                        }
                     });
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {

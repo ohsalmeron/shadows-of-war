@@ -9,6 +9,16 @@ pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 1;
 /// Boot splash/loader webp fetches in parallel during wasm cold start.
 pub const MAX_BOOT_UI_FETCHES_IN_FLIGHT: usize = 4;
 
+/// Leader rail / HUD avatar webp fetches (wasm32).
+pub const MAX_AVATAR_FETCHES_IN_FLIGHT: usize = 6;
+
+/// Queued avatar download (`Fallback` = `null.webp`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AvatarFetchKey {
+    Fallback,
+    Leader(Leader),
+}
+
 /// Desktop vs mobile leader portrait variant (CDN on wasm32).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LeaderPortraitKey {
@@ -64,6 +74,11 @@ pub struct AssetLoader {
     leader_retry_state: HashMap<LeaderPortraitKey, PortraitRetryState>,
     /// Last portrait we successfully uploaded; used as a non-blocking fallback.
     last_ready_portrait: Option<LeaderPortraitKey>,
+    /// Avatar CDN fetches (wasm32).
+    avatars_fetch_pending: Vec<AvatarFetchKey>,
+    pub avatars_in_flight: HashSet<AvatarFetchKey>,
+    avatars_fetch_all_queued: bool,
+    avatar_retry_state: HashMap<AvatarFetchKey, PortraitRetryState>,
 }
 
 impl Default for AssetLoader {
@@ -79,6 +94,21 @@ pub enum UiSplashTexture {
     LoaderFull,
     SplashDesktop,
     SplashMobile,
+}
+
+#[cfg(test)]
+mod avatar_tests {
+    use super::{AvatarFetchKey, AssetLoader};
+    use sow_core::player::Leader;
+
+    #[test]
+    fn avatar_filenames_match_static_tree() {
+        assert_eq!(AssetLoader::avatar_filename(AvatarFetchKey::Fallback), "null.webp");
+        assert_eq!(
+            AssetLoader::avatar_filename(AvatarFetchKey::Leader(Leader::SunTzu)),
+            "sun_tzu.webp"
+        );
+    }
 }
 
 impl UiSplashTexture {
@@ -141,7 +171,172 @@ impl AssetLoader {
             leader_portrait_focus: None,
             leader_retry_state: HashMap::new(),
             last_ready_portrait: None,
+            avatars_fetch_pending: Vec::new(),
+            avatars_in_flight: HashSet::new(),
+            avatars_fetch_all_queued: false,
+            avatar_retry_state: HashMap::new(),
         }
+    }
+
+    pub fn leader_slug(leader: Leader) -> String {
+        leader.name().to_lowercase().replace(' ', "_")
+    }
+
+    pub fn avatar_filename(key: AvatarFetchKey) -> String {
+        match key {
+            AvatarFetchKey::Fallback => "null.webp".to_string(),
+            AvatarFetchKey::Leader(leader) => format!("{}.webp", Self::leader_slug(leader)),
+        }
+    }
+
+    fn avatar_loaded(&self, key: AvatarFetchKey) -> bool {
+        match key {
+            AvatarFetchKey::Fallback => self.avatar_fallback.is_some(),
+            AvatarFetchKey::Leader(leader) => self.avatars.contains_key(&leader),
+        }
+    }
+
+    fn avatar_retry_ready(&self, key: AvatarFetchKey, now: Instant) -> bool {
+        match self.avatar_retry_state.get(&key) {
+            Some(state) if state.permanent => false,
+            Some(state) => now >= state.next_retry_at,
+            None => true,
+        }
+    }
+
+    pub fn request_avatars_fetch_all(&mut self) {
+        if self.avatars_fetch_all_queued {
+            return;
+        }
+        self.avatars_fetch_all_queued = true;
+        self.queue_avatar_fetch(AvatarFetchKey::Fallback, true);
+        for &leader in &Leader::ALL {
+            self.queue_avatar_fetch(AvatarFetchKey::Leader(leader), false);
+        }
+    }
+
+    pub fn request_avatar_priority(&mut self, leader: Leader) {
+        self.queue_avatar_fetch(AvatarFetchKey::Leader(leader), true);
+    }
+
+    fn queue_avatar_fetch(&mut self, key: AvatarFetchKey, front: bool) {
+        if self.avatar_loaded(key) || self.avatars_in_flight.contains(&key) {
+            return;
+        }
+        if !self.avatar_retry_ready(key, Instant::now()) {
+            return;
+        }
+        if self.avatars_fetch_pending.iter().any(|pending| *pending == key) {
+            if front {
+                self.avatars_fetch_pending.retain(|pending| *pending != key);
+                self.avatars_fetch_pending.insert(0, key);
+            }
+            return;
+        }
+        if front {
+            self.avatars_fetch_pending.insert(0, key);
+        } else {
+            self.avatars_fetch_pending.push(key);
+        }
+    }
+
+    pub fn take_next_avatar_fetch_pending(
+        &mut self,
+        priority: AvatarFetchKey,
+    ) -> Option<AvatarFetchKey> {
+        let now = Instant::now();
+        let mut checked = 0usize;
+        loop {
+            if self.avatars_in_flight.len() >= MAX_AVATAR_FETCHES_IN_FLIGHT {
+                return None;
+            }
+            if checked >= self.avatars_fetch_pending.len() {
+                return None;
+            }
+
+            let key = if let Some(i) = self
+                .avatars_fetch_pending
+                .iter()
+                .position(|pending| *pending == priority)
+            {
+                self.avatars_fetch_pending.remove(i)
+            } else if !self.avatars_fetch_pending.is_empty() {
+                self.avatars_fetch_pending.remove(0)
+            } else {
+                return None;
+            };
+
+            if self.avatar_loaded(key) {
+                continue;
+            }
+            if !self.avatar_retry_ready(key, now) {
+                self.avatars_fetch_pending.push(key);
+                checked += 1;
+                continue;
+            }
+
+            self.avatars_in_flight.insert(key);
+            return Some(key);
+        }
+    }
+
+    pub fn note_avatar_fetch_failed(&mut self, key: AvatarFetchKey, reason: impl Into<String>) {
+        self.avatars_in_flight.remove(&key);
+        let now = Instant::now();
+        let reason = reason.into();
+        let permanent = reason.contains("404");
+        let attempts = self
+            .avatar_retry_state
+            .get(&key)
+            .map(|state| state.attempts.saturating_add(1))
+            .unwrap_or(1);
+        let exp = attempts.saturating_sub(1).min(4);
+        let delay_ms = 500u64.saturating_mul(1u64 << exp);
+        self.avatar_retry_state.insert(
+            key,
+            PortraitRetryState {
+                attempts,
+                next_retry_at: now + Duration::from_millis(delay_ms),
+                last_error: reason,
+                permanent,
+            },
+        );
+        if !permanent && !self.avatars_fetch_pending.iter().any(|pending| *pending == key) {
+            self.avatars_fetch_pending.push(key);
+        }
+    }
+
+    pub fn ingest_avatar_webp_bytes(
+        &mut self,
+        ctx: &egui::Context,
+        key: AvatarFetchKey,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        self.avatars_in_flight.remove(&key);
+        self.avatar_retry_state.remove(&key);
+
+        let image = image::load_from_memory(bytes).map_err(|e| format!("decode avatar: {e}"))?;
+        let image_rgba = image.to_rgba8();
+        let size = [image_rgba.width() as _, image_rgba.height() as _];
+        let pixels = image_rgba.as_flat_samples();
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+
+        match key {
+            AvatarFetchKey::Fallback => {
+                let texture = ctx.load_texture(
+                    "avatar_null",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.avatar_fallback = Some(texture);
+            }
+            AvatarFetchKey::Leader(leader) => {
+                let tex_name = format!("avatar_{}", Self::leader_slug(leader));
+                let texture = ctx.load_texture(&tex_name, color_image, egui::TextureOptions::LINEAR);
+                self.avatars.insert(leader, texture);
+            }
+        }
+        Ok(())
     }
 
     fn leader_portrait_loaded(&self, key: LeaderPortraitKey) -> bool {
@@ -530,70 +725,53 @@ impl AssetLoader {
     }
 
     pub fn ensure_avatars_loaded(&mut self, ctx: &egui::Context) {
-        if !self.avatars.is_empty() {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = ctx;
+            self.request_avatars_fetch_all();
             return;
         }
 
-        let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
-            let image = image::load_from_memory(bytes)
-                .expect("Failed to load avatar")
-                .to_rgba8();
-            let size = [image.width() as _, image.height() as _];
-            let pixels = image.as_flat_samples();
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-            ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
-        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.avatar_fallback.is_some() && self.avatars.len() >= Leader::ALL.len() {
+                return;
+            }
 
-        for &leader in &sow_core::player::Leader::ALL {
-            let avatar_bytes = match leader {
-                sow_core::player::Leader::Caesar => {
-                    sow_core::repo_asset_bytes!("avatars/caesar.webp").as_slice()
-                }
-                sow_core::player::Leader::Cleopatra => {
-                    sow_core::repo_asset_bytes!("avatars/cleopatra.webp").as_slice()
-                }
-                sow_core::player::Leader::Ragnar => {
-                    sow_core::repo_asset_bytes!("avatars/ragnar.webp").as_slice()
-                }
-                sow_core::player::Leader::SunTzu => {
-                    sow_core::repo_asset_bytes!("avatars/sun_tzu.webp").as_slice()
-                }
-                sow_core::player::Leader::Alexander => {
-                    sow_core::repo_asset_bytes!("avatars/alexander.webp").as_slice()
-                }
-                sow_core::player::Leader::GenghisKhan => {
-                    sow_core::repo_asset_bytes!("avatars/genghis_khan.webp").as_slice()
-                }
-                sow_core::player::Leader::RichardTheLionheart => {
-                    sow_core::repo_asset_bytes!("avatars/richard_the_lionheart.webp").as_slice()
-                }
-                sow_core::player::Leader::Vercingetorix => {
-                    sow_core::repo_asset_bytes!("avatars/vercingetorix.webp").as_slice()
-                }
-                sow_core::player::Leader::Boudica => {
-                    sow_core::repo_asset_bytes!("avatars/boudica.webp").as_slice()
-                }
-                sow_core::player::Leader::LadySixSky => {
-                    sow_core::repo_asset_bytes!("avatars/lady_six_sky.webp").as_slice()
-                }
-                sow_core::player::Leader::Leonidas => {
-                    sow_core::repo_asset_bytes!("avatars/leonidas.webp").as_slice()
-                }
-                sow_core::player::Leader::Napoleon => {
-                    sow_core::repo_asset_bytes!("avatars/napoleon.webp").as_slice()
-                }
+            fn read_avatar_webp(filename: &str) -> Option<Vec<u8>> {
+                use std::path::Path;
+                let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../assets/cdn/avatars")
+                    .join(filename);
+                std::fs::read(&path).ok()
+            }
+
+            let load_key = |key: AvatarFetchKey| -> Option<(AvatarFetchKey, Vec<u8>)> {
+                let filename = Self::avatar_filename(key);
+                read_avatar_webp(&filename).map(|bytes| (key, bytes))
             };
-            let name_lower = leader.name().to_lowercase().replace(' ', "_");
-            self.avatars.insert(
-                leader,
-                load_image(&format!("avatar_{}", name_lower), avatar_bytes),
-            );
-        }
 
-        self.avatar_fallback = Some(load_image(
-            "avatar_null",
-            sow_core::repo_asset_bytes!("avatars/null.webp"),
-        ));
+            for key in std::iter::once(AvatarFetchKey::Fallback).chain(
+                Leader::ALL
+                    .iter()
+                    .copied()
+                    .map(AvatarFetchKey::Leader),
+            ) {
+                if self.avatar_loaded(key) {
+                    continue;
+                }
+                let Some((key, bytes)) = load_key(key) else {
+                    log::warn!(
+                        "missing avatar {} in assets/cdn/avatars/",
+                        Self::avatar_filename(key)
+                    );
+                    continue;
+                };
+                if let Err(e) = self.ingest_avatar_webp_bytes(ctx, key, &bytes) {
+                    log::warn!("failed to load avatar {:?}: {e}", key);
+                }
+            }
+        }
     }
 
     pub fn ui_splash_ready(&self) -> bool {

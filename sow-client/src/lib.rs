@@ -86,6 +86,15 @@ pub enum MapDownloadEvent {
         kind: sow_ui::ui::asset_loader::UiSplashTexture,
         reason: String,
     },
+    /// `leader == None` is the null/fallback avatar (`null.webp`).
+    AvatarReady {
+        leader: Option<sow_core::player::Leader>,
+        bytes: Vec<u8>,
+    },
+    AvatarFailed {
+        leader: Option<sow_core::player::Leader>,
+        reason: String,
+    },
     Progress(String, u8),
     Error(String),
 }
@@ -116,7 +125,6 @@ mod map_cache;
 mod platform_output;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
-#[cfg(target_arch = "wasm32")]
 mod web_canvas;
 
 use app::SowApp;
@@ -142,22 +150,6 @@ impl ApplicationHandler for SowApp {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(ref mut editor) = self.map_editor {
-            if editor.window_id() != Some(window_id) {
-                return;
-            }
-            if matches!(event, winit::event::WindowEvent::CloseRequested) {
-                self.request_map_editor_exit();
-                if let Some(win) = self.gfx.window.as_ref() {
-                    win.request_redraw();
-                }
-                return;
-            }
-            editor.handle_window_event(event_loop, event);
-            return;
-        }
-
         if self.gfx.window.is_none() || self.gfx.window.as_ref().unwrap().id() != window_id {
             return;
         }

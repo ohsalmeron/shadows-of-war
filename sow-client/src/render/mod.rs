@@ -17,58 +17,17 @@ impl SowApp {
             sow_core::register_game_assets(&self.ui.egui_ctx);
         });
 
-        #[cfg(not(target_arch = "wasm32"))]
-        if self.map_editor.is_some() {
-            return;
-        }
         #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
             let (w, h) = crate::web_canvas::canvas_logical_size();
-            let sf = win.scale_factor() as f32;
-            let logical_w = w as f32;
-            let logical_h = h as f32;
-            let expected_w = logical_w * sf;
-            let expected_h = logical_h * sf;
+            let sf = win.scale_factor();
+            let expected_w = (w * sf) as u32;
+            let expected_h = (h * sf) as u32;
 
-            if (expected_w - self.input.screen_w).abs() > 1.0
-                || (expected_h - self.input.screen_h).abs() > 1.0
+            if expected_w.abs_diff(self.input.screen_w as u32) > 1
+                || expected_h.abs_diff(self.input.screen_h as u32) > 1
             {
                 let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
-                self.input.screen_w = expected_w;
-                self.input.screen_h = expected_h;
-                let zmax =
-                    camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                self.input.camera_zoom =
-                    self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(logical_w, logical_h),
-                ));
-
-                let physical_w = expected_w.round().max(1.0) as u32;
-                let physical_h = expected_h.round().max(1.0) as u32;
-                if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                    if let Some(sp) = self.gfx.prev_sync_point.take() {
-                        let _ = render_ctx.context.wait_for(&sp, !0);
-                    }
-                    if let Some(ref mut surface) = self.gfx.surface {
-                        render_ctx.context.reconfigure_surface(
-                            surface,
-                            gpu::SurfaceConfig {
-                                size: gpu::Extent {
-                                    width: physical_w,
-                                    height: physical_h,
-                                    depth: 1,
-                                },
-                                usage: gpu::TextureUsage::TARGET,
-                                display_sync: gpu::DisplaySync::Tear,
-                                color_space: gpu::ColorSpace::Srgb,
-                                ..Default::default()
-                            },
-                        );
-                    }
-                }
-                win.request_redraw();
             }
         }
 

@@ -37,6 +37,7 @@ enum Command {
         opts: VersionOpts,
     },
     /// Deploy play.shadowsofwar.io.
+    #[command(name = "play", visible_alias = "p")]
     Play {
         #[command(flatten)]
         opts: VersionOpts,

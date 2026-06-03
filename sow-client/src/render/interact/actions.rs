@@ -389,6 +389,12 @@ impl SowApp {
                 UiAction::ToggleCredits => {
                     self.ui.app.is_credits_open = !self.ui.app.is_credits_open;
                 }
+                UiAction::TogglePrivacy => {
+                    self.ui.app.is_privacy_open = !self.ui.app.is_privacy_open;
+                }
+                UiAction::ToggleTerms => {
+                    self.ui.app.is_terms_open = !self.ui.app.is_terms_open;
+                }
                 UiAction::ZoomIn => {
                     self.process_camera_zoom(
                         1.25,
@@ -403,22 +409,6 @@ impl SowApp {
                         self.input.screen_h * 0.5,
                     );
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                UiAction::OpenMapEditor => {
-                    if self.gfx.render_ctx.is_none() {
-                        log::error!("Cannot open map editor: GPU context not initialized");
-                        return;
-                    }
-                    if !matches!(self.pending_map_editor, crate::app::PendingMapEditorOp::None)
-                        || self.map_editor.is_some()
-                    {
-                        return;
-                    }
-                    self.begin_map_editor_enter_loader();
-                    self.pending_map_editor = crate::app::PendingMapEditorOp::Open;
-                }
-                #[cfg(target_arch = "wasm32")]
-                UiAction::OpenMapEditor => {}
             }
         }
     }

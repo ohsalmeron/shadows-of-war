@@ -16,13 +16,16 @@ const LEADERS: &[&str] = &[
 pub fn sync_to_prod(paths: &Paths) -> Result<()> {
     prepare_boot_ui(paths)?;
     check_leader_portraits(&paths.assets_cdn.join("leaders"))?;
+    check_avatar_files(&paths.assets_cdn.join("avatars"))?;
     println!("==> Syncing CDN → {PROD_USER}@{PROD_HOST}:{PROD_ASSETS_PATH}/cdn/");
     let remote = format!("{PROD_USER}@{PROD_HOST}");
     process::run(
         "ssh",
         &[
             &remote,
-            &format!("mkdir -p {PROD_ASSETS_PATH}/cdn/leaders {PROD_ASSETS_PATH}/cdn/ui"),
+            &format!(
+                "mkdir -p {PROD_ASSETS_PATH}/cdn/leaders {PROD_ASSETS_PATH}/cdn/ui {PROD_ASSETS_PATH}/cdn/avatars"
+            ),
         ],
         None,
     )?;
@@ -91,6 +94,27 @@ fn prepare_boot_ui(paths: &Paths) -> Result<()> {
         ui_src.join("sow-splash-desktop.webp"),
         ui_cdn.join("sow-splash-desktop.webp"),
     )?;
+    Ok(())
+}
+
+fn check_avatar_files(dir: &Path) -> Result<()> {
+    let mut missing = Vec::new();
+    for slug in LEADERS {
+        let p = dir.join(format!("{slug}.webp"));
+        if !p.is_file() {
+            missing.push(p);
+        }
+    }
+    let null_p = dir.join("null.webp");
+    if !null_p.is_file() {
+        missing.push(null_p);
+    }
+    if !missing.is_empty() {
+        for p in &missing {
+            eprintln!("❌ missing {}", p.display());
+        }
+        bail!("avatar webps incomplete");
+    }
     Ok(())
 }
 
@@ -181,6 +205,7 @@ fn verify_prod_cdn() -> Result<()> {
     let urls = [
         "https://shadowsofwar.io/assets/cdn/leaders/caesar_desktop.webp".to_string(),
         "https://shadowsofwar.io/assets/cdn/ui/loader_empty.webp".to_string(),
+        "https://shadowsofwar.io/assets/cdn/avatars/caesar.webp".to_string(),
         format!("https://shadowsofwar.io/assets/fonts/{UI_FONT_FILE}"),
     ];
     for url in urls {

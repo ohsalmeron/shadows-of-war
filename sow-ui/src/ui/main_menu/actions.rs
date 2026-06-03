@@ -14,6 +14,8 @@ pub fn draw_right_column(
     let strings = &sow_i18n::get(lang).main_menu;
     let solo_primary = if compact { 24.0 } else { 28.0 };
     let rail_btn_fill = crate::ui::theme::menu_secondary_button();
+    let secondary_h = (action_min_h - 10.0).max(action_min_h * 0.875);
+    let settings_h = action_min_h * 0.75;
 
     let solo_btn = ThemeButton::new(&strings.single_player)
         .style(ThemeButtonStyle::Tertiary)
@@ -30,10 +32,7 @@ pub fn draw_right_column(
     let tutorial_btn = ThemeButton::new(&strings.play_tutorial)
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)
-        .min_size(egui::vec2(
-            ui.available_width(),
-            (action_min_h - 10.0).max(60.0),
-        ))
+        .min_size(egui::vec2(ui.available_width(), secondary_h))
         .text_size(if compact { 16.0 } else { 18.0 });
 
     if ui.add(tutorial_btn).clicked() {
@@ -42,29 +41,10 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let editor_btn = ThemeButton::new(&strings.map_editor)
-            .style(ThemeButtonStyle::Tertiary)
-            .custom_fill(rail_btn_fill)
-            .min_size(egui::vec2(
-                ui.available_width(),
-                (action_min_h - 10.0).max(60.0),
-            ))
-            .text_size(if compact { 16.0 } else { 18.0 });
-
-        if ui.add(editor_btn).clicked() {
-            *action = Some(UiAction::OpenMapEditor);
-        }
-
-        ui.add_space(section_gap);
-    }
-
-    let h = if compact { 48.0 } else { 52.0 };
     let btn = ThemeButton::new(&strings.settings)
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)
-        .min_size(egui::vec2(ui.available_width(), h))
+        .min_size(egui::vec2(ui.available_width(), settings_h))
         .text_size(if compact { 16.0 } else { 18.0 });
 
     if ui.add(btn).clicked() {

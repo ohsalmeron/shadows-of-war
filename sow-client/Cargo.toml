@@ -41,6 +41,5 @@ js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 open = { workspace = true }
-sow-map = { workspace = true, features = ["editor", "generator", "osm"] }
 env_logger = { workspace = true }
 tokio = { workspace = true }

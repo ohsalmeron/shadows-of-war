@@ -8,3 +8,7 @@ description = "Localized UI strings (TOML) for Shadows of War"
 [dependencies]
 serde = { workspace = true }
 toml = { workspace = true }
+
+[features]
+default = []
+map-editor = []

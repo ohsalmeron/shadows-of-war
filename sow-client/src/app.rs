@@ -240,14 +240,6 @@ pub struct TaskState {
     pub engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage>,
 }
 
-/// Deferred map editor GPU handoff while the splash loader is visible (native only).
-#[cfg(not(target_arch = "wasm32"))]
-pub enum PendingMapEditorOp {
-    None,
-    Open,
-    Close(sow_map::MapEditorSession),
-}
-
 pub struct SowApp {
     pub gfx: GraphicsState,
     pub net: NetState,
@@ -266,10 +258,6 @@ pub struct SowApp {
     pub(crate) web_loader_hidden: bool,
     #[cfg(target_arch = "wasm32")]
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub map_editor: Option<sow_map::MapEditorSession>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub pending_map_editor: PendingMapEditorOp,
     /// Set when Blade/Vulkan init fails; event loop exits on next tick.
     pub gpu_init_failed: bool,
 }
@@ -565,10 +553,6 @@ impl SowApp {
             web_loader_hidden,
             #[cfg(target_arch = "wasm32")]
             ime_bridge,
-            #[cfg(not(target_arch = "wasm32"))]
-            map_editor: None,
-            #[cfg(not(target_arch = "wasm32"))]
-            pending_map_editor: PendingMapEditorOp::None,
             gpu_init_failed: false,
         }
     }
@@ -648,35 +632,6 @@ impl SowApp {
         );
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn begin_map_editor_enter_loader(&mut self) {
-        self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
-        let lang = self.ui.app.settings_state.language;
-        self.ui.app.splash_state.reset_anim(
-            sow_ui::ui::loading_screen::SplashJob::MapEditorEnter,
-            lang,
-        );
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn begin_map_editor_exit_loader(&mut self) {
-        self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
-        let lang = self.ui.app.settings_state.language;
-        self.ui.app.splash_state.reset_anim(
-            sow_ui::ui::loading_screen::SplashJob::MapEditorExit,
-            lang,
-        );
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn request_map_editor_exit(&mut self) {
-        let Some(session) = self.map_editor.take() else {
-            return;
-        };
-        self.pending_map_editor = PendingMapEditorOp::Close(session);
-        self.begin_map_editor_exit_loader();
-    }
-
     /// Whether the map/mover GPU path should paint this frame (hidden during splash loads).
     pub(crate) fn should_draw_world(&self) -> bool {
         use sow_ui::app::ClientPhase;
@@ -689,20 +644,6 @@ impl SowApp {
                 matches!(s.job, SplashJob::EnterGame)
                     && s.done
                     && s.fadeout_start.is_some()
-                || {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        matches!(
-                            s.job,
-                            SplashJob::MapEditorEnter | SplashJob::MapEditorExit
-                        ) && s.done
-                            && s.fadeout_start.is_some()
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        false
-                    }
-                }
             }
             ClientPhase::MainMenu => false,
         }
@@ -713,21 +654,12 @@ impl SowApp {
         self.net.ws_url.contains("/relay/") || self.net.ws_url.contains("2557")
     }
 
-    /// Window used for input/redraw: map editor session owns it while editing.
+    /// Window used for input/redraw.
     pub fn active_window(&self) -> Option<&dyn winit::window::Window> {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(editor) = self.map_editor.as_ref() {
-            return editor.window_ref();
-        }
         self.gfx.window.as_deref()
     }
 
     pub fn handle_suspended(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(ref mut editor) = self.map_editor {
-            editor.handle_suspended();
-            return;
-        }
         let Some(render_ctx) = self.gfx.render_ctx.as_mut() else {
             return;
         };
@@ -751,11 +683,6 @@ impl SowApp {
     pub fn handle_resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         // App or tab foregrounded — retry WS soon if the socket died in the background.
         self.net.ws_reconnect_after_resume = true;
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(ref mut editor) = self.map_editor {
-            editor.handle_resumed();
-            return;
-        }
         if !self.ensure_render_ctx() {
             event_loop.exit();
             return;
@@ -856,19 +783,7 @@ impl Drop for SowApp {
 
 impl SowApp {
     #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
-    pub fn update(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if self.map_editor.is_some() {
-            if let Some(mut session) = self.map_editor.take() {
-                let action = session.update(event_loop);
-                self.map_editor = Some(session);
-                if let Some(sow_ui::UiAction::LeaveLobby) = action {
-                    self.request_map_editor_exit();
-                }
-            }
-            return;
-        }
-
+    pub fn update(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
         self.check_surface();
 
         let now = web_time::Instant::now();
@@ -876,23 +791,6 @@ impl SowApp {
         self.update_assets();
         self.update_loader();
         self.update_sim(now);
-    }
-
-    /// Re-sync egui input/layout with the reclaimed window after map editor exit (native).
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn reset_ui_after_editor(&mut self) {
-        self.ui.raw_input.events.clear();
-        if let Some(win) = self.gfx.window.as_ref() {
-            let sz = win.surface_size();
-            self.input.screen_w = sz.width as f32;
-            self.input.screen_h = sz.height as f32;
-            let sf = win.scale_factor() as f32;
-            self.ui.egui_ctx.set_pixels_per_point(sf);
-            self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(self.input.screen_w / sf, self.input.screen_h / sf),
-            ));
-        }
     }
 
     pub fn dispatch_sim_command(&mut self, cmd: sow_core::protocol::SimCommand) {

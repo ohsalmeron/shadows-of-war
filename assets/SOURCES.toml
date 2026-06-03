@@ -48,13 +48,13 @@ status = "themed_placeholder"
 notes = "Served from assets/cdn/ui/ on shadowsofwar.io (not bundled in portal zip)."
 
 [avatars]
-path = "assets/static/avatars/"
+path = "assets/cdn/avatars/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "CC-BY-SA-4.0"
 license_doc = "docs/legal/LICENSE-ASSETS"
 ai_dossier = "docs/leaders/README.md (prompts and roster; provide to Poki/CrazyGames on request)"
-notes = "Verify each AI tool ToS allows redistribution before store release."
+notes = "Streamed from CDN; canonical tree assets/cdn/avatars/. Not bundled in portal wasm."
 
 [leader_portraits]
 path = "assets/cdn/leaders/"

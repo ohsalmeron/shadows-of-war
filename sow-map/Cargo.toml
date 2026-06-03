@@ -15,6 +15,8 @@ editor = [
     "generator",
     "dep:sow-render",
     "dep:sow-ui",
+    "sow-ui/map-editor",
+    "sow-i18n/map-editor",
     "dep:blade-graphics",
     "dep:blade-egui",
     "dep:blade-macros",

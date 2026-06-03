@@ -21,6 +21,12 @@ pub fn compact_viewport(ctx: &Context) -> bool {
     w < 600.0 && h < 600.0
 }
 
+/// Scale factor for fixed chrome (buttons, gaps, profile bar) on short viewports.
+#[inline]
+pub fn viewport_scale(ctx: &Context) -> f32 {
+    (ctx.content_rect().height() / 720.0).clamp(0.55, 1.0)
+}
+
 /// Standard UI animation duration; near-instant when reduced motion is enabled.
 #[inline]
 pub fn anim_duration(reduced_motion: bool) -> f32 {
@@ -763,6 +769,7 @@ pub fn standard_panel_frame(compact: bool) -> egui::Frame {
 }
 
 /// Top vs side chrome in the map editor (shadow strength differs).
+#[cfg(feature = "map-editor")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MapEditorGlassPanel {
     Top,
@@ -770,6 +777,7 @@ pub enum MapEditorGlassPanel {
 }
 
 /// Glass panels for the map editor — map stays visible through the center viewport.
+#[cfg(feature = "map-editor")]
 #[inline]
 pub fn map_editor_glass_frame(panel: MapEditorGlassPanel, _compact: bool) -> egui::Frame {
     let (blur, margin, shadow_alpha, offset_y) = match panel {

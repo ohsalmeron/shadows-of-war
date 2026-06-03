@@ -170,6 +170,12 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     Some(rest[0].clone())
 }
 
+fn menu_footer_height(section_gap: f32, action_min_h: f32, _compact: bool) -> f32 {
+    let secondary_h = (action_min_h - 10.0).max(action_min_h * 0.875);
+    let settings_h = action_min_h * 0.75;
+    section_gap + action_min_h + section_gap + secondary_h + section_gap + settings_h + section_gap + 18.0
+}
+
 #[allow(clippy::too_many_arguments)]
 fn draw_menu_right_panel_contents(
     ui: &mut egui::Ui,
@@ -177,27 +183,44 @@ fn draw_menu_right_panel_contents(
     section_gap: f32,
     action_min_h: f32,
     compact: bool,
+    profile_height: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
     let version = format!("v{}", include_str!("../../../../.version").trim());
+    let footer_h = menu_footer_height(section_gap, action_min_h, compact);
 
-    profile::draw_user_profile_header(ui, state, compact, asset_loader, lang);
-
-    ui.add_space(section_gap);
-    browser::draw_left_column(
+    profile::draw_user_profile_header(
         ui,
         state,
-        section_gap,
-        action_min_h,
         compact,
-        action,
+        profile_height,
         asset_loader,
         lang,
     );
 
     ui.add_space(section_gap);
+
+    let middle_h = (ui.available_height() - footer_h).max(0.0);
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), middle_h),
+        Layout::top_down(Align::Min),
+        |ui| {
+            browser::draw_left_column(
+                ui,
+                state,
+                section_gap,
+                action_min_h,
+                compact,
+                middle_h,
+                action,
+                asset_loader,
+                lang,
+            );
+        },
+    );
+
     actions::draw_right_column(
         ui,
         state,
@@ -248,6 +271,7 @@ fn draw_menu_right_panel(
     section_gap: f32,
     action_min_h: f32,
     compact: bool,
+    profile_height: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
@@ -259,6 +283,7 @@ fn draw_menu_right_panel(
             section_gap,
             action_min_h,
             compact,
+            profile_height,
             action,
             asset_loader,
             lang,
@@ -271,6 +296,7 @@ fn draw_menu_right_panel(
                 section_gap,
                 action_min_h,
                 compact,
+                profile_height,
                 action,
                 asset_loader,
                 lang,
@@ -364,10 +390,11 @@ pub fn draw(
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = lobby_compact_layout(root_ui.ctx());
+    let scale = crate::ui::theme::viewport_scale(root_ui.ctx());
     let outer_pad = 16.0;
-    let section_gap = if compact { 12.0 } else { 16.0 };
-
-    let action_min_h = if compact { 64.0 } else { 72.0 };
+    let section_gap = (if compact { 12.0 } else { 16.0 }) * scale;
+    let action_min_h = (if compact { 64.0 } else { 72.0 }) * scale;
+    let profile_height = 56.0 * scale;
     let strings = &sow_i18n::get(lang).main_menu;
 
     CentralPanel::default()
@@ -406,48 +433,29 @@ pub fn draw(
             }
 
             let content_h = ui.available_height();
-
-            if compact {
-                let viewport = ui.available_size();
-                ui.allocate_ui_with_layout(viewport, Layout::top_down(Align::Min), |ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            ui.set_min_width(viewport.x);
-                            draw_menu_right_panel(
-                                ui,
-                                state,
-                                section_gap,
-                                action_min_h,
-                                compact,
-                                &mut action,
-                                asset_loader,
-                                lang,
-                            );
-                        });
-                });
+            let panel_w = if compact {
+                ui.available_width()
             } else {
-                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                    let total = ui.available_width();
-                    let panel_w = (total / 3.0).clamp(340.0, 460.0);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(panel_w, content_h),
-                        Layout::top_down(Align::Min),
-                        |ui| {
-                            draw_menu_right_panel(
-                                ui,
-                                state,
-                                section_gap,
-                                action_min_h,
-                                compact,
-                                &mut action,
-                                asset_loader,
-                                lang,
-                            );
-                        },
+                (ui.available_width() / 3.0).clamp(340.0, 460.0)
+            };
+
+            ui.allocate_ui_with_layout(
+                egui::vec2(panel_w, content_h),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    draw_menu_right_panel(
+                        ui,
+                        state,
+                        section_gap,
+                        action_min_h,
+                        compact,
+                        profile_height,
+                        &mut action,
+                        asset_loader,
+                        lang,
                     );
-                });
-            }
+                },
+            );
         });
 
     draw_connecting_indicator(root_ui.ctx(), state, lang, compact);

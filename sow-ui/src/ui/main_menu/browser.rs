@@ -10,12 +10,17 @@ pub fn draw_left_column(
     _section_gap: f32,
     _action_min_h: f32,
     compact: bool,
+    max_height: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let side = crate::ui::map_texture::thumbnail_square_side(ui.available_width(), compact);
+    let side = crate::ui::map_texture::thumbnail_square_side_bounded(
+        ui.available_width(),
+        max_height,
+        compact,
+    );
 
     if state.lobbies.is_empty() {
         let label = if state.is_connected {

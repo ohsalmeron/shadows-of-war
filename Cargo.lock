@@ -3234,7 +3234,6 @@ dependencies = [
  "open",
  "sow-core",
  "sow-i18n",
- "sow-map",
  "sow-net",
  "sow-render",
  "sow-ui",

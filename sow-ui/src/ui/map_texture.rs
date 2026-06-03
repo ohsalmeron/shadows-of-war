@@ -53,6 +53,19 @@ pub fn thumbnail_square_side(available_width: f32, compact: bool) -> f32 {
     }
 }
 
+/// Square thumbnail side capped by vertical budget so lobby cards never overflow the flex middle.
+pub fn thumbnail_square_side_bounded(
+    available_width: f32,
+    max_height: f32,
+    compact: bool,
+) -> f32 {
+    let width_side = thumbnail_square_side(available_width, compact);
+    if max_height <= 0.0 {
+        return width_side;
+    }
+    width_side.min(max_height * 0.92)
+}
+
 /// Full-opaque map thumbnail (albedo only — no alpha compositing tricks).
 pub fn draw_map_thumbnail(
     painter: &Painter,

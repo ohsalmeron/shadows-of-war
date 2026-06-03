@@ -1,0 +1,45 @@
+title = "Shadows of War — Terms of Service"
+updated = "Last updated: May 2026"
+close = "CLOSE"
+
+[[sections]]
+heading = "Acceptance"
+paragraphs = [
+  "By playing Shadows of War on shadowsofwar.io, partner platforms, or native clients, you agree to these terms.",
+]
+
+[[sections]]
+heading = "The game"
+paragraphs = [
+  "Shadows of War is free-to-play strategy software provided as-is. Multiplayer requires network access to our servers. We may modify, suspend, or discontinue services at any time.",
+]
+
+[[sections]]
+heading = "Conduct"
+bullets = [
+  "Do not cheat, exploit bugs for unfair advantage, or harass other players.",
+  "Do not attempt to disrupt servers or reverse-engineer credentials.",
+  "Usernames and chat must not violate applicable law or platform rules.",
+]
+
+[[sections]]
+heading = "Intellectual property"
+paragraphs = [
+  "Source is AGPL-3.0-or-later. Based on OpenFront — © OpenFront and Contributors. See in-game Credits and",
+]
+
+[[sections.links]]
+label = "GitHub NOTICE"
+url = "https://github.com/ohsalmeron/shadows-of-war"
+
+[[sections]]
+heading = "Disclaimer"
+paragraphs = [
+  "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND. See the GNU Affero General Public License for full disclaimer language.",
+]
+
+[[sections]]
+heading = "Privacy"
+paragraphs = [
+  "See our Privacy Policy in Settings for data handling.",
+]
