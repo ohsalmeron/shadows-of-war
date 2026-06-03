@@ -37,12 +37,14 @@ cargo run -p sow-dist -- ptr
 
 ## CrazyGames QA (layout & resize)
 
-WASM sizes from `#blade` `clientWidth`/`clientHeight` (not the top-level window). UI compact mode uses **width and height together**: wide-short desktop player frames (e.g. ~900×520) use **desktop** menu layout; portrait phones (`width < 480`) stay compact.
+**Sizing:** On fullscreen shells (play, CrazyGames), WASM uses `window.innerWidth`/`innerHeight` so live browser resize works. When `#blade` is materially smaller than the viewport (site embed), WASM uses canvas `clientWidth`/`clientHeight` instead.
+
+**Layout:** UI compact mode uses width and height together: wide-short desktop player frames (e.g. ~900×520) use **desktop** menu layout; portrait phones (`width < 480`) stay compact.
 
 | Check | Pass criteria |
 |-------|----------------|
 | Desktop QA layout | Main menu is horizontal (side panel), not a full-height vertical scroll stack |
-| Resize | Drag the browser window on self-hosted `play` or CG QA; map and UI reflow with the canvas |
+| Resize | Drag the browser window on self-hosted `play` or CG QA; map and UI reflow smoothly |
 | Portrait phone | Narrow width still uses compact stack + mobile leader art |
 
 ## Quick start

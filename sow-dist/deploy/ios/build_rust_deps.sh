@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Rust binary for the active Xcode SDK (device or simulator), then
 # `lipo`s per-arch artifacts into the path Xcode expects as the app executable.
-# Open: shadows-of-war/deploy/ios/sow_ios.xcodeproj
+# Open: shadows-of-war/sow-dist/deploy/ios/sow_ios.xcodeproj
 
 set -eux
 

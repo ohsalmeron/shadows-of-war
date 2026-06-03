@@ -1,13 +1,13 @@
 //! Single asset URL configuration for every client target (native, web, CrazyGames).
 
-/// Production site origin for streamed maps/assets (nginx static, not a third-party CDN).
+/// Production site origin for maps/CDN assets (nginx + sow-server, not a third-party CDN).
 const DEFAULT_ORIGIN: &str = "https://shadowsofwar.io";
 
 #[derive(Clone, Debug)]
 pub struct AssetConfig {
     pub maps_base: String,
     pub assets_base: String,
-    /// Deploy timestamp for cache busting streamed UI assets.
+    /// Deploy timestamp for cache busting CDN UI assets.
     pub cache_bust: String,
 }
 
@@ -38,13 +38,10 @@ impl AssetConfig {
         )
     }
 
-    /// Canonical streamed path first, then legacy `ui/leaders/` (prod may still serve the old layout).
+    /// Leader portraits on prod CDN (`/assets/cdn/leaders/`).
     pub fn leader_portrait_urls(&self, filename: &str) -> Vec<String> {
         let base = self.assets_base.trim_end_matches('/');
-        let paths = [
-            format!("{base}/streamed/leaders/{filename}"),
-            format!("{base}/ui/leaders/{filename}"),
-        ];
+        let paths = [format!("{base}/cdn/leaders/{filename}")];
         if self.cache_bust.is_empty() {
             paths.into_iter().map(String::from).collect()
         } else {
@@ -60,6 +57,20 @@ impl AssetConfig {
             .into_iter()
             .next()
             .unwrap_or_default()
+    }
+
+    /// Boot loader/splash webp on prod CDN (`/assets/cdn/ui/`).
+    pub fn boot_ui_asset_urls(&self, filename: &str) -> Vec<String> {
+        let base = self.assets_base.trim_end_matches('/');
+        let paths = [format!("{base}/cdn/ui/{filename}")];
+        if self.cache_bust.is_empty() {
+            paths.into_iter().map(String::from).collect()
+        } else {
+            paths
+                .into_iter()
+                .map(|p| format!("{p}?v={}", self.cache_bust))
+                .collect()
+        }
     }
 
     fn resolve_maps_base() -> String {

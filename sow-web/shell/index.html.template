@@ -12,14 +12,14 @@
     <meta property="og:url" content="https://play.shadowsofwar.io/">
     <meta property="og:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="og:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
-    <meta property="og:image" content="https://shadowsofwar.io/assets/static/ui/sow-splash-desktop.webp">
+    <meta property="og:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://play.shadowsofwar.io/">
     <meta property="twitter:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="twitter:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
-    <meta property="twitter:image" content="https://shadowsofwar.io/assets/static/ui/sow-splash-desktop.webp">
+    <meta property="twitter:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
 
     <meta name="application-name" content="Shadows of War">
     <meta property="og:site_name" content="Shadows of War">
@@ -27,7 +27,7 @@
     <link rel="canonical" href="https://play.shadowsofwar.io/">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
 
-    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by ./scripts/sow.sh crazygames only. Poki loads SDK from the host frame — no script here. -->
+    <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by sow-dist crazygames only. -->
 
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
@@ -176,7 +176,7 @@
         /* Streamed maps/assets from prod nginx /maps and /assets (single source of truth). */
         window.SOW_MAPS_URL = window.SOW_MAPS_URL || "https://shadowsofwar.io/maps";
         window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "https://shadowsofwar.io/assets";
-        /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by ./scripts/sow.sh crazygames | poki. */
+        /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */
         (function () {
             var h = window.location.hostname;
             var ref = document.referrer || "";

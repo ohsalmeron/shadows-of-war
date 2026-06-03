@@ -28,12 +28,17 @@
     };
 
     function assetPathVariants(file) {
+        const bootBase = window.SOW_BOOT_UI_BASE;
+        if (bootBase && typeof bootBase === 'string') {
+            const root = bootBase.replace(/\/$/, '');
+            return [root + '/' + file];
+        }
         const base = window.SOW_ASSETS_URL;
         if (base && typeof base === 'string') {
             const root = base.replace(/\/$/, '');
-            return [root + '/static/ui/' + file, root + '/ui/' + file];
+            return [root + '/cdn/ui/' + file];
         }
-        return ['./assets/static/ui/' + file, './assets/ui/' + file];
+        return ['https://shadowsofwar.io/assets/cdn/ui/' + file];
     }
 
     function assetPath(file) {
@@ -230,26 +235,7 @@
         layout();
         window.addEventListener('resize', layout);
         window.addEventListener('orientationchange', layout);
-        wireTextureExportOnLoad(root);
         startProgress();
-    }
-
-    function wireTextureExportOnLoad(loaderRoot) {
-        const ids = [
-            'splash-bg',
-            'splash-desktop',
-            'splash-mobile',
-            'loader-bar-empty',
-            'loader-bar-full',
-        ];
-        for (const id of ids) {
-            const img = loaderRoot.querySelector('#' + id);
-            if (!img) continue;
-            img.addEventListener('load', exportWebLoaderTextures);
-            if (img.complete) {
-                exportWebLoaderTextures();
-            }
-        }
     }
 
     function teardown() {
@@ -264,68 +250,6 @@
         barFill = null;
         barFull = null;
         loaderText = null;
-    }
-
-    function rgbaFromImg(img) {
-        if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) {
-            return null;
-        }
-        const w = img.naturalWidth;
-        const h = img.naturalHeight;
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0);
-        try {
-            const data = ctx.getImageData(0, 0, w, h);
-            return {
-                width: w,
-                height: h,
-                rgba: new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength),
-            };
-        } catch {
-            return null;
-        }
-    }
-
-    /** Snapshot boot loader images for egui enter/exit splashes (called from WASM before fade). */
-    function exportWebLoaderTextures() {
-        if (!root) {
-            return window.__SOW_LOADER_TEXTURES__ || null;
-        }
-
-        const desktopEl = document.getElementById('splash-desktop');
-        const mobileEl = document.getElementById('splash-mobile');
-        const emptyEl = document.getElementById('loader-bar-empty');
-        const fullEl = document.getElementById('loader-bar-full');
-
-        let splashDesktop = rgbaFromImg(desktopEl);
-        let splashMobile = rgbaFromImg(mobileEl);
-
-        // Fallback: visible splash-bg may be decoded before hidden preload siblings.
-        if (!splashDesktop && splashBg && splashBg.src.includes('sow-splash-desktop')) {
-            splashDesktop = rgbaFromImg(splashBg);
-        }
-        if (!splashMobile && splashBg && splashBg.src.includes('sow-splash-mobile')) {
-            splashMobile = rgbaFromImg(splashBg);
-        }
-
-        const out = window.__SOW_LOADER_TEXTURES__ || {};
-        const loaderEmpty = rgbaFromImg(emptyEl);
-        const loaderFull = rgbaFromImg(fullEl);
-
-        if (splashDesktop) out.splash_desktop = splashDesktop;
-        if (splashMobile) out.splash_mobile = splashMobile;
-        if (loaderEmpty) out.loader_empty = loaderEmpty;
-        if (loaderFull) out.loader_full = loaderFull;
-
-        if (Object.keys(out).length === 0) {
-            return null;
-        }
-
-        window.__SOW_LOADER_TEXTURES__ = out;
-        return out;
     }
 
     function finish() {
@@ -352,7 +276,6 @@
     }
 
     window.hideWebLoader = finish;
-    window.exportWebLoaderTextures = exportWebLoaderTextures;
     window.SOW_initWebLoader = initWebLoader;
 
     // Game shell (play subdomain / portal): #web-loader in index.html auto-starts.

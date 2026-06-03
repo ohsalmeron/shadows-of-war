@@ -15,12 +15,13 @@
 
 const CACHE_NAME = 'sow-__BUILD_TS__';
 
+const CDN_UI = 'https://shadowsofwar.io/assets/cdn/ui';
 const PRECACHE = [
     './sow.svg',
-    './assets/static/ui/sow-splash-desktop.webp?v=__BUILD_TS__',
-    './assets/static/ui/sow-splash-mobile.webp?v=__BUILD_TS__',
-    './assets/static/ui/loader_empty.webp?v=__BUILD_TS__',
-    './assets/static/ui/loader_full.webp?v=__BUILD_TS__',
+    CDN_UI + '/sow-splash-desktop.webp?v=__BUILD_TS__',
+    CDN_UI + '/sow-splash-mobile.webp?v=__BUILD_TS__',
+    CDN_UI + '/loader_empty.webp?v=__BUILD_TS__',
+    CDN_UI + '/loader_full.webp?v=__BUILD_TS__',
 ];
 
 self.addEventListener('install', (event) => {
@@ -59,10 +60,7 @@ function isHtmlEntry(pathname) {
 }
 
 function isStaticUiAsset(pathname) {
-    return (
-        pathname.endsWith('/sow.svg') ||
-        pathname.includes('/assets/static/ui/')
-    );
+    return pathname.endsWith('/sow.svg');
 }
 
 function isCachedMapAsset(pathname) {

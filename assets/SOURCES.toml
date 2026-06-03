@@ -1,5 +1,5 @@
 # Asset provenance tracker for Shadows of War.
-# Layout: assets/static/ (bundled in dist + WASM embeds), assets/streamed/ (CDN only).
+# Layout: assets/static/ (repo maps/fonts/HUD sources), assets/cdn/ (prod HTTP only).
 # source: placeholder | original | ai_generated | google_fonts | svg_repo
 
 [game_icons_owned]
@@ -37,6 +37,7 @@ tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "Per tool Terms of Service — verify redistribution rights"
 status = "pending_tos_review"
 files = ["sow-splash-desktop.webp", "sow-splash-mobile.webp"]
+notes = "Published to assets/cdn/ui/ on CDN sync (resized via copy_static_ui_webp)."
 
 [loaders]
 path = "assets/static/ui/"
@@ -44,6 +45,7 @@ source = "placeholder"
 license = "AGPL-3.0-or-later"
 files = ["loader_empty.webp", "loader_full.webp"]
 status = "themed_placeholder"
+notes = "Served from assets/cdn/ui/ on shadowsofwar.io (not bundled in portal zip)."
 
 [avatars]
 path = "assets/static/avatars/"
@@ -55,7 +57,7 @@ ai_dossier = "docs/leaders/README.md (prompts and roster; provide to Poki/CrazyG
 notes = "Verify each AI tool ToS allows redistribution before store release."
 
 [leader_portraits]
-path = "assets/streamed/leaders/"
+path = "assets/cdn/leaders/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "CC-BY-SA-4.0"

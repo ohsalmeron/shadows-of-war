@@ -9,7 +9,7 @@ resources/.DS_Store
 .env*
 OpenFrontIO/
 MapGenerator/
-deploy/keystores/
+sow-dist/deploy/keystores/
 sow-client/signing.local.toml
 .DS_Store
 .clinic/
@@ -27,7 +27,7 @@ src/assets/
 dump.rdb
 *debug*.txt
 eslint_out.txt
-# Legacy; leader portraits live under assets/streamed/leaders/
+# Leader portraits + boot UI publish tree: assets/cdn/
 wasm-pack*.*
 .cursor/
 blade/
@@ -39,5 +39,5 @@ dist-wasm-size-check/
 shadows-of-war-*.zip
 winit/
 egui/
-deploy/android/
+sow-dist/deploy/android/
 shadows-of-war*/

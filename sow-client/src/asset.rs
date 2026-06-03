@@ -14,6 +14,7 @@ impl SowApp {
 
         self.poll_thumbnail_fetches();
         self.poll_leader_portrait_fetches();
+        self.poll_boot_ui_fetches();
 
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
@@ -124,6 +125,20 @@ impl SowApp {
                         mobile,
                         bytes,
                     );
+                }
+                MapDownloadEvent::BootUiReady { kind, bytes } => {
+                    match self.ui.app.asset_loader.ingest_boot_ui_webp_bytes(
+                        &self.ui.egui_ctx,
+                        kind,
+                        &bytes,
+                    ) {
+                        Ok(()) => log::debug!("Loaded boot UI asset {:?}", kind),
+                        Err(e) => log::warn!("Failed to ingest boot UI {:?}: {}", kind, e),
+                    }
+                }
+                MapDownloadEvent::BootUiFailed { kind, reason } => {
+                    log::warn!("Boot UI fetch failed for {:?}: {}", kind, reason);
+                    self.ui.app.asset_loader.note_boot_ui_fetch_failed(kind);
                 }
                 MapDownloadEvent::LeaderPortraitFailed {
                     leader,
@@ -267,6 +282,63 @@ impl SowApp {
                 }
             }
         });
+    }
+
+    fn fetch_boot_ui_at(
+        urls: Vec<String>,
+        index: usize,
+        tx: crossbeam_channel::Sender<MapDownloadEvent>,
+        kind: sow_ui::ui::asset_loader::UiSplashTexture,
+    ) {
+        let Some(url) = urls.get(index) else {
+            let _ = tx.send(MapDownloadEvent::BootUiFailed {
+                kind,
+                reason: "no boot UI URLs".to_string(),
+            });
+            return;
+        };
+        let url = url.clone();
+        let urls = urls.clone();
+        let request = ehttp::Request::get(&url);
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            match result {
+                Ok(res) if res.ok => {
+                    let _ = tx.send(MapDownloadEvent::BootUiReady {
+                        kind,
+                        bytes: res.bytes,
+                    });
+                }
+                Ok(res) if res.status == 404 && index + 1 < urls.len() => {
+                    Self::fetch_boot_ui_at(urls, index + 1, tx, kind);
+                }
+                Ok(res) => {
+                    let _ = tx.send(MapDownloadEvent::BootUiFailed {
+                        kind,
+                        reason: format!("HTTP {}", res.status),
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(MapDownloadEvent::BootUiFailed {
+                        kind,
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        });
+    }
+
+    fn poll_boot_ui_fetches(&mut self) {
+        use sow_ui::ui::asset_loader::MAX_BOOT_UI_FETCHES_IN_FLIGHT;
+
+        while self.ui.app.asset_loader.boot_ui_in_flight.len() < MAX_BOOT_UI_FETCHES_IN_FLIGHT {
+            let Some(kind) = self.ui.app.asset_loader.take_next_boot_ui_fetch_pending() else {
+                break;
+            };
+            let urls = self.asset_config.boot_ui_asset_urls(kind.filename());
+            log::debug!("Fetching boot UI {:?} urls={:?}", kind, urls);
+            let tx = self.tasks.map_tx.clone();
+            Self::fetch_boot_ui_at(urls, 0, tx, kind);
+        }
     }
 
     fn poll_leader_portrait_fetches(&mut self) {

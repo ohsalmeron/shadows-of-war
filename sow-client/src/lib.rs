@@ -78,6 +78,14 @@ pub enum MapDownloadEvent {
         mobile: bool,
         reason: String,
     },
+    BootUiReady {
+        kind: sow_ui::ui::asset_loader::UiSplashTexture,
+        bytes: Vec<u8>,
+    },
+    BootUiFailed {
+        kind: sow_ui::ui::asset_loader::UiSplashTexture,
+        reason: String,
+    },
     Progress(String, u8),
     Error(String),
 }

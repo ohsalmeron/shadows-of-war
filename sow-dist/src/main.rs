@@ -1,0 +1,124 @@
+mod cdn;
+mod deploy;
+mod package;
+mod paths;
+mod process;
+mod tools;
+mod version;
+mod wasm;
+
+use anyhow::Result;
+use clap::{Args, Parser, Subcommand};
+use package::Profile;
+use paths::Paths;
+use std::path::Path;
+
+#[derive(Parser)]
+#[command(name = "sow-dist", about = "Shadows of War — build dist/ and deploy")]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Command,
+}
+
+#[derive(Args)]
+struct VersionOpts {
+    /// Increment repo `.version` before build/deploy.
+    #[arg(short = 'v', long, visible_aliases = ["v"])]
+    version: bool,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Package dist/crazygames/ (portal .br + assets/static). Syncs prod CDN in parallel.
+    #[command(name = "crazygames", visible_alias = "cg")]
+    Crazygames {
+        #[command(flatten)]
+        opts: VersionOpts,
+    },
+    /// Deploy play.shadowsofwar.io.
+    Play {
+        #[command(flatten)]
+        opts: VersionOpts,
+    },
+    /// Deploy ptr.shadowsofwar.io.
+    Ptr {
+        #[command(flatten)]
+        opts: VersionOpts,
+    },
+}
+
+fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
+    args.map(|a| {
+        if a == "-version" {
+            "--version".into()
+        } else {
+            a
+        }
+    })
+    .collect()
+}
+
+fn parse_cli() -> Cli {
+    Cli::parse_from(normalize_version_argv(std::env::args()))
+}
+
+fn main() -> Result<()> {
+    let cli = parse_cli();
+    let paths = Paths::discover()?;
+    tools::check_build_tools()?;
+
+    match cli.cmd {
+        Command::Crazygames { opts } => cmd_crazygames(&paths, opts.version),
+        Command::Play { opts } => cmd_play(&paths, opts.version),
+        Command::Ptr { opts } => cmd_ptr(&paths, opts.version),
+    }
+}
+
+fn resolve_version(paths: &Paths, increment: bool) -> Result<String> {
+    if increment {
+        version::increment(paths)
+    } else {
+        version::load(paths)
+    }
+}
+
+fn run_parallel(paths: &Paths, profile: Profile, out: &Path, version: &str) -> Result<()> {
+    let paths_cdn = paths.clone();
+    let paths_pkg = paths.clone();
+    let out = out.to_path_buf();
+    let version = version.to_string();
+    let cdn = cdn::start_background(&paths_cdn);
+    let pkg = std::thread::spawn(move || {
+        wasm::compile(&paths_pkg)?;
+        package::build(&paths_pkg, profile, &out, &version)
+    });
+    cdn.join().expect("cdn thread panicked")?;
+    pkg.join().expect("package thread panicked")?;
+    Ok(())
+}
+
+fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
+    let version = resolve_version(paths, increment_version)?;
+    run_parallel(paths, Profile::Crazygames, &paths.dist_crazygames, &version)?;
+    println!(
+        "CrazyGames ready: {} — upload entire folder (no assets/cdn/)",
+        paths.dist_crazygames.display()
+    );
+    Ok(())
+}
+
+fn cmd_play(paths: &Paths, increment_version: bool) -> Result<()> {
+    let version = resolve_version(paths, increment_version)?;
+    run_parallel(paths, Profile::SelfHosted, &paths.dist_play, &version)?;
+    deploy::deploy_play(paths)?;
+    println!("Play deployed v{version} → https://play.shadowsofwar.io/");
+    Ok(())
+}
+
+fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
+    let version = resolve_version(paths, increment_version)?;
+    run_parallel(paths, Profile::SelfHosted, &paths.dist_ptr, &version)?;
+    deploy::deploy_ptr(paths)?;
+    println!("PTR deployed v{version} → https://ptr.shadowsofwar.io/");
+    Ok(())
+}

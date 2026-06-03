@@ -29,62 +29,53 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-client` | Game executable (native + WASM) |
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
+| `sow-dist` | WASM `dist/` build + deploy; `sow-dist/deploy/` (nginx, Android/iOS shells, keystores) |
 | `sow-web/site/` | Marketing site (static HTML: landing, privacy, terms) |
 | `sow-web/shell/` | Game shell (WASM loader, index template, portal SDK) |
-| `assets/` | All shipped art (maps, UI, icons, fonts) |
-| `scripts/sow.sh` | Build, local dev, deploy (`local`, `crazygames`, `cloud`, …) |
-| `deploy/` | nginx VPS configs, Android/iOS shells, release keystore (local) |
+| `assets/` | Art sources (`static/`, published `cdn/`) |
 | `docs/leaders/` | Leader AI dossier (12 regions, chronological); see `docs/leaders/README.md` |
 
 ## Web hosts
 
 | Host | Role |
 |------|------|
-| `shadowsofwar.io` | Static marketing site (links to play subdomain) |
-| `play.shadowsofwar.io` | Production game shell (auto-load WASM) |
+| `shadowsofwar.io` | Marketing + shared CDN (`/assets/cdn/`, fonts, maps API) |
+| `play.shadowsofwar.io` | Production game shell |
 | `ptr.shadowsofwar.io` | Staging game shell |
-| `shadowsofwar.io/assets`, `/maps`, `/ws` | Shared CDN for all shells |
 
-## Commands (copy-paste)
+## Commands (`sow-dist`)
 
-Each web pipeline writes its **own** folder under `dist/`. WASM shells do not copy static files; **`assets/static`** is a **symlink** to repo [`assets/static/`](assets/static/) in `dist/crazygames/` (and `local` uses the same for dev). Streamed leaders/maps load via client CDN URLs.
+Output under `dist/`. **CDN** (`assets/cdn/`) syncs to `shadowsofwar.io` in parallel with each build; **dist folders** get `assets/static/` only (no `assets/cdn/`).
+
+```bash
+cargo run -p sow-dist -- cg              # crazygames package (alias)
+cargo run -p sow-dist -- cg -v           # portal release (+ .version)
+cargo run -p sow-dist -- play            # deploy (keeps current .version)
+cargo run -p sow-dist -- play -v         # increment .version for this deploy
+cargo run -p sow-dist -- ptr
+cargo run -p sow-dist -- ptr -v
+```
+
+Release binary: `cargo build -p sow-dist --release` → `./target/release/sow-dist play`
 
 | Command | Output | Purpose |
 |---------|--------|---------|
-| `./scripts/local.sh` | `dist/play/` + assets symlink | Browser game at http://127.0.0.1:8080 |
-| `./scripts/native.sh` | *(no `dist/`)* | Rust server + 2 clients (fast logic debug) |
-| `./scripts/crazygames.sh` | `dist/crazygames/` | Portal upload (always rebuilds; `--sync-cdn` refreshes prod leaders) |
-| `./scripts/poki.sh` | `dist/poki/` | Poki portal upload folder |
-| `./scripts/cloud-game.sh` | `dist/play/` → VPS | Production play.shadowsofwar.io |
-| `./scripts/ptr.sh` | `dist/ptr/` → VPS | Staging ptr.shadowsofwar.io |
-| `./scripts/cloud.sh` | `dist/play/` + marketing | Full prod (incremental; `--force` to redeploy) |
-| `./scripts/sow.sh site` | *(none)* | Marketing pages at http://127.0.0.1:8787 |
-| `./scripts/android.sh webview` | APK | Android WebView build |
-
-Equivalent without wrappers: `./scripts/sow.sh local`, `crazygames`, `poki`, `cloud-game`, `ptr`, `cloud`, `native`, `site`.
-
-**Try locally**
-
-```bash
-./scripts/local.sh
-# open http://127.0.0.1:8080/
-```
-
-**Try CrazyGames build**
-
-```bash
-./scripts/crazygames.sh          # always rebuilds dist/crazygames/
-./scripts/crazygames.sh --sync-cdn   # also push streamed leaders to prod CDN first
-# upload everything inside dist/crazygames/ (assets/static is a symlink)
-```
-
-**Ship production play**
-
-```bash
-./scripts/cloud-game.sh
-```
+| `crazygames` / `cg` | `dist/crazygames/` | Portal zip (WASM `.br` + `assets/static/`) |
+| `play` | `dist/play/` → VPS | Production play.shadowsofwar.io |
+| `ptr` | `dist/ptr/` → VPS | Staging ptr.shadowsofwar.io |
 
 Details: [sow-web/README.md](sow-web/README.md).
+
+### Asset pipelines
+
+| Pipeline | Source | Destination |
+|----------|--------|-------------|
+| CDN (every deploy, parallel) | `assets/cdn/` | `shadowsofwar.io/html/assets/cdn/` (rsync) |
+| WASM dist | `sow-web/shell` + compiled client | `dist/play`, `dist/ptr`, or `dist/crazygames` |
+| Static in dist | `assets/static/` | `dist/*/assets/static/` |
+| Maps on server | `assets/static/maps/` | VPS sow-server maps dir (play/ptr deploy) |
+
+Boot UI and leader portraits load from the CDN URL at runtime, not from files inside `dist/`.
 
 ## License
 

@@ -44,6 +44,31 @@ impl SowApp {
                     egui::Pos2::ZERO,
                     egui::vec2(logical_w, logical_h),
                 ));
+
+                let physical_w = expected_w.round().max(1.0) as u32;
+                let physical_h = expected_h.round().max(1.0) as u32;
+                if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                    if let Some(sp) = self.gfx.prev_sync_point.take() {
+                        let _ = render_ctx.context.wait_for(&sp, !0);
+                    }
+                    if let Some(ref mut surface) = self.gfx.surface {
+                        render_ctx.context.reconfigure_surface(
+                            surface,
+                            gpu::SurfaceConfig {
+                                size: gpu::Extent {
+                                    width: physical_w,
+                                    height: physical_h,
+                                    depth: 1,
+                                },
+                                usage: gpu::TextureUsage::TARGET,
+                                display_sync: gpu::DisplaySync::Tear,
+                                color_space: gpu::ColorSpace::Srgb,
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+                win.request_redraw();
             }
         }
 

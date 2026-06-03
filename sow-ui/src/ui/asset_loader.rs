@@ -6,7 +6,10 @@ use web_time::{Duration, Instant};
 /// Max leader portrait HTTP requests at once (wasm) — only one hero is shown at a time.
 pub const MAX_LEADER_FETCHES_IN_FLIGHT: usize = 1;
 
-/// Desktop vs mobile leader portrait variant (for streamed assets on wasm32).
+/// Boot splash/loader webp fetches in parallel during wasm cold start.
+pub const MAX_BOOT_UI_FETCHES_IN_FLIGHT: usize = 4;
+
+/// Desktop vs mobile leader portrait variant (CDN on wasm32).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LeaderPortraitKey {
     pub leader: Leader,
@@ -50,6 +53,9 @@ pub struct AssetLoader {
     /// Queued leader portrait fetches (wasm32); drained by sow-client network layer.
     pub leaders_fetch_pending: Vec<LeaderPortraitKey>,
     pub leaders_in_flight: HashSet<LeaderPortraitKey>,
+    /// Boot loader/splash webp (wasm32 HTTP).
+    pub boot_ui_fetch_pending: Vec<UiSplashTexture>,
+    pub boot_ui_in_flight: HashSet<UiSplashTexture>,
     /// Raw portrait bytes awaiting decode (keeps main thread responsive on wasm).
     leader_decode_pending: VecDeque<(LeaderPortraitKey, Vec<u8>)>,
     /// Portrait currently shown / being loaded (drops stale fetch+decode work).
@@ -67,12 +73,39 @@ impl Default for AssetLoader {
 }
 
 /// Splash / loader bar textures used by the loading screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UiSplashTexture {
     LoaderEmpty,
     LoaderFull,
     SplashDesktop,
     SplashMobile,
+}
+
+impl UiSplashTexture {
+    pub const ALL: [Self; 4] = [
+        Self::LoaderEmpty,
+        Self::LoaderFull,
+        Self::SplashDesktop,
+        Self::SplashMobile,
+    ];
+
+    pub fn filename(self) -> &'static str {
+        match self {
+            Self::LoaderEmpty => "loader_empty.webp",
+            Self::LoaderFull => "loader_full.webp",
+            Self::SplashDesktop => "sow-splash-desktop.webp",
+            Self::SplashMobile => "sow-splash-mobile.webp",
+        }
+    }
+
+    fn loaded_in(self, loader: &AssetLoader) -> bool {
+        match self {
+            Self::LoaderEmpty => loader.ui_loader_empty.is_some(),
+            Self::LoaderFull => loader.ui_loader_full.is_some(),
+            Self::SplashDesktop => loader.splash_desktop.is_some(),
+            Self::SplashMobile => loader.splash_mobile.is_some(),
+        }
+    }
 }
 
 impl AssetLoader {
@@ -102,6 +135,8 @@ impl AssetLoader {
             hud_icons: HashMap::new(),
             leaders_fetch_pending: Vec::new(),
             leaders_in_flight: HashSet::new(),
+            boot_ui_fetch_pending: Vec::new(),
+            boot_ui_in_flight: HashSet::new(),
             leader_decode_pending: VecDeque::new(),
             leader_portrait_focus: None,
             leader_retry_state: HashMap::new(),
@@ -571,6 +606,52 @@ impl AssetLoader {
             && self.splash_mobile.is_some()
     }
 
+    pub fn request_boot_ui_fetch(&mut self, kind: UiSplashTexture) {
+        if kind.loaded_in(self) || self.boot_ui_in_flight.contains(&kind) {
+            return;
+        }
+        if self.boot_ui_fetch_pending.iter().any(|pending| *pending == kind) {
+            return;
+        }
+        self.boot_ui_fetch_pending.push(kind);
+    }
+
+    pub fn take_next_boot_ui_fetch_pending(&mut self) -> Option<UiSplashTexture> {
+        if self.boot_ui_in_flight.len() >= MAX_BOOT_UI_FETCHES_IN_FLIGHT {
+            return None;
+        }
+        let kind = self.boot_ui_fetch_pending.first().copied()?;
+        self.boot_ui_fetch_pending.remove(0);
+        self.boot_ui_in_flight.insert(kind);
+        Some(kind)
+    }
+
+    pub fn note_boot_ui_fetch_failed(&mut self, kind: UiSplashTexture) {
+        self.boot_ui_in_flight.remove(&kind);
+    }
+
+    pub fn ingest_boot_ui_webp_bytes(
+        &mut self,
+        ctx: &egui::Context,
+        kind: UiSplashTexture,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        self.boot_ui_in_flight.remove(&kind);
+        let mut image =
+            image::load_from_memory(bytes).map_err(|e| format!("decode {:?}: {e}", kind))?;
+        if image.width() > 2048 || image.height() > 2048 {
+            image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
+        }
+        let image_rgba = image.to_rgba8();
+        let width = image_rgba.width();
+        let height = image_rgba.height();
+        let rgba = image_rgba.as_raw();
+        if !self.ingest_ui_splash_texture(ctx, kind, width, height, rgba) {
+            return Err(format!("ingest {:?} size mismatch", kind));
+        }
+        Ok(())
+    }
+
     pub fn ingest_ui_splash_texture(
         &mut self,
         ctx: &egui::Context,
@@ -629,41 +710,53 @@ impl AssetLoader {
             }
         }
 
-        if self.ui_loader_empty.is_some() {
+        if self.ui_splash_ready() {
             return;
         }
 
-        let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
-            let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
-
-            if image.width() > 2048 || image.height() > 2048 {
-                image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = ctx;
+            for kind in UiSplashTexture::ALL {
+                self.request_boot_ui_fetch(kind);
             }
+            return;
+        }
 
-            let image_rgba = image.to_rgba8();
-            let size = [image_rgba.width() as _, image_rgba.height() as _];
-            let pixels = image_rgba.as_flat_samples();
-            let color_image =
-                egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-            ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
-        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
+                let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
 
-        self.ui_loader_empty = Some(load_image(
-            "ui_loader_empty",
-            sow_core::repo_asset_bytes!("ui/loader_empty.webp"),
-        ));
-        self.ui_loader_full = Some(load_image(
-            "ui_loader_full",
-            sow_core::repo_asset_bytes!("ui/loader_full.webp"),
-        ));
-        self.splash_desktop = Some(load_image(
-            "sow_splash_desktop",
-            sow_core::repo_asset_bytes!("ui/sow-splash-desktop.webp"),
-        ));
-        self.splash_mobile = Some(load_image(
-            "sow_splash_mobile",
-            sow_core::repo_asset_bytes!("ui/sow-splash-mobile.webp"),
-        ));
+                if image.width() > 2048 || image.height() > 2048 {
+                    image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
+                }
+
+                let image_rgba = image.to_rgba8();
+                let size = [image_rgba.width() as _, image_rgba.height() as _];
+                let pixels = image_rgba.as_flat_samples();
+                let color_image =
+                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
+            };
+
+            self.ui_loader_empty = Some(load_image(
+                "ui_loader_empty",
+                sow_core::repo_asset_bytes!("ui/loader_empty.webp"),
+            ));
+            self.ui_loader_full = Some(load_image(
+                "ui_loader_full",
+                sow_core::repo_asset_bytes!("ui/loader_full.webp"),
+            ));
+            self.splash_desktop = Some(load_image(
+                "sow_splash_desktop",
+                sow_core::repo_asset_bytes!("ui/sow-splash-desktop.webp"),
+            ));
+            self.splash_mobile = Some(load_image(
+                "sow_splash_mobile",
+                sow_core::repo_asset_bytes!("ui/sow-splash-mobile.webp"),
+            ));
+        }
     }
 
     pub fn ensure_leaders_loaded(&mut self, ctx: &egui::Context) {
@@ -671,7 +764,7 @@ impl AssetLoader {
         #[cfg(not(target_arch = "wasm32"))]
         {
             use std::path::Path;
-            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/streamed/leaders");
+            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/cdn/leaders");
             for mobile in [false, true] {
                 let key = LeaderPortraitKey {
                     leader: DEFAULT,
@@ -768,7 +861,7 @@ mod tests {
         use sow_core::player::Leader;
         use std::path::Path;
 
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/streamed/leaders");
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/cdn/leaders");
         for leader in Leader::ALL {
             for mobile in [false, true] {
                 let filename =
