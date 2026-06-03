@@ -4,6 +4,7 @@ pub struct HudButton {
     text: String,
     size: f32,
     color: Color32,
+    dim: Option<f32>,
 }
 
 impl HudButton {
@@ -12,6 +13,7 @@ impl HudButton {
             text: text.into(),
             size: crate::ui::theme::hud_button_text_size(),
             color: Color32::WHITE,
+            dim: None,
         }
     }
 
@@ -19,15 +21,22 @@ impl HudButton {
         self.color = color;
         self
     }
+
+    pub fn dim(mut self, dim: f32) -> Self {
+        self.dim = Some(dim);
+        self
+    }
 }
 
 impl Widget for HudButton {
     fn ui(self, ui: &mut Ui) -> Response {
-        let size = if cfg!(target_os = "android") {
-            24.0
-        } else {
-            24.0
-        };
+        let size = self.dim.unwrap_or_else(|| {
+            if cfg!(target_os = "android") {
+                48.0
+            } else {
+                32.0
+            }
+        });
         let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
 
         let is_hovered = response.hovered();

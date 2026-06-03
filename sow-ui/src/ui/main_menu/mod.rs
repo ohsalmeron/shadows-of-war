@@ -450,6 +450,9 @@ pub fn draw(
     let profile_height = 56.0 * scale;
     let strings = &sow_i18n::get(lang).main_menu;
 
+    if state.show_single_player_setup {
+        single_player_setup::draw(root_ui, state, asset_loader, &mut action, lang);
+    } else {
     CentralPanel::default()
         .frame(
             Frame::new()
@@ -508,6 +511,7 @@ pub fn draw(
                 },
             );
         });
+    }
 
     draw_connecting_indicator(root_ui.ctx(), state, lang, compact);
     draw_map_download_indicator(root_ui.ctx(), state, lang, compact);
@@ -523,17 +527,6 @@ pub fn draw(
         )
     {
         state.show_leader_picker = false;
-    }
-
-    if state.show_single_player_setup {
-        single_player_setup::draw_modal(
-            root_ui.ctx(),
-            state,
-            asset_loader,
-            &mut action,
-            lang,
-            compact,
-        );
     }
 
     if let Some(err_msg) = &state.error_message {

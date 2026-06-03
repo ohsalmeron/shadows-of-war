@@ -96,49 +96,49 @@ impl ClientApp {
     ) -> Option<UiAction> {
         crate::ui::theme::publish_reduced_motion(ui.ctx(), self.settings_state.reduced_motion);
 
-        let mut action = match self.phase {
-            ClientPhase::MainMenu => {
-                self.asset_loader.ensure_avatars_loaded(ui.ctx());
-                #[cfg(target_arch = "wasm32")]
-                self.asset_loader
-                    .request_avatar_priority(self.main_menu_state.selected_leader);
-                self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
-                main_menu::draw(
-                    ui,
-                    &mut self.main_menu_state,
-                    &mut self.asset_loader,
-                    self.settings_state.language,
-                )
-            }
-            ClientPhase::Splash => {
-                self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
-                if let Some(new_phase) = loading_screen::draw(
-                    ui,
-                    &mut self.splash_state,
-                    &self.asset_loader,
-                    self.settings_state.language,
-                ) {
-                    self.phase = new_phase;
+        let mut action = if self.is_settings_open {
+            crate::ui::settings::draw(ui, &mut self.settings_state)
+        } else {
+            match self.phase {
+                ClientPhase::MainMenu => {
+                    self.asset_loader.ensure_avatars_loaded(ui.ctx());
+                    #[cfg(target_arch = "wasm32")]
+                    self.asset_loader
+                        .request_avatar_priority(self.main_menu_state.selected_leader);
+                    self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                    main_menu::draw(
+                        ui,
+                        &mut self.main_menu_state,
+                        &mut self.asset_loader,
+                        self.settings_state.language,
+                    )
                 }
-                None
-            }
-            ClientPhase::Playing => {
-                self.asset_loader.ensure_hud_icons_loaded(ui.ctx());
-                hud::draw(
-                    ui,
-                    &mut self.hud_state,
-                    cancel_intents,
-                    self.settings_state.language,
-                    &mut self.asset_loader,
-                )
+                ClientPhase::Splash => {
+                    self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                    if let Some(new_phase) = loading_screen::draw(
+                        ui,
+                        &mut self.splash_state,
+                        &self.asset_loader,
+                        self.settings_state.language,
+                    ) {
+                        self.phase = new_phase;
+                    }
+                    None
+                }
+                ClientPhase::Playing => {
+                    self.asset_loader.ensure_hud_icons_loaded(ui.ctx());
+                    hud::draw(
+                        ui,
+                        &mut self.hud_state,
+                        cancel_intents,
+                        self.settings_state.language,
+                        &mut self.asset_loader,
+                    )
+                }
             }
         };
 
-        let settings_action =
-            crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
-        if let Some(ref toggle) = settings_action {
-            self.apply_modal_toggle(toggle);
-        } else if let Some(ref toggle) = action {
+        if let Some(ref toggle) = &action {
             if matches!(
                 toggle,
                 UiAction::ToggleSettings

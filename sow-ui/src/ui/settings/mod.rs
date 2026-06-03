@@ -1,9 +1,8 @@
 use crate::ui::theme::{
-    accent_solo_cyan, accent_solo_cyan_hover, compact_viewport, menu_secondary_button,
-    text_secondary, viewport_scale,
+    accent_solo_cyan, accent_solo_cyan_hover, menu_secondary_button, screen_bg, text_secondary,
 };
 use crate::UiAction;
-use egui::{Align, Color32, Layout, RichText, ScrollArea, Slider, Stroke};
+use egui::{Align, Color32, Frame, Layout, RichText, ScrollArea, Slider, Stroke};
 pub use sow_i18n::Language;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,312 +48,192 @@ fn quality_help<'a>(strings: &'a sow_i18n::SettingsStrings, q: &GraphicsQuality)
     }
 }
 
-pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) -> Option<UiAction> {
+fn screen_panel_frame() -> Frame {
+    Frame::new()
+        .fill(screen_bg())
+        .inner_margin(egui::Margin::symmetric(16, 10))
+}
+
+pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiAction> {
     let mut action = None;
-    let ctx = root_ui.ctx();
-    let compact = compact_viewport(ctx);
-    let scale = viewport_scale(ctx);
     let strings = &sow_i18n::get(state.language).settings;
 
-    let progress = ctx.animate_bool_with_time(
-        egui::Id::new("settings_animation_progress"),
-        is_open,
-        crate::ui::theme::anim_duration(state.reduced_motion),
-    );
-    if progress <= 0.01 && !is_open {
-        return None;
-    }
-
-    let screen_rect = ctx.content_rect();
-    let fade = if state.reduced_motion {
-        if is_open { 1.0 } else { progress }
-    } else {
-        progress
-    };
-
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("settings_scrim"),
-    ))
-    .rect_filled(
-        screen_rect,
-        0.0,
-        Color32::from_black_alpha((200.0 * fade) as u8),
-    );
-
-    let pad = if compact { 32.0 } else { 50.0 };
-    let panel_size = if compact {
-        screen_rect.size()
-    } else {
-        screen_rect.size() - egui::vec2(pad, pad)
-    };
-    let section_gap = (if compact { 16.0 } else { 24.0 }) * scale;
-
-    let y_offset = if state.reduced_motion || !is_open {
-        0.0
-    } else {
-        let t = progress;
-        if t >= 1.0 {
-            0.0
-        } else {
-            -80.0 * (1.0 - t)
-        }
-    };
-
-    let anchor = if compact {
-        egui::Align2::LEFT_TOP
-    } else {
-        egui::Align2::CENTER_CENTER
-    };
-    let anchor_offset = if compact {
-        egui::vec2(0.0, 0.0)
-    } else {
-        egui::vec2(0.0, y_offset)
-    };
-
-    egui::Window::new("settings_modal")
-        .title_bar(false)
-        .collapsible(false)
-        .resizable(false)
-        .order(egui::Order::Foreground)
-        .anchor(anchor, anchor_offset)
-        .fixed_size(panel_size)
-        .frame(crate::ui::theme::standard_panel_frame(compact))
-        .show(ctx, |ui| {
+    egui::Panel::top("settings_header")
+        .frame(screen_panel_frame())
+        .show_inside(root_ui, |ui| {
             ui.horizontal(|ui| {
-                crate::ui::theme::outlined_label(
-                    ui,
-                    &strings.title,
-                    egui::FontId::proportional(if compact { 26.0 } else { 32.0 } * scale),
-                    Color32::WHITE,
-                );
+                ui.heading(&strings.title);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if crate::ui::theme::modal_close_button(ui).clicked() {
                         action = Some(UiAction::ToggleSettings);
                     }
                 });
             });
+        });
 
-            ui.add_space(8.0 * scale);
-            ui.separator();
-            ui.add_space(8.0 * scale);
+    egui::Panel::bottom("settings_footer")
+        .frame(screen_panel_frame())
+        .show_inside(root_ui, |ui| {
+            let back_btn = crate::widgets::ThemeButton::new(&strings.back_button)
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .min_size(egui::vec2(ui.available_width(), 36.0));
+            if ui.add(back_btn).clicked() {
+                action = Some(UiAction::ToggleSettings);
+            }
+        });
 
+    egui::CentralPanel::default()
+        .frame(Frame::new().fill(screen_bg()))
+        .show_inside(root_ui, |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
+                    egui::Grid::new("settings_grid")
+                        .num_columns(2)
+                        .spacing([24.0, 10.0])
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(&strings.graphics_quality).strong());
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    let qualities = [
+                                        (GraphicsQuality::Low, &strings.quality_low),
+                                        (GraphicsQuality::Medium, &strings.quality_medium),
+                                        (GraphicsQuality::High, &strings.quality_high),
+                                    ];
+                                    for (q, label) in qualities {
+                                        let selected = state.graphics_quality == q;
+                                        let btn = egui::Button::new(label)
+                                            .fill(if selected {
+                                                accent_solo_cyan()
+                                            } else {
+                                                menu_secondary_button()
+                                            })
+                                            .stroke(if selected {
+                                                Stroke::new(1.0_f32, accent_solo_cyan_hover())
+                                            } else {
+                                                Stroke::NONE
+                                            });
+                                        if ui.add(btn).clicked() {
+                                            state.graphics_quality = q;
+                                            touch_applied(state);
+                                        }
+                                    }
+                                });
+                                ui.label(
+                                    RichText::new(quality_help(strings, &state.graphics_quality))
+                                        .small()
+                                        .color(text_secondary()),
+                                );
+                            });
+                            ui.end_row();
 
-                    let quality_gap = 8.0 * scale;
-                    let quality_btn_w =
-                        ((ui.available_width() - quality_gap * 2.0) / 3.0).max(64.0);
-
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &strings.graphics_quality,
-                        egui::FontId::proportional(18.0 * scale),
-                        Color32::WHITE,
-                    );
-                    ui.add_space(8.0 * scale);
-                    ui.horizontal(|ui| {
-                        ui.set_width(ui.available_width());
-                        let qualities = [
-                            (GraphicsQuality::Low, &strings.quality_low),
-                            (GraphicsQuality::Medium, &strings.quality_medium),
-                            (GraphicsQuality::High, &strings.quality_high),
-                        ];
-
-                        for (q, label) in qualities {
-                            let is_selected = state.graphics_quality == q;
-                            let btn_fill = if is_selected {
-                                accent_solo_cyan()
-                            } else {
-                                menu_secondary_button()
-                            };
-                            let text_color = if is_selected {
-                                Color32::BLACK
-                            } else {
-                                Color32::WHITE
-                            };
-                            let btn_stroke = if is_selected {
-                                Stroke::new(1.0_f32, accent_solo_cyan_hover())
-                            } else {
-                                Stroke::new(1.0_f32, Color32::from_gray(80))
-                            };
-
-                            let btn = egui::Button::new(
-                                RichText::new(label).size(16.0 * scale).color(text_color),
-                            )
-                            .fill(btn_fill)
-                            .stroke(btn_stroke)
-                            .min_size(egui::vec2(quality_btn_w, 40.0 * scale));
-
-                            if ui.add(btn).clicked() {
-                                state.graphics_quality = q;
+                            ui.label(RichText::new(&strings.mute_all).color(text_secondary()));
+                            if ui.checkbox(&mut state.mute_all, "").changed() {
                                 touch_applied(state);
                             }
-                        }
-                    });
-                    ui.label(
-                        RichText::new(quality_help(strings, &state.graphics_quality))
-                            .size(12.0 * scale)
-                            .color(text_secondary()),
-                    );
+                            ui.end_row();
 
-                    ui.add_space(section_gap);
+                            ui.label(RichText::new(&strings.music_volume).color(text_secondary()));
+                            ui.add_enabled_ui(!state.mute_all, |ui| {
+                                if ui
+                                    .add(
+                                        Slider::new(&mut state.music_volume, 0.0..=1.0)
+                                            .show_value(true),
+                                    )
+                                    .changed()
+                                {
+                                    touch_applied(state);
+                                }
+                            });
+                            ui.end_row();
 
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &strings.audio,
-                        egui::FontId::proportional(18.0 * scale),
-                        Color32::WHITE,
-                    );
-                    ui.add_space(8.0 * scale);
+                            ui.label(RichText::new(&strings.sfx_volume).color(text_secondary()));
+                            ui.add_enabled_ui(!state.mute_all, |ui| {
+                                if ui
+                                    .add(
+                                        Slider::new(&mut state.sfx_volume, 0.0..=1.0)
+                                            .show_value(true),
+                                    )
+                                    .changed()
+                                {
+                                    touch_applied(state);
+                                }
+                            });
+                            ui.end_row();
 
-                    if ui
-                        .checkbox(
-                            &mut state.mute_all,
-                            RichText::new(&strings.mute_all)
-                                .size(16.0 * scale)
-                                .color(text_secondary()),
-                        )
-                        .changed()
-                    {
-                        touch_applied(state);
-                    }
-                    ui.add_space(8.0 * scale);
+                            ui.label(RichText::new(&strings.language).strong());
+                            let lang_label = match state.language {
+                                Language::English => strings.lang_english.clone(),
+                                Language::Spanish => strings.lang_spanish.clone(),
+                                _ => strings.lang_english.clone(),
+                            };
+                            egui::ComboBox::from_id_salt("language_select")
+                                .selected_text(&lang_label)
+                                .width(ui.available_width())
+                                .show_ui(ui, |ui| {
+                                    if ui
+                                        .selectable_value(
+                                            &mut state.language,
+                                            Language::English,
+                                            &strings.lang_english,
+                                        )
+                                        .clicked()
+                                    {
+                                        touch_applied(state);
+                                    }
+                                    if ui
+                                        .selectable_value(
+                                            &mut state.language,
+                                            Language::Spanish,
+                                            &strings.lang_spanish,
+                                        )
+                                        .clicked()
+                                    {
+                                        touch_applied(state);
+                                    }
+                                });
+                            ui.end_row();
 
-                    ui.add_enabled_ui(!state.mute_all, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.label(
-                            RichText::new(&strings.music_volume)
-                                .size(16.0 * scale)
-                                .color(text_secondary()),
-                        );
-                        if ui
-                            .add(Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(true))
-                            .changed()
-                        {
-                            touch_applied(state);
-                        }
-                        ui.add_space(8.0 * scale);
-                        ui.label(
-                            RichText::new(&strings.sfx_volume)
-                                .size(16.0 * scale)
-                                .color(text_secondary()),
-                        );
-                        if ui
-                            .add(Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(true))
-                            .changed()
-                        {
-                            touch_applied(state);
-                        }
-                    });
-
-                    ui.add_space(section_gap);
-
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &strings.language,
-                        egui::FontId::proportional(18.0 * scale),
-                        Color32::WHITE,
-                    );
-                    ui.add_space(8.0 * scale);
-                    let lang_label = match state.language {
-                        Language::English => strings.lang_english.clone(),
-                        Language::Spanish => strings.lang_spanish.clone(),
-                        _ => strings.lang_english.clone(),
-                    };
-                    let combo_w = ui.available_width().min(300.0);
-                    egui::ComboBox::from_id_salt("language_select")
-                        .selected_text(RichText::new(&lang_label).size(16.0 * scale))
-                        .width(combo_w)
-                        .show_ui(ui, |ui| {
+                            ui.label("");
                             if ui
-                                .selectable_value(
-                                    &mut state.language,
-                                    Language::English,
-                                    &strings.lang_english,
-                                )
-                                .clicked()
+                                .checkbox(&mut state.reduced_motion, &strings.reduced_motion)
+                                .on_hover_text(&strings.reduced_motion_help)
+                                .changed()
                             {
                                 touch_applied(state);
                             }
-                            if ui
-                                .selectable_value(
-                                    &mut state.language,
-                                    Language::Spanish,
-                                    &strings.lang_spanish,
-                                )
-                                .clicked()
-                            {
-                                touch_applied(state);
-                            }
+                            ui.end_row();
                         });
 
                     if state
                         .applied_hint_until
                         .is_some_and(|t| t.elapsed().as_secs_f32() < 2.0)
                     {
-                        ui.add_space(8.0 * scale);
                         ui.label(
-                            RichText::new(&strings.settings_applied)
-                                .size(12.0 * scale)
-                                .color(accent_solo_cyan()),
+                            RichText::new(&strings.settings_applied).color(accent_solo_cyan()),
                         );
                     }
 
-                    ui.add_space(8.0 * scale);
-                    if ui
-                        .checkbox(&mut state.reduced_motion, &strings.reduced_motion)
-                        .on_hover_text(&strings.reduced_motion_help)
-                        .changed()
-                    {
-                        touch_applied(state);
-                    }
-
-                    ui.add_space(section_gap);
-
+                    ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
-                        let link_btn = |label: &str| {
-                            egui::Button::new(
-                                RichText::new(label)
-                                    .size(16.0 * scale)
-                                    .color(accent_solo_cyan()),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE)
+                        let link = |label: &str| {
+                            egui::Button::new(RichText::new(label).color(accent_solo_cyan()))
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(Stroke::NONE)
                         };
-                        if ui.add(link_btn(&strings.privacy_policy)).clicked() {
+                        if ui.add(link(&strings.privacy_policy)).clicked() {
                             action = Some(UiAction::TogglePrivacy);
                         }
                         ui.add_space(12.0);
-                        if ui.add(link_btn(&strings.terms_of_service)).clicked() {
+                        if ui.add(link(&strings.terms_of_service)).clicked() {
                             action = Some(UiAction::ToggleTerms);
                         }
                         ui.add_space(12.0);
-                        if ui.add(link_btn(&strings.credits_licenses)).clicked() {
+                        if ui.add(link(&strings.credits_licenses)).clicked() {
                             action = Some(UiAction::ToggleCredits);
                         }
                     });
                 });
-
-            ui.add_space(section_gap);
-            ui.vertical_centered(|ui| {
-                let back_btn = crate::widgets::ThemeButton::new(&strings.back_button)
-                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                    .min_size(egui::vec2(
-                        if compact {
-                            ui.available_width()
-                        } else {
-                            200.0
-                        },
-                        50.0 * scale,
-                    ));
-
-                if ui.add(back_btn).clicked() {
-                    action = Some(UiAction::ToggleSettings);
-                }
-            });
         });
 
     action

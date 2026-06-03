@@ -1407,33 +1407,39 @@ pub fn draw(
         .anchor(Align2::RIGHT_BOTTOM, map_controls_offset)
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            crate::ui::theme::panel_frame(crate::ui::theme::PanelKind::HudOverlay, compact).show(
-                ui,
-                |ui| {
-                    let btn_w = if cfg!(target_os = "android") {
-                        48.0
-                    } else {
-                        32.0
-                    };
+            let btn_w = if cfg!(target_os = "android") {
+                46.0
+            } else {
+                30.0
+            };
+            // Area gives full screen width unless capped — otherwise the frame paints a fat bar.
+            let rail_pad_x = 4.0;
+            let rail_w = btn_w + rail_pad_x * 2.0;
+            ui.set_width(rail_w);
+            ui.set_max_width(rail_w);
+
+            crate::ui::theme::panel_frame(crate::ui::theme::PanelKind::MapControlsRail, compact)
+                .show(ui, |ui| {
                     ui.set_width(btn_w);
+                    ui.set_max_width(btn_w);
                     ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
-                    ui.vertical_centered(|ui| {
+                    ui.vertical(|ui| {
                         if ui
-                            .add(crate::widgets::HudButton::new("+"))
+                            .add(crate::widgets::HudButton::new("+").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_zoom_in)
                             .clicked()
                         {
                             action = Some(UiAction::ZoomIn);
                         }
                         if ui
-                            .add(crate::widgets::HudButton::new("-"))
+                            .add(crate::widgets::HudButton::new("-").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_zoom_out)
                             .clicked()
                         {
                             action = Some(UiAction::ZoomOut);
                         }
                         if ui
-                            .add(crate::widgets::HudButton::new("⌖"))
+                            .add(crate::widgets::HudButton::new("⌖").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_center_camera)
                             .clicked()
                         {
@@ -1441,7 +1447,7 @@ pub fn draw(
                         }
                         ui.separator();
                         if ui
-                            .add(crate::widgets::HudButton::new("😀"))
+                            .add(crate::widgets::HudButton::new("😀").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_express_emoji)
                             .clicked()
                         {
@@ -1465,7 +1471,7 @@ pub fn draw(
                             };
 
                             let attacks_btn = ui
-                                .add(crate::widgets::HudButton::new("⚔"))
+                                .add(crate::widgets::HudButton::new("⚔").dim(btn_w))
                                 .on_hover_text(&sow_i18n::get(lang).hud.hover_battle_log);
                             if attacks_btn.clicked() {
                                 state.bottom_tab = BottomHudTab::BattleLog;
@@ -1492,8 +1498,7 @@ pub fn draw(
                             }
                         }
                     });
-                },
-            );
+                });
         });
 
     let is_emoji_active = state.show_emoji_panel;

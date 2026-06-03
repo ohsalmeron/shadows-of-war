@@ -1,7 +1,6 @@
 pub mod animation;
 pub mod asset_loader;
 pub mod credits;
-pub mod fullscreen_screen;
 pub mod hud;
 pub mod legal_doc;
 pub mod loading_screen;

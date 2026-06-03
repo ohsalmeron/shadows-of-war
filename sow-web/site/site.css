@@ -69,6 +69,19 @@ a { color: #7ec8e3; }
     color: #888;
     text-align: center;
 }
+.site-footer-nav {
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+    margin-bottom: 0.75rem;
+}
+.site-footer-nav a {
+    color: #bdbdc8;
+    text-decoration: none;
+}
+.site-footer-nav a:hover {
+    color: #fff;
+}
 .play-btn {
     display: inline-block;
     padding: 0.85rem 2.5rem;
@@ -94,11 +107,6 @@ a { color: #7ec8e3; }
     0%, 100% { box-shadow: 0 0 20px rgba(61, 107, 142, 0.35); }
     50% { box-shadow: 0 0 32px rgba(74, 127, 168, 0.55); }
 }
-.play-alt {
-    margin-top: 0.75rem;
-    font-size: 0.9rem;
-}
-.play-alt a { color: rgba(255, 255, 255, 0.55); }
 .nav-play {
     background: none;
     border: none;
@@ -108,10 +116,6 @@ a { color: #7ec8e3; }
     cursor: pointer;
 }
 .nav-play:hover { color: #fff; }
-.nav-play-tab {
-    font-size: 0.85rem;
-    color: #666;
-}
 
 /* Hero / game stage — same footprint, morph on Play */
 .sow-stage {

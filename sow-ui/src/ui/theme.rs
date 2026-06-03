@@ -242,6 +242,7 @@ pub mod tab {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PanelKind {
     HudOverlay,
+    MapControlsRail,
     FloatingCard,
     MenuRail,
 }
@@ -250,7 +251,7 @@ pub enum PanelKind {
 pub fn panel_frame(kind: PanelKind, compact: bool) -> egui::Frame {
     match kind {
         PanelKind::HudOverlay => {
-            // Bottom-left attack ratio and similar compact overlays (not the right-side icon rails).
+            // Bottom-left attack ratio and similar compact overlays.
             let (margin_x, margin_y) = if cfg!(target_os = "android") {
                 (margin::REGULAR, margin::COZY)
             } else {
@@ -261,6 +262,13 @@ pub fn panel_frame(kind: PanelKind, compact: bool) -> egui::Frame {
                 .corner_radius(radius::md())
                 .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
                 .inner_margin(Margin::symmetric(margin_x, margin_y))
+        }
+        PanelKind::MapControlsRail => {
+            egui::Frame::NONE
+                .fill(Color32::from_black_alpha(150))
+                .corner_radius(radius::sm())
+                .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
+                .inner_margin(Margin::symmetric(4, margin::TIGHT))
         }
         PanelKind::FloatingCard => standard_panel_frame(compact),
         PanelKind::MenuRail => menu_right_panel_frame(compact),
@@ -519,6 +527,10 @@ pub fn panel_bg_transparent() -> Color32 {
     palette::surface_transparent()
 }
 #[inline]
+pub fn screen_bg() -> Color32 {
+    Color32::from_rgb(8, 10, 14)
+}
+#[inline]
 pub fn menu_panel_border_glow() -> Color32 {
     palette::neon_cyan_glow()
 }
@@ -752,17 +764,6 @@ pub fn paint_count_badge(
 #[inline]
 pub fn hud_icon_rail_spacing(ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing = egui::vec2(hud_icon_spacing(), hud_icon_spacing());
-}
-
-#[inline]
-pub fn fullscreen_screen_frame(compact: bool) -> egui::Frame {
-    let margin = if compact { 16 } else { 24 };
-    egui::Frame::new()
-        .fill(Color32::from_rgb(8, 10, 14))
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::ZERO)
-        .inner_margin(Margin::same(margin))
-        .shadow(egui::Shadow::NONE)
 }
 
 #[inline]
