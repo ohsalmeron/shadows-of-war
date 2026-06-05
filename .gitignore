@@ -1,7 +1,7 @@
 build/
 node_modules/
 out/
-static/
+/static/
 coverage/
 TODO.txt
 resources/images/.DS_Store

@@ -5,9 +5,10 @@ Thank you for your interest in contributing!
 ## Getting started
 
 1. Fork the repository and clone your fork.
-2. Build the workspace: `cargo build --workspace`
-3. Run tests: `cargo test --workspace`
-4. Format and lint before submitting:
+2. Ensure `assets/static/` is complete (including `assets/static/fonts/` — required for compile-time UI embed).
+3. Build the workspace: `cargo build --workspace`
+4. Run tests: `cargo test --workspace`
+5. Format and lint before submitting:
    ```bash
    cargo fmt --all
    cargo clippy --workspace -- -D warnings

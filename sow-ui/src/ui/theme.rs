@@ -584,7 +584,7 @@ pub fn text_secondary() -> Color32 {
 }
 
 pub fn apply_theme(ctx: &Context) {
-    // JockeyOne only — do not pull in egui bundled default/emoji font blobs.
+    // PressStart2P only — do not pull in egui bundled default/emoji font blobs.
     let mut fonts = egui::FontDefinitions {
         font_data: Default::default(),
         families: Default::default(),
