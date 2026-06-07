@@ -5,10 +5,7 @@ use anyhow::{bail, Context, Result};
 pub fn serve_site_dev(paths: &Paths, port: u16) -> Result<()> {
     let www = &paths.dist_site_dev_www;
     if !www.join("index.html").is_file() {
-        bail!(
-            "missing {} — run: cargo run -p sow-dist -- localsite",
-            www.display()
-        );
+        bail!("missing {} — run: ./sow local", www.display());
     }
     let bind = format!("127.0.0.1:{port}");
     println!("==> Serving {} at http://{bind}/", www.display());

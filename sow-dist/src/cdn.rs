@@ -1,4 +1,3 @@
-use crate::assets::UI_FONT_FILE;
 use crate::paths::{Paths, PROD_ASSETS_PATH, PROD_HOST, PROD_USER};
 use crate::process;
 use crate::tools;
@@ -12,7 +11,7 @@ const LEADERS: &[&str] = &[
     "napoleon",
 ];
 
-/// Full CDN pipeline: prepare repo tree, rsync to marketing host, verify HTTP.
+/// Rsync assets/cdn/ to the marketing host (no assets/static/ to VPS).
 pub fn sync_to_prod(paths: &Paths) -> Result<()> {
     prepare_boot_ui(paths)?;
     check_leader_portraits(&paths.assets_cdn.join("leaders"))?;
@@ -46,8 +45,6 @@ pub fn sync_to_prod(paths: &Paths) -> Result<()> {
         &[&remote, &format!("chmod -R a+rX {PROD_ASSETS_PATH}/cdn")],
         None,
     )?;
-    sync_marketing_fonts(paths, &remote)?;
-    sync_marketing_nginx(paths)?;
     verify_prod_cdn()?;
     println!("✅ CDN pipeline OK");
     Ok(())
@@ -137,66 +134,6 @@ fn check_leader_portraits(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn sync_marketing_fonts(paths: &Paths, remote: &str) -> Result<()> {
-    let font_path = paths.assets_static.join("fonts").join(UI_FONT_FILE);
-    if !font_path.is_file() {
-        bail!(
-            "missing {} (canonical UI font; see sow-dist/src/assets.rs)",
-            font_path.display()
-        );
-    }
-    println!("==> Syncing fonts → {PROD_USER}@{PROD_HOST}:{PROD_ASSETS_PATH}/fonts/");
-    process::run(
-        "ssh",
-        &[remote, &format!("mkdir -p {PROD_ASSETS_PATH}/fonts")],
-        None,
-    )?;
-    let src = format!("{}/", paths.assets_static.join("fonts").display());
-    let dst = format!("{remote}:{PROD_ASSETS_PATH}/fonts/");
-    process::run(
-        "rsync",
-        &[
-            "-avz",
-            "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r",
-            &src,
-            &dst,
-        ],
-        None,
-    )?;
-    process::run(
-        "ssh",
-        &[remote, &format!("chmod -R a+rX {PROD_ASSETS_PATH}/fonts")],
-        None,
-    )?;
-    Ok(())
-}
-
-fn sync_marketing_nginx(paths: &Paths) -> Result<()> {
-    let local = paths.deploy_nginx.join("shadowsofwar.io.conf");
-    let remote = format!("{PROD_USER}@{PROD_HOST}");
-    let local_s = local.to_string_lossy();
-    let hash = process::output("md5sum", &[local_s.as_ref()])?;
-    let hash = hash.split_whitespace().next().context("md5")?;
-    process::run(
-        "scp",
-        &[local_s.as_ref(), &format!("{remote}:/tmp/sow-nginx.conf")],
-        None,
-    )?;
-    let remote_script = format!(
-        "set -euo pipefail; export PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH; \
-         NGINX_SITE=/etc/nginx/sites-available/shadowsofwar.io; LOCAL_HASH={hash}; \
-         changed=0; remote_hash=; \
-         [[ -f \"$NGINX_SITE\" ]] && remote_hash=$(md5sum \"$NGINX_SITE\" | awk '{{print $1}}'); \
-         if [[ \"$remote_hash\" != \"$LOCAL_HASH\" ]]; then \
-           echo '==> Updating nginx...'; sudo cp /tmp/sow-nginx.conf \"$NGINX_SITE\"; \
-           sudo ln -sf \"$NGINX_SITE\" /etc/nginx/sites-enabled/shadowsofwar.io; \
-           sudo nginx -t && sudo systemctl reload nginx; echo '✅ Nginx reloaded.'; \
-         else echo '✅ Nginx config unchanged.'; fi"
-    );
-    process::run("ssh", &[&remote, &remote_script], None)?;
-    Ok(())
-}
-
 fn verify_prod_cdn() -> Result<()> {
     println!("==> Verifying prod CDN...");
     let client = reqwest::blocking::Client::builder()
@@ -206,7 +143,6 @@ fn verify_prod_cdn() -> Result<()> {
         "https://shadowsofwar.io/assets/cdn/leaders/caesar_desktop.webp".to_string(),
         "https://shadowsofwar.io/assets/cdn/ui/loader_empty.webp".to_string(),
         "https://shadowsofwar.io/assets/cdn/avatars/caesar.webp".to_string(),
-        format!("https://shadowsofwar.io/assets/fonts/{UI_FONT_FILE}"),
     ];
     for url in urls {
         let resp = client.head(&url).send().with_context(|| url.clone())?;

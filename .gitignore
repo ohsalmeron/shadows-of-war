@@ -10,6 +10,7 @@ resources/.DS_Store
 OpenFrontIO/
 MapGenerator/
 sow-dist/deploy/keystores/
+/home/bizkit/Documents/GitHub/shadows-of-war/nix/nixos/vps
 sow-client/signing.local.toml
 .DS_Store
 .clinic/
@@ -27,6 +28,7 @@ src/assets/
 dump.rdb
 *debug*.txt
 eslint_out.txt
+
 # Leader portraits + boot UI publish tree: assets/cdn/
 wasm-pack*.*
 .cursor/
@@ -36,6 +38,9 @@ scripts/__pycache__/
 scripts/git-filter-repo
 dist/
 dist-wasm-size-check/
+result
+result-*
+.direnv/
 shadows-of-war-*.zip
 winit/
 egui/

@@ -19,7 +19,7 @@ Thank you for your interest in contributing!
 Static HTML lives in `sow-web/site/` (landing, privacy, terms). The WASM game shell lives in `sow-web/shell/` — see `sow-web/README.md`. Do not embed game code in the marketing pages.
 
 ```bash
-cargo run -p sow-dist -- localsite   # marketing site + iframe embed at http://127.0.0.1:8787/
+cargo run -p sow-dist -- local   # or: ./sow local
 ```
 
 ## Pull requests

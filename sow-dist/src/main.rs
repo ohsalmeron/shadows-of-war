@@ -1,6 +1,7 @@
 mod assets;
 mod cdn;
 mod deploy;
+mod infra;
 mod package;
 mod paths;
 mod process;
@@ -16,7 +17,7 @@ use paths::Paths;
 use std::path::Path;
 
 #[derive(Parser)]
-#[command(name = "sow-dist", about = "Shadows of War — build dist/ and deploy")]
+#[command(name = "sow", about = "Shadows of War — build dist/ and deploy")]
 struct Cli {
     #[command(subcommand)]
     cmd: Command,
@@ -31,26 +32,33 @@ struct VersionOpts {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Package dist/crazygames/ (portal .br + assets/static). Syncs prod CDN in parallel.
-    #[command(name = "crazygames", visible_alias = "cg")]
+    /// Package dist/crazygames/ (portal .br + embedded assets/static). Syncs assets/cdn/ in parallel.
+    #[command(name = "crazygames", visible_aliases = ["cg"])]
     Crazygames {
         #[command(flatten)]
         opts: VersionOpts,
     },
-    /// Deploy play.shadowsofwar.io.
-    #[command(name = "play", visible_alias = "p")]
-    Play {
+    /// Full prod deploy: play shell, marketing site, prod server (not PTR).
+    #[command(name = "prod", visible_aliases = ["p", "play"])]
+    Prod {
         #[command(flatten)]
         opts: VersionOpts,
     },
-    /// Deploy ptr.shadowsofwar.io.
+    /// Deploy ptr.shadowsofwar.io + PTR server only.
     Ptr {
         #[command(flatten)]
         opts: VersionOpts,
     },
-    /// Local marketing + iframe embed: build wasm, stage www, serve (one pipeline).
-    #[command(name = "localsite", visible_alias = "ls")]
-    Localsite {
+    /// Apply NixOS VPS infra (nginx, systemd, valkey, server binaries).
+    #[command(name = "infra")]
+    Infra {
+        /// VPS hostname or IP (default: prod host from paths).
+        #[arg(long)]
+        host: Option<String>,
+    },
+    /// Local WASM QA: iframe embed, prod wss/CDN at runtime.
+    #[command(name = "local", visible_aliases = ["l", "localsite", "ls"])]
+    Local {
         #[command(flatten)]
         opts: VersionOpts,
         #[arg(short, long, default_value_t = 8787)]
@@ -83,13 +91,14 @@ fn main() -> Result<()> {
 
     match cli.cmd {
         Command::Crazygames { opts } => cmd_crazygames(&paths, opts.version),
-        Command::Play { opts } => cmd_play(&paths, opts.version),
+        Command::Prod { opts } => cmd_prod(&paths, opts.version),
         Command::Ptr { opts } => cmd_ptr(&paths, opts.version),
-        Command::Localsite {
+        Command::Infra { host } => cmd_infra(&paths, host.as_deref()),
+        Command::Local {
             opts,
             port,
             build_only,
-        } => cmd_localsite(&paths, opts.version, port, build_only),
+        } => cmd_local(&paths, opts.version, port, build_only),
     }
 }
 
@@ -126,11 +135,17 @@ fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_play(paths: &Paths, increment_version: bool) -> Result<()> {
+fn cmd_prod(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     run_parallel(paths, Profile::SelfHosted, &paths.dist_play, &version)?;
-    deploy::deploy_play(paths)?;
-    println!("Play deployed v{version} → https://play.shadowsofwar.io/");
+    deploy::deploy_prod(paths)?;
+    println!("Prod deployed v{version} → https://play.shadowsofwar.io/ + https://shadowsofwar.io/");
+    Ok(())
+}
+
+fn cmd_infra(paths: &Paths, host: Option<&str>) -> Result<()> {
+    let host = host.unwrap_or(paths::PROD_HOST);
+    infra::deploy_infra(paths, host)?;
     Ok(())
 }
 
@@ -142,14 +157,14 @@ fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_localsite(
+fn cmd_local(
     paths: &Paths,
     increment_version: bool,
     port: u16,
     build_only: bool,
 ) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    println!("==> localsite v{version} (no CDN sync, no brotli, prod APIs at runtime)");
+    println!("==> local v{version} (no CDN sync, prod wss/CDN at runtime)");
     wasm::compile(paths)?;
     package::build(
         paths,
@@ -159,7 +174,7 @@ fn cmd_localsite(
     )?;
     package::stage_site_www(paths)?;
     let www = &paths.dist_site_dev_www;
-    println!("Localsite ready: {}", www.display());
+    println!("Local ready: {}", www.display());
     if build_only {
         println!("  --build-only: skipped server (re-run without flag to serve)");
         return Ok(());

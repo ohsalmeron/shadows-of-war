@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Shadows of War — single entrypoint: ./sow cg | p | prod | ptr | l | local
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${ROOT}"
+
+if [[ -z "${SOW_IN_NIX_SHELL:-}" ]] && [[ -z "${SOW_NO_NIX:-}" ]] \
+    && command -v nix >/dev/null 2>&1 && [[ -f "${ROOT}/flake.nix" ]]; then
+  exec nix develop -c "${BASH_SOURCE[0]}" "$@"
+fi
+
+BIN="${ROOT}/target/release/sow"
+needs_build=0
+if [[ ! -x "${BIN}" ]]; then
+  needs_build=1
+elif find "${ROOT}/sow-dist/src" "${ROOT}/sow-dist/Cargo.toml" -newer "${BIN}" 2>/dev/null | grep -q .; then
+  needs_build=1
+fi
+if [[ "${needs_build}" -eq 1 ]]; then
+  echo "==> building sow..."
+  cargo build -q -p sow-dist --release
+fi
+exec "${BIN}" "$@"

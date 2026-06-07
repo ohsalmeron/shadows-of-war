@@ -15,6 +15,10 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
+
+fn relay_bin() -> String {
+    std::env::var("SOW_RELAY_BIN").unwrap_or_else(|_| "./sow-relay".to_string())
+}
 const RELAY_PORT_MIN: u16 = 25570;
 const RELAY_PORT_MAX: u16 = 25600;
 
@@ -128,7 +132,7 @@ async fn main() {
                             });
 
                             let log_file = std::fs::File::create(format!("relay_{}.log", relay_port)).unwrap();
-                            let mut cmd = tokio::process::Command::new("./sow-relay");
+                            let mut cmd = tokio::process::Command::new(relay_bin());
                             cmd.arg("--port").arg(relay_port.to_string())
                                .arg("--lobby-json").arg(relay_config.to_string())
                                .stdin(std::process::Stdio::null())

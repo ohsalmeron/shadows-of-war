@@ -102,7 +102,12 @@ pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> 
         }
     };
 
-    stage_static_assets(paths, out_dir)?;
+    match profile {
+        Profile::Crazygames | Profile::SiteDev => {
+            stage_static_assets(paths, out_dir)?;
+        }
+        Profile::SelfHosted => {}
+    }
     prune_querystring_artifacts(out_dir)?;
     verify_layout(out_dir, profile)?;
 
@@ -294,12 +299,24 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
     if dir.join("assets/cdn").exists() {
         bail!("{} must not contain assets/cdn/ (CDN is remote only)", dir.display());
     }
-    let font = dir.join("assets/static/fonts").join(UI_FONT_FILE);
-    if !font.is_file() {
-        bail!(
-            "{} missing assets/static/fonts/{UI_FONT_FILE}",
-            dir.display()
-        );
+    match profile {
+        Profile::Crazygames | Profile::SiteDev => {
+            let font = dir.join("assets/static/fonts").join(UI_FONT_FILE);
+            if !font.is_file() {
+                bail!(
+                    "{} missing assets/static/fonts/{UI_FONT_FILE}",
+                    dir.display()
+                );
+            }
+        }
+        Profile::SelfHosted => {
+            if dir.join("assets").exists() {
+                bail!(
+                    "{} must not bundle assets/ (runtime CDN: shadowsofwar.io/assets/cdn/)",
+                    dir.display()
+                );
+            }
+        }
     }
     match profile {
         Profile::Crazygames => {

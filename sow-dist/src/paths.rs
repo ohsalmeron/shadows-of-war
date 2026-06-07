@@ -22,7 +22,7 @@ pub struct Paths {
     pub version_file: PathBuf,
     pub cargo_target: PathBuf,
     pub wasm_opt_cache: PathBuf,
-    pub deploy_nginx: PathBuf,
+    pub infra_hash_cache: PathBuf,
 }
 
 impl Paths {
@@ -42,9 +42,13 @@ impl Paths {
             version_file: root.join(".version"),
             cargo_target: root.join("target"),
             wasm_opt_cache: root.join("dist/.sow-wasm-opt-cache"),
-            deploy_nginx: crate_dir.join("deploy/nginx"),
+            infra_hash_cache: root.join("dist/.sow-infra-hash"),
             root,
         })
+    }
+
+    pub fn infra_hash_cache(&self) -> PathBuf {
+        self.infra_hash_cache.clone()
     }
 
     pub fn wasm_release_input(&self) -> PathBuf {
