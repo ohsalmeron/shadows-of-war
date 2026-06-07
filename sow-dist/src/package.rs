@@ -270,10 +270,14 @@ fn stage_static_assets(paths: &Paths, out: &Path) -> Result<()> {
         fs::remove_dir_all(&dest)?;
     }
     fs::create_dir_all(dest.parent().unwrap())?;
-    println!("==> Staging assets/static → {}", dest.display());
+    println!("==> Staging assets/static (no maps/) → {}", dest.display());
     let src = format!("{}/", paths.assets_static.display());
     let dst = format!("{}/", dest.display());
-    process::run("rsync", &["-a", &src, &dst], None)?;
+    process::run(
+        "rsync",
+        &["-a", "--exclude=maps/", &src, &dst],
+        None,
+    )?;
     Ok(())
 }
 
@@ -305,6 +309,12 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
             if !font.is_file() {
                 bail!(
                     "{} missing assets/static/fonts/{UI_FONT_FILE}",
+                    dir.display()
+                );
+            }
+            if dir.join("assets/static/maps").exists() {
+                bail!(
+                    "{} must not bundle assets/static/maps/ (offline map is embedded in WASM)",
                     dir.display()
                 );
             }

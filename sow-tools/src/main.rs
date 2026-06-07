@@ -19,7 +19,7 @@ mod rasterizer;
     long_about = "Shadows of War map tooling.\n\n\
         With no subcommand, generates a map from an OpenStreetMap bounding box:\n\
         sow-tools --bbox min_lon,min_lat,max_lon,max_lat --name my_map\n\n\
-        Override output root with SOW_MAPS_ROOT (default: assets/static/maps)."
+        Override output root with SOW_MAPS_ROOT (default: assets/maps)."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -33,7 +33,7 @@ enum Commands {
     /// Import an OpenFront map folder (image.png + info.json, or map.bin + manifest.json).
     #[command(name = "import-openfront")]
     ImportOpenfront(ImportOpenfrontArgs),
-    /// Regenerate assets/static/maps/catalog.bin from map.bin headers in subfolders.
+    /// Regenerate assets/maps/catalog.bin from map.bin headers in subfolders.
     #[command(name = "refresh-catalog")]
     RefreshCatalog(RefreshCatalogArgs),
     /// Generate a map from a source world-map PNG (land/water by pixel color).
@@ -48,7 +48,7 @@ struct ImageMapArgs {
     #[arg(short, long)]
     input: PathBuf,
 
-    /// Output map slug under assets/static/maps.
+    /// Output map slug under assets/maps.
     #[arg(short, long)]
     name: String,
 
@@ -71,7 +71,7 @@ struct ImageMapArgs {
 
 #[derive(Parser, Debug)]
 struct RefreshCatalogArgs {
-    #[arg(long, default_value = "assets/static/maps")]
+    #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
 }
 
@@ -82,7 +82,7 @@ pub struct GenerateArgs {
     #[arg(short, long, allow_hyphen_values = true)]
     pub bbox: Option<String>,
 
-    /// Output map slug under SOW_MAPS_ROOT / assets/static/maps (e.g. guadalajara)
+    /// Output map slug under SOW_MAPS_ROOT / assets/maps (e.g. guadalajara)
     #[arg(short, long)]
     pub name: Option<String>,
 
@@ -109,12 +109,12 @@ struct ImportOpenfrontArgs {
     #[arg(short, long)]
     input: PathBuf,
 
-    /// Output slug under assets/static/maps (defaults to folder name)
+    /// Output slug under assets/maps (defaults to folder name)
     #[arg(short, long)]
     name: Option<String>,
 
     /// Maps root directory (also set via SOW_MAPS_ROOT env var in exporter)
-    #[arg(long, default_value = "assets/static/maps")]
+    #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
 }
 
@@ -286,7 +286,7 @@ async fn run_generate(
         force,
     )?;
 
-    println!("Generation complete! Saved to assets/static/maps/{name}");
+    println!("Generation complete! Saved to assets/maps/{name}");
     println!("Map data © OpenStreetMap contributors (ODbL). See https://www.openstreetmap.org/copyright");
     Ok(())
 }
@@ -330,6 +330,6 @@ fn run_image_map(args: ImageMapArgs) -> Result<(), Box<dyn Error>> {
         args.force,
     )?;
 
-    println!("Generation complete! Saved to assets/static/maps/{}", args.name);
+    println!("Generation complete! Saved to assets/maps/{}", args.name);
     Ok(())
 }

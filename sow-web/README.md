@@ -53,7 +53,7 @@ Privacy and Terms body text for the marketing site **and** in-game Settings moda
 ## `dist/crazygames/` layout
 
 - `index.html` (loads `sow_client.js.br` / `sow_client_bg.wasm.br`)
-- `assets/static/` — fonts, maps metadata, UI sources bundled for portal
+- `assets/static/` — fonts, icons, HUD sources, **one offline map** (`maps/world/`)
 - `sdk/`, favicons
 - No `assets/cdn/` — CrazyGames loads art from prod CDN
 

@@ -1,15 +1,18 @@
-{ pkgs, self, ... }:
+{ pkgs, self, config, ... }:
 
 let
   sowServer = self.packages.x86_64-linux.sow-server;
   sowRelay = self.packages.x86_64-linux.sow-relay;
+
+  prodData = "${config.sow.dataRoot}/prod";
+  ptrData = "${config.sow.dataRoot}/ptr";
 
   prodEnv = {
     RUST_LOG = "info";
     SOW_REDIS_URL = "redis://127.0.0.1:6379";
     SOW_WS_LISTEN = "0.0.0.0:25565";
     SOW_MAPS_HTTP_LISTEN = "0.0.0.0:25566";
-    SOW_MAPS_ROOT = "/home/bizkit/shadowsofwar/assets/maps";
+    SOW_MAPS_ROOT = "${prodData}/maps";
     SOW_RELAY_BIN = "${sowRelay}/bin/sow-relay";
   };
 
@@ -18,7 +21,7 @@ let
     SOW_REDIS_URL = "redis://127.0.0.1:6379";
     SOW_WS_LISTEN = "0.0.0.0:25575";
     SOW_MAPS_HTTP_LISTEN = "0.0.0.0:25576";
-    SOW_MAPS_ROOT = "/home/bizkit/shadowsofwar-ptr/assets/maps";
+    SOW_MAPS_ROOT = "${ptrData}/maps";
     SOW_RELAY_BIN = "${sowRelay}/bin/sow-relay";
   };
 in
@@ -33,9 +36,9 @@ in
     requires = [ "valkey.service" ];
     serviceConfig = {
       Type = "simple";
-      User = "bizkit";
+      User = config.sow.deployUser;
       Group = "users";
-      WorkingDirectory = "/home/bizkit/shadowsofwar";
+      WorkingDirectory = prodData;
       ExecStart = "${sowServer}/bin/sow-server";
       Restart = "always";
       RestartSec = 3;
@@ -54,9 +57,9 @@ in
     requires = [ "valkey.service" ];
     serviceConfig = {
       Type = "simple";
-      User = "bizkit";
+      User = config.sow.deployUser;
       Group = "users";
-      WorkingDirectory = "/home/bizkit/shadowsofwar-ptr";
+      WorkingDirectory = ptrData;
       ExecStart = "${sowServer}/bin/sow-server";
       Restart = "always";
       RestartSec = 3;

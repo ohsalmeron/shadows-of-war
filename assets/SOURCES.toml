@@ -1,5 +1,7 @@
 # Asset provenance tracker for Shadows of War.
-# Layout: assets/static/ (repo maps/fonts/HUD sources), assets/cdn/ (prod HTTP only).
+# Layout: assets/static/ (compile-time embed: fonts, icons, one offline map),
+#         assets/maps/ (online map library → VPS /maps/ API),
+#         assets/cdn/ (prod HTTP art only).
 # source: placeholder | original | ai_generated | google_fonts | svg_repo
 
 [game_icons_owned]
@@ -100,5 +102,11 @@ source = "google_fonts"
 license = "SIL Open Font License 1.1"
 files = ["PressStart2P-Regular.ttf"]
 
-[maps]
-notes = "Only northamerica shipped under assets/static/maps/. OpenFront-derived maps removed."
+[maps_offline]
+path = "assets/static/maps/world/"
+source = "image"
+notes = "Single offline-bundled map (WASM include_bytes). Online library: assets/maps/."
+
+[maps_online]
+path = "assets/maps/"
+notes = "Map editor + sow-tools output; rsync to VPS SOW_MAPS_ROOT. Only world/ tracked in git."

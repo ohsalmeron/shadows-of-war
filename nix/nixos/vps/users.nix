@@ -1,7 +1,7 @@
 { config, ... }:
 
 {
-  users.users.bizkit = {
+  users.users.${config.sow.deployUser} = {
     isNormalUser = true;
     description = "Shadows of War deploy user";
     extraGroups = [ "wheel" ];

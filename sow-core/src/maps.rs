@@ -3,7 +3,13 @@
 pub use crate::map_file::{MapCatalog, MapCatalogEntry, MapFile, MapHeader, MapSpawn};
 
 /// Default map key when catalog is empty or name is unknown.
-pub const DEFAULT_MAP_KEY: &str = "northamerica";
+pub const DEFAULT_MAP_KEY: &str = "world";
+
+/// Repo path for the online map library (authoring + server deploy). Not embedded in the client.
+pub const SERVER_MAPS_ROOT: &str = "assets/maps";
+
+/// Repo path for the single offline-bundled map (compile-time embed only).
+pub const BUNDLED_MAPS_ROOT: &str = "assets/static/maps";
 
 /// Mobile-safe upper bound (~OpenFront Pangaea: 1000×1000).
 pub const MAX_MAP_PIXELS: u32 = 1_000_000;
@@ -156,32 +162,32 @@ pub fn load_map_from_payload(bytes: &[u8]) -> Result<MapFile, crate::map_file::M
 #[inline]
 pub fn bundled_map_br(key: &str) -> Option<&'static [u8]> {
     match map_key(key).as_str() {
-        "northamerica" => Some(crate::repo_asset_bytes!("maps/northamerica/map.bin.br")),
+        "world" => Some(crate::repo_asset_bytes!("maps/world/map.bin.br")),
         _ => None,
     }
 }
 
-/// Read `map.bin.br` from `assets/static/maps/<key>/` when running native from the repo root.
+/// Read `map.bin.br` from the server map library when running native from the repo root.
 #[cfg(feature = "std")]
 #[inline]
 pub fn read_map_br_from_repo(key: &str) -> Option<Vec<u8>> {
-    let path = std::path::Path::new("assets/static/maps")
+    let path = std::path::Path::new(SERVER_MAPS_ROOT)
         .join(map_key(key))
         .join("map.bin.br");
     std::fs::read(path).ok()
 }
 
-/// Read `thumbnail.webp` from `assets/static/maps/<key>/` when running native from the repo root.
+/// Read `thumbnail.webp` from the server map library when running native from the repo root.
 #[cfg(feature = "std")]
 #[inline]
 pub fn read_thumbnail_webp_from_repo(key: &str) -> Option<Vec<u8>> {
-    let path = std::path::Path::new("assets/static/maps")
+    let path = std::path::Path::new(SERVER_MAPS_ROOT)
         .join(map_key(key))
         .join("thumbnail.webp");
     std::fs::read(path).ok()
 }
 
-/// Repo `assets/static/maps`, valid cached download, then compile-time bundled bytes.
+/// Repo server map library, valid cached download, then compile-time bundled offline map.
 #[inline]
 pub fn load_map_br_payload(key: &str, cached: Option<Vec<u8>>) -> Option<Vec<u8>> {
     #[cfg(feature = "std")]

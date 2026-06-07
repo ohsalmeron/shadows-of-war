@@ -25,7 +25,7 @@ cargo run -p sow-dist -- local   # or: ./sow local
 ## Pull requests
 
 - Keep changes focused — one logical change per PR when possible.
-- Update `assets/SOURCES.toml` and `assets/static/maps/SOURCES.toml` if you add or replace assets.
+- Update `assets/SOURCES.toml`, `assets/maps/SOURCES.toml`, and `assets/static/maps/SOURCES.toml` if you add or replace assets.
 - New shipped art (portraits, avatars): default to **CC BY-SA 4.0** per `docs/legal/LICENSE-ASSETS`; verify AI tool ToS before setting `license = "CC-BY-SA-4.0"`.
 - Document OSM-derived maps with `source = "osm"` and attribution in SOURCES.toml.
 - Do not commit secrets, `sow-dist/deploy/keystores/`, `.env` files, or `OpenFrontIO/proprietary/` assets.

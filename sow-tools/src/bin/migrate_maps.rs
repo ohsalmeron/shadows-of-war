@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 )]
 struct Args {
     /// Maps root directory
-    #[arg(long, default_value = "assets/static/maps")]
+    #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
 
     /// List maps that would be migrated without writing files

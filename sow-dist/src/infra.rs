@@ -1,4 +1,4 @@
-use crate::paths::{Paths, PROD_HOST, PROD_USER};
+use crate::paths::{deploy_user, Paths};
 use crate::process;
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
@@ -8,7 +8,7 @@ use std::path::Path;
 const SERVER_CRATES: &[&str] = &["sow-server", "sow-relay", "sow-core", "sow-net"];
 
 pub fn deploy_infra(paths: &Paths, host: &str) -> Result<()> {
-    let remote = format!("{PROD_USER}@{host}");
+    let remote = format!("{}@{host}", deploy_user());
     if remote_is_nixos(&remote)? {
         install_nixos_rebuild(&remote, paths)?;
     } else {
@@ -16,21 +16,6 @@ pub fn deploy_infra(paths: &Paths, host: &str) -> Result<()> {
     }
     write_infra_hash(paths)?;
     println!("✅ NixOS infra applied on {host}");
-    Ok(())
-}
-
-pub fn maybe_deploy_infra(paths: &Paths) -> Result<()> {
-    let remote = format!("{PROD_USER}@{PROD_HOST}");
-    if !remote_is_nixos(&remote)? {
-        println!("==> Remote is not NixOS — run `./sow infra` once to replace Debian");
-        return Ok(());
-    }
-    if server_crates_changed(paths)? {
-        println!("==> Server crates changed — rebuilding NixOS infra");
-        deploy_infra(paths, PROD_HOST)?;
-    } else {
-        println!("==> Server crates unchanged — skipping nixos-rebuild");
-    }
     Ok(())
 }
 
@@ -85,18 +70,6 @@ fn install_nixos_anywhere(remote: &str, paths: &Paths) -> Result<()> {
         Some(&paths.root),
     )?;
     Ok(())
-}
-
-fn server_crates_changed(paths: &Paths) -> Result<bool> {
-    let current = hash_server_inputs(paths)?;
-    let cache = paths.infra_hash_cache();
-    if cache.is_file() {
-        let prev = fs::read_to_string(&cache)?.trim().to_string();
-        if prev == current {
-            return Ok(false);
-        }
-    }
-    Ok(true)
 }
 
 fn write_infra_hash(paths: &Paths) -> Result<()> {

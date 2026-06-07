@@ -1,17 +1,44 @@
 use crate::infra;
-use crate::paths::{Paths, PROD_HOST, PROD_USER};
+use crate::paths::{deploy_host, deploy_user, remote_maps_prod, remote_maps_ptr, Paths};
 use crate::process;
 use anyhow::{Context, Result};
 
+/// Remote maps dir: env override, else read `SOW_MAPS_ROOT` from the live systemd unit.
+fn resolve_remote_maps(remote: &str, unit: &str, env_var: &str, fallback: &str) -> String {
+    if let Ok(p) = std::env::var(env_var) {
+        return p;
+    }
+    if let Ok(out) = process::output(
+        "ssh",
+        &[
+            remote,
+            &format!("systemctl show {unit} -p Environment --value 2>/dev/null || true"),
+        ],
+    ) {
+        for token in out.split_whitespace() {
+            if let Some(v) = token.strip_prefix("SOW_MAPS_ROOT=") {
+                return v.to_string();
+            }
+        }
+    }
+    fallback.to_string()
+}
+
 pub fn deploy_prod(paths: &Paths) -> Result<()> {
-    let remote = format!("{PROD_USER}@{PROD_HOST}");
+    let remote = format!("{}@{}", deploy_user(), deploy_host());
     println!("==> Deploying prod content → play.shadowsofwar.io + marketing → shadowsofwar.io");
-    infra::maybe_deploy_infra(paths)?;
     let dist = format!("{}/", paths.dist_play.display());
     let play_html = format!("{remote}:/var/www/play.shadowsofwar.io/html/");
     let main_html = format!("{remote}:/var/www/shadowsofwar.io/html/");
     let site = format!("{}/", paths.site_web.display());
-    let maps = format!("{}/", paths.assets_static.join("maps").display());
+    let maps = format!("{}/", paths.assets_maps.display());
+    let maps_dir = resolve_remote_maps(
+        &remote,
+        "sow-server",
+        "SOW_REMOTE_MAPS_PROD",
+        &remote_maps_prod(),
+    );
+    let maps_remote = format!("{remote}:{}/", maps_dir.trim_end_matches('/'));
     std::thread::scope(|s| -> Result<()> {
         let a = s.spawn(|| {
             process::run(
@@ -31,7 +58,7 @@ pub fn deploy_prod(paths: &Paths) -> Result<()> {
                     "--exclude=manifest.json",
                     "--exclude=maps.json",
                     &maps,
-                    &format!("{remote}:/home/bizkit/shadowsofwar/assets/maps/"),
+                    &maps_remote,
                 ],
                 None,
             )
@@ -54,12 +81,18 @@ pub fn deploy_prod(paths: &Paths) -> Result<()> {
 }
 
 pub fn deploy_ptr(paths: &Paths) -> Result<()> {
-    let remote = format!("{PROD_USER}@{PROD_HOST}");
+    let remote = format!("{}@{}", deploy_user(), deploy_host());
     println!("==> Deploying ptr content → ptr.shadowsofwar.io");
-    infra::maybe_deploy_infra(paths)?;
     let dist = format!("{}/", paths.dist_ptr.display());
     let html = format!("{remote}:/var/www/ptr.shadowsofwar.io/html/");
-    let maps = format!("{}/", paths.assets_static.join("maps").display());
+    let maps = format!("{}/", paths.assets_maps.display());
+    let maps_dir = resolve_remote_maps(
+        &remote,
+        "sow-server-ptr",
+        "SOW_REMOTE_MAPS_PTR",
+        &remote_maps_ptr(),
+    );
+    let maps_remote = format!("{remote}:{}/", maps_dir.trim_end_matches('/'));
     std::thread::scope(|s| -> Result<()> {
         let a = s.spawn(|| process::run("rsync", &["-avzL", "--delete", "--exclude=*.bin", &dist, &html], None));
         let d = s.spawn(|| {
@@ -72,7 +105,7 @@ pub fn deploy_ptr(paths: &Paths) -> Result<()> {
                     "--exclude=manifest.json",
                     "--exclude=maps.json",
                     &maps,
-                    &format!("{remote}:/home/bizkit/shadowsofwar-ptr/assets/maps/"),
+                    &maps_remote,
                 ],
                 None,
             )

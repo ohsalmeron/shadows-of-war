@@ -214,9 +214,9 @@ for i in 0..num_sparks {
 
 ## Key Files
 
-- [map.wgsl](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-render/src/shaders/map.wgsl) — all shader effects
-- [map_renderer.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-render/src/map_renderer.rs) — MapGlobals struct, R32Uint packing, flash decay
-- [render/mod.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-client/src/render/mod.rs) — slot filling from game state
-- [layer4_5_effects.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-client/src/render/world/layer4_5_effects.rs) — Mushroom clouds, lens flares, spark physics
-- [layer3_buildings.rs](file:///home/bizkit/Documents/GitHub/shadows-of-war/sow-client/src/render/world/layer3_buildings.rs) — Bunker crackling plasma laser weapons
+- [map.wgsl](../sow-render/src/shaders/map.wgsl) — all shader effects
+- [map_renderer.rs](../sow-render/src/map_renderer.rs) — MapGlobals struct, R32Uint packing, flash decay
+- [render/mod.rs](../sow-client/src/render/mod.rs) — slot filling from game state
+- [layer4_5_effects.rs](../sow-client/src/render/world/layer4_5_effects.rs) — Mushroom clouds, lens flares, spark physics
+- [layer3_buildings.rs](../sow-client/src/render/world/layer3_buildings.rs) — Bunker crackling plasma laser weapons
 

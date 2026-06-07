@@ -1,0 +1,7 @@
+# Online map library (rsync → VPS SOW_MAPS_ROOT, served at /maps/).
+# Additional map folders here are gitignored; only `world/` is tracked as the seed map.
+
+[world]
+source = "image"
+attribution = "Derived from a world-map heightmap image (OpenFront MapGenerator asset)."
+notes = "Generated via `sow-tools image-map`. Copy map.bin.br + thumbnail.webp to assets/static/maps/world/ after edits to refresh the offline WASM bundle."

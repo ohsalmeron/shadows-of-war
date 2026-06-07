@@ -2,8 +2,8 @@
 const UI_FONT_FILE: &str = "PressStart2P-Regular.ttf";
 
 fn main() {
-    println!("cargo:rerun-if-changed=../assets/static/maps");
-    let map_path = "../assets/static/maps/northamerica/map.bin.br";
+    println!("cargo:rerun-if-changed=../assets/static/maps/world");
+    let map_path = "../assets/static/maps/world/map.bin.br";
     println!("cargo:rerun-if-changed={map_path}");
 
     let font_path = format!("../assets/static/fonts/{UI_FONT_FILE}");

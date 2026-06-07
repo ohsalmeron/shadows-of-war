@@ -1,4 +1,4 @@
-use crate::paths::{Paths, PROD_ASSETS_PATH, PROD_HOST, PROD_USER};
+use crate::paths::{deploy_host, deploy_user, Paths, PROD_ASSETS_PATH};
 use crate::process;
 use crate::tools;
 use anyhow::{bail, Context, Result};
@@ -16,8 +16,10 @@ pub fn sync_to_prod(paths: &Paths) -> Result<()> {
     prepare_boot_ui(paths)?;
     check_leader_portraits(&paths.assets_cdn.join("leaders"))?;
     check_avatar_files(&paths.assets_cdn.join("avatars"))?;
-    println!("==> Syncing CDN → {PROD_USER}@{PROD_HOST}:{PROD_ASSETS_PATH}/cdn/");
-    let remote = format!("{PROD_USER}@{PROD_HOST}");
+    let host = deploy_host();
+    let user = deploy_user();
+    println!("==> Syncing CDN → {user}@{host}:{PROD_ASSETS_PATH}/cdn/");
+    let remote = format!("{user}@{host}");
     process::run(
         "ssh",
         &[

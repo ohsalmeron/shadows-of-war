@@ -7,12 +7,12 @@ use std::path::PathBuf;
 #[command(name = "write-play-catalog")]
 struct Args {
     /// Maps root (e.g. assets/maps)
-    #[arg(long, default_value = "assets/static/maps")]
+    #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
     /// Output catalog.bin path
     #[arg(short, long)]
     output: PathBuf,
-    /// Map folder keys (e.g. northamerica)
+    /// Map folder keys (e.g. world)
     keys: Vec<String>,
 }
 

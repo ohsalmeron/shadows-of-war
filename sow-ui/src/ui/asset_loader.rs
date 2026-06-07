@@ -874,7 +874,7 @@ impl AssetLoader {
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
         if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
-            let bytes = sow_core::repo_asset_bytes!("maps/northamerica/thumbnail.webp");
+            let bytes = sow_core::repo_asset_bytes!("maps/world/thumbnail.webp");
             if let Some(color_image) =
                 crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
             {
@@ -1025,13 +1025,13 @@ impl AssetLoader {
 mod tests {
     #[test]
     fn test_bundled_map_br_present() {
-        assert!(sow_core::maps::bundled_map_br("northamerica").is_some());
-        assert!(sow_core::maps::bundled_map_br("world").is_none());
+        assert!(sow_core::maps::bundled_map_br("world").is_some());
+        assert!(sow_core::maps::bundled_map_br("northamerica").is_none());
     }
 
     #[test]
     fn test_thumbnail_decoding() {
-        let bytes = sow_core::repo_asset_bytes!("maps/northamerica/thumbnail.webp");
+        let bytes = sow_core::repo_asset_bytes!("maps/world/thumbnail.webp");
         assert!(image::load_from_memory(bytes).is_ok());
     }
 

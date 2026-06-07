@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
 #[command(
-    about = "Generate the tutorial map under assets/static/maps/tutorial",
+    about = "Generate the tutorial map under assets/maps/tutorial",
     long_about = "Builds the fixed tutorial terrain and writes map.bin + catalog.bin.\n\n\
-        Example:\n  cargo run --bin generate-tutorial -- --maps-root assets/static/maps"
+        Example:\n  cargo run --bin generate-tutorial -- --maps-root assets/maps"
 )]
 struct Args {
     /// Maps root directory
-    #[arg(long, default_value = "assets/static/maps")]
+    #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
 }
 
@@ -126,13 +126,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let output_dir = args.maps_root.join("northamerica");
+    let output_dir = args.maps_root.join("tutorial");
     fs::create_dir_all(&output_dir)?;
 
     let terrain_bytes: Vec<u8> = terrain_final.iter().map(|t| t.as_byte()).collect();
     let num_land = terrain_bytes.iter().filter(|b| (*b & 0x80) != 0).count() as u32;
     let map_file = MapFile {
-        display_name: "North America".to_string(),
+        display_name: "Tutorial".to_string(),
         width,
         height,
         num_land_tiles: num_land,

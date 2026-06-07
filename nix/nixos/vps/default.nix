@@ -19,6 +19,16 @@
   ];
 
   options.sow = {
+    deployUser = lib.mkOption {
+      type = lib.types.str;
+      default = "sow";
+      description = "Unix user for deploy, nginx static roots, and systemd services.";
+    };
+    dataRoot = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/sow";
+      description = "Runtime data root (prod/ptr map libraries and server working dirs).";
+    };
     adminSshKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default =
@@ -30,7 +40,7 @@
             );
         in
         readKeys ./authorized_keys;
-      description = "SSH public keys for the bizkit admin user.";
+      description = "SSH public keys for the deploy admin user.";
     };
     acmeEmail = lib.mkOption {
       type = lib.types.str;
@@ -48,7 +58,7 @@
     ];
     nix.settings.trusted-users = [
       "root"
-      "bizkit"
+      config.sow.deployUser
     ];
 
     # Packages referenced by systemd (store paths pinned to flake revision).

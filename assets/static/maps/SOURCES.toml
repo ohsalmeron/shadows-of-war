@@ -1,6 +1,7 @@
-# Map provenance. source: original | osm | image
+# Offline bundled map only (compile-time embed in WASM via repo_asset_bytes!).
+# Must contain exactly one slug folder. Online maps live under assets/maps/.
 
-[northamerica]
+[world]
 source = "image"
-attribution = "Derived from a world-map heightmap image (OpenFront MapGenerator asset)."
-notes = "Generated via `sow-tools image-map`: land/water classified by pixel color, BFS ocean/island/lake/shoreline + distance-magnitude, downscaled aspect-preserving to ≤1M pixels (1000x516). Nation spawns from info.json."
+attribution = "Same terrain as assets/maps/world/ — synced for offline single-player boot."
+notes = "After editing assets/maps/world/, copy map.bin.br and thumbnail.webp here and rebuild the client."

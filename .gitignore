@@ -10,7 +10,7 @@ resources/.DS_Store
 OpenFrontIO/
 MapGenerator/
 sow-dist/deploy/keystores/
-/home/bizkit/Documents/GitHub/shadows-of-war/nix/nixos/vps
+nix/nixos/vps/local.nix
 sow-client/signing.local.toml
 .DS_Store
 .clinic/
@@ -30,6 +30,11 @@ dump.rdb
 eslint_out.txt
 
 # Leader portraits + boot UI publish tree: assets/cdn/
+# Server map library (large binaries): assets/maps/
+assets/maps/*
+!assets/maps/world/
+!assets/maps/catalog.bin
+!assets/maps/SOURCES.toml
 wasm-pack*.*
 .cursor/
 blade/
