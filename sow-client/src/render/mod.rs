@@ -17,17 +17,13 @@ impl SowApp {
             sow_core::register_game_assets(&self.ui.egui_ctx);
         });
 
-        #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
-            let (w, h) = crate::web_canvas::canvas_logical_size();
-            let sf = win.scale_factor();
-            let expected_w = (w * sf) as u32;
-            let expected_h = (h * sf) as u32;
+            #[cfg(target_arch = "wasm32")]
+            crate::viewport::sync_wasm_window(self, win.as_ref());
 
-            if expected_w.abs_diff(self.input.screen_w as u32) > 1
-                || expected_h.abs_diff(self.input.screen_h as u32) > 1
-            {
-                let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
+            let vp = crate::viewport::Viewport::measure(win.as_ref());
+            if vp.physical_changed(self) {
+                self.apply_surface_resize(vp.physical);
             }
         }
 
@@ -444,59 +440,22 @@ impl SowApp {
             self.gfx.render_ctx = Some(render_ctx);
 
             // ── UI UPDATE ───────────────────────────────────────
-            let mut sf = self
+            let vp = self
                 .gfx
                 .window
                 .as_ref()
-                .map_or(1.0, |w| w.scale_factor() as f32);
-            if cfg!(any(target_os = "android", target_os = "ios")) {
-                if sf < 1.5 && self.input.screen_h > 800.0 {
-                    sf = 2.0; // Force higher scale on dense mobile displays if OS reports 1.0
-                } else if sf > 2.0 {
-                    sf = 2.0; // Don't let the GUI get too huge on iOS devices that report 3.0
-                }
-            }
-
-            self.ui.egui_ctx.set_pixels_per_point(sf);
-            self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::Vec2::new(self.input.screen_w / sf, self.input.screen_h / sf),
-            ));
-
-            let mut safe_area_top = 0.0;
-            let mut safe_area_bottom = 0.0;
-            let mut safe_area_left = 0.0;
-            let mut safe_area_right = 0.0;
-
-            if cfg!(target_os = "android") || cfg!(target_os = "ios") {
-                if let Some(win) = self.gfx.window.as_ref() {
-                    let insets = win.safe_area();
-                    safe_area_top = (insets.top as f32 / sf).round();
-                    safe_area_bottom = (insets.bottom as f32 / sf).round();
-                    safe_area_left = (insets.left as f32 / sf).round();
-                    safe_area_right = (insets.right as f32 / sf).round();
-                }
-
-                self.ui.raw_input.safe_area_insets = Some(egui::SafeAreaInsets(
-                    egui::Margin {
-                        top: safe_area_top.min(127.0) as i8,
-                        bottom: safe_area_bottom.min(127.0) as i8,
-                        left: safe_area_left.min(127.0) as i8,
-                        right: safe_area_right.min(127.0) as i8,
-                    }
-                    .into(),
-                ));
-            }
-
-            for ev in &mut self.ui.raw_input.events {
-                match ev {
-                    egui::Event::PointerMoved(pos) | egui::Event::PointerButton { pos, .. } => {
-                        pos.x /= sf;
-                        pos.y /= sf;
-                    }
-                    _ => {}
-                }
-            }
+                .map(|w| crate::viewport::Viewport::measure(w.as_ref()))
+                .unwrap_or(crate::viewport::Viewport {
+                    physical: winit::dpi::PhysicalSize::new(
+                        self.input.screen_w as u32,
+                        self.input.screen_h as u32,
+                    ),
+                    scale_factor: 1.0,
+                    logical: egui::Vec2::new(self.input.screen_w, self.input.screen_h),
+                });
+            crate::viewport::apply_to_egui(self, &vp);
+            crate::viewport::scale_pointer_events(&mut self.ui.raw_input, vp.scale_factor);
+            let sf = vp.scale_factor;
 
             let frame_now = Instant::now();
             let dt = frame_now
@@ -534,41 +493,6 @@ impl SowApp {
 
             let egui_ctx = self.ui.egui_ctx.clone();
             let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {
-                if (cfg!(target_os = "android") || cfg!(target_os = "ios"))
-                    && self.ui.app.phase == sow_ui::app::ClientPhase::MainMenu
-                {
-                    let config = crate::config::ClientVisualConfig::default();
-                    let screen_rect = ctx.content_rect();
-                    let painter = ctx.layer_painter(egui::LayerId::new(
-                        egui::Order::Foreground,
-                        egui::Id::new("safe_area_bars"),
-                    ));
-
-                    let top_c = config.top_bar_color;
-                    painter.rect_filled(
-                        egui::Rect::from_min_max(
-                            screen_rect.min,
-                            egui::pos2(screen_rect.max.x, screen_rect.min.y + safe_area_top),
-                        ),
-                        0.0,
-                        egui::Color32::from_rgba_premultiplied(
-                            top_c[0], top_c[1], top_c[2], top_c[3],
-                        ),
-                    );
-
-                    let bot_c = config.bottom_bar_color;
-                    painter.rect_filled(
-                        egui::Rect::from_min_max(
-                            egui::pos2(screen_rect.min.x, screen_rect.max.y - safe_area_bottom),
-                            screen_rect.max,
-                        ),
-                        0.0,
-                        egui::Color32::from_rgba_premultiplied(
-                            bot_c[0], bot_c[1], bot_c[2], bot_c[3],
-                        ),
-                    );
-                }
-
                 if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
                     self.render_world_overlays(ctx, sf);
                     self.render_tutorial_ui(ctx);
@@ -773,11 +697,8 @@ impl SowApp {
                             camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                         self.input.camera_zoom =
                             self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                        let sf = win.scale_factor() as f32;
-                        self.ui.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            egui::vec2(self.input.screen_w / sf.max(0.01), self.input.screen_h / sf.max(0.01)),
-                        ));
+                        let vp = crate::viewport::Viewport::measure(win.as_ref());
+                        crate::viewport::apply_to_egui(self, &vp);
                         let format = s.info().format;
 
                         if let Some(sp) = self.gfx.prev_sync_point.take() {

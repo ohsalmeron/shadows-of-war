@@ -898,7 +898,54 @@ impl AssetLoader {
             return;
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), target_os = "ios"))]
+        {
+            let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
+                let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
+
+                if image.width() > 2048 || image.height() > 2048 {
+                    image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
+                }
+
+                let image_rgba = image.to_rgba8();
+                let size = [image_rgba.width() as _, image_rgba.height() as _];
+                let pixels = image_rgba.as_flat_samples();
+                let color_image =
+                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
+            };
+
+            self.ui_loader_empty = Some(load_image(
+                "ui_loader_empty",
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../assets/cdn/ui/loader_empty.webp"
+                )),
+            ));
+            self.ui_loader_full = Some(load_image(
+                "ui_loader_full",
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../assets/cdn/ui/loader_full.webp"
+                )),
+            ));
+            self.splash_desktop = Some(load_image(
+                "sow_splash_desktop",
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../assets/cdn/ui/sow-splash-desktop.webp"
+                )),
+            ));
+            self.splash_mobile = Some(load_image(
+                "sow_splash_mobile",
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../assets/cdn/ui/sow-splash-mobile.webp"
+                )),
+            ));
+        }
+
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
         {
             fn read_ui_webp(filename: &str) -> Vec<u8> {
                 use std::path::Path;

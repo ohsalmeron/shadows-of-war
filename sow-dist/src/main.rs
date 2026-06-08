@@ -89,30 +89,15 @@ fn main() -> Result<()> {
     let paths = Paths::discover()?;
 
     match cli.cmd {
-        Command::Crazygames { opts } => {
-            tools::check_wasm_tools()?;
-            tools::check_cdn_tools()?;
-            cmd_crazygames(&paths, opts.version)
-        }
-        Command::Prod { opts } => {
-            tools::check_wasm_tools()?;
-            tools::check_cdn_tools()?;
-            cmd_prod(&paths, opts.version)
-        }
-        Command::Ptr { opts } => {
-            tools::check_wasm_tools()?;
-            tools::check_cdn_tools()?;
-            cmd_ptr(&paths, opts.version)
-        }
+        Command::Crazygames { opts } => cmd_crazygames(&paths, opts.version),
+        Command::Prod { opts } => cmd_prod(&paths, opts.version),
+        Command::Ptr { opts } => cmd_ptr(&paths, opts.version),
         Command::Infra { host } => cmd_infra(&paths, host.as_deref()),
         Command::Local {
             opts,
             port,
             build_only,
-        } => {
-            tools::check_wasm_tools()?;
-            cmd_local(&paths, opts.version, port, build_only)
-        }
+        } => cmd_local(&paths, opts.version, port, build_only),
     }
 }
 

@@ -699,6 +699,7 @@ impl SowApp {
                     .with_valid_orientations(
                         winit::platform::ios::ValidOrientations::LandscapeAndPortrait,
                     )
+                    .with_prefers_status_bar_hidden(true)
                     .with_prefers_home_indicator_hidden(true);
                 attributes = attributes.with_platform_attributes(Box::new(ios_attrs));
             }

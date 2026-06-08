@@ -125,6 +125,7 @@ mod map_cache;
 mod platform_output;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
+mod viewport;
 mod web_canvas;
 
 use app::SowApp;

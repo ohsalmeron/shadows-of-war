@@ -1,7 +1,9 @@
 use crate::paths::{deploy_host, deploy_user, Paths, PROD_ASSETS_PATH};
 use crate::process;
-use crate::tools;
 use anyhow::{bail, Context, Result};
+use image::codecs::webp::WebPEncoder;
+use image::imageops::FilterType;
+use image::ExtendedColorType;
 use std::fs;
 use std::path::Path;
 
@@ -68,31 +70,34 @@ fn prepare_boot_ui(paths: &Paths) -> Result<()> {
         }
         bail!("missing assets/static/ui/loader_empty.webp and assets/cdn/ui/");
     }
-    let cwebp = tools::cwebp()?;
     for (src, w, h, out) in [
-        ("loader_empty.webp", "1032", "256", "loader_empty.webp"),
-        ("loader_full.webp", "1032", "256", "loader_full.webp"),
-        ("sow-splash-mobile.webp", "720", "1280", "sow-splash-mobile.webp"),
+        ("loader_empty.webp", 1032, 256, "loader_empty.webp"),
+        ("loader_full.webp", 1032, 256, "loader_full.webp"),
+        ("sow-splash-mobile.webp", 720, 1280, "sow-splash-mobile.webp"),
     ] {
-        process::run(
-            &cwebp,
-            &[
-                "-q",
-                "82",
-                "-resize",
-                w,
-                h,
-                &ui_src.join(src).to_string_lossy(),
-                "-o",
-                &ui_cdn.join(out).to_string_lossy(),
-            ],
-            None,
-        )?;
+        resize_webp(&ui_src.join(src), &ui_cdn.join(out), w, h)?;
     }
     fs::copy(
         ui_src.join("sow-splash-desktop.webp"),
         ui_cdn.join("sow-splash-desktop.webp"),
     )?;
+    Ok(())
+}
+
+fn resize_webp(src: &Path, dst: &Path, width: u32, height: u32) -> Result<()> {
+    let img = image::open(src).with_context(|| format!("open {}", src.display()))?;
+    let resized = img.resize_exact(width, height, FilterType::Lanczos3);
+    let rgba = resized.to_rgba8();
+    let mut out = Vec::new();
+    WebPEncoder::new_lossless(&mut out)
+        .encode(
+            rgba.as_raw(),
+            rgba.width(),
+            rgba.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .with_context(|| format!("webp encode {}", dst.display()))?;
+    fs::write(dst, out).with_context(|| format!("write {}", dst.display()))?;
     Ok(())
 }
 

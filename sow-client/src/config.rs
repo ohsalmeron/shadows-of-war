@@ -24,10 +24,6 @@ pub struct ClientVisualConfig {
     // Floating gold bounty text ("💰 +N" on conquer).
     // Base font size in points; bounce scale still applies at runtime.
     pub gold_reward_notice_font_size: f32,
-
-    // Android UI Theme Settings (Main Menu)
-    pub top_bar_color: [u8; 4],
-    pub bottom_bar_color: [u8; 4],
 }
 
 impl Default for ClientVisualConfig {
@@ -44,10 +40,6 @@ impl Default for ClientVisualConfig {
             nameplate_disconnected_emoji_scale: 8.0,
             death_nameplate_font_size: 16.0,
             gold_reward_notice_font_size: 16.0,
-
-            // Android UI Theme Settings (Main Menu)
-            top_bar_color: [15, 15, 20, 255],    // Dark gray
-            bottom_bar_color: [15, 15, 20, 0], // Fully transparent
         }
     }
 }

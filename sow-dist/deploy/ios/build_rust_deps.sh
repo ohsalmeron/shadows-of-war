@@ -28,6 +28,8 @@ if [ "${LLVM_TARGET_TRIPLE_SUFFIX-}" = "-simulator" ]; then
   IS_SIMULATOR=1
 fi
 
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+
 EXECUTABLES=
 for arch in $ARCHS; do
   case "$arch" in
@@ -49,8 +51,7 @@ for arch in $ARCHS; do
       ;;
   esac
 
-  REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-  cargo build $RELFLAG --target "$TARGET" --bin sow-client --manifest-path "$REPO_ROOT/Cargo.toml"
+  cargo build $RELFLAG --target "$TARGET" -p sow-client --manifest-path "$REPO_ROOT/Cargo.toml"
 
   EXECUTABLES="$EXECUTABLES $DERIVED_FILE_DIR/cargo/$TARGET/$PROFILE/sow-client"
 done

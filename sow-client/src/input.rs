@@ -1,7 +1,7 @@
 use crate::app::SowApp;
 use crate::{camera_zoom_upper_bound, CAMERA_MIN_ZOOM};
 use blade_graphics as gpu;
-use egui::{Pos2, Rect, Vec2};
+use egui::{Pos2, Vec2};
 use sow_ui::app::ClientPhase;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
@@ -38,6 +38,82 @@ impl SowApp {
         }
     }
 
+    pub(crate) fn apply_surface_resize(
+        &mut self,
+        physical_size: winit::dpi::PhysicalSize<u32>,
+    ) {
+        if physical_size.width == 0 || physical_size.height == 0 {
+            return;
+        }
+        let sf = self
+            .gfx
+            .window
+            .as_ref()
+            .map_or(1.0, |w| w.scale_factor() as f32)
+            .max(0.01);
+        let vp = crate::viewport::Viewport {
+            physical: physical_size,
+            scale_factor: sf,
+            logical: Vec2::new(physical_size.width as f32 / sf, physical_size.height as f32 / sf),
+        };
+        if !vp.physical_changed(self) {
+            return;
+        }
+
+        let recreate_surface = cfg!(any(target_os = "android", target_os = "ios"))
+            && self.gfx.surface.is_some()
+            && vp.orientation_flipped(self);
+
+        if recreate_surface {
+            if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                if let Some(sp) = self.gfx.prev_sync_point.take() {
+                    let _ = render_ctx.context.wait_for(&sp, !0);
+                }
+                if let Some(mut s) = self.gfx.surface.take() {
+                    render_ctx.context.destroy_surface(&mut s);
+                }
+            }
+        } else if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                let _ = render_ctx.context.wait_for(&sp, !0);
+            }
+            if let Some(ref mut s) = self.gfx.surface {
+                let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
+                    gpu::DisplaySync::Block
+                } else {
+                    gpu::DisplaySync::Tear
+                };
+                render_ctx.context.reconfigure_surface(
+                    s,
+                    gpu::SurfaceConfig {
+                        size: gpu::Extent {
+                            width: physical_size.width,
+                            height: physical_size.height,
+                            depth: 1,
+                        },
+                        usage: gpu::TextureUsage::TARGET,
+                        display_sync,
+                        color_space: gpu::ColorSpace::Srgb,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        self.input.screen_w = physical_size.width as f32;
+        self.input.screen_h = physical_size.height as f32;
+        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+        self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+        crate::viewport::apply_to_egui(self, &vp);
+
+        if recreate_surface {
+            self.check_surface();
+        }
+        if let Some(win) = self.gfx.window.as_ref() {
+            win.request_redraw();
+        }
+    }
+
     pub fn handle_window_event(
         &mut self,
         event_loop: &dyn winit::event_loop::ActiveEventLoop,
@@ -63,51 +139,11 @@ impl SowApp {
                 event_loop.exit()
             }
             WindowEvent::SurfaceResized(physical_size) => {
-                if physical_size.width > 0 && physical_size.height > 0 {
-                    if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                        if let Some(sp) = self.gfx.prev_sync_point.take() {
-                            let _ = render_ctx.context.wait_for(&sp, !0);
-                        }
-                        if let Some(ref mut s) = self.gfx.surface {
-                            let display_sync = if cfg!(any(target_os = "android", target_os = "ios"))
-                            {
-                                gpu::DisplaySync::Block
-                            } else {
-                                gpu::DisplaySync::Tear
-                            };
-                            render_ctx.context.reconfigure_surface(
-                                s,
-                                gpu::SurfaceConfig {
-                                    size: gpu::Extent {
-                                        width: physical_size.width,
-                                        height: physical_size.height,
-                                        depth: 1,
-                                    },
-                                    usage: gpu::TextureUsage::TARGET,
-                                    display_sync,
-                                    color_space: gpu::ColorSpace::Srgb,
-                                    ..Default::default()
-                                },
-                            );
-                        }
-                    }
-                    self.input.screen_w = physical_size.width as f32;
-                    self.input.screen_h = physical_size.height as f32;
-                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                    self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                    let sf = self
-                        .gfx
-                        .window
-                        .as_ref()
-                        .map_or(1.0, |w| w.scale_factor() as f32)
-                        .max(0.01);
-                    self.ui.raw_input.screen_rect = Some(Rect::from_min_size(
-                        Pos2::ZERO,
-                        Vec2::new(self.input.screen_w / sf, self.input.screen_h / sf),
-                    ));
-                    if let Some(win) = self.gfx.window.as_ref() {
-                        win.request_redraw();
-                    }
+                self.apply_surface_resize(physical_size);
+            }
+            WindowEvent::ScaleFactorChanged { .. } => {
+                if let Some(size) = self.gfx.window.as_ref().map(|w| w.surface_size()) {
+                    self.apply_surface_resize(size);
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {

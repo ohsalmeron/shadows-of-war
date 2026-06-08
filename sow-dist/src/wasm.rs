@@ -4,9 +4,10 @@ use crate::tools;
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use wasm_bindgen_cli_support::Bindgen;
 
 fn run_command(mut c: Command) -> Result<()> {
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -52,22 +53,14 @@ pub fn compile(paths: &Paths) -> Result<()> {
 }
 
 pub fn bindgen(paths: &Paths, out_dir: &Path, out_name: &str) -> Result<()> {
-    let bindgen = tools::wasm_bindgen()?;
-    let wasm_in = paths.wasm_release_input();
-    process::run(
-        &bindgen,
-        &[
-            "--out-dir",
-            &out_dir.to_string_lossy(),
-            "--target",
-            "web",
-            "--out-name",
-            out_name,
-            "--no-typescript",
-            &wasm_in.to_string_lossy(),
-        ],
-        Some(&paths.root),
-    )?;
+    Bindgen::new()
+        .input_path(paths.wasm_release_input())
+        .web(true)
+        .context("wasm-bindgen web target")?
+        .out_name(out_name)
+        .typescript(false)
+        .generate(out_dir)
+        .context("wasm-bindgen generate")?;
     Ok(())
 }
 
@@ -106,26 +99,26 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
 }
 
 pub fn brotli_file(path: &Path) -> Result<()> {
-    let brotli = tools::brotli()?;
-    process::run(&brotli, &["-f", "-Z", &path.to_string_lossy()], None)?;
+    let input = fs::read(path)?;
+    let compressed = brotli_compress(&input)?;
+    fs::write(format!("{}.br", path.display()), compressed)?;
     Ok(())
 }
 
 pub fn minify_js(js: &Path) -> Result<()> {
-    let mut cmd = tools::terser_cmd()?;
-    let mut args: Vec<String> = std::mem::take(&mut cmd);
-    args.extend([
-        js.to_string_lossy().to_string(),
-        "-c".into(),
-        "-m".into(),
-        "--module".into(),
-        "-o".into(),
-        format!("{}.min", js.display()),
-    ]);
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    process::run(refs[0], &refs[1..], None)?;
-    fs::rename(format!("{}.min", js.display()), js)?;
+    let source = fs::read_to_string(js)?;
+    let minified = minifier::js::minify(&source).to_string();
+    fs::write(js, minified)?;
     Ok(())
+}
+
+fn brotli_compress(input: &[u8]) -> Result<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut writer = brotli::CompressorWriter::new(&mut out, 4096, 11, 22);
+    writer.write_all(input)?;
+    writer.flush()?;
+    drop(writer);
+    Ok(out)
 }
 
 fn file_sha256(path: &Path) -> Result<String> {

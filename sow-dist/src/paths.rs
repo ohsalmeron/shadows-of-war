@@ -4,11 +4,9 @@ pub const PROD_ASSETS_PATH: &str = "/var/www/shadowsofwar.io/html/assets";
 pub const PORTAL_JS: &str = "sow_client.js";
 pub const PORTAL_WASM: &str = "sow_client_bg.wasm";
 
-/// SSH user for deploy (`SOW_DEPLOY_USER`, else `$USER`).
+/// SSH user for deploy (`SOW_DEPLOY_USER`, else `bizkit` — matches live VPS user).
 pub fn deploy_user() -> String {
-    std::env::var("SOW_DEPLOY_USER")
-        .or_else(|_| std::env::var("USER"))
-        .unwrap_or_else(|_| "sow".into())
+    std::env::var("SOW_DEPLOY_USER").unwrap_or_else(|_| "bizkit".into())
 }
 
 /// SSH host for deploy (`SOW_DEPLOY_HOST`, else `shadowsofwar.io`).

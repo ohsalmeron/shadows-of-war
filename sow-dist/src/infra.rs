@@ -35,6 +35,8 @@ fn install_nixos_rebuild(remote: &str, paths: &Paths) -> Result<()> {
     process::run(
         "nix",
         &[
+            "--extra-experimental-features",
+            "nix-command flakes",
             "run",
             "--inputs-from",
             ".",
@@ -59,6 +61,8 @@ fn install_nixos_anywhere(remote: &str, paths: &Paths) -> Result<()> {
     process::run(
         "nix",
         &[
+            "--extra-experimental-features",
+            "nix-command flakes",
             "run",
             ".#nixos-anywhere",
             "--",

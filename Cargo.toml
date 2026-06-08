@@ -42,6 +42,8 @@ crossbeam-channel = "0.5.15"
 url = "2.5.8"
 wasm-bindgen-futures = "0.4.72"
 wasm-bindgen = "0.2.122"
+wasm-bindgen-cli-support = "0.2.122"
+minifier = "0.3.2"
 getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1.7"
 console_log = "1.0"
