@@ -4,38 +4,17 @@ use crate::tools;
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
 use wasm_bindgen_cli_support::Bindgen;
-
-fn run_command(mut c: Command) -> Result<()> {
-    c.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = c.spawn().context("spawn cargo")?;
-    stream(child.stdout.take());
-    stream(child.stderr.take());
-    if !child.wait()?.success() {
-        anyhow::bail!("cargo failed");
-    }
-    Ok(())
-}
-
-fn stream(pipe: Option<impl Read>) {
-    if let Some(out) = pipe {
-        for line in BufReader::new(out).lines().map_while(Result::ok) {
-            println!("{line}");
-        }
-    }
-}
 
 const WASM_OPT_TAG: &str = "oz-v1";
 
 pub fn compile(paths: &Paths) -> Result<()> {
     println!("==> Compiling WASM (wasm-release)...");
-    let mut c = std::process::Command::new("cargo");
-    c.current_dir(&paths.root)
-        .env("RUSTFLAGS", "-C target-feature=-bulk-memory")
-        .args([
+    process::run_env(
+        "cargo",
+        &[
             "build",
             "--profile",
             "wasm-release",
@@ -43,8 +22,10 @@ pub fn compile(paths: &Paths) -> Result<()> {
             "sow-client",
             "--target",
             "wasm32-unknown-unknown",
-        ]);
-    run_command(c)?;
+        ],
+        Some(&paths.root),
+        &[("RUSTFLAGS", "-C target-feature=-bulk-memory")],
+    )?;
     let wasm = paths.wasm_release_input();
     if !wasm.is_file() {
         anyhow::bail!("missing {}", wasm.display());
@@ -53,6 +34,7 @@ pub fn compile(paths: &Paths) -> Result<()> {
 }
 
 pub fn bindgen(paths: &Paths, out_dir: &Path, out_name: &str) -> Result<()> {
+    println!("==> Running wasm-bindgen for {out_name}...");
     Bindgen::new()
         .input_path(paths.wasm_release_input())
         .web(true)
@@ -61,6 +43,7 @@ pub fn bindgen(paths: &Paths, out_dir: &Path, out_name: &str) -> Result<()> {
         .typescript(false)
         .generate(out_dir)
         .context("wasm-bindgen generate")?;
+    println!("✅ wasm-bindgen finished");
     Ok(())
 }
 
@@ -69,9 +52,15 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
     let cache_dir = &paths.wasm_opt_cache;
     fs::create_dir_all(cache_dir)?;
     let cache_path = cache_dir.join(format!("{WASM_OPT_TAG}-{hash}.wasm"));
+    let cache_path_br = cache_dir.join(format!("{WASM_OPT_TAG}-{hash}.wasm.br"));
+    
     if cache_path.is_file() {
         println!("==> wasm-opt cache hit");
         fs::copy(&cache_path, wasm_path)?;
+        if cache_path_br.is_file() {
+            let br_dest = format!("{}.br", wasm_path.display());
+            fs::copy(&cache_path_br, br_dest)?;
+        }
         return Ok(());
     }
     if let Some(opt) = tools::wasm_opt() {
@@ -91,6 +80,12 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
             None,
         )?;
         fs::copy(wasm_path, &cache_path)?;
+        
+        // Also pre-compress the optimized WASM to cache
+        let input = fs::read(wasm_path)?;
+        let compressed = brotli_compress(&input)?;
+        fs::write(&cache_path_br, compressed)?;
+        
         println!("✅ wasm-opt finished");
     } else {
         println!("⚠️  wasm-opt not found — skipping");
@@ -99,16 +94,27 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
 }
 
 pub fn brotli_file(path: &Path) -> Result<()> {
+    let filename = path.file_name().unwrap_or_default().to_string_lossy();
+    let br_path = std::path::PathBuf::from(format!("{}.br", path.display()));
+    if br_path.is_file() {
+        println!("==> Brotli compression skipped (cache hit for {filename})");
+        return Ok(());
+    }
+    println!("==> Brotli compressing {filename}...");
     let input = fs::read(path)?;
     let compressed = brotli_compress(&input)?;
-    fs::write(format!("{}.br", path.display()), compressed)?;
+    fs::write(br_path, compressed)?;
+    println!("✅ Brotli compressing {filename} finished");
     Ok(())
 }
 
 pub fn minify_js(js: &Path) -> Result<()> {
+    let filename = js.file_name().unwrap_or_default().to_string_lossy();
+    println!("==> Minifying {filename}...");
     let source = fs::read_to_string(js)?;
     let minified = minifier::js::minify(&source).to_string();
     fs::write(js, minified)?;
+    println!("✅ Minifying {filename} finished");
     Ok(())
 }
 
@@ -121,7 +127,7 @@ fn brotli_compress(input: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn file_sha256(path: &Path) -> Result<String> {
+pub fn file_sha256(path: &Path) -> Result<String> {
     let mut f = fs::File::open(path)?;
     let mut h = Sha256::new();
     let mut buf = [0u8; 65536];

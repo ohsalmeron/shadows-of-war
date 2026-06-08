@@ -32,11 +32,17 @@ pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> 
         fs::create_dir_all(out_dir)?;
     }
 
-    let build_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        .to_string();
+    let build_ts = if matches!(profile, Profile::SelfHosted) {
+        let input_wasm = paths.wasm_release_input();
+        let hash = wasm::file_sha256(&input_wasm)?;
+        hash[..10].to_string()
+    } else {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string()
+    };
 
     let (js_file, wasm_file, bindgen_name) = match profile {
         Profile::Crazygames | Profile::SiteDev => (
@@ -278,6 +284,7 @@ fn stage_static_assets(paths: &Paths, out: &Path) -> Result<()> {
         &["-a", "--exclude=maps/", &src, &dst],
         None,
     )?;
+    println!("✅ Staging assets/static finished");
     Ok(())
 }
 
@@ -382,7 +389,9 @@ pub fn stage_site_www(paths: &Paths) -> Result<()> {
     fs::create_dir_all(www)?;
     println!("==> Staging site → {}", www.display());
     copy_dir_all(&paths.site_web, www)?;
+    println!("✅ Staging site finished");
     println!("==> Staging game shell → {}", www.join("game").display());
     copy_dir_all(game, &www.join("game"))?;
+    println!("✅ Staging game shell finished");
     Ok(())
 }

@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -8,6 +7,23 @@ fn echo_cmd(cmd: &str, args: &[&str]) {
         .chain(args.iter().map(|a| shell_quote(a)))
         .collect();
     println!("+ {}", line.join(" "));
+}
+
+fn print_cmd_executed(cmd: &str, args: &[&str], env: &[(&str, &str)]) {
+    if env.is_empty() {
+        echo_cmd(cmd, args);
+    } else {
+        let prefix: Vec<String> = env
+            .iter()
+            .map(|(k, v)| format!("{k}={}", shell_quote(v)))
+            .collect();
+        let line: Vec<String> = prefix
+            .into_iter()
+            .chain(std::iter::once(cmd.to_string()))
+            .chain(args.iter().map(|a| shell_quote(a)))
+            .collect();
+        println!("+ {}", line.join(" "));
+    }
 }
 
 fn shell_quote(s: &str) -> String {
@@ -28,20 +44,6 @@ pub fn run(cmd: &str, args: &[&str], cwd: Option<&Path>) -> Result<()> {
 }
 
 pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)]) -> Result<()> {
-    if env.is_empty() {
-        echo_cmd(cmd, args);
-    } else {
-        let prefix: Vec<String> = env
-            .iter()
-            .map(|(k, v)| format!("{k}={}", shell_quote(v)))
-            .collect();
-        let line: Vec<String> = prefix
-            .into_iter()
-            .chain(std::iter::once(cmd.to_string()))
-            .chain(args.iter().map(|a| shell_quote(a)))
-            .collect();
-        println!("+ {}", line.join(" "));
-    }
     let mut c = Command::new(cmd);
     c.args(args);
     if let Some(dir) = cwd {
@@ -51,23 +53,53 @@ pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)
         c.env(k, v);
     }
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = c.spawn().with_context(|| format!("spawn {cmd}"))?;
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    if let Some(out) = stdout {
-        for l in BufReader::new(out).lines().map_while(Result::ok) {
-            println!("{l}");
+    let child = c.spawn().with_context(|| format!("spawn {cmd}"))?;
+    let out = child.wait_with_output().with_context(|| format!("wait {cmd}"))?;
+    
+    let stdout_str = String::from_utf8_lossy(&out.stdout);
+    let stderr_str = String::from_utf8_lossy(&out.stderr);
+    
+    let mut has_warnings = false;
+    let mut has_errors = false;
+    
+    for line in stdout_str.lines().chain(stderr_str.lines()) {
+        let l_lower = line.to_lowercase();
+        if l_lower.contains("error:") || l_lower.contains("error ") {
+            has_errors = true;
+        }
+        if l_lower.contains("warning:") || l_lower.contains("warning ") || l_lower.contains("warn:") {
+            has_warnings = true;
         }
     }
-    if let Some(err) = stderr {
-        for l in BufReader::new(err).lines().map_while(Result::ok) {
-            eprintln!("{l}");
+    
+    if !out.status.success() {
+        print_cmd_executed(cmd, args, env);
+        if !stdout_str.is_empty() {
+            println!("{}", stdout_str);
+        }
+        if !stderr_str.is_empty() {
+            eprintln!("{}", stderr_str);
+        }
+        anyhow::bail!("{cmd} failed ({})", out.status);
+    }
+    
+    if has_warnings || has_errors {
+        print_cmd_executed(cmd, args, env);
+        println!("⚠️  Warnings/Errors detected during execution of {cmd}:");
+        if !stdout_str.is_empty() {
+            println!("{}", stdout_str);
+        }
+        if !stderr_str.is_empty() {
+            eprintln!("{}", stderr_str);
+        }
+    } else if cmd == "cargo" {
+        for line in stderr_str.lines() {
+            if line.contains("Finished") || line.contains("Compiling") {
+                println!("{line}");
+            }
         }
     }
-    let status = child.wait()?;
-    if !status.success() {
-        anyhow::bail!("{cmd} failed ({status})");
-    }
+    
     Ok(())
 }
 
@@ -83,12 +115,12 @@ pub fn which(cmd: &str) -> Option<String> {
 }
 
 pub fn output(cmd: &str, args: &[&str]) -> Result<String> {
-    echo_cmd(cmd, args);
     let out = Command::new(cmd)
         .args(args)
         .output()
         .with_context(|| format!("run {cmd}"))?;
     if !out.status.success() {
+        print_cmd_executed(cmd, args, &[]);
         anyhow::bail!(
             "{cmd} failed: {}",
             String::from_utf8_lossy(&out.stderr)
