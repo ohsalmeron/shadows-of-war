@@ -701,7 +701,7 @@ impl MapEditorSession {
             my_player_id: 0.0,
             hover_hex,
             hover_building_kind: 0.0,
-            _pad1: 0.0,
+            flat_map_mode: 0.0,
             fallout_slots: [[0.0; 4]; 8],
             nobuild_slots: [[0.0; 4]; 32],
         }

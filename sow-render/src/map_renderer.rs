@@ -22,7 +22,8 @@ pub struct MapGlobals {
     pub my_player_id: f32,
     pub hover_hex: [f32; 2],
     pub hover_building_kind: f32,
-    pub _pad1: f32,
+    /// 0.0 = standard 3D terrain; 1.0 = flat illustrative map (WebP thumbnail style).
+    pub flat_map_mode: f32,
     /// Up to 8 fallout zones: [center_col, center_row, radius, alpha_progress].
     pub fallout_slots: [[f32; 4]; 8],
     /// Up to 32 nobuild exclusion zones: [center_col, center_row, radius, active].

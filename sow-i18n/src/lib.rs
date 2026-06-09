@@ -85,6 +85,8 @@ pub struct SettingsStrings {
     pub settings_applied: String,
     pub reduced_motion: String,
     pub reduced_motion_help: String,
+    pub flat_map_style: String,
+    pub flat_map_style_help: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

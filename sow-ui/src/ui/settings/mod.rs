@@ -20,6 +20,7 @@ pub struct SettingsState {
     pub language: Language,
     pub applied_hint_until: Option<web_time::Instant>,
     pub reduced_motion: bool,
+    pub flat_map_style: bool,
 }
 
 impl Default for SettingsState {
@@ -32,6 +33,7 @@ impl Default for SettingsState {
             language: Language::English,
             applied_hint_until: None,
             reduced_motion: false,
+            flat_map_style: false,
         }
     }
 }
@@ -198,6 +200,16 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                             if ui
                                 .checkbox(&mut state.reduced_motion, &strings.reduced_motion)
                                 .on_hover_text(&strings.reduced_motion_help)
+                                .changed()
+                            {
+                                touch_applied(state);
+                            }
+                            ui.end_row();
+
+                            ui.label("");
+                            if ui
+                                .checkbox(&mut state.flat_map_style, &strings.flat_map_style)
+                                .on_hover_text(&strings.flat_map_style_help)
                                 .changed()
                             {
                                 touch_applied(state);
