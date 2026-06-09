@@ -260,69 +260,40 @@ impl SowApp {
                     let l_stroke = Stroke::new((1.5 + 1.0 * l_hover_t) * scale, if is_l_hovered { l_color } else { l_color.linear_multiply(0.4 + 0.3 * l_hover_t) });
                     painter.add(egui::Shape::convex_polygon(l_pts, l_fill, l_stroke));
 
-                    // Single big icon rendering helper (no text labels!)
-                    let mut handshake_registered = self.ui.handshake_svg_registered;
-                    let draw_big_icon = |angle: f32, icon: &str, hover_t: f32, disabled: bool, handshake_reg: &mut bool| {
+                    let draw_big_icon = |angle: f32, icon: &str, hover_t: f32, disabled: bool| {
                         if scale > 0.05 {
                             let current_outer = outer_r + 12.0 * hover_t * scale;
                             let r_i = (inner_r + current_outer) / 2.0;
                             let p_i = center + egui::vec2(angle.cos() * r_i, angle.sin() * r_i);
                             let alpha = (255.0 * progress.clamp(0.0, 1.0)) as u8;
                             let draw_alpha = if disabled { alpha / 2 } else { alpha };
-
-                            if icon == "🤝" {
-                                if !*handshake_reg {
-                                    *handshake_reg = true;
-                                    painter.ctx().include_bytes(
-                                        sow_core::assets::Asset::Handshake.uri(),
-                                        sow_core::repo_asset_bytes!("icons/handshake.svg").as_slice(),
-                                    );
-                                }
-                                let size_val = (26.0 + 8.0 * hover_t) * scale * 2.0;
-                                let size_hint = egui::load::SizeHint::Size {
-                                    width: size_val.round() as u32,
-                                    height: size_val.round() as u32,
-                                    maintain_aspect_ratio: true,
-                                };
-                                let handshake_rect = egui::Rect::from_center_size(p_i, egui::vec2(size_val, size_val));
-                                let load_res = painter.ctx().try_load_texture(
-                                    sow_core::assets::Asset::Handshake.uri(),
-                                    egui::TextureOptions::default(),
-                                    size_hint,
-                                );
-                                if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                                    painter.image(
-                                        texture.id,
-                                        handshake_rect,
-                                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                        Color32::from_rgba_unmultiplied(255, 255, 255, draw_alpha),
-                                    );
-                                }
-                            } else {
+                            let size_val = (34.0 + 10.0 * hover_t) * scale;
+                            let icon_rect =
+                                egui::Rect::from_center_size(p_i, egui::vec2(size_val, size_val));
+                            let tint = Color32::from_rgba_unmultiplied(255, 255, 255, draw_alpha);
+                            if !sow_ui::widgets::try_paint_emoji(painter, icon, icon_rect, tint) {
                                 painter.text(
                                     p_i,
                                     egui::Align2::CENTER_CENTER,
                                     icon,
-                                    egui::FontId::proportional((26.0 + 8.0 * hover_t) * scale),
-                                    Color32::from_rgba_unmultiplied(255, 255, 255, draw_alpha),
+                                    egui::FontId::proportional(size_val),
+                                    tint,
                                 );
                             }
                         }
                     };
 
                     let is_top_disabled = !is_friendly;
-                    draw_big_icon(-pi / 2.0, "🙋", t_hover_t, is_top_disabled, &mut handshake_registered);
-                    draw_big_icon(0.0, "⛵", r_hover_t, false, &mut handshake_registered);
-                    draw_big_icon(pi / 2.0, "🤝", b_hover_t, has_proposed_alliance, &mut handshake_registered);
+                    draw_big_icon(-pi / 2.0, "🙋", t_hover_t, is_top_disabled);
+                    draw_big_icon(0.0, "⛵", r_hover_t, false);
+                    draw_big_icon(pi / 2.0, "🤝", b_hover_t, has_proposed_alliance);
 
                     let left_icon = if is_own_territory {
                         if has_completed_port { "⚓" } else { "🔧" }
                     } else {
                         "🚀"
                     };
-                    draw_big_icon(pi, left_icon, l_hover_t, false, &mut handshake_registered);
-
-                    self.ui.handshake_svg_registered = handshake_registered;
+                    draw_big_icon(pi, left_icon, l_hover_t, false);
 
                     // Center Circle Button
                     let c_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover_center", tile_idx)), hovered_center, 0.15);

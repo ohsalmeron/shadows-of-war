@@ -102,6 +102,15 @@ source = "google_fonts"
 license = "SIL Open Font License 1.1"
 files = ["PressStart2P-Regular.ttf"]
 
+[emoji_atlas]
+path = "assets/static/emoji/"
+source = "pixel_twemoji_mc"
+license = "CC-BY-4.0"
+upstream = "https://github.com/AmberWat/PixelTwemojiMC-9"
+pin = "v8.0"
+files = ["atlas.webp"]
+notes = "Curated ~68 glyphs packed by sow-tools pack-emoji-atlas from PixelTwemojiMC-9 (9x9 pixel Twemoji); Twemoji CDN fallback for gaps. Rebuild: cargo run -p sow-tools --bin sow-tools -- pack-emoji-atlas"
+
 [maps_offline]
 path = "assets/static/maps/world/"
 source = "image"

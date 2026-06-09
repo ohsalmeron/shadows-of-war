@@ -20,6 +20,8 @@ pub struct GraphicsState {
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
+    /// Physical pixels of the last successful GPU surface reconfigure.
+    pub configured_physical: winit::dpi::PhysicalSize<u32>,
 }
 
 pub struct NetState {
@@ -177,7 +179,6 @@ pub struct UiState {
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,
     pub star_svg_registered: bool,
-    pub handshake_svg_registered: bool,
     pub floating_notices: Vec<FloatingNotice>,
     pub death_nameplates: Vec<DeathNameplateAnimation>,
 
@@ -445,6 +446,7 @@ impl SowApp {
                 gui_painter,
                 prev_sync_point,
                 needs_first_upload,
+                configured_physical: winit::dpi::PhysicalSize::new(0, 0),
             },
             net: NetState {
                 client: net_client,
@@ -530,7 +532,6 @@ impl SowApp {
                 cached_player_colors: Vec::new(),
                 cached_player_count: 0,
                 star_svg_registered: false,
-                handshake_svg_registered: false,
                 floating_notices: Vec::new(),
                 death_nameplates: Vec::new(),
 

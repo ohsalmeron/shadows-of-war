@@ -27,7 +27,9 @@ pub mod sea_lane;
 pub mod warp_fleet;
 
 pub mod assets;
+pub mod emoji;
 pub use assets::register_game_assets;
+pub use emoji::register_emoji_atlas;
 pub mod maps;
 pub mod protocol;
 pub mod tribes;

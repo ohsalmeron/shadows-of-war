@@ -72,10 +72,11 @@ macro_rules! define_game_icon_table {
 
 all_assets!(define_game_icon_table);
 
-/// Register all game SVG/PNG icons into egui's bytes:// loader (single copy in .rodata).
+/// Register all game SVG/PNG icons and the emoji atlas into egui's bytes:// loader.
 pub fn register_game_assets(ctx: &Context) {
     for &(file, bytes) in GAME_ICON_FILES {
         let uri = format!("bytes://{file}");
         ctx.include_bytes(uri, bytes);
     }
+    crate::emoji::register_emoji_atlas(ctx);
 }

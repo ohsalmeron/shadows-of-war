@@ -3,6 +3,7 @@ use std::error::Error;
 use std::path::PathBuf;
 
 mod cli_error;
+mod emoji_atlas;
 mod exporter;
 mod image_map;
 mod openfront_import;
@@ -39,6 +40,19 @@ enum Commands {
     /// Generate a map from a source world-map PNG (land/water by pixel color).
     #[command(name = "image-map")]
     ImageMap(ImageMapArgs),
+    /// Pack pixel emoji atlas + generated manifest (PixelTwemojiMC + Twemoji fallback).
+    #[command(name = "pack-emoji-atlas")]
+    PackEmojiAtlas(PackEmojiAtlasArgs),
+}
+
+#[derive(Parser, Debug)]
+struct PackEmojiAtlasArgs {
+    #[arg(long, default_value = "assets/emoji/required.txt")]
+    required: PathBuf,
+    #[arg(long, default_value = "assets/static/emoji/atlas.webp")]
+    out_atlas: PathBuf,
+    #[arg(long, default_value = "sow-core/src/emoji_manifest.rs")]
+    out_manifest: PathBuf,
 }
 
 /// Generate a map from a pre-rendered world-map image (no network calls).
@@ -136,6 +150,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             })
         }
         Some(Commands::ImageMap(args)) => run_image_map(args),
+        Some(Commands::PackEmojiAtlas(args)) => {
+            let repo_root = std::env::current_dir()?;
+            let pack_args = emoji_atlas::PackEmojiAtlasArgs {
+                repo_root,
+                required: args.required,
+                out_atlas: args.out_atlas,
+                out_manifest: args.out_manifest,
+            };
+            // reqwest::blocking + #[tokio::main] — run off the async runtime.
+            match std::thread::spawn(move || emoji_atlas::pack(pack_args)).join() {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(e)) => Err(e.to_string().into()),
+                Err(_) => Err("pack-emoji-atlas thread panicked".into()),
+            }
+        }
         None => {
             let args = cli.generate;
             let bbox = args

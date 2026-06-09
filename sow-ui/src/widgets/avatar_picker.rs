@@ -4,17 +4,109 @@ use std::sync::Once;
 const LEADER_SELECT_GROW: f32 = 0.1;
 const LEADER_SELECT_ANIM_SECS: f32 = 0.25;
 
-const RAIL_SCROLLBAR_GAP: f32 = 12.0;
-const RAIL_BAR_LANE: f32 = 10.0;
-const RAIL_HEADER_GAP: f32 = 12.0;
-const RAIL_SCROLL_TRACK_TOP_PAD: f32 = 10.0;
+const DESKTOP_NARROW_BREAKPOINT: f32 = 1024.0;
+const PICKER_VIEWPORT_KEY: &str = "leader_picker_viewport";
+const DESKTOP_RAIL_SCROLL_KEY: &str = "leader_desktop_rail_scroll_id";
+const MOBILE_CAROUSEL_SCROLL_KEY: &str = "leader_mobile_carousel_scroll_id";
 
-pub(crate) fn leader_rail_width(avatar_size: f32) -> f32 {
-    RAIL_BAR_LANE + RAIL_SCROLLBAR_GAP + avatar_size
+struct LeaderPickerMetrics {
+    is_mobile: bool,
+    rail_scrollbar_gap: f32,
+    rail_bar_lane: f32,
+    rail_header_gap: f32,
+    rail_scroll_track_top_pad: f32,
+    confirm_btn_h: f32,
+    confirm_btn_w_mobile: f32,
+    confirm_btn_w_desktop: f32,
+    confirm_gap: f32,
+    mobile_stack_gap: f32,
+    mobile_text_stack_h: f32,
+    rail_text_gap: f32,
+    desktop_text_w: f32,
+    desktop_narrow_hero_h: f32,
+    content_margin_x: f32,
+    content_margin_top: f32,
+    content_margin_bottom: f32,
+    content_shrink: f32,
+    avatar_size: f32,
+    scroll_area_pad: f32,
+    carousel_spacing: f32,
+    title_font: f32,
+    title_gap: f32,
+    title_line_extra: f32,
+    name_font: f32,
+    caps_line_font: f32,
+    caps_para_font: f32,
+    confirm_text_size: f32,
+    hero_text_spacing: f32,
+    avatar_list_spacing: f32,
+    avatar_list_pad: f32,
+    rail_min_extra: f32,
 }
 
-pub(crate) fn leader_rail_scroll_extent(avatar_size: f32) -> f32 {
-    leader_rail_width(avatar_size) - avatar_size
+impl LeaderPickerMetrics {
+    fn new(ctx: &egui::Context) -> Self {
+        let scale = crate::ui::theme::viewport_scale(ctx);
+        let is_mobile = crate::ui::theme::compact_viewport(ctx);
+        let s = |v: f32| v * scale;
+        Self {
+            is_mobile,
+            rail_scrollbar_gap: s(12.0),
+            rail_bar_lane: s(10.0),
+            rail_header_gap: s(12.0),
+            rail_scroll_track_top_pad: s(10.0),
+            confirm_btn_h: s(44.0),
+            confirm_btn_w_mobile: s(200.0),
+            confirm_btn_w_desktop: s(140.0),
+            confirm_gap: s(12.0),
+            mobile_stack_gap: s(12.0),
+            mobile_text_stack_h: s(120.0),
+            rail_text_gap: s(24.0),
+            desktop_text_w: s(420.0),
+            desktop_narrow_hero_h: s(150.0),
+            content_margin_x: s(24.0),
+            content_margin_top: s(56.0),
+            content_margin_bottom: s(36.0),
+            content_shrink: s(40.0),
+            avatar_size: s(if is_mobile { 64.0 } else { 54.0 }),
+            scroll_area_pad: s(4.0),
+            carousel_spacing: s(12.0),
+            title_font: s(if is_mobile { 20.0 } else { 28.0 }),
+            title_gap: s(12.0),
+            title_line_extra: s(10.0),
+            name_font: s(if is_mobile { 32.0 } else { 48.0 }),
+            caps_line_font: s(if is_mobile { 15.0 } else { 18.0 }),
+            caps_para_font: s(if is_mobile { 15.0 } else { 16.0 }),
+            confirm_text_size: s(16.0),
+            hero_text_spacing: s(8.0),
+            avatar_list_spacing: s(10.0),
+            avatar_list_pad: s(4.0),
+            rail_min_extra: s(48.0),
+        }
+    }
+
+    fn rail_scroll_extent(&self) -> f32 {
+        self.rail_bar_lane + self.rail_scrollbar_gap
+    }
+}
+
+fn reset_picker_scroll_if_resized(ctx: &egui::Context) {
+    let size = ctx.content_rect().size();
+    let viewport_id = egui::Id::new(PICKER_VIEWPORT_KEY);
+    let prev = ctx.data(|d| d.get_temp::<egui::Vec2>(viewport_id));
+    let changed = prev.is_some_and(|p| (p.x - size.x).abs() > 2.0 || (p.y - size.y).abs() > 2.0);
+    if changed {
+        for key in [DESKTOP_RAIL_SCROLL_KEY, MOBILE_CAROUSEL_SCROLL_KEY] {
+            if let Some(scroll_id) = ctx.data(|d| d.get_temp::<egui::Id>(egui::Id::new(key))) {
+                egui::scroll_area::State::default().store(ctx, scroll_id);
+            }
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(viewport_id, size));
+}
+
+fn store_picker_scroll_id(ctx: &egui::Context, key: &str, scroll_id: egui::Id) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(key), scroll_id));
 }
 
 fn draw_left_vertical_scrollbar(
@@ -317,7 +409,7 @@ fn draw_leader_hero_text(
     selected_civilization: sow_core::player::Civilization,
     reign_dates: &str,
     text_w: f32,
-    is_mobile: bool,
+    metrics: &LeaderPickerMetrics,
     center: bool,
 ) {
     let layout = if center {
@@ -327,12 +419,8 @@ fn draw_leader_hero_text(
     };
     ui.with_layout(layout, |ui| {
         ui.set_width(text_w);
-        ui.spacing_mut().item_spacing.y = 8.0;
-        crate::ui::theme::leader_name_label(
-            ui,
-            selected_leader.name(),
-            if is_mobile { 32.0 } else { 48.0 },
-        );
+        ui.spacing_mut().item_spacing.y = metrics.hero_text_spacing;
+        crate::ui::theme::leader_name_label(ui, selected_leader.name(), metrics.name_font);
         crate::ui::theme::leader_caps_line(
             ui,
             &format!(
@@ -340,12 +428,12 @@ fn draw_leader_hero_text(
                 selected_civilization.name(),
                 reign_dates
             ),
-            if is_mobile { 15.0 } else { 18.0 },
+            metrics.caps_line_font,
         );
         crate::ui::theme::leader_caps_paragraph(
             ui,
             selected_leader.perk_description(),
-            if is_mobile { 15.0 } else { 16.0 },
+            metrics.caps_para_font,
             text_w,
         );
     });
@@ -421,14 +509,16 @@ fn paint_vertical_gradient_rect(
     painter.add(egui::Shape::mesh(mesh));
 }
 
-fn leader_picker_column_bottom(ctx: &egui::Context, is_mobile: bool, content_max_x: f32) -> f32 {
+fn leader_picker_column_bottom(
+    ctx: &egui::Context,
+    metrics: &LeaderPickerMetrics,
+    content_max_x: f32,
+) -> f32 {
     let back_rect = crate::ui::main_menu::profile::main_menu_avatar_button_rect(ctx);
-    let title_gap = 12.0;
-    let title_font = if is_mobile { 20.0 } else { 28.0 };
-    let title_line_h = title_font + 10.0;
+    let title_line_h = metrics.title_font + metrics.title_line_extra;
     let title_top = back_rect.center().y - title_line_h * 0.5;
     let title_rect = Rect::from_min_max(
-        egui::pos2(back_rect.max.x + title_gap, title_top),
+        egui::pos2(back_rect.max.x + metrics.title_gap, title_top),
         egui::pos2(content_max_x, title_top + title_line_h),
     );
     back_rect.max.y.max(title_rect.max.y)
@@ -550,10 +640,10 @@ fn draw_leader_rail(
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
-    avatar_size: f32,
+    metrics: &LeaderPickerMetrics,
     rail_h: f32,
-    scroll_track_top_pad: f32,
 ) {
+    let avatar_size = metrics.avatar_size;
     ui.allocate_ui(egui::vec2(ui.max_rect().width(), rail_h), |ui| {
         let area = ui.max_rect();
         // Avatars are pinned on the right; scrollbar sits to their left.
@@ -563,47 +653,57 @@ fn draw_leader_rail(
         );
         let bar_lane_rect = Rect::from_min_max(
             egui::pos2(
-                avatar_rect.min.x - RAIL_SCROLLBAR_GAP - RAIL_BAR_LANE,
+                avatar_rect.min.x - metrics.rail_scrollbar_gap - metrics.rail_bar_lane,
                 area.min.y,
             ),
-            egui::pos2(avatar_rect.min.x - RAIL_SCROLLBAR_GAP, area.max.y),
+            egui::pos2(avatar_rect.min.x - metrics.rail_scrollbar_gap, area.max.y),
         );
-        let scroll_bar_lane = bar_lane_rect.shrink2(egui::vec2(0.0, scroll_track_top_pad));
+        let scroll_bar_lane =
+            bar_lane_rect.shrink2(egui::vec2(0.0, metrics.rail_scroll_track_top_pad));
 
         let scroll_output = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(avatar_rect), |ui| {
+            .scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
-                    .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
+                    .scroll_source(egui::scroll_area::ScrollSource {
+                        scroll_bar: false,
+                        drag: true,
+                        mouse_wheel: true,
+                    })
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                     .id_salt("leader_desktop_rail")
                     .show(ui, |ui| {
-                        ui.set_width(avatar_size);
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = 10.0;
-                            ui.add_space(4.0);
-                            for &leader in sow_core::player::Leader::ALL.iter() {
-                                if draw_leader_avatar_button(
-                                    ui,
-                                    leader,
-                                    *selected_leader,
-                                    avatar_size,
-                                    asset_loader,
-                                ) {
-                                    *selected_leader = leader;
-                                    *selected_civilization = leader_civilization(leader);
+                        ui.set_width(area.width());
+                        ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
+                            ui.set_width(avatar_size);
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = metrics.avatar_list_spacing;
+                                ui.add_space(metrics.avatar_list_pad);
+                                for &leader in sow_core::player::Leader::ALL.iter() {
+                                    if draw_leader_avatar_button(
+                                        ui,
+                                        leader,
+                                        *selected_leader,
+                                        avatar_size,
+                                        asset_loader,
+                                    ) {
+                                        *selected_leader = leader;
+                                        *selected_civilization = leader_civilization(leader);
+                                    }
                                 }
-                            }
-                            ui.add_space(4.0);
+                                ui.add_space(metrics.avatar_list_pad);
+                            });
                         });
                     })
             })
             .inner;
 
+        store_picker_scroll_id(ui.ctx(), DESKTOP_RAIL_SCROLL_KEY, scroll_output.id);
+
         draw_left_vertical_scrollbar(
             ui,
             scroll_bar_lane,
-            avatar_rect,
+            area,
             scroll_output.inner_rect.height(),
             scroll_output.content_size.y,
             scroll_output.id,
@@ -616,45 +716,48 @@ fn draw_leader_carousel(
     selected_leader: &mut sow_core::player::Leader,
     selected_civilization: &mut sow_core::player::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
-    avatar_size: f32,
+    metrics: &LeaderPickerMetrics,
     scroll_area_h: f32,
     panel_w: f32,
 ) {
+    let avatar_size = metrics.avatar_size;
     let leader_count = sow_core::player::Leader::ALL.len() as f32;
-    let total_carousel_w = (avatar_size + 12.0) * leader_count - 12.0;
+    let spacing = metrics.carousel_spacing;
+    let total_carousel_w = (avatar_size + spacing) * leader_count - spacing;
 
     ui.allocate_ui(egui::vec2(panel_w, scroll_area_h), |ui| {
-            // Content drag steals taps on avatars; use the scroll bar + wheel instead.
-            egui::ScrollArea::horizontal()
-                .id_salt("leader_mobile_carousel")
-                .scroll_source(egui::scroll_area::ScrollSource {
-                    scroll_bar: true,
-                    drag: false,
-                    mouse_wheel: true,
-                })
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 12.0;
+        // Content drag steals taps on avatars; use the scroll bar + wheel instead.
+        let scroll_output = egui::ScrollArea::horizontal()
+            .id_salt("leader_mobile_carousel")
+            .scroll_source(egui::scroll_area::ScrollSource {
+                scroll_bar: true,
+                drag: false,
+                mouse_wheel: true,
+            })
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = spacing;
 
-                        for &leader in sow_core::player::Leader::ALL.iter() {
-                            if draw_leader_avatar_button(
-                                ui,
-                                leader,
-                                *selected_leader,
-                                avatar_size,
-                                asset_loader,
-                            ) {
-                                *selected_leader = leader;
-                                *selected_civilization = leader_civilization(leader);
-                            }
+                    for &leader in sow_core::player::Leader::ALL.iter() {
+                        if draw_leader_avatar_button(
+                            ui,
+                            leader,
+                            *selected_leader,
+                            avatar_size,
+                            asset_loader,
+                        ) {
+                            *selected_leader = leader;
+                            *selected_civilization = leader_civilization(leader);
                         }
-                        if panel_w > total_carousel_w {
-                            ui.add_space(12.0);
-                        }
-                    });
+                    }
+                    if panel_w > total_carousel_w {
+                        ui.add_space(spacing);
+                    }
                 });
-        });
+            });
+        store_picker_scroll_id(ui.ctx(), MOBILE_CAROUSEL_SCROLL_KEY, scroll_output.id);
+    });
 }
 
 fn draw_leader_picker_back_button(
@@ -704,16 +807,14 @@ fn draw_leader_picker_back_button(
 fn draw_leader_picker_top_column(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
-    is_mobile: bool,
+    metrics: &LeaderPickerMetrics,
     content_max_x: f32,
 ) -> (bool, f32) {
     let back_rect = crate::ui::main_menu::profile::main_menu_avatar_button_rect(ctx);
-    let title_gap = 12.0;
-    let title_font = if is_mobile { 20.0 } else { 28.0 };
-    let title_line_h = title_font + 10.0;
+    let title_line_h = metrics.title_font + metrics.title_line_extra;
     let title_top = back_rect.center().y - title_line_h * 0.5;
     let title_rect = Rect::from_min_max(
-        egui::pos2(back_rect.max.x + title_gap, title_top),
+        egui::pos2(back_rect.max.x + metrics.title_gap, title_top),
         egui::pos2(content_max_x, title_top + title_line_h),
     );
 
@@ -724,13 +825,13 @@ fn draw_leader_picker_top_column(
             crate::ui::theme::outlined_label(
                 ui,
                 "CHOOSE YOUR LEADER",
-                egui::FontId::proportional(title_font),
+                egui::FontId::proportional(metrics.title_font),
                 Color32::WHITE,
             );
         });
     });
 
-    let column_bottom = leader_picker_column_bottom(ctx, is_mobile, content_max_x);
+    let column_bottom = leader_picker_column_bottom(ctx, metrics, content_max_x);
     (back_response.clicked(), column_bottom)
 }
 
@@ -743,23 +844,25 @@ pub fn draw_leader_picker_modal(
     lang: sow_i18n::Language,
 ) -> bool {
     let mut close = false;
+    reset_picker_scroll_if_resized(ctx);
 
     egui::Area::new(egui::Id::new("leader_picker_backdrop"))
         .order(egui::Order::Foreground)
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(ctx, |ui| {
             let screen_rect = ctx.content_rect();
-            let is_mobile = crate::ui::theme::compact_viewport(ctx);
+            let metrics = LeaderPickerMetrics::new(ctx);
+            let is_mobile = metrics.is_mobile;
 
             let content_rect = if is_mobile {
                 let mut rect = screen_rect;
-                rect.min.x += 24.0; // Generous left margin
-                rect.max.x -= 24.0; // Generous right margin
-                rect.min.y += 56.0; // Top margin to clear safe areas and notch
-                rect.max.y -= 36.0; // Bottom margin to clear home indicator and safe areas
+                rect.min.x += metrics.content_margin_x;
+                rect.max.x -= metrics.content_margin_x;
+                rect.min.y += metrics.content_margin_top;
+                rect.max.y -= metrics.content_margin_bottom;
                 rect
             } else {
-                screen_rect.shrink(40.0)
+                screen_rect.shrink(metrics.content_shrink)
             };
 
             let is_inside_active_ui = if let Some(click_pos) = ctx.input(|i| {
@@ -807,29 +910,19 @@ pub fn draw_leader_picker_modal(
                 sow_core::player::Leader::Napoleon => "Reigned 1804 – 1814 AD",
             };
 
-            const CONFIRM_BTN_H: f32 = 44.0;
-            const CONFIRM_BTN_W_MOBILE: f32 = 200.0;
-            const CONFIRM_GAP: f32 = 12.0;
-            const MOBILE_STACK_GAP: f32 = 12.0;
-            const MOBILE_TEXT_STACK_H: f32 = 120.0;
-            const RAIL_TEXT_GAP: f32 = 24.0;
-            const DESKTOP_TEXT_W: f32 = 420.0;
-            const DESKTOP_NARROW_HERO_H: f32 = 150.0;
-            const DESKTOP_NARROW_BREAKPOINT: f32 = 1024.0;
-
-            let avatar_size = if is_mobile { 64.0 } else { 54.0 };
-            let scroll_area_h = avatar_size + 4.0;
+            let avatar_size = metrics.avatar_size;
+            let scroll_area_h = avatar_size + metrics.scroll_area_pad;
             let carousel_block_h = scroll_area_h;
             let card_w = if is_mobile {
                 content_rect.width()
             } else {
-                DESKTOP_TEXT_W
+                metrics.desktop_text_w
             };
-            let confirm_top = content_rect.max.y - CONFIRM_BTN_H - CONFIRM_GAP;
+            let confirm_top = content_rect.max.y - metrics.confirm_btn_h - metrics.confirm_gap;
             let confirm_w = if is_mobile {
-                CONFIRM_BTN_W_MOBILE
+                metrics.confirm_btn_w_mobile
             } else {
-                140.0
+                metrics.confirm_btn_w_desktop
             };
             let confirm_x = if is_mobile {
                 content_rect.center().x - confirm_w * 0.5
@@ -844,7 +937,7 @@ pub fn draw_leader_picker_modal(
                     let (back, column_bottom) = draw_leader_picker_top_column(
                         ui,
                         ctx,
-                        true,
+                        &metrics,
                         content_rect.max.x,
                     );
                     if back {
@@ -853,12 +946,12 @@ pub fn draw_leader_picker_modal(
 
                     // Bottom → top: CONFIRM, avatar carousel, hero text, title (portrait fills middle).
                     let confirm_bottom = content_rect.max.y;
-                    let confirm_top_y = confirm_bottom - CONFIRM_BTN_H;
-                    let carousel_bottom = confirm_top_y - CONFIRM_GAP;
+                    let confirm_top_y = confirm_bottom - metrics.confirm_btn_h;
+                    let carousel_bottom = confirm_top_y - metrics.confirm_gap;
                     let carousel_top = carousel_bottom - carousel_block_h;
-                    let text_bottom = carousel_top - MOBILE_STACK_GAP;
-                    let text_top =
-                        (text_bottom - MOBILE_TEXT_STACK_H).max(column_bottom + MOBILE_STACK_GAP);
+                    let text_bottom = carousel_top - metrics.mobile_stack_gap;
+                    let text_top = (text_bottom - metrics.mobile_text_stack_h)
+                        .max(column_bottom + metrics.mobile_stack_gap);
 
                     let carousel_rect = egui::Rect::from_min_max(
                         egui::pos2(content_rect.min.x, carousel_top),
@@ -881,7 +974,7 @@ pub fn draw_leader_picker_modal(
                                         *selected_civilization,
                                         reign_dates,
                                         card_w,
-                                        true,
+                                        &metrics,
                                         true,
                                     );
                                 },
@@ -897,7 +990,7 @@ pub fn draw_leader_picker_modal(
                                 selected_leader,
                                 selected_civilization,
                                 asset_loader,
-                                avatar_size,
+                                &metrics,
                                 scroll_area_h,
                                 content_rect.width(),
                             );
@@ -910,7 +1003,7 @@ pub fn draw_leader_picker_modal(
                     let (back, column_bottom) = draw_leader_picker_top_column(
                         ui,
                         ctx,
-                        false,
+                        &metrics,
                         content_rect.max.x,
                     );
                     if back {
@@ -918,25 +1011,24 @@ pub fn draw_leader_picker_modal(
                     }
 
                     let avatar_lane_x = back_rect.min.x;
-                    let pick_top = column_bottom.max(back_rect.max.y) + RAIL_HEADER_GAP;
-                    let pick_bottom = if is_desktop_narrow {
-                        confirm_top - CONFIRM_GAP - DESKTOP_NARROW_HERO_H - MOBILE_STACK_GAP
-                    } else {
-                        confirm_top - CONFIRM_GAP
-                    };
-                    let pick_h = (pick_bottom - pick_top).max(avatar_size + 48.0);
+                    let pick_top = column_bottom.max(back_rect.max.y) + metrics.rail_header_gap;
+                    let pick_bottom = confirm_top - metrics.confirm_gap;
+                    let pick_h = (pick_bottom - pick_top).max(avatar_size + metrics.rail_min_extra);
                     let rail_rect = egui::Rect::from_min_max(
-                        egui::pos2(avatar_lane_x - leader_rail_scroll_extent(avatar_size), pick_top),
+                        egui::pos2(avatar_lane_x - metrics.rail_scroll_extent(), pick_top),
                         egui::pos2(avatar_lane_x + avatar_size, pick_bottom),
                     );
                     desktop_rail = Some((rail_rect, pick_h));
 
                     if is_desktop_narrow {
-                        let hero_left = avatar_lane_x + avatar_size + RAIL_TEXT_GAP;
+                        let hero_left = avatar_lane_x + avatar_size + metrics.rail_text_gap;
                         let hero_right = (hero_left + card_w).min(content_rect.max.x);
                         let hero_rect = egui::Rect::from_min_max(
-                            egui::pos2(hero_left, confirm_top - CONFIRM_GAP - DESKTOP_NARROW_HERO_H),
-                            egui::pos2(hero_right, confirm_top - CONFIRM_GAP),
+                            egui::pos2(
+                                hero_left,
+                                confirm_top - metrics.confirm_gap - metrics.desktop_narrow_hero_h,
+                            ),
+                            egui::pos2(hero_right, confirm_top - metrics.confirm_gap),
                         );
                         if hero_rect.height() > 0.0 && hero_rect.width() > 0.0 {
                             ui.scope_builder(egui::UiBuilder::new().max_rect(hero_rect), |ui| {
@@ -950,7 +1042,7 @@ pub fn draw_leader_picker_modal(
                                             *selected_civilization,
                                             reign_dates,
                                             hero_rect.width(),
-                                            false,
+                                            &metrics,
                                             false,
                                         );
                                     },
@@ -959,9 +1051,9 @@ pub fn draw_leader_picker_modal(
                         }
                     } else {
                         let text_rect = egui::Rect::from_min_max(
-                            egui::pos2(avatar_lane_x + avatar_size + RAIL_TEXT_GAP, pick_top),
+                            egui::pos2(avatar_lane_x + avatar_size + metrics.rail_text_gap, pick_top),
                             egui::pos2(
-                                (avatar_lane_x + avatar_size + RAIL_TEXT_GAP + card_w)
+                                (avatar_lane_x + avatar_size + metrics.rail_text_gap + card_w)
                                     .min(content_rect.max.x),
                                 pick_top + pick_h,
                             ),
@@ -976,7 +1068,7 @@ pub fn draw_leader_picker_modal(
                                     *selected_civilization,
                                     reign_dates,
                                     text_rect.width(),
-                                    false,
+                                    &metrics,
                                     false,
                                 );
                             });
@@ -985,19 +1077,19 @@ pub fn draw_leader_picker_modal(
                 }
 
                 let confirm_rect = egui::Rect::from_min_max(
-                    egui::pos2(confirm_x, content_rect.max.y - CONFIRM_BTN_H),
+                    egui::pos2(confirm_x, content_rect.max.y - metrics.confirm_btn_h),
                     egui::pos2(confirm_x + confirm_w, content_rect.max.y),
                 );
                 let confirm_button = if is_mobile {
                     crate::widgets::ThemeButton::new("CONFIRM")
                         .style(crate::widgets::ThemeButtonStyle::Primary)
-                        .min_size(egui::vec2(confirm_w, CONFIRM_BTN_H))
-                        .text_size(16.0)
+                        .min_size(egui::vec2(confirm_w, metrics.confirm_btn_h))
+                        .text_size(metrics.confirm_text_size)
                 } else {
                     crate::widgets::ThemeButton::new("CONFIRM")
                         .custom_fill(Color32::from_black_alpha(175))
-                        .min_size(egui::vec2(confirm_w, CONFIRM_BTN_H))
-                        .text_size(16.0)
+                        .min_size(egui::vec2(confirm_w, metrics.confirm_btn_h))
+                        .text_size(metrics.confirm_text_size)
                 };
                 let confirm_response = ui.put(confirm_rect, confirm_button);
                 if confirm_response.clicked() {
@@ -1012,9 +1104,8 @@ pub fn draw_leader_picker_modal(
                         selected_leader,
                         selected_civilization,
                         asset_loader,
-                        avatar_size,
+                        &metrics,
                         pick_h,
-                        RAIL_SCROLL_TRACK_TOP_PAD,
                     );
                 });
             }

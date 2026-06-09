@@ -187,13 +187,17 @@ fn paint_rank_badge(ui: &mut egui::Ui, rank_1based: usize, metrics: &Leaderboard
         egui::StrokeKind::Inside,
     );
     if rank_1based <= 3 {
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            icon,
-            FontId::proportional(16.0),
-            fg,
-        );
+        let badge_rect =
+            egui::Rect::from_center_size(rect.center(), egui::vec2(20.0, 20.0));
+        if !sow_ui::widgets::try_paint_emoji(painter, icon, badge_rect, fg) {
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                icon,
+                FontId::proportional(16.0),
+                fg,
+            );
+        }
     } else {
         painter.text(
             rect.center(),
@@ -262,13 +266,15 @@ fn paint_player_icon(
         Color32::from_rgba_unmultiplied(20, 24, 36, 220),
     );
     painter.circle_stroke(center, avatar_r, Stroke::new(1.0_f32, matte));
-    painter.text(
-        center,
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(14.0),
-        Color32::WHITE,
-    );
+    if !sow_ui::widgets::paint_emoji_centered(painter, label, center, 20.0, Color32::WHITE) {
+        painter.text(
+            center,
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(14.0),
+            Color32::WHITE,
+        );
+    }
 }
 
 fn paint_leaderboard_header(ui: &mut egui::Ui, metrics: &LeaderboardMetrics) {
@@ -394,7 +400,18 @@ fn paint_leaderboard_player_row(
                                     .truncate(),
                                 );
                                 if let Some(emoji) = &row_display.active_emoji {
-                                    ui.label(RichText::new(emoji).size(12.0));
+                                    let (icon_rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(18.0, 18.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    if !sow_ui::widgets::try_paint_emoji(
+                                        ui.painter(),
+                                        emoji,
+                                        icon_rect,
+                                        Color32::WHITE,
+                                    ) {
+                                        ui.label(RichText::new(emoji.as_str()).size(12.0));
+                                    }
                                 }
                             });
                         }
@@ -942,7 +959,7 @@ impl SowApp {
                     sow_ui::ui::theme::hud_panel_frame().show(ui, |ui| {
                         ui.horizontal(|ui| {
                             if ui
-                                .add(sow_ui::widgets::HudButton::new("🏆"))
+                                .add(sow_ui::widgets::HudEmojiButton::new("🏆"))
                                 .on_hover_text("Leaderboard")
                                 .clicked()
                             {

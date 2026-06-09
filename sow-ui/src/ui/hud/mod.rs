@@ -518,7 +518,14 @@ fn draw_event_log_tab(
     if state.event_log.is_empty() {
         ui.add_space(12.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("📋").size(20.0).color(Color32::GRAY));
+            let icon_rect = egui::Rect::from_center_size(
+                ui.cursor().min + egui::vec2(ui.available_width() * 0.5, 14.0),
+                egui::vec2(28.0, 28.0),
+            );
+            if !crate::widgets::try_paint_emoji(ui.painter(), "📋", icon_rect, Color32::GRAY) {
+                ui.label(RichText::new("📋").size(28.0).color(Color32::GRAY));
+            }
+            ui.add_space(28.0);
             ui.label(
                 RichText::new(&strings.event_log_empty)
                     .size(11.0)
@@ -1210,31 +1217,23 @@ pub fn draw(
                                                 ui.vertical(|ui| {
                                                     // Name row
                                                     ui.horizontal(|ui| {
-                                                        if icon.contains('⭐') {
-                                                            static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
-                                                            REGISTER_STAR_ONCE.call_once(|| {
-                                                                ui.ctx().include_bytes(
-                                                                    "bytes://star.webp",
-                                                                    sow_core::repo_asset_bytes!("icons/star.webp").as_slice(),
-                                                                );
-                                                            });
-                                                            let star_size = 18.0_f32; // bigger size to compensate for native emoji
-                                                            let load_res = ui.ctx().try_load_texture(
-                                                                "bytes://star.webp",
-                                                                egui::TextureOptions::default(),
-                                                                egui::load::SizeHint::Size {
-                                                                    width: (star_size * 2.0).round() as u32,
-                                                                    height: (star_size * 2.0).round() as u32,
-                                                                    maintain_aspect_ratio: true,
-                                                                },
+                                                        let icon_size = 24.0;
+                                                        let (icon_rect, _) = ui.allocate_exact_size(
+                                                            egui::vec2(icon_size, icon_size),
+                                                            egui::Sense::hover(),
+                                                        );
+                                                        if !crate::widgets::try_paint_emoji(
+                                                            ui.painter(),
+                                                            icon,
+                                                            icon_rect,
+                                                            pc,
+                                                        ) {
+                                                            crate::ui::theme::outlined_label(
+                                                                ui,
+                                                                icon,
+                                                                egui::FontId::proportional(18.0),
+                                                                pc,
                                                             );
-                                                            if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                                                                ui.image((texture.id, egui::vec2(star_size, star_size)));
-                                                            } else {
-                                                                crate::ui::theme::outlined_label(ui, "⭐", egui::FontId::proportional(14.0), pc);
-                                                            }
-                                                        } else {
-                                                            crate::ui::theme::outlined_label(ui, icon, egui::FontId::proportional(14.0), pc);
                                                         }
                                                         ui.vertical(|ui| {
                                                             ui.spacing_mut().item_spacing.y = 0.0;
@@ -1319,7 +1318,24 @@ pub fn draw(
                                                 ui.vertical(|ui| {
                                                     // Name row
                                                     ui.horizontal(|ui| {
-                                                        crate::ui::theme::outlined_label(ui, icon, egui::FontId::proportional(14.0), pc);
+                                                        let icon_size = 24.0;
+                                                        let (icon_rect, _) = ui.allocate_exact_size(
+                                                            egui::vec2(icon_size, icon_size),
+                                                            egui::Sense::hover(),
+                                                        );
+                                                        if !crate::widgets::try_paint_emoji(
+                                                            ui.painter(),
+                                                            icon,
+                                                            icon_rect,
+                                                            pc,
+                                                        ) {
+                                                            crate::ui::theme::outlined_label(
+                                                                ui,
+                                                                icon,
+                                                                egui::FontId::proportional(18.0),
+                                                                pc,
+                                                            );
+                                                        }
                                                         ui.vertical(|ui| {
                                                             ui.spacing_mut().item_spacing.y = 0.0;
                                                             crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
@@ -1447,7 +1463,7 @@ pub fn draw(
                         }
                         ui.separator();
                         if ui
-                            .add(crate::widgets::HudButton::new("😀").dim(btn_w))
+                            .add(crate::widgets::HudEmojiButton::new("😀").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_express_emoji)
                             .clicked()
                         {
@@ -1471,7 +1487,7 @@ pub fn draw(
                             };
 
                             let attacks_btn = ui
-                                .add(crate::widgets::HudButton::new("⚔").dim(btn_w))
+                                .add(crate::widgets::HudEmojiButton::new("⚔").dim(btn_w))
                                 .on_hover_text(&sow_i18n::get(lang).hud.hover_battle_log);
                             if attacks_btn.clicked() {
                                 state.bottom_tab = BottomHudTab::BattleLog;
@@ -1585,8 +1601,7 @@ pub fn draw(
                 .corner_radius(((if compact { 16.0 } else { 12.0 }) * anim_scale) as u8)
                 .show(ui, |ui| {
                     let cols = 8;
-                    let btn_size = (if compact { 38.0 } else { 42.0 }) * anim_scale;
-                    let emoji_size = (if compact { 26.0 } else { 28.0 }) * anim_scale;
+                    let btn_size = (if compact { 44.0 } else { 48.0 }) * anim_scale;
                     let spacing = (if compact { 2.0 } else { 3.0 }) * anim_scale;
                     let grid_width = cols as f32 * btn_size + (cols as f32 - 1.0) * spacing;
 
@@ -1658,62 +1673,25 @@ pub fn draw(
                                         egui::StrokeKind::Inside,
                                     );
 
-                                    // Font size with spring scaling
-                                    let scaled_font_size = emoji_size + 6.0 * spring_t * anim_scale;
-                                    if emoji.contains('⭐') {
-                                        static REGISTER_STAR_ONCE: std::sync::Once =
-                                            std::sync::Once::new();
-                                        REGISTER_STAR_ONCE.call_once(|| {
-                                            ui.ctx().include_bytes(
-                                                "bytes://star.webp",
-                                                sow_core::repo_asset_bytes!("icons/star.webp")
-                                                .as_slice(),
-                                            );
-                                        });
-                                        let star_size = scaled_font_size * 1.25;
-                                        let star_rect = egui::Rect::from_center_size(
-                                            active_rect.center(),
-                                            egui::vec2(star_size, star_size),
-                                        );
-                                        let size_hint = egui::load::SizeHint::Size {
-                                            width: star_size.round() as u32,
-                                            height: star_size.round() as u32,
-                                            maintain_aspect_ratio: true,
-                                        };
-                                        let load_res = ui.ctx().try_load_texture(
-                                            "bytes://star.webp",
-                                            egui::TextureOptions::default(),
-                                            size_hint,
-                                        );
-                                        if let Ok(egui::load::TexturePoll::Ready { texture }) =
-                                            load_res
-                                        {
-                                            ui.painter().image(
-                                                texture.id,
-                                                star_rect,
-                                                egui::Rect::from_min_max(
-                                                    egui::pos2(0.0, 0.0),
-                                                    egui::pos2(1.0, 1.0),
-                                                ),
-                                                egui::Color32::WHITE
-                                                    .linear_multiply(emoji_progress),
-                                            );
-                                        } else {
-                                            ui.painter().text(
-                                                active_rect.center(),
-                                                egui::Align2::CENTER_CENTER,
-                                                emoji,
-                                                egui::FontId::proportional(scaled_font_size),
-                                                Color32::WHITE.linear_multiply(emoji_progress),
-                                            );
-                                        }
-                                    } else {
+                                    let paint_size =
+                                        btn_size * (0.78 + 0.1 * spring_t);
+                                    let emoji_rect = egui::Rect::from_center_size(
+                                        active_rect.center(),
+                                        egui::vec2(paint_size, paint_size),
+                                    );
+                                    let tint = Color32::WHITE.linear_multiply(emoji_progress);
+                                    if !crate::widgets::try_paint_emoji(
+                                        ui.painter(),
+                                        emoji,
+                                        emoji_rect,
+                                        tint,
+                                    ) {
                                         ui.painter().text(
                                             active_rect.center(),
                                             egui::Align2::CENTER_CENTER,
                                             emoji,
-                                            egui::FontId::proportional(scaled_font_size),
-                                            Color32::WHITE.linear_multiply(emoji_progress),
+                                            egui::FontId::proportional(paint_size * 0.9),
+                                            tint,
                                         );
                                     }
 

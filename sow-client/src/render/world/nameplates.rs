@@ -554,7 +554,7 @@ pub(crate) fn render(
                                 anim_progress
                             };
 
-                            let base_emoji_size = font_size * 2.2;
+                            let base_emoji_size = font_size * 3.2;
                             let final_emoji_size = base_emoji_size * anim_scale;
 
                             let mut base_y_offset = font_size * 1.889;
@@ -597,35 +597,16 @@ pub(crate) fn render(
                                         ),
                                     );
                                 }
-                                if emoji_str.contains('⭐') {
-                                    let star_size = final_emoji_size * 1.25;
-                                    let star_rect = egui::Rect::from_center_size(
-                                        egui::pos2(center.x, emoji_y),
-                                        egui::vec2(star_size, star_size),
-                                    );
-                                    let size_hint = egui::load::SizeHint::Size {
-                                        width: 128,
-                                        height: 128,
-                                        maintain_aspect_ratio: true,
-                                    };
-                                    let load_res = emoji_painter.ctx().try_load_texture(
-                                        "bytes://star.webp",
-                                        egui::TextureOptions::default(),
-                                        size_hint,
-                                    );
-                                    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res
-                                    {
-                                        emoji_painter.image(
-                                            texture.id,
-                                            star_rect,
-                                            egui::Rect::from_min_max(
-                                                egui::pos2(0.0, 0.0),
-                                                egui::pos2(1.0, 1.0),
-                                            ),
-                                            egui::Color32::WHITE,
-                                        );
-                                    }
-                                } else {
+                                let emoji_rect = egui::Rect::from_center_size(
+                                    egui::pos2(center.x, emoji_y),
+                                    egui::vec2(final_emoji_size, final_emoji_size),
+                                );
+                                if !sow_ui::widgets::try_paint_emoji(
+                                    &emoji_painter,
+                                    emoji_str,
+                                    emoji_rect,
+                                    egui::Color32::WHITE,
+                                ) {
                                     let emoji_galley = emoji_painter.layout_no_wrap(
                                         emoji_str.clone(),
                                         egui::FontId::proportional(final_emoji_size),
@@ -1320,7 +1301,7 @@ pub(crate) fn render(
                             anim_progress
                         };
 
-                        let base_emoji_size = font_size * 2.2; // 220% size! Extremely visible!
+                        let base_emoji_size = font_size * 3.2;
                         let final_emoji_size = base_emoji_size * anim_scale;
                         let max_float_height = req_height.max(allied_height).max(betrayal_height);
                         let emoji_y =
@@ -1352,34 +1333,16 @@ pub(crate) fn render(
                                     ),
                                 );
                             }
-                            if emoji_str.contains('⭐') {
-                                let star_size = final_emoji_size * 1.25;
-                                let star_rect = egui::Rect::from_center_size(
-                                    egui::pos2(center.x, emoji_y),
-                                    egui::vec2(star_size, star_size),
-                                );
-                                let size_hint = egui::load::SizeHint::Size {
-                                    width: 128,
-                                    height: 128,
-                                    maintain_aspect_ratio: true,
-                                };
-                                let load_res = painter.ctx().try_load_texture(
-                                    "bytes://star.webp",
-                                    egui::TextureOptions::default(),
-                                    size_hint,
-                                );
-                                if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                                    painter.image(
-                                        texture.id,
-                                        star_rect,
-                                        egui::Rect::from_min_max(
-                                            egui::pos2(0.0, 0.0),
-                                            egui::pos2(1.0, 1.0),
-                                        ),
-                                        egui::Color32::WHITE,
-                                    );
-                                }
-                            } else {
+                            let emoji_rect = egui::Rect::from_center_size(
+                                egui::pos2(center.x, emoji_y),
+                                egui::vec2(final_emoji_size, final_emoji_size),
+                            );
+                            if !sow_ui::widgets::try_paint_emoji(
+                                painter,
+                                emoji_str,
+                                emoji_rect,
+                                egui::Color32::WHITE,
+                            ) {
                                 let emoji_galley = painter.layout_no_wrap(
                                     emoji_str.clone(),
                                     egui::FontId::proportional(final_emoji_size),
