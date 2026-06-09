@@ -95,7 +95,14 @@ Full list: [`.env.example`](.env.example).
 ./sow local --build-only
 ```
 
-Each **prod** / **ptr** run ships WASM dist, rsyncs server binaries when crate inputs changed, pushes `.version` to the server working dir, restarts the orchestrator when needed, and verifies maps API + WebSocket. Use **`./sow infra --confirm-destroy`** only for a fresh VPS or changes under `sow-dist/deploy/` (nginx, TLS, valkey, systemd). That is the reproducible machine setup; routine releases use **`./sow p`** / **`./sow ptr`** only.
+**`./sow p`** / **`./sow ptr`** / **`./sow cg`** run a four-phase pipeline:
+
+1. **Build** (local, parallel) — WASM cargo build, server GNU build (prod/ptr only, skipped when crate inputs unchanged), CDN prep
+2. **Package** — bindgen/minify/brotli into `dist/` (skipped when WASM + shell inputs unchanged)
+3. **Ship** (remote, parallel) — CDN, play/ptr shell, marketing (prod), maps, and server binaries rsync together; then one `systemctl restart` when needed
+4. **Verify** — HTTP checks for CDN, play/marketing/sitemap, maps API, WebSocket
+
+Use **`./sow infra --confirm-destroy`** only for a fresh VPS or changes under `sow-dist/deploy/` (nginx, TLS, valkey, systemd). Routine releases use **`./sow p`** / **`./sow ptr`** only.
 
 Optional Nix flake (`flake.nix`) is devShell-only — not used by `./sow` or VPS deploy.
 

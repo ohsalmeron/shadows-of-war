@@ -106,4 +106,12 @@ impl Paths {
         self.cargo_target
             .join("wasm32-unknown-unknown/wasm-release/sow_client.wasm")
     }
+
+    pub fn package_hash_cache(&self, key: &str) -> PathBuf {
+        self.dist_root().join(format!(".sow-package-hash-{key}"))
+    }
+
+    pub fn cdn_hash_cache(&self) -> PathBuf {
+        self.dist_root().join(".sow-cdn-hash")
+    }
 }

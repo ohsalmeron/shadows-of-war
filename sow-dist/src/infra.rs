@@ -228,6 +228,129 @@ fn install_systemd_unit(
     Ok(())
 }
 
+#[derive(Clone, Debug)]
+pub struct ServerArtifacts {
+    pub server: PathBuf,
+    pub relay: PathBuf,
+    pub built: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ServerShipResult {
+    pub shipped_binaries: bool,
+    pub version_changed: bool,
+}
+
+pub fn local_server_binaries(paths: &Paths) -> (PathBuf, PathBuf) {
+    const GNU: &str = "x86_64-unknown-linux-gnu";
+    let dir = paths.cargo_target.join(format!("{GNU}/release"));
+    (dir.join("sow-server"), dir.join("sow-relay"))
+}
+
+pub fn needs_local_server_build(paths: &Paths) -> Result<bool> {
+    let current_hash = hash_server_inputs(paths)?;
+    let hash_changed = read_cached_hash(paths) != current_hash;
+    let (server, relay) = local_server_binaries(paths);
+    Ok(hash_changed || !server.is_file() || !relay.is_file())
+}
+
+/// Phase 1: compile server binaries locally when crate inputs changed.
+pub fn build_server_if_needed(paths: &Paths) -> Result<ServerArtifacts> {
+    let (server, relay) = local_server_binaries(paths);
+    if needs_local_server_build(paths)? {
+        let (server, relay) = build_server_binaries(paths)?;
+        Ok(ServerArtifacts {
+            server,
+            relay,
+            built: true,
+        })
+    } else {
+        println!("==> Server crates unchanged — skipping server build");
+        Ok(ServerArtifacts {
+            server,
+            relay,
+            built: false,
+        })
+    }
+}
+
+pub fn remote_binaries_missing(gcp: &GcpConfig, data_dir: &str) -> bool {
+    gcp.remote_output(&format!(
+        "test -x {data_dir}/sow-server && test -x {data_dir}/sow-relay && echo ok"
+    ))
+    .map(|s| s.trim() != "ok")
+    .unwrap_or(true)
+}
+
+/// Phase 3: rsync server binaries and `.version` (no restart).
+pub fn ship_server(
+    paths: &Paths,
+    gcp: &GcpConfig,
+    data_dir: &str,
+    artifacts: &ServerArtifacts,
+    version: &str,
+    unit: &str,
+) -> Result<ServerShipResult> {
+    let remote_missing = remote_binaries_missing(gcp, data_dir);
+    let need_ship = artifacts.built || remote_missing;
+    if need_ship {
+        rsync_server_binaries(
+            gcp,
+            &paths.dist_root(),
+            data_dir,
+            &artifacts.server,
+            &artifacts.relay,
+        )?;
+        if artifacts.built {
+            write_infra_hash(paths)?;
+        }
+        println!("✅ Server binaries shipped ({unit})");
+    } else {
+        println!("==> Server binaries unchanged — skipping ship");
+    }
+
+    let version_local = paths.version_file.to_string_lossy();
+    gcp.rsync(
+        &paths.dist_root(),
+        version_local.as_ref(),
+        &format!("{data_dir}/.version"),
+    )?;
+
+    let deployed_cache = paths.deployed_version_cache(unit);
+    let last_version = fs::read_to_string(&deployed_cache)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let version_changed = last_version != version;
+
+    Ok(ServerShipResult {
+        shipped_binaries: need_ship,
+        version_changed,
+    })
+}
+
+/// Phase 4: restart unit when binaries or version changed.
+pub fn restart_server_if_needed(
+    paths: &Paths,
+    gcp: &GcpConfig,
+    unit: &str,
+    version: &str,
+    ship: &ServerShipResult,
+) -> Result<()> {
+    if ship.shipped_binaries || ship.version_changed {
+        println!("==> Restarting {unit}");
+        gcp.run_remote(&format!("sudo systemctl restart {unit}"))?;
+        let deployed_cache = paths.deployed_version_cache(unit);
+        if let Some(parent) = deployed_cache.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&deployed_cache, format!("{version}\n"))?;
+    } else {
+        println!("==> Server version unchanged — skipping restart");
+    }
+    Ok(())
+}
+
 fn write_infra_hash(paths: &Paths) -> Result<()> {
     fs::write(paths.infra_hash_cache(), hash_server_inputs(paths)?)?;
     Ok(())
@@ -321,64 +444,6 @@ fn rsync_server_binaries(
          sudo chcon -t bin_t {data_dir}/sow-server {data_dir}/sow-relay"
     ))?;
     Ok(())
-}
-
-/// Ship server binaries when crate inputs changed, push `.version`, restart orchestrator.
-pub fn deploy_server_release(
-    paths: &Paths,
-    gcp: &GcpConfig,
-    unit: &str,
-    data_dir: &str,
-    version: &str,
-    maps_url: &str,
-    ws_url: &str,
-) -> Result<()> {
-    println!("==> Deploying server ({unit})");
-    let current_hash = hash_server_inputs(paths)?;
-    let hash_changed = read_cached_hash(paths) != current_hash;
-    let binaries_missing = gcp
-        .remote_output(&format!(
-            "test -x {data_dir}/sow-server && test -x {data_dir}/sow-relay && echo ok"
-        ))
-        .map(|s| s.trim() != "ok")
-        .unwrap_or(true);
-    let need_build = hash_changed || binaries_missing;
-
-    if need_build {
-        let (server, relay) = build_server_binaries(paths)?;
-        rsync_server_binaries(gcp, &paths.dist_root(), data_dir, &server, &relay)?;
-        write_infra_hash(paths)?;
-        println!("✅ Server binaries deployed ({unit})");
-    } else {
-        println!("==> Server crates unchanged — skipping server build");
-    }
-
-    let version_local = paths.version_file.to_string_lossy();
-    gcp.rsync(
-        &paths.dist_root(),
-        version_local.as_ref(),
-        &format!("{data_dir}/.version"),
-    )?;
-
-    let deployed_cache = paths.deployed_version_cache(unit);
-    let last_version = fs::read_to_string(&deployed_cache)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let version_changed = last_version != version;
-
-    if need_build || version_changed {
-        println!("==> Restarting {unit}");
-        gcp.run_remote(&format!("sudo systemctl restart {unit}"))?;
-        if let Some(parent) = deployed_cache.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&deployed_cache, format!("{version}\n"))?;
-    } else {
-        println!("==> Server version unchanged — skipping restart");
-    }
-
-    verify_server_health(gcp, maps_url, ws_url, unit)
 }
 
 pub fn verify_server_health(

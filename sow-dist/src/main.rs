@@ -6,6 +6,7 @@ mod gcp;
 mod infra;
 mod package;
 mod paths;
+mod pipeline;
 mod process;
 mod serve;
 mod tools;
@@ -16,7 +17,6 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use package::Profile;
 use paths::Paths;
-use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "sow", about = "Shadows of War — build dist/ and deploy")]
@@ -118,34 +118,10 @@ fn resolve_version(paths: &Paths, increment: bool) -> Result<String> {
     }
 }
 
-fn run_parallel(paths: &Paths, profile: Profile, out: &Path, version: &str) -> Result<()> {
-    let cfg = config::require_remote_config()?;
-    let paths_cdn = paths.clone();
-    let paths_pkg = paths.clone();
-    let out = out.to_path_buf();
-    let version = version.to_string();
-    let cfg_cdn = cfg.clone();
-    let cfg_pkg = cfg.clone();
-    let sync_cdn = matches!(profile, Profile::SelfHosted | Profile::Crazygames);
-    let cdn = if sync_cdn {
-        Some(cdn::start_background(&paths_cdn, &cfg_cdn))
-    } else {
-        None
-    };
-    let pkg = std::thread::spawn(move || {
-        wasm::compile(&paths_pkg)?;
-        package::build(&paths_pkg, profile, &out, &version, &cfg_pkg)
-    });
-    if let Some(cdn) = cdn {
-        cdn.join().expect("cdn thread panicked")?;
-    }
-    pkg.join().expect("package thread panicked")?;
-    Ok(())
-}
-
 fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    run_parallel(paths, Profile::Crazygames, &paths.dist_crazygames, &version)?;
+    let cfg = config::require_remote_config()?;
+    pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Cg, &version)?;
     println!(
         "CrazyGames ready: {} — upload entire folder (no assets/cdn/)",
         paths.dist_crazygames.display()
@@ -155,9 +131,8 @@ fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
 
 fn cmd_prod(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    run_parallel(paths, Profile::SelfHosted, &paths.dist_play, &version)?;
     let cfg = config::require_remote_config()?;
-    deploy::deploy_prod(paths, &cfg, &version)?;
+    pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Prod, &version)?;
     println!(
         "Prod deployed v{version} → {} + {}",
         cfg.play_url(),
@@ -173,9 +148,8 @@ fn cmd_infra(paths: &Paths, confirm_destroy: bool, bootstrap_only: bool) -> Resu
 
 fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    run_parallel(paths, Profile::SelfHosted, &paths.dist_ptr, &version)?;
     let cfg = config::require_remote_config()?;
-    deploy::deploy_ptr(paths, &cfg, &version)?;
+    pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Ptr, &version)?;
     println!("PTR deployed v{version} → {}", cfg.ptr_url());
     Ok(())
 }
@@ -190,7 +164,7 @@ fn cmd_local(
     println!("==> local v{version} (no CDN sync, prod wss/CDN at runtime)");
     wasm::compile(paths)?;
     let cfg = config::require_remote_config()?;
-    package::build(
+    package::build_or_skip(
         paths,
         Profile::SiteDev,
         &paths.dist_site_dev_game,

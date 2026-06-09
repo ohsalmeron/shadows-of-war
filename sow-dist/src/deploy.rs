@@ -1,12 +1,8 @@
 use crate::config::DeployConfig;
 use crate::gcp::GcpConfig;
-use crate::infra;
-use crate::paths::{
-    remote_data_prod, remote_data_ptr, remote_maps_prod, remote_maps_ptr, Paths,
-};
 use anyhow::{Context, Result};
 
-fn resolve_remote_maps(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
+pub fn resolve_remote_maps(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
     if let Ok(p) = std::env::var(env_var) {
         return p;
     }
@@ -22,7 +18,7 @@ fn resolve_remote_maps(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &st
     fallback.to_string()
 }
 
-fn resolve_remote_workdir(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
+pub fn resolve_remote_workdir(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
     if let Ok(p) = std::env::var(env_var) {
         return p;
     }
@@ -35,147 +31,6 @@ fn resolve_remote_workdir(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: 
         }
     }
     fallback.to_string()
-}
-
-pub fn deploy_prod(paths: &Paths, cfg: &DeployConfig, version: &str) -> Result<()> {
-    let gcp = cfg.gcp();
-    let remote_home = gcp.remote_home(&paths.remote_home_cache())?;
-    println!(
-        "==> Deploying prod content → {} + marketing → {}",
-        cfg.play_domain(),
-        cfg.site_domain()
-    );
-    let maps_dir = resolve_remote_maps(
-        &gcp,
-        "sow-server",
-        "SOW_REMOTE_MAPS_PROD",
-        &remote_maps_prod(&remote_home),
-    );
-    let cache = paths.dist_root();
-    let web_play = cfg.web_root_play();
-    let web_main = cfg.web_root_main();
-    std::thread::scope(|s| -> Result<()> {
-        let gcp_a = gcp.clone();
-        let gcp_b = gcp.clone();
-        let gcp_f = gcp.clone();
-        let dist = paths.dist_play.display().to_string();
-        let site = paths.site_web.display().to_string();
-        let maps = paths.assets_maps.display().to_string();
-        let cache_a = cache.clone();
-        let cache_b = cache.clone();
-        let cache_f = cache.clone();
-        let a = s.spawn(move || {
-            gcp_a.rsync_dir_with_opts(
-                &cache_a,
-                &dist,
-                &web_play,
-                &["-avzL", "--delete", "--exclude=*.bin"],
-            )
-        });
-        let b = s.spawn(move || {
-            gcp_b.rsync_dir_with_opts(&cache_b, &site, &web_main, &["-avz"])
-        });
-        let f = s.spawn(move || {
-            gcp_f.rsync_dir_with_opts(
-                &cache_f,
-                &maps,
-                maps_dir.trim_end_matches('/'),
-                &[
-                    "-avz",
-                    "--exclude=map.bin",
-                    "--exclude=mini_map.bin",
-                    "--exclude=manifest.json",
-                    "--exclude=maps.json",
-                ],
-            )
-        });
-        a.join().unwrap()?;
-        b.join().unwrap()?;
-        f.join().unwrap()?;
-        Ok(())
-    })?;
-    gcp.run_remote("sudo restorecon -R /var/www")?;
-    verify_play_host(&cfg.play_url())?;
-    verify_marketing_embed(&format!("{}/", cfg.site_url()))?;
-    verify_sitemap(&cfg, &cfg.sitemap_url())?;
-    infra::deploy_server_release(
-        paths,
-        &gcp,
-        "sow-server",
-        &resolve_remote_workdir(
-            &gcp,
-            "sow-server",
-            "SOW_REMOTE_DATA_PROD",
-            &remote_data_prod(&remote_home),
-        ),
-        version,
-        &cfg.maps_url(&cfg.site_origin),
-        &cfg.ws_url(&cfg.site_origin),
-    )?;
-    Ok(())
-}
-
-pub fn deploy_ptr(paths: &Paths, cfg: &DeployConfig, version: &str) -> Result<()> {
-    let gcp = cfg.gcp();
-    let remote_home = gcp.remote_home(&paths.remote_home_cache())?;
-    println!("==> Deploying ptr content → {}", cfg.ptr_domain());
-    let maps_dir = resolve_remote_maps(
-        &gcp,
-        "sow-server-ptr",
-        "SOW_REMOTE_MAPS_PTR",
-        &remote_maps_ptr(&remote_home),
-    );
-    let cache = paths.dist_root();
-    let dist = paths.dist_ptr.display().to_string();
-    let maps = paths.assets_maps.display().to_string();
-    let web_ptr = cfg.web_root_ptr();
-    std::thread::scope(|s| -> Result<()> {
-        let gcp_a = gcp.clone();
-        let gcp_d = gcp.clone();
-        let cache_a = cache.clone();
-        let cache_d = cache.clone();
-        let a = s.spawn(move || {
-            gcp_a.rsync_dir_with_opts(
-                &cache_a,
-                &dist,
-                &web_ptr,
-                &["-avzL", "--delete", "--exclude=*.bin"],
-            )
-        });
-        let d = s.spawn(move || {
-            gcp_d.rsync_dir_with_opts(
-                &cache_d,
-                &maps,
-                maps_dir.trim_end_matches('/'),
-                &[
-                    "-avz",
-                    "--exclude=map.bin",
-                    "--exclude=mini_map.bin",
-                    "--exclude=manifest.json",
-                    "--exclude=maps.json",
-                ],
-            )
-        });
-        a.join().unwrap()?;
-        d.join().unwrap()?;
-        Ok(())
-    })?;
-    verify_play_host(&cfg.ptr_url())?;
-    infra::deploy_server_release(
-        paths,
-        &gcp,
-        "sow-server-ptr",
-        &resolve_remote_workdir(
-            &gcp,
-            "sow-server-ptr",
-            "SOW_REMOTE_DATA_PTR",
-            &remote_data_ptr(&remote_home),
-        ),
-        version,
-        &cfg.maps_url(&cfg.ptr_origin),
-        &cfg.ws_url(&cfg.ptr_origin),
-    )?;
-    Ok(())
 }
 
 pub fn verify_play_host(play_url: &str) -> Result<()> {
