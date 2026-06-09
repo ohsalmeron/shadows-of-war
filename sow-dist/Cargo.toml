@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+dotenv = "0.15"
 brotli = { workspace = true }
 clap = { workspace = true }
 image = { workspace = true }

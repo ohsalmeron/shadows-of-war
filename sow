@@ -4,9 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
 
-if [[ -z "${SOW_IN_NIX_SHELL:-}" ]] && [[ -z "${SOW_NO_NIX:-}" ]] \
-    && command -v nix >/dev/null 2>&1 && [[ -f "${ROOT}/flake.nix" ]]; then
-  exec nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config -c "${BASH_SOURCE[0]}" "$@"
+if [[ -f "${ROOT}/.env" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "${ROOT}/.env"
+  set +a
 fi
 
 # Own cargo output dir — never touch a root-owned workspace target/.

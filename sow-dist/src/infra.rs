@@ -1,78 +1,230 @@
-use crate::paths::{deploy_user, Paths};
+use crate::config::DeployConfig;
+use crate::gcp::{self, GcpConfig};
+use crate::paths::Paths;
 use crate::process;
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const SERVER_CRATES: &[&str] = &["sow-server", "sow-relay", "sow-core", "sow-net"];
 
-pub fn deploy_infra(paths: &Paths, host: &str) -> Result<()> {
-    let remote = format!("{}@{host}", deploy_user());
-    if remote_is_nixos(&remote)? {
-        install_nixos_rebuild(&remote, paths)?;
+pub fn deploy_infra(
+    paths: &Paths,
+    cfg: &DeployConfig,
+    confirm_destroy: bool,
+    bootstrap_only: bool,
+) -> Result<()> {
+    let project = &cfg.gcp_project;
+    gcp::enable_os_login(project)?;
+    let gcp = cfg.gcp();
+    if bootstrap_only {
+        bootstrap_fedora(paths, cfg, &gcp)?;
     } else {
-        install_nixos_anywhere(&remote, paths)?;
+        if !confirm_destroy {
+            bail!("Refusing to destroy/recreate VPS without --confirm-destroy (or use --bootstrap-only)");
+        }
+        gcp::delete_instance(project, &cfg.gcp_zone, &cfg.gcp_instance)?;
+        if let (Some(name), Some(zone)) = (&cfg.test_instance, &cfg.test_zone) {
+            gcp::delete_instance(project, zone, name)?;
+        }
+        if let (Some(name), Some(region)) = (&cfg.test_static_ip, &cfg.test_static_ip_region) {
+            gcp::release_static_ip(project, region, name)?;
+        }
+        gcp::create_fedora_vm(
+            project,
+            &cfg.gcp_zone,
+            &cfg.gcp_instance,
+            &cfg.gcp_static_ip,
+        )?;
+        fs::remove_file(paths.remote_home_cache()).ok();
+        wait_for_ssh(&gcp)?;
+        bootstrap_fedora(paths, cfg, &gcp)?;
     }
-    write_infra_hash(paths)?;
-    println!("✅ NixOS infra applied on {host}");
+    println!(
+        "✅ Fedora VPS ready on {} ({})",
+        cfg.gcp_instance, cfg.gcp_static_ip
+    );
     Ok(())
 }
 
-fn remote_is_nixos(remote: &str) -> Result<bool> {
-    let out = process::output(
-        "ssh",
-        &[
-            remote,
-            "test -f /etc/NIXOS && echo yes || echo no",
-        ],
-    )?;
-    Ok(out.trim() == "yes")
+fn wait_for_ssh(gcp: &GcpConfig) -> Result<()> {
+    const MAX_SECS: u64 = 180;
+    const INTERVAL_SECS: u64 = 5;
+    println!("==> Waiting for VM SSH (up to {MAX_SECS}s)…");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(MAX_SECS);
+    while std::time::Instant::now() < deadline {
+        if gcp.ssh_ready() {
+            println!("✅ SSH ready");
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_secs(INTERVAL_SECS));
+    }
+    bail!("SSH not ready after {MAX_SECS}s")
 }
 
-fn install_nixos_rebuild(remote: &str, paths: &Paths) -> Result<()> {
-    println!("==> nixos-rebuild switch --flake .#vps --target-host {remote}");
+/// Fedora 44 OS Login may not populate google-sudoers; grant sudo via one-shot startup script.
+fn ensure_os_admin_sudo(gcp: &GcpConfig) -> Result<()> {
+    if gcp
+        .remote_output("sudo -n whoami")
+        .map(|s| s.trim() == "root")
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+    let user = gcp.remote_output("whoami")?.trim().to_string();
+    println!("==> Enabling passwordless sudo for {user} (startup script)");
+    let script = format!(
+        "#!/bin/bash\nset -euo pipefail\n\
+         gpasswd --add {user} google-sudoers 2>/dev/null || true\n\
+         echo '{user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-sow-deploy\n\
+         chmod 0440 /etc/sudoers.d/99-sow-deploy\n"
+    );
+    let tmp = std::env::temp_dir().join("sow-sudo-bootstrap.sh");
+    fs::write(&tmp, script)?;
     process::run(
-        "nix",
+        "gcloud",
         &[
-            "--extra-experimental-features",
-            "nix-command flakes",
-            "run",
-            "--inputs-from",
-            ".",
-            "nixpkgs#nixos-rebuild",
-            "--",
-            "switch",
-            "--flake",
-            ".#vps",
-            "--target-host",
-            remote,
-            "--build-host",
-            remote,
+            "compute",
+            "instances",
+            "add-metadata",
+            &gcp.instance,
+            &format!("--project={}", gcp.project),
+            &format!("--zone={}", gcp.zone),
+            &format!("--metadata-from-file=startup-script={}", tmp.display()),
         ],
-        Some(&paths.root),
+        None,
     )?;
+    process::run(
+        "gcloud",
+        &[
+            "compute",
+            "instances",
+            "reset",
+            &gcp.instance,
+            &format!("--project={}", gcp.project),
+            &format!("--zone={}", gcp.zone),
+            "--quiet",
+        ],
+        None,
+    )?;
+    fs::remove_file(&tmp).ok();
+    wait_for_ssh(gcp)?;
+    if !gcp
+        .remote_output("sudo -n whoami")
+        .map(|s| s.trim() == "root")
+        .unwrap_or(false)
+    {
+        bail!("sudo still unavailable after startup script — check OS Login / IAM");
+    }
     Ok(())
 }
 
-fn install_nixos_anywhere(remote: &str, paths: &Paths) -> Result<()> {
-    println!("==> nixos-anywhere --flake .#vps-install --target-host {remote}");
-    println!("    (replaces Debian — disk repartitioned, ~5–15 min downtime)");
-    process::run(
-        "nix",
-        &[
-            "--extra-experimental-features",
-            "nix-command flakes",
-            "run",
-            ".#nixos-anywhere",
-            "--",
-            "--flake",
-            ".#vps-install",
-            "--target-host",
-            remote,
-        ],
-        Some(&paths.root),
+fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Result<()> {
+    ensure_os_admin_sudo(gcp)?;
+    let login_home = gcp.remote_home(&paths.remote_home_cache())?;
+    let user = gcp.remote_output("whoami")?.trim().to_string();
+    let home_prod = format!("{login_home}/shadowsofwar");
+    let home_ptr = format!("{login_home}/shadowsofwar-ptr");
+
+    println!("==> Bootstrap Fedora (user={user}, prod={home_prod})");
+
+    gcp.run_remote(
+        "sudo dnf -y install nginx valkey certbot python3-certbot-nginx firewalld && \
+         sudo systemctl enable --now firewalld && \
+         sudo firewall-cmd --permanent --add-service=http --add-service=https && \
+         sudo firewall-cmd --reload && \
+         sudo setsebool -P httpd_can_network_connect 1",
     )?;
+
+    let web_main = cfg.web_root_main();
+    let web_play = cfg.web_root_play();
+    let web_ptr = cfg.web_root_ptr();
+    gcp.run_remote(&format!(
+        "mkdir -p {home_prod}/assets/maps {home_ptr}/assets/maps && \
+         sudo mkdir -p {web_main} {web_play} {web_ptr} && \
+         sudo chown -R {user}:$(id -gn) /var/www/{main} /var/www/{play} /var/www/{ptr} && \
+         sudo restorecon -R /var/www",
+        main = cfg.site_domain(),
+        play = cfg.play_domain(),
+        ptr = cfg.ptr_domain(),
+    ))?;
+
+    install_systemd_unit(gcp, paths, "sow-server.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(gcp, paths, "sow-server-ptr.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(gcp, paths, "valkey.service", &user, &home_prod, &home_ptr)?;
+
+    for (template, conf_name) in [
+        ("main.conf", format!("{}.conf", cfg.site_domain())),
+        ("play.conf", format!("{}.conf", cfg.play_domain())),
+        ("ptr.conf", format!("{}.conf", cfg.ptr_domain())),
+    ] {
+        install_nginx_conf(gcp, paths, cfg, &template, &conf_name)?;
+    }
+
+    let certbot = format!(
+        "sudo nginx -t && sudo systemctl enable --now nginx valkey && \
+         sudo certbot --nginx --non-interactive --agree-tos --email {email} \
+         -d {main} -d {www} -d {play} -d {ptr} --redirect || true",
+        email = cfg.certbot_email,
+        main = cfg.site_domain(),
+        www = cfg.www_site_domain(),
+        play = cfg.play_domain(),
+        ptr = cfg.ptr_domain(),
+    );
+    gcp.run_remote(&certbot)?;
+
+    gcp.run_remote("sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr")?;
+
+    Ok(())
+}
+
+fn install_nginx_conf(
+    gcp: &GcpConfig,
+    paths: &Paths,
+    cfg: &DeployConfig,
+    template: &str,
+    conf_name: &str,
+) -> Result<()> {
+    let mut content = fs::read_to_string(paths.deploy_nginx(template))?;
+    content = content.replace("__SOW_DOMAIN_MAIN__", &cfg.site_domain());
+    content = content.replace("__SOW_WWW_MAIN__", &cfg.www_site_domain());
+    content = content.replace("__SOW_DOMAIN_PLAY__", &cfg.play_domain());
+    content = content.replace("__SOW_DOMAIN_PTR__", &cfg.ptr_domain());
+    let tmp = paths.dist_root().join(format!("bootstrap-nginx-{conf_name}"));
+    fs::write(&tmp, &content)?;
+    let remote = format!("/tmp/{conf_name}");
+    gcp::scp_to_instance(gcp, &tmp, &remote)?;
+    gcp.run_remote(&format!(
+        "sudo mv {remote} /etc/nginx/conf.d/{conf_name} && \
+         sudo chown root:root /etc/nginx/conf.d/{conf_name} && sudo chmod 644 /etc/nginx/conf.d/{conf_name} && \
+         sudo restorecon /etc/nginx/conf.d/{conf_name}"
+    ))?;
+    fs::remove_file(&tmp).ok();
+    Ok(())
+}
+
+fn install_systemd_unit(
+    gcp: &GcpConfig,
+    paths: &Paths,
+    name: &str,
+    user: &str,
+    home_prod: &str,
+    home_ptr: &str,
+) -> Result<()> {
+    let mut content = fs::read_to_string(paths.deploy_systemd(name))?;
+    content = content.replace("__DEPLOY_USER__", user);
+    content = content.replace("__HOME_PROD__", home_prod);
+    content = content.replace("__HOME_PTR__", home_ptr);
+    let tmp = paths.dist_root().join(format!("bootstrap-{name}"));
+    fs::write(&tmp, &content)?;
+    let remote = format!("/tmp/{name}");
+    gcp::scp_to_instance(gcp, &tmp, &remote)?;
+    gcp.run_remote(&format!(
+        "sudo mv {remote} /etc/systemd/system/{name} && \
+         sudo chown root:root /etc/systemd/system/{name} && sudo chmod 644 /etc/systemd/system/{name}"
+    ))?;
+    fs::remove_file(&tmp).ok();
     Ok(())
 }
 
@@ -87,7 +239,6 @@ fn hash_server_inputs(paths: &Paths) -> Result<String> {
         hash_dir(&mut h, &paths.root.join(name))?;
     }
     hash_file(&mut h, &paths.root.join("Cargo.lock"))?;
-    hash_file(&mut h, &paths.root.join("flake.lock"))?;
     Ok(format!("{:x}", h.finalize()))
 }
 
@@ -120,15 +271,128 @@ fn hash_file(h: &mut Sha256, path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn verify_server_health(remote: &str, maps_url: &str, ws_url: &str, unit: &str) -> Result<()> {
+fn read_cached_hash(paths: &Paths) -> String {
+    fs::read_to_string(paths.infra_hash_cache())
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf)> {
+    const GNU: &str = "x86_64-unknown-linux-gnu";
+    println!("==> cargo build --release -p sow-server -p sow-relay ({GNU})");
+    process::run(
+        "cargo",
+        &[
+            "build",
+            "--release",
+            "-p",
+            "sow-server",
+            "-p",
+            "sow-relay",
+            "--target",
+            GNU,
+        ],
+        Some(&paths.root),
+    )?;
+    let dir = paths.cargo_target.join(format!("{GNU}/release"));
+    Ok((dir.join("sow-server"), dir.join("sow-relay")))
+}
+
+fn rsync_server_binaries(
+    gcp: &GcpConfig,
+    cache_dir: &Path,
+    data_dir: &str,
+    server: &Path,
+    relay: &Path,
+) -> Result<()> {
+    gcp.rsync(
+        cache_dir,
+        &server.to_string_lossy(),
+        &format!("{data_dir}/sow-server"),
+    )?;
+    gcp.rsync(
+        cache_dir,
+        &relay.to_string_lossy(),
+        &format!("{data_dir}/sow-relay"),
+    )?;
+    gcp.run_remote(&format!(
+        "chmod +x {data_dir}/sow-server {data_dir}/sow-relay && \
+         sudo chcon -t bin_t {data_dir}/sow-server {data_dir}/sow-relay"
+    ))?;
+    Ok(())
+}
+
+/// Ship server binaries when crate inputs changed, push `.version`, restart orchestrator.
+pub fn deploy_server_release(
+    paths: &Paths,
+    gcp: &GcpConfig,
+    unit: &str,
+    data_dir: &str,
+    version: &str,
+    maps_url: &str,
+    ws_url: &str,
+) -> Result<()> {
+    println!("==> Deploying server ({unit})");
+    let current_hash = hash_server_inputs(paths)?;
+    let hash_changed = read_cached_hash(paths) != current_hash;
+    let binaries_missing = gcp
+        .remote_output(&format!(
+            "test -x {data_dir}/sow-server && test -x {data_dir}/sow-relay && echo ok"
+        ))
+        .map(|s| s.trim() != "ok")
+        .unwrap_or(true);
+    let need_build = hash_changed || binaries_missing;
+
+    if need_build {
+        let (server, relay) = build_server_binaries(paths)?;
+        rsync_server_binaries(gcp, &paths.dist_root(), data_dir, &server, &relay)?;
+        write_infra_hash(paths)?;
+        println!("✅ Server binaries deployed ({unit})");
+    } else {
+        println!("==> Server crates unchanged — skipping server build");
+    }
+
+    let version_local = paths.version_file.to_string_lossy();
+    gcp.rsync(
+        &paths.dist_root(),
+        version_local.as_ref(),
+        &format!("{data_dir}/.version"),
+    )?;
+
+    let deployed_cache = paths.deployed_version_cache(unit);
+    let last_version = fs::read_to_string(&deployed_cache)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let version_changed = last_version != version;
+
+    if need_build || version_changed {
+        println!("==> Restarting {unit}");
+        gcp.run_remote(&format!("sudo systemctl restart {unit}"))?;
+        if let Some(parent) = deployed_cache.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&deployed_cache, format!("{version}\n"))?;
+    } else {
+        println!("==> Server version unchanged — skipping restart");
+    }
+
+    verify_server_health(gcp, maps_url, ws_url, unit)
+}
+
+pub fn verify_server_health(
+    gcp: &GcpConfig,
+    maps_url: &str,
+    ws_url: &str,
+    unit: &str,
+) -> Result<()> {
     println!("==> Verifying server ({unit}) on VPS");
-    let active = process::output("ssh", &[remote, &format!("systemctl is-active {unit}")])?;
+    let active = gcp.remote_output(&format!("systemctl is-active {unit}"))?;
     if active.trim() != "active" {
-        let logs = process::output(
-            "ssh",
-            &[remote, &format!("journalctl -u {unit} -n 30 --no-pager")],
-        )
-        .unwrap_or_else(|_| String::from("(journalctl unavailable)"));
+        let logs = gcp
+            .remote_output(&format!("journalctl -u {unit} -n 30 --no-pager"))
+            .unwrap_or_else(|_| String::from("(journalctl unavailable)"));
         eprintln!("{logs}");
         bail!("{unit} is not active (got: {})", active.trim());
     }
@@ -147,7 +411,7 @@ pub fn verify_server_health(remote: &str, maps_url: &str, ws_url: &str, unit: &s
         .get("access-control-allow-origin")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if cors != "*" && !cors.contains("shadowsofwar.io") {
+    if cors != "*" {
         bail!("maps API missing CORS header (got: {cors:?})");
     }
     println!("✅ Maps API OK");

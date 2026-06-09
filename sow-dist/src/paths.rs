@@ -1,33 +1,30 @@
 use std::path::PathBuf;
 
-pub const PROD_ASSETS_PATH: &str = "/var/www/shadowsofwar.io/html/assets";
 pub const PORTAL_JS: &str = "sow_client.js";
 pub const PORTAL_WASM: &str = "sow_client_bg.wasm";
 
-/// SSH user for deploy (`SOW_DEPLOY_USER`, else `bizkit` — matches live VPS user).
-pub fn deploy_user() -> String {
-    std::env::var("SOW_DEPLOY_USER").unwrap_or_else(|_| "bizkit".into())
+/// Remote prod server working dir (`$HOME/shadowsofwar` on VPS).
+pub fn remote_data_prod(remote_home: &str) -> String {
+    std::env::var("SOW_REMOTE_DATA_PROD")
+        .unwrap_or_else(|_| format!("{remote_home}/shadowsofwar"))
 }
 
-/// SSH host for deploy (`SOW_DEPLOY_HOST`, else `shadowsofwar.io`).
-pub fn deploy_host() -> String {
-    std::env::var("SOW_DEPLOY_HOST").unwrap_or_else(|_| "shadowsofwar.io".into())
+/// Remote PTR server working dir.
+pub fn remote_data_ptr(remote_home: &str) -> String {
+    std::env::var("SOW_REMOTE_DATA_PTR")
+        .unwrap_or_else(|_| format!("{remote_home}/shadowsofwar-ptr"))
 }
 
-fn data_root() -> String {
-    std::env::var("SOW_DATA_ROOT").unwrap_or_else(|_| "/var/lib/sow".into())
-}
-
-/// Remote prod maps dir (`SOW_REMOTE_MAPS_PROD`, else `$SOW_DATA_ROOT/prod/maps`).
-pub fn remote_maps_prod() -> String {
+/// Remote prod maps dir.
+pub fn remote_maps_prod(remote_home: &str) -> String {
     std::env::var("SOW_REMOTE_MAPS_PROD")
-        .unwrap_or_else(|_| format!("{}/prod/maps", data_root()))
+        .unwrap_or_else(|_| format!("{remote_home}/shadowsofwar/assets/maps"))
 }
 
-/// Remote PTR maps dir (`SOW_REMOTE_MAPS_PTR`, else `$SOW_DATA_ROOT/ptr/maps`).
-pub fn remote_maps_ptr() -> String {
+/// Remote PTR maps dir.
+pub fn remote_maps_ptr(remote_home: &str) -> String {
     std::env::var("SOW_REMOTE_MAPS_PTR")
-        .unwrap_or_else(|_| format!("{}/ptr/maps", data_root()))
+        .unwrap_or_else(|_| format!("{remote_home}/shadowsofwar-ptr/assets/maps"))
 }
 
 #[derive(Clone)]
@@ -77,6 +74,32 @@ impl Paths {
 
     pub fn infra_hash_cache(&self) -> PathBuf {
         self.infra_hash_cache.clone()
+    }
+
+    pub fn deployed_version_cache(&self, unit: &str) -> PathBuf {
+        self.root
+            .join("dist")
+            .join(format!(".sow-deployed-version-{unit}"))
+    }
+
+    pub fn remote_home_cache(&self) -> PathBuf {
+        self.root.join("dist/.sow-remote-home")
+    }
+
+    pub fn dist_root(&self) -> PathBuf {
+        self.root.join("dist")
+    }
+
+    pub fn deploy_dir(&self) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("deploy")
+    }
+
+    pub fn deploy_nginx(&self, name: &str) -> PathBuf {
+        self.deploy_dir().join("nginx").join(name)
+    }
+
+    pub fn deploy_systemd(&self, name: &str) -> PathBuf {
+        self.deploy_dir().join("systemd").join(name)
     }
 
     pub fn wasm_release_input(&self) -> PathBuf {

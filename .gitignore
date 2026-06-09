@@ -6,11 +6,12 @@ coverage/
 TODO.txt
 resources/images/.DS_Store
 resources/.DS_Store
-.env*
+.env
+.env.local
+!.env.example
 OpenFrontIO/
 MapGenerator/
 sow-dist/deploy/keystores/
-nix/nixos/vps/local.nix
 sow-client/signing.local.toml
 .DS_Store
 .clinic/

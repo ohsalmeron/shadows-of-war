@@ -3,6 +3,7 @@ defeat_title = "DERROTA"
 victory_subtitle = "Has conquistado el mundo entero."
 defeat_subtitle = "Tu imperio ha caído."
 return_to_lobby = "REGRESAR"
+play_again = "JUGAR DE NUEVO"
 spectate = "ESPECTAR"
 winner_emerged = "{} emergió victorioso."
 

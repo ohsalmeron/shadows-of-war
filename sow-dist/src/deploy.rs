@@ -1,20 +1,18 @@
+use crate::config::DeployConfig;
+use crate::gcp::GcpConfig;
 use crate::infra;
-use crate::paths::{deploy_host, deploy_user, remote_maps_prod, remote_maps_ptr, Paths};
-use crate::process;
+use crate::paths::{
+    remote_data_prod, remote_data_ptr, remote_maps_prod, remote_maps_ptr, Paths,
+};
 use anyhow::{Context, Result};
 
-/// Remote maps dir: env override, else read `SOW_MAPS_ROOT` from the live systemd unit.
-fn resolve_remote_maps(remote: &str, unit: &str, env_var: &str, fallback: &str) -> String {
+fn resolve_remote_maps(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
     if let Ok(p) = std::env::var(env_var) {
         return p;
     }
-    if let Ok(out) = process::output(
-        "ssh",
-        &[
-            remote,
-            &format!("systemctl show {unit} -p Environment --value 2>/dev/null || true"),
-        ],
-    ) {
+    if let Ok(out) = gcp.remote_output(&format!(
+        "systemctl show {unit} -p Environment --value 2>/dev/null || true"
+    )) {
         for token in out.split_whitespace() {
             if let Some(v) = token.strip_prefix("SOW_MAPS_ROOT=") {
                 return v.to_string();
@@ -24,43 +22,71 @@ fn resolve_remote_maps(remote: &str, unit: &str, env_var: &str, fallback: &str) 
     fallback.to_string()
 }
 
-pub fn deploy_prod(paths: &Paths) -> Result<()> {
-    let remote = format!("{}@{}", deploy_user(), deploy_host());
-    println!("==> Deploying prod content → play.shadowsofwar.io + marketing → shadowsofwar.io");
-    let dist = format!("{}/", paths.dist_play.display());
-    let play_html = format!("{remote}:/var/www/play.shadowsofwar.io/html/");
-    let main_html = format!("{remote}:/var/www/shadowsofwar.io/html/");
-    let site = format!("{}/", paths.site_web.display());
-    let maps = format!("{}/", paths.assets_maps.display());
+fn resolve_remote_workdir(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
+    if let Ok(p) = std::env::var(env_var) {
+        return p;
+    }
+    if let Ok(out) = gcp.remote_output(&format!(
+        "systemctl show {unit} -p WorkingDirectory --value 2>/dev/null || true"
+    )) {
+        let wd = out.trim();
+        if !wd.is_empty() {
+            return wd.to_string();
+        }
+    }
+    fallback.to_string()
+}
+
+pub fn deploy_prod(paths: &Paths, cfg: &DeployConfig, version: &str) -> Result<()> {
+    let gcp = cfg.gcp();
+    let remote_home = gcp.remote_home(&paths.remote_home_cache())?;
+    println!(
+        "==> Deploying prod content → {} + marketing → {}",
+        cfg.play_domain(),
+        cfg.site_domain()
+    );
     let maps_dir = resolve_remote_maps(
-        &remote,
+        &gcp,
         "sow-server",
         "SOW_REMOTE_MAPS_PROD",
-        &remote_maps_prod(),
+        &remote_maps_prod(&remote_home),
     );
-    let maps_remote = format!("{remote}:{}/", maps_dir.trim_end_matches('/'));
+    let cache = paths.dist_root();
+    let web_play = cfg.web_root_play();
+    let web_main = cfg.web_root_main();
     std::thread::scope(|s| -> Result<()> {
-        let a = s.spawn(|| {
-            process::run(
-                "rsync",
-                &["-avzL", "--delete", "--exclude=*.bin", &dist, &play_html],
-                None,
+        let gcp_a = gcp.clone();
+        let gcp_b = gcp.clone();
+        let gcp_f = gcp.clone();
+        let dist = paths.dist_play.display().to_string();
+        let site = paths.site_web.display().to_string();
+        let maps = paths.assets_maps.display().to_string();
+        let cache_a = cache.clone();
+        let cache_b = cache.clone();
+        let cache_f = cache.clone();
+        let a = s.spawn(move || {
+            gcp_a.rsync_dir_with_opts(
+                &cache_a,
+                &dist,
+                &web_play,
+                &["-avzL", "--delete", "--exclude=*.bin"],
             )
         });
-        let b = s.spawn(|| process::run("rsync", &["-avz", &site, &main_html], None));
-        let f = s.spawn(|| {
-            process::run(
-                "rsync",
+        let b = s.spawn(move || {
+            gcp_b.rsync_dir_with_opts(&cache_b, &site, &web_main, &["-avz"])
+        });
+        let f = s.spawn(move || {
+            gcp_f.rsync_dir_with_opts(
+                &cache_f,
+                &maps,
+                maps_dir.trim_end_matches('/'),
                 &[
                     "-avz",
                     "--exclude=map.bin",
                     "--exclude=mini_map.bin",
                     "--exclude=manifest.json",
                     "--exclude=maps.json",
-                    &maps,
-                    &maps_remote,
                 ],
-                None,
             )
         });
         a.join().unwrap()?;
@@ -68,58 +94,86 @@ pub fn deploy_prod(paths: &Paths) -> Result<()> {
         f.join().unwrap()?;
         Ok(())
     })?;
-    verify_play_host("https://play.shadowsofwar.io/")?;
-    verify_marketing_embed("https://shadowsofwar.io/")?;
-    verify_sitemap("https://shadowsofwar.io/sitemap.xml")?;
-    infra::verify_server_health(
-        &remote,
-        "https://shadowsofwar.io/maps/catalog.bin",
-        "https://shadowsofwar.io/ws/",
+    gcp.run_remote("sudo restorecon -R /var/www")?;
+    verify_play_host(&cfg.play_url())?;
+    verify_marketing_embed(&format!("{}/", cfg.site_url()))?;
+    verify_sitemap(&cfg, &cfg.sitemap_url())?;
+    infra::deploy_server_release(
+        paths,
+        &gcp,
         "sow-server",
+        &resolve_remote_workdir(
+            &gcp,
+            "sow-server",
+            "SOW_REMOTE_DATA_PROD",
+            &remote_data_prod(&remote_home),
+        ),
+        version,
+        &cfg.maps_url(&cfg.site_origin),
+        &cfg.ws_url(&cfg.site_origin),
     )?;
     Ok(())
 }
 
-pub fn deploy_ptr(paths: &Paths) -> Result<()> {
-    let remote = format!("{}@{}", deploy_user(), deploy_host());
-    println!("==> Deploying ptr content → ptr.shadowsofwar.io");
-    let dist = format!("{}/", paths.dist_ptr.display());
-    let html = format!("{remote}:/var/www/ptr.shadowsofwar.io/html/");
-    let maps = format!("{}/", paths.assets_maps.display());
+pub fn deploy_ptr(paths: &Paths, cfg: &DeployConfig, version: &str) -> Result<()> {
+    let gcp = cfg.gcp();
+    let remote_home = gcp.remote_home(&paths.remote_home_cache())?;
+    println!("==> Deploying ptr content → {}", cfg.ptr_domain());
     let maps_dir = resolve_remote_maps(
-        &remote,
+        &gcp,
         "sow-server-ptr",
         "SOW_REMOTE_MAPS_PTR",
-        &remote_maps_ptr(),
+        &remote_maps_ptr(&remote_home),
     );
-    let maps_remote = format!("{remote}:{}/", maps_dir.trim_end_matches('/'));
+    let cache = paths.dist_root();
+    let dist = paths.dist_ptr.display().to_string();
+    let maps = paths.assets_maps.display().to_string();
+    let web_ptr = cfg.web_root_ptr();
     std::thread::scope(|s| -> Result<()> {
-        let a = s.spawn(|| process::run("rsync", &["-avzL", "--delete", "--exclude=*.bin", &dist, &html], None));
-        let d = s.spawn(|| {
-            process::run(
-                "rsync",
+        let gcp_a = gcp.clone();
+        let gcp_d = gcp.clone();
+        let cache_a = cache.clone();
+        let cache_d = cache.clone();
+        let a = s.spawn(move || {
+            gcp_a.rsync_dir_with_opts(
+                &cache_a,
+                &dist,
+                &web_ptr,
+                &["-avzL", "--delete", "--exclude=*.bin"],
+            )
+        });
+        let d = s.spawn(move || {
+            gcp_d.rsync_dir_with_opts(
+                &cache_d,
+                &maps,
+                maps_dir.trim_end_matches('/'),
                 &[
                     "-avz",
                     "--exclude=map.bin",
                     "--exclude=mini_map.bin",
                     "--exclude=manifest.json",
                     "--exclude=maps.json",
-                    &maps,
-                    &maps_remote,
                 ],
-                None,
             )
         });
         a.join().unwrap()?;
         d.join().unwrap()?;
         Ok(())
     })?;
-    verify_play_host("https://ptr.shadowsofwar.io/")?;
-    infra::verify_server_health(
-        &remote,
-        "https://ptr.shadowsofwar.io/maps/catalog.bin",
-        "https://ptr.shadowsofwar.io/ws/",
+    verify_play_host(&cfg.ptr_url())?;
+    infra::deploy_server_release(
+        paths,
+        &gcp,
         "sow-server-ptr",
+        &resolve_remote_workdir(
+            &gcp,
+            "sow-server-ptr",
+            "SOW_REMOTE_DATA_PTR",
+            &remote_data_ptr(&remote_home),
+        ),
+        version,
+        &cfg.maps_url(&cfg.ptr_origin),
+        &cfg.ws_url(&cfg.ptr_origin),
     )?;
     Ok(())
 }
@@ -175,7 +229,7 @@ pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn verify_sitemap(sitemap_url: &str) -> Result<()> {
+pub fn verify_sitemap(cfg: &DeployConfig, sitemap_url: &str) -> Result<()> {
     println!("==> Verifying sitemap at {sitemap_url}");
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -205,8 +259,9 @@ pub fn verify_sitemap(sitemap_url: &str) -> Result<()> {
     if url_count < 3 {
         anyhow::bail!("sitemap.xml expected at least 3 URLs, found {url_count}");
     }
+    let site = cfg.site_url();
     for path in ["/", "/privacy", "/terms"] {
-        let loc = format!("https://shadowsofwar.io{path}");
+        let loc = format!("{site}{path}");
         if !body.contains(&loc) {
             anyhow::bail!("sitemap.xml missing {loc}");
         }

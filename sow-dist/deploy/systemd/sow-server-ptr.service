@@ -1,0 +1,22 @@
+[Unit]
+Description=Shadows of War Server (PTR)
+After=network.target valkey.service
+Requires=valkey.service
+
+[Service]
+Type=simple
+User=__DEPLOY_USER__
+WorkingDirectory=__HOME_PTR__
+ExecStart=__HOME_PTR__/sow-server
+Restart=always
+RestartSec=3
+KillMode=process
+Environment=RUST_LOG=info
+Environment=SOW_REDIS_URL=redis://127.0.0.1:6379
+Environment=SOW_WS_LISTEN=0.0.0.0:25575
+Environment=SOW_MAPS_HTTP_LISTEN=0.0.0.0:25576
+Environment=SOW_MAPS_ROOT=__HOME_PTR__/assets/maps
+Environment=SOW_RELAY_BIN=__HOME_PTR__/sow-relay
+
+[Install]
+WantedBy=multi-user.target

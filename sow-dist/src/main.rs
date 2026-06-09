@@ -1,6 +1,8 @@
 mod assets;
 mod cdn;
+mod config;
 mod deploy;
+mod gcp;
 mod infra;
 mod package;
 mod paths;
@@ -49,12 +51,15 @@ enum Command {
         #[command(flatten)]
         opts: VersionOpts,
     },
-    /// Apply NixOS VPS infra (nginx, systemd, valkey, server binaries).
+    /// One-time Fedora VPS bootstrap on GCP (destroys/recreates sow-server VM).
     #[command(name = "infra")]
     Infra {
-        /// VPS hostname or IP (default: prod host from paths).
+        /// Required to delete existing VMs and recreate sow-server on sow-server-ip.
         #[arg(long)]
-        host: Option<String>,
+        confirm_destroy: bool,
+        /// Bootstrap an existing sow-server VM (skip delete/create).
+        #[arg(long)]
+        bootstrap_only: bool,
     },
     /// Local WASM QA: iframe embed, prod wss/CDN at runtime.
     #[command(name = "local", visible_aliases = ["l", "localsite", "ls"])]
@@ -85,14 +90,18 @@ fn parse_cli() -> Cli {
 }
 
 fn main() -> Result<()> {
-    let cli = parse_cli();
     let paths = Paths::discover()?;
+    config::load_dotenv(&paths.root);
+    let cli = parse_cli();
 
     match cli.cmd {
         Command::Crazygames { opts } => cmd_crazygames(&paths, opts.version),
         Command::Prod { opts } => cmd_prod(&paths, opts.version),
         Command::Ptr { opts } => cmd_ptr(&paths, opts.version),
-        Command::Infra { host } => cmd_infra(&paths, host.as_deref()),
+        Command::Infra {
+            confirm_destroy,
+            bootstrap_only,
+        } => cmd_infra(&paths, confirm_destroy, bootstrap_only),
         Command::Local {
             opts,
             port,
@@ -110,16 +119,26 @@ fn resolve_version(paths: &Paths, increment: bool) -> Result<String> {
 }
 
 fn run_parallel(paths: &Paths, profile: Profile, out: &Path, version: &str) -> Result<()> {
+    let cfg = config::require_remote_config()?;
     let paths_cdn = paths.clone();
     let paths_pkg = paths.clone();
     let out = out.to_path_buf();
     let version = version.to_string();
-    let cdn = cdn::start_background(&paths_cdn);
+    let cfg_cdn = cfg.clone();
+    let cfg_pkg = cfg.clone();
+    let sync_cdn = matches!(profile, Profile::SelfHosted | Profile::Crazygames);
+    let cdn = if sync_cdn {
+        Some(cdn::start_background(&paths_cdn, &cfg_cdn))
+    } else {
+        None
+    };
     let pkg = std::thread::spawn(move || {
         wasm::compile(&paths_pkg)?;
-        package::build(&paths_pkg, profile, &out, &version)
+        package::build(&paths_pkg, profile, &out, &version, &cfg_pkg)
     });
-    cdn.join().expect("cdn thread panicked")?;
+    if let Some(cdn) = cdn {
+        cdn.join().expect("cdn thread panicked")?;
+    }
     pkg.join().expect("package thread panicked")?;
     Ok(())
 }
@@ -137,23 +156,27 @@ fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
 fn cmd_prod(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     run_parallel(paths, Profile::SelfHosted, &paths.dist_play, &version)?;
-    deploy::deploy_prod(paths)?;
-    println!("Prod deployed v{version} → https://play.shadowsofwar.io/ + https://shadowsofwar.io/");
+    let cfg = config::require_remote_config()?;
+    deploy::deploy_prod(paths, &cfg, &version)?;
+    println!(
+        "Prod deployed v{version} → {} + {}",
+        cfg.play_url(),
+        cfg.site_url()
+    );
     Ok(())
 }
 
-fn cmd_infra(paths: &Paths, host: Option<&str>) -> Result<()> {
-    let default_host = paths::deploy_host();
-    let host = host.unwrap_or(default_host.as_str());
-    infra::deploy_infra(paths, host)?;
-    Ok(())
+fn cmd_infra(paths: &Paths, confirm_destroy: bool, bootstrap_only: bool) -> Result<()> {
+    let cfg = config::require_remote_config()?;
+    infra::deploy_infra(paths, &cfg, confirm_destroy, bootstrap_only)
 }
 
 fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     run_parallel(paths, Profile::SelfHosted, &paths.dist_ptr, &version)?;
-    deploy::deploy_ptr(paths)?;
-    println!("PTR deployed v{version} → https://ptr.shadowsofwar.io/");
+    let cfg = config::require_remote_config()?;
+    deploy::deploy_ptr(paths, &cfg, &version)?;
+    println!("PTR deployed v{version} → {}", cfg.ptr_url());
     Ok(())
 }
 
@@ -166,11 +189,13 @@ fn cmd_local(
     let version = resolve_version(paths, increment_version)?;
     println!("==> local v{version} (no CDN sync, prod wss/CDN at runtime)");
     wasm::compile(paths)?;
+    let cfg = config::require_remote_config()?;
     package::build(
         paths,
         Profile::SiteDev,
         &paths.dist_site_dev_game,
         &version,
+        &cfg,
     )?;
     package::stage_site_www(paths)?;
     let www = &paths.dist_site_dev_www;

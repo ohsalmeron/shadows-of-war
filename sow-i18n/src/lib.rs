@@ -99,6 +99,7 @@ pub struct EndgameStrings {
     pub victory_subtitle: String,
     pub defeat_subtitle: String,
     pub return_to_lobby: String,
+    pub play_again: String,
     pub spectate: String,
     pub winner_emerged: String,
     pub victory_flavors: Vec<String>,

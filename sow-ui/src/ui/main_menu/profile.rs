@@ -147,28 +147,35 @@ pub fn draw_user_profile_header(
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
 
-            // Nickname Field
-            let output_name = egui::TextEdit::singleline(&mut state.player_name)
-                .id(egui::Id::new("main_menu_nickname"))
-                .hint_text(&strings.nickname_hint)
-                .char_limit(48)
-                .desired_width(ui.available_width() - 4.0)
-                .frame(egui::Frame::NONE)
-                .font(egui::FontId::proportional(18.0))
-                .text_color(Color32::WHITE)
-                .show(ui);
+            if state.name_locked {
+                ui.label(
+                    egui::RichText::new(&state.player_name)
+                        .font(egui::FontId::proportional(18.0))
+                        .color(Color32::WHITE),
+                );
+            } else {
+                let output_name = egui::TextEdit::singleline(&mut state.player_name)
+                    .id(egui::Id::new("main_menu_nickname"))
+                    .hint_text(&strings.nickname_hint)
+                    .char_limit(48)
+                    .desired_width(ui.available_width() - 4.0)
+                    .frame(egui::Frame::NONE)
+                    .font(egui::FontId::proportional(18.0))
+                    .text_color(Color32::WHITE)
+                    .show(ui);
 
-            if output_name.response.gained_focus() {
-                if let Some(mut edit_state) =
-                    egui::text_edit::TextEditState::load(ui.ctx(), output_name.response.id)
-                {
-                    let char_count = state.player_name.chars().count();
-                    let range = egui::text_selection::CCursorRange::two(
-                        egui::text::CCursor::new(0),
-                        egui::text::CCursor::new(char_count),
-                    );
-                    edit_state.cursor.set_char_range(Some(range));
-                    edit_state.store(ui.ctx(), output_name.response.id);
+                if output_name.response.gained_focus() {
+                    if let Some(mut edit_state) =
+                        egui::text_edit::TextEditState::load(ui.ctx(), output_name.response.id)
+                    {
+                        let char_count = state.player_name.chars().count();
+                        let range = egui::text_selection::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            egui::text::CCursor::new(char_count),
+                        );
+                        edit_state.cursor.set_char_range(Some(range));
+                        edit_state.store(ui.ctx(), output_name.response.id);
+                    }
                 }
             }
         });

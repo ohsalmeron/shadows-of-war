@@ -122,6 +122,7 @@ async fn run_bot(
         name: name.clone(),
         is_observer: false,
         target_lobby_id,
+        host_private: false,
         build_version: version,
         clan_tag: "".to_string(),
         civilization: sow_core::player::Civilization::Rome,

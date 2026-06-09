@@ -1,5 +1,5 @@
 use crate::app::SowApp;
-use crate::{get_build_version, spawn_sow_client_connect};
+use crate::spawn_sow_client_connect;
 use sow_ui::UiAction;
 
 impl SowApp {
@@ -176,15 +176,7 @@ impl SowApp {
                     spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
                 }
                 UiAction::JoinLobby(id) => {
-                    let join_msg = sow_core::protocol::ClientMessage::Join {
-                        name: self.ui.app.main_menu_state.player_name.clone(),
-                        is_observer: false,
-                        target_lobby_id: Some(id),
-                        build_version: get_build_version(),
-                        clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
-                        civilization: self.ui.app.main_menu_state.selected_civilization,
-                        leader: self.ui.app.main_menu_state.selected_leader,
-                    };
+                    let join_msg = self.make_join_message(Some(id), false);
                     self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
                     if let Ok(json) = bincode::serialize(&join_msg) {
                         if let Some(c) = self.net.client.as_ref() {
@@ -194,12 +186,14 @@ impl SowApp {
                     self.ui.app.main_menu_state.is_waiting = true;
                 }
                 UiAction::LeaveLobby => {
+                    crate::store_portals::left_room();
                     if let Some(c) = self.net.client.as_ref() {
                         let leave = sow_core::protocol::ClientMessage::Leave {};
                         if let Ok(json) = bincode::serialize(&leave) {
                             c.send(json);
                         }
                     }
+                    self.ui.app.main_menu_state.in_private_match = false;
                     self.input.camera_x = 0.0;
                     self.input.camera_y = 0.0;
                     self.input.camera_zoom = 2.0;

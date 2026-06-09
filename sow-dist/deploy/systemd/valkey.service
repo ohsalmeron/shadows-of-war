@@ -1,0 +1,11 @@
+[Unit]
+Description=Valkey (Redis-compatible) for Shadows of War
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/valkey-server --port 6379 --bind 127.0.0.1
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

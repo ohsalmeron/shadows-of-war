@@ -152,12 +152,22 @@ impl SowApp {
                             Color32::from_rgb(140, 40, 40)
                         };
 
-                        let return_btn = sow_ui::widgets::ThemeButton::new(&strings.return_to_lobby)
+                        let private_party = self.ui.app.main_menu_state.in_private_match;
+                        let btn_label = if private_party {
+                            &strings.play_again
+                        } else {
+                            &strings.return_to_lobby
+                        };
+                        let return_btn = sow_ui::widgets::ThemeButton::new(btn_label)
                             .min_size(btn_size)
                             .text_size(if is_mobile { 16.0 } else { 20.0 })
                             .custom_fill(btn_color);
 
                         if ui.add(return_btn).clicked() {
+                            if private_party {
+                                self.ui.app.main_menu_state.host_private_pending = true;
+                                self.ui.app.main_menu_state.is_waiting = true;
+                            }
                             self.net.client = None;
                             self.begin_exit_to_main_menu(true);
                         }

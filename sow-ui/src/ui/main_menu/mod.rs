@@ -16,6 +16,10 @@ pub struct MainMenuState {
     pub server_address: String,
     pub lobbies: Vec<LobbyInfo>,
     pub player_name: String,
+    /// Portal SDK locked the display name (CrazyGames username, etc.).
+    pub name_locked: bool,
+    pub host_private_pending: bool,
+    pub in_private_match: bool,
     pub pending_join_lobby_id: Option<u64>,
     pub joined_lobby_id: Option<u64>,
     pub downloading_map_name: Option<String>,
@@ -92,6 +96,9 @@ impl Default for MainMenuState {
                     _ => sow_core::player::Civilization::France,
                 }
             },
+            name_locked: false,
+            host_private_pending: false,
+            in_private_match: false,
             pending_join_lobby_id: None,
             joined_lobby_id: None,
             downloading_map_name: None,

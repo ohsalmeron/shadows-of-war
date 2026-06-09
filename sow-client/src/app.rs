@@ -1,6 +1,6 @@
 use sow_render::{MapRenderer, RenderContext};
 
-use crate::spawn_sow_client_connect;
+use crate::{get_build_version, spawn_sow_client_connect};
 use crate::{EngineInitEvent, MapDownloadEvent};
 use blade_egui::GuiPainter;
 use blade_graphics as gpu;
@@ -373,6 +373,22 @@ impl SowApp {
         app.main_menu_state.server_address = ws_url.clone();
         let orchestrator_url = ws_url.clone();
 
+        #[cfg(target_arch = "wasm32")]
+        {
+            let fallback = app.main_menu_state.player_name.clone();
+            let identity = crate::store_portals::load_identity(&fallback);
+            app.main_menu_state.player_name = identity.display_name;
+            app.main_menu_state.name_locked = identity.name_locked;
+            if let Some(id) = crate::store_portals::take_pending_invite_lobby() {
+                app.main_menu_state.pending_join_lobby_id = Some(id);
+                app.main_menu_state.is_waiting = true;
+            }
+            if crate::store_portals::take_host_private_pending() {
+                app.main_menu_state.host_private_pending = true;
+                app.main_menu_state.is_waiting = true;
+            }
+        }
+
         log::info!("Auto-connecting to {}...", ws_url);
         app.main_menu_state.is_connecting = true;
         #[cfg(target_arch = "wasm32")]
@@ -586,11 +602,37 @@ impl SowApp {
         }
     }
 
+    pub(crate) fn make_join_message(
+        &self,
+        target_lobby_id: Option<u64>,
+        host_private: bool,
+    ) -> sow_core::protocol::ClientMessage {
+        sow_core::protocol::ClientMessage::Join {
+            name: self.ui.app.main_menu_state.player_name.clone(),
+            is_observer: false,
+            target_lobby_id,
+            host_private,
+            build_version: get_build_version(),
+            clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
+            civilization: self.ui.app.main_menu_state.selected_civilization,
+            leader: self.ui.app.main_menu_state.selected_leader,
+        }
+    }
+
+    pub(crate) fn sync_portal_room(&self, joinable: bool) {
+        if let Some(id) = self.ui.app.main_menu_state.joined_lobby_id {
+            crate::store_portals::update_room(id, joinable, &get_build_version());
+        } else if !joinable {
+            crate::store_portals::left_room();
+        }
+    }
+
     /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
     pub(crate) fn begin_exit_to_main_menu(&mut self, use_loader: bool) {
         if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
             crate::store_portals::gameplay_stop();
         }
+        crate::store_portals::left_room();
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
         self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
@@ -605,6 +647,7 @@ impl SowApp {
         self.ui.app.main_menu_state.is_waiting = false;
         self.ui.app.main_menu_state.pending_join_lobby_id = None;
         self.ui.app.main_menu_state.joined_lobby_id = None;
+        self.ui.app.main_menu_state.in_private_match = false;
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;

@@ -174,6 +174,7 @@
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
+        window.SOW_BUILD_VERSION = "__VERSION__";
         /* Streamed maps/assets from prod nginx /maps and /assets (single source of truth). */
         window.SOW_MAPS_URL = window.SOW_MAPS_URL || "https://shadowsofwar.io/maps";
         window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "https://shadowsofwar.io/assets";

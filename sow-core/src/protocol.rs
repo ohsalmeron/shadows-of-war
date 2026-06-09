@@ -119,6 +119,8 @@ pub enum ClientMessage {
         name: String,
         is_observer: bool,
         target_lobby_id: Option<u64>,
+        /// Host a new private friend room (CrazyGames instant multiplayer / play again).
+        host_private: bool,
         build_version: String,
         clan_tag: String,
         civilization: crate::player::Civilization,
@@ -179,6 +181,7 @@ pub struct ServerJoinAckMessage {
     pub lobby_id: u64,
     pub player_id: u16,
     pub map_name: String,
+    pub is_private: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -191,6 +194,7 @@ pub struct ServerJoinFailedMessage {
 pub struct ServerLobbyClosedMessage {
     pub lobby_id: u64,
     pub reason: String,
+    pub rematch_lobby_id: Option<u64>,
 }
 
 // ─── Server Messages (Server → Client) ─────────────────────────────────────

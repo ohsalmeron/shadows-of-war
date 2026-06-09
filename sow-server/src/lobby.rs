@@ -28,6 +28,7 @@ pub struct PlayerConnection {
 
 pub struct ServerLobby {
     pub id: u64,
+    pub is_private: bool,
     pub phase: LobbyPhase,
     /// Remaining seconds while CountingDown.
     pub countdown_secs: f32,
@@ -47,7 +48,12 @@ impl ServerLobby {
     }
 }
 
-fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mode: &str) {
+fn spawn_waiting_lobby(
+    games: &mut Vec<ServerLobby>,
+    next_id: &mut u64,
+    game_mode: &str,
+    is_private: bool,
+) {
     let id = *next_id;
     *next_id += 1;
     let mut config = GameConfig::default();
@@ -66,6 +72,7 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
 
     games.push(ServerLobby {
         id,
+        is_private,
         phase: LobbyPhase::Waiting,
         countdown_secs: 0.0,
         active_empty_secs: 0.0,
@@ -81,19 +88,19 @@ fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, game_mod
 fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     if games
         .iter()
-        .filter(|g| g.joinable() && g.game_mode == "FFA")
+        .filter(|g| g.joinable() && !g.is_private && g.game_mode == "FFA")
         .count()
         < 1
     {
-        spawn_waiting_lobby(games, next_id, "FFA");
+        spawn_waiting_lobby(games, next_id, "FFA", false);
     }
     if games
         .iter()
-        .filter(|g| g.joinable() && g.game_mode == "Teams")
+        .filter(|g| g.joinable() && !g.is_private && g.game_mode == "Teams")
         .count()
         < 1
     {
-        spawn_waiting_lobby(games, next_id, "Teams");
+        spawn_waiting_lobby(games, next_id, "Teams", false);
     }
 }
 
@@ -105,10 +112,11 @@ fn promote_countdown(games: &mut [ServerLobby]) {
         return;
     }
 
-    // Pick the first waiting lobby
-    let target = games
-        .iter_mut()
-        .find(|g| matches!(g.phase, LobbyPhase::Waiting));
+    // Pick the first waiting public lobby, or a private lobby with at least two players.
+    let target = games.iter_mut().find(|g| {
+        matches!(g.phase, LobbyPhase::Waiting)
+            && (!g.is_private || g.players.len() >= 2)
+    });
 
     if let Some(lobby) = target {
         lobby.phase = LobbyPhase::CountingDown;
@@ -122,7 +130,10 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     let mut counting: Vec<u64> = games
         .iter()
         .filter(|g| {
-            g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::CountingDown)
+            g.joinable()
+                && !g.is_private
+                && g.game_mode == game_mode
+                && matches!(g.phase, LobbyPhase::CountingDown)
         })
         .map(|g| g.id)
         .collect();
@@ -133,7 +144,10 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     let mut waiting: Vec<u64> = games
         .iter()
         .filter(|g| {
-            g.joinable() && g.game_mode == game_mode && matches!(g.phase, LobbyPhase::Waiting)
+            g.joinable()
+                && !g.is_private
+                && g.game_mode == game_mode
+                && matches!(g.phase, LobbyPhase::Waiting)
         })
         .map(|g| g.id)
         .collect();
@@ -146,11 +160,15 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
 
 fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<u64> {
     if let Some(id) = requested {
-        if let Some(g) = games.iter().find(|g| g.id == id && g.joinable()) {
-            return Some(g.id);
+        if games
+            .iter()
+            .any(|g| g.id == id && g.joinable())
+        {
+            return Some(id);
         }
+        return None;
     }
-    primary_lobby_id(games, "FFA") // Default to FFA for play button
+    primary_lobby_id(games, "FFA")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -163,12 +181,26 @@ pub fn join_player(
     leader: sow_core::player::Leader,
     client_tx: mpsc::Sender<Vec<u8>>,
     target_lobby_id: Option<u64>,
-) -> Result<(u64, u16, String), String> {
-    let lobby_id = match resolve_join_target(target_lobby_id, games) {
-        Some(id) => id,
-        None => {
-            spawn_waiting_lobby(games, next_id, "FFA");
-            games.last().unwrap().id
+    host_private: bool,
+) -> Result<(u64, u16, String, bool), String> {
+    let lobby_id = if host_private {
+        if target_lobby_id.is_some() {
+            return Err("Cannot host private room with a target lobby".to_string());
+        }
+        spawn_waiting_lobby(games, next_id, "FFA", true);
+        games.last().unwrap().id
+    } else if let Some(req) = target_lobby_id {
+        match resolve_join_target(Some(req), games) {
+            Some(id) => id,
+            None => return Err("Lobby not found or not joinable".to_string()),
+        }
+    } else {
+        match resolve_join_target(None, games) {
+            Some(id) => id,
+            None => {
+                spawn_waiting_lobby(games, next_id, "FFA", false);
+                games.last().unwrap().id
+            }
         }
     };
 
@@ -206,7 +238,12 @@ pub fn join_player(
     });
 
     log::info!("Player {} joined lobby {}", player_id, lobby_id);
-    Ok((lobby_id, player_id, lobby.config.map_name.clone()))
+    Ok((
+        lobby_id,
+        player_id,
+        lobby.config.map_name.clone(),
+        lobby.is_private,
+    ))
 }
 
 pub fn leave_player(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
@@ -253,6 +290,10 @@ fn start_match(lobby: &mut ServerLobby) {
 pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     ensure_queue_depth(games, next_id);
     promote_countdown(games);
+
+    for lobby in games.iter() {
+        sync_private_lobby_to_members(lobby);
+    }
 
     let mut i = 0;
     while i < games.len() {
@@ -317,6 +358,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                             let closed_msg = sow_core::protocol::ServerLobbyClosedMessage {
                                 lobby_id: lobby.id,
                                 reason: "Sync timeout. Requeueing...".to_string(),
+                                rematch_lobby_id: None,
                             };
                             let closed_json = bincode::serialize(
                                 &sow_core::protocol::ServerMessage::LobbyClosed(closed_msg),
@@ -365,33 +407,69 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     }
 }
 
+pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
+    LobbyInfo {
+        id: g.id,
+        num_players: g.players.len() as u32,
+        max_players: g.config.max_players,
+        is_counting_down: matches!(g.phase, LobbyPhase::CountingDown),
+        timer_secs: if matches!(g.phase, LobbyPhase::CountingDown) {
+            g.countdown_secs.max(0.0)
+        } else {
+            0.0
+        },
+        map_name: g.config.map_name.clone(),
+        game_mode: g.game_mode.clone(),
+        players: g
+            .players
+            .iter()
+            .map(|p| sow_core::protocol::LobbyPlayerSyncState {
+                name: p.name.clone(),
+                is_ready: g.ready_players.contains(&p.player_id),
+                download_progress: p.download_progress,
+                leader: p.leader,
+            })
+            .collect(),
+    }
+}
+
+/// Private lobbies are omitted from the global LobbiesBroadcast; push state to members directly.
+pub fn sync_private_lobby_to_members(lobby: &ServerLobby) {
+    if !lobby.is_private || !lobby.joinable() {
+        return;
+    }
+    let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby
+        .players
+        .iter()
+        .map(|p| sow_core::protocol::LobbyPlayerSyncState {
+            name: p.name.clone(),
+            is_ready: lobby.ready_players.contains(&p.player_id),
+            download_progress: p.download_progress,
+            leader: p.leader,
+        })
+        .collect();
+    let time_remaining = if matches!(lobby.phase, LobbyPhase::CountingDown) {
+        lobby.countdown_secs.max(0.0)
+    } else {
+        0.0
+    };
+    let sync_msg = sow_core::protocol::ServerSyncStateMessage {
+        time_remaining,
+        players,
+        is_starting: false,
+    };
+    let sync_json =
+        bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg)).unwrap();
+    for p in &lobby.players {
+        let _ = p.tx.try_send(sync_json.clone());
+    }
+}
+
 pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
     let mut infos: Vec<LobbyInfo> = games
         .iter()
-        .filter(|g| g.joinable())
-        .map(|g| LobbyInfo {
-            id: g.id,
-            num_players: g.players.len() as u32,
-            max_players: g.config.max_players,
-            is_counting_down: matches!(g.phase, LobbyPhase::CountingDown),
-            timer_secs: if matches!(g.phase, LobbyPhase::CountingDown) {
-                g.countdown_secs.max(0.0)
-            } else {
-                0.0
-            },
-            map_name: g.config.map_name.clone(),
-            game_mode: g.game_mode.clone(),
-            players: g
-                .players
-                .iter()
-                .map(|p| sow_core::protocol::LobbyPlayerSyncState {
-                    name: p.name.clone(),
-                    is_ready: g.ready_players.contains(&p.player_id),
-                    download_progress: p.download_progress,
-                    leader: p.leader,
-                })
-                .collect(),
-        })
+        .filter(|g| g.joinable() && !g.is_private)
+        .map(lobby_to_info)
         .collect();
     infos.sort_by_key(|l| l.id);
     infos

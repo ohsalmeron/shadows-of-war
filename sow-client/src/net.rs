@@ -1,7 +1,50 @@
 use crate::app::SowApp;
-use crate::{get_build_version, spawn_sow_client_connect, MapDownloadEvent};
+use crate::{spawn_sow_client_connect, MapDownloadEvent};
 use sow_ui::app::ClientPhase;
+use sow_ui::ui::main_menu::MainMenuState;
 use web_time::{Duration, Instant};
+
+/// Private lobbies are excluded from the global LobbiesBroadcast; seed local state on join.
+fn seed_joined_lobby_entry(state: &mut MainMenuState, ack: &sow_core::protocol::ServerJoinAckMessage) {
+    let me = sow_core::protocol::LobbyPlayerSyncState {
+        name: state.player_name.clone(),
+        is_ready: false,
+        download_progress: 0,
+        leader: state.selected_leader,
+    };
+    if let Some(lobby) = state.lobbies.iter_mut().find(|l| l.id == ack.lobby_id) {
+        lobby.map_name = ack.map_name.clone();
+        if !lobby.players.iter().any(|p| p.name == me.name) {
+            lobby.players.push(me);
+        }
+        lobby.num_players = lobby.players.len() as u32;
+    } else {
+        state.lobbies.push(sow_core::protocol::LobbyInfo {
+            id: ack.lobby_id,
+            num_players: 1,
+            max_players: 8,
+            is_counting_down: false,
+            timer_secs: 0.0,
+            map_name: ack.map_name.clone(),
+            game_mode: "FFA".to_string(),
+            players: vec![me],
+        });
+    }
+}
+
+fn apply_lobbies_broadcast(
+    state: &mut MainMenuState,
+    broadcast: &sow_core::protocol::ServerLobbiesBroadcastMessage,
+) {
+    let joined_id = state.joined_lobby_id;
+    let joined_snapshot = joined_id.and_then(|id| state.lobbies.iter().find(|l| l.id == id).cloned());
+    state.lobbies = broadcast.lobbies.clone();
+    if let (Some(id), Some(snap)) = (joined_id, joined_snapshot) {
+        if !state.lobbies.iter().any(|l| l.id == id) {
+            state.lobbies.push(snap);
+        }
+    }
+}
 
 impl SowApp {
     fn fetch_map_catalog_if_needed(&mut self) {
@@ -40,7 +83,33 @@ impl SowApp {
         });
     }
 
+    fn send_join_if_connected(&mut self, target_lobby_id: Option<u64>, host_private: bool) {
+        let join_msg = self.make_join_message(target_lobby_id, host_private);
+        if let Ok(json) = bincode::serialize(&join_msg) {
+            if let Some(c) = self.net.client.as_ref() {
+                c.send(json);
+            }
+        }
+        self.ui.app.main_menu_state.is_waiting = true;
+    }
+
+
+    fn poll_portal_intents(&mut self) {
+        if let Some(id) = crate::store_portals::poll_pending_invite_lobby() {
+            self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
+            self.ui.app.main_menu_state.is_waiting = true;
+            if self.net.client.is_some() {
+                self.send_join_if_connected(Some(id), false);
+            }
+        }
+        if let Some(mute) = crate::store_portals::poll_mute_audio_setting() {
+            crate::store_portals::apply_mute_audio_setting(mute);
+        }
+    }
+
     pub fn update_net(&mut self, now: Instant) {
+        self.poll_portal_intents();
+
         #[cfg(target_arch = "wasm32")]
         {
             let doc_visible = web_sys::window()
@@ -113,23 +182,32 @@ impl SowApp {
                         }
                     } else if self.net.pending_lobby_rejoin {
                         log::info!("Re-sending Join to lobby after hop");
-                        let join_msg = sow_core::protocol::ClientMessage::Join {
-                            name: self.ui.app.main_menu_state.player_name.clone(),
-                            is_observer: false,
-                            target_lobby_id: self.sim.my_lobby_id.or(self
-                                .ui
-                                .app
-                                .main_menu_state
-                                .pending_join_lobby_id),
-                            build_version: get_build_version(),
-                            clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
-                            civilization: self.ui.app.main_menu_state.selected_civilization,
-                            leader: self.ui.app.main_menu_state.selected_leader,
-                        };
+                        let target = self.sim.my_lobby_id.or(
+                            self.ui.app.main_menu_state.pending_join_lobby_id,
+                        );
+                        let join_msg = self.make_join_message(target, false);
                         if let Ok(json) = bincode::serialize(&join_msg) {
                             client.send(json);
                         }
                         self.net.pending_lobby_rejoin = false;
+                    } else if self.ui.app.main_menu_state.host_private_pending {
+                        log::info!("Hosting private lobby (portal instant / play again)");
+                        let join_msg = self.make_join_message(None, true);
+                        if let Ok(json) = bincode::serialize(&join_msg) {
+                            client.send(json);
+                        }
+                        self.ui.app.main_menu_state.host_private_pending = false;
+                        self.ui.app.main_menu_state.is_waiting = true;
+                    } else if let Some(id) = self.ui.app.main_menu_state.pending_join_lobby_id {
+                        if self.ui.app.main_menu_state.is_waiting
+                            && self.ui.app.main_menu_state.joined_lobby_id.is_none()
+                        {
+                            log::info!("Joining lobby {} from portal invite", id);
+                            let join_msg = self.make_join_message(Some(id), false);
+                            if let Ok(json) = bincode::serialize(&join_msg) {
+                                client.send(json);
+                            }
+                        }
                     }
                     self.net.client = Some(client);
                 }
@@ -208,6 +286,7 @@ impl SowApp {
                             log::info!(
                                 "Received ServerStartMessage; entering Splash phase immediately"
                             );
+                            self.sync_portal_room(false);
                             if self.ui.app.phase != sow_ui::app::ClientPhase::Splash {
                                 self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
                                 let lang = self.ui.app.settings_state.language;
@@ -302,7 +381,10 @@ impl SowApp {
                         ServerMessage::LobbiesBroadcast(broadcast) => {
                             // Don't clobber the lobby list once we've started loading into a game
                             if self.ui.app.phase != sow_ui::app::ClientPhase::Splash {
-                                self.ui.app.main_menu_state.lobbies = broadcast.lobbies.clone();
+                                apply_lobbies_broadcast(
+                                    &mut self.ui.app.main_menu_state,
+                                    &broadcast,
+                                );
                             }
 
                             let maps_base = self.asset_config.maps_base.clone();
@@ -380,6 +462,7 @@ impl SowApp {
                         }
                         ServerMessage::VersionUpdate { version } => {
                             log::info!("Received version update: {}", version);
+                            self.ui.update_available = true;
                         }
                         ServerMessage::LobbyClosed(closed) => {
                             log::warn!("Lobby {} closed: {}", closed.lobby_id, closed.reason);
@@ -387,26 +470,27 @@ impl SowApp {
                             self.sim.my_lobby_id = None;
                             self.sim.my_player_id = None;
 
-                            if closed.reason.contains("Requeueing") {
+                            if let Some(rematch_id) = closed.rematch_lobby_id {
+                                log::info!("Rematch lobby {} offered", rematch_id);
+                                self.net.pending_lobby_rejoin = true;
+                                self.ui.app.main_menu_state.pending_join_lobby_id =
+                                    Some(rematch_id);
+                                self.ui.app.phase = ClientPhase::MainMenu;
+                                self.ui.app.main_menu_state.is_waiting = true;
+                            } else if closed.reason.contains("Requeueing") {
                                 log::info!("Auto-requeueing to a new lobby...");
                                 self.ui.app.phase = ClientPhase::MainMenu;
                                 self.ui.app.main_menu_state.is_waiting = true;
-                                let join_msg = sow_core::protocol::ClientMessage::Join {
-                                    name: self.ui.app.main_menu_state.player_name.clone(),
-                                    is_observer: false,
-                                    target_lobby_id: None,
-                                    build_version: get_build_version(),
-                                    clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
-                                    civilization: self.ui.app.main_menu_state.selected_civilization,
-                                    leader: self.ui.app.main_menu_state.selected_leader,
-                                };
+                                let join_msg = self.make_join_message(None, false);
                                 c.send(bincode::serialize(&join_msg).unwrap());
                             } else {
+                                crate::store_portals::left_room();
                                 exit_to_menu_after_net = true;
                             }
                         }
                         ServerMessage::JoinFailed(fail) => {
                             log::warn!("Join failed: {}", fail.reason);
+                            crate::store_portals::left_room();
                             if fail.reason == "VERSION_MISMATCH" {
                                 log::info!("Version mismatch — prompting user to update...");
                                 self.ui.update_available = true;
@@ -425,6 +509,9 @@ impl SowApp {
                             self.sim.my_lobby_id = Some(ack.lobby_id);
                             self.sim.my_player_id = Some(ack.player_id);
                             self.ui.app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
+                            self.ui.app.main_menu_state.in_private_match = ack.is_private;
+                            seed_joined_lobby_entry(&mut self.ui.app.main_menu_state, &ack);
+                            self.sync_portal_room(true);
 
                             let map_name = ack.map_name.clone();
                             self.ui.app.main_menu_state.downloading_map_name =

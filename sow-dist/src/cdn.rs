@@ -1,5 +1,5 @@
-use crate::paths::{deploy_host, deploy_user, Paths, PROD_ASSETS_PATH};
-use crate::process;
+use crate::config::DeployConfig;
+use crate::paths::Paths;
 use anyhow::{bail, Context, Result};
 use image::codecs::webp::WebPEncoder;
 use image::imageops::FilterType;
@@ -14,49 +14,39 @@ const LEADERS: &[&str] = &[
 ];
 
 /// Rsync assets/cdn/ to the marketing host (no assets/static/ to VPS).
-pub fn sync_to_prod(paths: &Paths) -> Result<()> {
+pub fn sync_to_prod(paths: &Paths, cfg: &DeployConfig) -> Result<()> {
     prepare_boot_ui(paths)?;
     check_leader_portraits(&paths.assets_cdn.join("leaders"))?;
     check_avatar_files(&paths.assets_cdn.join("avatars"))?;
-    let host = deploy_host();
-    let user = deploy_user();
-    println!("==> Syncing CDN → {user}@{host}:{PROD_ASSETS_PATH}/cdn/");
-    let remote = format!("{user}@{host}");
-    process::run(
-        "ssh",
-        &[
-            &remote,
-            &format!(
-                "mkdir -p {PROD_ASSETS_PATH}/cdn/leaders {PROD_ASSETS_PATH}/cdn/ui {PROD_ASSETS_PATH}/cdn/avatars"
-            ),
-        ],
-        None,
-    )?;
-    let src = format!("{}/", paths.assets_cdn.display());
-    let dst = format!("{remote}:{PROD_ASSETS_PATH}/cdn/");
-    process::run(
-        "rsync",
+    let gcp = cfg.gcp();
+    let assets_path = cfg.prod_assets_path();
+    println!("==> Syncing CDN → {assets_path}/cdn/");
+    gcp.run_remote(&format!(
+        "mkdir -p {assets_path}/cdn/leaders {assets_path}/cdn/ui {assets_path}/cdn/avatars"
+    ))?;
+    gcp.rsync_dir_with_opts(
+        &paths.dist_root(),
+        &paths.assets_cdn.display().to_string(),
+        &format!("{assets_path}/cdn"),
         &[
             "-avz",
             "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r",
-            &src,
-            &dst,
         ],
-        None,
     )?;
-    process::run(
-        "ssh",
-        &[&remote, &format!("chmod -R a+rX {PROD_ASSETS_PATH}/cdn")],
-        None,
-    )?;
-    verify_prod_cdn()?;
+    gcp.run_remote(&format!("chmod -R a+rX {assets_path}/cdn"))?;
+    gcp.run_remote(&format!("sudo restorecon -R {assets_path}/cdn"))?;
+    verify_prod_cdn(cfg)?;
     println!("✅ CDN pipeline OK");
     Ok(())
 }
 
-pub fn start_background(paths: &Paths) -> std::thread::JoinHandle<Result<()>> {
+pub fn start_background(
+    paths: &Paths,
+    cfg: &DeployConfig,
+) -> std::thread::JoinHandle<Result<()>> {
     let paths = paths.clone();
-    std::thread::spawn(move || sync_to_prod(&paths))
+    let cfg = cfg.clone();
+    std::thread::spawn(move || sync_to_prod(&paths, &cfg))
 }
 
 fn prepare_boot_ui(paths: &Paths) -> Result<()> {
@@ -141,15 +131,16 @@ fn check_leader_portraits(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn verify_prod_cdn() -> Result<()> {
+fn verify_prod_cdn(cfg: &DeployConfig) -> Result<()> {
     println!("==> Verifying prod CDN...");
+    let base = cfg.site_url();
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
     let urls = [
-        "https://shadowsofwar.io/assets/cdn/leaders/caesar_desktop.webp".to_string(),
-        "https://shadowsofwar.io/assets/cdn/ui/loader_empty.webp".to_string(),
-        "https://shadowsofwar.io/assets/cdn/avatars/caesar.webp".to_string(),
+        format!("{base}/assets/cdn/leaders/caesar_desktop.webp"),
+        format!("{base}/assets/cdn/ui/loader_empty.webp"),
+        format!("{base}/assets/cdn/avatars/caesar.webp"),
     ];
     for url in urls {
         let resp = client.head(&url).send().with_context(|| url.clone())?;

@@ -65,6 +65,15 @@ Privacy and Terms body text for the marketing site **and** in-game Settings moda
 
 **CDN art:** Leader portraits, boot UI webp, and avatars under `/assets/cdn/` on shadowsofwar.io.
 
+## CrazyGames Basic Launch checklist
+
+1. `./sow cg` → upload entire `dist/crazygames/` folder in the Developer Portal.
+2. Run the portal **QA tool** (SDK init, loading, gameplayStart, user, updateRoom).
+3. Submit lobby sizes (FFA / Teams max players) in upload metadata.
+4. Test with two logged-in CG accounts: instant multiplayer host, friend join via CG UI, full match, **PLAY AGAIN** in a private room.
+5. Protocol/server changes ship with `./sow p -v` (rebuilds server when `sow-server` / `sow-relay` crates changed).
+6. Ads stay off for Basic Launch (`SOW_ENABLE_PORTAL_ADS` is never set in the build).
+
 ## Search Console (SEO)
 
 After verifying the property in [Google Search Console](https://search.google.com/search-console):

@@ -1,4 +1,5 @@
 use crate::assets::UI_FONT_FILE;
+use crate::config::DeployConfig;
 use crate::paths::{Paths, PORTAL_JS, PORTAL_WASM};
 use crate::process;
 use crate::wasm;
@@ -16,7 +17,13 @@ pub enum Profile {
     SiteDev,
 }
 
-pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> Result<()> {
+pub fn build(
+    paths: &Paths,
+    profile: Profile,
+    out_dir: &Path,
+    version: &str,
+    cfg: &DeployConfig,
+) -> Result<()> {
     println!("==> Packaging {} …", out_dir.display());
     if out_dir.exists() {
         for entry in fs::read_dir(out_dir)? {
@@ -70,10 +77,11 @@ pub fn build(paths: &Paths, profile: Profile, out_dir: &Path, version: &str) -> 
         &wasm_file,
         &build_ts,
         profile,
+        cfg,
     )?;
     match profile {
-        Profile::Crazygames => inject_crazygames(out_dir.join("index.html"))?,
-        Profile::SiteDev => inject_site_embed(out_dir.join("index.html"))?,
+        Profile::Crazygames => inject_crazygames(out_dir.join("index.html"), cfg)?,
+        Profile::SiteDev => inject_site_embed(out_dir.join("index.html"), cfg)?,
         Profile::SelfHosted => {}
     }
 
@@ -162,15 +170,16 @@ fn build_index_html(
     wasm: &str,
     build_ts: &str,
     profile: Profile,
+    cfg: &DeployConfig,
 ) -> Result<()> {
     let template = fs::read_to_string(paths.shell.join("index.html.template"))?;
-    let assets_ui = "https://shadowsofwar.io/assets/cdn/ui/";
+    let assets_ui = format!("{}/assets/cdn/ui/", cfg.site_url());
     let html = template
         .replace("__VERSION__", version)
         .replace("__JS_FILE__", js)
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", build_ts)
-        .replace("__ASSETS_UI_BASE__", assets_ui);
+        .replace("__ASSETS_UI_BASE__", &assets_ui);
     let index = out_dir.join("index.html");
     fs::write(&index, &html)?;
     inline_loader(paths, &index)?;
@@ -225,15 +234,24 @@ fn inject_portal_slots(html_path: PathBuf, sdk_line: Option<&str>, boot_line: &s
     Ok(())
 }
 
-fn inject_crazygames(html_path: PathBuf) -> Result<()> {
+fn inject_crazygames(html_path: PathBuf, cfg: &DeployConfig) -> Result<()> {
     let sdk = r#"    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>"#;
-    let boot = r#"        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps";"#;
-    inject_portal_slots(html_path, Some(sdk), boot)
+    let boot = format!(
+        r#"        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{maps}";"#,
+        ws = cfg.ws_url(&cfg.site_origin),
+        maps = format!("{}/maps", cfg.site_url()),
+    );
+    inject_portal_slots(html_path, Some(sdk), &boot)
 }
 
-fn inject_site_embed(html_path: PathBuf) -> Result<()> {
-    let boot = r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "wss://shadowsofwar.io/ws/"; window.SOW_MAPS_URL = "https://shadowsofwar.io/maps"; window.SOW_ASSETS_URL = "https://shadowsofwar.io/assets";"#;
-    inject_portal_slots(html_path, None, boot)
+fn inject_site_embed(html_path: PathBuf, cfg: &DeployConfig) -> Result<()> {
+    let boot = format!(
+        r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{maps}"; window.SOW_ASSETS_URL = "{assets}";"#,
+        ws = cfg.ws_url(&cfg.site_origin),
+        maps = format!("{}/maps", cfg.site_url()),
+        assets = format!("{}/assets", cfg.site_url()),
+    );
+    inject_portal_slots(html_path, None, &boot)
 }
 
 fn patch_index_br(index: PathBuf, js: &str, wasm: &str, js_br: &str, wasm_br: &str) -> Result<()> {
@@ -329,7 +347,7 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
         Profile::SelfHosted => {
             if dir.join("assets").exists() {
                 bail!(
-                    "{} must not bundle assets/ (runtime CDN: shadowsofwar.io/assets/cdn/)",
+                    "{} must not bundle assets/ (runtime CDN on marketing host)",
                     dir.display()
                 );
             }

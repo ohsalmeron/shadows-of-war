@@ -118,6 +118,7 @@ pub mod input;
 pub mod loader;
 pub mod net;
 pub mod render;
+pub mod platform_identity;
 pub mod store_portals;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;

@@ -2,7 +2,10 @@ mod lobby;
 mod map_catalog;
 
 use futures_util::{SinkExt, StreamExt};
-use lobby::{build_lobby_broadcast, join_player, leave_player, master_tick, ServerLobby};
+use lobby::{
+    build_lobby_broadcast, join_player, leave_player, master_tick, sync_private_lobby_to_members,
+    ServerLobby,
+};
 use redis::Commands;
 use sow_core::protocol::{
     ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
@@ -37,6 +40,7 @@ enum ServerEvent {
         civilization: sow_core::player::Civilization,
         leader: sow_core::player::Leader,
         target_lobby_id: Option<u64>,
+        host_private: bool,
         build_version: String,
     },
 
@@ -224,6 +228,7 @@ async fn main() {
                             let msg = sow_core::protocol::ServerLobbyClosedMessage {
                                 lobby_id: lobby.id,
                                 reason: "Server failed to allocate relay".to_string(),
+                                rematch_lobby_id: None,
                             };
                             let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).unwrap();
                             for p in &lobby.players {
@@ -237,13 +242,16 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, build_version } => {
+                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version } => {
                             log::info!("Player {} (clan: {}) joining with version: {}", name, clan_tag, build_version);
-                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id) {
-                                Ok((lobby_id, player_id, map_name)) => {
-                                    let ack = ServerJoinAckMessage { lobby_id, player_id, map_name };
+                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private) {
+                                Ok((lobby_id, player_id, map_name, is_private)) => {
+                                    let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private };
                                     let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)).unwrap();
                                     let _ = client_tx.try_send(json);
+                                    if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
+                                        sync_private_lobby_to_members(lobby);
+                                    }
                                 }
                                 Err(reason) => {
                                     let fail = ServerJoinFailedMessage { reason };
@@ -255,10 +263,14 @@ async fn main() {
 
                         ServerEvent::Leave { lobby_id, player_id } => {
                             leave_player(&mut games, lobby_id, player_id);
+                            if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
+                                sync_private_lobby_to_members(lobby);
+                            }
                         }
                         ServerEvent::Ready { lobby_id, player_id } => {
                             if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
                                 lobby.ready_players.insert(player_id);
+                                sync_private_lobby_to_members(lobby);
                             }
                         }
                         ServerEvent::MapDownloadProgress { lobby_id, player_id, progress } => {
@@ -266,6 +278,7 @@ async fn main() {
                                 if let Some(p) = lobby.players.iter_mut().find(|p| p.player_id == player_id) {
                                     p.download_progress = progress;
                                 }
+                                sync_private_lobby_to_members(lobby);
                             }
                         }
                     }
@@ -334,7 +347,7 @@ async fn main() {
 
                                     if let Ok(msg) = bincode::deserialize::<sow_core::protocol::ClientMessage>(&data) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, build_version, clan_tag, civilization, leader } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, host_private, build_version, clan_tag, civilization, leader } => {
                                                 let server_version = std::env::var("SOW_BUILD_VERSION")
                                                     .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
 
@@ -353,6 +366,7 @@ async fn main() {
                                                     leader,
                                                     client_tx: direct_tx.clone(),
                                                     target_lobby_id,
+                                                    host_private,
                                                     build_version,
                                                 }).await;
                                             }

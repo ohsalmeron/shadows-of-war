@@ -114,6 +114,7 @@ async fn main() {
         name: "TestBot".to_string(),
         is_observer: false,
         target_lobby_id: None,
+        host_private: false,
         build_version: version,
         clan_tag: "".to_string(),
         civilization: sow_core::player::Civilization::Rome,

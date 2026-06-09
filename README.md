@@ -29,7 +29,7 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-client` | Game executable (native + WASM) |
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
-| `sow-dist` | WASM `dist/` build + deploy; `nix/nixos/vps/` (NixOS VPS); Android/iOS shells in `sow-dist/deploy/` |
+| `sow-dist` | WASM `dist/` build + deploy; Fedora VPS templates in `sow-dist/deploy/`; Android/iOS shells in `sow-dist/deploy/` |
 | `sow-web/site/` | Marketing site (static HTML: landing, privacy, terms) |
 | `sow-web/shell/` | Game shell (WASM loader, index template, portal SDK) |
 | `assets/` | Art sources (`static/`, online `maps/`, published `cdn/`) |
@@ -43,37 +43,49 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `play.shadowsofwar.io` | Full-screen game shell (share link) |
 | `ptr.shadowsofwar.io` | Staging game shell |
 
-## Nix + `./sow`
+## `./sow`
 
-Install [Nix](https://github.com/DeterminateSystems/nix-installer) (or `direnv allow` — `.envrc` uses `use flake`). Then run **`./sow`** — it enters the Nix shell automatically and uses a cached release binary (no `cargo run` every time).
+Requires host **Rust**, **gcloud** (OS Login), and **rsync** on your PATH. `./sow` builds a cached release binary under `dist/.cargo-target/` (no Nix required for deploy).
+
+### Setup
 
 ```bash
-./sow infra         # apply NixOS VPS config (nginx, systemd, server binaries)
-./sow ptr -v        # staging: PTR shell + cdn/
-./sow prod -v       # prod: play + marketing + cdn/
-./sow p -v          # same as prod
-./sow cg            # CrazyGames dist + cdn/
-./sow local         # local WASM QA → prod wss/CDN
-./sow l             # same as local
+cp .env.example .env
+# Edit .env: SOW_GCP_PROJECT, origins, certbot email (see .env.example)
+```
+
+Remote deploy (`./sow p`, `./sow ptr`, `./sow infra`) reads `.env` from the repo root (gitignored). Without it, `./sow` prints what to set.
+
+```bash
+./sow infra --confirm-destroy   # one-time: recreate Fedora VPS on GCP (nginx, TLS, valkey)
+./sow ptr -v                    # staging: PTR shell + PTR server + cdn/
+./sow prod -v                   # prod: play + marketing + prod server + cdn/
+./sow p -v                      # same as prod
+./sow cg                        # CrazyGames dist + cdn/
+./sow local                     # local WASM QA → prod wss/CDN
+./sow l                         # same as local
 ```
 
 Native client (no local server): `cargo run -p sow-client` → production WebSocket endpoint.
 
 | Env var | Purpose |
 |---------|---------|
-| `SOW_IN_NIX_SHELL=1` | Set inside Nix shell (auto via `./sow`) |
-| `SOW_NO_NIX=1` | Skip auto `nix develop` (host tools on PATH) |
+| `SOW_GCP_PROJECT` | GCP project ID (**required** for remote deploy) |
+| `SOW_GCP_ZONE` | VM zone |
+| `SOW_GCP_INSTANCE` | VM name |
+| `SOW_SITE_ORIGIN` / `SOW_PLAY_ORIGIN` / `SOW_PTR_ORIGIN` | Public HTTPS origins |
+| `SOW_CERTBOT_EMAIL` | TLS certificate contact |
 
-Server packages (`nix build .#packages.x86_64-linux.sow-server`) use a trimmed workspace (no `blade/` required). WASM/client builds still use the full repo via `./sow` devShell.
+Full list: [`.env.example`](.env.example).
 
 ## Commands
 
-| Command | Output | VPS content | NixOS infra |
-|---------|--------|-------------|-------------|
-| `infra` | — | — | nixos-anywhere (first install) or `nixos-rebuild switch` |
+| Command | Output | VPS content | Server / infra |
+|---------|--------|-------------|----------------|
+| `infra --confirm-destroy` | — | — | Recreate Fedora VM on GCP; nginx, TLS, valkey, systemd (reproducible from `sow-dist/deploy/`) |
 | `cg` / `crazygames` | `dist/crazygames/` | CDN rsync only | No |
-| `p` / `prod` | `dist/play/` + marketing | play + shadowsofwar.io | No |
-| `ptr` | `dist/ptr/` | ptr.shadowsofwar.io | No |
+| `p` / `prod` | `dist/play/` + marketing | play + shadowsofwar.io | Rsyncs server binaries + restarts `sow-server` when crates or version changed |
+| `ptr` | `dist/ptr/` | ptr.shadowsofwar.io | Rsyncs server binaries + restarts `sow-server-ptr` only — never prod |
 | `l` / `local` | `dist/site-dev/` | localhost only | No |
 
 ```bash
@@ -83,7 +95,9 @@ Server packages (`nix build .#packages.x86_64-linux.sow-server`) use a trimmed w
 ./sow local --build-only
 ```
 
-Each **prod** / **ptr** run ships WASM dist and verifies maps API, WebSocket proxy, and systemd. Server binaries and nginx/systemd changes go through `./sow infra` only.
+Each **prod** / **ptr** run ships WASM dist, rsyncs server binaries when crate inputs changed, pushes `.version` to the server working dir, restarts the orchestrator when needed, and verifies maps API + WebSocket. Use **`./sow infra --confirm-destroy`** only for a fresh VPS or changes under `sow-dist/deploy/` (nginx, TLS, valkey, systemd). That is the reproducible machine setup; routine releases use **`./sow p`** / **`./sow ptr`** only.
+
+Optional Nix flake (`flake.nix`) is devShell-only — not used by `./sow` or VPS deploy.
 
 Details: [sow-web/README.md](sow-web/README.md).
 
@@ -96,20 +110,20 @@ Details: [sow-web/README.md](sow-web/README.md).
 | Static in dist | `assets/static/` (fonts, icons — **not maps**) | `dist/crazygames/assets/static/` only |
 | Maps (online) | `assets/maps/` | VPS maps dir → `/maps/` HTTP API (prod/ptr rsync) |
 | Maps (offline) | `assets/static/maps/world/` only | Bundled inside client WASM |
-| Server binaries | flake `packages.sow-server` / `sow-relay` | NixOS systemd store paths (via `./sow infra`) |
+| Server binaries | `cargo build --release` (`x86_64-unknown-linux-gnu`, glibc) | Rsync to `$HOME/shadowsofwar/` via gcloud; restart systemd unit |
 | Marketing HTML | `sow-web/site/` | `shadowsofwar.io/html/` (via `sow prod`) |
 
 Boot UI and leader portraits load from CDN at runtime for play/ptr shells (shell-only dist).
 
 ### What `sow prod` updates
 
-| Artifact | Picked up? | Infra reload? |
-|----------|------------|---------------|
-| Game WASM shell | Yes → play.shadowsofwar.io | No |
-| Marketing site | Yes → shadowsofwar.io | No |
-| CDN (`assets/cdn/`) | Yes (parallel build) | No |
-| Map files | Yes → prod maps dir | No |
-| `sow-server` / `sow-relay` | No (use `./sow infra`) | Yes (`./sow infra`) |
+| Artifact | Picked up? | Notes |
+|----------|------------|-------|
+| Game WASM shell | Yes → play.shadowsofwar.io | — |
+| Marketing site | Yes → shadowsofwar.io | — |
+| CDN (`assets/cdn/`) | Yes (parallel build) | — |
+| Map files | Yes → prod maps dir | — |
+| `sow-server` / `sow-relay` | Yes when server crates changed | rsync binaries + orchestrator restart; relays keep running (`KillMode=process`) |
 
 `sow ptr` updates PTR shell + PTR server only — never restarts prod.
 
