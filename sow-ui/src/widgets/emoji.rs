@@ -1,24 +1,93 @@
-use egui::{Align2, Color32, CursorIcon, Pos2, Rect, Response, Sense, Ui, Widget};
+use egui::{Align2, Color32, CursorIcon, FontId, Pos2, Rect, Response, Sense, Ui, Vec2, Widget};
+
+enum Run<'a> {
+    Text(&'a str),
+    Emoji(&'a str),
+}
+
+fn match_emoji_at(text: &str, byte_idx: usize) -> Option<usize> {
+    let rest = &text[byte_idx..];
+    let mut best = None;
+    for (ci, (_, _)) in rest.char_indices().enumerate() {
+        if ci > 8 {
+            break;
+        }
+        let end = rest
+            .char_indices()
+            .nth(ci + 1)
+            .map(|(j, _)| j)
+            .unwrap_or(rest.len());
+        let candidate = &rest[..end];
+        if sow_core::emoji::atlas_uv(candidate).is_some() {
+            best = Some(byte_idx + end);
+        }
+    }
+    best
+}
+
+fn split_runs(text: &str) -> Vec<Run<'_>> {
+    let mut runs = Vec::new();
+    let mut i = 0;
+    while i < text.len() {
+        if let Some(end) = match_emoji_at(text, i) {
+            runs.push(Run::Emoji(&text[i..end]));
+            i = end;
+        } else {
+            let start = i;
+            i += text[i..]
+                .chars()
+                .next()
+                .map(|c| c.len_utf8())
+                .unwrap_or(1);
+            while i < text.len() {
+                if match_emoji_at(text, i).is_some() {
+                    break;
+                }
+                i += text[i..]
+                    .chars()
+                    .next()
+                    .map(|c| c.len_utf8())
+                    .unwrap_or(1);
+            }
+            runs.push(Run::Text(&text[start..i]));
+        }
+    }
+    runs
+}
+
+fn emoji_icon_size(font: &FontId) -> f32 {
+    font.size * 1.4
+}
+
+fn measure_runs(painter: &egui::Painter, runs: &[Run<'_>], font: &FontId) -> (f32, f32) {
+    let icon_h = emoji_icon_size(font);
+    let mut w = 0.0_f32;
+    let mut h = font.size;
+    for run in runs {
+        match run {
+            Run::Text(s) => {
+                let g = painter.layout_no_wrap((*s).to_owned(), font.clone(), Color32::WHITE);
+                w += g.rect.width();
+                h = h.max(g.rect.height());
+            }
+            Run::Emoji(_) => {
+                w += icon_h + 2.0;
+                h = h.max(icon_h);
+            }
+        }
+    }
+    (w, h)
+}
 
 /// Draw a pixel emoji from the embedded atlas. Returns false if the glyph is not in the atlas.
 pub fn try_paint_emoji(painter: &egui::Painter, emoji: &str, rect: Rect, tint: Color32) -> bool {
     let Some(uv) = sow_core::emoji::atlas_uv(emoji) else {
         return false;
     };
-    let size_hint = egui::load::SizeHint::Size {
-        width: rect.width().round().max(1.0) as u32,
-        height: rect.height().round().max(1.0) as u32,
-        maintain_aspect_ratio: true,
-    };
-    let load = painter.ctx().try_load_texture(
-        sow_core::emoji::ATLAS_URI,
-        sow_core::emoji::texture_options(),
-        size_hint,
-    );
-    let Ok(egui::load::TexturePoll::Ready { texture }) = load else {
+    let Some(texture) = sow_core::emoji::atlas_texture(painter.ctx()) else {
         return false;
     };
-    painter.image(texture.id, rect, uv, tint);
+    painter.image(texture.id(), rect, uv, tint);
     true
 }
 
@@ -31,6 +100,86 @@ pub fn paint_emoji_centered(
 ) -> bool {
     let rect = Rect::from_center_size(center, egui::vec2(size, size));
     try_paint_emoji(painter, emoji, rect, tint)
+}
+
+/// Inline label mixing atlas emoji and normal text.
+pub fn emoji_label(ui: &mut Ui, text: &str, font_id: FontId, color: Color32) -> Response {
+    let runs = split_runs(text);
+    let (total_w, max_h) = measure_runs(ui.painter(), &runs, &font_id);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(total_w, max_h), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        paint_runs(ui.painter(), rect, &runs, &font_id, color, false);
+    }
+    response
+}
+
+/// Outlined inline label (text parts get glow; emoji painted from atlas).
+pub fn outlined_emoji_label(ui: &mut Ui, text: &str, font_id: FontId, color: Color32) -> Response {
+    let runs = split_runs(text);
+    let (total_w, max_h) = measure_runs(ui.painter(), &runs, &font_id);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(total_w, max_h), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        paint_runs(ui.painter(), rect, &runs, &font_id, color, true);
+    }
+    response
+}
+
+/// Outlined inline text at a painter anchor (for floating HUD text).
+pub fn outlined_emoji_text(
+    painter: &egui::Painter,
+    pos: Pos2,
+    anchor: Align2,
+    text: &str,
+    font_id: FontId,
+    color: Color32,
+    shadow: Color32,
+) {
+    let runs = split_runs(text);
+    let (total_w, max_h) = measure_runs(painter, &runs, &font_id);
+    let rect = anchor.anchor_size(pos, Vec2::new(total_w, max_h));
+    paint_runs(painter, rect, &runs, &font_id, color, true);
+    let _ = shadow;
+}
+
+fn paint_runs(
+    painter: &egui::Painter,
+    rect: Rect,
+    runs: &[Run<'_>],
+    font_id: &FontId,
+    color: Color32,
+    outlined: bool,
+) {
+    let icon_h = emoji_icon_size(font_id);
+    let mut x = rect.left();
+    let cy = rect.center().y;
+    for run in runs {
+        match run {
+            Run::Text(s) => {
+                let galley = painter.layout_no_wrap(s.to_string(), font_id.clone(), color);
+                let w = galley.rect.width();
+                if outlined {
+                    crate::ui::theme::outlined_text(
+                        painter,
+                        Pos2::new(x, cy),
+                        Align2::LEFT_CENTER,
+                        s,
+                        font_id.clone(),
+                        color,
+                        Color32::BLACK,
+                    );
+                } else {
+                    let y = cy - galley.rect.height() / 2.0;
+                    painter.galley(Pos2::new(x, y), galley, color);
+                }
+                x += w;
+            }
+            Run::Emoji(e) => {
+                let r = Rect::from_center_size(Pos2::new(x + icon_h / 2.0, cy), Vec2::splat(icon_h));
+                try_paint_emoji(painter, e, r, color);
+                x += icon_h + 2.0;
+            }
+        }
+    }
 }
 
 /// Clickable HUD square that renders a pixel emoji (falls back to glow text if missing).

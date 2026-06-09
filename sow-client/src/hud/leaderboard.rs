@@ -188,7 +188,7 @@ fn paint_rank_badge(ui: &mut egui::Ui, rank_1based: usize, metrics: &Leaderboard
     );
     if rank_1based <= 3 {
         let badge_rect =
-            egui::Rect::from_center_size(rect.center(), egui::vec2(20.0, 20.0));
+            egui::Rect::from_center_size(rect.center(), egui::vec2(24.0, 24.0));
         if !sow_ui::widgets::try_paint_emoji(painter, icon, badge_rect, fg) {
             painter.text(
                 rect.center(),
@@ -700,7 +700,14 @@ impl SowApp {
                 .inner_margin(egui::Margin::symmetric(8, if metrics.is_mobile { 6 } else { 4 }))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("🔍").size(14.0));
+                        let (search_icon, _) =
+                            ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
+                        sow_ui::widgets::try_paint_emoji(
+                            ui.painter(),
+                            "🔍",
+                            search_icon,
+                            Color32::LIGHT_GRAY,
+                        );
                         let response = ui.add(
                             egui::TextEdit::singleline(&mut self.ui.leaderboard_search)
                                 .hint_text("Search players…")
@@ -967,7 +974,7 @@ impl SowApp {
                             }
 
                             if ui
-                                .add(sow_ui::widgets::HudButton::new("🛠"))
+                                .add(sow_ui::widgets::HudEmojiButton::new("🛠"))
                                 .on_hover_text("Dev Utils")
                                 .clicked()
                             {

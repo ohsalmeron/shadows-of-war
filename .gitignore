@@ -8,7 +8,7 @@ resources/images/.DS_Store
 resources/.DS_Store
 .env
 .env.local
-!.env.example
+!sow-dist/.env.example
 OpenFrontIO/
 MapGenerator/
 sow-dist/deploy/keystores/

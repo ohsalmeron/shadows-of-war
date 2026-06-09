@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
 
-if [[ -f "${ROOT}/.env" ]]; then
+if [[ -f "${ROOT}/sow-dist/.env" ]]; then
   set -a
   # shellcheck source=/dev/null
-  source "${ROOT}/.env"
+  source "${ROOT}/sow-dist/.env"
   set +a
 fi
 

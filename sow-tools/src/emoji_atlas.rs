@@ -1,15 +1,10 @@
 use image::imageops::FilterType;
 use image::{ImageBuffer, ImageEncoder, Rgba, RgbaImage};
-use serde_json::Value;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CELL_PX: u32 = 32;
-const PTWMC_GLYPH_PX: u32 = 9;
+const CELL_PX: u32 = 64;
 const TWEMOJI_BASE: &str = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
-const PTWMC_PIN: &str = "vendor/ptwmc/assets/twemoji/textures/font/emoji.png";
-const PTWMC_FONT_JSON: &str = "vendor/ptwmc/assets/minecraft/font/default.json";
 
 pub struct PackEmojiAtlasArgs {
     pub repo_root: PathBuf,
@@ -19,34 +14,16 @@ pub struct PackEmojiAtlasArgs {
 }
 
 pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _ = &args.repo_root;
     let required = load_required(&args.required)?;
-    let sheet_path = args.repo_root.join(PTWMC_PIN);
-    let font_json_path = args.repo_root.join(PTWMC_FONT_JSON);
-    if !sheet_path.is_file() {
-        return Err(format!(
-            "missing {PTWMC_PIN} — extract PixelTwemojiMC v8.0 into vendor/ptwmc (see assets/SOURCES.toml)"
-        )
-        .into());
-    }
-
-    let grid = parse_mc_font_grid(&font_json_path)?;
-    let sheet = image::open(&sheet_path)?.to_rgba8();
-    let cols = sheet.width() / PTWMC_GLYPH_PX;
-
     let client = reqwest::blocking::Client::new();
     let mut entries: Vec<(String, RgbaImage)> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
 
     for emoji in &required {
-        if let Some(img) = extract_ptwmc(&sheet, cols, &grid, emoji) {
-            entries.push((emoji.to_string(), upscale_nearest(&img, CELL_PX)));
-            continue;
-        }
-        match fetch_twemoji_fallback(&client, emoji) {
+        match fetch_twemoji(&client, emoji) {
             Ok(img) => entries.push((emoji.to_string(), img)),
-            Err(e) => {
-                missing.push(format!("{emoji}: {e}"));
-            }
+            Err(e) => missing.push(format!("{emoji}: {e}")),
         }
     }
 
@@ -83,64 +60,7 @@ fn load_required(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Error +
     Ok(out)
 }
 
-fn parse_mc_font_grid(
-    font_json: &Path,
-) -> Result<HashMap<char, (u32, u32)>, Box<dyn std::error::Error + Send + Sync>> {
-    let data: Value = serde_json::from_str(&fs::read_to_string(font_json)?)?;
-    let providers = data["providers"]
-        .as_array()
-        .ok_or("font providers array")?;
-    let mut map = HashMap::new();
-    let mut row = 0u32;
-    for provider in providers {
-        if provider["type"].as_str() != Some("bitmap") {
-            continue;
-        }
-        let chars = provider["chars"]
-            .as_array()
-            .ok_or("bitmap chars")?;
-        for row_str in chars {
-            let s = row_str.as_str().ok_or("char row string")?;
-            for (col, ch) in s.chars().enumerate() {
-                map.insert(ch, (col as u32, row));
-            }
-            row += 1;
-        }
-    }
-    Ok(map)
-}
-
-fn extract_ptwmc(
-    sheet: &RgbaImage,
-    cols: u32,
-    grid: &HashMap<char, (u32, u32)>,
-    emoji: &str,
-) -> Option<RgbaImage> {
-    let chars: Vec<char> = emoji.chars().collect();
-    if chars.len() == 1 {
-        if let Some(&(col, row)) = grid.get(&chars[0]) {
-            return Some(crop_glyph(sheet, cols, col, row));
-        }
-        return None;
-    }
-    // ZWJ / multi-codepoint: use first base character for pixel sheet lookup.
-    if let Some(&(col, row)) = grid.get(&chars[0]) {
-        return Some(crop_glyph(sheet, cols, col, row));
-    }
-    None
-}
-
-fn crop_glyph(sheet: &RgbaImage, _cols: u32, col: u32, row: u32) -> RgbaImage {
-    let x = col * PTWMC_GLYPH_PX;
-    let y = row * PTWMC_GLYPH_PX;
-    image::imageops::crop_imm(sheet, x, y, PTWMC_GLYPH_PX, PTWMC_GLYPH_PX).to_image()
-}
-
-fn upscale_nearest(img: &RgbaImage, size: u32) -> RgbaImage {
-    image::imageops::resize(img, size, size, FilterType::Nearest)
-}
-
-fn fetch_twemoji_fallback(
+fn fetch_twemoji(
     client: &reqwest::blocking::Client,
     emoji: &str,
 ) -> Result<RgbaImage, Box<dyn std::error::Error + Send + Sync>> {
@@ -150,11 +70,18 @@ fn fetch_twemoji_fallback(
             if resp.status().is_success() {
                 let bytes = resp.bytes()?;
                 let img = image::load_from_memory(&bytes)?.to_rgba8();
-                return Ok(upscale_nearest(&img, CELL_PX));
+                return Ok(downscale_cell(&img));
             }
         }
     }
     Err("twemoji CDN miss".into())
+}
+
+fn downscale_cell(img: &RgbaImage) -> RgbaImage {
+    if img.width() == CELL_PX && img.height() == CELL_PX {
+        return img.clone();
+    }
+    image::imageops::resize(img, CELL_PX, CELL_PX, FilterType::Lanczos3)
 }
 
 fn twemoji_filenames(emoji: &str) -> Vec<String> {
@@ -238,9 +165,7 @@ fn write_manifest_rs(
     out.push_str("pub struct AtlasRect {\n    pub x: u32,\n    pub y: u32,\n    pub w: u32,\n    pub h: u32,\n}\n\n");
     out.push_str("pub fn lookup(emoji: &str) -> Option<AtlasRect> {\n    match emoji {\n");
     for (emoji, x, y, w, h) in rects {
-        let escaped = emoji
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"");
+        let escaped = emoji.replace('\\', "\\\\").replace('"', "\\\"");
         out.push_str(&format!(
             "        \"{escaped}\" => Some(AtlasRect {{ x: {x}, y: {y}, w: {w}, h: {h} }}),\n"
         ));

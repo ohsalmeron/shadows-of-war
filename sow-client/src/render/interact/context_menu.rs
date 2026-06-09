@@ -880,7 +880,12 @@ impl SowApp {
                                                     ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
                                                     ui.add_space(6.0);
                                                     let cost_color = if !is_disabled { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
-                                                    ui.label(egui::RichText::new(format!("Cost: 🪙 {} Gold", cost_text)).strong().size(13.0).color(cost_color));
+                                                    sow_ui::widgets::emoji_label(
+                                                        ui,
+                                                        &format!("Cost: 🪙 {cost_text} Gold"),
+                                                        egui::FontId::proportional(13.0),
+                                                        cost_color,
+                                                    );
                                                 });
 
                                                 if !is_disabled && resp.clicked() {

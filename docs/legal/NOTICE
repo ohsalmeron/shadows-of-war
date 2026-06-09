@@ -15,8 +15,8 @@ See docs/legal/NOTICE.deps (generated from Cargo.lock; not required for player r
 
 Emoji atlas
 -----------
-Pixel Twemoji (Minecraft 9x9 redraw) by AmberWat, based on Twemoji by Twitter/X.
-CC-BY-4.0 — https://github.com/AmberWat/PixelTwemojiMC-9
+Twemoji by Twitter/X (community-maintained).
+CC-BY-4.0 — https://github.com/twitter/twemoji
 
 Other assets
 ------------

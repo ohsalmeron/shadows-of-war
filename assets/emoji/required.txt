@@ -1,4 +1,4 @@
-# Express panel (sow-ui/src/ui/hud/mod.rs)
+# Express panel
 😀
 😎
 😏
@@ -55,7 +55,7 @@
 🌙
 🪖
 🎖️
-# HUD / gameplay (variant forms without FE0F)
+# HUD / gameplay
 📋
 ⚔
 🛡
@@ -69,3 +69,37 @@
 🚀
 ⚓
 🏳
+# Top bar, buttons, inbox, leaderboard
+💰
+📩
+⚙
+🛠
+🥈
+🥉
+🔍
+# Event log / diplomacy / combat
+☢
+☢️
+❌
+🕊
+🕊️
+🎁
+⛴
+⛴️
+⚠️
+🎉
+# Buildings / upgrades / units
+🗼
+🚢
+🌽
+🌾
+🍞
+🪨
+⛓️
+💎
+🧂
+🐠
+🟢
+🏗️
+# Map editor
+🗑

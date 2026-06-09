@@ -138,6 +138,15 @@ fn incoming_dispatch_count(state: &HudState) -> usize {
         .count()
 }
 
+fn building_emoji(kind: sow_core::game::BuildingKind) -> &'static str {
+    match kind {
+        sow_core::game::BuildingKind::City => "🏛️",
+        sow_core::game::BuildingKind::Factory => "🏭",
+        sow_core::game::BuildingKind::Port => "⚓",
+        sow_core::game::BuildingKind::Bunker => "🗼",
+    }
+}
+
 fn draw_buildings_strip(
     ui: &mut egui::Ui,
     state: &mut HudState,
@@ -205,7 +214,12 @@ fn draw_buildings_strip(
 
                 let cost_text = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
                 let cost_color = if can_afford { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
-                ui.label(egui::RichText::new(format!("Cost: 🪙 {} Gold", cost_text)).strong().size(13.0).color(cost_color));
+                crate::widgets::emoji_label(
+                    ui,
+                    &format!("Cost: 🪙 {cost_text} Gold"),
+                    egui::FontId::proportional(13.0),
+                    cost_color,
+                );
             });
 
             let is_hovered = resp.hovered();
@@ -239,16 +253,21 @@ fn draw_buildings_strip(
                 );
             }
 
-            let icon_size = if compact { 16.0 } else { 22.0 };
+            let icon_size = if compact { 22.0 } else { 30.0 };
             let icon_rect = egui::Rect::from_center_size(
-                egui::pos2(rect.center().x, rect.top() + (if compact { 11.0 } else { 14.0 })),
+                egui::pos2(rect.center().x, rect.top() + (if compact { 13.0 } else { 16.0 })),
                 egui::vec2(icon_size, icon_size),
             );
 
-            let uri = kind.asset().uri();
-
-            let image = egui::Image::new(uri).tint(tint);
-            image.paint_at(ui, icon_rect);
+            if !crate::widgets::try_paint_emoji(ui.painter(), building_emoji(kind), icon_rect, tint) {
+                ui.painter().text(
+                    icon_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    building_emoji(kind),
+                    egui::FontId::proportional(icon_size * 0.7),
+                    tint,
+                );
+            }
 
             let cost_text = if cost.is_infinite() {
                 "N/A".to_string()
@@ -300,7 +319,6 @@ fn draw_buildings_strip(
             ];
 
             for &(nuke_kind, label) in &nukes {
-                let uri = nuke_kind.asset().uri();
                 let is_selected = state.selected_nuke_kind == Some(nuke_kind);
                 let nk_col_w = if compact { 32.0 } else { 36.0 };
 
@@ -358,13 +376,20 @@ fn draw_buildings_strip(
                     );
                 }
 
-                let icon_size = if compact { 16.0 } else { 20.0 };
+                let icon_size = if compact { 22.0 } else { 28.0 };
                 let icon_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, rect.top() + (if compact { 11.0 } else { 14.0 })),
+                    egui::pos2(rect.center().x, rect.top() + (if compact { 13.0 } else { 16.0 })),
                     egui::vec2(icon_size, icon_size),
                 );
-                let image = egui::Image::new(uri).tint(tint);
-                image.paint_at(ui, icon_rect);
+                if !crate::widgets::try_paint_emoji(ui.painter(), "☢️", icon_rect, tint) {
+                    ui.painter().text(
+                        icon_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "☢️",
+                        egui::FontId::proportional(icon_size * 0.7),
+                        tint,
+                    );
+                }
 
                 let font_size = if compact { 7.0 } else { 8.0 };
                 ui.painter().text(
@@ -665,7 +690,8 @@ fn draw_battle_log_tab(
     if rows.is_empty() {
         ui.add_space(12.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("⚔").size(20.0).color(Color32::GRAY));
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::hover());
+            crate::widgets::try_paint_emoji(ui.painter(), "⚔", rect, Color32::GRAY);
             ui.label(
                 RichText::new(&strings.battle_log_empty)
                     .size(11.0)
@@ -703,7 +729,9 @@ fn draw_battle_log_tab(
                     ))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(icon).size(16.0).color(accent));
+                            let (icon_rect, _) =
+                                ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                            crate::widgets::try_paint_emoji(ui.painter(), icon, icon_rect, accent);
                             ui.add_space(6.0);
                             ui.vertical(|ui| {
                                 ui.label(
@@ -1034,7 +1062,7 @@ pub fn draw(
             crate::ui::theme::hud_panel_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let btn_resp = ui
-                        .add(crate::widgets::HudButton::new("📩"))
+                        .add(crate::widgets::HudEmojiButton::new("📩"))
                         .on_hover_text(&sow_i18n::get(lang).hud.inbox_title);
                     if btn_resp.clicked() {
                         state.show_alliance_inbox = !state.show_alliance_inbox;
@@ -1066,7 +1094,7 @@ pub fn draw(
                     }
 
                     if ui
-                        .add(crate::widgets::HudButton::new("⚙"))
+                        .add(crate::widgets::HudEmojiButton::new("⚙"))
                         .on_hover_text(&sow_i18n::get(lang).hud.hover_settings)
                         .clicked()
                     {
@@ -1074,7 +1102,7 @@ pub fn draw(
                     }
                     if ui
                         .add(
-                            crate::widgets::HudButton::new("✖")
+                            crate::widgets::HudEmojiButton::new("❌")
                                 .color(Color32::from_rgb(255, 100, 100)),
                         )
                         .on_hover_text(&sow_i18n::get(lang).hud.hover_exit)
@@ -1345,7 +1373,12 @@ pub fn draw(
                                                                 (false, true) => format!("asks for 🛡️{}", crate::utils::format_number(req.troops)),
                                                                 _ => "asks for resources".to_string(),
                                                             };
-                                                            crate::ui::theme::outlined_label(ui, &prompt, egui::FontId::proportional(10.5), Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress));
+                                                            crate::widgets::outlined_emoji_label(
+                                                                ui,
+                                                                &prompt,
+                                                                egui::FontId::proportional(10.5),
+                                                                Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress),
+                                                            );
                                                         });
                                                     });
                                                     ui.add_space(2.0);
@@ -1961,15 +1994,17 @@ fn draw_troop_bar(
         let galley = ui
             .painter()
             .layout_no_wrap(rate_text.clone(), font_id.clone(), rate_color);
-        let icon_size = 11.0;
+        let icon_size = 14.0;
         let total_w = icon_size + 4.0 + galley.rect.width();
         let mut start_x = rect.center().x - total_w / 2.0;
 
-        ui.painter().text(
-            pos2(start_x + icon_size / 2.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
+        crate::widgets::try_paint_emoji(
+            ui.painter(),
             "⚔",
-            egui::FontId::proportional(icon_size),
+            egui::Rect::from_center_size(
+                pos2(start_x + icon_size / 2.0, rect.center().y),
+                egui::vec2(icon_size, icon_size),
+            ),
             Color32::WHITE,
         );
         start_x += icon_size + 4.0;
@@ -1995,7 +2030,7 @@ fn draw_troop_bar(
             font_id.clone(),
             Color32::from_rgb(220, 230, 220),
         );
-        let icon_size = 11.0;
+        let icon_size = 14.0;
         let total_w = galley.rect.width() + 4.0 + icon_size;
         let mut start_x = rect.center().x - total_w / 2.0;
 
@@ -2010,11 +2045,13 @@ fn draw_troop_bar(
         );
         start_x += galley.rect.width() + 4.0;
 
-        ui.painter().text(
-            pos2(start_x + icon_size / 2.0, rect.center().y),
-            egui::Align2::CENTER_CENTER,
+        crate::widgets::try_paint_emoji(
+            ui.painter(),
             "⚔",
-            egui::FontId::proportional(icon_size),
+            egui::Rect::from_center_size(
+                pos2(start_x + icon_size / 2.0, rect.center().y),
+                egui::vec2(icon_size, icon_size),
+            ),
             Color32::WHITE,
         );
     }
@@ -2076,14 +2113,14 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                     crate::ui::theme::margin::TIGHT,
                 ))
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(format!(
+                    crate::widgets::outlined_emoji_label(
+                        ui,
+                        &format!(
                             "⚔ +{}/s",
                             crate::utils::format_number(troop_rate)
-                        ))
-                        .size(11.0)
-                        .color(rate_color)
-                        .strong(),
+                        ),
+                        egui::FontId::proportional(11.0),
+                        rate_color,
                     );
                 });
         }
@@ -2114,7 +2151,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                 crate::ui::theme::margin::TIGHT,
             ))
             .show(ui, |ui| {
-                crate::ui::theme::outlined_label(
+                crate::widgets::outlined_emoji_label(
                     ui,
                     &format!("💰 {}", crate::utils::format_number(state.gold)),
                     egui::FontId::proportional(if compact { 13.0 } else { 14.0 }),
@@ -2129,7 +2166,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
             let r = gold_frame_resp.response.rect;
             let text = format!("💰 +{}", crate::utils::format_number(amount));
             let p = pos2(r.center().x, r.top() - 10.0 - slide);
-            crate::ui::theme::outlined_text(
+            crate::widgets::outlined_emoji_text(
                 ui.painter(),
                 p,
                 Align2::CENTER_BOTTOM,
@@ -3001,7 +3038,12 @@ fn draw_transfer_panel(
                     ui.group(|ui| {
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("💰 Gold").strong().size(15.0));
+                                crate::widgets::emoji_label(
+                                    ui,
+                                    "💰 Gold",
+                                    egui::FontId::proportional(15.0),
+                                    Color32::WHITE,
+                                );
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     ui.label(
                                         RichText::new(format!("{}", crate::utils::format_number(state.ask_gold)))
@@ -3061,7 +3103,12 @@ fn draw_transfer_panel(
                     ui.group(|ui| {
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("🛡️ Troops").strong().size(15.0));
+                                crate::widgets::emoji_label(
+                                    ui,
+                                    "🛡️ Troops",
+                                    egui::FontId::proportional(15.0),
+                                    Color32::WHITE,
+                                );
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     ui.label(
                                         RichText::new(format!("{}", crate::utils::format_number(state.ask_troops)))

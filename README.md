@@ -45,16 +45,16 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 
 ## `./sow`
 
-Requires host **Rust**, **gcloud** (OS Login), and **rsync** on your PATH. `./sow` builds a cached release binary under `dist/.cargo-target/` (no Nix required for deploy).
+Requires host **Rust**, **gcloud** (OS Login), and **rsync** on your PATH. `./sow` builds a cached release binary under `dist/.cargo-target/`.
 
 ### Setup
 
 ```bash
-cp .env.example .env
-# Edit .env: SOW_GCP_PROJECT, origins, certbot email (see .env.example)
+cp sow-dist/.env.example sow-dist/.env
+# Edit sow-dist/.env: SOW_GCP_PROJECT, origins, certbot email (see sow-dist/.env.example)
 ```
 
-Remote deploy (`./sow p`, `./sow ptr`, `./sow infra`) reads `.env` from the repo root (gitignored). Without it, `./sow` prints what to set.
+Remote deploy (`./sow p`, `./sow ptr`, `./sow infra`) reads `sow-dist/.env` (gitignored). Without it, `./sow` prints what to set.
 
 ```bash
 ./sow infra --confirm-destroy   # one-time: recreate Fedora VPS on GCP (nginx, TLS, valkey)
@@ -76,7 +76,7 @@ Native client (no local server): `cargo run -p sow-client` → production WebSoc
 | `SOW_SITE_ORIGIN` / `SOW_PLAY_ORIGIN` / `SOW_PTR_ORIGIN` | Public HTTPS origins |
 | `SOW_CERTBOT_EMAIL` | TLS certificate contact |
 
-Full list: [`.env.example`](.env.example).
+Full list: [`sow-dist/.env.example`](sow-dist/.env.example).
 
 ## Commands
 
@@ -103,8 +103,6 @@ Full list: [`.env.example`](.env.example).
 4. **Verify** — HTTP checks for CDN, play/marketing/sitemap, maps API, WebSocket
 
 Use **`./sow infra --confirm-destroy`** only for a fresh VPS or changes under `sow-dist/deploy/` (nginx, TLS, valkey, systemd). Routine releases use **`./sow p`** / **`./sow ptr`** only.
-
-Optional Nix flake (`flake.nix`) is devShell-only — not used by `./sow` or VPS deploy.
 
 Details: [sow-web/README.md](sow-web/README.md).
 

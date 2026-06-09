@@ -670,6 +670,9 @@ pub(crate) fn render(
                         }
                     }
 
+                    let troops_font_size = font_size * 1.30;
+                    let troops_font_id = egui::FontId::proportional(troops_font_size);
+
                     let (name_galley, troops_galley) = if let (Some(ng), Some(tg)) =
                         (cached_name, cached_troops)
                     {
@@ -684,11 +687,9 @@ pub(crate) fn render(
                         let ng =
                             layout_nameplate_name_galley(painter, font_id.clone(), &display_name);
 
-                        let troops_font_size = font_size * 1.30;
-                        let troops_font_id = egui::FontId::proportional(troops_font_size);
                         let tg = crate::hud::nameplate::layout_nameplate_troops_galley(
                             painter,
-                            troops_font_id,
+                            troops_font_id.clone(),
                             &troops_str,
                         );
 
@@ -706,7 +707,9 @@ pub(crate) fn render(
                         (ng, tg)
                     };
 
-                    let right_w = name_galley.rect.width().max(troops_galley.rect.width());
+                    let right_w = name_galley.rect.width().max(
+                        crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id),
+                    );
                     let item_spacing_y = (font_size * 0.111).round();
                     let right_h =
                         name_galley.rect.height() + item_spacing_y + troops_galley.rect.height();
@@ -814,14 +817,17 @@ pub(crate) fn render(
                         false,
                     );
 
-                    let troops_x = cur_x + (right_w - troops_galley.rect.width()) / 2.0;
-                    crate::hud::nameplate::paint_glow_nameplate_galley(
+                    let troops_w =
+                        crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id);
+                    let troops_x = cur_x + (right_w - troops_w) / 2.0;
+                    crate::hud::nameplate::paint_glow_troops_row(
                         &painter,
                         egui::pos2(
                             troops_x,
                             right_y + name_galley.rect.height() + item_spacing_y,
                         ),
                         troops_galley,
+                        &troops_font_id,
                         vibrant_color,
                         false,
                     );
@@ -1413,16 +1419,17 @@ pub(crate) fn render(
 
                 current_y += h_max + 0.5;
 
-                // 5. Troops Image instead of emoji for non-human players
-                let total_troops_w = troops_galley.rect.width();
+                let total_troops_w =
+                    crate::hud::nameplate::troops_row_width(&troops_galley, &font_id);
                 let troops_start_x = center.x - total_troops_w / 2.0;
 
                 let troops_pos = egui::pos2(troops_start_x, current_y);
                 let is_tribe = player.id >= 200;
-                crate::hud::nameplate::paint_glow_nameplate_galley(
+                crate::hud::nameplate::paint_glow_troops_row(
                     painter,
                     troops_pos,
                     troops_galley,
+                    &font_id,
                     text_color,
                     is_tribe,
                 );

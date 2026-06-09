@@ -73,6 +73,28 @@ pub fn layout_nameplate_troops_galley(
     font_id: egui::FontId,
     troops_str: &str,
 ) -> Arc<egui::Galley> {
-    let text = format!("⚔ {}", troops_str);
-    painter.layout_no_wrap(text, font_id, NAMEPLATE_FILL)
+    painter.layout_no_wrap(troops_str.to_owned(), font_id, NAMEPLATE_FILL)
+}
+
+pub fn troops_icon_size(font_id: &egui::FontId) -> f32 {
+    font_id.size * 1.15
+}
+
+pub fn troops_row_width(troops_galley: &egui::Galley, font_id: &egui::FontId) -> f32 {
+    troops_icon_size(font_id) + 3.0 + troops_galley.rect.width()
+}
+
+pub fn paint_glow_troops_row(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    troops_galley: Arc<egui::Galley>,
+    font_id: &egui::FontId,
+    base_color: egui::Color32,
+    is_tribe: bool,
+) {
+    let icon_size = troops_icon_size(font_id);
+    let icon_rect = egui::Rect::from_min_size(pos, egui::vec2(icon_size, icon_size));
+    sow_ui::widgets::try_paint_emoji(painter, "⚔", icon_rect, base_color);
+    let text_pos = pos + egui::vec2(icon_size + 3.0, 0.0);
+    paint_glow_nameplate_galley(painter, text_pos, troops_galley, base_color, is_tribe);
 }

@@ -161,31 +161,31 @@ pub(crate) fn render(
             let entry = ui.attack_troop_labels.entry(attack.id).or_insert_with(|| {
                 (
                     troops_val,
-                    format!("⚔ {}", sow_ui::utils::format_number(troops_val)),
+                    sow_ui::utils::format_number(troops_val),
                 )
             });
             if (entry.0 - troops_val).abs() > 0.0001 {
                 *entry = (
                     troops_val,
-                    format!("⚔ {}", sow_ui::utils::format_number(troops_val)),
+                    sow_ui::utils::format_number(troops_val),
                 );
             }
-            let label = &entry.1;
+            let troops_str = &entry.1;
             let color = if is_incoming {
                 egui::Color32::from_rgb(255, 90, 90) // Red for incoming
             } else {
                 sow_ui::ui::theme::accent_solo_cyan_hover() // Cyan for outgoing
             };
 
-            // Layout once, paint 7 passes with zero additional layout cost
             let font_id = egui::FontId::proportional(13.0);
-            let galley = middle_painter.layout_no_wrap(label.to_owned(), font_id, color);
-            let half = galley.size() / 2.0;
-            let anchor = egui::pos2(screen_x, screen_y) - half;
-            crate::hud::nameplate::paint_glow_nameplate_galley(
+            let galley = middle_painter.layout_no_wrap(troops_str.to_owned(), font_id.clone(), color);
+            let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
+            let anchor = egui::pos2(screen_x - row_w / 2.0, screen_y - galley.rect.height() / 2.0);
+            crate::hud::nameplate::paint_glow_troops_row(
                 &middle_painter,
                 anchor,
                 galley,
+                &font_id,
                 color,
                 false,
             );

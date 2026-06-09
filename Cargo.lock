@@ -3342,6 +3342,7 @@ dependencies = [
  "brotli",
  "bytemuck",
  "egui",
+ "image",
  "libm",
  "log",
  "serde",

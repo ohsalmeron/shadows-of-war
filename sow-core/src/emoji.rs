@@ -1,15 +1,30 @@
-use egui::{Context, Rect, TextureOptions};
+use egui::{Context, Rect, TextureHandle, TextureOptions};
 
 pub mod manifest;
 
 pub const ATLAS_FILE: &str = "emoji/atlas.webp";
-pub const ATLAS_URI: &str = "bytes://emoji/atlas.webp";
 
 static ATLAS_BYTES: &[u8] = crate::repo_asset_bytes!("emoji/atlas.webp");
+const ATLAS_TEX_ID: &str = "sow_emoji_atlas";
 
-/// Register the embedded emoji atlas into egui's `bytes://` loader.
+/// Decode and upload the embedded atlas (egui has no webp `bytes://` loader).
+pub fn atlas_texture(ctx: &Context) -> Option<TextureHandle> {
+    let id = egui::Id::new(ATLAS_TEX_ID);
+    if let Some(tex) = ctx.data(|d| d.get_temp::<TextureHandle>(id)) {
+        return Some(tex);
+    }
+    let rgba = image::load_from_memory(ATLAS_BYTES).ok()?.to_rgba8();
+    let size = [rgba.width() as _, rgba.height() as _];
+    let pixels = rgba.as_flat_samples();
+    let color = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+    let handle = ctx.load_texture(ATLAS_TEX_ID, color, texture_options());
+    ctx.data_mut(|d| d.insert_temp(id, handle.clone()));
+    Some(handle)
+}
+
+/// Pre-warm the atlas texture on the egui context.
 pub fn register_emoji_atlas(ctx: &Context) {
-    ctx.include_bytes(ATLAS_URI, ATLAS_BYTES);
+    let _ = atlas_texture(ctx);
 }
 
 /// Resolve atlas UV rect for a unicode emoji string (handles optional FE0F variants).
@@ -42,11 +57,7 @@ fn strip_fe0f(emoji: &str) -> &str {
     }
 }
 
-/// Nearest-neighbor atlas texture options for pixel emoji.
+/// Linear-filtered atlas texture options for Twemoji art.
 pub fn texture_options() -> TextureOptions {
-    TextureOptions {
-        magnification: egui::TextureFilter::Nearest,
-        minification: egui::TextureFilter::Nearest,
-        ..Default::default()
-    }
+    TextureOptions::LINEAR
 }

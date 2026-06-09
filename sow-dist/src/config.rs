@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use std::env;
 use std::path::Path;
 
-const MISSING_ENV: &str = "copy .env.example to .env and set required variables";
+const MISSING_ENV: &str = "copy sow-dist/.env.example to sow-dist/.env and set required variables";
 
 #[derive(Clone, Debug)]
 pub struct DeployConfig {
@@ -107,7 +107,7 @@ impl DeployConfig {
 }
 
 pub fn load_dotenv(repo_root: &Path) {
-    let path = repo_root.join(".env");
+    let path = repo_root.join("sow-dist").join(".env");
     if path.is_file() {
         let _ = dotenv::from_path(path);
     }
