@@ -1,5 +1,5 @@
 use super::{
-    fractional_extra_tiles_milli, refund_fleet_troops_to_player, PrioritizedTile,
+    refund_fleet_troops_to_player, PrioritizedTile,
     RETREAT_PENALTY_VS_PLAYER,
 };
 use crate::engine::SowEngine;
@@ -73,9 +73,9 @@ impl SowEngine {
 
             let max_cap = max_tiles_cap_for_troops(effective_troops, &self.state.config);
 
-            let mut max_tiles_f64 = if execution.target_owner == 0 {
-                // Neutral expansion speed: proportional to true border size
-                (adjacent * 2.0).max(5.0).min(max_cap)
+            // Compute the base tile budget in tile-ticks (matching OpenFront's attackTilesPerTick)
+            let base_budget = if execution.target_owner == 0 {
+                adjacent * 2.0
             } else {
                 let defender_troops = self
                     .state
@@ -83,42 +83,35 @@ impl SowEngine {
                     .map(|p| p.troops.max(0.0))
                     .unwrap_or(1.0)
                     .max(1.0);
-                let ratio = effective_troops / defender_troops;
-                let power = (ratio * 2.0).clamp(0.02, 0.5);
-                (power * adjacent * 3.0).max(1.0).min(max_cap)
+                let ratio = (5.0 * effective_troops) / defender_troops;
+                let power = (ratio * 2.0).clamp(0.01, 0.5);
+                power * adjacent * 3.0
             };
 
-            // Speed scales with remaining troops. Higher momentum_divisor = slower ramp.
-            let momentum =
-                (effective_troops / self.state.config.momentum_divisor).clamp(0.1, 5.0);
-            max_tiles_f64 *= momentum;
+            // Scale budget to real time (reference baseline is a 100ms standard OpenFront tick)
+            let mut budget = base_budget * (self.state.config.tick_rate_ms as f64 / 100.0);
+            budget *= self.state.config.global_speed_multiplier;
 
-            // Alexander (Macedon) perk: +15% expansion speed
-            // Napoleon (France) perk: +20% expansion speed
+            // Apply leader speed modifiers
             if let Some(player) = self.state.player(execution.owner_id) {
                 match player.leader {
-                    crate::player::Leader::Alexander => max_tiles_f64 *= 1.15,
-                    crate::player::Leader::Napoleon => max_tiles_f64 *= 1.20,
+                    crate::player::Leader::Alexander => budget *= 1.15,
+                    crate::player::Leader::Napoleon => budget *= 1.20,
                     _ => {}
                 }
             }
 
-            // Scale expansion rate to real time (per_tick semantics: tick_rate × speed multiplier)
-            max_tiles_f64 *= self.state.config.tick_rate_ms as f64 / 1000.0;
-            max_tiles_f64 *= self.state.config.global_speed_multiplier;
+            // Clamp budget with scaled max_cap
+            let scaled_max_cap = max_cap
+                * (self.state.config.tick_rate_ms as f64 / 100.0)
+                * self.state.config.global_speed_multiplier;
+            budget = budget.min(scaled_max_cap);
 
-            // Determine actual integer number of tiles to process this tick (Fractional determinism)
-            let mut tiles_to_conquer = max_tiles_f64.floor() as u32;
-            // Unconditional RNG advancement preserves deterministic PRNG consumption order.
-            let roll_milli = execution.rng.next_int(0, 1000) as u32; // 0..=999
-            tiles_to_conquer += fractional_extra_tiles_milli(max_tiles_f64, roll_milli);
-
-            let mut expanded_this_tick = 0u32;
             let mut stale_pops = 0u32;
-            let max_stale_pops = (tiles_to_conquer * 4).max(64);
+            let max_stale_pops = 256;
 
             loop {
-                if expanded_this_tick >= tiles_to_conquer || stale_pops > max_stale_pops {
+                if budget <= 0.0 || stale_pops > max_stale_pops {
                     break;
                 }
 
@@ -153,6 +146,54 @@ impl SowEngine {
                     ) {
                         stale_pops += 1;
                         continue; // Skip, edge was severed
+                    }
+
+                    // Determine conquest cost for this specific tile (matching OpenFront's terrain & Bunker coefficients)
+                    let base_speed: f64 = match terrain_type {
+                        TerrainType::Land => 16.5,
+                        TerrainType::Highland => 20.0,
+                        TerrainType::Mountain => 25.0,
+                        _ => 16.5,
+                    };
+
+                    let dp_bonus = self.defense_grid.priority_bonus(
+                        target_tile.x,
+                        target_tile.y,
+                        map_w,
+                        execution.target_owner,
+                        &self.state.config,
+                    );
+                    let dp_multiplier = if dp_bonus > 0 { 3.0 } else { 1.0 };
+
+                    let tile_cost = if execution.target_owner == 0 {
+                        let speed_term = base_speed.max(10.0);
+                        let raw_cost = (2000.0 * speed_term) / effective_troops;
+                        raw_cost.clamp(5.0, 100.0)
+                    } else {
+                        let defender_troops = self
+                            .state
+                            .player(execution.target_owner)
+                            .map(|p| p.troops.max(0.0))
+                            .unwrap_or(1.0)
+                            .max(1.0);
+                        let ratio = defender_troops / (5.0 * effective_troops);
+                        let ratio_clamp = ratio.clamp(0.2, 1.5);
+                        ratio_clamp * base_speed * dp_multiplier
+                    };
+
+                    // Check if we can afford this tile on this tick using expectation-invariant deterministic RNG
+                    if budget < tile_cost {
+                        let fraction = budget / tile_cost;
+                        let roll = execution.rng.next_int(0, 1000) as f64 / 1000.0;
+                        if roll < fraction {
+                            budget = 0.0; // Round up: successfully conquer, consume remaining budget
+                        } else {
+                            // Round down: terminate loop and push tile back to the queue
+                            execution.to_conquer.push(target_tile);
+                            break;
+                        }
+                    } else {
+                        budget -= tile_cost;
                     }
 
                     let terrain_multiplier = match terrain_type {
@@ -211,7 +252,6 @@ impl SowEngine {
                     }
 
                     execution.troops = execution.troops.max(0.0);
-                    expanded_this_tick += 1;
 
                     // Enqueue new neutral/enemy neighbors that touch our newly acquired tile
                     let is_odd = (target_tile.y % 2) != 0;
@@ -607,7 +647,7 @@ impl SowEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::execution::fractional_extra_tiles_milli;
 
     #[test]
     fn fractional_extra_tile_milli_threshold_is_stable() {

@@ -82,6 +82,9 @@ pub struct HudState {
     pub show_error: Option<String>,
     pub(crate) last_error_message: Option<String>,
     pub(crate) error_display_timer: Option<Instant>,
+    pub show_info: Option<String>,
+    pub(crate) last_info_message: Option<String>,
+    pub(crate) info_display_timer: Option<Instant>,
     pub selected_building_kind: Option<sow_core::game::BuildingKind>,
     pub building_costs: [f64; 9],
     pub selected_nuke_kind: Option<sow_core::game::NukeKind>,
@@ -901,15 +904,19 @@ pub fn draw(
                 };
 
             let outer_margin = if compact {
-                egui::Margin::symmetric(
-                    crate::ui::theme::margin::REGULAR,
-                    crate::ui::theme::margin::COZY,
-                )
+                egui::Margin {
+                    left: crate::ui::theme::margin::REGULAR,
+                    right: crate::ui::theme::margin::REGULAR,
+                    top: crate::ui::theme::margin::COZY,
+                    bottom: crate::ui::theme::margin::TIGHT,
+                }
             } else {
-                egui::Margin::symmetric(
-                    crate::ui::theme::margin::COZY,
-                    crate::ui::theme::margin::COZY,
-                )
+                egui::Margin {
+                    left: crate::ui::theme::margin::COZY,
+                    right: crate::ui::theme::margin::COZY,
+                    top: crate::ui::theme::margin::COZY,
+                    bottom: crate::ui::theme::margin::TIGHT,
+                }
             };
 
             egui::Frame::NONE
@@ -942,9 +949,19 @@ pub fn draw(
 
                         let content_fill = crate::ui::theme::hud_content_fill();
                         let content_margin = if compact {
-                            egui::Margin::same(crate::ui::theme::margin::COZY)
+                            egui::Margin {
+                                left: crate::ui::theme::margin::COZY,
+                                right: crate::ui::theme::margin::COZY,
+                                top: crate::ui::theme::margin::COZY,
+                                bottom: crate::ui::theme::margin::TIGHT,
+                            }
                         } else {
-                            egui::Margin::same(crate::ui::theme::margin::REGULAR)
+                            egui::Margin {
+                                left: crate::ui::theme::margin::REGULAR,
+                                right: crate::ui::theme::margin::REGULAR,
+                                top: crate::ui::theme::margin::REGULAR,
+                                bottom: crate::ui::theme::margin::TIGHT,
+                            }
                         };
                         let content_radius = if log_tabs_enabled {
                             crate::ui::theme::radius::content_bottom()
@@ -1169,8 +1186,9 @@ pub fn draw(
                                 if requests.len() > 1 {
                                     let w = (ui.available_width() - 6.0) / 2.0;
                                     ui.horizontal(|ui| {
-                                        if ui.add_sized(egui::vec2(w, 24.0),
+                                        if ui.add(
                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.reject_all)
+                                                .min_size(egui::vec2(w, 24.0))
                                                 .text_size(10.0)
                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1180,8 +1198,9 @@ pub fn draw(
                                             }
                                             state.show_alliance_inbox = false;
                                         }
-                                        if ui.add_sized(egui::vec2(w, 24.0),
+                                        if ui.add(
                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.accept_all)
+                                                .min_size(egui::vec2(w, 24.0))
                                                 .text_size(10.0)
                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1283,8 +1302,9 @@ pub fn draw(
                                                     let bw = (ui.available_width() - 6.0) / 2.0;
                                                     let is_last = total_notifications == 1;
                                                     ui.horizontal(|ui| {
-                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                        if ui.add(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
+                                                                .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1292,8 +1312,9 @@ pub fn draw(
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
                                                             if is_last { state.show_alliance_inbox = false; }
                                                         }
-                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                        if ui.add(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
+                                                                .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1387,8 +1408,9 @@ pub fn draw(
                                                     let bw = (ui.available_width() - 6.0) / 2.0;
                                                     let is_last = total_notifications == 1;
                                                     ui.horizontal(|ui| {
-                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                        if ui.add(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
+                                                                .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
@@ -1396,8 +1418,9 @@ pub fn draw(
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptResourceRequest { target_player: requester.id });
                                                             if is_last { state.show_alliance_inbox = false; }
                                                         }
-                                                        if ui.add_sized(egui::vec2(bw, 24.0),
+                                                        if ui.add(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
+                                                                .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
                                                                 .custom_fill(crate::ui::theme::menu_secondary_button())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
@@ -1888,6 +1911,7 @@ pub fn draw(
     draw_sync_overlay(ui.ctx(), state, lang);
     draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang);
     draw_error_overlay(ui.ctx(), state, lang);
+    draw_info_overlay(ui.ctx(), state, lang);
 
     action
 }
@@ -2094,7 +2118,11 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
 
     let troop_rate = (state.max_troops * 0.1).max(0.0);
     let is_increasing = true;
-    let bar_h = if compact { 48.0 } else { 32.0 };
+    let bar_h = if compact {
+        ui.available_height().clamp(22.0, 26.0)
+    } else {
+        ui.available_height().clamp(22.0, 24.0)
+    };
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = if compact { 8.0 } else { 6.0 };
@@ -2261,11 +2289,8 @@ fn draw_hud_sidebar_row(
             let main_response = ui.push_id("hud_main_col", |ui| {
                 ui.set_width(main_w);
                 ui.vertical(|ui| {
-                    ui.push_id("persistent_header", |ui| {
-                        draw_persistent_header(ui, state, compact, lang);
-                    });
+                    ui.spacing_mut().item_spacing.y = row_gap;
                     if !spawn_active {
-                        ui.add_space(row_gap);
                         match main {
                             HudSidebarMain::Controls => {
                                 ui.push_id("controls_tab", |ui| {
@@ -2298,6 +2323,9 @@ fn draw_hud_sidebar_row(
                             }
                         }
                     }
+                    ui.push_id("persistent_header", |ui| {
+                        draw_persistent_header(ui, state, compact, lang);
+                    });
                 });
             });
 
@@ -2347,10 +2375,12 @@ fn draw_controls_tab(
         ui.push_id("building_strip", |ui| {
             draw_buildings_strip(ui, state, width, compact);
         });
-        ui.add_space(crate::ui::theme::margin::COZY as f32);
     }
 
     if compact {
+        if state.spawn_timer_secs.is_none() {
+            ui.add_space(crate::ui::theme::margin::COZY as f32);
+        }
         draw_mobile_selection_bar(ui, state, cancel_intents, lang);
     }
 }
@@ -2531,11 +2561,11 @@ fn draw_betrayal_overlay(
                         }
 
                         if ui
-                            .add_sized(
-                                vec2(btn_w, btn_h),
+                            .add(
                                 crate::widgets::ThemeButton::new(&strings.betrayal_keep)
                                     .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                     .custom_fill(crate::ui::theme::menu_secondary_button())
+                                    .min_size(vec2(btn_w, btn_h))
                                     .text_size(if compact { 13.0 } else { 16.0 }),
                             )
                             .clicked()
@@ -2548,10 +2578,10 @@ fn draw_betrayal_overlay(
                         }
 
                         if ui
-                            .add_sized(
-                                vec2(if compact { btn_w } else { 140.0 }, btn_h),
+                            .add(
                                 crate::widgets::ThemeButton::new(&strings.betrayal_yes)
                                     .style(crate::widgets::ThemeButtonStyle::Danger)
+                                    .min_size(vec2(if compact { btn_w } else { 140.0 }, btn_h))
                                     .text_size(if compact { 13.0 } else { 16.0 }),
                             )
                             .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -2822,6 +2852,95 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
             if frame.response.clicked() {
                 state.show_error = None;
                 state.error_display_timer = None;
+            }
+        });
+
+    // Request repaint so the fade-out/pop-out animation runs smoothly
+    ctx.request_repaint();
+}
+
+fn draw_info_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
+    let strings = &sow_i18n::get(lang).hud;
+    let is_active = state.show_info.is_some();
+    let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let progress =
+        ctx.animate_bool_with_time(egui::Id::new("info_toast_animation"), is_active, anim);
+
+    if progress <= 0.01 && !is_active {
+        state.last_info_message = None;
+        return;
+    }
+
+    if let Some(info_msg) = state.show_info.clone() {
+        let now = Instant::now();
+        let display_duration = Duration::from_millis(2500);
+
+        let reset = state.last_info_message.as_ref() != Some(&info_msg);
+
+        if reset {
+            state.last_info_message = Some(info_msg.clone());
+            state.info_display_timer = Some(now);
+        }
+
+        let start_time = state.info_display_timer.unwrap_or(now);
+        let elapsed = now.duration_since(start_time);
+
+        if elapsed >= display_duration {
+            state.show_info = None;
+            state.info_display_timer = None;
+        }
+    }
+
+    let info_msg = match &state.last_info_message {
+        Some(msg) => msg.clone(),
+        None => return,
+    };
+
+    // Disney overshoot curve (pop-in pop-out spring animation)
+    let anim_scale = if is_active {
+        let t = progress;
+        if t >= 1.0 {
+            1.0
+        } else {
+            1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+        }
+    } else {
+        progress
+    };
+
+    let alpha = progress;
+    let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
+    let border_color = crate::ui::theme::accent_solo_cyan().linear_multiply(alpha);
+    let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
+
+    let target_y = 80.0 + state.safe_area_top;
+    // Slide down from above the screen (-120px) to target with a beautiful overshoot bounce
+    let current_y = target_y - 120.0 * (1.0 - anim_scale);
+
+    egui::Area::new(egui::Id::new("info_toast_area"))
+        .anchor(egui::Align2::CENTER_TOP, vec2(0.0, current_y))
+        .order(egui::Order::Tooltip)
+        .show(ctx, |ui| {
+            let frame = egui::Frame::new()
+                .fill(bg_color)
+                .stroke(egui::Stroke::new(1.0_f32, border_color))
+                .corner_radius(6)
+                .inner_margin(egui::Margin::symmetric(16, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("🤝").color(border_color).size(12.0));
+                        ui.add_space(6.0);
+                        ui.label(RichText::new(info_msg).color(text_color).size(12.0).strong());
+                    });
+                    ui.label(
+                        RichText::new(&strings.toast_tap_dismiss)
+                            .size(10.0)
+                            .color(text_color.linear_multiply(0.7)),
+                    );
+                });
+            if frame.response.clicked() {
+                state.show_info = None;
+                state.info_display_timer = None;
             }
         });
 
@@ -3179,14 +3298,16 @@ fn draw_transfer_panel(
                     // --- ACTION BUTTONS ---
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;
+                        
+                        let btn_w = (ui.available_width() - 10.0) / 2.0;
 
                         let cancel_btn = crate::widgets::ThemeButton::new(&strings.transfer_cancel)
                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
                             .custom_fill(crate::ui::theme::menu_secondary_button())
+                            .min_size(vec2(btn_w, 36.0))
                             .text_size(14.0);
 
-                        let btn_w = (ui.available_width() - 10.0) / 2.0;
-                        if ui.add_sized(vec2(btn_w, 36.0), cancel_btn).clicked() {
+                        if ui.add(cancel_btn).clicked() {
                             state.transfer_confirm_pending = false;
                             state.show_ask_panel = None;
                         }
@@ -3211,9 +3332,10 @@ fn draw_transfer_panel(
                             } else {
                                 crate::ui::theme::menu_secondary_button()
                             })
+                            .min_size(vec2(btn_w, 36.0))
                             .text_size(14.0);
 
-                        let submit_resp = ui.add_sized(vec2(btn_w, 36.0), submit_btn);
+                        let submit_resp = ui.add(submit_btn);
                         if is_valid && submit_resp.clicked() {
                             if transfer_needs_confirm(state, max_gold, max_troops)
                                 && !state.transfer_confirm_pending

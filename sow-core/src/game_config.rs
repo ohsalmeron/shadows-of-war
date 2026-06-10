@@ -187,7 +187,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.35,
+            global_speed_multiplier: 0.5,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 3.0,

@@ -24,7 +24,7 @@ pub struct PrioritizedTile {
 
 impl Ord for PrioritizedTile {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Reverse order so lowest priority behaves as max in BinaryHeap
+        // Reverse order so lowest priority behaves as max in BinaryHeap (Min-Heap)
         match other.priority.cmp(&self.priority) {
             Ordering::Equal => {
                 // Return exact Insertion Time inverse!

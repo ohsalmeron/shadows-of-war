@@ -34,6 +34,20 @@ impl SowApp {
                 .as_ref()
                 .and_then(|s| s.players.iter().find(|p| p.id == owner_id));
 
+            let target_name = owner_snapshot
+                .map(|p| {
+                    if p.name.is_empty() {
+                        if p.id >= 200 {
+                            format!("Bot {}", p.id)
+                        } else {
+                            format!("Player {}", p.id)
+                        }
+                    } else {
+                        p.name.clone()
+                    }
+                })
+                .unwrap_or_else(|| format!("Player {}", owner_id));
+
             let my_snapshot = self
                 .sim
                 .current_snapshot
@@ -405,6 +419,9 @@ impl SowApp {
                                                 );
                                             } else {
                                                 self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
+                                                let lang = self.ui.app.settings_state.language;
+                                                let msg = sow_i18n::get(lang).hud.alliance_requested.replace("{}", &target_name);
+                                                self.ui.app.hud_state.show_info = Some(msg);
                                             }
                                         } else if is_allied {
                                             self.send_intent(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: owner_id });
@@ -420,6 +437,9 @@ impl SowApp {
                                             );
                                         } else {
                                             self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
+                                            let lang = self.ui.app.settings_state.language;
+                                            let msg = sow_i18n::get(lang).hud.alliance_requested.replace("{}", &target_name);
+                                            self.ui.app.hud_state.show_info = Some(msg);
                                         }
                                     }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));

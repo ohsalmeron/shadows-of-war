@@ -171,6 +171,7 @@ pub struct HudStrings {
     pub err_resources_allies_only: String,
     pub err_alliance_renewal_pending: String,
     pub err_alliance_request_pending: String,
+    pub alliance_requested: String,
     pub build_bunker_title: String,
     pub build_bunker_coverage: String,
     pub build_factory_title: String,

@@ -575,31 +575,6 @@ pub(crate) fn render(
                                         egui::Order::Middle,
                                         egui::Id::new(("floating_express_emoji", player.id)),
                                     ));
-                                if is_me {
-                                    let glow_r = final_emoji_size * 0.7;
-                                    let glow_a = anim_progress * 0.30;
-                                    let emoji_center = egui::pos2(center.x, emoji_y);
-                                    emoji_painter.circle_filled(
-                                        emoji_center,
-                                        glow_r * 1.3,
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            pc.r(),
-                                            pc.g(),
-                                            pc.b(),
-                                            (glow_a * 100.0) as u8,
-                                        ),
-                                    );
-                                    emoji_painter.circle_filled(
-                                        emoji_center,
-                                        glow_r,
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            pc.r(),
-                                            pc.g(),
-                                            pc.b(),
-                                            (glow_a * 255.0) as u8,
-                                        ),
-                                    );
-                                }
                                 let emoji_rect = egui::Rect::from_center_size(
                                     egui::pos2(center.x, emoji_y),
                                     egui::vec2(final_emoji_size, final_emoji_size),
@@ -1317,31 +1292,6 @@ pub(crate) fn render(
                             current_y - disc_height - max_float_height - 18.0 * zoom_scale;
 
                         if final_emoji_size > 1.0 {
-                            if is_me {
-                                let glow_r = final_emoji_size * 0.7;
-                                let glow_a = anim_progress * 0.30;
-                                let emoji_center = egui::pos2(center.x, emoji_y);
-                                painter.circle_filled(
-                                    emoji_center,
-                                    glow_r * 1.3,
-                                    egui::Color32::from_rgba_unmultiplied(
-                                        pc.r(),
-                                        pc.g(),
-                                        pc.b(),
-                                        (glow_a * 100.0) as u8,
-                                    ),
-                                );
-                                painter.circle_filled(
-                                    emoji_center,
-                                    glow_r,
-                                    egui::Color32::from_rgba_unmultiplied(
-                                        pc.r(),
-                                        pc.g(),
-                                        pc.b(),
-                                        (glow_a * 255.0) as u8,
-                                    ),
-                                );
-                            }
                             let emoji_rect = egui::Rect::from_center_size(
                                 egui::pos2(center.x, emoji_y),
                                 egui::vec2(final_emoji_size, final_emoji_size),
