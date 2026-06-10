@@ -15,7 +15,7 @@ struct Globals {
     my_player_id: f32,
     hover_hex: vec2<f32>,
     hover_building_kind: f32,
-    flat_map_mode: f32,
+    _pad1: f32,
     fallout_slots: array<vec4<f32>, 8>,
     nobuild_slots: array<vec4<f32>, 32>,
 }
@@ -149,7 +149,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let flash_byte = (owner_packed >> 16u) & 0xFFu;
     let flash_val = f32(flash_byte) / 255.0;
     let is_land = (terrain_byte & 0x80u) != 0u;
-    let flat_map = globals.flat_map_mode > 0.5;
 
     var terrain_color = vec4<f32>(0.0);
     var normal = vec3<f32>(0.0, 0.0, 1.0);
@@ -161,31 +160,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         
         let land_noise = terrain_rgba.w;
         let organic_wave = sin(world_x * 0.20) * cos(world_y * 0.20) * 0.04;
-        var noise_offset = (land_noise - 0.5) * 0.03 + organic_wave; // Gentle organic landscape variation
-        if flat_map {
-            noise_offset = 0.0;
-        }
+        let noise_offset = (land_noise - 0.5) * 0.03 + organic_wave; // Gentle organic landscape variation
 
         if is_shoreline {
-            let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);
-            terrain_color = vec4<f32>(base + noise_offset * 0.5, 1.0); // Shore
+            let base_sand = vec3<f32>(0.82, 0.78, 0.60);
+            let wet_sand = vec3<f32>(0.72, 0.68, 0.50);
+            let shore_col = mix(base_sand, wet_sand, land_noise);
+            terrain_color = vec4<f32>(shore_col + noise_offset * 0.6, 1.0);
         } else if mag_center < 10.0 {
-            let r = 190.0 / 255.0;
-            let g = (220.0 - 2.0 * mag_center) / 255.0;
-            let b = 138.0 / 255.0;
-            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset, 1.0); // Plains
+            let grass_a = vec3<f32>(0.52, 0.72, 0.38); // Fresh green
+            let grass_b = vec3<f32>(0.60, 0.76, 0.42); // Lighter meadow
+            let grass_c = vec3<f32>(0.45, 0.62, 0.32); // Deeper forest green
+            var grass = mix(grass_a, grass_b, land_noise);
+            grass = mix(grass, grass_c, smoothstep(0.55, 0.75, land_noise));
+            grass = grass * (1.0 - mag_center * 0.012); // subtle elevation darkening
+            terrain_color = vec4<f32>(grass + noise_offset, 1.0);
         } else if mag_center < 20.0 {
-            let r = (200.0 + 2.0 * mag_center) / 255.0;
-            let g = (183.0 + 2.0 * mag_center) / 255.0;
-            let b = (138.0 + 2.0 * mag_center) / 255.0;
-            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset * 1.2, 1.0); // Highlands
+            let highland_green = vec3<f32>(0.50, 0.58, 0.35);
+            let highland_clay  = vec3<f32>(0.62, 0.52, 0.38);
+            let highland_rock  = vec3<f32>(0.55, 0.48, 0.40);
+            let elev_t = (mag_center - 10.0) / 10.0;
+            var highland = mix(highland_green, highland_clay, elev_t);
+            highland = mix(highland, highland_rock, smoothstep(0.4, 0.8, land_noise));
+            terrain_color = vec4<f32>(highland + noise_offset * 1.2, 1.0);
         } else {
-            // Smooth blend/fusion from high Highland color to snowy white peak
-            let highland_base = vec3<f32>(240.0 / 255.0, 223.0 / 255.0, 178.0 / 255.0);
-            let snowy_peak = vec3<f32>(248.0 / 255.0, 248.0 / 255.0, 248.0 / 255.0);
-            let blend = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
-            let peak_color = mix(highland_base, snowy_peak, blend);
-            terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // Mountains
+            let rock_base = vec3<f32>(0.52, 0.50, 0.48);
+            let rock_light = vec3<f32>(0.62, 0.60, 0.58);
+            let snowy_peak = vec3<f32>(0.92, 0.93, 0.95);
+            let elev_t = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
+            var mountain = mix(rock_base, rock_light, land_noise);
+            mountain = mix(mountain, snowy_peak, elev_t * elev_t);
+            terrain_color = vec4<f32>(mountain + noise_offset * 0.6, 1.0);
         }
 
         // Unpack procedural 6-directional elevation normals directly from G/B channels in O(1) time
@@ -194,12 +199,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         normal = normalize(vec3<f32>(-dx, -dy, 1.0));
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
+        
+        let land_noise = terrain_rgba.w;
+        var color_deep = vec3<f32>(0.16, 0.30, 0.52);
+        var color_mid  = vec3<f32>(0.22, 0.40, 0.62);
 
-        // Flat water — no procedural waves (they moiré into diagonal scanlines when zoomed out)
-        var color_flat = vec3<f32>(65.0 / 255.0, 128.0 / 255.0, 175.0 / 255.0);
         if !is_ocean_water {
-            color_flat = vec3<f32>(55.0 / 255.0, 135.0 / 255.0, 168.0 / 255.0);
+            color_deep = vec3<f32>(0.18, 0.42, 0.52);
+            color_mid  = vec3<f32>(0.24, 0.50, 0.60);
         }
+
+        let water_blend = sin(world_x * 10.0 + world_y * 10.0 + globals.time) * 0.5 + 0.5;
+        let color_flat = mix(color_deep, color_mid, mix(land_noise, water_blend, 0.3));
 
         terrain_color = vec4<f32>(color_flat, 1.0);
     }
@@ -213,30 +224,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if is_land {
         let mag_center = f32(terrain_byte & 0x1Fu);
         let height_factor = mag_center / 32.0;
-        var elevation_shading = 0.82 + 0.28 * height_factor; // Brighten peaks, shadow valleys
-        if flat_map {
-            elevation_shading = 1.0;
-        }
+        let elevation_shading = 0.82 + 0.28 * height_factor; // Brighten peaks, shadow valleys
         base_color = base_color * elevation_shading;
     }
     if owner_id > 0u {
         let albedo = owner_albedo(owner_id);
-        let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
-        base_color = albedo * (0.3 + 1.0 * lum);
+        // Territory overlay — reduced blend lets terrain detail show through
+        base_color = mix(base_color, albedo, 0.50);
 
         // ── Territory Heartbeat Pulse (living empire breathe) ──
-        if !flat_map {
-            let heartbeat = 0.97 + 0.03 * sin(globals.time * 1.8 + f32(owner_id) * 2.3);
-            base_color = base_color * heartbeat;
-        }
+        let heartbeat = 0.97 + 0.03 * sin(globals.time * 1.8 + f32(owner_id) * 2.3);
+        base_color = base_color * heartbeat;
 
         // Conquest shockwave flash on interior
-        if !flat_map && flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+        if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
             let shockwave = flash_val * globals.effect_shockwave;
             let flash_color = mix(vec3<f32>(1.0, 1.0, 1.0), albedo, 1.0 - flash_val);
             base_color = mix(base_color, flash_color, shockwave * 0.8);
         }
-    } else if is_land && !flat_map {
+    } else if is_land {
         // ── Wilderness Atmosphere Haze (unclaimed land fog) ──
         let haze_color = vec3<f32>(0.55, 0.58, 0.68);
         let haze_amount = 0.08 + 0.04 * sin(world_x * 0.05 + world_y * 0.07);
@@ -257,12 +263,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let shore_darkness = globals.shore_darkness;
 
     // Border breathe: subtle thickness pulse per owner
-    if !flat_map && globals.effect_breathe > 0.0 && owner_id > 0u {
+    if globals.effect_breathe > 0.0 && owner_id > 0u {
         let breathe = (sin(globals.time * 3.0 + f32(owner_id)) + 1.0) * 0.5;
         thickness += breathe * 0.05 * globals.effect_breathe;
     }
     // Shockwave border explosion
-    if !flat_map && flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+    if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
         thickness += flash_val * 0.2 * globals.effect_shockwave;
     }
 
@@ -336,7 +342,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     border_albedo = owner_albedo(owner_id) * border_darkness;
 
                     // ── Dynamic Conquest Border Shockwave Pulse ──
-                    if !flat_map && flash_val > 0.0 && globals.effect_shockwave > 0.0 {
+                    if flash_val > 0.0 && globals.effect_shockwave > 0.0 {
                         let pulse = 1.0 - min_border_dist / globals.border_thickness;
                         // Keep conquest pulse in the conquering player's hue instead of whitening it.
                         let conquer_glow = min(owner_albedo(owner_id) * 1.35, vec3<f32>(1.0, 1.0, 1.0));
@@ -350,7 +356,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     // ── Contested Border Energy Crackling (PvP shimmer) ──
                     let neighbor_hex_0 = get_hex_neighbor(cell_hex, 0);
                     let contested_owner = get_cell_owner(neighbor_hex_0);
-                    if !flat_map && contested_owner > 0u && contested_owner != owner_id {
+                    if contested_owner > 0u && contested_owner != owner_id {
                         let enemy_albedo = owner_albedo(contested_owner);
                         let energy_t = sin(globals.time * 2.5) * 0.5 + 0.5;
                         border_albedo = mix(border_albedo, enemy_albedo * border_darkness, energy_t * 0.22);
@@ -363,7 +369,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── WAR FOG + FRONTIER GLOW ──
-    if !flat_map {
+    {
         let world_pos_hex = hex_to_world(cell_hex);
         for (var ti = 0; ti < 8; ti = ti + 1) {
             let slot = globals.threat_slots[ti];
@@ -426,7 +432,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── NUCLEAR FALLOUT CONTAMINATION ZONES ──
-    if !flat_map {
+    {
         let cell_world = hex_to_world(cell_hex);
         for (var fi = 0; fi < 8; fi = fi + 1) {
             let slot = globals.fallout_slots[fi];
@@ -466,37 +472,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── Upgraded Lighting (Sun directional diffuse + Specular highlights) ──
-    if !flat_map {
-        let light_dir = normalize(vec3<f32>(-1.0, -1.0, 1.6)); // Directional sun light from top-left
-        let diffuse = max(0.68, dot(normal, light_dir));
-        base_color = base_color * (diffuse * 1.12);
+    let light_dir = normalize(vec3<f32>(-1.0, -1.0, 1.6)); // Directional sun light from top-left
+    let diffuse = max(0.68, dot(normal, light_dir));
+    base_color = base_color * (diffuse * 1.12);
 
-        if is_specular {
-            let view_dir = vec3<f32>(0.0, 0.0, 1.0);
-            let half_dir = normalize(light_dir + view_dir);
-            let spec = pow(max(0.0, dot(normal, half_dir)), 96.0);
-            base_color = base_color + vec3<f32>(0.15 * spec);
-        }
+    if is_specular {
+        let view_dir = vec3<f32>(0.0, 0.0, 1.0);
+        let half_dir = normalize(light_dir + view_dir);
+        let spec = pow(max(0.0, dot(normal, half_dir)), 96.0);
+        base_color = base_color + vec3<f32>(0.15 * spec);
     }
 
     // ── Golden Hour Sun Sweep (slow warm-cool color temperature cycle) ──
-    if !flat_map {
-        let sun_phase = sin(globals.time * 0.08) * 0.5 + 0.5;
-        let warm_tint = vec3<f32>(1.02 + 0.03 * sun_phase, 1.0 + 0.01 * sun_phase, 1.0 - 0.02 * sun_phase);
-        base_color = base_color * warm_tint;
-    }
+    let sun_phase = sin(globals.time * 0.08) * 0.5 + 0.5;
+    let warm_tint = vec3<f32>(1.02 + 0.03 * sun_phase, 1.0 + 0.01 * sun_phase, 1.0 - 0.02 * sun_phase);
+    base_color = base_color * warm_tint;
 
     // Hex SDF reused by land emboss + building-placement grid (computed once; emboss skipped on water)
     let min_dist_to_edge = 0.5 - max(abs(local_pos.x), 0.5 * abs(local_pos.x) + 0.86602540378 * abs(local_pos.y));
 
     // Embossed cell vignette — land only (on water it moirés into diagonal hatch when zoomed out)
-    if !flat_map && is_land && globals.zoom >= 0.6 {
+    if is_land && globals.zoom >= 0.6 {
         let cell_bevel = smoothstep(0.0, 0.06, min_dist_to_edge);
         base_color = base_color * (0.86 + 0.14 * cell_bevel);
     }
 
     // ── Tactile Canvas/Matte Paper Texture Overlay (Zoom-dependent LOD) ──
-    if !flat_map && globals.zoom >= 2.0 {
+    if globals.zoom >= 2.0 {
         let px_screen = in.uv.x * 2400.0;
         let py_screen = in.uv.y * 2400.0;
         let paper_noise = fract(sin(px_screen * 12.9898 + py_screen * 78.233) * 43758.5453);
@@ -506,11 +508,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── Screen Vignetting (Soft shading at screen edges) ──
-    if !flat_map {
-        let d_center = length(in.uv - 0.5);
-        let vignette = smoothstep(0.8, 0.45, d_center);
-        base_color = base_color * (0.82 + 0.18 * vignette);
-    }
+    let d_center = length(in.uv - 0.5);
+    let vignette = smoothstep(0.8, 0.45, d_center);
+    base_color = base_color * (0.82 + 0.18 * vignette);
 
     // ── Building Placement Holographic Grid ──
     if (globals.hover_building_kind > 0.0) {

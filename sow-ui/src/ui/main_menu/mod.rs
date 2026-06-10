@@ -36,6 +36,7 @@ pub struct MainMenuState {
     pub single_player_config: Box<sow_core::game_config::GameConfig>,
     pub error_message: Option<String>,
     pub leader_backdrop: crate::widgets::LeaderBackdropTransition,
+    pub invite_copied_at: Option<f64>,
 }
 
 impl Default for MainMenuState {
@@ -140,6 +141,7 @@ impl Default for MainMenuState {
 
 
             error_message: None,
+            invite_copied_at: None,
         }
     }
 }
@@ -245,6 +247,32 @@ fn draw_menu_footer(
         {
             *action = Some(UiAction::ToggleCredits);
         }
+        
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let text_color = crate::ui::theme::text_secondary();
+            let link_color = crate::ui::theme::accent_solo_cyan();
+            let size = 11.0;
+            
+            ui.label(egui::RichText::new(&strings.by_playing_you_agree).size(size).color(text_color));
+            
+            if ui.add(
+                egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service).size(size).color(link_color))
+                    .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
+            ).clicked() {
+                *action = Some(UiAction::ToggleTerms);
+            }
+            
+            ui.label(egui::RichText::new(&strings.and_the).size(size).color(text_color));
+            
+            if ui.add(
+                egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy).size(size).color(link_color))
+                    .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
+            ).clicked() {
+                *action = Some(UiAction::TogglePrivacy);
+            }
+        });
     });
 }
 

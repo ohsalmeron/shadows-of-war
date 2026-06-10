@@ -78,6 +78,7 @@ impl ClientApp {
                 ask_troops: 0.0,
                 prev_resource_requests: Vec::new(),
                 transfer_confirm_pending: false,
+                chat_disabled: false,
             },
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),

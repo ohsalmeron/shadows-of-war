@@ -307,18 +307,9 @@ pub(crate) fn render(
 
             // Icon sprite rendering
 
-            let size_hint = egui::load::SizeHint::Size {
-                width: 64,
-                height: 64,
-                maintain_aspect_ratio: true,
-            };
+            let show_building = true;
 
-            let load_res =
-                painter
-                    .ctx()
-                    .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint);
-
-            if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
+            if show_building {
                 let player_color = if b.owner_id != 0 {
                     player_colors
                         .get(b.owner_id as usize)
@@ -342,12 +333,22 @@ pub(crate) fn render(
                     }
                 };
 
-                painter.image(
-                    texture.id,
-                    rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    tint,
-                );
+                let emoji = match b.kind {
+                    sow_core::game::BuildingKind::City => "🏛️",
+                    sow_core::game::BuildingKind::Factory => "🏭",
+                    sow_core::game::BuildingKind::Port => "⚓",
+                    sow_core::game::BuildingKind::Bunker => "🛡️",
+                };
+
+                if !sow_ui::widgets::try_paint_emoji(&painter, emoji, rect, tint) {
+                    painter.text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        emoji,
+                        egui::FontId::proportional(base_size * 0.7),
+                        tint,
+                    );
+                }
 
                 // Render Automated City Districts (Port, Silo, Foundry)
                 if b.kind == sow_core::game::BuildingKind::City && b.count == 1 {
@@ -362,7 +363,7 @@ pub(crate) fn render(
                             (0.425_f32, -0.736_f32),
                         ];
 
-                        let draw_district = |uri: &str, dir_idx: usize| {
+                        let draw_district = |emoji: &str, dir_idx: usize| {
                             let (dx, dy) = neighbors_offsets[dir_idx % 6];
                             let dist_cx = screen_x + dx * input.camera_zoom / sf;
                             let dist_cy = screen_y + dy * input.camera_zoom / sf;
@@ -372,47 +373,35 @@ pub(crate) fn render(
                                 egui::vec2(district_size, district_size),
                             );
 
-                            let size_hint = egui::load::SizeHint::Size {
-                                width: 48,
-                                height: 48,
-                                maintain_aspect_ratio: true,
+                            let player_color = if b.owner_id != 0 {
+                                player_colors
+                                    .get(b.owner_id as usize)
+                                    .copied()
+                                    .unwrap_or(egui::Color32::WHITE)
+                            } else {
+                                egui::Color32::WHITE
                             };
-                            let load_res = painter.ctx().try_load_texture(
-                                uri,
-                                egui::TextureOptions::LINEAR,
-                                size_hint,
+
+                            // Draw connector line
+                            painter.line_segment(
+                                [center, dist_center],
+                                egui::Stroke::new(
+                                    1.2_f32,
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        player_color.r(),
+                                        player_color.g(),
+                                        player_color.b(),
+                                        60,
+                                    ),
+                                ),
                             );
-                            if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                                let player_color = if b.owner_id != 0 {
-                                    player_colors
-                                        .get(b.owner_id as usize)
-                                        .copied()
-                                        .unwrap_or(egui::Color32::WHITE)
-                                } else {
-                                    egui::Color32::WHITE
-                                };
 
-                                // Draw connector line
-                                painter.line_segment(
-                                    [center, dist_center],
-                                    egui::Stroke::new(
-                                        1.2_f32,
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            player_color.r(),
-                                            player_color.g(),
-                                            player_color.b(),
-                                            60,
-                                        ),
-                                    ),
-                                );
-
-                                painter.image(
-                                    texture.id,
-                                    dist_rect,
-                                    egui::Rect::from_min_max(
-                                        egui::pos2(0.0, 0.0),
-                                        egui::pos2(1.0, 1.0),
-                                    ),
+                            if !sow_ui::widgets::try_paint_emoji(&painter, emoji, dist_rect, player_color) {
+                                painter.text(
+                                    dist_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    emoji,
+                                    egui::FontId::proportional(district_size * 0.7),
                                     player_color,
                                 );
                             }
@@ -420,19 +409,19 @@ pub(crate) fn render(
 
                         if mods.arsenal > 0 {
                             draw_district(
-                                sow_core::assets::Asset::MissileSilo.uri(),
+                                "🚀",
                                 (b_id % 6) as usize,
                             );
                         }
                         if mods.port > 0 {
                             draw_district(
-                                sow_core::assets::Asset::Port.uri(),
+                                "⚓",
                                 ((b_id + 2) % 6) as usize,
                             );
                         }
                         if mods.foundry > 0 {
                             draw_district(
-                                sow_core::assets::Asset::Factory.uri(),
+                                "🏭",
                                 ((b_id + 4) % 6) as usize,
                             );
                         }
@@ -1353,37 +1342,36 @@ pub(crate) fn render(
                     painter.circle_stroke(
                         preview_center,
                         s_radius,
-                        egui::Stroke::new(1.5_f32, range_color),
+                        egui::Stroke::new(1.25_f32, range_color),
                     );
                 }
 
                 // Draw preview ghost sprite
-                let size_hint = egui::load::SizeHint::Size {
-                    width: 64,
-                    height: 64,
-                    maintain_aspect_ratio: true,
-                };
-                let uri = kind.asset().uri();
-                let load_res =
-                    painter
-                        .ctx()
-                        .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint);
                 let base_size = get_building_icon_size(zoom_scaled) * final_scale;
                 let rect =
                     egui::Rect::from_center_size(preview_center, egui::vec2(base_size, base_size));
 
-                if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-                    let ghost_alpha = if is_valid && has_gold { 140 } else { 80 };
-                    let tint = egui::Color32::from_rgba_unmultiplied(
-                        outline_color.r(),
-                        outline_color.g(),
-                        outline_color.b(),
-                        ghost_alpha,
-                    );
-                    painter.image(
-                        texture.id,
-                        rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                let emoji = match kind {
+                    sow_core::game::BuildingKind::City => "🏛️",
+                    sow_core::game::BuildingKind::Factory => "🏭",
+                    sow_core::game::BuildingKind::Port => "⚓",
+                    sow_core::game::BuildingKind::Bunker => "🛡️",
+                };
+
+                let ghost_alpha = if is_valid && has_gold { 140 } else { 80 };
+                let tint = egui::Color32::from_rgba_unmultiplied(
+                    outline_color.r(),
+                    outline_color.g(),
+                    outline_color.b(),
+                    ghost_alpha,
+                );
+
+                if !sow_ui::widgets::try_paint_emoji(&painter, emoji, rect, tint) {
+                    painter.text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        emoji,
+                        egui::FontId::proportional(base_size * 0.7),
                         tint,
                     );
                 }

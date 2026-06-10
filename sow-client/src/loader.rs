@@ -226,6 +226,7 @@ impl SowApp {
                             self.ui.app.phase = ClientPhase::MainMenu;
                             hide_web_loader();
                             crate::store_portals::load_stop();
+                            crate::store_portals::gameplay_stop();
                             self.web_loader_hidden = true;
                         }
                         #[cfg(not(target_arch = "wasm32"))]

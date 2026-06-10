@@ -195,13 +195,13 @@ impl Default for GameConfig {
             terrain_multiplier_highland: 1.25,
             terrain_multiplier_mountain: 2.0,
 
-            max_tiles_per_tick: 1024.0,
-            max_tiles_per_tick_reference_troops: 2056.0,
+            max_tiles_per_tick: 4096.0,
+            max_tiles_per_tick_reference_troops: 25000.0,
             max_tiles_per_tick_at_reference: 256.0,
             momentum_divisor: 1250.0,
 
             // Economy & Income Rates
-            starting_troops: 5000.0,
+            starting_troops: 1000.0,
             starting_gold: 100.0,
             gold_base_income: 1.0,
             troop_base_income: 250.0,
@@ -209,7 +209,7 @@ impl Default for GameConfig {
             max_troops_scale: 100.0,
 
             // Buildings (stacking)
-            city_max_troops: 5000.0,
+            city_max_troops: 2500.0,
             city_gold_income: 4.0,
             bunker_range: 12.0,
             bunker_priority: 120.0,
@@ -217,11 +217,11 @@ impl Default for GameConfig {
             factory_gold_income: 4.0,
             port_troop_income: 50.0,
             port_gold_income: 4.0,
-            cost_city: 200.0,
+            cost_city: 250.0,
             cost_bunker: 75.0,
             cost_factory: 125.0,
             cost_port: 150.0,
-            nuke_cost: 1.0,
+            nuke_cost: 5.0,
 
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,

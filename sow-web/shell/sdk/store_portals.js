@@ -129,12 +129,14 @@
     if (settings.muteAudio) {
       window.SOW_portalMuteGameAudio();
     }
+    window.SOW_DISABLE_CHAT = !!settings.disableChat;
   }
 
   window.SOW_PLATFORM_IDENTITY = null;
   window.SOW_PENDING_INVITE_LOBBY_ID = null;
   window.SOW_HOST_PRIVATE_PENDING = false;
   window.SOW_PORTAL_MUTE_AUDIO = false;
+  window.SOW_DISABLE_CHAT = false;
 
   window.SOW_isSiteEmbed = isSiteEmbed;
   window.SOW_isOnCrazyGames = isOnCrazyGames;
@@ -180,6 +182,23 @@
     var game = crazyGameApi();
     if (game && game.leftRoom) {
       game.leftRoom();
+    }
+  };
+
+  window.SOW_portalInviteLink = function (jsonStr) {
+    if (!crazyGamesSdkReady()) {
+      return null;
+    }
+    var game = crazyGameApi();
+    if (!game || !game.inviteLink) {
+      return null;
+    }
+    try {
+      var payload = JSON.parse(jsonStr);
+      return game.inviteLink(payload) || null;
+    } catch (e) {
+      console.warn("SOW_portalInviteLink failed:", e);
+      return null;
     }
   };
 

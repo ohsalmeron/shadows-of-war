@@ -411,26 +411,19 @@ pub(crate) fn render(
                     );
 
                     // ── 4. Ghost nuke icon at target ─────────────────────
-                    let size_hint = egui::load::SizeHint::Size {
-                        width: 64,
-                        height: 64,
-                        maintain_aspect_ratio: true,
-                    };
-                    let uri = sow_core::assets::Asset::AtomBomb.uri();
-                    if let Ok(egui::load::TexturePoll::Ready { texture }) = painter
-                        .ctx()
-                        .try_load_texture(uri, egui::TextureOptions::LINEAR, size_hint)
-                    {
-                        let ghost_size = 18.0 + level as f32 * 4.0;
-                        let rect = egui::Rect::from_center_size(
+                    let ghost_size = 18.0 + level as f32 * 4.0;
+                    let rect = egui::Rect::from_center_size(
+                        tgt_center,
+                        egui::vec2(ghost_size, ghost_size),
+                    );
+                    let tint = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140);
+                    if !sow_ui::widgets::try_paint_emoji(&painter, "☢️", rect, tint) {
+                        painter.text(
                             tgt_center,
-                            egui::vec2(ghost_size, ghost_size),
-                        );
-                        painter.image(
-                            texture.id,
-                            rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140),
+                            egui::Align2::CENTER_CENTER,
+                            "☢️",
+                            egui::FontId::proportional(ghost_size * 0.7),
+                            tint,
                         );
                     }
                 } else {

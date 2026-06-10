@@ -264,6 +264,15 @@ impl SowApp {
                         self.input.screen_h * 0.5,
                     );
                 }
+                UiAction::CopyInviteLink(lobby_id) => {
+                    if let Some(link) = crate::store_portals::invite_link(lobby_id, &crate::get_build_version()) {
+                        self.ui.egui_ctx.copy_text(link);
+                        // Approximate time using instant since we don't have a direct timer in this context
+                        // or we can just use the ui input time.
+                        self.ui.app.main_menu_state.invite_copied_at = Some(self.ui.egui_ctx.input(|i| i.time));
+                        log::info!("Copied invite link to clipboard.");
+                    }
+                }
             }
         }
     }

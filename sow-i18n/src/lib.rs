@@ -38,6 +38,8 @@ pub struct MainMenuStrings {
     pub back: String,
     pub start_simulation: String,
     pub no_maps_found: String,
+    pub by_playing_you_agree: String,
+    pub and_the: String,
     pub loading_maps: String,
     pub map_offline_tag: String,
     pub downloading_map: String,
@@ -59,6 +61,8 @@ pub struct MainMenuStrings {
     pub ready_room: String,
     pub ready: String,
     pub credits_link: String,
+    pub copy_invite_link: String,
+    pub invite_link_copied: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,8 +89,6 @@ pub struct SettingsStrings {
     pub settings_applied: String,
     pub reduced_motion: String,
     pub reduced_motion_help: String,
-    pub flat_map_style: String,
-    pub flat_map_style_help: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

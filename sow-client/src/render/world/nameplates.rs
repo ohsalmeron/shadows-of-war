@@ -99,11 +99,14 @@ pub(crate) fn render(
                 let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
                 // Stricter threshold for nameplate text on LOD 3
                 let min_tiles = if player.id >= 200 { 24.0 } else { 6.0 };
-                let show_full =
-                    (normalized_tiles * zoom_scale) >= min_tiles && full_labels_drawn < 50;
+                let show_full = is_human
+                    || ((normalized_tiles * zoom_scaled * zoom_scaled) >= min_tiles
+                        && full_labels_drawn < 50);
 
                 if show_full {
-                    full_labels_drawn += 1;
+                    if !is_human {
+                        full_labels_drawn += 1;
+                    }
                     let font_size = if is_me {
                         font_size_my
                     } else if player.id < 200 {

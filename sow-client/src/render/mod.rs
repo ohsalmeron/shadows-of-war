@@ -379,11 +379,7 @@ impl SowApp {
                     my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
                     hover_hex,
                     hover_building_kind,
-                    flat_map_mode: if self.ui.app.settings_state.flat_map_style {
-                        1.0
-                    } else {
-                        0.0
-                    },
+                    _pad1: 0.0,
                     fallout_slots,
                     nobuild_slots,
                 };

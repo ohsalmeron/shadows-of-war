@@ -87,7 +87,32 @@ pub fn try_paint_emoji(painter: &egui::Painter, emoji: &str, rect: Rect, tint: C
     let Some(texture) = sow_core::emoji::atlas_texture(painter.ctx()) else {
         return false;
     };
-    painter.image(texture.id(), rect, uv, tint);
+
+    let alpha = (tint.a() as f32 * 0.65) as u8;
+    if alpha > 0 {
+        let shadow_tint = Color32::from_black_alpha(alpha);
+        // Premium 4-way diagonal outline + 2 dragged shadows matching the text glow style perfectly
+        let offsets = [
+            (-1.2, -1.2),
+            (1.2, -1.2),
+            (-1.2, 1.2),
+            (1.2, 1.2),
+            (0.0, 1.5),
+            (0.0, 3.0),
+        ];
+        for (dx, dy) in offsets {
+            painter.image(
+                texture.id(),
+                rect.translate(egui::vec2(dx, dy)),
+                uv,
+                shadow_tint,
+            );
+        }
+    }
+
+    // Only use the alpha component of tint to preserve original emoji colors while allowing transparency
+    let final_tint = Color32::from_white_alpha(tint.a());
+    painter.image(texture.id(), rect, uv, final_tint);
     true
 }
 

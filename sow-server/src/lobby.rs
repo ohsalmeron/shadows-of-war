@@ -192,7 +192,18 @@ pub fn join_player(
     } else if let Some(req) = target_lobby_id {
         match resolve_join_target(Some(req), games) {
             Some(id) => id,
-            None => return Err("Lobby not found or not joinable".to_string()),
+            None => {
+                if req >= 100000000 {
+                    // Rematch room doesn't exist yet, we must be the first to arrive! Create it.
+                    log::info!("Creating rematch private lobby {}", req);
+                    spawn_waiting_lobby(games, next_id, "FFA", true);
+                    let new_lobby = games.last_mut().unwrap();
+                    new_lobby.id = req; // Override the ID to match the rematch ID
+                    req
+                } else {
+                    return Err("Lobby not found or not joinable".to_string());
+                }
+            }
         }
     } else {
         match resolve_join_target(None, games) {

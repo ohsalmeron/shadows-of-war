@@ -165,11 +165,20 @@ impl SowApp {
 
                         if ui.add(return_btn).clicked() {
                             if private_party {
-                                self.ui.app.main_menu_state.host_private_pending = true;
-                                self.ui.app.main_menu_state.is_waiting = true;
+                                let req = sow_core::protocol::ClientMessage::RematchRequest {
+                                    lobby_id: self.sim.my_lobby_id.unwrap_or(0),
+                                };
+                                if let Ok(json) = bincode::serialize(&req) {
+                                    if let Some(c) = self.net.client.as_ref() {
+                                        c.send(json);
+                                    }
+                                }
+                                // Don't immediately exit here. We wait for ServerLobbyClosedMessage
+                                // containing the rematch_lobby_id which will seamlessly transition us!
+                            } else {
+                                self.net.client = None;
+                                self.begin_exit_to_main_menu(true);
                             }
-                            self.net.client = None;
-                            self.begin_exit_to_main_menu(true);
                         }
 
                         if !is_victory

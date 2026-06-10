@@ -851,9 +851,21 @@ impl SowApp {
                                                     egui::vec2(icon_size, icon_size),
                                                 );
                                                 let tint = if is_disabled { Color32::GRAY } else { Color32::WHITE };
-                                                egui::Image::new(kind.asset().uri())
-                                                    .tint(tint)
-                                                    .paint_at(ui, icon_rect);
+                                                let emoji = match kind {
+                                                    sow_core::game::BuildingKind::City => "🏛️",
+                                                    sow_core::game::BuildingKind::Factory => "🏭",
+                                                    sow_core::game::BuildingKind::Port => "⚓",
+                                                    sow_core::game::BuildingKind::Bunker => "🛡️",
+                                                };
+                                                if !sow_ui::widgets::try_paint_emoji(ui.painter(), emoji, icon_rect, tint) {
+                                                    ui.painter().text(
+                                                        icon_rect.center(),
+                                                        egui::Align2::CENTER_CENTER,
+                                                        emoji,
+                                                        egui::FontId::proportional(icon_size * 0.7),
+                                                        tint,
+                                                    );
+                                                }
 
                                                 // Label
                                                 ui.painter().text(

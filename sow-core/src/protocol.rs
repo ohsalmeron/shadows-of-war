@@ -142,6 +142,9 @@ pub enum ClientMessage {
     Ping {
         client_time: f64,
     },
+    RematchRequest {
+        lobby_id: u64,
+    },
 }
 
 /// Envelope for all server → client messages (bincode-safe: has a discriminant).

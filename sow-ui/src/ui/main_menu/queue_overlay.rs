@@ -146,6 +146,29 @@ pub fn draw_queue_overlay(
             // 3. Bottom Button Area
             ui.add_space(8.0);
             ui.vertical_centered(|ui| {
+                if state.in_private_match {
+                    if let Some(lobby) = lobby_info {
+                        let now = ui.input(|i| i.time);
+                        let is_copied = if let Some(t) = state.invite_copied_at {
+                            now - t < 2.0
+                        } else {
+                            false
+                        };
+                        let label = if is_copied {
+                            &strings.invite_link_copied
+                        } else {
+                            &strings.copy_invite_link
+                        };
+                        let invite_btn = crate::widgets::ThemeButton::new(label)
+                            .style(crate::widgets::ThemeButtonStyle::Primary)
+                            .min_size(egui::vec2(200.0, action_min_h));
+                        if ui.add(invite_btn).clicked() {
+                            *action = Some(UiAction::CopyInviteLink(lobby.id));
+                        }
+                        ui.add_space(8.0);
+                    }
+                }
+
                 let cancel = crate::widgets::ThemeButton::new(&sow_i18n::get(lang).main_menu.leave_lobby)
                     .style(crate::widgets::ThemeButtonStyle::Danger)
                     .min_size(egui::vec2(200.0, action_min_h));

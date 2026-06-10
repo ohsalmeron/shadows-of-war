@@ -303,10 +303,11 @@ impl SowEngine {
                 }
             }
             GameplayIntent::ExpressEmoji { emoji, pinned } => {
+                let max_emoji_ticks = (3.0 * 1000.0 / self.state.config.tick_rate_ms).round() as u32;
                 if let Some(player) = self.state.player_mut(stamped.player_id) {
                     player.active_emoji = Some(emoji.clone());
                     player.emoji_pinned = *pinned;
-                    player.emoji_timer = if *pinned { 0 } else { 150 };
+                    player.emoji_timer = if *pinned { 0 } else { max_emoji_ticks };
                 }
             }
             GameplayIntent::ProposeAlliance { target_player } => {

@@ -404,6 +404,9 @@ async fn main() {
                                                     }
                                                 }
                                             }
+                                            sow_core::protocol::ClientMessage::RematchRequest { lobby_id: _ } => {
+                                                // Orchestrator ignores RematchRequest, it is handled by the relay server
+                                            }
                                             sow_core::protocol::ClientMessage::Ping { client_time } => {
                                                 let pong = sow_core::protocol::ServerMessage::Pong { client_time };
                                                 let json = bincode::serialize(&pong).unwrap();

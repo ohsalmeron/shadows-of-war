@@ -45,6 +45,9 @@ enum RelayEvent {
     Leave {
         player_id: u16,
     },
+    RematchRequest {
+        player_id: u16,
+    },
 }
 
 #[tokio::main]
@@ -194,6 +197,21 @@ async fn main() {
                                 intent: GameplayIntent::MarkDisconnected { is_disconnected: true },
                             });
                         }
+                        RelayEvent::RematchRequest { player_id } => {
+                            info!("Player {} requested a rematch. Generating rematch_lobby_id...", player_id);
+                            // Generate a large random ID to ensure it is handled as a rematch by the orchestrator
+                            let rematch_id = (rand::random::<u64>() % 100_000) + 100_000_000;
+                            let msg = sow_core::protocol::ServerLobbyClosedMessage {
+                                lobby_id,
+                                reason: "Rematch Requested".to_string(),
+                                rematch_lobby_id: Some(rematch_id),
+                            };
+                            let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).expect("serialize LobbyClosed");
+                            let mut clients = connected_clients_clone.lock().await;
+                            for tx in clients.values_mut() {
+                                let _ = tx.send(json.clone());
+                            }
+                        }
                     }
                 }
             }
@@ -261,6 +279,11 @@ async fn main() {
                                                     let _ = ev_tx.send(RelayEvent::Leave { player_id: pid });
                                                 }
                                                 my_player_id = None;
+                                            }
+                                            ClientMessage::RematchRequest { lobby_id: _ } => {
+                                                if let Some(pid) = my_player_id {
+                                                    let _ = ev_tx.send(RelayEvent::RematchRequest { player_id: pid });
+                                                }
                                             }
                                             ClientMessage::Ping { client_time } => {
                                                 let pong = ServerMessage::Pong { client_time };

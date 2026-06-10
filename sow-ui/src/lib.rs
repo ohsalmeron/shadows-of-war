@@ -24,4 +24,5 @@ pub enum UiAction {
     TogglePrivacy,
     ToggleTerms,
     ToggleDevSidebar,
+    CopyInviteLink(u64),
 }

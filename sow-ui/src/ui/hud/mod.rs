@@ -98,6 +98,7 @@ pub struct HudState {
     pub ask_troops: f64,
     pub prev_resource_requests: Vec<u16>,
     pub transfer_confirm_pending: bool,
+    pub chat_disabled: bool,
 }
 
 impl HudState {
@@ -143,7 +144,7 @@ fn building_emoji(kind: sow_core::game::BuildingKind) -> &'static str {
         sow_core::game::BuildingKind::City => "🏛️",
         sow_core::game::BuildingKind::Factory => "🏭",
         sow_core::game::BuildingKind::Port => "⚓",
-        sow_core::game::BuildingKind::Bunker => "🗼",
+        sow_core::game::BuildingKind::Bunker => "🛡️",
     }
 }
 
@@ -1495,15 +1496,17 @@ pub fn draw(
                             action = Some(UiAction::CenterCamera);
                         }
                         ui.separator();
-                        if ui
-                            .add(crate::widgets::HudEmojiButton::new("😀").dim(btn_w))
-                            .on_hover_text(&sow_i18n::get(lang).hud.hover_express_emoji)
-                            .clicked()
-                        {
-                            state.show_emoji_panel = !state.show_emoji_panel;
-                            if state.show_emoji_panel {
-                                state.emoji_panel_pos = None;
-                                state.emoji_panel_just_opened = true;
+                        if !state.chat_disabled {
+                            if ui
+                                .add(crate::widgets::HudEmojiButton::new("😀").dim(btn_w))
+                                .on_hover_text(&sow_i18n::get(lang).hud.hover_express_emoji)
+                                .clicked()
+                            {
+                                state.show_emoji_panel = !state.show_emoji_panel;
+                                if state.show_emoji_panel {
+                                    state.emoji_panel_pos = None;
+                                    state.emoji_panel_just_opened = true;
+                                }
                             }
                         }
                         if log_tabs_enabled {
