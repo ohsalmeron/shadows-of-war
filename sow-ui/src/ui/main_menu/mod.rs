@@ -217,45 +217,18 @@ fn draw_menu_footer(
 
     ui.add_space(section_gap * 0.5);
     let strings = &sow_i18n::get(lang).main_menu;
-    let credits = &sow_i18n::get(lang).credits;
     ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 4.0;
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(version)
-                    .size(12.0)
-                    .color(crate::ui::theme::text_secondary()),
-            );
-            ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new(&credits.based_on_short)
-                    .size(11.0)
-                    .color(crate::ui::theme::text_secondary()),
-            );
-        });
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(&strings.credits_link)
-                        .size(12.0)
-                        .color(crate::ui::theme::accent_solo_cyan()),
-                )
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
-            )
-            .clicked()
-        {
-            *action = Some(UiAction::ToggleCredits);
-        }
+        ui.spacing_mut().item_spacing.y = 2.0;
         
-        ui.add_space(2.0);
+        let text_color = crate::ui::theme::text_secondary();
+        let link_color = crate::ui::theme::accent_solo_cyan();
+        let size = 11.0;
+        
+        // there is no space for fucking 2 rows of text in that panel you keep doing the same shit over and over
+        ui.label(egui::RichText::new(&strings.by_playing_you_agree).size(size).color(text_color));
+        
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            let text_color = crate::ui::theme::text_secondary();
-            let link_color = crate::ui::theme::accent_solo_cyan();
-            let size = 11.0;
-            
-            ui.label(egui::RichText::new(&strings.by_playing_you_agree).size(size).color(text_color));
             
             if ui.add(
                 egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service).size(size).color(link_color))
@@ -273,6 +246,13 @@ fn draw_menu_footer(
                 *action = Some(UiAction::TogglePrivacy);
             }
         });
+
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(version)
+                .size(11.0)
+                .color(crate::ui::theme::text_secondary()),
+        );
     });
 }
 
