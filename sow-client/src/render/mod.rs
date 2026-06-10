@@ -212,7 +212,7 @@ impl SowApp {
                 let mut border_darkness = 0.35f32;
                 let mut shore_thickness = 1.0f32;
                 let mut shore_darkness = 1.0f32;
-                let mut territory_opacity = 0.28f32;
+                let mut territory_opacity = 1.0f32;
                 let mut sub_voxel_scale = 1.0f32;
 
                 self.ui.egui_ctx.data_mut(|d| {
@@ -230,7 +230,7 @@ impl SowApp {
                         });
                     territory_opacity = *d
                         .get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || {
-                            0.28f32
+                            1.0f32
                         });
                     sub_voxel_scale = *d
                         .get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || {

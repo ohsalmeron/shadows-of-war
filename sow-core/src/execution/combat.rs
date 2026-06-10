@@ -133,7 +133,7 @@ impl SowEngine {
 
                     // Terrain Check: Water and Mountains are impassable for basic ground attacks
                     let terrain_type = self.state.map.terrain_type(target_tile.x, target_tile.y);
-                    if terrain_type == TerrainType::Water {
+                    if terrain_type == TerrainType::Water || terrain_type == TerrainType::Lake {
                         stale_pops += 1;
                         continue; // Skip, impassable terrain
                     }

@@ -98,7 +98,7 @@ pub struct TeamRanking {
 }
 
 fn snapshot_display_name(p: &PlayerSnapshot) -> String {
-    sow_core::player::display_name(p.id, &p.name)
+    sow_core::player::display_name(p.id, &p.name, p.player_type)
 }
 
 fn is_team_mode(app: &SowApp) -> bool {
@@ -1020,7 +1020,7 @@ impl SowApp {
             *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 1.0f32)
         });
         let mut opacity = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || 0.28f32)
+            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || 1.0f32)
         });
         let mut sub_voxel_scale = ctx.data_mut(|d| {
             *d.get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || 1.0f32)

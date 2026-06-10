@@ -48,13 +48,13 @@ impl SowApp {
                                     .unwrap_or("Ally");
                                 let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                     (true, true) => format!(
-                                        "🎁 {} sent 💰{} & 🛡️{}!",
+                                        "🎁 {} sent 🪙{} & 🛡️{}!",
                                         sender_name,
                                         sow_ui::utils::format_number(tx.gold),
                                         sow_ui::utils::format_number(tx.troops)
                                     ),
                                     (true, false) => format!(
-                                        "💰 {} sent +{} Gold!",
+                                        "🪙 {} sent +{} Gold!",
                                         sender_name,
                                         sow_ui::utils::format_number(tx.gold)
                                     ),
@@ -153,13 +153,13 @@ impl SowApp {
                                 .unwrap_or("Ally");
                             let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                 (true, true) => format!(
-                                    "🎁 {} sent 💰{} & 🛡️{}!",
+                                    "🎁 {} sent 🪙{} & 🛡️{}!",
                                     sender_name,
                                     sow_ui::utils::format_number(tx.gold),
                                     sow_ui::utils::format_number(tx.troops)
                                 ),
                                 (true, false) => format!(
-                                    "💰 {} sent +{} Gold!",
+                                    "🪙 {} sent +{} Gold!",
                                     sender_name,
                                     sow_ui::utils::format_number(tx.gold)
                                 ),

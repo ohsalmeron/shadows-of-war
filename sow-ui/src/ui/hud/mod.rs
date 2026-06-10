@@ -287,19 +287,21 @@ fn draw_buildings_strip(
                 egui::Color32::GRAY
             };
 
-            let label_text = if compact {
+            let cost_label = if cost_text == "N/A" {
                 cost_text
             } else {
-                format!("{} - {}", kind.as_str(), cost_text)
+                format!("🪙 {cost_text}")
             };
 
             let font_size = if compact { 8.0 } else { 9.0 };
-            ui.painter().text(
+            crate::widgets::paint_emoji_text_at(
+                ui.painter(),
                 egui::pos2(rect.center().x, rect.bottom() - (if compact { 5.0 } else { 8.0 })),
                 egui::Align2::CENTER_CENTER,
-                label_text,
+                &cost_label,
                 egui::FontId::proportional(font_size),
                 text_color,
+                false,
             );
 
             if resp.clicked() {
@@ -489,8 +491,8 @@ fn event_log_icon(message: &str) -> &'static str {
     let lower = message.to_lowercase();
     if message.contains('☢') || lower.contains("nuke") || lower.contains("missile") {
         "☢"
-    } else if message.contains('💰') || lower.contains("gold") {
-        "💰"
+    } else if message.contains('🪙') || lower.contains("gold") {
+        "🪙"
     } else if message.contains('❌') || lower.contains("rejected") {
         "❌"
     } else if message.contains('🕊') || lower.contains("eliminated") {
@@ -1239,7 +1241,7 @@ pub fn draw(
                                         (rgb[2] * 255.0) as u8,
                                     ).linear_multiply(inbox_progress);
                                     let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                    let name = sow_core::player::display_name(requester.id, &requester.name);
+                                    let name = sow_core::player::display_name(requester.id, &requester.name, requester.player_type);
 
                                     // Animate individual card sliding horizontally with spring overshoot!
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, anim);
@@ -1338,7 +1340,7 @@ pub fn draw(
                                         (rgb[2] * 255.0) as u8,
                                     ).linear_multiply(inbox_progress);
                                     let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                    let name = sow_core::player::display_name(requester.id, &requester.name);
+                                    let name = sow_core::player::display_name(requester.id, &requester.name, requester.player_type);
 
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, anim);
                                     let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
@@ -1380,8 +1382,8 @@ pub fn draw(
                                                             ui.spacing_mut().item_spacing.y = 0.0;
                                                             crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
                                                             let prompt = match (req.gold > 0.0, req.troops > 0.0) {
-                                                                (true, true) => format!("asks for 💰{} & 🛡️{}", crate::utils::format_number(req.gold), crate::utils::format_number(req.troops)),
-                                                                (true, false) => format!("asks for 💰{}", crate::utils::format_number(req.gold)),
+                                                                (true, true) => format!("asks for 🪙{} & 🛡️{}", crate::utils::format_number(req.gold), crate::utils::format_number(req.troops)),
+                                                                (true, false) => format!("asks for 🪙{}", crate::utils::format_number(req.gold)),
                                                                 (false, true) => format!("asks for 🛡️{}", crate::utils::format_number(req.troops)),
                                                                 _ => "asks for resources".to_string(),
                                                             };
@@ -1910,7 +1912,7 @@ fn get_player_display_name(players: &[PlayerSnapshot], id: u16, default: &str) -
     players
         .iter()
         .find(|p| p.id == id)
-        .map(|p| sow_core::player::display_name(p.id, &p.name))
+        .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
         .unwrap_or_else(|| default.to_string())
 }
 
@@ -2160,7 +2162,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
             .show(ui, |ui| {
                 crate::widgets::outlined_emoji_label(
                     ui,
-                    &format!("💰 {}", crate::utils::format_number(state.gold)),
+                    &format!("🪙 {}", crate::utils::format_number(state.gold)),
                     egui::FontId::proportional(if compact { 13.0 } else { 14.0 }),
                     crate::ui::theme::accent_ranked_gold_hover(),
                 );
@@ -2171,7 +2173,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
             let alpha = ((1.0 - t / 2.5) * 255.0) as u8;
             let slide = 8.0 * (1.0 - (t * 6.0).min(1.0));
             let r = gold_frame_resp.response.rect;
-            let text = format!("💰 +{}", crate::utils::format_number(amount));
+            let text = format!("🪙 +{}", crate::utils::format_number(amount));
             let p = pos2(r.center().x, r.top() - 10.0 - slide);
             crate::widgets::outlined_emoji_text(
                 ui.painter(),
@@ -2987,7 +2989,7 @@ fn draw_transfer_panel(
 
     let target_player = state.players.iter().find(|p| p.id == target_id);
     let target_name = target_player
-        .map(|p| sow_core::player::display_name(p.id, &p.name))
+        .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
         .unwrap_or_else(|| format!("Ally {}", target_id));
 
     // Active Tab: 0 = Send, 1 = Request
@@ -3145,7 +3147,7 @@ fn draw_transfer_panel(
                             ui.horizontal(|ui| {
                                 crate::widgets::emoji_label(
                                     ui,
-                                    "💰 Gold",
+                                    "🪙 Gold",
                                     egui::FontId::proportional(15.0),
                                     Color32::WHITE,
                                 );

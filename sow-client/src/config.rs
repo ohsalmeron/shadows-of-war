@@ -14,14 +14,11 @@ pub struct ClientVisualConfig {
     pub nameplate_tribe_size: f32,
     pub nameplate_premium_size: f32,
 
-    // Disconnect emoji scale relative to the base nameplate size
-    pub nameplate_disconnected_emoji_scale: f32,
-
     // Death nameplate floater (defeated player name, desktop).
     // Base font size in points; spring shrink still applies at runtime.
     pub death_nameplate_font_size: f32,
 
-    // Floating gold bounty text ("💰 +N" on conquer).
+    // Floating gold bounty text ("🪙 +N" on conquer).
     // Base font size in points; bounce scale still applies at runtime.
     pub gold_reward_notice_font_size: f32,
 }
@@ -37,7 +34,6 @@ impl Default for ClientVisualConfig {
             nameplate_nation_size: 12.0,
             nameplate_tribe_size: 12.0,
             nameplate_premium_size: 12.0,
-            nameplate_disconnected_emoji_scale: 8.0,
             death_nameplate_font_size: 16.0,
             gold_reward_notice_font_size: 16.0,
         }

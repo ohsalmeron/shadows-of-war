@@ -159,11 +159,29 @@ pub fn outlined_emoji_text(
     color: Color32,
     shadow: Color32,
 ) {
+    paint_emoji_text_at(painter, pos, anchor, text, font_id, color, true);
+    let _ = shadow;
+}
+
+pub fn measure_emoji_text(painter: &egui::Painter, text: &str, font_id: &FontId) -> Vec2 {
+    let runs = split_runs(text);
+    let (w, h) = measure_runs(painter, &runs, font_id);
+    Vec2::new(w, h)
+}
+
+pub fn paint_emoji_text_at(
+    painter: &egui::Painter,
+    pos: Pos2,
+    anchor: Align2,
+    text: &str,
+    font_id: FontId,
+    color: Color32,
+    outlined: bool,
+) {
     let runs = split_runs(text);
     let (total_w, max_h) = measure_runs(painter, &runs, &font_id);
     let rect = anchor.anchor_size(pos, Vec2::new(total_w, max_h));
-    paint_runs(painter, rect, &runs, &font_id, color, true);
-    let _ = shadow;
+    paint_runs(painter, rect, &runs, &font_id, color, outlined);
 }
 
 fn paint_runs(
@@ -183,6 +201,7 @@ fn paint_runs(
                 let galley = painter.layout_no_wrap(s.to_string(), font_id.clone(), color);
                 let w = galley.rect.width();
                 if outlined {
+                    let shadow_color = Color32::from_black_alpha(color.a());
                     crate::ui::theme::outlined_text(
                         painter,
                         Pos2::new(x, cy),
@@ -190,7 +209,7 @@ fn paint_runs(
                         s,
                         font_id.clone(),
                         color,
-                        Color32::BLACK,
+                        shadow_color,
                     );
                 } else {
                     let y = cy - galley.rect.height() / 2.0;

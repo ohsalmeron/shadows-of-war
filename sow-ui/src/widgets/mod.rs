@@ -8,8 +8,8 @@ pub mod theme_button;
 pub use avatar_picker::draw_leader_picker_modal;
 pub use leader_backdrop::{draw_leader_hero_backdrop, LeaderBackdropTransition};
 pub use emoji::{
-    emoji_label, outlined_emoji_label, outlined_emoji_text, paint_emoji_centered, try_paint_emoji,
-    HudEmojiButton,
+    emoji_label, measure_emoji_text, outlined_emoji_label, outlined_emoji_text,
+    paint_emoji_centered, paint_emoji_text_at, try_paint_emoji, HudEmojiButton,
 };
 pub use hud_button::HudButton;
 pub use lobby_card::{LobbyCard, LobbyCardResponse};

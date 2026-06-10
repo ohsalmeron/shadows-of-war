@@ -60,12 +60,45 @@ pub fn paint_glow_nameplate_galley(
     }
 }
 
-pub fn layout_nameplate_name_galley(
+pub fn name_label_size(painter: &egui::Painter, name: &str, font_id: &egui::FontId) -> egui::Vec2 {
+    sow_ui::widgets::measure_emoji_text(painter, name, font_id)
+}
+
+pub fn paint_flat_name_label(
     painter: &egui::Painter,
-    font_id: egui::FontId,
+    pos: egui::Pos2,
     name: &str,
-) -> Arc<egui::Galley> {
-    painter.layout_no_wrap(name.to_owned(), font_id, NAMEPLATE_FILL)
+    font_id: egui::FontId,
+    color: egui::Color32,
+) {
+    sow_ui::widgets::paint_emoji_text_at(
+        painter,
+        pos,
+        egui::Align2::LEFT_TOP,
+        name,
+        font_id,
+        color,
+        false,
+    );
+}
+
+pub fn paint_glow_name_label(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    name: &str,
+    font_id: egui::FontId,
+    color: egui::Color32,
+    is_tribe: bool,
+) {
+    sow_ui::widgets::paint_emoji_text_at(
+        painter,
+        pos,
+        egui::Align2::LEFT_TOP,
+        name,
+        font_id,
+        color,
+        !is_tribe,
+    );
 }
 
 pub fn layout_nameplate_troops_galley(

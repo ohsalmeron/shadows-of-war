@@ -344,39 +344,17 @@ impl SowApp {
                     anim.color.b(),
                     alpha,
                 );
-                let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
 
-                // Layout text ONCE, then paint the galley 7 times (avoids 6 redundant layout+shape passes)
                 let font_id = egui::FontId::proportional(font_size);
-                let galley = middle_painter.layout_no_wrap(anim.name.clone(), font_id, text_color);
-                let half = galley.size() / 2.0;
-                let anchor = pos - half;
-
-                let is_low_end = self.input.screen_w < 900.0 || sf > 1.5;
-                if is_low_end {
-                    middle_painter.galley_with_override_text_color(
-                        anchor + egui::vec2(1.5, 1.5),
-                        galley.clone(),
-                        outline_color,
-                    );
-                } else {
-                    // 7-pass outline: 2 dragged shadows + 4 diagonal + 1 core
-                    for &dy in &[2.0, 4.0] {
-                        middle_painter.galley_with_override_text_color(
-                            anchor + egui::vec2(0.0, dy),
-                            galley.clone(),
-                            outline_color,
-                        );
-                    }
-                    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-                        middle_painter.galley_with_override_text_color(
-                            anchor + egui::vec2(dx, dy),
-                            galley.clone(),
-                            outline_color,
-                        );
-                    }
-                }
-                middle_painter.galley_with_override_text_color(anchor, galley, text_color);
+                sow_ui::widgets::paint_emoji_text_at(
+                    &middle_painter,
+                    pos,
+                    egui::Align2::CENTER_CENTER,
+                    &anim.name,
+                    font_id,
+                    text_color,
+                    true,
+                );
                 true
             });
 
@@ -406,7 +384,6 @@ impl SowApp {
                         notice.color.b(),
                         alpha,
                     );
-                    let outline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
                     let bounce_scale = if elapsed < 0.5 {
                         let anim_t = elapsed / 0.5;
                         nameplates::spring_overshoot(anim_t)
@@ -421,38 +398,16 @@ impl SowApp {
                         .round()
                         .max(1.0);
 
-                    // Layout text ONCE, then paint the galley 7 times
                     let font_id = egui::FontId::proportional(font_size);
-                    let galley =
-                        middle_painter.layout_no_wrap(notice.text.clone(), font_id, text_color);
-                    let half = galley.size() / 2.0;
-                    let anchor = pos - half;
-
-                    let is_low_end = self.input.screen_w < 900.0 || sf > 1.5;
-                    if is_low_end {
-                        middle_painter.galley_with_override_text_color(
-                            anchor + egui::vec2(1.5, 1.5),
-                            galley.clone(),
-                            outline_color,
-                        );
-                    } else {
-                        // 7-pass outline: 2 dragged shadows + 4 diagonal + 1 core
-                        for &dy in &[2.0, 4.0] {
-                            middle_painter.galley_with_override_text_color(
-                                anchor + egui::vec2(0.0, dy),
-                                galley.clone(),
-                                outline_color,
-                            );
-                        }
-                        for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
-                            middle_painter.galley_with_override_text_color(
-                                anchor + egui::vec2(dx, dy),
-                                galley.clone(),
-                                outline_color,
-                            );
-                        }
-                    }
-                    middle_painter.galley_with_override_text_color(anchor, galley, text_color);
+                    sow_ui::widgets::paint_emoji_text_at(
+                        &middle_painter,
+                        pos,
+                        egui::Align2::CENTER_CENTER,
+                        &notice.text,
+                        font_id,
+                        text_color,
+                        true,
+                    );
                 }
                 true
             });

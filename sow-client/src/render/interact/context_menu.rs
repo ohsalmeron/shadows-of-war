@@ -898,12 +898,24 @@ impl SowApp {
 
                                                 // Cost
                                                 let cost_text = if cost.is_infinite() { "N/A".to_string() } else { format!("{}", cost as u32) };
-                                                ui.painter().text(
+                                                let cost_color = if is_disabled {
+                                                    Color32::from_rgb(180, 100, 100)
+                                                } else {
+                                                    Color32::from_rgb(251, 191, 36)
+                                                };
+                                                let cost_label = if cost_text == "N/A" {
+                                                    cost_text.clone()
+                                                } else {
+                                                    format!("🪙 {cost_text}")
+                                                };
+                                                sow_ui::widgets::paint_emoji_text_at(
+                                                    ui.painter(),
                                                     rect.min + egui::vec2(44.0, card_h / 2.0 + 8.0),
                                                     egui::Align2::LEFT_CENTER,
-                                                    format!("{}g", cost_text),
+                                                    &cost_label,
                                                     egui::FontId::proportional(10.5),
-                                                    if is_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
+                                                    cost_color,
+                                                    false,
                                                 );
 
                                                 resp = resp.on_hover_ui(|ui| {

@@ -1057,15 +1057,11 @@ pub(crate) fn render(
                 let target_l = b.target_level;
                 let queued_count = (target_l as i32 - active_l as i32).max(0) as u32;
 
-                let text = if queued_count > 1 {
-                    std::borrow::Cow::Owned(format!(
-                        "🏗️ Lvl {} -> {} (+{} queued)",
-                        active_l,
-                        active_l + 1,
-                        queued_count - 1
-                    ))
+                let main_text = get_upgrade_str(active_l);
+                let queued_text = if queued_count > 1 {
+                    Some(format!("(+{} queued)", queued_count - 1))
                 } else {
-                    std::borrow::Cow::Borrowed(get_upgrade_str(active_l))
+                    None
                 };
 
                 let elapsed = time.start_time.elapsed().as_secs_f32();
@@ -1073,21 +1069,29 @@ pub(crate) fn render(
 
                 let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
                 let font_id = egui::FontId::proportional(font_size);
-                let galley = painter.layout_no_wrap(
-                    text.clone().into_owned(),
-                    font_id.clone(),
-                    egui::Color32::WHITE,
-                );
+
+                let main_size = sow_ui::widgets::measure_emoji_text(&painter, main_text, &font_id);
+                let mut rect_w = main_size.x;
+                let mut rect_h = main_size.y;
+
+                let queued_size = if let Some(ref qt) = queued_text {
+                    let size = sow_ui::widgets::measure_emoji_text(&painter, qt, &font_id);
+                    rect_w = rect_w.max(size.x);
+                    rect_h += size.y + 2.0; // 2px vertical spacing between lines
+                    Some(size)
+                } else {
+                    None
+                };
 
                 let padding_x = 8.0_f32;
                 let padding_y = 4.0_f32;
-                let rect_w = galley.rect.width() + padding_x * 2.0;
-                let rect_h = galley.rect.height() + padding_y * 2.0;
+                let box_w = rect_w + padding_x * 2.0;
+                let box_h = rect_h + padding_y * 2.0;
 
                 let badge_y = center.y - base_size * 0.7 + bobbing;
                 let badge_rect = egui::Rect::from_center_size(
                     egui::pos2(center.x, badge_y),
-                    egui::vec2(rect_w, rect_h),
+                    egui::vec2(box_w, box_h),
                 );
 
                 let border_color = egui::Color32::from_rgb(250, 204, 21); // Amber / Gold
@@ -1107,13 +1111,41 @@ pub(crate) fn render(
                     egui::StrokeKind::Inside,
                 );
 
-                painter.text(
-                    egui::pos2(center.x, badge_y),
-                    egui::Align2::CENTER_CENTER,
-                    &text,
-                    font_id,
-                    egui::Color32::from_rgb(254, 240, 138), // Very soft warm golden text
-                );
+                let text_color = egui::Color32::from_rgb(254, 240, 138); // Very soft warm golden text
+
+                if let Some(qt) = queued_text {
+                    let line1_y = badge_rect.center().y - rect_h / 2.0 + main_size.y / 2.0;
+                    sow_ui::widgets::paint_emoji_text_at(
+                        &painter,
+                        egui::pos2(center.x, line1_y),
+                        egui::Align2::CENTER_CENTER,
+                        main_text,
+                        font_id.clone(),
+                        text_color,
+                        false,
+                    );
+
+                    let line2_y = line1_y + main_size.y / 2.0 + 2.0 + queued_size.unwrap().y / 2.0;
+                    sow_ui::widgets::paint_emoji_text_at(
+                        &painter,
+                        egui::pos2(center.x, line2_y),
+                        egui::Align2::CENTER_CENTER,
+                        &qt,
+                        font_id,
+                        text_color,
+                        false,
+                    );
+                } else {
+                    sow_ui::widgets::paint_emoji_text_at(
+                        &painter,
+                        badge_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        main_text,
+                        font_id,
+                        text_color,
+                        false,
+                    );
+                }
             }
 
             // Render floating stats tooltip on hover

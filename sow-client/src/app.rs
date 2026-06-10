@@ -175,7 +175,6 @@ pub struct UiState {
             String,
             egui::FontId,
             std::sync::Arc<egui::Galley>,
-            std::sync::Arc<egui::Galley>,
         ),
     >,
     pub cached_player_colors: Vec<egui::Color32>,
@@ -942,7 +941,7 @@ impl SowApp {
                             }
 
                             if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-                                target_name = sow_core::player::display_name(target.id, &target.name);
+                                target_name = sow_core::player::display_name(target.id, &target.name, target.player_type);
                                 if !tile_found
                                     && (target.centroid_x > 0.001 || target.centroid_y > 0.001)
                                 {
@@ -967,17 +966,19 @@ impl SowApp {
                                 }
                             }
 
-                            // Spawn floating notice!
-                            let bounty_text =
-                                format!("💰 +{}", sow_ui::utils::format_number(gold_bounty as f64));
-                            self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                text: bounty_text,
-                                world_x: wx,
-                                world_y: wy,
-                                start_time: now_instant,
-                                duration: web_time::Duration::from_millis(3000),
-                                color: egui::Color32::from_rgb(250, 204, 21),
-                            });
+                            // Spawn floating notice only if we are the conqueror!
+                            if conqueror_id == my_id && my_id != 0 {
+                                let bounty_text =
+                                    format!("🪙 +{}", sow_ui::utils::format_number(gold_bounty as f64));
+                                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                    text: bounty_text,
+                                    world_x: wx,
+                                    world_y: wy,
+                                    start_time: now_instant,
+                                    duration: web_time::Duration::from_millis(3000),
+                                    color: egui::Color32::from_rgb(250, 204, 21),
+                                });
+                            }
 
                             // Spawn death nameplate animations on desktop only
                             if self.input.screen_w >= 600.0 {
@@ -1068,7 +1069,7 @@ impl SowApp {
                             .players
                             .iter()
                             .find(|p| p.id == alert.owner_id)
-                            .map(|p| sow_core::player::display_name(p.id, &p.name))
+                            .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
                             .unwrap_or_else(|| format!("Player {}", alert.owner_id));
 
                         // Determine victim from tile ownership in previous snapshot state
@@ -1085,7 +1086,7 @@ impl SowApp {
                             snap.players
                                 .iter()
                                 .find(|p| p.id == victim_id)
-                                .map(|p| sow_core::player::display_name(p.id, &p.name))
+                                .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
                                 .unwrap_or_else(|| format!("Player {}", victim_id))
                         };
 

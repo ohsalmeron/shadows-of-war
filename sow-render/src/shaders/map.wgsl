@@ -220,34 +220,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let noise_offset = (land_noise - 0.5) * 0.03 + organic_wave; // Gentle organic landscape variation
 
         if is_shoreline {
-            let base_sand = vec3<f32>(0.82, 0.78, 0.60);
-            let wet_sand = vec3<f32>(0.72, 0.68, 0.50);
-            let shore_col = mix(base_sand, wet_sand, land_noise);
-            terrain_color = vec4<f32>(shore_col + noise_offset * 0.6, 1.0);
+            let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);
+            terrain_color = vec4<f32>(base + noise_offset * 0.5, 1.0); // Shore
         } else if mag_center < 10.0 {
-            let grass_a = vec3<f32>(0.52, 0.72, 0.38); // Fresh green
-            let grass_b = vec3<f32>(0.60, 0.76, 0.42); // Lighter meadow
-            let grass_c = vec3<f32>(0.45, 0.62, 0.32); // Deeper forest green
-            var grass = mix(grass_a, grass_b, land_noise);
-            grass = mix(grass, grass_c, smoothstep(0.55, 0.75, land_noise));
-            grass = grass * (1.0 - mag_center * 0.012); // subtle elevation darkening
-            terrain_color = vec4<f32>(grass + noise_offset, 1.0);
+            let r = 190.0 / 255.0;
+            let g = (220.0 - 2.0 * mag_center) / 255.0;
+            let b = 138.0 / 255.0;
+            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset, 1.0); // Plains
         } else if mag_center < 20.0 {
-            let highland_green = vec3<f32>(0.50, 0.58, 0.35);
-            let highland_clay  = vec3<f32>(0.62, 0.52, 0.38);
-            let highland_rock  = vec3<f32>(0.55, 0.48, 0.40);
-            let elev_t = (mag_center - 10.0) / 10.0;
-            var highland = mix(highland_green, highland_clay, elev_t);
-            highland = mix(highland, highland_rock, smoothstep(0.4, 0.8, land_noise));
-            terrain_color = vec4<f32>(highland + noise_offset * 1.2, 1.0);
+            let r = (200.0 + 2.0 * mag_center) / 255.0;
+            let g = (183.0 + 2.0 * mag_center) / 255.0;
+            let b = (138.0 + 2.0 * mag_center) / 255.0;
+            terrain_color = vec4<f32>(vec3<f32>(r, g, b) + noise_offset * 1.2, 1.0); // Highlands
         } else {
-            let rock_base = vec3<f32>(0.52, 0.50, 0.48);
-            let rock_light = vec3<f32>(0.62, 0.60, 0.58);
-            let snowy_peak = vec3<f32>(0.92, 0.93, 0.95);
-            let elev_t = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
-            var mountain = mix(rock_base, rock_light, land_noise);
-            mountain = mix(mountain, snowy_peak, elev_t * elev_t);
-            terrain_color = vec4<f32>(mountain + noise_offset * 0.6, 1.0);
+            // Smooth blend/fusion from high Highland color to snowy white peak
+            let highland_base = vec3<f32>(240.0 / 255.0, 223.0 / 255.0, 178.0 / 255.0);
+            let snowy_peak = vec3<f32>(248.0 / 255.0, 248.0 / 255.0, 248.0 / 255.0);
+            let blend = clamp((mag_center - 20.0) / 11.0, 0.0, 1.0);
+            let peak_color = mix(highland_base, snowy_peak, blend);
+            terrain_color = vec4<f32>(peak_color + noise_offset * 0.8, 1.0); // Mountains
         }
 
         // Unpack procedural 6-directional elevation normals directly from G/B channels in O(1) time
@@ -256,18 +247,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         normal = normalize(vec3<f32>(-dx, -dy, 1.0));
     } else {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
-        
-        let land_noise = terrain_rgba.w;
-        var color_deep = vec3<f32>(0.16, 0.30, 0.52);
-        var color_mid  = vec3<f32>(0.22, 0.40, 0.62);
 
+        // Flat water — no procedural waves (they moiré into diagonal scanlines when zoomed out)
+        var color_flat = vec3<f32>(65.0 / 255.0, 128.0 / 255.0, 175.0 / 255.0);
         if !is_ocean_water {
-            color_deep = vec3<f32>(0.18, 0.42, 0.52);
-            color_mid  = vec3<f32>(0.24, 0.50, 0.60);
+            color_flat = vec3<f32>(55.0 / 255.0, 135.0 / 255.0, 168.0 / 255.0);
         }
-
-        let water_blend = sin(world_x * 10.0 + world_y * 10.0 + globals.time) * 0.5 + 0.5;
-        let color_flat = mix(color_deep, color_mid, mix(land_noise, water_blend, 0.3));
 
         terrain_color = vec4<f32>(color_flat, 1.0);
     }
@@ -570,16 +555,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
         let cell_bevel = smoothstep(0.0, 0.06, bevel_dist);
         base_color = base_color * (0.86 + 0.14 * cell_bevel);
-    }
-
-    // ── Tactile Canvas/Matte Paper Texture Overlay (Zoom-dependent LOD) ──
-    if globals.zoom >= 2.0 {
-        let px_screen = in.uv.x * 2400.0;
-        let py_screen = in.uv.y * 2400.0;
-        let paper_noise = fract(sin(px_screen * 12.9898 + py_screen * 78.233) * 43758.5453);
-        let grain_scale = clamp((globals.zoom - 2.0) / 3.0, 0.0, 1.0);
-        let paper_grain = 1.0 + (paper_noise - 0.5) * 0.08 * grain_scale;
-        base_color = base_color * paper_grain;
     }
 
     // ── Screen Vignetting (Soft shading at screen edges) ──
