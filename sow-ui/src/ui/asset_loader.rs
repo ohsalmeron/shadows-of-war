@@ -72,8 +72,6 @@ pub struct AssetLoader {
     leader_portrait_focus: Option<LeaderPortraitKey>,
     /// Retry policy state per failed leader portrait fetch.
     leader_retry_state: HashMap<LeaderPortraitKey, PortraitRetryState>,
-    /// Last portrait we successfully uploaded; used as a non-blocking fallback.
-    last_ready_portrait: Option<LeaderPortraitKey>,
     /// Avatar CDN fetches (wasm32).
     avatars_fetch_pending: Vec<AvatarFetchKey>,
     pub avatars_in_flight: HashSet<AvatarFetchKey>,
@@ -170,7 +168,6 @@ impl AssetLoader {
             leader_decode_pending: VecDeque::new(),
             leader_portrait_focus: None,
             leader_retry_state: HashMap::new(),
-            last_ready_portrait: None,
             avatars_fetch_pending: Vec::new(),
             avatars_in_flight: HashSet::new(),
             avatars_fetch_all_queued: false,
@@ -405,25 +402,6 @@ impl AssetLoader {
         self.leader_portrait_loaded(LeaderPortraitKey { leader, mobile })
     }
 
-    /// Last successfully uploaded portrait for this layout (no Caesar default).
-    pub fn fallback_leader_portrait_texture(&self, mobile: bool) -> Option<&TextureHandle> {
-        if let Some(last) = self.last_ready_portrait {
-            if last.mobile == mobile {
-                return self.leader_portrait_texture(last.leader, mobile);
-            }
-        }
-        None
-    }
-
-    pub fn best_leader_portrait_texture(
-        &self,
-        leader: Leader,
-        mobile: bool,
-    ) -> Option<&TextureHandle> {
-        self.leader_portrait_texture(leader, mobile)
-            .or_else(|| self.fallback_leader_portrait_texture(mobile))
-    }
-
     /// Pop the next portrait key to fetch (priority first), marking it in-flight.
     pub fn take_next_leader_fetch_pending(
         &mut self,
@@ -596,7 +574,6 @@ impl AssetLoader {
             } else {
                 self.leader_desktop_images.insert(leader, texture);
             }
-            self.last_ready_portrait = Some(key);
             self.leader_retry_state.remove(&key);
         }
     }
@@ -1018,7 +995,6 @@ impl AssetLoader {
                     } else {
                         self.leader_desktop_images.insert(leader, texture);
                     }
-                    self.last_ready_portrait = Some(key);
                 }
             }
         }

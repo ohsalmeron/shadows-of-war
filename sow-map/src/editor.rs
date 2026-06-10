@@ -705,7 +705,7 @@ impl MapEditorSession {
             fallout_slots: [[0.0; 4]; 8],
             nobuild_slots: [[0.0; 4]; 32],
             sub_voxel_scale: 1.0,
-            _pad2: 0.0,
+            blend_mode: 2.0,
             _pad3: 0.0,
             _pad4: 0.0,
         }

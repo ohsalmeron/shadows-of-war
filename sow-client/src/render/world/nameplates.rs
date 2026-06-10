@@ -10,6 +10,27 @@ pub(crate) fn spring_overshoot(t: f32) -> f32 {
     1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
 }
 
+fn ensure_text_readability(rgb: [f32; 3], target_lum: f32) -> egui::Color32 {
+    let lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    if lum < target_lum {
+        let t = (target_lum - lum) / (1.0 - lum).max(0.001);
+        let r = rgb[0] + (1.0 - rgb[0]) * t;
+        let g = rgb[1] + (1.0 - rgb[1]) * t;
+        let b = rgb[2] + (1.0 - rgb[2]) * t;
+        egui::Color32::from_rgb(
+            (r * 255.0).clamp(0.0, 255.0) as u8,
+            (g * 255.0).clamp(0.0, 255.0) as u8,
+            (b * 255.0).clamp(0.0, 255.0) as u8,
+        )
+    } else {
+        egui::Color32::from_rgb(
+            (rgb[0] * 255.0).clamp(0.0, 255.0) as u8,
+            (rgb[1] * 255.0).clamp(0.0, 255.0) as u8,
+            (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
+        )
+    }
+}
+
 use crate::hud::avatar::paint_circular_avatar;
 
 #[allow(unused_variables)]
@@ -129,11 +150,8 @@ pub(crate) fn render(
                         center.y - name_size.y / 2.0,
                     );
                     let rgb = player.color;
-                    let text_color = egui::Color32::from_rgb(
-                        (rgb[0] * 255.0).clamp(0.0, 255.0) as u8,
-                        (rgb[1] * 255.0).clamp(0.0, 255.0) as u8,
-                        (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
-                    );
+                    // Ensure minimum brightness for flat text (LOD 3 has no outline)
+                    let text_color = ensure_text_readability(rgb, 0.55);
 
                     crate::hud::nameplate::paint_flat_name_label(
                         painter,
@@ -171,16 +189,15 @@ pub(crate) fn render(
                 }
 
                 let scale_factor = (zoom_scaled / 4.0).clamp(0.6, 1.2);
-                    let base_premium_size = if vp.nameplate_size > 0.1 {
-                        (vp.nameplate_size * 0.4).clamp(6.0, 32.0)
-                    } else {
-                        visual_config.nameplate_premium_size
-                    };
-                    let font_size =
-                        base_premium_size * scale_factor * ui_text_scale;
-                    let avatar_size = (base_premium_size * 2.736)
-                        * scale_factor
-                        * ui_text_scale;
+                let base_premium_size = if vp.nameplate_size > 0.1 {
+                    (vp.nameplate_size * zoom_scaled_local).clamp(6.0, 24.0)
+                } else {
+                    visual_config.nameplate_premium_size * scale_factor
+                };
+                let font_size =
+                    base_premium_size * ui_text_scale;
+                let avatar_size = (base_premium_size * 2.2)
+                    * ui_text_scale;
 
                     // Check alliance status with the player
                     let mut is_allied = false;
@@ -572,11 +589,7 @@ pub(crate) fn render(
                         }
                     }
                     let rgb = player.color;
-                    let vibrant_color = egui::Color32::from_rgb(
-                        (rgb[0] * 255.0).clamp(0.0, 255.0) as u8,
-                        (rgb[1] * 255.0).clamp(0.0, 255.0) as u8,
-                        (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
-                    );
+                    let vibrant_color = ensure_text_readability(rgb, 0.45);
 
                     let mut disc_galley = None;
                     if is_disconnected {
@@ -810,4 +823,281 @@ pub(crate) fn render(
             }
         }
     }
+}
+
+pub(crate) fn render_death_nameplates(
+    ui: &mut crate::app::UiState,
+    input: &crate::app::InputState,
+    sf: f32,
+    now: web_time::Instant,
+) {
+    if ui.death_nameplates.is_empty() {
+        return;
+    }
+
+    // Always request repaint if we have active death animations running
+    ui.egui_ctx.request_repaint();
+
+    let painter = ui.egui_ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("death_nameplates"),
+    ));
+    let painter = &painter;
+
+    let visual_config = ClientVisualConfig::default();
+    let ui_text_scale = visual_config.ui_text_scale;
+
+    const PLATE_STAGGER: f32 = 0.4;
+
+    ui.death_nameplates.retain(|anim| {
+        let elapsed = now.duration_since(anim.start_time).as_secs_f32();
+        let duration = anim.duration.as_secs_f32();
+        if elapsed >= duration {
+            return false;
+        }
+
+        let t = elapsed / duration;
+        let s = anim.seed as f32;
+        let zoom_scaled_local = input.camera_zoom / sf;
+        let zoom_scale = zoom_scaled_local.clamp(0.1, 1.0);
+
+        let plate_center_x = (input.camera_x + anim.world_x * input.camera_zoom) / sf;
+        let plate_center_y = (input.camera_y + anim.world_y * input.camera_zoom) / sf;
+        let center = egui::pos2(plate_center_x, plate_center_y);
+
+        let base_premium_size = if anim.nameplate_size > 0.1 {
+            (anim.nameplate_size * zoom_scaled_local).clamp(10.0, 36.0)
+        } else {
+            visual_config.death_nameplate_font_size
+        };
+        let font_size = base_premium_size * ui_text_scale;
+
+        // --- 1. Soul (dove) — upper row, same protocol as floating express emoji ---
+        {
+            let soul_t = t;
+            let rise_dist = 6.0 * soul_t * (2.0 - soul_t);
+            let rise_screen = rise_dist * input.camera_zoom / sf;
+            let wobble_x = (elapsed * 5.0 + s).sin() * 15.0 * (1.0 - soul_t);
+
+            let entry_scale = spring_overshoot((elapsed / 0.25).clamp(0.0, 1.0));
+            let base_emoji_size = font_size * 3.2 * 1.2;
+            let final_emoji_size = base_emoji_size * entry_scale;
+
+            let base_y_offset = font_size * 1.889 + 12.0 * zoom_scale * ui_text_scale;
+            let emoji_y = center.y - base_y_offset - rise_screen;
+
+            let soul_alpha = if soul_t < 0.08 {
+                ((soul_t / 0.08) * 255.0) as u8
+            } else if soul_t > 0.7 {
+                (((1.0 - soul_t) / 0.3) * 255.0).clamp(0.0, 255.0) as u8
+            } else {
+                255
+            };
+
+            if final_emoji_size > 1.0 && soul_alpha > 0 {
+                let soul_painter = painter.ctx().layer_painter(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new(("death_soul", anim.player_id, anim.seed)),
+                ));
+                let emoji_rect = egui::Rect::from_center_size(
+                    egui::pos2(center.x + wobble_x, emoji_y),
+                    egui::vec2(final_emoji_size, final_emoji_size),
+                );
+                let soul_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, soul_alpha);
+                if !sow_ui::widgets::try_paint_emoji(&soul_painter, "🕊️", emoji_rect, soul_color) {
+                    let emoji_galley = soul_painter.layout_no_wrap(
+                        "🕊️".to_owned(),
+                        egui::FontId::proportional(final_emoji_size),
+                        soul_color,
+                    );
+                    let emoji_pos = egui::pos2(
+                        center.x + wobble_x - emoji_galley.size().x / 2.0,
+                        emoji_y - emoji_galley.size().y / 2.0,
+                    );
+                    soul_painter.galley(emoji_pos, emoji_galley, soul_color);
+                }
+            }
+        }
+
+        // --- 2. Premium nameplate (staggered entry) ---
+        if elapsed > PLATE_STAGGER {
+            let n_elapsed = elapsed - PLATE_STAGGER;
+            let nt = (n_elapsed / (duration - PLATE_STAGGER)).clamp(0.0, 1.0);
+
+            let sink_y = nt * 1.0;
+            let tremble = if n_elapsed < 0.5 {
+                (n_elapsed * 50.0).sin() * 3.0 * (1.0 - n_elapsed / 0.5)
+            } else {
+                0.0
+            };
+
+            let nx = plate_center_x;
+            let ny = (input.camera_y + (anim.world_y + 2.5 + sink_y) * input.camera_zoom) / sf + tremble;
+            let center = egui::pos2(nx, ny);
+
+            if nx < -300.0 || nx > input.screen_w + 300.0 || ny < -300.0 || ny > input.screen_h + 300.0 {
+                return true;
+            }
+
+            let entry_duration = 0.5;
+            let plate_scale = if n_elapsed < entry_duration {
+                spring_overshoot((n_elapsed / entry_duration).clamp(0.0, 1.0))
+            } else if elapsed > duration - 0.35 {
+                let fade_t = (duration - elapsed) / 0.35;
+                fade_t * fade_t
+            } else {
+                1.0
+            };
+
+            let alpha = if nt < 0.12 {
+                ((nt / 0.12) * 255.0) as u8
+            } else if elapsed > duration - 0.35 {
+                (((duration - elapsed) / 0.35) * 255.0) as u8
+            } else {
+                255
+            };
+
+            let scaled_size = base_premium_size * plate_scale;
+            if scaled_size > 1.0 {
+                let font_size = scaled_size * ui_text_scale;
+                let font_id = egui::FontId::proportional(font_size.round().max(1.0));
+
+                let display_name = if anim.player_type == sow_core::player::PlayerType::Bot {
+                    if anim.name.is_empty() {
+                        format!("Tribe {}", anim.player_id.saturating_sub(199))
+                    } else {
+                        anim.name.clone()
+                    }
+                } else {
+                    sow_core::player::display_name(anim.player_id, &anim.name, anim.player_type)
+                };
+
+                let name_size =
+                    crate::hud::nameplate::name_label_size(painter, &display_name, &font_id);
+                let avatar_size = scaled_size * 2.2 * ui_text_scale;
+
+                let troops_str = sow_ui::utils::format_number(anim.troops);
+                let troops_font_size = font_size * 1.30;
+                let troops_font_id = egui::FontId::proportional(troops_font_size.round().max(1.0));
+
+                let troops_galley = crate::hud::nameplate::layout_nameplate_troops_galley(
+                    painter,
+                    troops_font_id.clone(),
+                    &troops_str,
+                );
+
+                let right_w = name_size.x.max(
+                    crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id),
+                );
+                let item_spacing_y = (font_size * 0.111).round();
+                let right_h = name_size.y + item_spacing_y + troops_galley.rect.height();
+
+                let spacing_x = (font_size * 0.333).round();
+                let total_w = avatar_size + spacing_x + right_w;
+                let total_h = avatar_size.max(right_h);
+
+                let content_min = egui::pos2(center.x - total_w / 2.0, center.y - total_h / 2.0);
+                let row12_y = content_min.y;
+                let mut cur_x = content_min.x;
+
+                let vibrant_color = egui::Color32::from_rgba_unmultiplied(
+                    anim.color.r(),
+                    anim.color.g(),
+                    anim.color.b(),
+                    alpha,
+                );
+
+                let avatar_center = egui::pos2(cur_x + avatar_size / 2.0, row12_y + total_h / 2.0);
+                let avatar_r = avatar_size / 2.0;
+
+                if anim.player_type == sow_core::player::PlayerType::Nation {
+                    paint_circular_avatar(
+                        painter,
+                        avatar_center,
+                        avatar_r,
+                        None,
+                        vibrant_color,
+                        vibrant_color,
+                    );
+                } else if anim.player_type == sow_core::player::PlayerType::Bot {
+                    paint_circular_avatar(
+                        painter,
+                        avatar_center,
+                        avatar_r,
+                        None,
+                        vibrant_color,
+                        vibrant_color,
+                    );
+                    let animal = sow_core::player::tribe_animal(anim.player_id, &anim.name);
+                    let emoji_size = avatar_size * 0.7;
+                    let emoji_rect = egui::Rect::from_center_size(
+                        avatar_center,
+                        egui::vec2(emoji_size, emoji_size),
+                    );
+                    let animal_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
+                    if !sow_ui::widgets::try_paint_emoji(painter, animal, emoji_rect, animal_color)
+                    {
+                        let emoji_galley = painter.layout_no_wrap(
+                            animal.to_owned(),
+                            egui::FontId::proportional(emoji_size),
+                            egui::Color32::WHITE,
+                        );
+                        let emoji_pos = egui::pos2(
+                            avatar_center.x - emoji_galley.size().x / 2.0,
+                            avatar_center.y - emoji_galley.size().y / 2.0,
+                        );
+                        painter.galley(emoji_pos, emoji_galley, animal_color);
+                    }
+                } else {
+                    let leader_rgb = anim.leader.filler_rgb();
+                    let leader_color = egui::Color32::from_rgba_unmultiplied(
+                        (leader_rgb[0] * 255.0).round() as u8,
+                        (leader_rgb[1] * 255.0).round() as u8,
+                        (leader_rgb[2] * 255.0).round() as u8,
+                        alpha,
+                    );
+                    let avatar_tex = ui.app.asset_loader.avatars.get(&anim.leader).or(ui
+                        .app
+                        .asset_loader
+                        .avatar_fallback
+                        .as_ref());
+                    let tex_id = avatar_tex.map(|t| t.id());
+                    paint_circular_avatar(
+                        painter,
+                        avatar_center,
+                        avatar_r,
+                        tex_id,
+                        leader_color,
+                        leader_color,
+                    );
+                }
+                cur_x += avatar_size + spacing_x;
+
+                let right_y = row12_y + (total_h - right_h) / 2.0;
+                let name_x = cur_x + (right_w - name_size.x) / 2.0;
+                crate::hud::nameplate::paint_glow_name_label(
+                    painter,
+                    egui::pos2(name_x, right_y),
+                    &display_name,
+                    font_id.clone(),
+                    vibrant_color,
+                    false,
+                );
+
+                let troops_w =
+                    crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id);
+                let troops_x = cur_x + (right_w - troops_w) / 2.0;
+                crate::hud::nameplate::paint_glow_troops_row(
+                    painter,
+                    egui::pos2(troops_x, right_y + name_size.y + item_spacing_y),
+                    troops_galley,
+                    &troops_font_id,
+                    vibrant_color,
+                    false,
+                );
+            }
+        }
+
+        true
+    });
 }

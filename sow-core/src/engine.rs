@@ -453,6 +453,10 @@ impl SowEngine {
         let extra_nations_pool = crate::tribes::HISTORICAL_CIVILIZATIONS;
         let mut extra_nations_indices: Vec<usize> = (0..extra_nations_pool.len()).collect();
 
+        // Prepare fallback tribes in case extra nations run out
+        let fallback_nations_pool = crate::tribes::FALLBACK_TRIBES;
+        let mut fallback_nations_indices: Vec<usize> = (0..fallback_nations_pool.len()).collect();
+
         for i in 0..total_city_states_to_spawn {
             let bot_id = 104 + i as u16;
 
@@ -492,7 +496,41 @@ impl SowEngine {
                 }
 
                 if !found_name {
-                    name = format!("Empire {}", bot_id);
+                    let mut found_fallback = false;
+                    let mut attempts_fallback = 0;
+                    while !found_fallback && attempts_fallback < 100 && !fallback_nations_indices.is_empty() {
+                        let idx = (rng.rand() as usize) % fallback_nations_indices.len();
+                        let pool_idx = fallback_nations_indices[idx];
+                        let raw_tribe_name = fallback_nations_pool[pool_idx];
+                        
+                        let name_style = (rng.rand() as usize) % 9;
+                        let formatted_name = match name_style {
+                            0 => format!("{} Empire", raw_tribe_name),
+                            1 => format!("Kingdom of {}", raw_tribe_name),
+                            2 => format!("{} Dynasty", raw_tribe_name),
+                            3 => format!("Republic of {}", raw_tribe_name),
+                            4 => format!("{} Confederacy", raw_tribe_name),
+                            5 => format!("{} Sultanate", raw_tribe_name),
+                            6 => format!("Principality of {}", raw_tribe_name),
+                            7 => format!("Grand Duchy of {}", raw_tribe_name),
+                            _ => format!("{} Alliance", raw_tribe_name),
+                        };
+                        
+                        if !used_names.contains(&formatted_name) && !used_names.contains(&raw_tribe_name.to_string()) {
+                            name = formatted_name;
+                            used_names.insert(name.clone());
+                            used_names.insert(raw_tribe_name.to_string());
+                            fallback_nations_indices.swap_remove(idx);
+                            found_fallback = true;
+                        } else {
+                            fallback_nations_indices.swap_remove(idx);
+                        }
+                        attempts_fallback += 1;
+                    }
+
+                    if !found_fallback {
+                        name = format!("Empire {}", bot_id);
+                    }
                 }
             }
 
@@ -655,11 +693,17 @@ impl SowEngine {
     /// Build a lightweight snapshot of the current state for the render thread.
     /// Drains `map.dirty_tiles` so each tile is reported exactly once.
     pub fn build_snapshot(&mut self) -> crate::protocol::SimSnapshot {
-        let should_recalculate = self.state.tick < 3 || self.state.tick % 30 == 0;
-        if should_recalculate {
-            for p in &mut self.state.players {
-                if p.alive && p.tile_count > 0 {
+        for p in &mut self.state.players {
+            if p.alive && p.tile_count > 0 {
+                // Desynchronize calculation using player ID as a phase offset
+                let should_recalculate = self.state.tick < 3 || (p.id as usize + self.state.tick as usize) % 15 == 0;
+                if should_recalculate {
                     p.calculate_nameplate(&self.state.map);
+                } else {
+                    let cx = (p.sum_x / p.tile_count as u64) as f32;
+                    let cy = (p.sum_y / p.tile_count as u64) as f32;
+                    p.nameplate_x = cx + p.nameplate_offset_x;
+                    p.nameplate_y = cy + p.nameplate_offset_y;
                 }
             }
         }

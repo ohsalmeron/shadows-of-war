@@ -187,33 +187,14 @@ impl SowApp {
                     }
                 }
 
-                let dirty = self
-                    .sim
-                    .current_snapshot
-                    .as_ref()
-                    .map(|s| s.dirty_tiles.as_slice())
-                    .unwrap_or(&[]);
-
-                mr.update(
-                    &mut render_ctx.command_encoder,
-                    &render_ctx.context,
-                    dirty,
-                );
-                for dt in dirty {
-                    let i = dt.index as usize;
-                    if i < self.sim.tile_upgrades.len() {
-                        self.sim.tile_upgrades[i] = dt.upgrade_level;
-                    }
-                }
-                if let Some(snap) = &mut self.sim.current_snapshot {
-                    snap.dirty_tiles.clear();
-                }
                 let mut border_thickness = 1.0f32;
                 let mut border_darkness = 0.35f32;
                 let mut shore_thickness = 1.0f32;
                 let mut shore_darkness = 1.0f32;
                 let mut territory_opacity = 1.0f32;
+                let mut blend_mode = 2.0f32;
                 let mut sub_voxel_scale = 1.0f32;
+                let mut conquest_duration = 3.0f32;
 
                 self.ui.egui_ctx.data_mut(|d| {
                     border_thickness =
@@ -232,11 +213,42 @@ impl SowApp {
                         .get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || {
                             1.0f32
                         });
+                    blend_mode = *d
+                        .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
+                            2.0f32
+                        });
                     sub_voxel_scale = *d
                         .get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || {
                             1.0f32
                         });
+                    conquest_duration = *d
+                        .get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || {
+                            3.0f32
+                        });
                 });
+
+                let dirty = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
+                    .map(|s| s.dirty_tiles.as_slice())
+                    .unwrap_or(&[]);
+
+                mr.update(
+                    &mut render_ctx.command_encoder,
+                    &render_ctx.context,
+                    dirty,
+                    conquest_duration,
+                );
+                for dt in dirty {
+                    let i = dt.index as usize;
+                    if i < self.sim.tile_upgrades.len() {
+                        self.sim.tile_upgrades[i] = dt.upgrade_level;
+                    }
+                }
+                if let Some(snap) = &mut self.sim.current_snapshot {
+                    snap.dirty_tiles.clear();
+                }
 
                 let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
                 if let Some(snap) = &self.sim.current_snapshot {
@@ -289,26 +301,7 @@ impl SowApp {
                     let world_x = (mx - self.input.camera_x) / self.input.camera_zoom;
                     let world_y = (my - self.input.camera_y) / self.input.camera_zoom;
 
-                    let q_f = world_x - world_y * 0.577_350_26_f32;
-                    let r_f = world_y * 1.154_700_5_f32;
-                    let s_f = -q_f - r_f;
-
-                    let mut rq = q_f.round();
-                    let mut rr = r_f.round();
-                    let rs = s_f.round();
-
-                    let q_diff = (rq - q_f).abs();
-                    let r_diff = (rr - r_f).abs();
-                    let s_diff = (rs - s_f).abs();
-
-                    if q_diff > r_diff && q_diff > s_diff {
-                        rq = -rr - rs;
-                    } else if r_diff > s_diff {
-                        rr = -rq - rs;
-                    }
-
-                    let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
-                    let row = rr as i32;
+                    let (col, row) = crate::render::world::movers::world_to_tile(world_x, world_y);
 
                     hover_hex = [col as f32, row as f32];
                     hover_building_kind = match kind {
@@ -347,15 +340,11 @@ impl SowApp {
                             }
 
                             if let Some(r_val) = radius {
-                                let q1 = col - (row - (row & 1)) / 2;
-                                let r1 = row;
-                                let q2 = bx - (by - (by & 1)) / 2;
-                                let r2 = by;
-                                let dq = q2 - q1;
-                                let dr = r2 - r1;
-                                let hex_dist = (dq.abs() + dr.abs() + (dq + dr).abs()) / 2;
+                                let dx = (bx - col).abs();
+                                let dy = (by - row).abs();
+                                let dist = dx.max(dy);
 
-                                list.push((bx, by, r_val, hex_dist));
+                                list.push((bx, by, r_val, dist));
                             }
                         }
 
@@ -406,7 +395,7 @@ impl SowApp {
                     fallout_slots,
                     nobuild_slots,
                     sub_voxel_scale,
-                    _pad2: 0.0,
+                    blend_mode,
                     _pad3: 0.0,
                     _pad4: 0.0,
                 };

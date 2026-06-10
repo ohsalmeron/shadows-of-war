@@ -84,6 +84,7 @@ impl SowApp {
             players: vec![],
         });
         self.ui.label_positions.clear();
+        self.ui.label_sizes.clear();
         self.sim.current_snapshot = None;
         self.gfx.needs_first_upload = true;
         self.release_client_game_gpu();

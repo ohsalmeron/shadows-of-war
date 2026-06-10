@@ -1,3 +1,4 @@
+use crate::render::world::movers::{tile_to_world, world_to_tile};
 use super::*;
 
 pub(crate) fn render(
@@ -10,10 +11,6 @@ pub(crate) fn render(
 ) {
     let painter = ctx.painter;
     let sf = ctx.sf;
-
-    let tile_to_world = |tile: u32, map_w: u32| -> (f32, f32) {
-        crate::render::world::movers::tile_to_world(tile, map_w)
-    };
 
     if let Some(snap) = &sim.current_snapshot {
         let map_w = sim.map_w;
@@ -36,20 +33,20 @@ pub(crate) fn render(
             let mut ty = 0.5;
 
             if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
-                rx = attacker.centroid_x + 0.5 + (attacker.centroid_y as i32 % 2) as f32 * 0.5;
-                ry = (attacker.centroid_y + 0.5) * 0.8660254_f32;
+                rx = attacker.centroid_x + 0.5;
+                ry = attacker.centroid_y + 0.5;
             }
             if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
-                tx = target.centroid_x + 0.5 + (target.centroid_y as i32 % 2) as f32 * 0.5;
-                ty = (target.centroid_y + 0.5) * 0.8660254_f32;
+                tx = target.centroid_x + 0.5;
+                ty = target.centroid_y + 0.5;
             }
 
             // Start at the battlefront (or fall back to target centroid if front_cx/front_cy is 0)
             let mut fx = tx;
             let mut fy = ty;
             if attack.front_cx != 0.0 || attack.front_cy != 0.0 {
-                fx = attack.front_cx + 0.5 + (attack.front_cy as i32 % 2) as f32 * 0.5;
-                fy = (attack.front_cy + 0.5) * 0.8660254_f32;
+                fx = attack.front_cx + 0.5;
+                fy = attack.front_cy + 0.5;
             }
 
             let start_x = (input.camera_x + fx * input.camera_zoom) / sf;
@@ -141,8 +138,8 @@ pub(crate) fn render(
             }
 
             // Convert centroid column/row to world coordinates
-            let wx = cx + 0.5 + ((cy as i32 % 2) as f32 * 0.5);
-            let wy = (cy + 0.5) * 0.8660254_f32;
+            let wx = cx + 0.5;
+            let wy = cy + 0.5;
 
             // Convert to screen coordinates
             let screen_x = (input.camera_x + wx * input.camera_zoom) / sf;
@@ -198,22 +195,7 @@ pub(crate) fn render(
             let my = input.last_mouse_y as f32;
             let world_x = (mx - input.camera_x) / input.camera_zoom;
             let world_y = (my - input.camera_y) / input.camera_zoom;
-            let q_f = world_x - world_y * 0.577_350_26_f32;
-            let r_f = world_y * 1.154_700_5_f32;
-            let s_f = -q_f - r_f;
-            let mut rq = q_f.round();
-            let mut rr = r_f.round();
-            let rs = s_f.round();
-            let q_diff = (rq - q_f).abs();
-            let r_diff = (rr - r_f).abs();
-            let s_diff = (rs - s_f).abs();
-            if q_diff > r_diff && q_diff > s_diff {
-                rq = -rr - rs;
-            } else if r_diff > s_diff {
-                rr = -rq - rs;
-            }
-            let h_col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
-            let h_row = rr as i32;
+            let (h_col, h_row) = world_to_tile(world_x, world_y);
 
             if h_col >= 0 && h_row >= 0 && h_col < sim.map_w as i32 && h_row < sim.map_h as i32 {
                 let target_tile = (h_row * sim.map_w as i32 + h_col) as u32;
@@ -238,7 +220,7 @@ pub(crate) fn render(
                         let by = (b.tile_idx / sim.map_w) as i32;
                         let tx = target_tile as i32 % sim.map_w as i32;
                         let ty = target_tile as i32 / sim.map_w as i32;
-                        (bx - tx).abs() + (by - ty).abs()
+                        (bx - tx).abs().max((by - ty).abs())
                     });
 
                 // Show cooldown arc loaders on cities that recently fired

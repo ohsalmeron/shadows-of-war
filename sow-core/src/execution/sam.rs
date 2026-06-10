@@ -15,22 +15,16 @@ pub fn sam_range(level: u8) -> f32 {
     SAM_MAX_RANGE - 480.0 / (level as f32 + 5.0)
 }
 
-/// Hex manhattan distance between two tile indices on an offset hex grid.
+/// Orthogonal Chebyshev distance between two tile indices on a square grid.
 fn hex_distance(a: u32, b: u32, width: u32) -> u32 {
     let ax = (a % width) as i32;
     let ay = (a / width) as i32;
     let bx = (b % width) as i32;
     let by = (b / width) as i32;
 
-    // Convert offset to axial (cube) coordinates
-    let q1 = ax - (ay - (ay & 1)) / 2;
-    let r1 = ay;
-    let q2 = bx - (by - (by & 1)) / 2;
-    let r2 = by;
-
-    let dq = q1 - q2;
-    let dr = r1 - r2;
-    ((dq.abs() + (dq + dr).abs() + dr.abs()) / 2) as u32
+    let dx = (ax - bx).abs();
+    let dy = (ay - by).abs();
+    dx.max(dy) as u32
 }
 
 impl SowEngine {

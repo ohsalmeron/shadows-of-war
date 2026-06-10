@@ -215,8 +215,8 @@ impl SowApp {
                             let cx = player.centroid_x;
                             let cy = player.centroid_y;
 
-                            let world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
-                            let world_cy = (cy + 0.5) * 0.8660254_f32;
+                            let world_cx = cx + 0.5;
+                            let world_cy = cy + 0.5;
 
                             self.input.camera_x =
                                 self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
@@ -226,8 +226,8 @@ impl SowApp {
                     }
                 }
                 UiAction::FocusTile(col, row) => {
-                    let world_cx = col + 0.5 + (row as i32 % 2) as f32 * 0.5;
-                    let world_cy = (row + 0.5) * 0.8660254_f32;
+                    let world_cx = col as f32 + 0.5;
+                    let world_cy = row as f32 + 0.5;
 
                     // Zoom in to a comfortable battle-focus level
                     let target_zoom = 3.0_f32.max(self.input.camera_zoom);
@@ -237,6 +237,9 @@ impl SowApp {
                 }
                 UiAction::ToggleDevSidebar => {
                     self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
+                    if self.ui.show_dev_sidebar {
+                        self.ui.show_leaderboard = false;
+                    }
                 }
                 UiAction::ToggleSettings => {
                     // Handle settings toggle if it's there

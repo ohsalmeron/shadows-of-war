@@ -138,6 +138,11 @@ pub struct DeathNameplateAnimation {
     pub start_time: web_time::Instant,
     pub duration: web_time::Duration,
     pub seed: u32,
+    pub player_type: sow_core::player::PlayerType,
+    pub leader: sow_core::player::Leader,
+    pub player_id: u16,
+    pub nameplate_size: f32,
+    pub troops: f64,
 }
 
 #[allow(clippy::type_complexity)]
@@ -147,6 +152,7 @@ pub struct UiState {
     pub raw_input: egui::RawInput,
 
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
+    pub label_sizes: std::collections::HashMap<u16, f32>,
     /// True only while the player started the offline tutorial from the main menu.
     pub tutorial_active: bool,
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
@@ -182,6 +188,10 @@ pub struct UiState {
     pub star_svg_registered: bool,
     pub floating_notices: Vec<FloatingNotice>,
     pub death_nameplates: Vec<DeathNameplateAnimation>,
+    /// Wall-clock when the local player was eliminated (defeat panel delay anchor).
+    pub defeat_time: Option<web_time::Instant>,
+    /// Cached endgame copy for panel fade-out (is_victory, title, subtitle).
+    pub endgame_cache: Option<(bool, String, String)>,
 
     pub cached_hovered_building_id: Option<u64>,
     pub cached_hovered_building_level: u8,
@@ -511,6 +521,7 @@ impl SowApp {
                 raw_input,
 
                 label_positions: std::collections::HashMap::new(),
+                label_sizes: std::collections::HashMap::new(),
                 tutorial_active: false,
                 tutorial_step: crate::hud::tutorial::TutorialStep::Welcome,
                 show_leaderboard: false,
@@ -536,6 +547,8 @@ impl SowApp {
                 star_svg_registered: false,
                 floating_notices: Vec::new(),
                 death_nameplates: Vec::new(),
+                defeat_time: None,
+                endgame_cache: None,
 
                 cached_hovered_building_id: None,
                 cached_hovered_building_level: 0,
@@ -672,6 +685,8 @@ impl SowApp {
             }
         }
         self.ui.is_spectating = false;
+        self.ui.defeat_time = None;
+        self.ui.endgame_cache = None;
     }
 
     /// Enter the EnterGame splash (fade-in, progress bar, fade-out to Playing).
@@ -909,6 +924,8 @@ impl SowApp {
                     self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
                 self.input.has_snapped_camera_to_spawn = false;
                 self.ui.is_spectating = false;
+                self.ui.defeat_time = None;
+                self.ui.endgame_cache = None;
             }
             sow_core::protocol::SimCommand::Turn(turn) => {
                 if let Some(e) = &mut self.sim.engine {
@@ -935,8 +952,8 @@ impl SowApp {
 
                             let mut tile_found = false;
                             if elimination_x > 0 || elimination_y > 0 {
-                                wx = elimination_x as f32 + 0.5 + (elimination_y % 2) as f32 * 0.5;
-                                wy = (elimination_y as f32 + 0.5) * 0.8660254_f32;
+                                wx = elimination_x as f32 + 0.5;
+                                wy = elimination_y as f32 + 0.5;
                                 tile_found = true;
                             }
 
@@ -945,10 +962,8 @@ impl SowApp {
                                 if !tile_found
                                     && (target.centroid_x > 0.001 || target.centroid_y > 0.001)
                                 {
-                                    wx = target.centroid_x
-                                        + 0.5
-                                        + (target.centroid_y as i32 % 2) as f32 * 0.5;
-                                    wy = (target.centroid_y + 0.5) * 0.8660254_f32;
+                                    wx = target.centroid_x + 0.5;
+                                    wy = target.centroid_y + 0.5;
                                     tile_found = true;
                                 }
                             }
@@ -959,10 +974,8 @@ impl SowApp {
                                 if let Some(conqueror) =
                                     snap.players.iter().find(|p| p.id == conqueror_id)
                                 {
-                                    wx = conqueror.centroid_x
-                                        + 0.5
-                                        + (conqueror.centroid_y as i32 % 2) as f32 * 0.5;
-                                    wy = (conqueror.centroid_y + 0.5) * 0.8660254_f32;
+                                    wx = conqueror.centroid_x + 0.5;
+                                    wy = conqueror.centroid_y + 0.5;
                                 }
                             }
 
@@ -983,30 +996,46 @@ impl SowApp {
                             // Spawn death nameplate animations on desktop only
                             if self.input.screen_w >= 600.0 {
                                 // Spawn death nameplate animation
-                                let player_color = snap
-                                    .players
-                                    .iter()
-                                    .find(|p| p.id == player_id)
-                                    .map(|p| {
-                                        egui::Color32::from_rgb(
-                                            (p.color[0] * 255.0) as u8,
-                                            (p.color[1] * 255.0) as u8,
-                                            (p.color[2] * 255.0) as u8,
-                                        )
-                                    })
-                                    .unwrap_or(egui::Color32::WHITE);
+                                let mut target_player_type = sow_core::player::PlayerType::Bot;
+                                let mut target_leader = sow_core::player::Leader::default();
+                                let mut player_color = egui::Color32::WHITE;
+                                let mut target_troops = 0.0;
+                                let mut target_nameplate_size = 0.0;
+
+                                if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
+                                    target_player_type = target.player_type;
+                                    target_leader = target.leader;
+                                    player_color = egui::Color32::from_rgb(
+                                        (target.color[0] * 255.0) as u8,
+                                        (target.color[1] * 255.0) as u8,
+                                        (target.color[2] * 255.0) as u8,
+                                    );
+                                    target_troops = target.troops;
+                                    target_nameplate_size = target.nameplate_size;
+                                }
+
+                                // Prefer smoothed label positions and sizes if available
+                                let anim_wx = self.ui.label_positions.get(&player_id).map(|p| p.0).unwrap_or(wx);
+                                let anim_wy = self.ui.label_positions.get(&player_id).map(|p| p.1).unwrap_or(wy);
+                                let anim_size = self.ui.label_sizes.get(&player_id).copied().unwrap_or(target_nameplate_size).max(0.2);
+
                                 let seed = (player_id as u32)
                                     .wrapping_mul(2654435761)
                                     .wrapping_add(now_instant.elapsed().as_millis() as u32);
                                 self.ui.death_nameplates.push(
                                     crate::app::DeathNameplateAnimation {
-                                        name: format!("🕊️ {}", target_name),
+                                        name: target_name.clone(),
                                         color: player_color,
-                                        world_x: wx,
-                                        world_y: wy,
+                                        world_x: anim_wx,
+                                        world_y: anim_wy,
                                         start_time: now_instant,
-                                        duration: web_time::Duration::from_millis(3500),
+                                        duration: web_time::Duration::from_millis(1800),
                                         seed,
+                                        player_type: target_player_type,
+                                        leader: target_leader,
+                                        player_id,
+                                        nameplate_size: anim_size,
+                                        troops: target_troops,
                                     },
                                 );
                             }

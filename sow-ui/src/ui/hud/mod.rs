@@ -79,6 +79,7 @@ pub struct HudState {
     pub(crate) prev_requests: Vec<u16>,
     pub(crate) last_request_time: Option<Instant>,
     pub show_betrayal_warning: Option<(u16, sow_core::protocol::GameplayIntent)>,
+    pub betrayal_warning_cached: Option<(u16, sow_core::protocol::GameplayIntent)>,
     pub show_error: Option<String>,
     pub(crate) last_error_message: Option<String>,
     pub(crate) error_display_timer: Option<Instant>,
@@ -2472,132 +2473,159 @@ fn draw_betrayal_overlay(
     lang: Language,
 ) {
     let strings = &sow_i18n::get(lang).hud;
-    if let Some((ally_id, intent)) = state.show_betrayal_warning.clone() {
-        let screen_rect = ctx.content_rect();
-        let compact =
-            screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
+    if let Some(warning) = state.show_betrayal_warning.clone() {
+        state.betrayal_warning_cached = Some(warning);
+    }
 
-        ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Middle,
-            egui::Id::new("betrayal_overlay_bg"),
-        ))
-        .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+    let is_active = state.show_betrayal_warning.is_some();
+    let anim_dur = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let anim = crate::ui::animation::panel_in_out_anim(
+        ctx,
+        egui::Id::new("betrayal_panel_animation"),
+        is_active,
+        anim_dur,
+    );
 
-        let window = egui::Window::new("betrayal_warning_modal")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .order(egui::Order::Foreground);
+    if anim.progress <= 0.01 {
+        return;
+    }
 
-        let panel_w = if compact {
-            (screen_rect.width() - 32.0).min(500.0)
-        } else {
-            0.0 // auto-sized on desktop
-        };
+    let Some((ally_id, intent)) = state.betrayal_warning_cached.clone() else {
+        return;
+    };
 
-        let window = if compact {
-            window
-                .fixed_size(vec2(panel_w, 0.0))
-                .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
-        } else {
-            window.anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0))
-        };
+    let alpha = anim.progress;
+    let y_offset = anim.y_offset;
+    let screen_rect = ctx.content_rect();
+    let compact =
+        screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("betrayal_overlay_bg"),
+    ))
+    .rect_filled(
+        screen_rect,
+        0.0,
+        Color32::from_black_alpha((180.0 * alpha) as u8),
+    );
+
+    let window = egui::Window::new("betrayal_warning_modal")
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .order(egui::Order::Foreground);
+
+    let panel_w = if compact {
+        (screen_rect.width() - 32.0).min(500.0)
+    } else {
+        0.0
+    };
+
+    let window = if compact {
         window
-            .frame(
-                egui::Frame::window(&ctx.global_style())
-                    .fill(crate::ui::theme::panel_bg())
-                    .stroke(egui::Stroke::new(2.0f32, crate::ui::theme::accent_danger()))
-                    .inner_margin(if compact { 16.0 } else { 24.0 })
-                    .corner_radius(12),
-            )
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
+            .fixed_size(vec2(panel_w, 0.0))
+            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, y_offset))
+    } else {
+        window.anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0 + y_offset))
+    };
 
-                    let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
+    let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
 
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &strings.betrayal_title,
-                        egui::FontId::proportional(if compact { 22.0 } else { 28.0 }),
-                        crate::ui::theme::accent_danger(),
-                    );
+    window
+        .frame(
+            egui::Frame::window(&ctx.global_style())
+                .fill(crate::ui::theme::panel_bg().linear_multiply(alpha))
+                .stroke(egui::Stroke::new(2.0f32 * anim.scale, border_color))
+                .inner_margin(if compact { 16.0 } else { 24.0 })
+                .corner_radius(12),
+        )
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
 
-                    ui.add_space(if compact { 16.0 } else { 12.0 });
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &strings.betrayal_title,
+                    egui::FontId::proportional(if compact { 22.0 } else { 28.0 }),
+                    border_color,
+                );
 
-                    ui.label(
-                        RichText::new(format!(
-                            "If you attack {}, other allies could attack you.",
-                            ally_name
-                        ))
-                        .size(if compact { 14.0 } else { 16.0 })
-                        .color(Color32::WHITE),
-                    );
+                ui.add_space(if compact { 16.0 } else { 12.0 });
 
-                    ui.label(
-                        RichText::new("Are you sure?")
-                            .size(if compact { 15.0 } else { 18.0 })
-                            .strong()
-                            .color(crate::ui::theme::accent_ranked_gold()),
-                    );
+                ui.label(
+                    RichText::new(format!(
+                        "If you attack {}, other allies could attack you.",
+                        ally_name
+                    ))
+                    .size(if compact { 14.0 } else { 16.0 })
+                    .color(Color32::WHITE.linear_multiply(alpha)),
+                );
 
-                    ui.add_space(if compact { 32.0 } else { 24.0 });
+                ui.label(
+                    RichText::new("Are you sure?")
+                        .size(if compact { 15.0 } else { 18.0 })
+                        .strong()
+                        .color(crate::ui::theme::accent_ranked_gold().linear_multiply(alpha)),
+                );
 
-                    let btn_w = if compact {
-                        (ui.available_width() - 8.0) / 2.0
-                    } else {
-                        160.0
-                    };
-                    let btn_h = if compact { 40.0 } else { 44.0 };
+                ui.add_space(if compact { 32.0 } else { 24.0 });
 
-                    ui.horizontal(|ui| {
-                        if compact {
-                            ui.spacing_mut().item_spacing.x = 8.0;
-                        }
+                let btn_w = if compact {
+                    (ui.available_width() - 8.0) / 2.0
+                } else {
+                    160.0
+                };
+                let btn_h = if compact { 40.0 } else { 44.0 };
 
-                        if ui
-                            .add(
-                                crate::widgets::ThemeButton::new(&strings.betrayal_keep)
-                                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                    .custom_fill(crate::ui::theme::menu_secondary_button())
-                                    .min_size(vec2(btn_w, btn_h))
-                                    .text_size(if compact { 13.0 } else { 16.0 }),
-                            )
-                            .clicked()
-                        {
-                            state.show_betrayal_warning = None;
-                        }
+                ui.horizontal(|ui| {
+                    if compact {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                    }
 
-                        if !compact {
-                            ui.add_space(16.0);
-                        }
+                    if ui
+                        .add(
+                            crate::widgets::ThemeButton::new(&strings.betrayal_keep)
+                                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                                .custom_fill(
+                                    crate::ui::theme::menu_secondary_button().linear_multiply(alpha),
+                                )
+                                .custom_text_color(Color32::WHITE.linear_multiply(alpha))
+                                .min_size(vec2(btn_w, btn_h))
+                                .text_size(if compact { 13.0 } else { 16.0 }),
+                        )
+                        .clicked()
+                    {
+                        state.show_betrayal_warning = None;
+                    }
 
-                        if ui
-                            .add(
-                                crate::widgets::ThemeButton::new(&strings.betrayal_yes)
-                                    .style(crate::widgets::ThemeButtonStyle::Danger)
-                                    .min_size(vec2(if compact { btn_w } else { 140.0 }, btn_h))
-                                    .text_size(if compact { 13.0 } else { 16.0 }),
-                            )
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .clicked()
-                        {
-                            // 1. Send BreakAlliance intent
-                            cancel_intents.push(
-                                sow_core::protocol::GameplayIntent::BreakAlliance {
-                                    target_player: ally_id,
-                                },
-                            );
+                    if !compact {
+                        ui.add_space(16.0);
+                    }
 
-                            // 2. Send the original Attack intent right after
-                            cancel_intents.push(intent);
-
-                            state.show_betrayal_warning = None;
-                        }
-                    });
+                    if ui
+                        .add(
+                            crate::widgets::ThemeButton::new(&strings.betrayal_yes)
+                                .style(crate::widgets::ThemeButtonStyle::Danger)
+                                .custom_fill(crate::ui::theme::accent_danger().linear_multiply(alpha))
+                                .custom_text_color(Color32::WHITE.linear_multiply(alpha))
+                                .min_size(vec2(if compact { btn_w } else { 140.0 }, btn_h))
+                                .text_size(if compact { 13.0 } else { 16.0 }),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                    {
+                        cancel_intents.push(
+                            sow_core::protocol::GameplayIntent::BreakAlliance {
+                                target_player: ally_id,
+                            },
+                        );
+                        cancel_intents.push(intent);
+                        state.show_betrayal_warning = None;
+                    }
                 });
             });
-    }
+        });
 }
 
 fn draw_mobile_selection_bar(

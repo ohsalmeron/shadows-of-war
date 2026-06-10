@@ -346,7 +346,7 @@ impl GameState {
             }
         }
 
-        let mut neighbors = [(0, 0); 6];
+        let mut neighbors = [(0, 0); 8];
         let mut n_count = 0;
         self.map.for_each_neighbor(x, y, |nx, ny| {
             neighbors[n_count] = (nx, ny);

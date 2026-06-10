@@ -16,10 +16,7 @@ pub(crate) fn render(
         let alpha = crate::render::world::movers::interp_alpha(time, web_time::Instant::now());
 
         for fleet in &snap.fleets {
-            let tile_x_curr = (fleet.current_tile % sim.map_w) as f32;
-            let tile_y_curr = (fleet.current_tile / sim.map_w) as f32;
-            let wx_curr = tile_x_curr + 0.5 + (tile_y_curr as i32 % 2) as f32 * 0.5;
-            let wy_curr = (tile_y_curr + 0.5) * 0.8660254_f32;
+            let (wx_curr, wy_curr) = crate::render::world::movers::tile_to_world(fleet.current_tile, sim.map_w);
 
             let mut wx = wx_curr;
             let mut wy = wy_curr;
@@ -30,10 +27,7 @@ pub(crate) fn render(
                     .saturating_sub(2)
                     .min(fleet.path.len().saturating_sub(1));
                 let prev_tile = fleet.path[prev_idx];
-                let tile_x_prev = (prev_tile % sim.map_w) as f32;
-                let tile_y_prev = (prev_tile / sim.map_w) as f32;
-                let wx_prev = tile_x_prev + 0.5 + (tile_y_prev as i32 % 2) as f32 * 0.5;
-                let wy_prev = (tile_y_prev + 0.5) * 0.8660254_f32;
+                let (wx_prev, wy_prev) = crate::render::world::movers::tile_to_world(prev_tile, sim.map_w);
 
                 wx = wx_prev + (wx_curr - wx_prev) * alpha;
                 wy = wy_prev + (wy_curr - wy_prev) * alpha;

@@ -212,6 +212,10 @@ pub struct Player {
     pub nameplate_y: f32,
     #[serde(default)]
     pub nameplate_size: f32,
+    #[serde(default)]
+    pub nameplate_offset_x: f32,
+    #[serde(default)]
+    pub nameplate_offset_y: f32,
     #[serde(default = "default_player_gold")]
     pub gold: f64,
     pub color: [f32; 3],
@@ -279,6 +283,8 @@ impl Player {
             nameplate_x: 0.0,
             nameplate_y: 0.0,
             nameplate_size: 0.0,
+            nameplate_offset_x: 0.0,
+            nameplate_offset_y: 0.0,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -352,6 +358,8 @@ impl Player {
             nameplate_x: 0.0,
             nameplate_y: 0.0,
             nameplate_size: 0.0,
+            nameplate_offset_x: 0.0,
+            nameplate_offset_y: 0.0,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -394,11 +402,7 @@ impl Player {
             Civilization::Sparta => Leader::Leonidas,
             Civilization::France => Leader::Napoleon,
         };
-        let final_color = if config.game_mode == "Teams" {
-            color
-        } else {
-            leader.filler_rgb()
-        };
+        let final_color = color;
         Self {
             id,
             alive: true,
@@ -415,6 +419,8 @@ impl Player {
             nameplate_x: 0.0,
             nameplate_y: 0.0,
             nameplate_size: 0.0,
+            nameplate_offset_x: 0.0,
+            nameplate_offset_y: 0.0,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -455,6 +461,8 @@ impl Player {
             self.nameplate_x = 0.0;
             self.nameplate_y = 0.0;
             self.nameplate_size = 0.0;
+            self.nameplate_offset_x = 0.0;
+            self.nameplate_offset_y = 0.0;
             return;
         }
 
@@ -487,6 +495,8 @@ impl Player {
             self.nameplate_x = cx;
             self.nameplate_y = cy;
             self.nameplate_size = 12.0;
+            self.nameplate_offset_x = 0.0;
+            self.nameplate_offset_y = 0.0;
             return;
         }
 
@@ -546,6 +556,8 @@ impl Player {
             self.nameplate_x = cx;
             self.nameplate_y = cy;
             self.nameplate_size = 12.0;
+            self.nameplate_offset_x = 0.0;
+            self.nameplate_offset_y = 0.0;
             return;
         }
 
@@ -560,7 +572,7 @@ impl Player {
         let name_len = self.name.chars().count().max(1) as f32;
         let width_constrained = (largest_rect.width as f32 / name_len) * 2.0;
         let height_constrained = largest_rect.height as f32 / 3.0;
-        let font_size = width_constrained.min(height_constrained).max(4.0);
+        let font_size = width_constrained.min(height_constrained).max(0.2);
 
         let nameplate_x = center_x as f32;
         let nameplate_y = center_y as f32 - (font_size / 3.0);
@@ -568,6 +580,9 @@ impl Player {
         self.nameplate_x = nameplate_x;
         self.nameplate_y = nameplate_y;
         self.nameplate_size = font_size;
+
+        self.nameplate_offset_x = nameplate_x - cx;
+        self.nameplate_offset_y = nameplate_y - cy;
     }
 }
 
@@ -721,8 +736,8 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Reptile Green", rgb: hex_to_rgb(0x00C78C) },
     NamedColor { name: "Jade", rgb: hex_to_rgb(0x00A86B) },
     NamedColor { name: "Emerald Isle", rgb: hex_to_rgb(0x50C878) },
-    NamedColor { name: "Deep Forest Moss", rgb: hex_to_rgb(0x004B49) },
-    NamedColor { name: "British Racing Green", rgb: hex_to_rgb(0x123524) },
+    NamedColor { name: "Deep Forest Moss", rgb: hex_to_rgb(0x1F807C) },
+    NamedColor { name: "Rich Racing Green", rgb: hex_to_rgb(0x286D49) },
     NamedColor { name: "Fern Green", rgb: hex_to_rgb(0x4F7942) },
     NamedColor { name: "Sagebrush", rgb: hex_to_rgb(0x8A9A5B) },
     NamedColor { name: "Tea Matcha", rgb: hex_to_rgb(0xD0F0C0) },
@@ -737,12 +752,12 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Amazon Green", rgb: hex_to_rgb(0x3B7A57) },
     NamedColor { name: "Earthy Sage", rgb: hex_to_rgb(0x5F8575) },
     // Expanded Greens
-    NamedColor { name: "Dragon Scale", rgb: hex_to_rgb(0x2B3D26) },
+    NamedColor { name: "Vibrant Scale Green", rgb: hex_to_rgb(0x567D48) },
     NamedColor { name: "Amazonia", rgb: hex_to_rgb(0x3A5F0B) },
     NamedColor { name: "Valhalla Moss", rgb: hex_to_rgb(0x445533) },
     NamedColor { name: "Kyoto Tea", rgb: hex_to_rgb(0xB9C406) },
     NamedColor { name: "Bamboo Shoot", rgb: hex_to_rgb(0x889F22) },
-    NamedColor { name: "Jungle Canopy", rgb: hex_to_rgb(0x133824) },
+    NamedColor { name: "Lush Jungle Green", rgb: hex_to_rgb(0x358D5A) },
     NamedColor { name: "Mint Mojito", rgb: hex_to_rgb(0x77DD77) },
     NamedColor { name: "Algae Bloom", rgb: hex_to_rgb(0x93DFB8) },
     NamedColor { name: "Green Apple", rgb: hex_to_rgb(0x8DB600) },
@@ -759,13 +774,13 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Malachite", rgb: hex_to_rgb(0x0BDA51) },
     NamedColor { name: "Mantis", rgb: hex_to_rgb(0x74C365) },
     NamedColor { name: "Middle Green", rgb: hex_to_rgb(0x4D8C57) },
-    NamedColor { name: "Mountain Pine", rgb: hex_to_rgb(0x19350E) },
+    NamedColor { name: "Brighter Pine", rgb: hex_to_rgb(0x437E2E) },
     NamedColor { name: "Myrtle Green", rgb: hex_to_rgb(0x317873) },
     NamedColor { name: "Neon Carrot Green", rgb: hex_to_rgb(0x80FF00) },
-    NamedColor { name: "Nordic Spruce", rgb: hex_to_rgb(0x213125) },
-    NamedColor { name: "Olive Drab #7", rgb: hex_to_rgb(0x3C341F) },
+    NamedColor { name: "Bright Spruce", rgb: hex_to_rgb(0x446B4E) },
+    NamedColor { name: "Warm Olive Clay", rgb: hex_to_rgb(0x73603D) },
     NamedColor { name: "Parrot Green", rgb: hex_to_rgb(0x12AD2B) },
-    NamedColor { name: "Pine Tree", rgb: hex_to_rgb(0x2A2F23) },
+    NamedColor { name: "Brighter Pine Green", rgb: hex_to_rgb(0x5E6B50) },
     NamedColor { name: "Reseda Green", rgb: hex_to_rgb(0x6C7C59) },
 
     // --- The Cosmic Abyss (50 Colors) ---
@@ -794,7 +809,7 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Rose Gold", rgb: hex_to_rgb(0xB76E79) },
     NamedColor { name: "Lavender Mist", rgb: hex_to_rgb(0xE6E6FA) },
     NamedColor { name: "Plum Jam", rgb: hex_to_rgb(0xDDA0DD) },
-    NamedColor { name: "Dark Purple Abyss", rgb: hex_to_rgb(0x301934) },
+    NamedColor { name: "Royal Purple", rgb: hex_to_rgb(0x6A3573) },
     NamedColor { name: "Cosmic Violet", rgb: hex_to_rgb(0x512888) },
     NamedColor { name: "Neon Purple", rgb: hex_to_rgb(0xA32CC4) },
     NamedColor { name: "Amethyst", rgb: hex_to_rgb(0x602F6B) },
@@ -802,14 +817,14 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     // Expanded Cosmic
     NamedColor { name: "Pulsar Purple", rgb: hex_to_rgb(0xBF00FF) },
     NamedColor { name: "Supernova Pink", rgb: hex_to_rgb(0xFF007F) },
-    NamedColor { name: "Event Horizon", rgb: hex_to_rgb(0x0D0D0D) },
+    NamedColor { name: "Nebula Twilight", rgb: hex_to_rgb(0x4C4366) },
     NamedColor { name: "Nebula Gas", rgb: hex_to_rgb(0x452C63) },
     NamedColor { name: "Star Cluster", rgb: hex_to_rgb(0x76616B) },
     NamedColor { name: "Galaxy Swirl", rgb: hex_to_rgb(0x58427C) },
-    NamedColor { name: "Astral Plane", rgb: hex_to_rgb(0x332041) },
-    NamedColor { name: "Void Matter", rgb: hex_to_rgb(0x190A26) },
+    NamedColor { name: "Star Astral Purple", rgb: hex_to_rgb(0x6E448F) },
+    NamedColor { name: "Void Purple", rgb: hex_to_rgb(0x59288C) },
     NamedColor { name: "Comet Tail", rgb: hex_to_rgb(0x99AAB5) },
-    NamedColor { name: "Meteorite", rgb: hex_to_rgb(0x3C3C3C) },
+    NamedColor { name: "Bright Meteorite Grey", rgb: hex_to_rgb(0x7D7D7D) },
     NamedColor { name: "Quantum Pink", rgb: hex_to_rgb(0xFF1493) },
     NamedColor { name: "Gamma Ray", rgb: hex_to_rgb(0xFFFF33) },
     NamedColor { name: "Binary Star", rgb: hex_to_rgb(0xFFA500) },
@@ -819,11 +834,11 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Stardust", rgb: hex_to_rgb(0x9F8170) },
     NamedColor { name: "Zenith Blue", rgb: hex_to_rgb(0x007FFF) },
     NamedColor { name: "Nadire Purple", rgb: hex_to_rgb(0x4B0082) },
-    NamedColor { name: "Infinite Void", rgb: hex_to_rgb(0x000000) },
+    NamedColor { name: "Cosmic Slate Blue", rgb: hex_to_rgb(0x3D5A80) },
 
     // --- The Ocean Depths (50 Colors) ---
     NamedColor { name: "Electric Blue", rgb: hex_to_rgb(0x0000FF) },
-    NamedColor { name: "Midnight Navy", rgb: hex_to_rgb(0x000080) },
+    NamedColor { name: "Rich Royal Navy", rgb: hex_to_rgb(0x294BB0) },
     NamedColor { name: "Dodger Blue", rgb: hex_to_rgb(0x1E90FF) },
     NamedColor { name: "Deep Sky Blue", rgb: hex_to_rgb(0x00BFFF) },
     NamedColor { name: "Sky Blue", rgb: hex_to_rgb(0x87CEEB) },
@@ -838,26 +853,26 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Deep Sea Teal", rgb: hex_to_rgb(0x088F8F) },
     NamedColor { name: "Cobalt Blue", rgb: hex_to_rgb(0x0047AB) },
     NamedColor { name: "Royal Blue", rgb: hex_to_rgb(0x4169E1) },
-    NamedColor { name: "Dark Blue", rgb: hex_to_rgb(0x00008B) },
-    NamedColor { name: "Midnight Blue", rgb: hex_to_rgb(0x191970) },
+    NamedColor { name: "Classic Royal Blue", rgb: hex_to_rgb(0x385ED0) },
+    NamedColor { name: "Midnight Purple-Blue", rgb: hex_to_rgb(0x3F3FB0) },
     NamedColor { name: "Cornflower", rgb: hex_to_rgb(0x6495ED) },
     NamedColor { name: "Ice Blue", rgb: hex_to_rgb(0xB0C4DE) },
     NamedColor { name: "Slate Grey-Blue", rgb: hex_to_rgb(0x708090) },
     NamedColor { name: "Egyptian Blue", rgb: hex_to_rgb(0x1034A6) },
-    NamedColor { name: "Deep Sea Abyss", rgb: hex_to_rgb(0x111E6C) },
+    NamedColor { name: "Luminous Abyss", rgb: hex_to_rgb(0x334BCB) },
     NamedColor { name: "Majorelle Blue", rgb: hex_to_rgb(0x6050DC) },
     NamedColor { name: "Neon Blue", rgb: hex_to_rgb(0x4D4DFF) },
     // Expanded Ocean
-    NamedColor { name: "Kraken Ink", rgb: hex_to_rgb(0x0A0B10) },
+    NamedColor { name: "Slate Ink Blue", rgb: hex_to_rgb(0x324D73) },
     NamedColor { name: "Bioluminescent Blue", rgb: hex_to_rgb(0x00F5FF) },
     NamedColor { name: "Siren's Song", rgb: hex_to_rgb(0x40E0D0) },
     NamedColor { name: "Coral Reef Pink", rgb: hex_to_rgb(0xFF7F50) },
     NamedColor { name: "Anemone Purple", rgb: hex_to_rgb(0x800080) },
     NamedColor { name: "Manta Ray Grey", rgb: hex_to_rgb(0x2F4F4F) },
-    NamedColor { name: "Abyssal Plain", rgb: hex_to_rgb(0x000080) },
+    NamedColor { name: "Luminous Abyssal", rgb: hex_to_rgb(0x2B4EBF) },
     NamedColor { name: "Pelagic Blue", rgb: hex_to_rgb(0x0000FF) },
-    NamedColor { name: "Benthic Black", rgb: hex_to_rgb(0x000000) },
-    NamedColor { name: "Deep Trench", rgb: hex_to_rgb(0x050505) },
+    NamedColor { name: "Benthic Steel Blue", rgb: hex_to_rgb(0x3F5B73) },
+    NamedColor { name: "Deep Trench Blue", rgb: hex_to_rgb(0x324E6E) },
     NamedColor { name: "Oceanic Cobalt", rgb: hex_to_rgb(0x0047AB) },
     NamedColor { name: "Sea Salt Blue", rgb: hex_to_rgb(0xF0F8FF) },
     NamedColor { name: "Marine Teal", rgb: hex_to_rgb(0x008080) },
@@ -893,7 +908,7 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Molten Core", rgb: hex_to_rgb(0xFF3300) },
     NamedColor { name: "Hearth Fire", rgb: hex_to_rgb(0xFF6600) },
     NamedColor { name: "Cinder Ash", rgb: hex_to_rgb(0x543D37) },
-    NamedColor { name: "Smoldering Coal", rgb: hex_to_rgb(0x2B1B17) },
+    NamedColor { name: "Ember Warmth", rgb: hex_to_rgb(0x6D4E45) },
     NamedColor { name: "Dragon Breath", rgb: hex_to_rgb(0xFF2400) },
     NamedColor { name: "Solar Flare Red", rgb: hex_to_rgb(0xED2939) },
     NamedColor { name: "Afterglow", rgb: hex_to_rgb(0xF28500) },
@@ -914,7 +929,7 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Mesa Sun", rgb: hex_to_rgb(0xFF8C00) },
     NamedColor { name: "Oasis Palm", rgb: hex_to_rgb(0x228B22) },
     NamedColor { name: "Dune Crest", rgb: hex_to_rgb(0xD2B48C) },
-    NamedColor { name: "Scorpion Black", rgb: hex_to_rgb(0x1A1110) },
+    NamedColor { name: "Scorpion Brown", rgb: hex_to_rgb(0x6D4E4B) },
     NamedColor { name: "Mirage Blue", rgb: hex_to_rgb(0xADD8E6) },
     NamedColor { name: "Sandstorm", rgb: hex_to_rgb(0xE2CA76) },
     NamedColor { name: "Badlands Red", rgb: hex_to_rgb(0xB22222) },
@@ -955,27 +970,27 @@ pub static PREMIUM_COLORS: [NamedColor; 300] = [
     NamedColor { name: "Hailstone", rgb: hex_to_rgb(0xD3D3D3) },
     NamedColor { name: "Avalanche", rgb: hex_to_rgb(0xFFFFFF) },
     NamedColor { name: "Northern Lights Purple", rgb: hex_to_rgb(0x8A2BE2) },
-    NamedColor { name: "Ice Cave Blue", rgb: hex_to_rgb(0x00008B) },
+    NamedColor { name: "Frozen Cave Blue", rgb: hex_to_rgb(0x385BD0) },
     NamedColor { name: "Glacier Grey", rgb: hex_to_rgb(0xC0C0C0) },
     NamedColor { name: "Powder Snow", rgb: hex_to_rgb(0xFFFafa) },
     NamedColor { name: "Shivering Sky", rgb: hex_to_rgb(0x87CEFA) },
-    NamedColor { name: "Frozen Fir", rgb: hex_to_rgb(0x1B3022) },
+    NamedColor { name: "Fir Evergreen", rgb: hex_to_rgb(0x426B4E) },
 
     // --- Earthy Core (20 Colors) ---
-    NamedColor { name: "Obsidian Glass", rgb: hex_to_rgb(0x0D0D0D) },
-    NamedColor { name: "Basalt Pillar", rgb: hex_to_rgb(0x3C3C3C) },
+    NamedColor { name: "Obsidian Jade Green", rgb: hex_to_rgb(0x3F5448) },
+    NamedColor { name: "Basalt Slate Grey", rgb: hex_to_rgb(0x757575) },
     NamedColor { name: "Pyrite Shine", rgb: hex_to_rgb(0x967117) },
-    NamedColor { name: "Hematite Red", rgb: hex_to_rgb(0x5E2121) },
+    NamedColor { name: "Bright Hematite Red", rgb: hex_to_rgb(0x9E3B3B) },
     NamedColor { name: "Magma Chamber", rgb: hex_to_rgb(0x8B0000) },
     NamedColor { name: "Limestone", rgb: hex_to_rgb(0xD3D3D3) },
     NamedColor { name: "Granite", rgb: hex_to_rgb(0x676767) },
-    NamedColor { name: "Shale", rgb: hex_to_rgb(0x4F4F4F) },
-    NamedColor { name: "Coal Bed", rgb: hex_to_rgb(0x121212) },
+    NamedColor { name: "Slate Shale", rgb: hex_to_rgb(0x828285) },
+    NamedColor { name: "Coal Grey", rgb: hex_to_rgb(0x545459) },
     NamedColor { name: "Earthen Clay", rgb: hex_to_rgb(0x8B4513) },
     NamedColor { name: "Copper Ore", rgb: hex_to_rgb(0xB87333) },
     NamedColor { name: "Silver Vein", rgb: hex_to_rgb(0xC0C0C0) },
     NamedColor { name: "Iron Oxide", rgb: hex_to_rgb(0x8D4024) },
-    NamedColor { name: "Tectonic Slate", rgb: hex_to_rgb(0x2F4F4F) },
+    NamedColor { name: "Lighter Tectonic Slate", rgb: hex_to_rgb(0x5A7D7D) },
     NamedColor { name: "Gravel Path", rgb: hex_to_rgb(0x808080) },
     NamedColor { name: "Boulder", rgb: hex_to_rgb(0x7B7B7B) },
     NamedColor { name: "Mudstone", rgb: hex_to_rgb(0x70543E) },
@@ -1046,7 +1061,7 @@ pub fn human_shader_territory_rgb(player_id: u16) -> [f32; 3] {
         // Jitter: +/- 0.015 Hue, +/- 0.04 Sat, +/- 0.04 Val
         let hj = h + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.03;
         let sj = (s + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.08).clamp(0.4, 1.0);
-        let mut vj = (v + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.08).clamp(0.3, 1.0);
+        let mut vj = (v + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.08).clamp(0.45, 1.0);
         
         // Vibrancy guard for warm colors
         if hj.fract().abs() >= 0.03 && hj.fract().abs() <= 0.15 && vj < 0.60 {
@@ -1072,7 +1087,7 @@ pub fn bot_territory_color(game_seed: u64, bot_id: u16) -> [f32; 3] {
 
         let hj = h + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.03;
         let sj = (s + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.08).clamp(0.4, 1.0);
-        let mut vj = (v + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.08).clamp(0.3, 1.0);
+        let mut vj = (v + (rng.next_int(0, 1000) as f32 / 1000.0 - 0.5) * 0.08).clamp(0.45, 1.0);
 
         // Vibrancy guard for warm colors
         if hj.fract().abs() >= 0.03 && hj.fract().abs() <= 0.15 && vj < 0.60 {

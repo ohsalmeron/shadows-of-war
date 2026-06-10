@@ -19,7 +19,7 @@ struct Globals {
     fallout_slots: array<vec4<f32>, 8>,
     nobuild_slots: array<vec4<f32>, 32>,
     sub_voxel_scale: f32,
-    _pad2: f32,
+    blend_mode: f32,
     _pad3: f32,
     _pad4: f32,
 }
@@ -63,63 +63,35 @@ fn get_cell_terrain(hex: vec2<i32>) -> u32 {
 }
 
 fn world_to_hex(world_pos: vec2<f32>) -> vec2<i32> {
-    let q_f = world_pos.x - world_pos.y * 0.577350269;
-    let r_f = world_pos.y * 1.154700538;
-    let s_f = -q_f - r_f;
-
-    var rq = round(q_f);
-    var rr = round(r_f);
-    let rs = round(s_f);
-
-    let q_diff = abs(rq - q_f);
-    let r_diff = abs(rr - r_f);
-    let s_diff = abs(rs - s_f);
-
-    if q_diff > r_diff && q_diff > s_diff {
-        rq = -rr - rs;
-    } else if r_diff > s_diff {
-        rr = -rq - rs;
-    }
-
-    let col = i32(rq) + (i32(rr) - (i32(rr) & 1)) / 2;
-    let row = i32(rr);
-    return vec2<i32>(col, row);
+    return vec2<i32>(floor(world_pos));
 }
 
 fn hex_distance(a: vec2<i32>, b: vec2<i32>) -> i32 {
-    let q1 = a.x - (a.y - (a.y & 1)) / 2;
-    let r1 = a.y;
-    let q2 = b.x - (b.y - (b.y & 1)) / 2;
-    let r2 = b.y;
-
-    let dq = q2 - q1;
-    let dr = r2 - r1;
-    return (abs(dq) + abs(dr) + abs(dq + dr)) / 2;
+    return max(abs(a.x - b.x), abs(a.y - b.y));
 }
 
 fn hex_to_world(hex: vec2<i32>) -> vec2<f32> {
-    let col = f32(hex.x);
-    let row = f32(hex.y);
-    let bx = col + 0.5 + f32(hex.y & 1) * 0.5;
-    let by = (row + 0.5) * 0.8660254;
-    return vec2<f32>(bx, by);
+    return vec2<f32>(f32(hex.x) + 0.5, f32(hex.y) + 0.5);
 }
 
 fn get_hex_neighbor(hex: vec2<i32>, direction: i32) -> vec2<i32> {
-    let is_odd = (hex.y % 2) != 0;
     var offset = vec2<i32>(0, 0);
     if (direction == 0) {
         offset = vec2<i32>(1, 0); // East
     } else if (direction == 1) {
         offset = vec2<i32>(-1, 0); // West
     } else if (direction == 2) {
-        if (is_odd) { offset = vec2<i32>(0, -1); } else { offset = vec2<i32>(-1, -1); } // Northwest
+        offset = vec2<i32>(0, -1); // North
     } else if (direction == 3) {
-        if (is_odd) { offset = vec2<i32>(1, -1); } else { offset = vec2<i32>(0, -1); } // Northeast
+        offset = vec2<i32>(0, 1); // South
     } else if (direction == 4) {
-        if (is_odd) { offset = vec2<i32>(0, 1); } else { offset = vec2<i32>(-1, 1); } // Southwest
+        offset = vec2<i32>(1, -1); // Northeast
     } else if (direction == 5) {
-        if (is_odd) { offset = vec2<i32>(1, 1); } else { offset = vec2<i32>(0, 1); } // Southeast
+        offset = vec2<i32>(-1, -1); // Northwest
+    } else if (direction == 6) {
+        offset = vec2<i32>(1, 1); // Southeast
+    } else if (direction == 7) {
+        offset = vec2<i32>(-1, 1); // Southwest
     }
     return hex + offset;
 }
@@ -129,6 +101,22 @@ fn owner_albedo(owner_id: u32) -> vec3<f32> {
         return player_colors.colors[owner_id].rgb;
     }
     return vec3<f32>(0.5, 0.5, 0.5); // Fallback if out of bounds
+}
+
+fn blend_channel_overlay(base: f32, blend: f32) -> f32 {
+    if (base < 0.5) {
+        return 2.0 * base * blend;
+    } else {
+        return 1.0 - 2.0 * (1.0 - base) * (1.0 - blend);
+    }
+}
+
+fn blend_overlay(base: vec3<f32>, blend: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(
+        blend_channel_overlay(base.r, blend.r),
+        blend_channel_overlay(base.g, blend.g),
+        blend_channel_overlay(base.b, blend.b)
+    );
 }
 
 @fragment
@@ -149,7 +137,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         cell_hex = world_to_hex(sub_hex_center);
         
         let local_sub_pos = (vec2<f32>(world_x, world_y) - sub_hex_center) * scale;
-        sub_dist_to_edge = 0.5 - max(abs(local_sub_pos.x), 0.5 * abs(local_sub_pos.x) + 0.86602540378 * abs(local_sub_pos.y));
+        sub_dist_to_edge = 0.5 - max(abs(local_sub_pos.x), abs(local_sub_pos.y));
     }
 
     let cell_x = cell_hex.x;
@@ -185,17 +173,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let dist_to_parent = length(sub_hex_local_pos);
             if (dist_to_parent > 0.001) {
                 let local_dir = sub_hex_local_pos / dist_to_parent;
-                const neighbor_dirs = array<vec2<f32>, 6>(
+                const neighbor_dirs = array<vec2<f32>, 8>(
                     vec2<f32>(1.0, 0.0),
                     vec2<f32>(-1.0, 0.0),
-                    vec2<f32>(-0.5, -0.86602540378),
-                    vec2<f32>(0.5, -0.86602540378),
-                    vec2<f32>(-0.5, 0.86602540378),
-                    vec2<f32>(0.5, 0.86602540378)
+                    vec2<f32>(0.0, -1.0),
+                    vec2<f32>(0.0, 1.0),
+                    vec2<f32>(0.70710678, -0.70710678),
+                    vec2<f32>(-0.70710678, -0.70710678),
+                    vec2<f32>(0.70710678, 0.70710678),
+                    vec2<f32>(-0.70710678, 0.70710678)
                 );
                 var nearest_neighbor_idx = 0;
                 var max_dot = -999.0;
-                for (var i = 0; i < 6; i = i + 1) {
+                for (var i = 0; i < 8; i = i + 1) {
                     let d = dot(local_dir, neighbor_dirs[i]);
                     if d > max_dot {
                         max_dot = d;
@@ -277,8 +267,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             opacity = 0.28;
         }
 
-        // Territory overlay — reduced blend lets terrain detail show through
-        base_color = mix(base_color, albedo, opacity);
+        // Territory overlay — supports different blend modes
+        var blended_color = base_color;
+        let mode = i32(round(globals.blend_mode));
+        if (mode == 1) {
+            // Multiply
+            blended_color = base_color * albedo;
+        } else if (mode == 2) {
+            // Overlay
+            blended_color = blend_overlay(base_color, albedo);
+        } else if (mode == 3) {
+            // All Albedo
+            blended_color = albedo;
+        } else {
+            // Normal Mix
+            blended_color = albedo;
+        }
+
+        if (mode == 3) {
+            base_color = blended_color;
+        } else {
+            base_color = mix(base_color, blended_color, opacity);
+        }
 
         // ── Territory Heartbeat Pulse (living empire breathe) ──
         let heartbeat = 0.97 + 0.03 * sin(globals.time * 1.8 + f32(owner_id) * 2.3);
@@ -324,16 +334,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         if has_border || has_water_neighbor {
             let is_tribe = owner_id >= 200u;
-            const neighbor_dirs = array<vec2<f32>, 6>(
-                vec2<f32>(1.0, 0.0),
-                vec2<f32>(-1.0, 0.0),
-                vec2<f32>(-0.5, -0.86602540378),
-                vec2<f32>(0.5, -0.86602540378),
-                vec2<f32>(-0.5, 0.86602540378),
-                vec2<f32>(0.5, 0.86602540378)
+            const neighbor_dirs = array<vec2<f32>, 4>(
+                vec2<f32>(1.0, 0.0),  // East
+                vec2<f32>(-1.0, 0.0), // West
+                vec2<f32>(0.0, -1.0), // North
+                vec2<f32>(0.0, 1.0)   // South
             );
 
-            for (var i = 0; i < 6; i = i + 1) {
+            for (var i = 0; i < 4; i = i + 1) {
                 let neighbor_hex = get_hex_neighbor(cell_hex, i);
                 let neighbor_terrain = get_cell_terrain(neighbor_hex);
                 let neighbor_owner = get_cell_owner(neighbor_hex);
@@ -437,8 +445,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             if target_id != owner_id { continue; }
 
             let front_world = vec2<f32>(
-                slot.x + 0.5 + f32(i32(slot.y) % 2) * 0.5,
-                (slot.y + 0.5) * 0.8660254
+                slot.x + 0.5,
+                slot.y + 0.5
             );
             let dist = distance(world_pos_hex, front_world);
             let threat = 1.0 - smoothstep(0.0, radius, dist);
@@ -496,8 +504,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
             let alpha_p = slot.w;
             let f_center = vec2<f32>(
-                slot.x + 0.5 + f32(i32(slot.y) % 2) * 0.5,
-                (slot.y + 0.5) * 0.8660254
+                slot.x + 0.5,
+                slot.y + 0.5
             );
             let dist = distance(cell_world, f_center);
             if dist > f_radius { continue; }
@@ -544,7 +552,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     base_color = base_color * warm_tint;
 
     // Hex SDF reused by land emboss + building-placement grid (computed once; emboss skipped on water)
-    let min_dist_to_edge = 0.5 - max(abs(local_pos.x), 0.5 * abs(local_pos.x) + 0.86602540378 * abs(local_pos.y));
+    let min_dist_to_edge = 0.5 - max(abs(local_pos.x), abs(local_pos.y));
 
     // Embossed cell vignette — land only (on water it moirés into diagonal hatch when zoomed out)
     if is_land && globals.zoom >= 0.6 {

@@ -28,7 +28,7 @@ pub struct MapGlobals {
     /// Up to 32 nobuild exclusion zones: [center_col, center_row, radius, active].
     pub nobuild_slots: [[f32; 4]; 32],
     pub sub_voxel_scale: f32,
-    pub _pad2: f32,
+    pub blend_mode: f32,
     pub _pad3: f32,
     pub _pad4: f32,
 }
@@ -47,30 +47,16 @@ pub struct MapShaderData {
     owner_texture: gpu::TextureView,
 }
 
-fn get_neighbors(idx: u32, width: u32, height: u32) -> [Option<u32>; 6] {
+fn get_neighbors(idx: u32, width: u32, height: u32) -> [Option<u32>; 4] {
     let x = idx % width;
     let y = idx / width;
-    let is_odd = y % 2 != 0;
-    let deltas = if is_odd {
-        [
-            (1, 0),  // East
-            (-1, 0), // West
-            (0, -1), // Northwest
-            (1, -1), // Northeast
-            (0, 1),  // Southwest
-            (1, 1),  // Southeast
-        ]
-    } else {
-        [
-            (1, 0),   // East
-            (-1, 0),  // West
-            (-1, -1), // Northwest
-            (0, -1),  // Northeast
-            (-1, 1),  // Southwest
-            (0, 1),   // Southeast
-        ]
-    };
-    let mut neighbors = [None; 6];
+    let deltas = [
+        (1, 0),  // East
+        (-1, 0), // West
+        (0, -1), // North
+        (0, 1),  // South
+    ];
+    let mut neighbors = [None; 4];
     for (i, &(dx, dy)) in deltas.iter().enumerate() {
         let nx = x as i32 + dx;
         let ny = y as i32 + dy;
@@ -93,7 +79,7 @@ fn compute_has_border(idx: u32, owners: &[u16], width: u32, height: u32) -> bool
                 return true;
             }
         } else {
-            // Out of bounds owner is 0
+            // Map edge has out-of-bounds neighbor (treated as owner 0)
             if owner != 0 {
                 return true;
             }
@@ -118,33 +104,14 @@ fn get_elevation_cpu(x: i32, y: i32, width: u32, height: u32, terrain: &[u8]) ->
 fn compute_terrain_gradient(x: u32, y: u32, width: u32, height: u32, terrain: &[u8]) -> (f32, f32) {
     let cell_x = x as i32;
     let cell_y = y as i32;
-    let is_odd = cell_y % 2 != 0;
 
     let h_right = get_elevation_cpu(cell_x + 1, cell_y, width, height, terrain);
     let h_left = get_elevation_cpu(cell_x - 1, cell_y, width, height, terrain);
+    let h_up = get_elevation_cpu(cell_x, cell_y - 1, width, height, terrain);
+    let h_down = get_elevation_cpu(cell_x, cell_y + 1, width, height, terrain);
 
-    let h_up_l;
-    let h_up_r;
-    let h_dn_l;
-    let h_dn_r;
-
-    if is_odd {
-        h_up_l = get_elevation_cpu(cell_x, cell_y - 1, width, height, terrain);
-        h_up_r = get_elevation_cpu(cell_x + 1, cell_y - 1, width, height, terrain);
-        h_dn_l = get_elevation_cpu(cell_x, cell_y + 1, width, height, terrain);
-        h_dn_r = get_elevation_cpu(cell_x + 1, cell_y + 1, width, height, terrain);
-    } else {
-        h_up_l = get_elevation_cpu(cell_x - 1, cell_y - 1, width, height, terrain);
-        h_up_r = get_elevation_cpu(cell_x, cell_y - 1, width, height, terrain);
-        h_dn_l = get_elevation_cpu(cell_x - 1, cell_y + 1, width, height, terrain);
-        h_dn_r = get_elevation_cpu(cell_x, cell_y + 1, width, height, terrain);
-    }
-
-    let dx =
-        ((h_right + 0.5 * h_up_r + 0.5 * h_dn_r) - (h_left + 0.5 * h_up_l + 0.5 * h_dn_l)) * 0.10;
-    let dy = ((0.86602540378 * h_dn_l + 0.86602540378 * h_dn_r)
-        - (0.86602540378 * h_up_l + 0.86602540378 * h_up_r))
-        * 0.10;
+    let dx = (h_right - h_left) * 0.10;
+    let dy = (h_down - h_up) * 0.10;
     (dx, dy)
 }
 
@@ -202,6 +169,7 @@ pub struct MapRenderer {
     pub dirty_chunks: Vec<bool>,
     pub last_update: Option<web_time::Instant>,
     pub has_water_neighbor: Vec<bool>,
+    pub decay_accumulator: f32,
 }
 
 impl MapRenderer {
@@ -381,6 +349,7 @@ impl MapRenderer {
             dirty_chunks: vec![false; num_chunks as usize],
             last_update: None,
             has_water_neighbor,
+            decay_accumulator: 0.0,
         }
     }
 
@@ -480,6 +449,7 @@ impl MapRenderer {
         encoder: &mut gpu::CommandEncoder,
         context: &gpu::Context,
         dirty_tiles: &[sow_core::protocol::DirtyTile],
+        conquest_duration: f32,
     ) {
         let now = web_time::Instant::now();
         let dt = match self.last_update {
@@ -489,9 +459,19 @@ impl MapRenderer {
         self.last_update = Some(now);
 
 
-        // Scale decay based on elapsed time so it completes in exactly 0.5s on all frame rates
-        let decay_amount = (dt * 510.0).round() as u32;
-        let decay_amount = decay_amount.max(1);
+        // Scale decay based on elapsed time so it completes in exactly `conquest_duration` seconds on all frame rates.
+        // We use an accumulator to handle slow decay rates (longer lifetimes) smoothly on high frame rates,
+        // avoiding the `max(1)` clamping issue when decay_amount is less than 1.
+        let decay_rate = if conquest_duration > 0.0 {
+            255.0 / conquest_duration
+        } else {
+            85.0
+        };
+        self.decay_accumulator += dt * decay_rate;
+        let decay_amount = self.decay_accumulator.floor() as u32;
+        if decay_amount > 0 {
+            self.decay_accumulator -= decay_amount as f32;
+        }
 
         let total = (self.width * self.height) as usize;
         let u32_per_row = self.owner_bytes_per_row / 4;
@@ -529,25 +509,27 @@ impl MapRenderer {
         // 2. Decay existing flash (sparse — only active entries)
         let mut decay_dirty = false;
         let has_water = &self.has_water_neighbor;
-        self.flash_active.retain(|&tile_idx| {
-            let i = tile_idx as usize;
-            if i >= total {
-                return false;
-            }
-            let f = self.conquest_flash[i].saturating_sub(decay_amount.min(255) as u8);
-            self.conquest_flash[i] = f;
-            pack(
-                slice,
-                &self.owners,
-                &self.conquest_flash,
-                tile_idx,
-                has_water[i],
-            );
-            let y = tile_idx / width;
-            self.dirty_chunks[(y / chunk_h) as usize] = true;
-            decay_dirty = true;
-            f > 0
-        });
+        if decay_amount > 0 {
+            self.flash_active.retain(|&tile_idx| {
+                let i = tile_idx as usize;
+                if i >= total {
+                    return false;
+                }
+                let f = self.conquest_flash[i].saturating_sub(decay_amount.min(255) as u8);
+                self.conquest_flash[i] = f;
+                pack(
+                    slice,
+                    &self.owners,
+                    &self.conquest_flash,
+                    tile_idx,
+                    has_water[i],
+                );
+                let y = tile_idx / width;
+                self.dirty_chunks[(y / chunk_h) as usize] = true;
+                decay_dirty = true;
+                f > 0
+            });
+        }
 
         // 3. Apply new dirty tiles
         for dt in dirty_tiles {

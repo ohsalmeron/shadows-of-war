@@ -5,9 +5,22 @@ use std::collections::{HashMap, HashSet};
 use web_time::Instant;
 
 const TRAIL_CAP: usize = 32;
-const HEX_Y_SCALE: f32 = 0.8660254;
 const NUKE_ARC_PEAK: f32 = 4.0;
 const NUKE_ARC_LIFT: f32 = 20.0;
+
+#[inline]
+pub fn world_to_tile(wx: f32, wy: f32) -> (i32, i32) {
+    (wx.floor() as i32, wy.floor() as i32)
+}
+
+#[inline]
+pub fn tile_to_world(tile: u32, map_w: u32) -> (f32, f32) {
+    let tx = (tile % map_w) as f32;
+    let ty = (tile / map_w) as f32;
+    let wx = tx + 0.5;
+    let wy = ty + 0.5;
+    (wx, wy)
+}
 
 #[inline]
 fn flight_progress(path_len: usize, path_index: f32) -> f32 {
@@ -26,15 +39,6 @@ fn nuke_arc_height(progress: f32) -> f32 {
 #[inline]
 fn lift_world_for_arc(wx: f32, wy: f32, progress: f32) -> [f32; 2] {
     [wx, wy - nuke_arc_height(progress) * NUKE_ARC_LIFT]
-}
-
-#[inline]
-pub fn tile_to_world(tile: u32, map_w: u32) -> (f32, f32) {
-    let tx = (tile % map_w) as f32;
-    let ty = (tile / map_w) as f32;
-    let wx = tx + 0.5 + (ty as i32 % 2) as f32 * 0.5;
-    let wy = (ty + 0.5) * HEX_Y_SCALE;
-    (wx, wy)
 }
 
 #[derive(Clone, Copy)]

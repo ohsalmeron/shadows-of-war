@@ -213,8 +213,8 @@ impl SowApp {
                             } else {
                                 let cx = player.centroid_x;
                                 let cy = player.centroid_y;
-                                let target_world_cx = cx + 0.5 + (cy as i32 % 2) as f32 * 0.5;
-                                let target_world_cy = (cy + 0.5) * 0.8660254_f32;
+                                let target_world_cx = cx + 0.5;
+                                let target_world_cy = cy + 0.5;
                                 let target_zoom = 20.0;
 
                                 let current_world_cx = (self.input.screen_w * 0.5

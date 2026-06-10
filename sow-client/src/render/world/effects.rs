@@ -54,8 +54,8 @@ pub(crate) fn render(
 
             let p = elapsed / duration;
 
-            let exp_world_x = exp.x + 0.5 + (exp.y as i32 % 2) as f32 * 0.5;
-            let exp_world_y = (exp.y + 0.5) * 0.8660254_f32;
+            let exp_world_x = exp.x + 0.5;
+            let exp_world_y = exp.y + 0.5;
             let screen_x = (input.camera_x + exp_world_x * input.camera_zoom) / sf;
             let screen_y = (input.camera_y + exp_world_y * input.camera_zoom) / sf;
             let center = egui::pos2(screen_x, screen_y); // 1. Blinding white-hot flash (first 12% of duration, soft and clean)
@@ -144,8 +144,8 @@ pub(crate) fn render(
                 let px = exp.x + p_dist_x;
                 let py = exp.y + p_dist_y - rise;
 
-                let p_world_x = px + 0.5 + (py as i32 % 2) as f32 * 0.5;
-                let p_world_y = (py + 0.5) * 0.8660254_f32;
+                let p_world_x = px + 0.5;
+                let p_world_y = py + 0.5;
                 let p_screen_x = (input.camera_x + p_world_x * input.camera_zoom) / sf;
                 let p_screen_y = (input.camera_y + p_world_y * input.camera_zoom) / sf;
 

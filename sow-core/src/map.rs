@@ -127,26 +127,16 @@ impl GameMap {
     }
     #[inline(always)]
     pub fn for_each_neighbor(&self, x: u32, y: u32, mut f: impl FnMut(u32, u32)) {
-        let is_odd = !y.is_multiple_of(2);
-        let neighbors = if is_odd {
-            [
-                (1, 0),  // East
-                (-1, 0), // West
-                (0, -1), // Northwest
-                (1, -1), // Northeast
-                (0, 1),  // Southwest
-                (1, 1),  // Southeast
-            ]
-        } else {
-            [
-                (1, 0),   // East
-                (-1, 0),  // West
-                (-1, -1), // Northwest
-                (0, -1),  // Northeast
-                (-1, 1),  // Southwest
-                (0, 1),   // Southeast
-            ]
-        };
+        let neighbors = [
+            (1, 0),   // East
+            (-1, 0),  // West
+            (0, -1),  // North
+            (0, 1),   // South
+            (1, -1),  // Northeast
+            (-1, -1), // Northwest
+            (1, 1),   // Southeast
+            (-1, 1),  // Southwest
+        ];
         for &(dx, dy) in &neighbors {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
@@ -157,7 +147,7 @@ impl GameMap {
     }
     #[inline(always)]
     pub fn neighbors(&self, x: u32, y: u32) -> Vec<(u32, u32)> {
-        let mut r = Vec::with_capacity(6);
+        let mut r = Vec::with_capacity(8);
         self.for_each_neighbor(x, y, |nx, ny| r.push((nx, ny)));
         r
     }
@@ -166,12 +156,16 @@ impl GameMap {
         if self.owner_id(x, y) != player_id {
             return false;
         }
-        let is_odd = !y.is_multiple_of(2);
-        let deltas = if is_odd {
-            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
-        } else {
-            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
-        };
+        let deltas = [
+            (1, 0),   // East
+            (-1, 0),  // West
+            (0, -1),  // North
+            (0, 1),   // South
+            (1, -1),  // Northeast
+            (-1, -1), // Northwest
+            (1, 1),   // Southeast
+            (-1, 1),  // Southwest
+        ];
         for &(dx, dy) in &deltas {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;
@@ -188,12 +182,16 @@ impl GameMap {
     }
     #[inline(always)]
     pub fn is_adjacent_to_player(&self, x: u32, y: u32, player_id: u16) -> bool {
-        let is_odd = !y.is_multiple_of(2);
-        let deltas = if is_odd {
-            [(1, 0), (-1, 0), (0, -1), (1, -1), (0, 1), (1, 1)]
-        } else {
-            [(1, 0), (-1, 0), (-1, -1), (0, -1), (-1, 1), (0, 1)]
-        };
+        let deltas = [
+            (1, 0),   // East
+            (-1, 0),  // West
+            (0, -1),  // North
+            (0, 1),   // South
+            (1, -1),  // Northeast
+            (-1, -1), // Northwest
+            (1, 1),   // Southeast
+            (-1, 1),  // Southwest
+        ];
         for &(dx, dy) in &deltas {
             let nx = x as i32 + dx;
             let ny = y as i32 + dy;

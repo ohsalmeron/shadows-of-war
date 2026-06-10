@@ -1,4 +1,5 @@
 use crate::app::SowApp;
+use crate::render::world::movers::world_to_tile;
 use crate::{camera_zoom_upper_bound, CAMERA_MIN_ZOOM};
 use blade_graphics as gpu;
 use egui::{Pos2, Vec2};
@@ -10,26 +11,7 @@ impl SowApp {
         let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
         let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
 
-        let q_f = world_x - world_y * 0.577_350_26;
-        let r_f = world_y * 1.154_700_5;
-        let s_f = -q_f - r_f;
-
-        let mut rq = q_f.round();
-        let mut rr = r_f.round();
-        let rs = s_f.round();
-
-        let q_diff = (rq - q_f).abs();
-        let r_diff = (rr - r_f).abs();
-        let s_diff = (rs - s_f).abs();
-
-        if q_diff > r_diff && q_diff > s_diff {
-            rq = -rr - rs;
-        } else if r_diff > s_diff {
-            rr = -rq - rs;
-        }
-
-        let col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
-        let row = rr as i32;
+        let (col, row) = world_to_tile(world_x, world_y);
 
         if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
             Some((col, row))
@@ -852,8 +834,8 @@ impl SowApp {
                     if f.unit_type == sow_core::game::UnitType::Warship && f.owner_id == my_pid {
                         let col = (f.current_tile % self.sim.map_w) as f32;
                         let row = (f.current_tile / self.sim.map_w) as f32;
-                        let wx = col + 0.5 + (row as i32 % 2) as f32 * 0.5;
-                        let wy = (row + 0.5) * 0.8660254_f32;
+                        let wx = col + 0.5;
+                        let wy = row + 0.5;
                         // Click tolerance (half a tile)
                         if (wx - world_x).abs() < 0.5 && (wy - world_y).abs() < 0.5 {
                             clicked_warships.push(f.id);

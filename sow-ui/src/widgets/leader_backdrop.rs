@@ -238,7 +238,7 @@ pub fn draw_leader_hero_backdrop(
         transition.displayed_leader = selected;
     }
 
-    let incoming_tex = asset_loader.best_leader_portrait_texture(transition.anim_leader, mobile);
+    let incoming_tex = asset_loader.leader_portrait_texture(transition.anim_leader, mobile);
     let incoming_ready = incoming_tex.is_some();
     advance_phase(transition, incoming_ready, now);
 

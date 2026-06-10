@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::render::world::movers::{tile_to_world, world_to_tile};
 use crate::render::world::utils::*;
 
 pub(crate) fn get_upgrade_str(level: u8) -> &'static str {
@@ -88,22 +89,7 @@ pub(crate) fn render(
         let my = input.last_mouse_y as f32;
         let world_x = (mx - input.camera_x) / input.camera_zoom;
         let world_y = (my - input.camera_y) / input.camera_zoom;
-        let q_f = world_x - world_y * 0.577_350_26_f32;
-        let r_f = world_y * 1.154_700_5_f32;
-        let s_f = -q_f - r_f;
-        let mut rq = q_f.round();
-        let mut rr = r_f.round();
-        let rs = s_f.round();
-        let q_diff = (rq - q_f).abs();
-        let r_diff = (rr - r_f).abs();
-        let s_diff = (rs - s_f).abs();
-        if q_diff > r_diff && q_diff > s_diff {
-            rq = -rr - rs;
-        } else if r_diff > s_diff {
-            rr = -rq - rs;
-        }
-        let h_col = rq as i32 + (rr as i32 - (rr as i32 & 1)) / 2;
-        let h_row = rr as i32;
+        let (h_col, h_row) = world_to_tile(world_x, world_y);
         let hovered_tile_idx =
             if h_col >= 0 && h_row >= 0 && h_col < sim.map_w as i32 && h_row < sim.map_h as i32 {
                 Some((h_row * sim.map_w as i32 + h_col) as u32)
@@ -158,10 +144,9 @@ pub(crate) fn render(
                     continue; // Skip rendering Bunkers, Factories, and Ports on LOD 3 to reduce noise
                 }
 
+                let (bx, by) = tile_to_world(b.tile_idx, sim.map_w);
                 let tile_x = (b.tile_idx % sim.map_w) as f32;
                 let tile_y = (b.tile_idx / sim.map_w) as f32;
-                let bx = tile_x + 0.5 + (tile_y as i32 % 2) as f32 * 0.5;
-                let by = (tile_y + 0.5) * 0.8660254_f32;
 
                 let grid_x = (tile_x / cell_size) as i32;
                 let grid_y = (tile_y / cell_size) as i32;
@@ -220,10 +205,9 @@ pub(crate) fn render(
             }
         } else {
             for b in &snap.buildings {
+                let (bx, by) = tile_to_world(b.tile_idx, sim.map_w);
                 let tile_x = (b.tile_idx % sim.map_w) as f32;
                 let tile_y = (b.tile_idx / sim.map_w) as f32;
-                let bx = tile_x + 0.5 + (tile_y as i32 % 2) as f32 * 0.5;
-                let by = (tile_y + 0.5) * 0.8660254_f32;
                 rendered_buildings.push(RenderedBuilding {
                     bx,
                     by,
@@ -451,10 +435,9 @@ pub(crate) fn render(
                                 continue;
                             }
 
-                            // Convert attack front hex-grid centroid to world-space coordinates
-                            let attack_wx =
-                                attack.front_cx + 0.5 + ((attack.front_cy as i32) % 2) as f32 * 0.5;
-                            let attack_wy = (attack.front_cy + 0.5) * 0.8660254_f32;
+                            // Convert attack front centroid to world-space coordinates
+                            let attack_wx = attack.front_cx + 0.5;
+                            let attack_wy = attack.front_cy + 0.5;
 
                             let dx = attack_wx - b.bx;
                             let dy = attack_wy - b.by;
@@ -713,23 +696,19 @@ pub(crate) fn render(
                         ),
                     );
 
-                    // 2. Draw solid glowing hex outline around the Bunker itself for visual confirmation
-                    let hex_r = (0.577_350_26_f32 * input.camera_zoom) / sf;
-                    const HEX_OFFSETS: [egui::Vec2; 6] = [
-                        egui::vec2(0.8660254, 0.5),
-                        egui::vec2(0.0, 1.0),
-                        egui::vec2(-0.8660254, 0.5),
-                        egui::vec2(-0.8660254, -0.5),
-                        egui::vec2(0.0, -1.0),
-                        egui::vec2(0.8660254, -0.5),
+                    // 2. Draw solid glowing square outline around the Bunker itself for visual confirmation
+                    let square_half = 0.5 * input.camera_zoom / sf;
+                    const SQUARE_OFFSETS: [egui::Vec2; 4] = [
+                        egui::vec2(1.0, -1.0),
+                        egui::vec2(1.0, 1.0),
+                        egui::vec2(-1.0, 1.0),
+                        egui::vec2(-1.0, -1.0),
                     ];
                     let points = vec![
-                        center + HEX_OFFSETS[0] * hex_r,
-                        center + HEX_OFFSETS[1] * hex_r,
-                        center + HEX_OFFSETS[2] * hex_r,
-                        center + HEX_OFFSETS[3] * hex_r,
-                        center + HEX_OFFSETS[4] * hex_r,
-                        center + HEX_OFFSETS[5] * hex_r,
+                        center + SQUARE_OFFSETS[0] * square_half,
+                        center + SQUARE_OFFSETS[1] * square_half,
+                        center + SQUARE_OFFSETS[2] * square_half,
+                        center + SQUARE_OFFSETS[3] * square_half,
                     ];
                     painter.add(egui::Shape::convex_polygon(
                         points,
@@ -776,13 +755,9 @@ pub(crate) fn render(
                         };
 
                         let hex_dist = |c1: i32, r1: i32, c2: i32, r2: i32| -> i32 {
-                            let q1 = c1 - (r1 - (r1 & 1)) / 2;
-                            let r1 = r1;
-                            let q2 = c2 - (r2 - (r2 & 1)) / 2;
-                            let r2 = r2;
-                            let dq = q2 - q1;
-                            let dr = r2 - r1;
-                            (dq.abs() + dr.abs() + (dq + dr).abs()) / 2
+                            let dc = (c1 - c2).abs();
+                            let dr = (r1 - r2).abs();
+                            dc.max(dr)
                         };
 
                         let border_pulse = (elapsed * 3.5).sin() * 0.15 + 0.85;
@@ -797,40 +772,13 @@ pub(crate) fn render(
                                     if owner == 0 {
                                         continue;
                                     }
-                                    let is_odd = (row_idx % 2) != 0;
                                     let mut mask = 0u8;
-                                    for dir in 0..6 {
+                                    for dir in 0..4 {
                                         let (nc, nr) = match dir {
                                             0 => (col_idx + 1, row_idx), // East
                                             1 => (col_idx - 1, row_idx), // West
-                                            2 => {
-                                                if is_odd {
-                                                    (col_idx, row_idx - 1)
-                                                } else {
-                                                    (col_idx - 1, row_idx - 1)
-                                                }
-                                            } // Northwest
-                                            3 => {
-                                                if is_odd {
-                                                    (col_idx + 1, row_idx - 1)
-                                                } else {
-                                                    (col_idx, row_idx - 1)
-                                                }
-                                            } // Northeast
-                                            4 => {
-                                                if is_odd {
-                                                    (col_idx, row_idx + 1)
-                                                } else {
-                                                    (col_idx - 1, row_idx + 1)
-                                                }
-                                            } // Southwest
-                                            5 => {
-                                                if is_odd {
-                                                    (col_idx + 1, row_idx + 1)
-                                                } else {
-                                                    (col_idx, row_idx + 1)
-                                                }
-                                            } // Southeast
+                                            2 => (col_idx, row_idx - 1), // North
+                                            3 => (col_idx, row_idx + 1), // South
                                             _ => (col_idx, row_idx),
                                         };
                                         let is_border =
@@ -871,13 +819,12 @@ pub(crate) fn render(
                                             let cell_t =
                                                 (current_range - dist as f32).clamp(0.0, 1.0);
                                             let mask = edge_mask_cache[tile_idx];
-                                            for dir in 0..6 {
+                                            for dir in 0..4 {
                                                 let is_border_edge = (mask & (1 << dir)) != 0;
 
                                                 if is_border_edge {
-                                                    let hex_w_cx =
-                                                        c as f32 + 0.5 + (r % 2) as f32 * 0.5;
-                                                    let hex_w_cy = (r as f32 + 0.5) * 0.8660254_f32;
+                                                    let hex_w_cx = c as f32 + 0.5;
+                                                    let hex_w_cy = r as f32 + 0.5;
                                                     let edge_center_x = (input.camera_x
                                                         + hex_w_cx * input.camera_zoom)
                                                         / sf;
@@ -887,31 +834,26 @@ pub(crate) fn render(
                                                     let edge_center =
                                                         egui::pos2(edge_center_x, edge_center_y);
 
-                                                    let hex_r =
-                                                        (0.577_350_26_f32 * input.camera_zoom) / sf;
-                                                    const HEX_OFFSETS: [egui::Vec2; 6] = [
-                                                        egui::vec2(0.8660254, 0.5),
-                                                        egui::vec2(0.0, 1.0),
-                                                        egui::vec2(-0.8660254, 0.5),
-                                                        egui::vec2(-0.8660254, -0.5),
-                                                        egui::vec2(0.0, -1.0),
-                                                        egui::vec2(0.8660254, -0.5),
+                                                    const SQUARE_OFFSETS: [egui::Vec2; 4] = [
+                                                        egui::vec2(1.0, -1.0),  // v0: Top-Right
+                                                        egui::vec2(1.0, 1.0),   // v1: Bottom-Right
+                                                        egui::vec2(-1.0, 1.0),  // v2: Bottom-Left
+                                                        egui::vec2(-1.0, -1.0), // v3: Top-Left
                                                     ];
+                                                    let square_half = 0.5 * input.camera_zoom / sf;
                                                     let get_vertex = |v_idx: usize| -> egui::Pos2 {
-                                                        let offset = HEX_OFFSETS[v_idx % 6];
+                                                        let offset = SQUARE_OFFSETS[v_idx % 4];
                                                         egui::pos2(
-                                                            edge_center.x + hex_r * offset.x,
-                                                            edge_center.y + hex_r * offset.y,
+                                                            edge_center.x + square_half * offset.x,
+                                                            edge_center.y + square_half * offset.y,
                                                         )
                                                     };
 
                                                     let (v1, v2) = match dir {
-                                                        0 => (get_vertex(5), get_vertex(0)),
-                                                        1 => (get_vertex(2), get_vertex(3)),
-                                                        2 => (get_vertex(3), get_vertex(4)),
-                                                        3 => (get_vertex(4), get_vertex(5)),
-                                                        4 => (get_vertex(1), get_vertex(2)),
-                                                        5 => (get_vertex(0), get_vertex(1)),
+                                                        0 => (get_vertex(0), get_vertex(1)), // East: v0 to v1
+                                                        1 => (get_vertex(2), get_vertex(3)), // West: v2 to v3
+                                                        2 => (get_vertex(3), get_vertex(0)), // North: v3 to v0
+                                                        3 => (get_vertex(1), get_vertex(2)), // South: v1 to v2
                                                         _ => (get_vertex(0), get_vertex(1)),
                                                     };
 
@@ -1320,29 +1262,25 @@ pub(crate) fn render(
                 let has_gold = ui.app.hud_state.gold >= cost;
                 let tx = (preview_tile % sim.map_w) as f32;
                 let ty = (preview_tile / sim.map_w) as f32;
-                let hex_w_cx = tx + 0.5 + (ty as i32 % 2) as f32 * 0.5;
-                let hex_w_cy = (ty + 0.5) * 0.8660254_f32;
+                let hex_w_cx = tx + 0.5;
+                let hex_w_cy = ty + 0.5;
                 let center_x = (input.camera_x + hex_w_cx * input.camera_zoom) / sf;
                 let center_y = (input.camera_y + hex_w_cy * input.camera_zoom) / sf;
                 let preview_center = egui::pos2(center_x, center_y);
 
                 // Draw SNAPPED outline
-                let hex_r = (0.577_350_26_f32 * input.camera_zoom) / sf;
-                const HEX_OFFSETS: [egui::Vec2; 6] = [
-                    egui::vec2(0.8660254, 0.5),
-                    egui::vec2(0.0, 1.0),
-                    egui::vec2(-0.8660254, 0.5),
-                    egui::vec2(-0.8660254, -0.5),
-                    egui::vec2(0.0, -1.0),
-                    egui::vec2(0.8660254, -0.5),
+                let square_half = 0.5 * input.camera_zoom / sf;
+                const SQUARE_OFFSETS: [egui::Vec2; 4] = [
+                    egui::vec2(1.0, -1.0),
+                    egui::vec2(1.0, 1.0),
+                    egui::vec2(-1.0, 1.0),
+                    egui::vec2(-1.0, -1.0),
                 ];
                 let points = [
-                    preview_center + HEX_OFFSETS[0] * hex_r,
-                    preview_center + HEX_OFFSETS[1] * hex_r,
-                    preview_center + HEX_OFFSETS[2] * hex_r,
-                    preview_center + HEX_OFFSETS[3] * hex_r,
-                    preview_center + HEX_OFFSETS[4] * hex_r,
-                    preview_center + HEX_OFFSETS[5] * hex_r,
+                    preview_center + SQUARE_OFFSETS[0] * square_half,
+                    preview_center + SQUARE_OFFSETS[1] * square_half,
+                    preview_center + SQUARE_OFFSETS[2] * square_half,
+                    preview_center + SQUARE_OFFSETS[3] * square_half,
                 ];
 
                 let is_stack = stack_target.is_some();

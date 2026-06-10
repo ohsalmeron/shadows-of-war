@@ -52,9 +52,7 @@ fn is_eligible(b: &sow_core::protocol::BuildingSnapshot) -> bool {
 }
 
 fn tile_to_world(tx: f32, ty: f32) -> (f32, f32) {
-    let wx = tx + 0.5 + (ty as i32 % 2) as f32 * 0.5;
-    let wy = (ty + 0.5) * 0.8660254_f32;
-    (wx, wy)
+    (tx + 0.5, ty + 0.5)
 }
 
 fn grid_cell(tx: f32, ty: f32) -> (i32, i32) {
@@ -142,8 +140,8 @@ fn find_snap_point(
         let q2 = closest_point_on_segment((p_wx, p_wy), (seg.cx, seg.cy), (seg.bx, seg.by));
 
         for q in [q1, q2] {
-            let q_ty = (q.1 / 0.8660254_f32 - 0.5).round();
-            let q_tx = (q.0 - 0.5 - (q_ty as i32 % 2) as f32 * 0.5).round();
+            let q_ty = (q.1 - 0.5).round();
+            let q_tx = (q.0 - 0.5).round();
 
             let dtx = p_tx - q_tx;
             let dty = p_ty - q_ty;

@@ -964,6 +964,9 @@ impl SowApp {
                                 .clicked()
                             {
                                 self.ui.show_leaderboard = !self.ui.show_leaderboard;
+                                if self.ui.show_leaderboard {
+                                    self.ui.show_dev_sidebar = false;
+                                }
                             }
 
                             if ui
@@ -972,13 +975,18 @@ impl SowApp {
                                 .clicked()
                             {
                                 self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
+                                if self.ui.show_dev_sidebar {
+                                    self.ui.show_leaderboard = false;
+                                }
                             }
                         });
                     });
 
                     if self.ui.show_dev_sidebar {
                         ui.add_space(8.0);
-                        self.render_dev_sidebar(ctx, ui);
+                        sow_ui::ui::theme::hud_panel_frame().show(ui, |ui| {
+                            self.render_dev_sidebar(ctx, ui);
+                        });
                     }
 
                     if self.ui.show_leaderboard && !metrics.is_mobile {
@@ -1004,45 +1012,80 @@ impl SowApp {
     }
 
     fn render_dev_sidebar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        ui.style_mut().spacing.slider_width = 100.0;
-        ui.style_mut().spacing.item_spacing = Vec2::new(4.0, 4.0);
+        ui.vertical(|ui| {
+            ui.style_mut().spacing.slider_width = 100.0;
+            ui.style_mut().spacing.item_spacing = Vec2::new(4.0, 4.0);
 
-        let mut thick = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 1.0f32)
-        });
-        let mut dark = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32)
-        });
-        let mut s_thick = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 1.0f32)
-        });
-        let mut s_dark = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 1.0f32)
-        });
-        let mut opacity = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || 1.0f32)
-        });
-        let mut sub_voxel_scale = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || 1.0f32)
-        });
-        let mut bscale = ctx.data_mut(|d| {
-            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 1.0f32)
-        });
-        ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("🛠 Dev Tools").strong().color(Color32::WHITE));
+            });
+            ui.add_space(2.0);
+            ui.separator();
+            ui.add_space(2.0);
 
-        ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
-        ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
-        ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
-        ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Drk"));
-        ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Territory Opacity"));
-        ui.add(egui::Slider::new(&mut sub_voxel_scale, 1.0..=8.0).text("Sub-Voxel Scale"));
+            let mut thick = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 1.0f32)
+            });
+            let mut dark = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32)
+            });
+            let mut s_thick = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 1.0f32)
+            });
+            let s_dark = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 1.0f32)
+            });
+            let mut opacity = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || 1.0f32)
+            });
+            let mut blend_mode = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || 2.0f32)
+            });
+            let mut sub_voxel_scale = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || 1.0f32)
+            });
+            let mut bscale = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 1.0f32)
+            });
+            let mut conquest_duration = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || 3.0f32)
+            });
+            ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
 
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_territory_opacity"), opacity));
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_sub_voxel_scale"), sub_voxel_scale));
+            ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
+            ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
+            ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
+            ui.add(egui::Slider::new(&mut conquest_duration, 0.1..=10.0).text("Conquest Duration"));
+            ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Territory Opacity"));
+
+            egui::ComboBox::from_label("Map Blend Mode")
+                .selected_text(match blend_mode as i32 {
+                    0 => "Normal Mix",
+                    1 => "Multiply",
+                    2 => "Overlay",
+                    3 => "All Albedo",
+                    _ => "Overlay",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut blend_mode, 0.0f32, "Normal Mix");
+                    ui.selectable_value(&mut blend_mode, 1.0f32, "Multiply");
+                    ui.selectable_value(&mut blend_mode, 2.0f32, "Overlay");
+                    ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
+                });
+
+            ui.add(egui::Slider::new(&mut sub_voxel_scale, 1.0..=8.0).text("Sub-Voxel Scale"));
+
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_territory_opacity"), opacity));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_blend_mode"), blend_mode));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_sub_voxel_scale"), sub_voxel_scale));
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("dev_conquest_duration"), conquest_duration)
+            });
+        });
     }
 }

@@ -82,8 +82,8 @@ impl SowApp {
                     (player.centroid_x, player.centroid_y)
                 };
 
-                let target_cx = avg_col + 0.5 + (avg_row as i32 % 2) as f32 * 0.5;
-                let target_cy = (avg_row + 0.5) * 0.8660254_f32;
+                let target_cx = avg_col + 0.5;
+                let target_cy = avg_row + 0.5;
 
                 // Smooth position interpolation
                 let pos = self
@@ -132,11 +132,26 @@ impl SowApp {
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
 
-                let nameplate_size = if player.nameplate_size > 0.1 {
+                let target_size = if player.nameplate_size > 0.1 {
                     player.nameplate_size
                 } else {
                     0.0
                 };
+
+                let size_entry = self
+                    .ui
+                    .label_sizes
+                    .entry(player.id)
+                    .or_insert(target_size);
+
+                let ds = target_size - *size_entry;
+                if ds.abs() > 0.01 {
+                    *size_entry += ds * smooth_factor;
+                } else {
+                    *size_entry = target_size;
+                }
+
+                let nameplate_size = *size_entry;
 
                 visible_players.push(VisPlayer {
                     player,
@@ -270,96 +285,17 @@ impl SowApp {
                 &ctx_struct,
             );
 
+            nameplates::render_death_nameplates(&mut self.ui, &self.input, sf, now);
+
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
                 egui::Order::Middle,
                 egui::Id::new("floating_notices"),
             ));
             let visual_config = ClientVisualConfig::default();
 
-            // Render death nameplate animations
-            self.ui.death_nameplates.retain(|anim| {
-                let elapsed = now.duration_since(anim.start_time).as_secs_f32();
-                let duration = anim.duration.as_secs_f32();
-                if elapsed >= duration {
-                    return false;
-                }
-
-                let t = elapsed / duration;
-
-                // Procedural variation from seed
-                let s = anim.seed as f32;
-                let wobble_freq = 4.0 + (s % 7.0);
-                let wobble_amp = 8.0 + (s % 12.0);
-                let fall_speed = 5.5 + (s % 5.0) * 0.5;
-                let drift_dir = if (anim.seed % 2) == 0 { -1.0 } else { 1.0 };
-                let drift_speed = 15.0 + (s % 15.0);
-
-                // Sink downward immediately with a large initial offset and instant linear velocity
-                let current_wy = anim.world_y + 2.5 + t * fall_speed;
-                let wobble_x = (elapsed * wobble_freq).sin() * wobble_amp * (1.0 - t)
-                    + drift_dir * drift_speed * t;
-                let tremble_y = (elapsed * 25.0).cos() * 2.0 * (1.0 - t);
-                let screen_x =
-                    (self.input.camera_x + anim.world_x * self.input.camera_zoom) / sf + wobble_x;
-                let screen_y =
-                    (self.input.camera_y + current_wy * self.input.camera_zoom) / sf + tremble_y;
-
-                if screen_x < -200.0
-                    || screen_x > self.input.screen_w + 200.0
-                    || screen_y < -200.0
-                    || screen_y > self.input.screen_h + 200.0
-                {
-                    return true;
-                }
-
-                let pos = egui::pos2(screen_x, screen_y);
-
-                // Spring bounce-in scale (overshoot then settle), then shrink out
-                let scale = if elapsed < 0.6 {
-                    let st = elapsed / 0.6;
-                    1.0 + 0.8 * (st * 8.0).sin() * (-4.0 * st).exp()
-                } else if elapsed > duration - 0.8 {
-                    let fade_t = (duration - elapsed) / 0.8;
-                    fade_t * fade_t
-                } else {
-                    1.0
-                };
-                // Quantize to whole pixels so egui's glyph atlas cache is reused across frames
-                let font_size = (visual_config.death_nameplate_font_size * scale)
-                    .round()
-                    .max(1.0);
-
-                // Fade alpha (linear approximation of powf(0.6))
-                let alpha = if t < 0.15 {
-                    ((t / 0.15) * 255.0) as u8
-                } else {
-                    let inv = 1.0 - t;
-                    // Fast approximation: x^0.6 ≈ sqrt(x) * x^0.1 ≈ sqrt(x) (close enough)
-                    (inv.sqrt() * 255.0).min(255.0) as u8
-                };
-
-                let text_color = egui::Color32::from_rgba_unmultiplied(
-                    anim.color.r(),
-                    anim.color.g(),
-                    anim.color.b(),
-                    alpha,
-                );
-
-                let font_id = egui::FontId::proportional(font_size);
-                sow_ui::widgets::paint_emoji_text_at(
-                    &middle_painter,
-                    pos,
-                    egui::Align2::CENTER_CENTER,
-                    &anim.name,
-                    font_id,
-                    text_color,
-                    true,
-                );
-                true
-            });
-
             // Render floating notices (Gold rewards) on top
             self.ui.floating_notices.retain(|notice| {
+                painter.ctx().request_repaint();
                 let elapsed = now.duration_since(notice.start_time).as_secs_f32();
                 let duration = notice.duration.as_secs_f32();
                 if elapsed >= duration {

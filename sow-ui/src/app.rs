@@ -59,6 +59,7 @@ impl ClientApp {
                 prev_requests: Vec::new(),
                 last_request_time: None,
                 show_betrayal_warning: None,
+                betrayal_warning_cached: None,
                 show_error: None,
                 last_error_message: None,
                 error_display_timer: None,

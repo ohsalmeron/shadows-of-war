@@ -398,28 +398,18 @@ impl WaterAStar {
             let current_x = node.idx % width;
             let current_y = node.idx / width;
 
-            let is_odd = !current_y.is_multiple_of(2);
-            let deltas = if is_odd {
-                [
-                    (1, 0),  // East (0)
-                    (-1, 0), // West (1)
-                    (0, -1), // Northwest (2)
-                    (1, -1), // Northeast (3)
-                    (0, 1),  // Southwest (4)
-                    (1, 1),  // Southeast (5)
-                ]
-            } else {
-                [
-                    (1, 0),   // East (0)
-                    (-1, 0),  // West (1)
-                    (-1, -1), // Northwest (2)
-                    (0, -1),  // Northeast (3)
-                    (-1, 1),  // Southwest (4)
-                    (0, 1),   // Southeast (5)
-                ]
-            };
+            let deltas = [
+                (1, 0),   // East
+                (-1, 0),  // West
+                (0, -1),  // North
+                (0, 1),   // South
+                (1, -1),  // Northeast
+                (-1, -1), // Northwest
+                (1, 1),   // Southeast
+                (-1, 1),  // Southwest
+            ];
 
-            let mut neighbors = [None; 6];
+            let mut neighbors = [None; 8];
             for (idx, &(dx, dy)) in deltas.iter().enumerate() {
                 let nx = current_x as i32 + dx;
                 let ny = current_y as i32 + dy;
@@ -492,14 +482,9 @@ impl WaterAStar {
 
 #[inline]
 fn manhattan(x1: u32, y1: u32, x2: u32, y2: u32) -> u32 {
-    let r1 = y1 as i32;
-    let q1 = x1 as i32 - (r1 - (r1 & 1)) / 2;
-    let r2 = y2 as i32;
-    let q2 = x2 as i32 - (r2 - (r2 & 1)) / 2;
-
-    let dq = q1 - q2;
-    let dr = r1 - r2;
-    ((dq.abs() + (dq + dr).abs() + dr.abs()) / 2) as u32
+    let dx = (x1 as i32 - x2 as i32).abs();
+    let dy = (y1 as i32 - y2 as i32).abs();
+    dx.max(dy) as u32
 }
 
 /// Shared scratch buffers for water A* + closest-shore BFS (insert as `Resource` on the Bevy app).
