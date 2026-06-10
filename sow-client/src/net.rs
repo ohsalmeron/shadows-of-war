@@ -255,6 +255,8 @@ impl SowApp {
 
         let mut switch_to_relay = None;
         let mut exit_to_menu_after_net = false;
+        let mut pending_start: Option<sow_core::protocol::ServerStartMessage> = None;
+        let mut pending_rematch: Option<u64> = None;
 
         // Process network messages
         if let Some(c) = self.net.client.as_ref() {
@@ -287,26 +289,10 @@ impl SowApp {
                             log::info!(
                                 "Received ServerStartMessage; entering Splash phase immediately"
                             );
-                            self.sync_portal_room(false);
-                            if self.ui.app.phase != sow_ui::app::ClientPhase::Splash {
-                                self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
-                                let lang = self.ui.app.settings_state.language;
-                                self.ui.app.splash_state.reset_anim(
-                                    sow_ui::ui::loading_screen::SplashJob::EnterGame,
-                                    lang,
-                                );
-                            }
-                            self.ui.app.main_menu_state.is_waiting = false;
-                            self.ui.app.main_menu_state.pending_join_lobby_id = None;
-                            self.ui.app.main_menu_state.joined_lobby_id = None;
-                            self.ui.app.hud_state.sync_state = None; // REMOVE the modal overlay
-                            self.sim.my_player_id = start_msg.my_player_id;
-
                             if let Some(relay_port) = start_msg.relay_port {
                                 switch_to_relay = Some(relay_port);
                             }
-
-                            self.tasks.engine_init_queued_msg = Some(*start_msg);
+                            pending_start = Some(*start_msg);
                             if switch_to_relay.is_some() {
                                 break;
                             }
@@ -473,11 +459,7 @@ impl SowApp {
 
                             if let Some(rematch_id) = closed.rematch_lobby_id {
                                 log::info!("Rematch lobby {} offered", rematch_id);
-                                self.net.pending_lobby_rejoin = true;
-                                self.ui.app.main_menu_state.pending_join_lobby_id =
-                                    Some(rematch_id);
-                                self.ui.app.phase = ClientPhase::MainMenu;
-                                self.ui.app.main_menu_state.is_waiting = true;
+                                pending_rematch = Some(rematch_id);
                             } else if closed.reason.contains("Requeueing") {
                                 log::info!("Auto-requeueing to a new lobby...");
                                 self.ui.app.phase = ClientPhase::MainMenu;
@@ -674,6 +656,42 @@ impl SowApp {
                 } // end loop
             } // end if !ws_disconnected
         } // end if let Some(c)
+
+        if let Some(start_msg) = pending_start {
+            self.sync_portal_room(false);
+            let not_splash = self.ui.app.phase != sow_ui::app::ClientPhase::Splash;
+            let wrong_job = self.ui.app.splash_state.job != sow_ui::ui::loading_screen::SplashJob::EnterGame;
+            
+            if not_splash || wrong_job {
+                self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
+                let lang = self.ui.app.settings_state.language;
+                self.ui.app.splash_state.reset_anim(
+                    sow_ui::ui::loading_screen::SplashJob::EnterGame,
+                    lang,
+                );
+            }
+            self.ui.app.main_menu_state.is_waiting = false;
+            self.ui.app.main_menu_state.pending_join_lobby_id = None;
+            self.ui.app.main_menu_state.joined_lobby_id = None;
+            self.ui.app.main_menu_state.wait_timer_secs = 0.0;
+            self.ui.app.hud_state.sync_state = None; // clear the "WAITING FOR PLAYERS" modal if it's up
+            self.sim.my_player_id = start_msg.my_player_id;
+            self.sim.my_lobby_id = start_msg.lobby_id;
+            self.tasks.engine_init_queued_msg = Some(start_msg);
+        }
+
+        if let Some(rematch_id) = pending_rematch {
+            self.net.pending_lobby_rejoin = true;
+            self.ui.app.main_menu_state.pending_join_lobby_id = Some(rematch_id);
+            self.ui.app.phase = ClientPhase::MainMenu;
+            self.ui.app.main_menu_state.is_waiting = true;
+
+            // Drop relay connection and force orchestrator reconnect for the rematch
+            self.net.client = None;
+            self.net.ws_url = self.net.orchestrator_url.clone();
+            self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
+            self.net.ws_connect_not_before = now;
+        }
 
         if exit_to_menu_after_net {
             self.begin_exit_to_main_menu(true);

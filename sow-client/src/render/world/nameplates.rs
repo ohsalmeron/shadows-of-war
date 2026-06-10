@@ -107,26 +107,21 @@ pub(crate) fn render(
                     if !is_human {
                         full_labels_drawn += 1;
                     }
-                    let font_size = if is_me {
-                        font_size_my
-                    } else if player.id < 200 {
-                        font_size_nation
+                    let font_size = if vp.nameplate_size > 0.1 {
+                        let scaled_size = vp.nameplate_size * 0.4 * ui_text_scale * (input.camera_zoom / sf);
+                        scaled_size.round().max(4.0)
                     } else {
-                        font_size_tribe
+                        if is_me {
+                            font_size_my
+                        } else if player.id < 200 {
+                            font_size_nation
+                        } else {
+                            font_size_tribe
+                        }
                     };
                     let font_id = egui::FontId::proportional(font_size);
 
-                    let display_name = if player.name.is_empty() {
-                        if is_human {
-                            format!("Player {}", player.id)
-                        } else if player.id >= 200 {
-                            format!("Tribe {}", player.id - 199)
-                        } else {
-                            format!("Nation {}", player.id - 103)
-                        }
-                    } else {
-                        player.name.clone()
-                    };
+                    let display_name = sow_core::player::display_name(player.id, &player.name);
 
                     let mut cached_name = None;
                     if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
@@ -835,37 +830,29 @@ pub(crate) fn render(
             if show_full {
                 full_labels_drawn += 1;
 
-                let font_size = if Some(player.id) == sim.my_player_id {
-                    font_size_my
-                } else if player.id < 200 {
-                    font_size_nation
+                let font_size = if vp.nameplate_size > 0.1 {
+                    let scaled_size = vp.nameplate_size * 0.4 * ui_text_scale * (input.camera_zoom / sf);
+                    scaled_size.round().max(4.0)
                 } else {
-                    font_size_tribe
+                    if Some(player.id) == sim.my_player_id {
+                        font_size_my
+                    } else if player.id < 200 {
+                        font_size_nation
+                    } else {
+                        font_size_tribe
+                    }
                 };
 
                 let font_id = egui::FontId::proportional(font_size);
 
                 let troops_str = sow_ui::utils::format_number(player.troops);
 
+                let display_name = sow_core::player::display_name(player.id, &player.name);
                 let mut cached_name = None;
                 let mut cached_troops = None;
 
                 if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
-                    let name_matches = if player.name.is_empty() {
-                        if player.id >= 200 {
-                            entry.0.starts_with("Tribe ")
-                                && entry.0["Tribe ".len()..].parse::<u16>().ok()
-                                    == Some(player.id - 199)
-                        } else {
-                            entry.0.starts_with("Nation ")
-                                && entry.0["Nation ".len()..].parse::<u16>().ok()
-                                    == Some(player.id - 103)
-                        }
-                    } else {
-                        entry.0 == player.name
-                    };
-
-                    if name_matches && entry.1 == troops_str && entry.2 == font_id {
+                    if entry.0 == display_name && entry.1 == troops_str && entry.2 == font_id {
                         cached_name = Some(entry.3.clone());
                         cached_troops = Some(entry.4.clone());
                     }
@@ -876,16 +863,6 @@ pub(crate) fn render(
                 {
                     (ng, tg)
                 } else {
-                    let display_name = if player.name.is_empty() {
-                        if player.id >= 200 {
-                            format!("Tribe {}", player.id - 199)
-                        } else {
-                            format!("Nation {}", player.id - 103)
-                        }
-                    } else {
-                        player.name.clone()
-                    };
-
                     let ng = layout_nameplate_name_galley(painter, font_id.clone(), &display_name);
 
                     let tg = crate::hud::nameplate::layout_nameplate_troops_galley(

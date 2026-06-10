@@ -90,6 +90,7 @@
 🎉
 # Buildings / upgrades / units
 🗼
+🛡️
 🚢
 🌽
 🌾
@@ -103,3 +104,51 @@
 🏗️
 # Map editor
 🗑
+# UI icons & general buttons
+🏠
+✔️
+✔
+✖️
+✖
+# 40 Spirit Animals for Tribes
+🦁
+🐯
+🐆
+🐺
+🦊
+🦝
+🐻
+🐨
+🐼
+🐗
+🦄
+🦅
+🦉
+🐊
+🦖
+🐉
+🦈
+🦂
+🐃
+🐏
+🐘
+🦏
+🦍
+🐎
+🦌
+🦇
+# Swan
+🦢
+🦩
+🐍
+🐢
+🐙
+🐬
+🐝
+🦋
+🕷️
+🦦
+🦫
+🐫
+🦘
+🦡

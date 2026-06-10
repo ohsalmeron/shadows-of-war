@@ -53,7 +53,7 @@ impl Widget for HudButton {
         }
 
         let font_id = FontId::proportional(self.size);
-        crate::ui::theme::paint_premium_glow_text(
+        crate::widgets::outlined_emoji_text(
             ui.painter(),
             rect.center(),
             Align2::CENTER_CENTER,

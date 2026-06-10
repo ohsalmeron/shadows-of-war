@@ -206,6 +206,12 @@ pub struct Player {
     pub player_type: PlayerType,
     pub troops: f64,
     pub max_troops: f64,
+    #[serde(default)]
+    pub nameplate_x: f32,
+    #[serde(default)]
+    pub nameplate_y: f32,
+    #[serde(default)]
+    pub nameplate_size: f32,
     #[serde(default = "default_player_gold")]
     pub gold: f64,
     pub color: [f32; 3],
@@ -270,6 +276,9 @@ impl Player {
             sum_x: 0,
             sum_y: 0,
             tile_count: 0,
+            nameplate_x: 0.0,
+            nameplate_y: 0.0,
+            nameplate_size: 0.0,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -340,6 +349,9 @@ impl Player {
             sum_x: 0,
             sum_y: 0,
             tile_count: 0,
+            nameplate_x: 0.0,
+            nameplate_y: 0.0,
+            nameplate_size: 0.0,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -382,12 +394,17 @@ impl Player {
             Civilization::Sparta => Leader::Leonidas,
             Civilization::France => Leader::Napoleon,
         };
+        let final_color = if config.game_mode == "Teams" {
+            color
+        } else {
+            leader.filler_rgb()
+        };
         Self {
             id,
             alive: true,
             player_type: PlayerType::Nation,
             name,
-            color,
+            color: final_color,
             troops: config.starting_troops,
             max_troops: config.max_troops_base,
             gold: config.starting_gold,
@@ -395,6 +412,9 @@ impl Player {
             sum_x: 0,
             sum_y: 0,
             tile_count: 0,
+            nameplate_x: 0.0,
+            nameplate_y: 0.0,
+            nameplate_size: 0.0,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -430,6 +450,199 @@ impl Player {
     pub fn border_remove(&mut self, idx: u32) {
         self.border_tiles.remove(idx);
     }
+    pub fn calculate_nameplate(&mut self, map: &crate::map::GameMap) {
+        if self.tile_count == 0 || self.border_tiles.is_empty() {
+            self.nameplate_x = 0.0;
+            self.nameplate_y = 0.0;
+            self.nameplate_size = 0.0;
+            return;
+        }
+
+        let mut min_x = u32::MAX;
+        let mut min_y = u32::MAX;
+        let mut max_x = 0;
+        let mut max_y = 0;
+
+        for idx in self.border_tiles.ones() {
+            let x = idx % map.width;
+            let y = idx / map.width;
+            if x < min_x { min_x = x; }
+            if y < min_y { min_y = y; }
+            if x > max_x { max_x = x; }
+            if y > max_y { max_y = y; }
+        }
+
+        let cx = if self.tile_count > 0 {
+            (self.sum_x / self.tile_count as u64) as f32
+        } else {
+            0.0
+        };
+        let cy = if self.tile_count > 0 {
+            (self.sum_y / self.tile_count as u64) as f32
+        } else {
+            0.0
+        };
+
+        if min_x == u32::MAX {
+            self.nameplate_x = cx;
+            self.nameplate_y = cy;
+            self.nameplate_size = 12.0;
+            return;
+        }
+
+        let width = max_x.saturating_sub(min_x) + 1;
+        let height = max_y.saturating_sub(min_y) + 1;
+        let size = width.min(height);
+
+        let scaling_factor = if size < 25 {
+            1
+        } else if size < 50 {
+            2
+        } else if size < 100 {
+            4
+        } else if size < 250 {
+            8
+        } else if size < 500 {
+            16
+        } else {
+            32
+        };
+
+        let scaled_min_x = min_x / scaling_factor;
+        let scaled_min_y = min_y / scaling_factor;
+        let scaled_max_x = max_x / scaling_factor;
+        let scaled_max_y = max_y / scaling_factor;
+
+        let grid_width = (scaled_max_x.saturating_sub(scaled_min_x) + 1) as usize;
+        let grid_height = (scaled_max_y.saturating_sub(scaled_min_y) + 1) as usize;
+
+        if grid_width == 0 || grid_height == 0 || grid_width > 1000 || grid_height > 1000 {
+            self.nameplate_x = cx;
+            self.nameplate_y = cy;
+            self.nameplate_size = 12.0;
+            return;
+        }
+
+        let mut grid = vec![vec![false; grid_height]; grid_width];
+
+        for gx in 0..grid_width {
+            for gy in 0..grid_height {
+                let map_x = (scaled_min_x + gx as u32) * scaling_factor;
+                let map_y = (scaled_min_y + gy as u32) * scaling_factor;
+
+                if map_x < map.width && map_y < map.height {
+                    let r = map.ref_id(map_x, map_y);
+                    let tile = map.terrain[r];
+                    let is_lake = tile.terrain_type() == crate::map::TerrainType::Lake;
+                    let is_shore = tile.is_shoreline();
+                    let is_owned = map.owner_id(map_x, map_y) == self.id;
+                    grid[gx][gy] = is_owned || is_lake || is_shore;
+                }
+            }
+        }
+
+        let mut largest_rect = find_largest_inscribed_rectangle(&grid);
+        if largest_rect.width == 0 || largest_rect.height == 0 {
+            self.nameplate_x = cx;
+            self.nameplate_y = cy;
+            self.nameplate_size = 12.0;
+            return;
+        }
+
+        largest_rect.x *= scaling_factor;
+        largest_rect.y *= scaling_factor;
+        largest_rect.width *= scaling_factor;
+        largest_rect.height *= scaling_factor;
+
+        let center_x = largest_rect.x + largest_rect.width / 2 + min_x;
+        let center_y = largest_rect.y + largest_rect.height / 2 + min_y;
+
+        let name_len = self.name.chars().count().max(1) as f32;
+        let width_constrained = (largest_rect.width as f32 / name_len) * 2.0;
+        let height_constrained = largest_rect.height as f32 / 3.0;
+        let font_size = width_constrained.min(height_constrained).max(4.0);
+
+        let nameplate_x = center_x as f32;
+        let nameplate_y = center_y as f32 - (font_size / 3.0);
+
+        self.nameplate_x = nameplate_x;
+        self.nameplate_y = nameplate_y;
+        self.nameplate_size = font_size;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Rectangle {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+fn largest_rectangle_in_histogram(widths: &[u32]) -> Rectangle {
+    let mut stack = Vec::new();
+    let mut max_area = 0;
+    let mut largest_rect = Rectangle::default();
+
+    for i in 0..=widths.len() {
+        let h = if i == widths.len() { 0 } else { widths[i] };
+
+        while !stack.is_empty() && h < widths[*stack.last().unwrap()] {
+            let height = widths[stack.pop().unwrap()];
+            let width = if stack.is_empty() {
+                i as u32
+            } else {
+                (i - *stack.last().unwrap() - 1) as u32
+            };
+
+            let area = height * width;
+            if area > max_area {
+                max_area = area;
+                largest_rect = Rectangle {
+                    x: if stack.is_empty() { 0 } else { (*stack.last().unwrap() + 1) as u32 },
+                    y: 0,
+                    width,
+                    height,
+                };
+            }
+        }
+        stack.push(i);
+    }
+
+    largest_rect
+}
+
+fn find_largest_inscribed_rectangle(grid: &[Vec<bool>]) -> Rectangle {
+    if grid.is_empty() || grid[0].is_empty() {
+        return Rectangle::default();
+    }
+    let cols = grid.len();
+    let rows = grid[0].len();
+    let mut heights = vec![0u32; cols];
+    let mut largest_rect = Rectangle::default();
+
+    for row in 0..rows {
+        for col in 0..cols {
+            if grid[col][row] {
+                heights[col] += 1;
+            } else {
+                heights[col] = 0;
+            }
+        }
+
+        let rect_for_row = largest_rectangle_in_histogram(&heights);
+
+        if rect_for_row.width * rect_for_row.height > largest_rect.width * largest_rect.height {
+            largest_rect = Rectangle {
+                x: rect_for_row.x,
+                y: (row as u32).saturating_sub(rect_for_row.height).saturating_add(1),
+                width: rect_for_row.width,
+                height: rect_for_row.height,
+            };
+        }
+    }
+
+    largest_rect
 }
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
@@ -452,16 +665,57 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
     [r, g, b]
 }
 
+pub fn premium_color(index: usize) -> [f32; 3] {
+    let signature_colors: [[f32; 3]; 12] = [
+        [0.75, 0.15, 0.18], // Caesar (Rome Crimson)
+        [0.85, 0.65, 0.15], // Cleopatra (Egypt Gold)
+        [0.15, 0.35, 0.65], // Ragnar (Vikings Blue)
+        [0.15, 0.55, 0.42], // Sun Tzu (China Jade)
+        [0.22, 0.45, 0.78], // Alexander (Macedon Blue)
+        [0.55, 0.42, 0.22], // Genghis Khan (Mongol Bronze)
+        [0.72, 0.18, 0.15], // Richard (Angevin Crimson)
+        [0.28, 0.52, 0.22], // Vercingetorix (Gallic Green)
+        [0.88, 0.42, 0.12], // Boudica (Iceni Orange)
+        [0.12, 0.58, 0.52], // Lady Six Sky (Maya Teal)
+        [0.62, 0.42, 0.22], // Leonidas (Sparta Bronze)
+        [0.18, 0.28, 0.68], // Napoleon (France Blue)
+    ];
+
+    if index < 12 {
+        return signature_colors[index];
+    }
+
+    // High density premium spectrum (18 hues x 6 variations)
+    let hue_idx = (index - 12) % 18;
+    let variant_idx = ((index - 12) / 18) % 6;
+    let h = hue_idx as f32 / 18.0;
+
+    let (s, v) = match variant_idx {
+        0 => (0.85, 0.80), // Super Vibrant / Neon
+        1 => (0.90, 0.55), // Deep / Rich
+        2 => (0.95, 0.40), // Royal / Midnight
+        3 => (0.65, 0.85), // Bright / Warm-Neon
+        4 => (0.75, 0.65), // Rich Earthy / Jewel
+        _ => (0.80, 0.45), // Deep Velvet / Wine
+    };
+
+    hsv_to_rgb(h, s, v)
+}
+
 /// RGB used for human-owned territory in the sow-render map shader (`map.wgsl`).
 /// Matches WGSL `owner_id <= 16` branch so UI (nameplates) matches the map tint.
 #[inline]
 pub fn human_shader_territory_rgb(player_id: u16) -> [f32; 3] {
-    let hue = player_id as f32 * 0.618_034;
-    let fract = |x: f32| x - x.floor();
-    let r = (fract(hue) * 2.0 - 1.0).abs();
-    let g = (fract(hue + 0.333) * 2.0 - 1.0).abs();
-    let b = (fract(hue + 0.666) * 2.0 - 1.0).abs();
-    [r, g, b]
+    if player_id >= 1 && player_id <= 120 {
+        premium_color((player_id as usize) - 1)
+    } else {
+        // Fallback for massive games beyond 120 major actors:
+        // Ensures strong, deep, and interesting tones (no pastel, no dull colors)
+        let hue = (player_id as f32 * 0.618033988749895).fract();
+        let s = 0.60 + ((player_id as f32 * 1.6180339887).fract() * 0.35); // 0.60 to 0.95
+        let v = 0.40 + ((player_id as f32 * 2.6180339887).fract() * 0.40); // 0.40 to 0.80
+        hsv_to_rgb(hue, s, v)
+    }
 }
 
 pub fn bot_territory_color(game_seed: u64, bot_id: u16) -> [f32; 3] {
@@ -470,21 +724,59 @@ pub fn bot_territory_color(game_seed: u64, bot_id: u16) -> [f32; 3] {
         ^ (bot_id as u64);
     let mut rng = WyRand::new(mix);
     let h = rng.next_int(0, 10_000) as f32 / 10_000.0;
+    
+    // For major city states below ID 120, use premium colors directly
+    if bot_id >= 1 && bot_id <= 120 {
+        return premium_color((bot_id as usize) - 1);
+    }
+    
     let is_high_iq = bot_id % 100 == 0;
     let (s, v) = if is_high_iq {
         // Darker, richer colors — visually distinct as apex predators
-        let s = 0.65 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.20;
-        let v = 0.30 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.12;
+        let s = 0.65 + (rng.next_int(0, 1000) as f32 / 1000.0 * 0.25); // 0.65 to 0.90
+        let v = 0.25 + (rng.next_int(0, 1000) as f32 / 1000.0 * 0.20); // 0.25 to 0.45
         (s, v)
     } else {
-        let s = 0.28 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.18;
-        let v = 0.52 + rng.next_int(0, 1000) as f32 / 1000.0 * 0.18;
+        // Tribes use strong, rich, deep colors:
+        // s is 0.60 to 0.95 (completely avoiding pastels/light washes)
+        // v is 0.40 to 0.80 (solid and rich, preventing overly white/washed tones)
+        let s = 0.60 + (rng.next_int(0, 1000) as f32 / 1000.0 * 0.35);
+        let v = 0.40 + (rng.next_int(0, 1000) as f32 / 1000.0 * 0.40);
         (s, v)
     };
     let [r, g, b] = hsv_to_rgb(h, s, v);
     [
-        r.clamp(0.08, 0.88),
-        g.clamp(0.08, 0.88),
-        b.clamp(0.08, 0.88),
+        r.clamp(0.05, 0.95),
+        g.clamp(0.05, 0.95),
+        b.clamp(0.05, 0.95),
     ]
 }
+
+pub fn tribe_animal(id: u16) -> &'static str {
+    const ANIMALS: [&str; 40] = [
+        "🦁", "🐯", "🐆", "🐺", "🦊", "🦝", "🐻", "🐨", "🐼", "🐗",
+        "🦄", "🦅", "🦉", "🐊", "🦖", "🐉", "🦈", "🦂", "🐃", "🐏",
+        "🐘", "🦏", "🦍", "🐎", "🦌", "🦇", "🦢", "🦩", "🐍", "🐢",
+        "🐙", "🐬", "🐝", "🦋", "🕷️", "🦦", "🦫", "🐫", "🦘", "🦡",
+    ];
+    ANIMALS[(id as usize) % ANIMALS.len()]
+}
+
+pub fn display_name(id: u16, name: &str) -> String {
+    if name.is_empty() {
+        if id >= 200 {
+            format!("{} Tribe {}", tribe_animal(id), id - 199)
+        } else if id >= 103 {
+            format!("Nation {}", id - 103)
+        } else {
+            format!("Player {}", id)
+        }
+    } else {
+        if id >= 200 {
+            format!("{} {}", tribe_animal(id), name)
+        } else {
+            name.to_string()
+        }
+    }
+}
+

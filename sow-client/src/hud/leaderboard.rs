@@ -98,14 +98,7 @@ pub struct TeamRanking {
 }
 
 fn snapshot_display_name(p: &PlayerSnapshot) -> String {
-    if !p.name.is_empty() {
-        return p.name.clone();
-    }
-    if p.id >= 200 {
-        format!("Tribe {}", p.id - 199)
-    } else {
-        format!("Nation {}", p.id - 103)
-    }
+    sow_core::player::display_name(p.id, &p.name)
 }
 
 fn is_team_mode(app: &SowApp) -> bool {
@@ -1026,6 +1019,12 @@ impl SowApp {
         let mut s_dark = ctx.data_mut(|d| {
             *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 1.0f32)
         });
+        let mut opacity = ctx.data_mut(|d| {
+            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || 0.28f32)
+        });
+        let mut sub_voxel_scale = ctx.data_mut(|d| {
+            *d.get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || 1.0f32)
+        });
         let mut bscale = ctx.data_mut(|d| {
             *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 1.0f32)
         });
@@ -1036,10 +1035,14 @@ impl SowApp {
         ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
         ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
         ui.add(egui::Slider::new(&mut s_dark, 0.0..=1.0).text("Shore Drk"));
+        ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Territory Opacity"));
+        ui.add(egui::Slider::new(&mut sub_voxel_scale, 1.0..=8.0).text("Sub-Voxel Scale"));
 
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_territory_opacity"), opacity));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_sub_voxel_scale"), sub_voxel_scale));
     }
 }

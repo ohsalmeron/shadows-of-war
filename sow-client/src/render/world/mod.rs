@@ -17,6 +17,7 @@ pub(crate) struct VisPlayer<'a> {
     pub center: egui::Pos2,
     pub pc: egui::Color32,
     pub lod_presence: f32,
+    pub nameplate_size: f32,
 }
 
 pub(crate) struct RenderContext<'a> {
@@ -75,8 +76,11 @@ impl SowApp {
                     continue;
                 }
 
-                let avg_col = player.centroid_x;
-                let avg_row = player.centroid_y;
+                let (avg_col, avg_row) = if player.nameplate_size > 0.1 {
+                    (player.nameplate_x, player.nameplate_y)
+                } else {
+                    (player.centroid_x, player.centroid_y)
+                };
 
                 let target_cx = avg_col + 0.5 + (avg_row as i32 % 2) as f32 * 0.5;
                 let target_cy = (avg_row + 0.5) * 0.8660254_f32;
@@ -128,11 +132,18 @@ impl SowApp {
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
 
+                let nameplate_size = if player.nameplate_size > 0.1 {
+                    player.nameplate_size
+                } else {
+                    0.0
+                };
+
                 visible_players.push(VisPlayer {
                     player,
                     center,
                     pc,
                     lod_presence,
+                    nameplate_size,
                 });
             }
 

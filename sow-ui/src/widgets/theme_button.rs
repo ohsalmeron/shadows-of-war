@@ -107,7 +107,7 @@ impl Widget for ThemeButton {
         let response = ui.add(btn);
 
         if ui.is_rect_visible(response.rect) {
-            crate::ui::theme::outlined_text(
+            crate::widgets::outlined_emoji_text(
                 ui.painter(),
                 response.rect.center(),
                 egui::Align2::CENTER_CENTER,

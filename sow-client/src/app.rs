@@ -20,6 +20,8 @@ pub struct GraphicsState {
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
+    /// Deferred teardown after instant exit (must not run mid-frame during UI actions).
+    pub pending_session_cleanup: bool,
     /// Physical pixels of the last successful GPU surface reconfigure.
     pub configured_physical: winit::dpi::PhysicalSize<u32>,
 }
@@ -446,6 +448,7 @@ impl SowApp {
                 gui_painter,
                 prev_sync_point,
                 needs_first_upload,
+                pending_session_cleanup: false,
                 configured_physical: winit::dpi::PhysicalSize::new(0, 0),
             },
             net: NetState {
@@ -630,9 +633,11 @@ impl SowApp {
 
     /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
     pub(crate) fn begin_exit_to_main_menu(&mut self, use_loader: bool) {
-        if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
+        let was_playing = self.ui.app.phase == sow_ui::app::ClientPhase::Playing;
+        if was_playing {
             crate::store_portals::gameplay_stop();
         }
+        self.abort_engine_init();
         crate::store_portals::left_room();
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
@@ -649,6 +654,7 @@ impl SowApp {
         self.ui.app.main_menu_state.pending_join_lobby_id = None;
         self.ui.app.main_menu_state.joined_lobby_id = None;
         self.ui.app.main_menu_state.in_private_match = false;
+        self.ui.app.main_menu_state.lobbies.clear();
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
@@ -662,6 +668,9 @@ impl SowApp {
                 .reset_anim(sow_ui::ui::loading_screen::SplashJob::ExitGame, lang);
         } else {
             self.ui.app.phase = ClientPhase::MainMenu;
+            if was_playing {
+                self.gfx.pending_session_cleanup = true;
+            }
         }
         self.ui.is_spectating = false;
     }
@@ -933,15 +942,7 @@ impl SowApp {
                             }
 
                             if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-                                target_name = if target.name.is_empty() {
-                                    if target.id >= 200 {
-                                        format!("Tribe {}", target.id - 199)
-                                    } else {
-                                        format!("Nation {}", target.id.saturating_sub(103))
-                                    }
-                                } else {
-                                    target.name.clone()
-                                };
+                                target_name = sow_core::player::display_name(target.id, &target.name);
                                 if !tile_found
                                     && (target.centroid_x > 0.001 || target.centroid_y > 0.001)
                                 {
@@ -1067,17 +1068,7 @@ impl SowApp {
                             .players
                             .iter()
                             .find(|p| p.id == alert.owner_id)
-                            .map(|p| {
-                                if p.name.is_empty() {
-                                    if p.id >= 200 {
-                                        format!("Tribe {}", p.id - 199)
-                                    } else {
-                                        format!("Nation {}", p.id.saturating_sub(103))
-                                    }
-                                } else {
-                                    p.name.clone()
-                                }
-                            })
+                            .map(|p| sow_core::player::display_name(p.id, &p.name))
                             .unwrap_or_else(|| format!("Player {}", alert.owner_id));
 
                         // Determine victim from tile ownership in previous snapshot state
@@ -1094,17 +1085,7 @@ impl SowApp {
                             snap.players
                                 .iter()
                                 .find(|p| p.id == victim_id)
-                                .map(|p| {
-                                    if p.name.is_empty() {
-                                        if p.id >= 200 {
-                                            format!("Tribe {}", p.id - 199)
-                                        } else {
-                                            format!("Nation {}", p.id.saturating_sub(103))
-                                        }
-                                    } else {
-                                        p.name.clone()
-                                    }
-                                })
+                                .map(|p| sow_core::player::display_name(p.id, &p.name))
                                 .unwrap_or_else(|| format!("Player {}", victim_id))
                         };
 

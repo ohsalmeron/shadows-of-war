@@ -6,7 +6,7 @@ impl SowApp {
         if let Some(snap) = &self.sim.current_snapshot {
             if let Some(target_secs) = snap.spawn_timer_secs {
                 if let Some(ref mut current) = self.ui.app.hud_state.spawn_timer_secs {
-                    if (*current - target_secs).abs() > 0.3 {
+                    if (*current - target_secs).abs() >= 0.1 {
                         *current = target_secs;
                     }
                 } else {

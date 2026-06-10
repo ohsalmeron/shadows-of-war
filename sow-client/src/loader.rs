@@ -35,6 +35,12 @@ pub(crate) fn hide_web_loader() {
 }
 
 impl SowApp {
+    pub(crate) fn abort_engine_init(&mut self) {
+        while self.tasks.engine_init_rx.try_recv().is_ok() {}
+        self.tasks.engine_init_queued_msg = None;
+        self.tasks.pending_engine_init_data = None;
+    }
+
     fn release_client_game_gpu(&mut self) {
         if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
             if let Some(sp) = self.gfx.prev_sync_point.take() {
@@ -50,7 +56,20 @@ impl SowApp {
         }
     }
 
-    fn cleanup_game_session_stub(&mut self) {
+    pub(crate) fn cleanup_game_session_stub(&mut self) {
+        self.abort_engine_init();
+        self.sim.turn_queue.clear();
+        self.sim.offline_intents.clear();
+        self.sim.last_synced_cost_tick = None;
+        self.sim.my_lobby_id = None;
+        self.sim.my_player_id = None;
+        self.ui.app.hud_state.spawn_timer_secs = None;
+        self.ui.app.hud_state.sync_state = None;
+        self.ui.app.main_menu_state.wait_timer_secs = 0.0;
+        self.ui.app.main_menu_state.cached_map = None;
+        self.ui.app.main_menu_state.cached_map_key = None;
+        self.net.pending_lobby_rejoin = false;
+
         let config = GameConfig {
             map_width: 1,
             map_height: 1,
@@ -64,16 +83,27 @@ impl SowApp {
             map_bytes: vec![0b10000000],
             players: vec![],
         });
-        self.sim.turn_queue.clear();
         self.ui.label_positions.clear();
         self.sim.current_snapshot = None;
         self.gfx.needs_first_upload = true;
         self.release_client_game_gpu();
     }
 
+    fn map_bytes_for_start(&mut self, map_name: &str) -> Option<Vec<u8>> {
+        if let Some(bytes) = self.ui.app.asset_loader.take_map(map_name) {
+            return Some(bytes);
+        }
+        if self.ui.app.main_menu_state.downloading_map_name.as_deref() == Some(map_name) {
+            return self.ui.app.main_menu_state.cached_map.take();
+        }
+        None
+    }
+
     pub fn update_loader(&mut self) {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
-            let has_map = self.ui.app.main_menu_state.cached_map.is_some();
+            let map_name = start_msg.config.map_name.clone();
+            let has_map = self.ui.app.asset_loader.has_map(&map_name) 
+                || self.ui.app.main_menu_state.cached_map.is_some();
 
             if !has_map {
                 self.tasks.engine_init_queued_msg = Some(start_msg);
@@ -85,11 +115,14 @@ impl SowApp {
                     pct as f32 / 100.0,
                 );
             } else {
-                log::info!("Map downloaded, computing heavy init in background");
+                let cached_map = self.map_bytes_for_start(&map_name);
+                log::info!(
+                    "Map '{}' ready, computing heavy init in background",
+                    map_name
+                );
 
                 splash_show_loading_progress(&mut self.ui.app.splash_state, 0.1);
 
-                let cached_map = self.ui.app.main_menu_state.cached_map.take();
                 let mut start_msg_clone = start_msg.clone();
 
                 let tx = self.tasks.engine_init_tx.clone();
@@ -270,6 +303,11 @@ impl SowApp {
                                 self.ui.app.splash_state.progress = prog;
                             }
                             EngineInitEvent::Complete(state, water, start_msg) => {
+                                if self.ui.app.splash_state.job
+                                    != sow_ui::ui::loading_screen::SplashJob::EnterGame
+                                {
+                                    continue;
+                                }
                                 log::info!(
                                     "Engine initialization complete; allocating GPU memory"
                                 );
@@ -362,9 +400,26 @@ impl SowApp {
                         self.ui.app.main_menu_state.is_connected
                             && self.net.client.is_some()
                             && self.ws_on_relay()
+                            && self.sim.my_lobby_id.is_some()
+                            && self.sim.my_player_id.is_some()
                     };
 
                     if ready_to_release {
+                        if !self.net.is_offline {
+                            if let Some(c) = self.net.client.as_ref() {
+                                if let (Some(lid), Some(pid)) =
+                                    (self.sim.my_lobby_id, self.sim.my_player_id)
+                                {
+                                    let ready_msg = sow_core::protocol::ClientMessage::Ready {
+                                        lobby_id: lid,
+                                        player_id: pid,
+                                    };
+                                    let json = bincode::serialize(&ready_msg).unwrap();
+                                    c.send(json);
+                                }
+                            }
+                        }
+
                         self.ui.app.splash_state.gpu_load_step = 4;
                         self.ui.app.splash_state.done = true;
                         if self.ui.app.splash_state.target_phase.is_none() {
@@ -376,27 +431,16 @@ impl SowApp {
                         // Clear pending init data to completely finish EnterGame phase
                         self.tasks.pending_engine_init_data = None;
                         log::info!("EnterGame load complete; fading out loader");
-
-                        if let Some(c) = self.net.client.as_ref() {
-                            if let (Some(lid), Some(pid)) =
-                                (self.sim.my_lobby_id, self.sim.my_player_id)
-                            {
-                                let ready_msg = sow_core::protocol::ClientMessage::Ready {
-                                    lobby_id: lid,
-                                    player_id: pid,
-                                };
-                                let json = bincode::serialize(&ready_msg).unwrap();
-                                c.send(json);
-                            }
-                        }
                     } else {
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
                         if self.ui.app.splash_state.frames_drawn % 120 == 0 {
                             log::warn!(
-                                "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, phase={:?}",
+                                "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, my_lobby_id={:?}, my_player_id={:?}, phase={:?}",
                                 self.ui.app.main_menu_state.is_connected,
                                 self.net.client.is_some(),
                                 self.ws_on_relay(),
+                                self.sim.my_lobby_id,
+                                self.sim.my_player_id,
                                 self.ui.app.phase
                             );
                         }

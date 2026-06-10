@@ -655,6 +655,15 @@ impl SowEngine {
     /// Build a lightweight snapshot of the current state for the render thread.
     /// Drains `map.dirty_tiles` so each tile is reported exactly once.
     pub fn build_snapshot(&mut self) -> crate::protocol::SimSnapshot {
+        let should_recalculate = self.state.tick < 3 || self.state.tick % 30 == 0;
+        if should_recalculate {
+            for p in &mut self.state.players {
+                if p.alive && p.tile_count > 0 {
+                    p.calculate_nameplate(&self.state.map);
+                }
+            }
+        }
+
         let dirty_tiles: Vec<crate::protocol::DirtyTile> = self
             .state
             .map
@@ -710,6 +719,9 @@ impl SowEngine {
                     tile_count: p.tile_count,
                     centroid_x: cx,
                     centroid_y: cy,
+                    nameplate_x: p.nameplate_x,
+                    nameplate_y: p.nameplate_y,
+                    nameplate_size: p.nameplate_size,
                     player_type: p.player_type,
                     color: p.color,
                     team: p.team,

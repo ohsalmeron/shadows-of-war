@@ -261,8 +261,8 @@ pub fn leave_player(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
     if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
         let before = lobby.players.len();
         lobby.players.retain(|p| p.player_id != player_id);
+        lobby.ready_players.remove(&player_id);
         if before != lobby.players.len() {
-            log::info!("Player {} left lobby {}", player_id, lobby_id);
             log::info!("Player {} left lobby {}", player_id, lobby_id);
             // Lobbies in ReadyForRelay don't care, they are about to be dropped.
         }

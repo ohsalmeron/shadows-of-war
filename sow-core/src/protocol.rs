@@ -285,6 +285,12 @@ pub struct PlayerSnapshot {
     pub tile_count: u32,
     pub centroid_x: f32,
     pub centroid_y: f32,
+    #[serde(default)]
+    pub nameplate_x: f32,
+    #[serde(default)]
+    pub nameplate_y: f32,
+    #[serde(default)]
+    pub nameplate_size: f32,
     pub player_type: crate::player::PlayerType,
     pub color: [f32; 3],
     pub team: Option<Team>,

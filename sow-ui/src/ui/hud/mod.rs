@@ -854,10 +854,17 @@ pub fn draw(
 
     let rect = ui.ctx().content_rect();
     let compact = rect.width() < 768.0 || rect.width() < rect.height() * 1.25;
+    let portrait_dock = rect.height() > rect.width();
     let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
     let anim_hover = crate::ui::theme::anim_duration_hover_from_ctx(ui.ctx());
 
-    let panel_w = ui.ctx().content_rect().width() - 24.0;
+    let panel_w = if portrait_dock {
+        rect.width()
+    } else if compact {
+        rect.width() - 24.0
+    } else {
+        520.0
+    };
 
     let log_tabs_enabled = sow_core::config::ENABLE_BOTTOM_HUD_LOG_TABS;
     let dispatch_total = dispatch_count(state);
@@ -886,8 +893,22 @@ pub fn draw(
         0
     };
 
-    let bottom_anchor = egui::Align2::LEFT_BOTTOM;
-    let bottom_offset = egui::vec2(12.0, -state.safe_area_bottom);
+    let (bottom_anchor, bottom_offset) = if portrait_dock {
+        (
+            egui::Align2::LEFT_BOTTOM,
+            egui::vec2(0.0, -state.safe_area_bottom),
+        )
+    } else {
+        (
+            egui::Align2::CENTER_BOTTOM,
+            egui::vec2(0.0, -state.safe_area_bottom),
+        )
+    };
+    let panel_radius = if portrait_dock {
+        crate::ui::theme::radius::dock_top()
+    } else {
+        crate::ui::theme::radius::lg()
+    };
 
     let bottom_hud_area = egui::Area::new(egui::Id::new("hud_bottom_area_v9"))
         .anchor(bottom_anchor, bottom_offset)
@@ -903,133 +924,112 @@ pub fn draw(
                     crate::ui::theme::nickname_field_border().linear_multiply(0.4)
                 };
 
-            let outer_margin = if compact {
-                egui::Margin {
-                    left: crate::ui::theme::margin::REGULAR,
-                    right: crate::ui::theme::margin::REGULAR,
-                    top: crate::ui::theme::margin::COZY,
-                    bottom: crate::ui::theme::margin::TIGHT,
-                }
-            } else {
+            let content_margin = if portrait_dock {
                 egui::Margin {
                     left: crate::ui::theme::margin::COZY,
                     right: crate::ui::theme::margin::COZY,
                     top: crate::ui::theme::margin::COZY,
                     bottom: crate::ui::theme::margin::TIGHT,
                 }
+            } else if compact {
+                egui::Margin {
+                    left: crate::ui::theme::margin::COZY,
+                    right: crate::ui::theme::margin::COZY,
+                    top: crate::ui::theme::margin::COZY,
+                    bottom: crate::ui::theme::margin::TIGHT,
+                }
+            } else {
+                egui::Margin {
+                    left: crate::ui::theme::margin::REGULAR,
+                    right: crate::ui::theme::margin::REGULAR,
+                    top: crate::ui::theme::margin::REGULAR,
+                    bottom: crate::ui::theme::margin::TIGHT,
+                }
             };
 
             egui::Frame::NONE
-                .fill(crate::ui::theme::panel_bg_transparent())
+                .fill(crate::ui::theme::hud_content_fill())
                 .stroke(egui::Stroke::new(
                     crate::ui::theme::stroke::HAIRLINE,
                     border_color,
                 ))
-                .corner_radius(crate::ui::theme::radius::lg())
-                .inner_margin(outer_margin)
+                .corner_radius(panel_radius)
+                .inner_margin(content_margin)
                 .show(ui, |ui| {
-                    ui.set_width(panel_w - 20.0);
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::COZY as f32;
+                    ui.allocate_ui_with_layout(
+                        vec2(panel_w, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.set_width(panel_w);
+                            ui.spacing_mut().item_spacing.y =
+                                crate::ui::theme::margin::COZY as f32;
 
-                        let content_w = panel_w - 36.0;
-
-                        if log_tabs_enabled {
-                            ui.push_id("tab_strip", |ui| {
-                                draw_browser_tab_strip(
-                                    ui,
-                                    state,
-                                    compact,
-                                    dispatch_total,
-                                    event_unread,
-                                    asset_loader,
-                                );
-                            });
-                        }
-
-                        let content_fill = crate::ui::theme::hud_content_fill();
-                        let content_margin = if compact {
-                            egui::Margin {
-                                left: crate::ui::theme::margin::COZY,
-                                right: crate::ui::theme::margin::COZY,
-                                top: crate::ui::theme::margin::COZY,
-                                bottom: crate::ui::theme::margin::TIGHT,
-                            }
-                        } else {
-                            egui::Margin {
-                                left: crate::ui::theme::margin::REGULAR,
-                                right: crate::ui::theme::margin::REGULAR,
-                                top: crate::ui::theme::margin::REGULAR,
-                                bottom: crate::ui::theme::margin::TIGHT,
-                            }
-                        };
-                        let content_radius = if log_tabs_enabled {
-                            crate::ui::theme::radius::content_bottom()
-                        } else {
-                            crate::ui::theme::radius::md()
-                        };
-
-                        egui::Frame::NONE
-                            .fill(content_fill)
-                            .corner_radius(content_radius)
-                            .inner_margin(content_margin)
-                            .show(ui, |ui| {
-                                ui.set_width(content_w);
-                                if log_tabs_enabled {
-                                    match state.bottom_tab {
-                                        BottomHudTab::Controls => {
-                                            draw_controls_with_attack_ratio(
-                                                ui,
-                                                state,
-                                                content_w,
-                                                compact,
-                                                cancel_intents,
-                                                lang,
-                                                &mut action,
-                                            );
-                                        }
-                                        BottomHudTab::BattleLog => {
-                                            draw_hud_sidebar_row(
-                                                ui,
-                                                state,
-                                                content_w,
-                                                compact,
-                                                &mut action,
-                                                lang,
-                                                cancel_intents,
-                                                HudSidebarMain::BattleLog,
-                                            );
-                                        }
-                                        BottomHudTab::EventLog => {
-                                            draw_hud_sidebar_row(
-                                                ui,
-                                                state,
-                                                content_w,
-                                                compact,
-                                                &mut action,
-                                                lang,
-                                                cancel_intents,
-                                                HudSidebarMain::EventLog,
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    draw_controls_with_attack_ratio(
+                            if log_tabs_enabled {
+                                ui.push_id("tab_strip", |ui| {
+                                    draw_browser_tab_strip(
                                         ui,
                                         state,
-                                        content_w,
                                         compact,
-                                        cancel_intents,
-                                        lang,
-                                        &mut action,
+                                        dispatch_total,
+                                        event_unread,
+                                        asset_loader,
                                     );
-                                }
-                            });
+                                });
+                            }
 
-                        if state.safe_area_bottom > 0.0 {
-                            ui.add_space(state.safe_area_bottom);
-                        }
-                    });
+                            let content_w = ui.available_width();
+
+                            if log_tabs_enabled {
+                                match state.bottom_tab {
+                                    BottomHudTab::Controls => {
+                                        draw_controls_with_attack_ratio(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            cancel_intents,
+                                            lang,
+                                            &mut action,
+                                        );
+                                    }
+                                    BottomHudTab::BattleLog => {
+                                        draw_hud_sidebar_row(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            &mut action,
+                                            lang,
+                                            cancel_intents,
+                                            HudSidebarMain::BattleLog,
+                                        );
+                                    }
+                                    BottomHudTab::EventLog => {
+                                        draw_hud_sidebar_row(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            &mut action,
+                                            lang,
+                                            cancel_intents,
+                                            HudSidebarMain::EventLog,
+                                        );
+                                    }
+                                }
+                            } else {
+                                draw_controls_with_attack_ratio(
+                                    ui,
+                                    state,
+                                    content_w,
+                                    compact,
+                                    cancel_intents,
+                                    lang,
+                                    &mut action,
+                                );
+                            }
+                        },
+                    );
                 });
         });
     ui.ctx().data_mut(|d| {
@@ -1239,12 +1239,7 @@ pub fn draw(
                                         (rgb[2] * 255.0) as u8,
                                     ).linear_multiply(inbox_progress);
                                     let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                    let name = if requester.name.is_empty() {
-                                        if requester.id >= 200 { format!("Tribe {}", requester.id - 199) }
-                                        else { format!("Nation {}", requester.id - 103) }
-                                    } else {
-                                        requester.name.clone()
-                                    };
+                                    let name = sow_core::player::display_name(requester.id, &requester.name);
 
                                     // Animate individual card sliding horizontally with spring overshoot!
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, anim);
@@ -1343,12 +1338,7 @@ pub fn draw(
                                         (rgb[2] * 255.0) as u8,
                                     ).linear_multiply(inbox_progress);
                                     let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                    let name = if requester.name.is_empty() {
-                                        if requester.id >= 200 { format!("Tribe {}", requester.id - 199) }
-                                        else { format!("Nation {}", requester.id - 103) }
-                                    } else {
-                                        requester.name.clone()
-                                    };
+                                    let name = sow_core::player::display_name(requester.id, &requester.name);
 
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, anim);
                                     let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
@@ -1512,7 +1502,7 @@ pub fn draw(
                             action = Some(UiAction::ZoomOut);
                         }
                         if ui
-                            .add(crate::widgets::HudButton::new("⌖").dim(btn_w))
+                            .add(crate::widgets::HudButton::new("🏠").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_center_camera)
                             .clicked()
                         {
@@ -1920,17 +1910,7 @@ fn get_player_display_name(players: &[PlayerSnapshot], id: u16, default: &str) -
     players
         .iter()
         .find(|p| p.id == id)
-        .map(|p| {
-            if p.name.is_empty() {
-                if p.id >= 200 {
-                    format!("Tribe {}", p.id - 199)
-                } else {
-                    format!("Nation {}", p.id - 103)
-                }
-            } else {
-                p.name.clone()
-            }
-        })
+        .map(|p| sow_core::player::display_name(p.id, &p.name))
         .unwrap_or_else(|| default.to_string())
 }
 
@@ -2118,11 +2098,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
 
     let troop_rate = (state.max_troops * 0.1).max(0.0);
     let is_increasing = true;
-    let bar_h = if compact {
-        ui.available_height().clamp(22.0, 26.0)
-    } else {
-        ui.available_height().clamp(22.0, 24.0)
-    };
+    let bar_h = if compact { 24.0 } else { 22.0 };
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = if compact { 8.0 } else { 6.0 };
@@ -2212,6 +2188,24 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
 
 const ATTACK_RATIO_COL_W: f32 = 48.0;
 
+fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMain) -> f32 {
+    if spawn_active {
+        return if compact { 72.0 } else { 56.0 };
+    }
+    let header_h = if compact { 24.0 } else { 22.0 };
+    let row_gap = crate::ui::theme::margin::TIGHT as f32;
+    let body_h = match main {
+        HudSidebarMain::Controls => {
+            if compact { 38.0 } else { 44.0 }
+        }
+        HudSidebarMain::BattleLog | HudSidebarMain::EventLog => {
+            if compact { 120.0 } else { 140.0 }
+        }
+    };
+    body_h + row_gap + header_h
+}
+
+#[derive(Clone, Copy)]
 enum HudSidebarMain {
     Controls,
     BattleLog,
@@ -2234,9 +2228,7 @@ fn draw_attack_ratio_column(ui: &mut egui::Ui, state: &HudState, col_h: f32) -> 
                 crate::ui::theme::accent_solo_cyan_hover(),
             );
 
-            let gap = ui.spacing().item_spacing.y;
-            let bottom_label_h = 12.0;
-            let slider_h = (ui.available_height() - bottom_label_h - gap).max(24.0);
+            let slider_h = (col_h - 32.0).clamp(24.0, 56.0);
             let mut ratio = state.attack_ratio;
             let slider = Slider::new(&mut ratio, 0.01..=1.0)
                 .show_value(false)
@@ -2279,16 +2271,27 @@ fn draw_hud_sidebar_row(
         0.0
     };
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
+    let row_h = hud_sidebar_row_height(compact, spawn_active, main);
 
-    // Lay out the right column first so row height follows its content; stretch the slider to match.
-    ui.with_layout(
-        egui::Layout::right_to_left(egui::Align::TOP).with_main_justify(false),
+    ui.allocate_ui_with_layout(
+        vec2(content_w, row_h),
+        egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
             ui.spacing_mut().item_spacing.x = ratio_gap;
 
-            let main_response = ui.push_id("hud_main_col", |ui| {
-                ui.set_width(main_w);
-                ui.vertical(|ui| {
+            if show_ratio {
+                ui.push_id("attack_ratio_col", |ui| {
+                    if let Some(ratio) = draw_attack_ratio_column(ui, state, row_h) {
+                        *action = Some(UiAction::SetAttackRatio(ratio));
+                    }
+                });
+                ui.separator();
+            }
+
+            ui.allocate_ui_with_layout(
+                vec2(main_w, row_h),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
                     ui.spacing_mut().item_spacing.y = row_gap;
                     if !spawn_active {
                         match main {
@@ -2326,18 +2329,8 @@ fn draw_hud_sidebar_row(
                     ui.push_id("persistent_header", |ui| {
                         draw_persistent_header(ui, state, compact, lang);
                     });
-                });
-            });
-
-            if show_ratio {
-                ui.separator();
-                let row_h = main_response.response.rect.height();
-                ui.push_id("attack_ratio_col", |ui| {
-                    if let Some(ratio) = draw_attack_ratio_column(ui, state, row_h) {
-                        *action = Some(UiAction::SetAttackRatio(ratio));
-                    }
-                });
-            }
+                },
+            );
         },
     );
 }
@@ -2994,17 +2987,7 @@ fn draw_transfer_panel(
 
     let target_player = state.players.iter().find(|p| p.id == target_id);
     let target_name = target_player
-        .map(|p| {
-            if p.name.is_empty() {
-                if p.id >= 200 {
-                    format!("Tribe {}", p.id - 199)
-                } else {
-                    format!("Nation {}", p.id - 103)
-                }
-            } else {
-                p.name.clone()
-            }
-        })
+        .map(|p| sow_core::player::display_name(p.id, &p.name))
         .unwrap_or_else(|| format!("Ally {}", target_id));
 
     // Active Tab: 0 = Send, 1 = Request

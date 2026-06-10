@@ -200,6 +200,16 @@ pub mod radius {
             se: 0,
         }
     }
+    /// Bottom HUD docked to screen edge on portrait viewports — rounded top only.
+    #[inline]
+    pub fn dock_top() -> CornerRadius {
+        CornerRadius {
+            nw: LG,
+            ne: LG,
+            sw: 0,
+            se: 0,
+        }
+    }
     #[inline]
     pub fn content_bottom() -> CornerRadius {
         CornerRadius {

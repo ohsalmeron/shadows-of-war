@@ -701,9 +701,13 @@ impl MapEditorSession {
             my_player_id: 0.0,
             hover_hex,
             hover_building_kind: 0.0,
-            _pad1: 0.0,
+            territory_opacity: 0.28,
             fallout_slots: [[0.0; 4]; 8],
             nobuild_slots: [[0.0; 4]; 32],
+            sub_voxel_scale: 1.0,
+            _pad2: 0.0,
+            _pad3: 0.0,
+            _pad4: 0.0,
         }
     }
 

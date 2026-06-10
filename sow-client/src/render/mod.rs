@@ -64,6 +64,19 @@ impl SowApp {
         crate::viewport::Viewport::from_configured(self, sf).sync_to_app(self);
         crate::viewport::scale_pointer_events(&mut self.ui.raw_input, sf);
 
+        if self.gfx.pending_session_cleanup {
+            self.gfx.pending_session_cleanup = false;
+            if self.ui.app.phase == ClientPhase::MainMenu {
+                if let Some(render_ctx) = self.gfx.render_ctx.take() {
+                    if let Some(sp) = self.gfx.prev_sync_point.take() {
+                        let _ = render_ctx.context.wait_for(&sp, !0);
+                    }
+                    self.gfx.render_ctx = Some(render_ctx);
+                    self.cleanup_game_session_stub();
+                }
+            }
+        }
+
         if let Some(ref mut s) = self.gfx.surface {
             let mut render_ctx = match self.gfx.render_ctx.take() {
                 Some(ctx) => ctx,
@@ -199,6 +212,8 @@ impl SowApp {
                 let mut border_darkness = 0.35f32;
                 let mut shore_thickness = 1.0f32;
                 let mut shore_darkness = 1.0f32;
+                let mut territory_opacity = 0.28f32;
+                let mut sub_voxel_scale = 1.0f32;
 
                 self.ui.egui_ctx.data_mut(|d| {
                     border_thickness =
@@ -211,6 +226,14 @@ impl SowApp {
                         });
                     shore_darkness = *d
                         .get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || {
+                            1.0f32
+                        });
+                    territory_opacity = *d
+                        .get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || {
+                            0.28f32
+                        });
+                    sub_voxel_scale = *d
+                        .get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || {
                             1.0f32
                         });
                 });
@@ -379,9 +402,13 @@ impl SowApp {
                     my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
                     hover_hex,
                     hover_building_kind,
-                    _pad1: 0.0,
+                    territory_opacity,
                     fallout_slots,
                     nobuild_slots,
+                    sub_voxel_scale,
+                    _pad2: 0.0,
+                    _pad3: 0.0,
+                    _pad4: 0.0,
                 };
                 let colors_struct = sow_render::PlayerColors {
                     colors: player_colors,
@@ -484,8 +511,7 @@ impl SowApp {
                     (self.ui.app.main_menu_state.wait_timer_secs - self.ui.raw_input.predicted_dt)
                         .max(0.0);
             }
-            // Offline: spawn countdown comes from sim snapshots (tick-paced). Frame-based
-            // decay here ran too fast on high-refresh native vs WASM ~60 Hz.
+            // Frame-based decay smoothed out UI; sim snapshots keep it strictly synced.
             if let Some(ref mut secs) = self.ui.app.hud_state.spawn_timer_secs {
                 if self.net.client.is_some() {
                     *secs = (*secs - self.ui.raw_input.predicted_dt).max(0.0);
