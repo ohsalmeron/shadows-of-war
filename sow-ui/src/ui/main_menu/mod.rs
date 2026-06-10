@@ -180,7 +180,9 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
 }
 
 fn menu_meta_footer_height(section_gap: f32) -> f32 {
-    section_gap * 0.5 + 14.0 + 4.0 + 14.0
+    // Note: there is no space for fucking 2 rows of text in that panel you keep doing the same shit over and over
+    // So we stack them in a column to prevent horizontal stretching entirely, and expand height to fit.
+    section_gap * 0.5 + 85.0
 }
 
 fn menu_footer_height(section_gap: f32, action_min_h: f32) -> f32 {
@@ -217,42 +219,47 @@ fn draw_menu_footer(
 
     ui.add_space(section_gap * 0.5);
     let strings = &sow_i18n::get(lang).main_menu;
-    ui.vertical(|ui| {
+    let credits = &sow_i18n::get(lang).credits;
+    ui.vertical_centered(|ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
         
         let text_color = crate::ui::theme::text_secondary();
         let link_color = crate::ui::theme::accent_solo_cyan();
         let size = 11.0;
-        
-        // there is no space for fucking 2 rows of text in that panel you keep doing the same shit over and over
+
         ui.label(egui::RichText::new(&strings.by_playing_you_agree).size(size).color(text_color));
+
+        if ui.add(
+            egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service).size(size).color(link_color))
+                .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
+        ).clicked() {
+            *action = Some(UiAction::ToggleTerms);
+        }
         
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            
-            if ui.add(
-                egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service).size(size).color(link_color))
-                    .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
-            ).clicked() {
-                *action = Some(UiAction::ToggleTerms);
-            }
-            
-            ui.label(egui::RichText::new(&strings.and_the).size(size).color(text_color));
-            
-            if ui.add(
-                egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy).size(size).color(link_color))
-                    .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
-            ).clicked() {
-                *action = Some(UiAction::TogglePrivacy);
-            }
-        });
+        ui.label(egui::RichText::new(&strings.and_the).size(size).color(text_color));
+        
+        if ui.add(
+            egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy).size(size).color(link_color))
+                .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
+        ).clicked() {
+            *action = Some(UiAction::TogglePrivacy);
+        }
 
         ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(version)
-                .size(11.0)
-                .color(crate::ui::theme::text_secondary()),
-        );
+
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.label(
+                egui::RichText::new(version)
+                    .size(size)
+                    .color(text_color),
+            );
+            ui.label(
+                egui::RichText::new(&credits.based_on_short)
+                    .size(size)
+                    .color(text_color),
+            );
+        });
     });
 }
 
