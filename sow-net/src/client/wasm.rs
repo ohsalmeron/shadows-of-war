@@ -16,6 +16,10 @@ pub struct SowClient {
 
 impl Drop for SowClient {
     fn drop(&mut self) {
+        let state = self.ws.ready_state();
+        if state == WebSocket::OPEN || state == WebSocket::CONNECTING {
+            let _ = self.ws.close();
+        }
         let _ = self.ws.set_onopen(None);
         let _ = self.ws.set_onclose(None);
         let _ = self.ws.set_onerror(None);

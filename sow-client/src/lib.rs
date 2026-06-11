@@ -47,20 +47,66 @@ fn spawn_sow_client_connect(
     #[cfg(not(target_arch = "wasm32"))] tokio_rt: &tokio::runtime::Runtime,
 ) {
     let tx = connect_tx.clone();
-    let fut = async move {
-        match SowClient::connect(&url).await {
-            Ok(c) => {
-                let _ = tx.send(Ok(c));
-            }
-            Err(e) => {
-                let _ = tx.send(Err(e.to_string()));
-            }
-        }
-    };
-    #[cfg(target_arch = "wasm32")]
-    wasm_bindgen_futures::spawn_local(fut);
+    let url_clone = url.clone();
+
     #[cfg(not(target_arch = "wasm32"))]
-    tokio_rt.spawn(fut);
+    {
+        let fut = async move {
+            match tokio::time::timeout(std::time::Duration::from_secs(5), SowClient::connect(&url_clone)).await {
+                Ok(Ok(c)) => {
+                    let _ = tx.send(Ok(c));
+                }
+                Ok(Err(e)) => {
+                    let _ = tx.send(Err(e.to_string()));
+                }
+                Err(_) => {
+                    let _ = tx.send(Err("Connection timed out after 5 seconds".to_string()));
+                }
+            }
+        };
+        tokio_rt.spawn(fut);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use wasm_bindgen::JsCast;
+
+        let tx_for_timeout = connect_tx.clone();
+        let finished = Arc::new(AtomicBool::new(false));
+        let finished_clone = finished.clone();
+
+        // Spawn the connection attempt
+        wasm_bindgen_futures::spawn_local(async move {
+            let res = SowClient::connect(&url_clone).await;
+            if !finished.swap(true, Ordering::SeqCst) {
+                match res {
+                    Ok(c) => {
+                        let _ = tx.send(Ok(c));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.to_string()));
+                    }
+                }
+            }
+        });
+
+        // Set up the timeout
+        let closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+            if !finished_clone.swap(true, Ordering::SeqCst) {
+                let _ = tx_for_timeout.send(Err("Connection timed out after 5 seconds".to_string()));
+            }
+        });
+
+        if let Some(window) = web_sys::window() {
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                closure.as_ref().unchecked_ref(),
+                5000,
+            );
+            closure.forget(); // Keep the closure alive so JS can invoke it
+        }
+    }
 }
 
 pub enum MapDownloadEvent {

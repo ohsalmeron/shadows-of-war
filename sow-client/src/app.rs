@@ -660,7 +660,6 @@ impl SowApp {
         if was_playing {
             crate::store_portals::gameplay_stop();
         }
-        self.abort_engine_init();
         crate::store_portals::left_room();
         self.net.is_offline = false;
         self.net.ws_url = self.net.orchestrator_url.clone();
@@ -676,12 +675,9 @@ impl SowApp {
         self.ui.app.main_menu_state.is_waiting = false;
         self.ui.app.main_menu_state.pending_join_lobby_id = None;
         self.ui.app.main_menu_state.joined_lobby_id = None;
-        self.ui.app.main_menu_state.in_private_match = false;
-        self.ui.app.main_menu_state.lobbies.clear();
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
-        self.ui.tutorial_active = false;
         if use_loader {
             self.ui.app.phase = ClientPhase::Splash;
             let lang = self.ui.app.settings_state.language;

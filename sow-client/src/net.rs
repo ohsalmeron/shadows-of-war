@@ -138,25 +138,6 @@ impl SowApp {
             self.fetch_map_catalog_if_needed();
         }
 
-        // 3-second relay timeout check
-        if self.ws_on_relay() && self.net.client.is_none() && !self.net.is_offline {
-            if self.net.relay_connect_start.is_none() {
-                self.net.relay_connect_start = Some(now);
-                self.net.relay_retry_count = 0;
-            }
-            if let Some(start) = self.net.relay_connect_start {
-                if now.duration_since(start) >= Duration::from_secs(3) {
-                    log::error!("Relay connection/reconnection timed out after 3 seconds");
-                    self.net.relay_connect_start = None;
-                    self.net.relay_retry_count = 0;
-                    self.ui.app.main_menu_state.error_message = Some("Failed to connect to the game server. Please check your internet connection.".to_string());
-                    self.begin_exit_to_main_menu(true);
-                }
-            }
-        } else {
-            self.net.relay_connect_start = None;
-        }
-
         // No fake map download simulation! Progress is real!
 
         while let Ok(res) = self.net.connect_rx.try_recv() {
@@ -218,23 +199,25 @@ impl SowApp {
                     self.net.client = Some(client);
                 }
                 Err(e) => {
-                    log::debug!("Failed to connect: {}", e);
+                    log::warn!("[CLIENT NET] Failed to connect: {}", e);
                     self.ui.app.main_menu_state.is_connected = false;
                     self.ui.app.main_menu_state.is_connecting = false;
                     if self.ws_on_relay() && !self.net.is_offline {
                         self.net.relay_retry_count += 1;
-                        if self.net.relay_retry_count >= 3 {
-                            log::error!("Relay connection failed after 3 attempts");
+                        self.net.relay_connect_start = Some(now); // reset timer on each Err to extend per-attempt budget
+                        if self.net.relay_retry_count >= 10 {
+                            log::error!("Relay connection failed after 10 attempts");
                             self.net.relay_connect_start = None;
                             self.net.relay_retry_count = 0;
                             self.ui.app.main_menu_state.error_message = Some(
-                                "Failed to connect to the game server after 3 attempts."
+                                "Failed to connect to the game server after 10 attempts."
                                     .to_string(),
                             );
                             self.begin_exit_to_main_menu(true);
                         } else {
                             log::warn!(
-                                "Relay connection failed; retrying rapid connection attempt {}/3",
+                                "Relay connection failed: {}; retrying rapid connection attempt {}/10",
+                                e,
                                 self.net.relay_retry_count + 1
                             );
                             self.net.ws_connect_fail_backoff_ms = 100;
@@ -250,6 +233,25 @@ impl SowApp {
             }
         }
 
+        // 15-second total relay timeout check (as a last-resort safety net)
+        if self.ws_on_relay() && self.net.client.is_none() && !self.net.is_offline {
+            if self.net.relay_connect_start.is_none() {
+                self.net.relay_connect_start = Some(now);
+                self.net.relay_retry_count = 0;
+            }
+            if let Some(start) = self.net.relay_connect_start {
+                if now.duration_since(start) >= Duration::from_secs(15) {
+                    log::error!("Relay connection/reconnection timed out after 15 seconds total");
+                    self.net.relay_connect_start = None;
+                    self.net.relay_retry_count = 0;
+                    self.ui.app.main_menu_state.error_message = Some("Failed to connect to the game server. Connection timed out.".to_string());
+                    self.begin_exit_to_main_menu(true);
+                }
+            }
+        } else {
+            self.net.relay_connect_start = None;
+        }
+
         let mut ws_disconnected = false;
         #[cfg(target_arch = "wasm32")]
         if let Some(c) = self.net.client.as_ref() {
@@ -260,7 +262,6 @@ impl SowApp {
 
         let mut switch_to_relay = None;
         let mut exit_to_menu_after_net = false;
-        let mut pending_start: Option<sow_core::protocol::ServerStartMessage> = None;
         let mut pending_rematch: Option<u64> = None;
 
         // Process network messages
@@ -294,10 +295,33 @@ impl SowApp {
                             log::info!(
                                 "Received ServerStartMessage; entering Splash phase immediately"
                             );
+                            self.sync_portal_room(false);
+                            let not_splash =
+                                self.ui.app.phase != sow_ui::app::ClientPhase::Splash;
+                            let wrong_job = self.ui.app.splash_state.job
+                                != sow_ui::ui::loading_screen::SplashJob::EnterGame;
+
+                            if not_splash || wrong_job {
+                                self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
+                                let lang = self.ui.app.settings_state.language;
+                                self.ui.app.splash_state.reset_anim(
+                                    sow_ui::ui::loading_screen::SplashJob::EnterGame,
+                                    lang,
+                                );
+                            }
+                            self.ui.app.main_menu_state.is_waiting = false;
+                            self.ui.app.main_menu_state.pending_join_lobby_id = None;
+                            self.ui.app.main_menu_state.joined_lobby_id = None;
+                            self.ui.app.main_menu_state.wait_timer_secs = 0.0;
+                            self.ui.app.hud_state.sync_state = None;
+                            self.sim.my_player_id = start_msg.my_player_id;
+                            self.sim.my_lobby_id = start_msg.lobby_id;
+
                             if let Some(relay_port) = start_msg.relay_port {
                                 switch_to_relay = Some(relay_port);
                             }
-                            pending_start = Some(*start_msg);
+
+                            self.tasks.engine_init_queued_msg = Some(*start_msg);
                             if switch_to_relay.is_some() {
                                 break;
                             }
@@ -662,30 +686,6 @@ impl SowApp {
             } // end if !ws_disconnected
         } // end if let Some(c)
 
-        if let Some(start_msg) = pending_start {
-            self.sync_portal_room(false);
-            let not_splash = self.ui.app.phase != sow_ui::app::ClientPhase::Splash;
-            let wrong_job =
-                self.ui.app.splash_state.job != sow_ui::ui::loading_screen::SplashJob::EnterGame;
-
-            if not_splash || wrong_job {
-                self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
-                let lang = self.ui.app.settings_state.language;
-                self.ui
-                    .app
-                    .splash_state
-                    .reset_anim(sow_ui::ui::loading_screen::SplashJob::EnterGame, lang);
-            }
-            self.ui.app.main_menu_state.is_waiting = false;
-            self.ui.app.main_menu_state.pending_join_lobby_id = None;
-            self.ui.app.main_menu_state.joined_lobby_id = None;
-            self.ui.app.main_menu_state.wait_timer_secs = 0.0;
-            self.ui.app.hud_state.sync_state = None; // clear the "WAITING FOR PLAYERS" modal if it's up
-            self.sim.my_player_id = start_msg.my_player_id;
-            self.sim.my_lobby_id = start_msg.lobby_id;
-            self.tasks.engine_init_queued_msg = Some(start_msg);
-        }
-
         if let Some(rematch_id) = pending_rematch {
             crate::store_portals::gameplay_stop();
             self.cleanup_game_session_stub();
@@ -719,8 +719,8 @@ impl SowApp {
                 }
                 self.net.ws_url = url.to_string();
                 self.net.client = None; // Drop orchestrator connection
+                self.ui.app.main_menu_state.is_connected = false; // Reset connection status during handoff
                 self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
-                self.ui.app.main_menu_state.is_connecting = true; // PREVENT DUPLICATE CONNECTIONS
                 ws_disconnected = false;
 
                 // Clear stale connections
@@ -730,19 +730,7 @@ impl SowApp {
 
                 self.net.relay_connect_start = Some(now);
                 self.net.relay_retry_count = 0;
-
-                log::warn!(
-                    "[CLIENT NET] 🚀 Spawning WS connection task to RELAY: {}",
-                    self.net.ws_url
-                );
-                #[cfg(target_arch = "wasm32")]
-                crate::spawn_sow_client_connect(self.net.ws_url.clone(), &self.net.connect_tx);
-                #[cfg(not(target_arch = "wasm32"))]
-                crate::spawn_sow_client_connect(
-                    self.net.ws_url.clone(),
-                    &self.net.connect_tx,
-                    &self.tokio_rt,
-                );
+                self.net.ws_connect_not_before = now; // Ensure no backoff delays are active for retries
             }
         }
 

@@ -4,7 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/valkey-server --port 6379 --bind 127.0.0.1
+User=valkey
+Group=valkey
+WorkingDirectory=/var/lib/valkey
+ExecStart=/usr/bin/valkey-server --port 6379 --bind 127.0.0.1 --save "" --stop-writes-on-bgsave-error no
 Restart=always
 
 [Install]

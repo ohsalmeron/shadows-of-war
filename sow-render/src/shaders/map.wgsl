@@ -482,14 +482,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 let atk_color = owner_albedo(attacker_id);
 
                 // Clean, elegant, and highly performant threat glow (no high-frequency noise)
-                let slow_breathe = 0.92 + 0.08 * sin(globals.time * 2.0);
+                let slow_breathe = 0.92 + 0.18 * sin(globals.time * 2.0);
                 let intensity = threat * slow_breathe;
 
                 // Softly tint base color with attacker color
                 base_color = mix(base_color, atk_color * 0.22, intensity * 0.45);
 
                 // A subtle highlight towards the center of attack
-                base_color += atk_color * (intensity * intensity * 0.12);
+                base_color += atk_color * (intensity * intensity * 0.35);
             }
         }
     }
