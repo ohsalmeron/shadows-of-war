@@ -885,7 +885,7 @@ pub fn hud_icon_spacing() -> f32 {
 /// Paint a pre-laid-out galley with premium 7-pass glow (zero layout cost).
 ///
 /// `pos` is the top-left anchor of the galley.
-fn paint_premium_glow_galley(
+pub fn paint_premium_glow_galley(
     painter: &egui::Painter,
     pos: egui::Pos2,
     galley: Arc<Galley>,

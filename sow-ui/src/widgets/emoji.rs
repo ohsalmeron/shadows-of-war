@@ -1,8 +1,30 @@
-use egui::{Align2, Color32, CursorIcon, FontId, Pos2, Rect, Response, Sense, Ui, Vec2, Widget};
+use std::sync::Arc;
+
+use egui::{Align2, Color32, CursorIcon, FontId, Galley, Pos2, Rect, Response, Sense, Ui, Vec2, Widget};
 
 enum Run<'a> {
     Text(&'a str),
     Emoji(&'a str),
+}
+
+#[derive(Clone)]
+pub enum PreparedRun {
+    Text {
+        galley: Arc<Galley>,
+        width: f32,
+        height: f32,
+    },
+    Emoji {
+        emoji: String,
+        width: f32,
+        height: f32,
+    },
+}
+
+#[derive(Clone)]
+pub struct PreparedName {
+    pub size: Vec2,
+    runs: Vec<PreparedRun>,
 }
 
 fn match_emoji_at(text: &str, byte_idx: usize) -> Option<usize> {
@@ -51,24 +73,98 @@ fn emoji_icon_size(font: &FontId) -> f32 {
     font.size * 1.4
 }
 
-fn measure_runs(painter: &egui::Painter, runs: &[Run<'_>], font: &FontId) -> (f32, f32) {
-    let icon_h = emoji_icon_size(font);
+/// Parse and layout a mixed emoji/text string once for reuse across frames.
+pub fn prepare_name(painter: &egui::Painter, text: &str, font_id: &FontId) -> PreparedName {
+    let runs = split_runs(text);
+    let icon_h = emoji_icon_size(font_id);
+    let mut prepared_runs = Vec::with_capacity(runs.len());
     let mut w = 0.0_f32;
-    let mut h = font.size;
+    let mut h = font_id.size;
+
     for run in runs {
         match run {
             Run::Text(s) => {
-                let g = painter.layout_no_wrap((*s).to_owned(), font.clone(), Color32::WHITE);
-                w += g.rect.width();
-                h = h.max(g.rect.height());
+                let galley = painter.layout_no_wrap(s.to_owned(), font_id.clone(), Color32::WHITE);
+                let rw = galley.rect.width();
+                let rh = galley.rect.height();
+                w += rw;
+                h = h.max(rh);
+                prepared_runs.push(PreparedRun::Text {
+                    galley,
+                    width: rw,
+                    height: rh,
+                });
             }
-            Run::Emoji(_) => {
-                w += icon_h + 2.0;
+            Run::Emoji(e) => {
+                let rw = icon_h + 2.0;
+                prepared_runs.push(PreparedRun::Emoji {
+                    emoji: e.to_owned(),
+                    width: rw,
+                    height: icon_h,
+                });
+                w += rw;
                 h = h.max(icon_h);
             }
         }
     }
-    (w, h)
+
+    PreparedName {
+        size: Vec2::new(w, h),
+        runs: prepared_runs,
+    }
+}
+
+fn paint_prepared_runs(
+    painter: &egui::Painter,
+    rect: Rect,
+    prepared: &PreparedName,
+    color: Color32,
+    outlined: bool,
+) {
+    let mut x = rect.left();
+    let cy = rect.center().y;
+    let shadow_color = Color32::from_black_alpha(color.a());
+
+    for run in &prepared.runs {
+        match run {
+            PreparedRun::Text { galley, width, height } => {
+                let y = cy - height / 2.0;
+                if outlined {
+                    crate::ui::theme::paint_premium_glow_galley(
+                        painter,
+                        Pos2::new(x, y),
+                        galley.clone(),
+                        color,
+                        shadow_color,
+                    );
+                } else {
+                    painter.galley(Pos2::new(x, y), galley.clone(), color);
+                }
+                x += width;
+            }
+            PreparedRun::Emoji { emoji, width, height } => {
+                let r = Rect::from_center_size(
+                    Pos2::new(x + height / 2.0, cy),
+                    Vec2::splat(*height),
+                );
+                try_paint_emoji(painter, emoji, r, color);
+                x += width;
+            }
+        }
+    }
+}
+
+/// Paint a pre-prepared name with zero layout cost.
+pub fn paint_prepared_name(
+    painter: &egui::Painter,
+    pos: Pos2,
+    anchor: Align2,
+    prepared: &PreparedName,
+    color: Color32,
+    outlined: bool,
+) {
+    let rect = anchor.anchor_size(pos, prepared.size);
+    paint_prepared_runs(painter, rect, prepared, color, outlined);
 }
 
 /// Draw a pixel emoji from the embedded atlas. Returns false if the glyph is not in the atlas.
@@ -121,22 +217,20 @@ pub fn paint_emoji_centered(
 
 /// Inline label mixing atlas emoji and normal text.
 pub fn emoji_label(ui: &mut Ui, text: &str, font_id: FontId, color: Color32) -> Response {
-    let runs = split_runs(text);
-    let (total_w, max_h) = measure_runs(ui.painter(), &runs, &font_id);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(total_w, max_h), Sense::hover());
+    let prepared = prepare_name(ui.painter(), text, &font_id);
+    let (rect, response) = ui.allocate_exact_size(prepared.size, Sense::hover());
     if ui.is_rect_visible(rect) {
-        paint_runs(ui.painter(), rect, &runs, &font_id, color, false);
+        paint_prepared_runs(ui.painter(), rect, &prepared, color, false);
     }
     response
 }
 
 /// Outlined inline label (text parts get glow; emoji painted from atlas).
 pub fn outlined_emoji_label(ui: &mut Ui, text: &str, font_id: FontId, color: Color32) -> Response {
-    let runs = split_runs(text);
-    let (total_w, max_h) = measure_runs(ui.painter(), &runs, &font_id);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(total_w, max_h), Sense::hover());
+    let prepared = prepare_name(ui.painter(), text, &font_id);
+    let (rect, response) = ui.allocate_exact_size(prepared.size, Sense::hover());
     if ui.is_rect_visible(rect) {
-        paint_runs(ui.painter(), rect, &runs, &font_id, color, true);
+        paint_prepared_runs(ui.painter(), rect, &prepared, color, true);
     }
     response
 }
@@ -156,9 +250,7 @@ pub fn outlined_emoji_text(
 }
 
 pub fn measure_emoji_text(painter: &egui::Painter, text: &str, font_id: &FontId) -> Vec2 {
-    let runs = split_runs(text);
-    let (w, h) = measure_runs(painter, &runs, font_id);
-    Vec2::new(w, h)
+    prepare_name(painter, text, font_id).size
 }
 
 pub fn paint_emoji_text_at(
@@ -170,53 +262,8 @@ pub fn paint_emoji_text_at(
     color: Color32,
     outlined: bool,
 ) {
-    let runs = split_runs(text);
-    let (total_w, max_h) = measure_runs(painter, &runs, &font_id);
-    let rect = anchor.anchor_size(pos, Vec2::new(total_w, max_h));
-    paint_runs(painter, rect, &runs, &font_id, color, outlined);
-}
-
-fn paint_runs(
-    painter: &egui::Painter,
-    rect: Rect,
-    runs: &[Run<'_>],
-    font_id: &FontId,
-    color: Color32,
-    outlined: bool,
-) {
-    let icon_h = emoji_icon_size(font_id);
-    let mut x = rect.left();
-    let cy = rect.center().y;
-    for run in runs {
-        match run {
-            Run::Text(s) => {
-                let galley = painter.layout_no_wrap(s.to_string(), font_id.clone(), color);
-                let w = galley.rect.width();
-                if outlined {
-                    let shadow_color = Color32::from_black_alpha(color.a());
-                    crate::ui::theme::outlined_text(
-                        painter,
-                        Pos2::new(x, cy),
-                        Align2::LEFT_CENTER,
-                        s,
-                        font_id.clone(),
-                        color,
-                        shadow_color,
-                    );
-                } else {
-                    let y = cy - galley.rect.height() / 2.0;
-                    painter.galley(Pos2::new(x, y), galley, color);
-                }
-                x += w;
-            }
-            Run::Emoji(e) => {
-                let r =
-                    Rect::from_center_size(Pos2::new(x + icon_h / 2.0, cy), Vec2::splat(icon_h));
-                try_paint_emoji(painter, e, r, color);
-                x += icon_h + 2.0;
-            }
-        }
-    }
+    let prepared = prepare_name(painter, text, &font_id);
+    paint_prepared_name(painter, pos, anchor, &prepared, color, outlined);
 }
 
 /// Clickable HUD square that renders a pixel emoji (falls back to glow text if missing).

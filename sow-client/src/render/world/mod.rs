@@ -82,6 +82,19 @@ impl SowApp {
                 let target_cx = avg_col + 0.5;
                 let target_cy = avg_row + 0.5;
 
+                // Early frustum cull on target position — skip interpolation for off-screen players
+                let target_screen_x =
+                    (target_cx * self.input.camera_zoom + self.input.camera_x) / sf;
+                let target_screen_y =
+                    (target_cy * self.input.camera_zoom + self.input.camera_y) / sf;
+                if target_screen_x < -100.0
+                    || target_screen_x > self.input.screen_w + 100.0
+                    || target_screen_y < -100.0
+                    || target_screen_y > self.input.screen_h + 100.0
+                {
+                    continue;
+                }
+
                 // Smooth position interpolation
                 let pos = self
                     .ui
@@ -130,9 +143,8 @@ impl SowApp {
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
 
-                let max_world = visual_config.nameplate_max_screen_font / (self.input.camera_zoom / sf).max(0.5);
                 let target_size = if player.nameplate_size > 0.1 {
-                    player.nameplate_size.min(max_world)
+                    player.nameplate_size
                 } else {
                     0.0
                 };

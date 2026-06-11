@@ -384,11 +384,21 @@ impl SowApp {
                         self.ui.app.main_menu_state.is_connected
                             && self.net.client.is_some()
                             && self.ws_on_relay()
-                            && self.sim.my_lobby_id.is_some()
-                            && self.sim.my_player_id.is_some()
                     };
 
                     if ready_to_release {
+                        self.ui.app.splash_state.gpu_load_step = 4;
+                        self.ui.app.splash_state.done = true;
+                        if self.ui.app.splash_state.target_phase.is_none() {
+                            self.ui.app.splash_state.target_phase =
+                                Some(sow_ui::app::ClientPhase::Playing);
+                            crate::store_portals::gameplay_start();
+                        }
+
+                        // Clear pending init data to completely finish EnterGame phase
+                        self.tasks.pending_engine_init_data = None;
+                        log::info!("EnterGame load complete; fading out loader");
+
                         if !self.net.is_offline {
                             if let Some(c) = self.net.client.as_ref() {
                                 if let (Some(lid), Some(pid)) =
@@ -403,18 +413,6 @@ impl SowApp {
                                 }
                             }
                         }
-
-                        self.ui.app.splash_state.gpu_load_step = 4;
-                        self.ui.app.splash_state.done = true;
-                        if self.ui.app.splash_state.target_phase.is_none() {
-                            self.ui.app.splash_state.target_phase =
-                                Some(sow_ui::app::ClientPhase::Playing);
-                            crate::store_portals::gameplay_start();
-                        }
-
-                        // Clear pending init data to completely finish EnterGame phase
-                        self.tasks.pending_engine_init_data = None;
-                        log::info!("EnterGame load complete; fading out loader");
                     } else {
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
                         if self.ui.app.splash_state.frames_drawn.is_multiple_of(120) {

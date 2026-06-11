@@ -9,7 +9,17 @@ use sow_core::protocol::SimSnapshot;
 use sow_net::client::SowClient;
 use sow_ui::{app::ClientPhase, ClientApp};
 use std::collections::HashMap;
+use std::sync::Arc;
 use web_time::{Duration, Instant};
+
+/// Cached nameplate text layouts — rebuilt only when name, font, or troops change.
+pub struct CachedNameplate {
+    pub display_name: String,
+    pub troops_str: String,
+    pub font_id: egui::FontId,
+    pub prepared_name: sow_ui::widgets::PreparedName,
+    pub troops_galley: Arc<egui::Galley>,
+}
 
 pub struct GraphicsState {
     pub window: Option<Box<dyn winit::window::Window>>,
@@ -179,10 +189,7 @@ pub struct UiState {
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
-    pub nameplate_galleys: std::collections::HashMap<
-        u16,
-        (String, String, egui::FontId, std::sync::Arc<egui::Galley>),
-    >,
+    pub nameplate_galleys: std::collections::HashMap<u16, CachedNameplate>,
     pub nameplate_troops_last_update: std::collections::HashMap<u16, web_time::Instant>,
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,

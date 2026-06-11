@@ -500,7 +500,7 @@ pub(crate) fn render(
     let alpha_t = ((zoom_scaled - 0.4) / 0.4).clamp(0.0, 1.0);
     let base_alpha = (alpha_t * 100.0) as u8;
     let rail_color = egui::Color32::from_rgba_unmultiplied(90, 80, 70, base_alpha);
-    let rail_stroke = egui::Stroke::new(1.5_f32, rail_color);
+    let rail_stroke = egui::Stroke::new(2.5_f32, rail_color);
 
     for seg in &ui.rail_state.segments {
         if seg.dead {

@@ -239,7 +239,6 @@ pub(crate) fn render(
         let far_zoom_threshold = visual_config.far_zoom_lod_threshold;
         let ui_text_scale = visual_config.ui_text_scale;
         let zoom_scaled_local = input.camera_zoom / sf;
-        let zoom_scale_continuous = (zoom_scaled_local * 0.5).clamp(0.2, 2.5);
 
         // Frame-constant trig — computed once, reused by every player
         let heart_flash_alpha = ((wall_secs * 12.0).cos() * 0.5 + 0.5) as f32;
@@ -294,10 +293,11 @@ pub(crate) fn render(
                 } else {
                     visual_config.nameplate_nation_size
                 };
-                let base_premium_size = if vp.nameplate_size > 0.1 {
+                // Only local player and humans scale with territory; bots/nations stay constant screen size.
+                let base_premium_size = if (is_me || is_human) && vp.nameplate_size > 0.1 {
                     vp.nameplate_size * zoom_scaled_local
                 } else {
-                    base_config_size * zoom_scale_continuous
+                    base_config_size
                 };
                 let scaled_size = (base_premium_size * ui_text_scale).min(visual_config.nameplate_max_screen_font);
                 if scaled_size < 7.0 {
@@ -379,65 +379,81 @@ pub(crate) fn render(
                 } else {
                     sow_core::player::display_name(player.id, &player.name, player.player_type)
                 };
-                let name_size =
-                    crate::hud::nameplate::name_label_size(painter, &display_name, &font_id);
-
-                let mut cached_troops = None;
-                let mut troops_changed = true;
-                if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
-                    if entry.0 == display_name && entry.2 == font_id {
-                        if entry.1 == troops_str {
-                            cached_troops = Some(entry.3.clone());
-                            troops_changed = false;
-                        } else {
-                            let now = web_time::Instant::now();
-                            if let Some(last_time) =
-                                ui.nameplate_troops_last_update.get(&player.id).copied()
-                            {
-                                if now.duration_since(last_time).as_secs_f32() < 0.5 {
-                                    // Rate limit layout rebuilds: Keep using old string & galley for now
-                                    cached_troops = Some(entry.3.clone());
-                                    troops_changed = false;
-                                }
-                            }
-                        }
-                    }
-                }
 
                 // QUANTIZATION: Round the troops font size
                 let troops_font_size = (font_size * 1.30).round().max(2.0);
                 let troops_font_id = egui::FontId::proportional(troops_font_size);
 
-                let (troops_str_to_use, troops_galley) = if let Some(tg) = cached_troops {
-                    // Use the string from the cache if we rate-limited
-                    let display_troops_str = if troops_changed {
-                        troops_str.clone()
-                    } else {
-                        ui.nameplate_galleys.get(&player.id).unwrap().1.clone()
+                let mut cached_prepared = None;
+                let mut cached_troops = None;
+
+                if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
+                    if entry.display_name == display_name && entry.font_id == font_id {
+                        cached_prepared = Some(entry.prepared_name.clone());
+                        if entry.troops_str == troops_str {
+                            cached_troops = Some(entry.troops_galley.clone());
+                        } else {
+                            let now = web_time::Instant::now();
+                            let rate_limited = ui
+                                .nameplate_troops_last_update
+                                .get(&player.id)
+                                .copied()
+                                .is_some_and(|last| {
+                                    now.duration_since(last).as_secs_f32() < 0.5
+                                });
+                            if rate_limited {
+                                cached_troops = Some(entry.troops_galley.clone());
+                            }
+                        }
+                    }
+                }
+
+                let (name_size, prepared_name, troops_galley) =
+                    match (cached_prepared, cached_troops) {
+                        (Some(prepared), Some(tg)) => (prepared.size, prepared, tg),
+                        (Some(prepared), None) => {
+                            let tg = crate::hud::nameplate::layout_nameplate_troops_galley(
+                                painter,
+                                troops_font_id.clone(),
+                                &troops_str,
+                            );
+                            ui.nameplate_galleys.insert(
+                                player.id,
+                                crate::app::CachedNameplate {
+                                    display_name: display_name.clone(),
+                                    troops_str: troops_str.clone(),
+                                    font_id: font_id.clone(),
+                                    prepared_name: prepared.clone(),
+                                    troops_galley: tg.clone(),
+                                },
+                            );
+                            ui.nameplate_troops_last_update
+                                .insert(player.id, web_time::Instant::now());
+                            (prepared.size, prepared, tg)
+                        }
+                        _ => {
+                            let prepared =
+                                sow_ui::widgets::prepare_name(painter, &display_name, &font_id);
+                            let tg = crate::hud::nameplate::layout_nameplate_troops_galley(
+                                painter,
+                                troops_font_id.clone(),
+                                &troops_str,
+                            );
+                            ui.nameplate_galleys.insert(
+                                player.id,
+                                crate::app::CachedNameplate {
+                                    display_name: display_name.clone(),
+                                    troops_str: troops_str.clone(),
+                                    font_id: font_id.clone(),
+                                    prepared_name: prepared.clone(),
+                                    troops_galley: tg.clone(),
+                                },
+                            );
+                            ui.nameplate_troops_last_update
+                                .insert(player.id, web_time::Instant::now());
+                            (prepared.size, prepared, tg)
+                        }
                     };
-                    (display_troops_str, tg)
-                } else {
-                    let tg = crate::hud::nameplate::layout_nameplate_troops_galley(
-                        painter,
-                        troops_font_id.clone(),
-                        &troops_str,
-                    );
-
-                    ui.nameplate_galleys.insert(
-                        player.id,
-                        (
-                            display_name.clone(),
-                            troops_str.clone(),
-                            font_id.clone(),
-                            tg.clone(),
-                        ),
-                    );
-
-                    ui.nameplate_troops_last_update
-                        .insert(player.id, web_time::Instant::now());
-
-                    (troops_str, tg)
-                };
 
                 let right_w = name_size.x.max(crate::hud::nameplate::troops_row_width(
                     &troops_galley,
@@ -643,13 +659,13 @@ pub(crate) fn render(
                 let right_y = row12_y + (total_h - right_h) / 2.0;
 
                 let name_x = cur_x + (right_w - name_size.x) / 2.0;
-                crate::hud::nameplate::paint_glow_name_label(
+                sow_ui::widgets::paint_prepared_name(
                     painter,
                     egui::pos2(name_x, right_y),
-                    &display_name,
-                    font_id.clone(),
+                    egui::Align2::LEFT_TOP,
+                    &prepared_name,
                     vibrant_color,
-                    false,
+                    true,
                 );
 
                 let troops_w =
@@ -728,7 +744,9 @@ pub(crate) fn render_death_nameplates(
         let entry_scale = spring_overshoot((t / 0.3).clamp(0.0, 1.0));
 
         // --- Typography & Size Calculations ---
-        let base_premium_size = if anim.nameplate_size > 0.1 {
+        let base_premium_size = if anim.player_type == sow_core::player::PlayerType::Bot {
+            visual_config.death_nameplate_font_size
+        } else if anim.nameplate_size > 0.1 {
             (anim.nameplate_size * zoom_scaled_local).clamp(2.0, 150.0)
         } else {
             visual_config.death_nameplate_font_size
