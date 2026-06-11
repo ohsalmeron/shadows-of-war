@@ -40,8 +40,8 @@ impl Default for ClientVisualConfig {
             nameplate_nation_size: 12.0,
             nameplate_tribe_size: 12.0,
             nameplate_premium_size: 12.0,
-            nameplate_max_screen_font: 48.0,
-            nameplate_size_grow_rate: 3.0,
+            nameplate_max_screen_font: 28.0,
+            nameplate_size_grow_rate: 8.0,
             death_nameplate_font_size: 16.0,
             gold_reward_notice_font_size: 16.0,
         }

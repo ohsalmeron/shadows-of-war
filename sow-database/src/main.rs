@@ -14,11 +14,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 use log::{info, warn, error};
-use sha2::{Sha256, Digest};
+
 struct AppState {
     db: PlayerDb,
     secret_token: String, // For trusted server-to-server internal APIs
-    client_salt: String,  // For public client-to-server verification
 }
 
 #[derive(Deserialize)]
@@ -26,16 +25,6 @@ struct ProfileQuery {
     provider: String,
     external_id: String,
     fallback_name: Option<String>,
-    timestamp: u64,
-    signature: String,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-struct SaveProfileRequest {
-    account_id: String,
-    profile: PlayerProfile,
-    timestamp: u64,
-    signature: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -67,8 +56,6 @@ struct ProfileLinkRequest {
     account_id: String,
     target_provider: String,
     target_external_id: String,
-    timestamp: u64,
-    signature: String,
 }
 
 #[derive(Deserialize)]
@@ -77,8 +64,6 @@ struct ProfileLinkResolveRequest {
     keep_account_id: String,
     target_provider: String,
     target_external_id: String,
-    timestamp: u64,
-    signature: String,
 }
 
 #[derive(Serialize)]
@@ -119,10 +104,11 @@ async fn main() {
     let secret_token = std::env::var("SOW_DB_SECRET")
         .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
 
-    let client_salt = std::env::var("SOW_DB_SALT")
-        .unwrap_or_else(|_| "sow_dev_salt_abc123".to_string());
-
-    info!("Config - Port: {}, Valkey: {}, Secret: [REDACTED], Salt: [REDACTED]", port, valkey_url);
+    info!(
+        "Config - Port: {}, Valkey: {}, Secret: [REDACTED]",
+        port,
+        valkey_url
+    );
 
     // Initialize database connector
     let player_db = PlayerDb::new(&valkey_url);
@@ -130,7 +116,6 @@ async fn main() {
     let state = Arc::new(AppState {
         db: player_db,
         secret_token,
-        client_salt,
     });
 
     // Configure CORS for web portal compatibility
@@ -146,7 +131,6 @@ async fn main() {
     // Define router
     let app = Router::new()
         .route("/profile", get(handle_get_profile))
-        .route("/profile/save", post(handle_public_save))
         .route("/profile/link", post(handle_profile_link))
         .route("/profile/link/resolve", post(handle_profile_link_resolve))
         .route("/match/start", post(handle_match_start))
@@ -162,26 +146,6 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
-}
-
-/// Helper to compute SHA-256 signature
-fn compute_sha256(data: &str, salt: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
-    hasher.update(salt.as_bytes());
-    let result = hasher.finalize();
-    format!("{:x}", result)
-}
-
-/// Helper to verify timestamp freshness (within 5 minutes / 300 seconds to avoid drift and replay)
-fn verify_timestamp(timestamp: u64) -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    
-    let diff = if now > timestamp { now - timestamp } else { timestamp - now };
-    diff <= 300
 }
 
 fn platform_auth_token(headers: &HeaderMap) -> Option<String> {
@@ -228,7 +192,7 @@ fn verify_internal_auth(headers: &HeaderMap, secret_token: &str) -> bool {
     false
 }
 
-/// GET /profile handler (with public client cryptographic verification)
+/// GET /profile handler (platform token verification for signed-in providers)
 async fn handle_get_profile(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -244,34 +208,6 @@ async fn handle_get_profile(
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "provider cannot be empty".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    // 1. Verify timestamp freshness to prevent replay attacks
-    if !verify_timestamp(query.timestamp) {
-        warn!("Replay/expired request rejected: timestamp {} vs server time", query.timestamp);
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Request timestamp expired or skewed".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    // 2. Recompute and verify SHA-256 signature
-    // Format: "provider:external_id:timestamp"
-    let expected_data = format!("{}:{}:{}", provider, external_id, query.timestamp);
-    let expected_sig = compute_sha256(&expected_data, &state.client_salt);
-
-    if query.signature != expected_sig {
-        warn!("Invalid signature received for /profile fetch of {}/{}", provider, external_id);
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid cryptographic signature".to_string(),
             }),
         )
             .into_response();
@@ -302,58 +238,6 @@ async fn handle_get_profile(
     ).await {
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })).into_response(),
-    }
-}
-
-/// POST /profile/save handler (public endpoint for offline / guest local saves with cryptographic verification)
-async fn handle_public_save(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<SaveProfileRequest>,
-) -> impl IntoResponse {
-    // 1. Verify timestamp freshness
-    if !verify_timestamp(payload.timestamp) {
-        warn!("Save request expired/replay rejected: timestamp {}", payload.timestamp);
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Request timestamp expired or skewed".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    // 2. Recompute and verify signature
-    // Format: "account_id:serialized_profile:timestamp"
-    let serialized_profile = match serde_json::to_string(&payload.profile) {
-        Ok(s) => s,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Failed to serialize profile".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-    
-    let expected_data = format!("{}:{}:{}", payload.account_id, serialized_profile, payload.timestamp);
-    let expected_sig = compute_sha256(&expected_data, &state.client_salt);
-
-    if payload.signature != expected_sig {
-        warn!("Invalid signature on profile save for account {}", payload.account_id);
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid cryptographic signature".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    match state.db.update_profile(&payload.account_id, payload.profile).await {
-        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
-        Err(e) => (StatusCode::NOT_FOUND, Json(ErrorResponse { error: e.to_string() })).into_response(),
     }
 }
 
@@ -417,34 +301,6 @@ async fn handle_profile_link(
     headers: HeaderMap,
     Json(payload): Json<ProfileLinkRequest>,
 ) -> impl IntoResponse {
-    if !verify_timestamp(payload.timestamp) {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Request timestamp expired or skewed".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    let expected_data = format!(
-        "{}:{}:{}:{}",
-        payload.account_id,
-        payload.target_provider,
-        payload.target_external_id,
-        payload.timestamp
-    );
-    let expected_sig = compute_sha256(&expected_data, &state.client_salt);
-    if payload.signature != expected_sig {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid cryptographic signature".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
     let target_provider = payload.target_provider.trim();
     let target_external_id = payload.target_external_id.trim();
     let auth_token = platform_auth_token(&headers);
@@ -517,35 +373,6 @@ async fn handle_profile_link_resolve(
     headers: HeaderMap,
     Json(payload): Json<ProfileLinkResolveRequest>,
 ) -> impl IntoResponse {
-    if !verify_timestamp(payload.timestamp) {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Request timestamp expired or skewed".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    let expected_data = format!(
-        "{}:{}:{}:{}:{}",
-        payload.account_id,
-        payload.keep_account_id,
-        payload.target_provider,
-        payload.target_external_id,
-        payload.timestamp
-    );
-    let expected_sig = compute_sha256(&expected_data, &state.client_salt);
-    if payload.signature != expected_sig {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid cryptographic signature".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
     let target_provider = payload.target_provider.trim();
     let target_external_id = payload.target_external_id.trim();
     let auth_token = platform_auth_token(&headers);

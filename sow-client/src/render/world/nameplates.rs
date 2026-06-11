@@ -294,13 +294,19 @@ pub(crate) fn render(
                     visual_config.nameplate_nation_size
                 };
                 // Only local player and humans scale with territory; bots/nations stay constant screen size.
+                const NAMEPLATE_RENDER_SCALE: f32 = 0.4;
                 let base_premium_size = if (is_me || is_human) && vp.nameplate_size > 0.1 {
-                    vp.nameplate_size * zoom_scaled_local
+                    vp.nameplate_size * NAMEPLATE_RENDER_SCALE
                 } else {
                     base_config_size
                 };
-                let scaled_size = (base_premium_size * ui_text_scale).min(visual_config.nameplate_max_screen_font);
-                if scaled_size < 7.0 {
+                let raw_scaled = (base_premium_size * ui_text_scale).min(visual_config.nameplate_max_screen_font);
+                let scaled_size = if is_me {
+                    raw_scaled.max(visual_config.nameplate_my_size)
+                } else {
+                    raw_scaled
+                };
+                if scaled_size < 7.0 && !is_me {
                     painter.circle_filled(center, dot_r, pc);
                     painter.circle_stroke(
                         center,
@@ -388,22 +394,20 @@ pub(crate) fn render(
                 let mut cached_troops = None;
 
                 if let Some(entry) = ui.nameplate_galleys.get(&player.id) {
-                    if entry.display_name == display_name && entry.font_id == font_id {
+                    let now = web_time::Instant::now();
+                    let rate_limited = ui
+                        .nameplate_troops_last_update
+                        .get(&player.id)
+                        .copied()
+                        .is_some_and(|last| now.duration_since(last).as_secs_f32() < 0.5);
+
+                    if rate_limited {
+                        cached_prepared = Some(entry.prepared_name.clone());
+                        cached_troops = Some(entry.troops_galley.clone());
+                    } else if entry.display_name == display_name && entry.font_id == font_id {
                         cached_prepared = Some(entry.prepared_name.clone());
                         if entry.troops_str == troops_str {
                             cached_troops = Some(entry.troops_galley.clone());
-                        } else {
-                            let now = web_time::Instant::now();
-                            let rate_limited = ui
-                                .nameplate_troops_last_update
-                                .get(&player.id)
-                                .copied()
-                                .is_some_and(|last| {
-                                    now.duration_since(last).as_secs_f32() < 0.5
-                                });
-                            if rate_limited {
-                                cached_troops = Some(entry.troops_galley.clone());
-                            }
                         }
                     }
                 }
@@ -723,7 +727,6 @@ pub(crate) fn render_death_nameplates(
 
         let t = elapsed / duration;
         let s = anim.seed as f32;
-        let zoom_scaled_local = input.camera_zoom / sf;
 
         // --- Layout Coordinates (Smooth Rise & Damped Wobble) ---
         let rise_dist = 6.0 * t * (2.0 - t); // quadratic ease-out rise
@@ -744,10 +747,11 @@ pub(crate) fn render_death_nameplates(
         let entry_scale = spring_overshoot((t / 0.3).clamp(0.0, 1.0));
 
         // --- Typography & Size Calculations ---
+        const NAMEPLATE_RENDER_SCALE: f32 = 0.4;
         let base_premium_size = if anim.player_type == sow_core::player::PlayerType::Bot {
             visual_config.death_nameplate_font_size
         } else if anim.nameplate_size > 0.1 {
-            (anim.nameplate_size * zoom_scaled_local).clamp(2.0, 150.0)
+            anim.nameplate_size * NAMEPLATE_RENDER_SCALE
         } else {
             visual_config.death_nameplate_font_size
         };

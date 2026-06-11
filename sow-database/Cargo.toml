@@ -13,7 +13,6 @@ tower-http = { workspace = true, features = ["cors"] }
 log = { workspace = true }
 env_logger = { workspace = true }
 rand = { workspace = true }
-sha2 = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp", "connection-manager"] }
 jsonwebtoken = "9"
 reqwest = { workspace = true, features = ["json"] }

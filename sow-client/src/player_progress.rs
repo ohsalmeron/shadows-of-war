@@ -1,7 +1,6 @@
 //! Lifetime player stats persisted via the CrazyGames SDK Data module and sow-database.
 
 use sow_core::player::Leader;
-use sha2::{Sha256, Digest};
 
 pub const STORAGE_KEY: &str = "sow_player_progress";
 
@@ -11,13 +10,6 @@ const XP_MATCH: u32 = 20;
 const XP_PER_PLAYER: u32 = 15;
 const XP_PER_EMPIRE: u32 = 8;
 const XP_PER_TRIBE: u32 = 2;
-
-/// Build-time salt configured in .env for production builds.
-/// Defaults to a dev salt for frictionless local open-source development.
-pub const CLIENT_SALT: &str = match option_env!("SOW_CLIENT_SALT") {
-    Some(salt) => salt,
-    None => "sow_dev_salt_abc123",
-};
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct SessionDefeats {
@@ -39,6 +31,7 @@ pub struct PlayerProgress {
     #[serde(alias = "tribes_killed")]
     pub tribes_defeated: u32,
     pub preferred_leader: Option<Leader>,
+    pub intro_completed: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -67,16 +60,15 @@ pub enum DbEvent {
     },
 }
 
-/// Computes SHA-256 signature of data with compile-time salt
-pub fn compute_client_signature(data: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
-    hasher.update(CLIENT_SALT.as_bytes());
-    let result = hasher.finalize();
-    format!("{:x}", result)
-}
-
 impl PlayerProgress {
+    pub fn is_first_game(&self) -> bool {
+        self.matches_played == 0 && !self.intro_completed.unwrap_or(false)
+    }
+
+    pub fn complete_intro(&mut self) {
+        self.intro_completed = Some(true);
+    }
+
     pub fn has_history(&self) -> bool {
         self.matches_played > 0
             || self.wins > 0

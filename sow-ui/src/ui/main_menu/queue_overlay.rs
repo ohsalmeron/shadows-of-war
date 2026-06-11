@@ -1,6 +1,55 @@
 use super::MainMenuState;
 use crate::UiAction;
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
+
+fn lobby_bottom_action_height(compact: bool, action_min_h: f32, show_invite: bool) -> f32 {
+    if compact {
+        let rows = if show_invite { 2.0 } else { 1.0 };
+        rows * action_min_h + (rows - 1.0) * 8.0 + 24.0
+    } else {
+        action_min_h + 24.0
+    }
+}
+
+fn draw_lobby_bottom_actions(
+    ui: &mut Ui,
+    state: &MainMenuState,
+    lobby_info: Option<&sow_core::protocol::LobbyInfo>,
+    action_min_h: f32,
+    action: &mut Option<UiAction>,
+    lang: sow_i18n::Language,
+) {
+    let strings = &sow_i18n::get(lang).main_menu;
+    if state.in_private_match {
+        if let Some(lobby) = lobby_info {
+            let now = ui.input(|i| i.time);
+            let is_copied = if let Some(t) = state.invite_copied_at {
+                now - t < 2.0
+            } else {
+                false
+            };
+            let label = if is_copied {
+                &strings.invite_link_copied
+            } else {
+                &strings.copy_invite_link
+            };
+            let invite_btn = crate::widgets::ThemeButton::new(label)
+                .style(crate::widgets::ThemeButtonStyle::Primary)
+                .min_size(egui::vec2(200.0, action_min_h));
+            if ui.add(invite_btn).clicked() {
+                *action = Some(UiAction::CopyInviteLink(lobby.id));
+            }
+            ui.add_space(8.0);
+        }
+    }
+
+    let cancel = crate::widgets::ThemeButton::new(&strings.leave_lobby)
+        .style(crate::widgets::ThemeButtonStyle::Danger)
+        .min_size(egui::vec2(200.0, action_min_h));
+    if ui.add(cancel).clicked() {
+        *action = Some(UiAction::LeaveLobby);
+    }
+}
 
 pub fn draw_queue_overlay(
     ui: &mut Ui,
@@ -21,6 +70,8 @@ pub fn draw_queue_overlay(
             lobby_info = Some(lobby);
         }
     }
+
+    let show_invite = state.in_private_match && lobby_info.is_some();
 
     // 1. Premium standard panel matching main menu
     let panel_frame = crate::ui::theme::standard_panel_frame(compact);
@@ -71,7 +122,7 @@ pub fn draw_queue_overlay(
                 ui.add_space(section_gap);
 
                 // 2. Middle Flex Content Area
-                let button_h = action_min_h + 16.0;
+                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite);
                 let middle_h = ui.available_height() - button_h;
 
                 ui.allocate_ui_with_layout(
@@ -122,7 +173,7 @@ pub fn draw_queue_overlay(
                 );
             } else {
                 // Connecting/Syncing state
-                let button_h = action_min_h + 16.0;
+                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite);
                 let middle_h = ui.available_height() - button_h;
                 ui.allocate_ui_with_layout(
                     egui::vec2(ui.available_width(), middle_h),
@@ -145,38 +196,30 @@ pub fn draw_queue_overlay(
 
             // 3. Bottom Button Area
             ui.add_space(8.0);
-            ui.vertical_centered(|ui| {
-                if state.in_private_match {
-                    if let Some(lobby) = lobby_info {
-                        let now = ui.input(|i| i.time);
-                        let is_copied = if let Some(t) = state.invite_copied_at {
-                            now - t < 2.0
-                        } else {
-                            false
-                        };
-                        let label = if is_copied {
-                            &strings.invite_link_copied
-                        } else {
-                            &strings.copy_invite_link
-                        };
-                        let invite_btn = crate::widgets::ThemeButton::new(label)
-                            .style(crate::widgets::ThemeButtonStyle::Primary)
-                            .min_size(egui::vec2(200.0, action_min_h));
-                        if ui.add(invite_btn).clicked() {
-                            *action = Some(UiAction::CopyInviteLink(lobby.id));
-                        }
-                        ui.add_space(8.0);
-                    }
-                }
-
-                let cancel =
-                    crate::widgets::ThemeButton::new(&sow_i18n::get(lang).main_menu.leave_lobby)
-                        .style(crate::widgets::ThemeButtonStyle::Danger)
-                        .min_size(egui::vec2(200.0, action_min_h));
-                if ui.add(cancel).clicked() {
-                    *action = Some(UiAction::LeaveLobby);
-                }
-            });
+            if compact {
+                ui.vertical_centered(|ui| {
+                    draw_lobby_bottom_actions(
+                        ui,
+                        state,
+                        lobby_info,
+                        action_min_h,
+                        action,
+                        lang,
+                    );
+                });
+            } else {
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    draw_lobby_bottom_actions(
+                        ui,
+                        state,
+                        lobby_info,
+                        action_min_h,
+                        action,
+                        lang,
+                    );
+                });
+            }
             ui.add_space(16.0);
         });
     });

@@ -157,6 +157,7 @@ pub enum EngineInitEvent {
 
 pub mod app;
 pub mod asset;
+pub mod audio;
 pub mod hud;
 #[cfg(target_arch = "wasm32")]
 mod ime;

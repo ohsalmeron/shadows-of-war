@@ -6,13 +6,43 @@
     return window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game;
   }
 
-  function isCrazyGamesHost() {
+  function isLocalDevHost() {
     var h = window.location.hostname || "";
-    if (/crazygames\.com$/i.test(h) || /dev-crazygames\.com$/i.test(h)) {
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+  }
+
+  // CrazyGames sitelock: crazygames.* TLDs and subdomains (see docs.crazygames.com/resources/sitelock).
+  function isValidCrazyGamesDomain(hostname) {
+    hostname = hostname || "";
+    if (/^dev-crazygames\.com$/i.test(hostname)) {
+      return true;
+    }
+    if (/\.game-files\.crazygames\.com$/i.test(hostname)) {
+      return true;
+    }
+    var parts = hostname.split(".");
+    var idx = parts.indexOf("crazygames");
+    return idx !== -1 && idx >= parts.length - 3;
+  }
+
+  function isCrazyGamesHost() {
+    if (isValidCrazyGamesDomain(window.location.hostname)) {
       return true;
     }
     var ref = document.referrer || "";
     return /crazygames/i.test(ref);
+  }
+
+  function enforceCrazyGamesSitelock() {
+    if (window.SOW_PORTAL !== "crazygames") {
+      return;
+    }
+    if (isValidCrazyGamesDomain(window.location.hostname) || isLocalDevHost()) {
+      return;
+    }
+    document.body.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;background:#101018;color:#fff;text-align:center;padding:24px;">Available only on CrazyGames</div>';
+    throw new Error("CrazyGames sitelock: unauthorized host");
   }
 
   function isSiteEmbed() {
@@ -131,6 +161,36 @@
     });
   }
 
+  function triggerHappytime() {
+    if (!crazyGamesSdkReady()) {
+      return;
+    }
+    var game = crazyGameApi();
+    if (game && game.happytime) {
+      try {
+        game.happytime();
+      } catch (e) {
+        console.warn("CrazyGames happytime trigger failed:", e);
+      }
+    }
+  }
+
+  function installInviteLinkHappytime() {
+    if (!crazyGamesSdkReady()) {
+      return;
+    }
+    var game = crazyGameApi();
+    if (!game || !game.inviteLink) {
+      return;
+    }
+    var origInviteLink = game.inviteLink.bind(game);
+    game.inviteLink = function (params) {
+      var link = origInviteLink(params);
+      triggerHappytime();
+      return link;
+    };
+  }
+
   function applyGameSettings(settings) {
     if (!settings) {
       return;
@@ -150,10 +210,14 @@
   window.SOW_PORTAL_MUTE_AUDIO = false;
   window.SOW_DISABLE_CHAT = false;
 
-  window.SOW_isSiteEmbed = isSiteEmbed;
-  window.SOW_isPortalEmbed = isPortalEmbed;
-  window.SOW_isOnCrazyGames = isOnCrazyGames;
-  window.SOW_isOnPoki = isOnPoki;
+  function refreshPortalFlags() {
+    window.SOW_isSiteEmbed = isSiteEmbed();
+    window.SOW_isPortalEmbed = isPortalEmbed();
+    window.SOW_isOnCrazyGames = isOnCrazyGames();
+    window.SOW_isOnPoki = isOnPoki();
+  }
+  window.SOW_refreshPortalFlags = refreshPortalFlags;
+  refreshPortalFlags();
   window.SOW_PORTAL_PROGRESS_JSON = null;
   window.SOW_portalAdPause = portalAdPause;
   window.SOW_portalAdResume = portalAdResume;
@@ -352,6 +416,7 @@
     }
     try {
       await window.CrazyGames.SDK.init();
+      refreshPortalFlags();
       var env = window.CrazyGames.SDK.environment;
       console.log("CrazyGames SDK init OK (env=" + env + ")");
 
@@ -399,6 +464,7 @@
           game.addSettingsChangeListener(applyGameSettings);
         }
         installJoinRoomListener();
+        installInviteLinkHappytime();
         window.SOW_portalConsumeBootIntent();
         loadPortalProgressFromSdk();
       }
@@ -407,7 +473,8 @@
     }
   };
 
-  window.SOW_portalGameplayStart = function () {
+  window.SOW_portalGameplayStart = function (isRetry) {
+    console.log("SOW gameplayStart called" + (isRetry ? " (retry)" : ""));
     if (isSiteEmbed() || window.SOW_adPlaying) {
       return;
     }
@@ -415,13 +482,23 @@
       PokiSDK.gameplayStart();
     }
     if (!crazyGamesSdkReady()) {
+      if (!isRetry) {
+        console.log("CrazyGames SDK not ready for gameplayStart yet, scheduling retry...");
+        requestAnimationFrame(function () {
+          window.SOW_portalGameplayStart(true);
+        });
+      } else {
+        console.warn("CrazyGames SDK still not ready on gameplayStart retry.");
+      }
       return;
     }
     const game = crazyGameApi();
     if (game) {
       if (game.gameplayStart) {
+        console.log("Calling CrazyGames gameplayStart");
         game.gameplayStart();
       } else if (game.play) {
+        console.log("Calling CrazyGames play");
         game.play();
       }
     }
@@ -514,18 +591,52 @@
     }
   };
 
-  window.SOW_portalHappytime = function () {
-    if (!crazyGamesSdkReady()) {
+  const SOW_CG_LEADERBOARD_ENCRYPTION_KEY = "sow_cg_leaderboard_encryption_key_placeholder";
+
+  async function encryptScore(score, encryptionKey) {
+    const keyBytes = new Uint8Array(
+      atob(encryptionKey)
+        .split('')
+        .map((c) => c.charCodeAt(0))
+    );
+    const cryptoKey = await window.crypto.subtle.importKey(
+      'raw',
+      keyBytes,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt']
+    );
+    const encodedScore = new TextEncoder().encode(score.toString());
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await window.crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      cryptoKey,
+      encodedScore
+    );
+    const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(ciphertext), iv.length);
+    return btoa(String.fromCharCode.apply(null, combined));
+  }
+
+  window.SOW_portalSubmitLeaderboardScore = async function (score) {
+    if (!isOnCrazyGames() || !crazyGamesSdkReady() || !window.CrazyGames.SDK.user || !window.CrazyGames.SDK.user.submitScore) {
       return;
     }
-    const game = crazyGameApi();
-    if (game && game.happytime) {
-      try {
-        game.happytime();
-      } catch (e) {
-        console.warn("CrazyGames happytime trigger failed:", e);
-      }
+    try {
+      const encryptedScore = await encryptScore(score, SOW_CG_LEADERBOARD_ENCRYPTION_KEY);
+      await window.CrazyGames.SDK.user.submitScore({
+        score: score,
+        encryptedScore: encryptedScore,
+      });
+      console.log("Successfully submitted client-side leaderboard score:", score);
+    } catch (e) {
+      console.warn("Client-side leaderboard score submission failed:", e);
     }
+  };
+
+  window.SOW_portalHappytime = function () {
+    triggerHappytime();
   };
 
   document.addEventListener(
@@ -540,4 +651,37 @@
     },
     true
   );
+
+  // CrazyGames common fixes: block page scroll and browser context menu outside the canvas.
+  window.addEventListener(
+    "wheel",
+    function (e) {
+      e.preventDefault();
+    },
+    { passive: false }
+  );
+
+  document.addEventListener("contextmenu", function (e) {
+    if (e.target && e.target.id === "blade") {
+      return;
+    }
+    e.preventDefault();
+  });
+
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== " ") {
+        return;
+      }
+      var tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+    },
+    true
+  );
+
+  enforceCrazyGamesSitelock();
 })();

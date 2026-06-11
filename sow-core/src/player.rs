@@ -576,7 +576,7 @@ impl Player {
         let name_len = self.name.chars().count().max(1) as f32;
         let width_constrained = (largest_rect.width as f32 / name_len) * 2.0;
         let height_constrained = largest_rect.height as f32 / 3.0;
-        let font_size = width_constrained.min(height_constrained).max(0.2);
+        let font_size = width_constrained.min(height_constrained).clamp(0.2, 24.0);
 
         self.nameplate_x = land_x as f32;
         self.nameplate_y = land_y as f32 - (font_size / 3.0);

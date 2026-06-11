@@ -630,6 +630,22 @@ impl SowApp {
         if let Some(portal) = crate::store_portals::load_portal_progress() {
             sow_app.progress = portal;
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let identity = crate::store_portals::load_identity("Player");
+            let fetch_cloud = !crate::store_portals::is_portal_embed()
+                || (identity.provider == "crazygames"
+                    && identity
+                        .auth_token
+                        .as_ref()
+                        .is_some_and(|t| !t.is_empty()));
+            if fetch_cloud {
+                sow_app.fetch_cloud_progress();
+            } else if crate::store_portals::is_portal_embed() {
+                sow_app.boot_db_settled = true;
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         sow_app.fetch_cloud_progress();
         sow_app
     }
@@ -648,26 +664,16 @@ impl SowApp {
         let display_name = crate::store_portals::load_identity("Player").display_name;
         let db_url = self.asset_config.database_base.clone();
 
-        let timestamp = web_time::SystemTime::now()
-            .duration_since(web_time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        let sig_data = format!("{}:{}:{}", provider, ext_id.as_str(), timestamp);
-        let signature = crate::player_progress::compute_client_signature(&sig_data);
-
         let encoded_provider = url::form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
         let encoded_id = url::form_urlencoded::byte_serialize(ext_id.as_bytes()).collect::<String>();
         let encoded_name = url::form_urlencoded::byte_serialize(display_name.as_bytes()).collect::<String>();
 
         let url = format!(
-            "{}/profile?provider={}&external_id={}&fallback_name={}&timestamp={}&signature={}",
+            "{}/profile?provider={}&external_id={}&fallback_name={}",
             db_url.trim_end_matches('/'),
             encoded_provider,
             encoded_id,
-            encoded_name,
-            timestamp,
-            signature
+            encoded_name
         );
 
         log::info!("Fetching profile from sow-database: {provider}/{ext_id}");
@@ -718,28 +724,12 @@ impl SowApp {
 
         let db_url = self.asset_config.database_base.clone();
         let url = format!("{}/profile/link/resolve", db_url.trim_end_matches('/'));
-        let timestamp = web_time::SystemTime::now()
-            .duration_since(web_time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let sig_data = format!(
-            "{}:{}:{}:{}:{}",
-            conflict.current_account_id,
-            keep_account_id,
-            conflict.target_provider,
-            conflict.target_external_id,
-            timestamp
-        );
-        let signature = crate::player_progress::compute_client_signature(&sig_data);
-
         #[derive(serde::Serialize)]
         struct ResolveRequest {
             account_id: String,
             keep_account_id: String,
             target_provider: String,
             target_external_id: String,
-            timestamp: u64,
-            signature: String,
         }
         let resolved_provider = conflict.target_provider.clone();
         let payload = ResolveRequest {
@@ -747,8 +737,6 @@ impl SowApp {
             keep_account_id,
             target_provider: resolved_provider.clone(),
             target_external_id: conflict.target_external_id,
-            timestamp,
-            signature,
         };
         let Ok(body) = serde_json::to_vec(&payload) else {
             return;
@@ -807,23 +795,11 @@ impl SowApp {
 
         let db_url = self.asset_config.database_base.clone();
         let url = format!("{}/profile/link", db_url.trim_end_matches('/'));
-        let timestamp = web_time::SystemTime::now()
-            .duration_since(web_time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let sig_data = format!(
-            "{}:{}:{}:{}",
-            account_id, platform.provider, ext_id, timestamp
-        );
-        let signature = crate::player_progress::compute_client_signature(&sig_data);
-
         #[derive(serde::Serialize)]
         struct LinkRequest {
             account_id: String,
             target_provider: String,
             target_external_id: String,
-            timestamp: u64,
-            signature: String,
         }
         let current_account_id = account_id.clone();
         let target_provider = platform.provider.to_string();
@@ -832,8 +808,6 @@ impl SowApp {
             account_id: current_account_id.clone(),
             target_provider: target_provider.clone(),
             target_external_id: target_external_id.clone(),
-            timestamp,
-            signature,
         };
         let Ok(body) = serde_json::to_vec(&payload) else {
             return;
@@ -927,67 +901,15 @@ impl SowApp {
             return false;
         }
         let mm = &self.ui.app.main_menu_state;
-        mm.pending_join_lobby_id.is_none() && !mm.host_private_pending
+        if self.progress.is_first_game() {
+            // A real invite link should still bypass the intro, but instant-MP host intent should not.
+            mm.pending_join_lobby_id.is_none()
+        } else {
+            mm.pending_join_lobby_id.is_none() && !mm.host_private_pending
+        }
     }
 
-    fn save_cloud_progress(&self) {
-        let serialized_profile = match serde_json::to_string(&self.progress) {
-            Ok(json) => json,
-            Err(e) => {
-                log::warn!("Failed to serialize cloud progress: {e}");
-                return;
-            }
-        };
-
-        if let Some(account_id) = &self.progress_account_id {
-            let db_url = self.asset_config.database_base.clone();
-            let url = format!("{}/profile/save", db_url.trim_end_matches('/'));
-
-            let timestamp = web_time::SystemTime::now()
-                .duration_since(web_time::SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-
-            // Hash format: "account_id:serialized_profile:timestamp"
-            let sig_data = format!("{}:{}:{}", account_id, serialized_profile, timestamp);
-            let signature = crate::player_progress::compute_client_signature(&sig_data);
-
-            #[derive(serde::Serialize)]
-            struct SaveRequest {
-                account_id: String,
-                profile: crate::player_progress::PlayerProgress,
-                timestamp: u64,
-                signature: String,
-            }
-
-            let payload = SaveRequest {
-                account_id: account_id.clone(),
-                profile: self.progress.clone(),
-                timestamp,
-                signature,
-            };
-
-            if let Ok(body) = serde_json::to_vec(&payload) {
-                let mut request = ehttp::Request::post(&url, body);
-                request.headers.insert("Content-Type", "application/json");
-
-                log::info!("Saving progress to cloud sow-database for account {}...", account_id);
-                ehttp::fetch(request, move |result| {
-                    match result {
-                        Ok(res) => {
-                            if res.ok {
-                                log::info!("Successfully saved progress to sow-database.");
-                            } else {
-                                log::warn!("Failed to save progress to sow-database: HTTP {}", res.status);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("sow-database save request failed: {}", e);
-                        }
-                    }
-                });
-            }
-        }
+    pub(crate) fn save_local_progress(&self) {
         crate::store_portals::save_portal_progress(&self.progress);
     }
 
@@ -1020,7 +942,8 @@ impl SowApp {
         self.progress.preferred_leader =
             Some(self.ui.app.main_menu_state.selected_leader);
         self.progress.record_match(won, defeats);
-        self.save_cloud_progress();
+        self.save_local_progress();
+        crate::store_portals::submit_leaderboard_score(self.progress.xp);
         log::info!(
             "Recorded local match progress: won={won}, defeats={defeats:?}, level={}",
             self.progress.level
@@ -1388,6 +1311,9 @@ impl SowApp {
                             elimination_y,
                         } = event
                         {
+                            // Play retro synthesized death sound
+                            crate::audio::play_death_sound();
+
                             let mut wx = 0.5;
                             let mut wy = 0.5;
                             let mut target_name = format!("Player {}", player_id);

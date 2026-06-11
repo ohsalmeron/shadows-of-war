@@ -14,7 +14,6 @@ Environment=RUST_LOG=info
 Environment=SOW_DB_PORT=25585
 Environment=SOW_VALKEY_URL=redis://127.0.0.1:6379
 Environment=SOW_DB_SECRET=sow_db_prod_secret_token_placeholder
-Environment=SOW_DB_SALT=sow_db_prod_salt_placeholder
 
 [Install]
 WantedBy=multi-user.target

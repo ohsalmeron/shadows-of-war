@@ -71,8 +71,26 @@ Privacy and Terms body text for the marketing site **and** in-game Settings moda
 2. Run the portal **QA tool** (SDK init, loading, gameplayStart, user, updateRoom).
 3. Submit lobby sizes (FFA / Teams max players) in upload metadata.
 4. Test with two logged-in CG accounts: instant multiplayer host, friend join via CG UI, full match, **PLAY AGAIN** in a private room.
-5. Protocol/server changes ship with `./sow p -v` (rebuilds server when `sow-server` / `sow-relay` crates changed).
+5. Protocol/server changes ship with `./sow p -v` (rebuilds server when `sow-server` / `sow-relay` / `sow-database` crates changed).
 6. Ads stay off for Basic Launch (`SOW_ENABLE_PORTAL_ADS` is never set in the build).
+
+## CrazyGames Developer Portal form
+
+| Field | Select |
+|-------|--------|
+| Game engine | HTML5 |
+| Save progress | Yes, using the **Data Module** from the CrazyGames SDK |
+| Mobile | Yes — orientation **LANDSCAPE** (or BOTH) |
+| Online multiplayer | Yes — lobby min **1**, max **8** |
+| Invite link & button | Yes |
+| IsInstantMultiplayer | Yes |
+| SDK mute audio | Yes |
+
+**CSP / frame-ancestors:** not required for HTML5 uploads (CrazyGames hosts the package). Only needed for iframe games loaded from your own domain.
+
+**Sitelock:** enforced in [`shell/sdk/store_portals.js`](shell/sdk/store_portals.js) for `SOW_PORTAL=crazygames` builds (regional `crazygames.*` domains + `game-files.crazygames.com`).
+
+**Cloud profile `/api/profile` 400 in QA preview:** harmless until `./sow p -v` deploys the current `sow-database` (guest/local saves use SDK Data module until the player signs in on CrazyGames).
 
 ## Search Console (SEO)
 

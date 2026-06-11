@@ -128,5 +128,7 @@ impl SowApp {
 
     fn end_tutorial_session(&mut self) {
         self.ui.tutorial_active = false;
+        self.progress.complete_intro();
+        self.save_local_progress();
     }
 }

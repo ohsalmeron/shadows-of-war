@@ -480,16 +480,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 // ── WAR FOG: PvP attack ──
                 let atk_color = owner_albedo(attacker_id);
+                let atk_bright = atk_color * 1.4 + vec3<f32>(0.3);
+                let atk_dark = atk_color * 0.15;
 
-                // Clean, elegant, and highly performant threat glow (no high-frequency noise)
-                let slow_breathe = 0.92 + 0.18 * sin(globals.time * 2.0);
-                let intensity = threat * slow_breathe;
+                // Desaturation — territory drains to grey
+                let lum = dot(base_color, vec3<f32>(0.299, 0.587, 0.114));
+                let desat = mix(base_color, vec3<f32>(lum), threat * 0.60);
 
-                // Softly tint base color with attacker color
-                base_color = mix(base_color, atk_color * 0.22, intensity * 0.45);
+                // Attacker smoke
+                let smoke_color = mix(atk_dark, atk_bright, threat * threat);
+                let smoke_blend = threat * 0.55;
 
-                // A subtle highlight towards the center of attack
-                base_color += atk_color * (intensity * intensity * 0.35);
+                // Ripple waves
+                let wave_phase = dist * 3.0 - globals.time * 4.0;
+                let ripple = (sin(wave_phase) + 1.0) * 0.5;
+                let ripple_intensity = ripple * threat * threat * 0.25;
+
+                // Corona front
+                let corona_dist = abs(dist - radius * 0.15);
+                let corona = smoothstep(1.5, 0.0, corona_dist) * 0.7;
+                let corona_color = min(atk_color * 2.0 + vec3<f32>(0.5), vec3<f32>(1.0));
+
+                var war_color = mix(desat, smoke_color, smoke_blend);
+                war_color += corona_color * corona;
+                war_color += atk_bright * ripple_intensity;
+                base_color = war_color;
             }
         }
     }
@@ -508,29 +523,82 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 slot.y + 0.5
             );
             let dist = distance(cell_world, f_center);
-            if dist > f_radius { continue; }
+            if dist > f_radius * 1.5 { continue; }
 
-            let falloff = 1.0 - dist / f_radius;
-            let pulse = sin(globals.time * 3.0) * 0.15 + 0.85;
+            let elapsed = (1.0 - alpha_p) * 15.0;
 
-            // Cheap procedural toxic noise — two octaves of fract-sin hash
-            let n1 = fract(sin(world_x * 7.3 + world_y * 13.7 + globals.time * 0.8) * 43758.5453);
-            let n2 = fract(sin(world_x * 19.1 - world_y * 11.3 + globals.time * 1.3) * 23421.631);
-            let noise = (n1 + n2) * 0.5;
+            // 1. SCORCHED EARTH (CRATER / BURN)
+            let burn_radius = f_radius * 0.65;
+            if dist <= burn_radius {
+                let burn_factor = (1.0 - dist / burn_radius) * 0.85 * alpha_p;
+                let charcoal = vec3<f32>(0.08, 0.08, 0.1);
+                base_color = mix(base_color, charcoal, burn_factor);
+            }
 
-            // Toxic green glow with noise variation
-            let toxic_green = vec3<f32>(0.15, 0.85, 0.25);
-            let toxic_bright = vec3<f32>(0.3, 1.0, 0.45);
-            let glow_color = mix(toxic_green, toxic_bright, noise * 0.6);
+            // 2. ACTIVE EXPLOSION & STAGGERED SHOCKWAVE (First 2.0 seconds)
+            if elapsed < 2.0 {
+                let p_exp = elapsed / 2.0;
+                let shockwave_r = p_exp * f_radius;
 
-            let intensity = falloff * falloff * alpha_p * pulse;
+                // Fireball / Plasma Dome
+                if dist <= shockwave_r {
+                    let age_fade = 1.0 - p_exp;
+                    let dist_factor = 1.0 - dist / shockwave_r;
 
-            // Additive blend — makes terrain glow without washing it out
-            base_color = base_color + glow_color * intensity * 0.35;
+                    let fire_noise = fract(sin(world_x * 12.3 + world_y * 17.7 - globals.time * 5.0) * 43758.5453);
 
-            // Inner core is brighter
-            let core = smoothstep(0.7, 1.0, falloff);
-            base_color = base_color + toxic_bright * core * alpha_p * 0.15 * pulse;
+                    let fire_white = vec3<f32>(2.5, 2.5, 2.5);
+                    let fire_yellow = vec3<f32>(2.2, 1.8, 0.3);
+                    let fire_red = vec3<f32>(1.8, 0.3, 0.05);
+                    let smoke = vec3<f32>(0.05, 0.05, 0.05);
+
+                    let heat = clamp(age_fade * 1.4 - (1.0 - dist_factor) * 0.4 + (fire_noise - 0.5) * 0.35, 0.0, 1.0);
+
+                    var fire_rgb = vec3<f32>(0.0);
+                    if heat > 0.8 {
+                        fire_rgb = mix(fire_yellow, fire_white, (heat - 0.8) / 0.2);
+                    } else if heat > 0.4 {
+                        fire_rgb = mix(fire_red, fire_yellow, (heat - 0.4) / 0.4);
+                    } else {
+                        fire_rgb = mix(smoke, fire_red, heat / 0.4);
+                    }
+
+                    base_color = mix(base_color, fire_rgb, smoothstep(0.0, 0.2, heat) * age_fade);
+                }
+
+                // Expanding Shockwave Front Ring (Leading Edge)
+                let wave_width = 1.8;
+                let edge_dist = abs(dist - shockwave_r);
+                if edge_dist < wave_width {
+                    let wave_factor = 1.0 - edge_dist / wave_width;
+                    let wave_pulse = wave_factor * wave_factor * (1.0 - p_exp);
+                    base_color += vec3<f32>(2.5, 2.2, 1.8) * wave_pulse * 0.9;
+                }
+            }
+
+            // 3. TOXIC RADIOACTIVE FALLOUT (Pulsing, boiling green sludge)
+            if dist <= f_radius {
+                let falloff = 1.0 - dist / f_radius;
+                let pulse = sin(globals.time * 3.5) * 0.15 + 0.85;
+
+                let n1 = fract(sin(world_x * 8.3 + world_y * 14.7 + globals.time * 0.9) * 43758.5453);
+                let n2 = fract(sin(world_x * 21.1 - world_y * 12.3 + globals.time * 1.4) * 23421.631);
+                let noise = (n1 + n2) * 0.5;
+
+                let bubbles = sin(world_x * 2.0 + sin(globals.time * 2.0 + world_y) * 2.5) * cos(world_y * 2.0 + cos(globals.time * 2.0 - world_x) * 2.5);
+                let bubble_glow = smoothstep(0.85, 1.0, bubbles) * pulse * 0.5 * alpha_p;
+
+                let toxic_green = vec3<f32>(0.05, 0.90, 0.15);
+                let toxic_bright = vec3<f32>(0.20, 1.00, 0.45);
+                let glow_color = mix(toxic_green, toxic_bright, noise * 0.6) * 1.6;
+
+                let intensity = falloff * falloff * alpha_p * pulse;
+                let core_mix = smoothstep(0.0, 0.8, falloff * alpha_p);
+
+                base_color = mix(base_color, glow_color, core_mix * 0.6);
+                base_color += glow_color * intensity * 0.45;
+                base_color += vec3<f32>(0.3, 1.0, 0.5) * bubble_glow;
+            }
         }
     }
 

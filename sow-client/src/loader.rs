@@ -468,25 +468,33 @@ impl SowApp {
         self.boot_route_waiting = false;
         hide_web_loader();
         crate::store_portals::load_stop();
-        crate::store_portals::gameplay_stop();
         self.web_loader_hidden = true;
-        if self.progress.has_history() {
+        if !self.progress.is_first_game() {
             log::info!("Portal boot: returning player → main menu");
+            crate::store_portals::gameplay_stop();
             self.ui.app.splash_state.done = true;
             self.ui.app.phase = ClientPhase::MainMenu;
         } else {
             log::info!("Portal boot: new player → intro skirmish");
+            // Clear instant multiplayer host intent for first-game players so it doesn't try to host
+            // or cause any interference during/after the intro tutorial.
+            self.ui.app.main_menu_state.host_private_pending = false;
             self.start_portal_intro_match();
         }
     }
 
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn start_portal_intro_match(&mut self) {
+        let tutorial_seed = web_time::SystemTime::now()
+            .duration_since(web_time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
         let config = GameConfig {
             map_name: sow_core::maps::DEFAULT_MAP_KEY.to_string(),
-            bot_count: 0,
-            nation_count: 0,
-            seed: 42,
+            bot_count: 2,
+            nation_count: 1,
+            seed: tutorial_seed,
             player_leader: self.ui.app.main_menu_state.selected_leader,
             player_civilization: self.ui.app.main_menu_state.selected_civilization,
             ..Default::default()

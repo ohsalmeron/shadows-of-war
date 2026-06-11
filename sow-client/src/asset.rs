@@ -486,6 +486,7 @@ impl SowApp {
                     provider,
                 } => {
                     let old_level = self.progress.level;
+                    let is_crazygames = provider == "crazygames";
                     self.apply_cloud_profile(progress, account_id, provider);
                     log::info!(
                         "Successfully synced profile from cloud database: level {} ({} XP)",
@@ -494,6 +495,9 @@ impl SowApp {
                     );
                     if self.progress.level > old_level {
                         crate::store_portals::happytime();
+                    }
+                    if is_crazygames {
+                        crate::store_portals::submit_leaderboard_score(self.progress.xp);
                     }
                     self.maybe_link_platform_identity();
                     #[cfg(target_arch = "wasm32")]

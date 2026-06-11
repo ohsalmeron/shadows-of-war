@@ -31,8 +31,6 @@ crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 url = { workspace = true }
-sha2 = { workspace = true }
-
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = { workspace = true }
@@ -48,3 +46,4 @@ getrandom = { workspace = true }
 open = { workspace = true }
 env_logger = { workspace = true }
 tokio = { workspace = true }
+rodio = { workspace = true }

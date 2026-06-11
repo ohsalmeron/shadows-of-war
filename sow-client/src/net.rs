@@ -110,6 +110,9 @@ impl SowApp {
             let identity = crate::store_portals::load_identity(&fallback);
             self.ui.app.main_menu_state.player_name = identity.display_name;
             self.ui.app.main_menu_state.name_locked = identity.name_locked;
+            if self.progress.has_history() && identity.provider == "crazygames" {
+                crate::store_portals::show_account_link_prompt();
+            }
             self.maybe_link_platform_identity();
             self.fetch_cloud_progress();
         }

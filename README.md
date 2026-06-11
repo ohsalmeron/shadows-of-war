@@ -154,6 +154,17 @@ This section outlines how to verify the platform features required for CrazyGame
 * **Syncing**: Once authenticated, the profile is updated with the platform avatar/username, and the client communicates with the cloud database `/profile/link` to bind progress data.
 * **Auth State Updates**: The SDK's `addAuthListener` automatically listens for authentication changes and updates the client credentials and profile state dynamically.
 
+### 5. Preview Checklist — Grey User SDK Items
+The Developer Portal preview only marks SDK calls made in the browser. Server-side leaderboard API submits do not count.
+
+| Checklist item | How to trigger green |
+|---|---|
+| Show Auth Prompt | Open Preview, click **SIGN IN** on the main menu profile header |
+| Show Account Link Prompt | Play one offline skirmish as guest, then sign in via **SIGN IN** |
+| Submit leaderboard score | Sign in, finish one online match, return to menu (profile refetch calls `submitScore`); check Preview **Logs** tab for `submitScore` |
+
+**Operator setup:** paste the Developer Portal Leaderboard **Encryption Key** into `SOW_CG_LEADERBOARD_ENCRYPTION_KEY` in `sow-web/shell/sdk/store_portals.js`. Preview `submitScore` calls are logged but not saved to the live leaderboard.
+
 ## License
 
 Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
