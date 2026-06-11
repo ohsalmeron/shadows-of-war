@@ -154,12 +154,7 @@ fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_local(
-    paths: &Paths,
-    increment_version: bool,
-    port: u16,
-    build_only: bool,
-) -> Result<()> {
+fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     println!("==> local v{version} (no CDN sync, prod wss/CDN at runtime)");
     wasm::compile(paths)?;

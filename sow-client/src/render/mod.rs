@@ -36,12 +36,10 @@ impl SowApp {
 
         let draw_world = self.should_draw_world();
 
-        let Some(frame) = (|| {
-            if let Some(win) = self.gfx.window.as_ref() {
-                win.pre_present_notify();
-            }
-            self.gfx.surface.as_mut().map(|s| s.acquire_frame())
-        })() else {
+        if let Some(win) = self.gfx.window.as_ref() {
+            win.pre_present_notify();
+        }
+        let Some(frame) = self.gfx.surface.as_mut().map(|s| s.acquire_frame()) else {
             return;
         };
 
@@ -88,379 +86,371 @@ impl SowApp {
             }
 
             render_ctx.command_encoder.start();
-            render_ctx
-                .command_encoder
-                .init_texture(frame.texture());
+            render_ctx.command_encoder.init_texture(frame.texture());
 
             let mut map_drawn = false;
             if let Some(ref mut mr) = self.gfx.map_renderer {
                 // Upload map state on first frame or after each tick (runs during splash for loader step 2).
                 if self.gfx.needs_first_upload {
-                    render_ctx
-                        .command_encoder
-                        .init_texture(mr.terrain_texture);
-                    render_ctx
-                        .command_encoder
-                        .init_texture(mr.owner_texture);
+                    render_ctx.command_encoder.init_texture(mr.terrain_texture);
+                    render_ctx.command_encoder.init_texture(mr.owner_texture);
                     self.gfx.needs_first_upload = false;
                     mr.upload_terrain(&mut render_ctx.command_encoder);
                 }
 
                 if draw_world {
-                // --- Layer 4: Track and Spawn Detonations ---
-                let mut new_detonations = Vec::new();
-                if let Some(snap) = &self.sim.current_snapshot {
-                    for (id, prev_proj) in &self.ui.last_projectiles {
-                        if !snap.projectiles.iter().any(|p| p.id == *id) {
-                            let at_end = prev_proj.path_cursor
-                                + (prev_proj.steps_per_tick as usize)
-                                >= prev_proj.path.len();
-                            if at_end {
-                                let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
-                                let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
-                                new_detonations.push((dst_x, dst_y, prev_proj.kind));
-                            }
-                        }
-                    }
-                }
-
-                // Spawns and tracks active explosions/fallout zones
-                let current_time = web_time::Instant::now();
-                for (dx, dy, kind) in new_detonations {
-                    if let sow_core::game::ProjectileKind::Nuke { level } = kind {
-                        let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
-                        let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
-                        let exp_kind = if level >= 2 {
-                            crate::app::ExplosionKind::Hydrogen
-                        } else {
-                            crate::app::ExplosionKind::Atom
-                        };
-
-                        self.ui.active_explosions.push(crate::app::ActiveExplosion {
-                            x: dx,
-                            y: dy,
-                            start_time: current_time,
-                            max_radius,
-                            kind: exp_kind,
-                        });
-                        self.ui.fallout_zones.push(crate::app::FalloutZone {
-                            x: dx,
-                            y: dy,
-                            radius: fallout_radius,
-                            start_time: current_time,
-                        });
-                    }
-                }
-
-                // Detect new nuke launches and set client-side silo cooldowns
-                if let Some(snap) = &self.sim.current_snapshot {
-                    let current_tick = snap.tick;
-                    const SILO_COOLDOWN_TICKS: u64 = 90;
-
-                    for proj in &snap.projectiles {
-                        if matches!(proj.kind, sow_core::game::ProjectileKind::Nuke { .. })
-                            && !self.ui.last_projectiles.contains_key(&proj.id)
-                        {
-                            // New nuke — find source building by src_tile
-                            if let Some(b) = snap.buildings.iter().find(|b| {
-                                b.kind == sow_core::game::BuildingKind::City
-                                    && b.tile_idx == proj.src_tile
-                            }) {
-                                self.ui
-                                    .silo_cooldowns
-                                    .insert(b.id, current_tick + SILO_COOLDOWN_TICKS);
+                    // --- Layer 4: Track and Spawn Detonations ---
+                    let mut new_detonations = Vec::new();
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        for (id, prev_proj) in &self.ui.last_projectiles {
+                            if !snap.projectiles.iter().any(|p| p.id == *id) {
+                                let at_end = prev_proj.path_cursor
+                                    + (prev_proj.steps_per_tick as usize)
+                                    >= prev_proj.path.len();
+                                if at_end {
+                                    let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
+                                    let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
+                                    new_detonations.push((dst_x, dst_y, prev_proj.kind));
+                                }
                             }
                         }
                     }
 
-                    // Prune expired cooldowns
-                    self.ui
-                        .silo_cooldowns
-                        .retain(|_, expires| *expires > current_tick);
-                }
+                    // Spawns and tracks active explosions/fallout zones
+                    let current_time = web_time::Instant::now();
+                    for (dx, dy, kind) in new_detonations {
+                        if let sow_core::game::ProjectileKind::Nuke { level } = kind {
+                            let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
+                            let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
+                            let exp_kind = if level >= 2 {
+                                crate::app::ExplosionKind::Hydrogen
+                            } else {
+                                crate::app::ExplosionKind::Atom
+                            };
 
-                // Sync last_projectiles
-                if let Some(snap) = &self.sim.current_snapshot {
-                    self.ui.last_projectiles.clear();
-                    for proj in &snap.projectiles {
-                        self.ui.last_projectiles.insert(proj.id, proj.clone());
-                    }
-                }
-
-                let mut border_thickness = 1.0f32;
-                let mut border_darkness = 0.35f32;
-                let mut shore_thickness = 1.0f32;
-                let mut shore_darkness = 1.0f32;
-                let mut territory_opacity = 1.0f32;
-                let mut blend_mode = 2.0f32;
-                let mut sub_voxel_scale = 1.0f32;
-                let mut conquest_duration = 3.0f32;
-
-                self.ui.egui_ctx.data_mut(|d| {
-                    border_thickness =
-                        *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 1.0f32);
-                    border_darkness =
-                        *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32);
-                    shore_thickness = *d
-                        .get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || {
-                            1.0f32
-                        });
-                    shore_darkness = *d
-                        .get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || {
-                            1.0f32
-                        });
-                    territory_opacity = *d
-                        .get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || {
-                            1.0f32
-                        });
-                    blend_mode = *d
-                        .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
-                            2.0f32
-                        });
-                    sub_voxel_scale = *d
-                        .get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || {
-                            1.0f32
-                        });
-                    conquest_duration = *d
-                        .get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || {
-                            3.0f32
-                        });
-                });
-
-                let dirty = self
-                    .sim
-                    .current_snapshot
-                    .as_ref()
-                    .map(|s| s.dirty_tiles.as_slice())
-                    .unwrap_or(&[]);
-
-                mr.update(
-                    &mut render_ctx.command_encoder,
-                    &render_ctx.context,
-                    dirty,
-                    conquest_duration,
-                );
-                for dt in dirty {
-                    let i = dt.index as usize;
-                    if i < self.sim.tile_upgrades.len() {
-                        self.sim.tile_upgrades[i] = dt.upgrade_level;
-                    }
-                }
-                if let Some(snap) = &mut self.sim.current_snapshot {
-                    snap.dirty_tiles.clear();
-                }
-
-                let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
-                if let Some(snap) = &self.sim.current_snapshot {
-                    for p in &snap.players {
-                        if (p.id as usize) < 256 {
-                            player_colors[p.id as usize] =
-                                [p.color[0], p.color[1], p.color[2], 1.0];
+                            self.ui.active_explosions.push(crate::app::ActiveExplosion {
+                                x: dx,
+                                y: dy,
+                                start_time: current_time,
+                                max_radius,
+                                kind: exp_kind,
+                            });
+                            self.ui.fallout_zones.push(crate::app::FalloutZone {
+                                x: dx,
+                                y: dy,
+                                radius: fallout_radius,
+                                start_time: current_time,
+                            });
                         }
                     }
-                }
 
-                let mut threat_slots = [[0.0f32; 4]; 8];
-                if let Some(snap) = &self.sim.current_snapshot {
-                    let my_id = self.sim.my_player_id.unwrap_or(0);
-                    let mut slot = 0usize;
-                    for attack in &snap.attacks {
-                        if slot >= 8 {
-                            break;
+                    // Detect new nuke launches and set client-side silo cooldowns
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        let current_tick = snap.tick;
+                        const SILO_COOLDOWN_TICKS: u64 = 90;
+
+                        for proj in &snap.projectiles {
+                            if matches!(proj.kind, sow_core::game::ProjectileKind::Nuke { .. })
+                                && !self.ui.last_projectiles.contains_key(&proj.id)
+                            {
+                                // New nuke — find source building by src_tile
+                                if let Some(b) = snap.buildings.iter().find(|b| {
+                                    b.kind == sow_core::game::BuildingKind::City
+                                        && b.tile_idx == proj.src_tile
+                                }) {
+                                    self.ui
+                                        .silo_cooldowns
+                                        .insert(b.id, current_tick + SILO_COOLDOWN_TICKS);
+                                }
+                            }
                         }
-                        let is_mine = my_id != 0 && attack.owner_id == my_id;
-                        let targets_me = my_id != 0 && attack.target_owner == my_id;
-                        if !(is_mine || targets_me) || attack.troops <= 0.0 {
-                            continue;
-                        }
-                        if attack.front_cx == 0.0 && attack.front_cy == 0.0 {
-                            continue;
-                        }
-                        let radius = (attack.troops as f32 / std::f32::consts::PI)
-                            .sqrt()
-                            .clamp(1.0, 200.0)
-                            * 2.5;
-                        threat_slots[slot] = [
-                            attack.front_cx,
-                            attack.front_cy,
-                            radius,
-                            attack.target_owner as f32 * 1024.0 + attack.owner_id as f32,
-                        ];
-                        slot += 1;
+
+                        // Prune expired cooldowns
+                        self.ui
+                            .silo_cooldowns
+                            .retain(|_, expires| *expires > current_tick);
                     }
-                }
 
-                let mut hover_hex = [0.0f32, 0.0f32];
-                let mut hover_building_kind = 0.0f32;
-                let mut nobuild_slots = [[0.0f32; 4]; 32];
+                    // Sync last_projectiles
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        self.ui.last_projectiles.clear();
+                        for proj in &snap.projectiles {
+                            self.ui.last_projectiles.insert(proj.id, proj.clone());
+                        }
+                    }
 
-                if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
-                    let mx = self.input.last_mouse_x as f32;
-                    let my = self.input.last_mouse_y as f32;
+                    let mut border_thickness = 0.5f32;
+                    let mut border_darkness = 0.35f32;
+                    let mut shore_thickness = 1.0f32;
+                    let mut shore_darkness = 1.0f32;
+                    let mut territory_opacity = 1.0f32;
+                    let mut blend_mode = 0.0f32;
+                    let mut sub_voxel_scale = 1.0f32;
+                    let mut conquest_duration = 2.5f32;
 
-                    let world_x = (mx - self.input.camera_x) / self.input.camera_zoom;
-                    let world_y = (my - self.input.camera_y) / self.input.camera_zoom;
+                    self.ui.egui_ctx.data_mut(|d| {
+                        border_thickness = *d
+                            .get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.5f32);
+                        border_darkness = *d
+                            .get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32);
+                        shore_thickness = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_shore_thickness"),
+                            || 1.0f32,
+                        );
+                        shore_darkness = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_shore_darkness"),
+                            || 1.0f32,
+                        );
+                        territory_opacity = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_territory_opacity"),
+                            || 1.0f32,
+                        );
+                        blend_mode = *d
+                            .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
+                                0.0f32
+                            });
+                        sub_voxel_scale = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_sub_voxel_scale"),
+                            || 1.0f32,
+                        );
+                        conquest_duration = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_conquest_duration"),
+                            || 2.5f32,
+                        );
+                    });
 
-                    let (col, row) = crate::render::world::movers::world_to_tile(world_x, world_y);
+                    let dirty = self
+                        .sim
+                        .current_snapshot
+                        .as_ref()
+                        .map(|s| s.dirty_tiles.as_slice())
+                        .unwrap_or(&[]);
 
-                    hover_hex = [col as f32, row as f32];
-                    hover_building_kind = match kind {
-                        sow_core::game::BuildingKind::City => 1.0,
-                        sow_core::game::BuildingKind::Bunker => 2.0,
-                        sow_core::game::BuildingKind::Factory => 3.0,
-                        sow_core::game::BuildingKind::Port => 4.0,
-                    };
+                    mr.update(
+                        &mut render_ctx.command_encoder,
+                        &render_ctx.context,
+                        dirty,
+                        conquest_duration,
+                    );
+                    for dt in dirty {
+                        let i = dt.index as usize;
+                        if i < self.sim.tile_upgrades.len() {
+                            self.sim.tile_upgrades[i] = dt.upgrade_level;
+                        }
+                    }
+                    if let Some(snap) = &mut self.sim.current_snapshot {
+                        snap.dirty_tiles.clear();
+                    }
 
+                    let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        for p in &snap.players {
+                            if (p.id as usize) < 256 {
+                                player_colors[p.id as usize] =
+                                    [p.color[0], p.color[1], p.color[2], 1.0];
+                            }
+                        }
+                    }
+
+                    let mut threat_slots = [[0.0f32; 4]; 8];
                     if let Some(snap) = &self.sim.current_snapshot {
                         let my_id = self.sim.my_player_id.unwrap_or(0);
-                        let stack_tile = crate::input::find_stack_target_tile(
-                            kind,
-                            col,
-                            row,
-                            self.sim.map_w,
-                            my_id,
-                            &snap.buildings,
-                        );
-
-                        let mut list = Vec::new();
-                        for b in &snap.buildings {
-                            if stack_tile == Some(b.tile_idx) {
+                        let mut slot = 0usize;
+                        for attack in &snap.attacks {
+                            if slot >= 8 {
+                                break;
+                            }
+                            let is_mine = my_id != 0 && attack.owner_id == my_id;
+                            let targets_me = my_id != 0 && attack.target_owner == my_id;
+                            if !(is_mine || targets_me) || attack.troops <= 0.0 {
                                 continue;
                             }
+                            if attack.front_cx == 0.0 && attack.front_cy == 0.0 {
+                                continue;
+                            }
+                            let radius = (attack.troops as f32 / std::f32::consts::PI)
+                                .sqrt()
+                                .clamp(1.0, 200.0)
+                                * 2.5;
+                            threat_slots[slot] = [
+                                attack.front_cx,
+                                attack.front_cy,
+                                radius,
+                                attack.target_owner as f32 * 1024.0 + attack.owner_id as f32,
+                            ];
+                            slot += 1;
+                        }
+                    }
 
-                            let bx = (b.tile_idx % self.sim.map_w) as i32;
-                            let by = (b.tile_idx / self.sim.map_w) as i32;
+                    let mut hover_hex = [0.0f32, 0.0f32];
+                    let mut hover_building_kind = 0.0f32;
+                    let mut nobuild_slots = [[0.0f32; 4]; 32];
 
-                            let mut radius = None;
-                            for rule in kind.spacing_rules() {
-                                if b.kind == rule.target_kind {
-                                    radius = Some(rule.min_distance as f32);
-                                    break;
+                    if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
+                        let mx = self.input.last_mouse_x as f32;
+                        let my = self.input.last_mouse_y as f32;
+
+                        let world_x = (mx - self.input.camera_x) / self.input.camera_zoom;
+                        let world_y = (my - self.input.camera_y) / self.input.camera_zoom;
+
+                        let (col, row) =
+                            crate::render::world::movers::world_to_tile(world_x, world_y);
+
+                        hover_hex = [col as f32, row as f32];
+                        hover_building_kind = match kind {
+                            sow_core::game::BuildingKind::City => 1.0,
+                            sow_core::game::BuildingKind::Bunker => 2.0,
+                            sow_core::game::BuildingKind::Factory => 3.0,
+                            sow_core::game::BuildingKind::Port => 4.0,
+                        };
+
+                        if let Some(snap) = &self.sim.current_snapshot {
+                            let my_id = self.sim.my_player_id.unwrap_or(0);
+                            let stack_tile = crate::input::find_stack_target_tile(
+                                kind,
+                                col,
+                                row,
+                                self.sim.map_w,
+                                my_id,
+                                &snap.buildings,
+                            );
+
+                            let mut list = Vec::new();
+                            for b in &snap.buildings {
+                                if stack_tile == Some(b.tile_idx) {
+                                    continue;
+                                }
+
+                                let bx = (b.tile_idx % self.sim.map_w) as i32;
+                                let by = (b.tile_idx / self.sim.map_w) as i32;
+
+                                let mut radius = None;
+                                for rule in kind.spacing_rules() {
+                                    if b.kind == rule.target_kind {
+                                        radius = Some(rule.min_distance as f32);
+                                        break;
+                                    }
+                                }
+
+                                if let Some(r_val) = radius {
+                                    let dx = (bx - col).abs();
+                                    let dy = (by - row).abs();
+                                    let dist = dx.max(dy);
+
+                                    list.push((bx, by, r_val, dist));
                                 }
                             }
 
-                            if let Some(r_val) = radius {
-                                let dx = (bx - col).abs();
-                                let dy = (by - row).abs();
-                                let dist = dx.max(dy);
-
-                                list.push((bx, by, r_val, dist));
+                            list.sort_unstable_by_key(|item| item.3);
+                            for (i, item) in list.iter().take(32).enumerate() {
+                                nobuild_slots[i] = [item.0 as f32, item.1 as f32, item.2, 1.0f32];
                             }
                         }
+                    }
 
-                        list.sort_unstable_by_key(|item| item.3);
-                        for (i, item) in list.iter().take(32).enumerate() {
-                            nobuild_slots[i] = [item.0 as f32, item.1 as f32, item.2, 1.0f32];
+                    let current_time = web_time::Instant::now();
+                    let mut fallout_slots = [[0.0f32; 4]; 8];
+                    {
+                        let mut slot = 0usize;
+                        self.ui.fallout_zones.retain(|fz| {
+                            let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
+                            let duration = 15.0;
+                            if elapsed >= duration {
+                                return false;
+                            }
+                            if slot < 8 {
+                                let alpha_p = (1.0 - elapsed / duration).max(0.0);
+                                fallout_slots[slot] = [fz.x, fz.y, fz.radius, alpha_p];
+                                slot += 1;
+                            }
+                            true
+                        });
+                    }
+
+                    let globals = MapGlobals {
+                        camera_pos: [self.input.camera_x, self.input.camera_y],
+                        zoom: self.input.camera_zoom,
+                        time: self.time.start_time.elapsed().as_secs_f32() % 1000.0,
+                        screen_size: [self.input.screen_w, self.input.screen_h],
+                        map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
+                        border_thickness,
+                        border_darkness,
+                        shore_thickness,
+                        shore_darkness,
+                        threat_slots,
+                        effect_shockwave: 1.0,
+                        effect_breathe: 1.0,
+                        effect_energy_flow: 1.0,
+                        my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
+                        hover_hex,
+                        hover_building_kind,
+                        territory_opacity,
+                        fallout_slots,
+                        nobuild_slots,
+                        sub_voxel_scale,
+                        blend_mode,
+                        _pad3: 0.0,
+                        _pad4: 0.0,
+                    };
+                    let colors_struct = sow_render::PlayerColors {
+                        colors: player_colors,
+                    };
+                    mr.draw(
+                        &mut render_ctx.command_encoder,
+                        frame.texture_view(),
+                        globals,
+                        colors_struct,
+                    );
+                    map_drawn = true;
+
+                    // ── GPU-instanced movers (boats, nukes, SAM) ─────────────
+                    if self.gfx.mover_renderer.is_none() {
+                        let surface_format = s.info().format;
+                        self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                            &render_ctx.context,
+                            surface_format,
+                        ));
+                        if let Some(ref mr_mover) = self.gfx.mover_renderer {
+                            mr_mover
+                                .upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
                         }
                     }
-                }
-
-                let current_time = web_time::Instant::now();
-                let mut fallout_slots = [[0.0f32; 4]; 8];
-                {
-                    let mut slot = 0usize;
-                    self.ui.fallout_zones.retain(|fz| {
-                        let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
-                        let duration = 15.0;
-                        if elapsed >= duration {
-                            return false;
-                        }
-                        if slot < 8 {
-                            let alpha_p = (1.0 - elapsed / duration).max(0.0);
-                            fallout_slots[slot] = [fz.x, fz.y, fz.radius, alpha_p];
-                            slot += 1;
-                        }
-                        true
-                    });
-                }
-
-                let globals = MapGlobals {
-                    camera_pos: [self.input.camera_x, self.input.camera_y],
-                    zoom: self.input.camera_zoom,
-                    time: self.time.start_time.elapsed().as_secs_f32() % 1000.0,
-                    screen_size: [self.input.screen_w, self.input.screen_h],
-                    map_size: [self.sim.map_w as f32, self.sim.map_h as f32],
-                    border_thickness,
-                    border_darkness,
-                    shore_thickness,
-                    shore_darkness,
-                    threat_slots,
-                    effect_shockwave: 1.0,
-                    effect_breathe: 1.0,
-                    effect_energy_flow: 1.0,
-                    my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
-                    hover_hex,
-                    hover_building_kind,
-                    territory_opacity,
-                    fallout_slots,
-                    nobuild_slots,
-                    sub_voxel_scale,
-                    blend_mode,
-                    _pad3: 0.0,
-                    _pad4: 0.0,
-                };
-                let colors_struct = sow_render::PlayerColors {
-                    colors: player_colors,
-                };
-                mr.draw(
-                    &mut render_ctx.command_encoder,
-                    frame.texture_view(),
-                    globals,
-                    colors_struct,
-                );
-                map_drawn = true;
-
-                // ── GPU-instanced movers (boats, nukes, SAM) ─────────────
-                if self.gfx.mover_renderer.is_none() {
-                    let surface_format = s.info().format;
-                    self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                        &render_ctx.context,
-                        surface_format,
-                    ));
-                    if let Some(ref mr_mover) = self.gfx.mover_renderer {
-                        mr_mover.upload_atlas(
+                    if let (Some(ref mut mover_r), Some(ref snap)) =
+                        (&mut self.gfx.mover_renderer, &self.sim.current_snapshot)
+                    {
+                        let now = web_time::Instant::now();
+                        let alpha = crate::render::world::movers::interp_alpha(&self.time, now);
+                        let pack = crate::render::world::movers::MoverPackParams {
+                            camera_x: self.input.camera_x,
+                            camera_y: self.input.camera_y,
+                            camera_zoom: self.input.camera_zoom,
+                            screen_w: self.input.screen_w,
+                            screen_h: self.input.screen_h,
+                            alpha,
+                            selected_warships: &self.input.selected_warships,
+                        };
+                        crate::render::world::movers::update_and_pack(
+                            &mut self.ui.mover_scene,
+                            snap,
+                            self.sim.map_w,
+                            mover_r,
+                            pack,
+                        );
+                        let mover_globals = sow_render::MoverGlobals {
+                            camera_pos: [self.input.camera_x, self.input.camera_y],
+                            zoom: self.input.camera_zoom,
+                            sprite_count: 0,
+                            screen_size: [self.input.screen_w, self.input.screen_h],
+                            trail_count: 0,
+                            _pad: 0.0,
+                        };
+                        mover_r.draw(
                             &mut render_ctx.command_encoder,
+                            frame.texture_view(),
+                            mover_globals,
                             &render_ctx.context,
                         );
                     }
-                }
-                if let (Some(ref mut mover_r), Some(ref snap)) = (
-                    &mut self.gfx.mover_renderer,
-                    &self.sim.current_snapshot,
-                ) {
-                    let now = web_time::Instant::now();
-                    let alpha = crate::render::world::movers::interp_alpha(&self.time, now);
-                    let pack = crate::render::world::movers::MoverPackParams {
-                        camera_x: self.input.camera_x,
-                        camera_y: self.input.camera_y,
-                        camera_zoom: self.input.camera_zoom,
-                        screen_w: self.input.screen_w,
-                        screen_h: self.input.screen_h,
-                        alpha,
-                        selected_warships: &self.input.selected_warships,
-                    };
-                    crate::render::world::movers::update_and_pack(
-                        &mut self.ui.mover_scene,
-                        snap,
-                        self.sim.map_w,
-                        mover_r,
-                        pack,
-                    );
-                    let mover_globals = sow_render::MoverGlobals {
-                        camera_pos: [self.input.camera_x, self.input.camera_y],
-                        zoom: self.input.camera_zoom,
-                        sprite_count: 0,
-                        screen_size: [self.input.screen_w, self.input.screen_h],
-                        trail_count: 0,
-                        _pad: 0.0,
-                    };
-                    mover_r.draw(
-                        &mut render_ctx.command_encoder,
-                        frame.texture_view(),
-                        mover_globals,
-                        &render_ctx.context,
-                    );
-                }
                 }
             }
 
@@ -680,21 +670,14 @@ impl SowApp {
                     },
                 );
 
-                gp.paint(
-                    &mut pass,
-                    &paint_jobs,
-                    &screen_desc,
-                    &render_ctx.context,
-                );
+                gp.paint(&mut pass, &paint_jobs, &screen_desc, &render_ctx.context);
                 drop(pass);
             }
             if let Some(ref mut gp) = self.gfx.gui_painter {
                 gp.sync(&render_ctx.context);
             }
             render_ctx.command_encoder.present(frame);
-            let sync_point = render_ctx
-                .context
-                .submit(&mut render_ctx.command_encoder);
+            let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
 
             if let Some(ref mut gp) = self.gfx.gui_painter {
                 gp.after_submit(&sync_point, &render_ctx.context);
@@ -750,18 +733,14 @@ impl SowApp {
                         if let Some(mut old_mover) = self.gfx.mover_renderer.take() {
                             old_mover.destroy(&render_ctx);
                         }
-                        self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                            &render_ctx.context,
-                            format,
-                        ));
+                        self.gfx.mover_renderer =
+                            Some(sow_render::MoverRenderer::new(&render_ctx.context, format));
                         if let Some(mut old_gp) = self.gfx.gui_painter.take() {
                             old_gp.destroy(&render_ctx.context);
                         }
 
-                        self.gfx.gui_painter = Some(blade_egui::GuiPainter::new(
-                            s.info(),
-                            &render_ctx.context,
-                        ));
+                        self.gfx.gui_painter =
+                            Some(blade_egui::GuiPainter::new(s.info(), &render_ctx.context));
                         self.gfx.surface = Some(s);
                         self.gfx.render_ctx = Some(render_ctx);
 

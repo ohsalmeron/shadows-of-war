@@ -9,8 +9,17 @@ use std::fs;
 use std::path::Path;
 
 const LEADERS: &[&str] = &[
-    "caesar", "cleopatra", "ragnar", "sun_tzu", "alexander", "genghis_khan",
-    "richard_the_lionheart", "vercingetorix", "boudica", "lady_six_sky", "leonidas",
+    "caesar",
+    "cleopatra",
+    "ragnar",
+    "sun_tzu",
+    "alexander",
+    "genghis_khan",
+    "richard_the_lionheart",
+    "vercingetorix",
+    "boudica",
+    "lady_six_sky",
+    "leonidas",
     "napoleon",
 ];
 
@@ -119,7 +128,12 @@ fn prepare_boot_ui(paths: &Paths) -> Result<()> {
     for (src, w, h, out) in [
         ("loader_empty.webp", 1032, 256, "loader_empty.webp"),
         ("loader_full.webp", 1032, 256, "loader_full.webp"),
-        ("sow-splash-mobile.webp", 720, 1280, "sow-splash-mobile.webp"),
+        (
+            "sow-splash-mobile.webp",
+            720,
+            1280,
+            "sow-splash-mobile.webp",
+        ),
     ] {
         resize_webp(&ui_src.join(src), &ui_cdn.join(out), w, h)?;
     }

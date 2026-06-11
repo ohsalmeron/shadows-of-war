@@ -103,7 +103,7 @@ impl SowApp {
     pub fn update_loader(&mut self) {
         if let Some(start_msg) = self.tasks.engine_init_queued_msg.take() {
             let map_name = start_msg.config.map_name.clone();
-            let has_map = self.ui.app.asset_loader.has_map(&map_name) 
+            let has_map = self.ui.app.asset_loader.has_map(&map_name)
                 || self.ui.app.main_menu_state.cached_map.is_some();
 
             if !has_map {
@@ -111,10 +111,7 @@ impl SowApp {
 
                 let pct = self.ui.app.main_menu_state.map_download_progress;
                 log::debug!("Map download progress: {pct}%");
-                splash_show_loading_progress(
-                    &mut self.ui.app.splash_state,
-                    pct as f32 / 100.0,
-                );
+                splash_show_loading_progress(&mut self.ui.app.splash_state, pct as f32 / 100.0);
             } else {
                 let cached_map = self.map_bytes_for_start(&map_name);
                 log::info!(
@@ -212,8 +209,7 @@ impl SowApp {
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
                     let leader = self.ui.app.main_menu_state.selected_leader;
-                    let mobile =
-                        sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+                    let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
 
                     splash_show_loading(&mut self.ui.app.splash_state);
 
@@ -225,19 +221,15 @@ impl SowApp {
                     if !ui_ready {
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.35);
                     } else {
-                        self.ui.app.asset_loader.ensure_boot_leader_loaded(
-                            &self.ui.egui_ctx,
-                            leader,
-                        );
-                        self.ui.app.asset_loader.set_leader_portrait_focus(
-                            leader,
-                            mobile,
-                        );
-                        let hero_ready = self
-                            .ui
+                        self.ui
                             .app
                             .asset_loader
-                            .boot_leader_ready(leader, mobile);
+                            .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
+                        self.ui
+                            .app
+                            .asset_loader
+                            .set_leader_portrait_focus(leader, mobile);
+                        let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
                         if !hero_ready {
                             splash_show_loading_progress(&mut self.ui.app.splash_state, 0.65);
                         } else {
@@ -246,11 +238,7 @@ impl SowApp {
                     }
 
                     let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
-                    let hero_ready = self
-                        .ui
-                        .app
-                        .asset_loader
-                        .boot_leader_ready(leader, mobile);
+                    let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
                     let boot_ready = ui_ready && hero_ready;
 
                     if boot_ready {
@@ -309,13 +297,8 @@ impl SowApp {
                                 {
                                     continue;
                                 }
-                                log::info!(
-                                    "Engine initialization complete; allocating GPU memory"
-                                );
-                                splash_show_loading_progress(
-                                    &mut self.ui.app.splash_state,
-                                    0.95,
-                                );
+                                log::info!("Engine initialization complete; allocating GPU memory");
+                                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
                                 self.ui.app.splash_state.frames_drawn = 0;
                                 self.ui.app.splash_state.gpu_load_step = 1;
                                 self.tasks.pending_engine_init_data =
@@ -434,7 +417,7 @@ impl SowApp {
                         log::info!("EnterGame load complete; fading out loader");
                     } else {
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
-                        if self.ui.app.splash_state.frames_drawn % 120 == 0 {
+                        if self.ui.app.splash_state.frames_drawn.is_multiple_of(120) {
                             log::warn!(
                                 "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, my_lobby_id={:?}, my_player_id={:?}, phase={:?}",
                                 self.ui.app.main_menu_state.is_connected,

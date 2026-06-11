@@ -22,7 +22,11 @@ fn hud_bottom_panel_clearance(ctx: &egui::Context, compact: bool) -> f32 {
         .unwrap_or(HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE + HUD_BOTTOM_CONTROLS_GAP)
 }
 
-fn hud_map_controls_anchor_offset(ctx: &egui::Context, compact: bool, safe_area_bottom: f32) -> egui::Vec2 {
+fn hud_map_controls_anchor_offset(
+    ctx: &egui::Context,
+    compact: bool,
+    safe_area_bottom: f32,
+) -> egui::Vec2 {
     egui::vec2(
         -12.0,
         -hud_bottom_panel_clearance(ctx, compact) - safe_area_bottom,
@@ -43,7 +47,6 @@ pub struct EventLogEntry {
     pub color: Color32,
     pub spawned_at: Instant,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct SelectedTileInfo {
@@ -94,9 +97,6 @@ pub struct HudState {
     pub battle_log_seen_count: usize,
     pub event_log_seen_count: usize,
     pub(crate) prev_incoming_dispatch_count: usize,
-    pub gold_gain: Option<f64>,
-    pub gold_gain_at: Option<Instant>,
-    pub prev_gold: f64,
     pub show_ask_panel: Option<u16>,
     pub ask_gold: f64,
     pub ask_troops: f64,
@@ -152,12 +152,7 @@ fn building_emoji(kind: sow_core::game::BuildingKind) -> &'static str {
     }
 }
 
-fn draw_buildings_strip(
-    ui: &mut egui::Ui,
-    state: &mut HudState,
-    width: f32,
-    compact: bool,
-) {
+fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, compact: bool) {
     ui.set_width(width);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = if compact { 4.0 } else { 12.0 };
@@ -583,7 +578,12 @@ fn draw_event_log_tab(
                 let stripe = entry.color.linear_multiply(0.9 * alpha);
 
                 egui::Frame::NONE
-                    .fill(Color32::from_rgba_unmultiplied(15, 10, 5, (180.0 * alpha) as u8))
+                    .fill(Color32::from_rgba_unmultiplied(
+                        15,
+                        10,
+                        5,
+                        (180.0 * alpha) as u8,
+                    ))
                     .stroke(Stroke::new(
                         crate::ui::theme::stroke::HAIRLINE,
                         entry.color.linear_multiply(0.5 * alpha),
@@ -629,6 +629,7 @@ enum DispatchKind {
     Navy,
 }
 
+#[allow(clippy::type_complexity)]
 fn draw_battle_log_tab(
     ui: &mut egui::Ui,
     state: &HudState,
@@ -891,7 +892,10 @@ pub fn draw(
     }
 
     let event_unread = if log_tabs_enabled && state.bottom_tab != BottomHudTab::EventLog {
-        state.event_log.len().saturating_sub(state.event_log_seen_count)
+        state
+            .event_log
+            .len()
+            .saturating_sub(state.event_log_seen_count)
     } else {
         0
     };
@@ -927,14 +931,7 @@ pub fn draw(
                     crate::ui::theme::nickname_field_border().linear_multiply(0.4)
                 };
 
-            let content_margin = if portrait_dock {
-                egui::Margin {
-                    left: crate::ui::theme::margin::COZY,
-                    right: crate::ui::theme::margin::COZY,
-                    top: crate::ui::theme::margin::COZY,
-                    bottom: crate::ui::theme::margin::TIGHT,
-                }
-            } else if compact {
+            let content_margin = if portrait_dock || compact {
                 egui::Margin {
                     left: crate::ui::theme::margin::COZY,
                     right: crate::ui::theme::margin::COZY,
@@ -964,8 +961,7 @@ pub fn draw(
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.set_width(panel_w);
-                            ui.spacing_mut().item_spacing.y =
-                                crate::ui::theme::margin::COZY as f32;
+                            ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::COZY as f32;
 
                             if log_tabs_enabled {
                                 ui.push_id("tab_strip", |ui| {
@@ -1274,7 +1270,7 @@ pub fn draw(
                                                             icon_rect,
                                                             pc,
                                                         ) {
-                                                            crate::ui::theme::outlined_label(
+                                                            crate::widgets::outlined_emoji_label(
                                                                 ui,
                                                                 icon,
                                                                 egui::FontId::proportional(18.0),
@@ -1283,7 +1279,7 @@ pub fn draw(
                                                         }
                                                         ui.vertical(|ui| {
                                                             ui.spacing_mut().item_spacing.y = 0.0;
-                                                            crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
+                                                            crate::widgets::outlined_emoji_label(ui, &name, egui::FontId::proportional(12.5), pc);
                                                             let prompt = if is_renewal {
                                                                 match lang {
                                                                     sow_i18n::Language::Spanish => "¡quiere renovar la alianza!".to_string(),
@@ -1292,7 +1288,7 @@ pub fn draw(
                                                             } else {
                                                                 sow_i18n::get(lang).hud.inbox_wants_ally.clone()
                                                             };
-                                                            crate::ui::theme::outlined_label(ui, &prompt, egui::FontId::proportional(10.5), Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress));
+                                                            crate::widgets::outlined_emoji_label(ui, &prompt, egui::FontId::proportional(10.5), Color32::LIGHT_GRAY.linear_multiply(inbox_progress * card_progress));
                                                         });
                                                     });
                                                     ui.add_space(2.0);
@@ -1372,7 +1368,7 @@ pub fn draw(
                                                             icon_rect,
                                                             pc,
                                                         ) {
-                                                            crate::ui::theme::outlined_label(
+                                                            crate::widgets::outlined_emoji_label(
                                                                 ui,
                                                                 icon,
                                                                 egui::FontId::proportional(18.0),
@@ -1381,7 +1377,7 @@ pub fn draw(
                                                         }
                                                         ui.vertical(|ui| {
                                                             ui.spacing_mut().item_spacing.y = 0.0;
-                                                            crate::ui::theme::outlined_label(ui, &name, egui::FontId::proportional(12.5), pc);
+                                                            crate::widgets::outlined_emoji_label(ui, &name, egui::FontId::proportional(12.5), pc);
                                                             let prompt = match (req.gold > 0.0, req.troops > 0.0) {
                                                                 (true, true) => format!("asks for 🪙{} & 🛡️{}", crate::utils::format_number(req.gold), crate::utils::format_number(req.troops)),
                                                                 (true, false) => format!("asks for 🪙{}", crate::utils::format_number(req.gold)),
@@ -1468,7 +1464,8 @@ pub fn draw(
     }
 
     // ── Floating Map Controls ──────────────────────────────────────────────
-    let map_controls_offset = hud_map_controls_anchor_offset(ui.ctx(), compact, state.safe_area_bottom);
+    let map_controls_offset =
+        hud_map_controls_anchor_offset(ui.ctx(), compact, state.safe_area_bottom);
     egui::Area::new(egui::Id::new("hud_map_controls"))
         .anchor(Align2::RIGHT_BOTTOM, map_controls_offset)
         .order(egui::Order::Foreground)
@@ -1512,17 +1509,16 @@ pub fn draw(
                             action = Some(UiAction::CenterCamera);
                         }
                         ui.separator();
-                        if !state.chat_disabled {
-                            if ui
+                        if !state.chat_disabled
+                            && ui
                                 .add(crate::widgets::HudEmojiButton::new("😀").dim(btn_w))
                                 .on_hover_text(&sow_i18n::get(lang).hud.hover_express_emoji)
                                 .clicked()
-                            {
-                                state.show_emoji_panel = !state.show_emoji_panel;
-                                if state.show_emoji_panel {
-                                    state.emoji_panel_pos = None;
-                                    state.emoji_panel_just_opened = true;
-                                }
+                        {
+                            state.show_emoji_panel = !state.show_emoji_panel;
+                            if state.show_emoji_panel {
+                                state.emoji_panel_pos = None;
+                                state.emoji_panel_just_opened = true;
                             }
                         }
                         if log_tabs_enabled {
@@ -1684,11 +1680,9 @@ pub fn draw(
 
                                     let scale_id =
                                         ui.make_persistent_id(("emoji_scale", emoji_idx));
-                                    let hover_t = ui.ctx().animate_bool_with_time(
-                                        scale_id,
-                                        is_hovered,
-                                        anim_hover,
-                                    );
+                                    let hover_t = ui
+                                        .ctx()
+                                        .animate_bool_with_time(scale_id, is_hovered, anim_hover);
 
                                     // Spring calculation (easeOutBack) - optimized to direct multiplications
                                     let spring_t = if hover_t > 0.0 {
@@ -1725,8 +1719,7 @@ pub fn draw(
                                         egui::StrokeKind::Inside,
                                     );
 
-                                    let paint_size =
-                                        btn_size * (0.78 + 0.1 * spring_t);
+                                    let paint_size = btn_size * (0.78 + 0.1 * spring_t);
                                     let emoji_rect = egui::Rect::from_center_size(
                                         active_rect.center(),
                                         egui::vec2(paint_size, paint_size),
@@ -2113,10 +2106,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                 crate::ui::theme::accent_danger()
             };
             egui::Frame::NONE
-                .stroke(Stroke::new(
-                    crate::ui::theme::stroke::HAIRLINE,
-                    rate_color,
-                ))
+                .stroke(Stroke::new(crate::ui::theme::stroke::HAIRLINE, rate_color))
                 .corner_radius(crate::ui::theme::radius::sm())
                 .inner_margin(egui::Margin::symmetric(
                     crate::ui::theme::margin::COZY,
@@ -2125,10 +2115,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                 .show(ui, |ui| {
                     crate::widgets::outlined_emoji_label(
                         ui,
-                        &format!(
-                            "⚔ +{}/s",
-                            crate::utils::format_number(troop_rate)
-                        ),
+                        &format!("⚔ +{}/s", crate::utils::format_number(troop_rate)),
                         egui::FontId::proportional(11.0),
                         rate_color,
                     );
@@ -2136,10 +2123,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
         }
 
         let bar_w = ui.available_width() - if compact { 100.0 } else { 90.0 };
-        let (rect, _) = ui.allocate_exact_size(
-            vec2(bar_w.max(80.0), bar_h),
-            egui::Sense::hover(),
-        );
+        let (rect, _) = ui.allocate_exact_size(vec2(bar_w.max(80.0), bar_h), egui::Sense::hover());
         draw_troop_bar(
             ui,
             rect,
@@ -2150,7 +2134,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
             is_increasing,
         );
 
-        let gold_frame_resp = egui::Frame::NONE
+        egui::Frame::NONE
             .stroke(Stroke::new(
                 crate::ui::theme::stroke::HAIRLINE,
                 crate::ui::theme::accent_ranked_gold_hover(),
@@ -2168,28 +2152,10 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                     crate::ui::theme::accent_ranked_gold_hover(),
                 );
             });
-
-        if let (Some(amount), Some(at)) = (state.gold_gain, state.gold_gain_at) {
-            let t = at.elapsed().as_secs_f32().min(2.5);
-            let alpha = ((1.0 - t / 2.5) * 255.0) as u8;
-            let slide = 8.0 * (1.0 - (t * 6.0).min(1.0));
-            let r = gold_frame_resp.response.rect;
-            let text = format!("🪙 +{}", crate::utils::format_number(amount));
-            let p = pos2(r.center().x, r.top() - 10.0 - slide);
-            crate::widgets::outlined_emoji_text(
-                ui.painter(),
-                p,
-                Align2::CENTER_BOTTOM,
-                &text,
-                egui::FontId::proportional(13.0),
-                Color32::from_rgba_unmultiplied(74, 222, 128, alpha),
-                Color32::from_rgba_unmultiplied(0, 0, 0, alpha),
-            );
-        }
     });
 }
 
-const ATTACK_RATIO_COL_W: f32 = 48.0;
+const ATTACK_RATIO_COL_W: f32 = 64.0;
 
 fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMain) -> f32 {
     if spawn_active {
@@ -2199,10 +2165,18 @@ fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMai
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
     let body_h = match main {
         HudSidebarMain::Controls => {
-            if compact { 38.0 } else { 44.0 }
+            if compact {
+                38.0
+            } else {
+                44.0
+            }
         }
         HudSidebarMain::BattleLog | HudSidebarMain::EventLog => {
-            if compact { 120.0 } else { 140.0 }
+            if compact {
+                120.0
+            } else {
+                140.0
+            }
         }
     };
     body_h + row_gap + header_h
@@ -2221,36 +2195,49 @@ fn draw_attack_ratio_column(ui: &mut egui::Ui, state: &HudState, col_h: f32) -> 
 
     ui.allocate_ui_with_layout(
         vec2(ATTACK_RATIO_COL_W, col_h),
-        egui::Layout::top_down(egui::Align::Center),
+        egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
-            ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
-            crate::ui::theme::outlined_label(
-                ui,
-                &format!("{:.0}%", state.attack_ratio * 100.0),
-                egui::FontId::proportional(11.0),
-                crate::ui::theme::accent_solo_cyan_hover(),
-            );
+            ui.spacing_mut().item_spacing.x = 4.0;
 
-            let slider_h = (col_h - 32.0).clamp(24.0, 56.0);
+            // Slider on the left
+            let slider_h = (col_h - 16.0).clamp(20.0, 44.0);
             let mut ratio = state.attack_ratio;
-            let slider = Slider::new(&mut ratio, 0.01..=1.0)
-                .show_value(false)
-                .vertical();
-            if ui.add_sized(vec2(18.0, slider_h), slider).changed() {
+            let changed = ui
+                .scope(|ui| {
+                    ui.spacing_mut().slider_rail_height = 8.0;
+                    let slider = Slider::new(&mut ratio, 0.01..=1.0)
+                        .show_value(false)
+                        .vertical();
+                    ui.add_sized(vec2(28.0, slider_h), slider).changed()
+                })
+                .inner;
+            if changed {
                 changed_ratio = Some(ratio);
             }
 
-            crate::ui::theme::outlined_label(
-                ui,
-                &crate::utils::format_number(ratio_troops),
-                egui::FontId::proportional(10.0),
-                Color32::from_rgb(220, 230, 220),
-            );
+            // Labels column on the right
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &format!("{:.0}%", state.attack_ratio * 100.0),
+                    egui::FontId::proportional(11.0),
+                    crate::ui::theme::accent_solo_cyan_hover(),
+                );
+
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &crate::utils::format_number(ratio_troops),
+                    egui::FontId::proportional(10.0),
+                    Color32::from_rgb(220, 230, 220),
+                );
+            });
         },
     );
     changed_ratio
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_hud_sidebar_row(
     ui: &mut egui::Ui,
     state: &mut HudState,
@@ -2268,11 +2255,12 @@ fn draw_hud_sidebar_row(
     } else {
         0.0
     };
-    let main_w = content_w - if show_ratio {
-        ATTACK_RATIO_COL_W + ratio_gap
-    } else {
-        0.0
-    };
+    let main_w = content_w
+        - if show_ratio {
+            ATTACK_RATIO_COL_W + ratio_gap
+        } else {
+            0.0
+        };
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
     let row_h = hud_sidebar_row_height(compact, spawn_active, main);
 
@@ -2497,8 +2485,7 @@ fn draw_betrayal_overlay(
     let alpha = anim.progress;
     let y_offset = anim.y_offset;
     let screen_rect = ctx.content_rect();
-    let compact =
-        screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
+    let compact = screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
     ctx.layer_painter(egui::LayerId::new(
         egui::Order::Middle,
@@ -2519,16 +2506,15 @@ fn draw_betrayal_overlay(
     let panel_w = if compact {
         (screen_rect.width() - 32.0).min(500.0)
     } else {
-        0.0
+        520.0
     };
 
-    let window = if compact {
-        window
-            .fixed_size(vec2(panel_w, 0.0))
-            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, y_offset))
-    } else {
-        window.anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -20.0 + y_offset))
-    };
+    let window = window
+        .fixed_size(vec2(panel_w, 0.0))
+        .anchor(
+            egui::Align2::CENTER_CENTER,
+            vec2(0.0, if compact { y_offset } else { -20.0 + y_offset }),
+        );
 
     let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
 
@@ -2578,52 +2564,54 @@ fn draw_betrayal_overlay(
                 };
                 let btn_h = if compact { 40.0 } else { 44.0 };
 
-                ui.horizontal(|ui| {
-                    if compact {
-                        ui.spacing_mut().item_spacing.x = 8.0;
-                    }
+                ui.allocate_ui_with_layout(
+                    vec2(ui.available_width(), btn_h),
+                    egui::Layout::left_to_right(egui::Align::Center)
+                        .with_main_align(egui::Align::Center),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = if compact { 8.0 } else { 16.0 };
 
-                    if ui
-                        .add(
-                            crate::widgets::ThemeButton::new(&strings.betrayal_keep)
-                                .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                .custom_fill(
-                                    crate::ui::theme::menu_secondary_button().linear_multiply(alpha),
-                                )
-                                .custom_text_color(Color32::WHITE.linear_multiply(alpha))
-                                .min_size(vec2(btn_w, btn_h))
-                                .text_size(if compact { 13.0 } else { 16.0 }),
-                        )
-                        .clicked()
-                    {
-                        state.show_betrayal_warning = None;
-                    }
+                        if ui
+                            .add(
+                                crate::widgets::ThemeButton::new(&strings.betrayal_keep)
+                                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                                    .custom_fill(
+                                        crate::ui::theme::menu_secondary_button()
+                                            .linear_multiply(alpha),
+                                    )
+                                    .custom_text_color(Color32::WHITE.linear_multiply(alpha))
+                                    .min_size(vec2(btn_w, btn_h))
+                                    .text_size(if compact { 13.0 } else { 16.0 }),
+                            )
+                            .clicked()
+                        {
+                            state.show_betrayal_warning = None;
+                        }
 
-                    if !compact {
-                        ui.add_space(16.0);
-                    }
-
-                    if ui
-                        .add(
-                            crate::widgets::ThemeButton::new(&strings.betrayal_yes)
-                                .style(crate::widgets::ThemeButtonStyle::Danger)
-                                .custom_fill(crate::ui::theme::accent_danger().linear_multiply(alpha))
-                                .custom_text_color(Color32::WHITE.linear_multiply(alpha))
-                                .min_size(vec2(if compact { btn_w } else { 140.0 }, btn_h))
-                                .text_size(if compact { 13.0 } else { 16.0 }),
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .clicked()
-                    {
-                        cancel_intents.push(
-                            sow_core::protocol::GameplayIntent::BreakAlliance {
-                                target_player: ally_id,
-                            },
-                        );
-                        cancel_intents.push(intent);
-                        state.show_betrayal_warning = None;
-                    }
-                });
+                        if ui
+                            .add(
+                                crate::widgets::ThemeButton::new(&strings.betrayal_yes)
+                                    .style(crate::widgets::ThemeButtonStyle::Danger)
+                                    .custom_fill(
+                                        crate::ui::theme::accent_danger().linear_multiply(alpha),
+                                    )
+                                    .custom_text_color(Color32::WHITE.linear_multiply(alpha))
+                                    .min_size(vec2(if compact { btn_w } else { 140.0 }, btn_h))
+                                    .text_size(if compact { 13.0 } else { 16.0 }),
+                            )
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .clicked()
+                        {
+                            cancel_intents.push(
+                                sow_core::protocol::GameplayIntent::BreakAlliance {
+                                    target_player: ally_id,
+                                },
+                            );
+                            cancel_intents.push(intent);
+                            state.show_betrayal_warning = None;
+                        }
+                    },
+                );
             });
         });
 }
@@ -2953,7 +2941,12 @@ fn draw_info_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("🤝").color(border_color).size(12.0));
                         ui.add_space(6.0);
-                        ui.label(RichText::new(info_msg).color(text_color).size(12.0).strong());
+                        ui.label(
+                            RichText::new(info_msg)
+                                .color(text_color)
+                                .size(12.0)
+                                .strong(),
+                        );
                     });
                     ui.label(
                         RichText::new(&strings.toast_tap_dismiss)
@@ -2994,21 +2987,22 @@ fn draw_transfer_panel(
     let strings = &sow_i18n::get(lang).hud;
     let is_active = state.show_ask_panel.is_some();
     let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
-    let progress = ui.ctx().animate_bool_with_time(
-        egui::Id::new("transfer_panel_animation"),
-        is_active,
-        anim,
-    );
+    let progress =
+        ui.ctx()
+            .animate_bool_with_time(egui::Id::new("transfer_panel_animation"), is_active, anim);
 
     if progress <= 0.01 && !is_active {
         return;
     }
 
     let target_id = if let Some(id) = state.show_ask_panel {
-        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_active_target"), id));
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_active_target"), id));
         id
     } else {
-        ui.ctx().data(|d| d.get_temp::<u16>(egui::Id::new("transfer_panel_active_target"))).unwrap_or(0)
+        ui.ctx()
+            .data(|d| d.get_temp::<u16>(egui::Id::new("transfer_panel_active_target")))
+            .unwrap_or(0)
     };
 
     if target_id == 0 {
@@ -3021,15 +3015,28 @@ fn draw_transfer_panel(
         .unwrap_or_else(|| format!("Ally {}", target_id));
 
     // Active Tab: 0 = Send, 1 = Request
-    let mut active_tab = ui.ctx().data(|d| d.get_temp::<usize>(egui::Id::new("transfer_active_tab"))).unwrap_or(0);
+    let mut active_tab = ui
+        .ctx()
+        .data(|d| d.get_temp::<usize>(egui::Id::new("transfer_active_tab")))
+        .unwrap_or(0);
 
     // Dynamic max bounds based on tab
     let (max_gold, max_troops, balance_label, accent_color) = if active_tab == 0 {
-        (state.gold, state.troops, "Your Balance", crate::ui::theme::accent_solo_cyan())
+        (
+            state.gold,
+            state.troops,
+            "Your Balance",
+            crate::ui::theme::accent_solo_cyan(),
+        )
     } else {
         let ally_gold = target_player.map(|p| p.gold).unwrap_or(0.0);
         let ally_troops = target_player.map(|p| p.troops).unwrap_or(0.0);
-        (ally_gold, ally_troops, "Ally Balance", crate::ui::theme::accent_ranked_gold())
+        (
+            ally_gold,
+            ally_troops,
+            "Ally Balance",
+            crate::ui::theme::accent_ranked_gold(),
+        )
     };
 
     // Clamp values if tab switches and current value exceeds new bounds
@@ -3134,7 +3141,9 @@ fn draw_transfer_panel(
 
                         if ui.add(send_btn).clicked() {
                             active_tab = 0;
-                            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 0_usize));
+                            ui.ctx().data_mut(|d| {
+                                d.insert_temp(egui::Id::new("transfer_active_tab"), 0_usize)
+                            });
                         }
 
                         // Request Tab Button
@@ -3163,7 +3172,9 @@ fn draw_transfer_panel(
 
                         if ui.add(req_btn).clicked() {
                             active_tab = 1;
-                            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 1_usize));
+                            ui.ctx().data_mut(|d| {
+                                d.insert_temp(egui::Id::new("transfer_active_tab"), 1_usize)
+                            });
                         }
                     });
 
@@ -3179,29 +3190,41 @@ fn draw_transfer_panel(
                                     egui::FontId::proportional(15.0),
                                     Color32::WHITE,
                                 );
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(
-                                        RichText::new(format!("{}", crate::utils::format_number(state.ask_gold)))
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            RichText::new(crate::utils::format_number(
+                                                state.ask_gold,
+                                            ))
                                             .color(crate::ui::theme::accent_ranked_gold())
                                             .strong()
                                             .size(15.0),
-                                    );
-                                });
+                                        );
+                                    },
+                                );
                             });
 
                             ui.add_space(2.0);
 
                             // Balance label
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(balance_label).size(11.0).color(crate::ui::theme::text_secondary()));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(
-                                        RichText::new(crate::utils::format_number(max_gold))
-                                            .size(11.0)
-                                            .color(Color32::LIGHT_GRAY)
-                                            .strong(),
-                                    );
-                                });
+                                ui.label(
+                                    RichText::new(balance_label)
+                                        .size(11.0)
+                                        .color(crate::ui::theme::text_secondary()),
+                                );
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            RichText::new(crate::utils::format_number(max_gold))
+                                                .size(11.0)
+                                                .color(Color32::LIGHT_GRAY)
+                                                .strong(),
+                                        );
+                                    },
+                                );
                             });
 
                             ui.add_space(4.0);
@@ -3244,29 +3267,41 @@ fn draw_transfer_panel(
                                     egui::FontId::proportional(15.0),
                                     Color32::WHITE,
                                 );
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(
-                                        RichText::new(format!("{}", crate::utils::format_number(state.ask_troops)))
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            RichText::new(crate::utils::format_number(
+                                                state.ask_troops,
+                                            ))
                                             .color(crate::ui::theme::accent_solo_cyan())
                                             .strong()
                                             .size(15.0),
-                                    );
-                                });
+                                        );
+                                    },
+                                );
                             });
 
                             ui.add_space(2.0);
 
                             // Balance label
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(balance_label).size(11.0).color(crate::ui::theme::text_secondary()));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(
-                                        RichText::new(crate::utils::format_number(max_troops))
-                                            .size(11.0)
-                                            .color(Color32::LIGHT_GRAY)
-                                            .strong(),
-                                    );
-                                });
+                                ui.label(
+                                    RichText::new(balance_label)
+                                        .size(11.0)
+                                        .color(crate::ui::theme::text_secondary()),
+                                );
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            RichText::new(crate::utils::format_number(max_troops))
+                                                .size(11.0)
+                                                .color(Color32::LIGHT_GRAY)
+                                                .strong(),
+                                        );
+                                    },
+                                );
                             });
 
                             ui.add_space(4.0);
@@ -3311,7 +3346,7 @@ fn draw_transfer_panel(
                     // --- ACTION BUTTONS ---
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;
-                        
+
                         let btn_w = (ui.available_width() - 10.0) / 2.0;
 
                         let cancel_btn = crate::widgets::ThemeButton::new(&strings.transfer_cancel)
@@ -3384,7 +3419,8 @@ fn draw_transfer_panel(
             });
 
             let response_rect = frame_res.response.rect;
-            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_rect"), response_rect));
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_rect"), response_rect));
         });
 
     // Click outside the ask panel closes it

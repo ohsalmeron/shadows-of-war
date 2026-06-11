@@ -5,7 +5,10 @@ use sow_ui::ui::main_menu::MainMenuState;
 use web_time::{Duration, Instant};
 
 /// Private lobbies are excluded from the global LobbiesBroadcast; seed local state on join.
-fn seed_joined_lobby_entry(state: &mut MainMenuState, ack: &sow_core::protocol::ServerJoinAckMessage) {
+fn seed_joined_lobby_entry(
+    state: &mut MainMenuState,
+    ack: &sow_core::protocol::ServerJoinAckMessage,
+) {
     let me = sow_core::protocol::LobbyPlayerSyncState {
         name: state.player_name.clone(),
         is_ready: false,
@@ -37,7 +40,8 @@ fn apply_lobbies_broadcast(
     broadcast: &sow_core::protocol::ServerLobbiesBroadcastMessage,
 ) {
     let joined_id = state.joined_lobby_id;
-    let joined_snapshot = joined_id.and_then(|id| state.lobbies.iter().find(|l| l.id == id).cloned());
+    let joined_snapshot =
+        joined_id.and_then(|id| state.lobbies.iter().find(|l| l.id == id).cloned());
     state.lobbies = broadcast.lobbies.clone();
     if let (Some(id), Some(snap)) = (joined_id, joined_snapshot) {
         if !state.lobbies.iter().any(|l| l.id == id) {
@@ -92,7 +96,6 @@ impl SowApp {
         }
         self.ui.app.main_menu_state.is_waiting = true;
     }
-
 
     fn poll_portal_intents(&mut self) {
         if let Some(id) = crate::store_portals::poll_pending_invite_lobby() {
@@ -183,9 +186,11 @@ impl SowApp {
                         }
                     } else if self.net.pending_lobby_rejoin {
                         log::info!("Re-sending Join to lobby after hop");
-                        let target = self.sim.my_lobby_id.or(
-                            self.ui.app.main_menu_state.pending_join_lobby_id,
-                        );
+                        let target = self.sim.my_lobby_id.or(self
+                            .ui
+                            .app
+                            .main_menu_state
+                            .pending_join_lobby_id);
                         let join_msg = self.make_join_message(target, false);
                         if let Ok(json) = bincode::serialize(&join_msg) {
                             client.send(json);
@@ -660,15 +665,16 @@ impl SowApp {
         if let Some(start_msg) = pending_start {
             self.sync_portal_room(false);
             let not_splash = self.ui.app.phase != sow_ui::app::ClientPhase::Splash;
-            let wrong_job = self.ui.app.splash_state.job != sow_ui::ui::loading_screen::SplashJob::EnterGame;
-            
+            let wrong_job =
+                self.ui.app.splash_state.job != sow_ui::ui::loading_screen::SplashJob::EnterGame;
+
             if not_splash || wrong_job {
                 self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
                 let lang = self.ui.app.settings_state.language;
-                self.ui.app.splash_state.reset_anim(
-                    sow_ui::ui::loading_screen::SplashJob::EnterGame,
-                    lang,
-                );
+                self.ui
+                    .app
+                    .splash_state
+                    .reset_anim(sow_ui::ui::loading_screen::SplashJob::EnterGame, lang);
             }
             self.ui.app.main_menu_state.is_waiting = false;
             self.ui.app.main_menu_state.pending_join_lobby_id = None;
@@ -681,6 +687,8 @@ impl SowApp {
         }
 
         if let Some(rematch_id) = pending_rematch {
+            crate::store_portals::gameplay_stop();
+            self.cleanup_game_session_stub();
             self.net.pending_lobby_rejoin = true;
             self.ui.app.main_menu_state.pending_join_lobby_id = Some(rematch_id);
             self.ui.app.phase = ClientPhase::MainMenu;

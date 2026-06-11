@@ -93,9 +93,7 @@ impl SowEngine {
             let mut troop_income = config.per_tick(config.troop_base_income)
                 + config.per_tick(50.0) * agg.city_levels as f64 * vercingetorix_mult
                 + config.per_tick(80.0) * agg.armory_levels as f64 * sun_tzu_mult
-                + config.per_tick(config.port_troop_income)
-                    * agg.port_levels as f64
-                    * ragnar_mult;
+                + config.per_tick(config.port_troop_income) * agg.port_levels as f64 * ragnar_mult;
 
             if is_standard_bot {
                 troop_income *= 0.75;
@@ -126,9 +124,7 @@ impl SowEngine {
             let mut gold_income = config.per_tick(config.gold_base_income)
                 + config.per_tick(config.city_gold_income) * agg.city_levels as f64 * boudica_mult
                 + config.per_tick(100.0) * agg.foundry_levels as f64 * cleo_mult
-                + config.per_tick(config.port_gold_income)
-                    * agg.port_levels as f64
-                    * ragnar_mult
+                + config.per_tick(config.port_gold_income) * agg.port_levels as f64 * ragnar_mult
                 + config.per_tick(factory_gold_income);
 
             if is_standard_bot {

@@ -12,7 +12,10 @@ fn screen_panel_frame() -> Frame {
 fn setting_card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
     let frame = egui::Frame::NONE
         .fill(crate::ui::theme::nickname_field_bg())
-        .stroke(Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()))
+        .stroke(Stroke::new(
+            1.0_f32,
+            crate::ui::theme::nickname_field_border(),
+        ))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(12, 8));
 
@@ -47,7 +50,11 @@ fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::Range
     });
 }
 
-fn draw_custom_slider_u64(ui: &mut egui::Ui, value: &mut u64, range: std::ops::RangeInclusive<u64>) {
+fn draw_custom_slider_u64(
+    ui: &mut egui::Ui,
+    value: &mut u64,
+    range: std::ops::RangeInclusive<u64>,
+) {
     ui.horizontal(|ui| {
         let total_w = ui.available_width();
         let qty_w = 52.0;
@@ -150,52 +157,52 @@ pub fn draw(
                     let config = &mut state.single_player_config;
                     let item_gap = 10.0;
 
-                    let draw_preview = |ui: &mut egui::Ui,
-                                        config: &sow_core::game_config::GameConfig| {
-                        let thumbnail = loader.thumbnail(&config.map_name);
-                        let aspect = 1.77_f32;
-                        let w = ui.available_width();
-                        let h = (w / aspect).min(200.0).max(48.0);
-                        let rect = ui
-                            .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
-                            .0;
+                    let draw_preview =
+                        |ui: &mut egui::Ui, config: &sow_core::game_config::GameConfig| {
+                            let thumbnail = loader.thumbnail(&config.map_name);
+                            let aspect = 1.77_f32;
+                            let w = ui.available_width();
+                            let h = (w / aspect).clamp(48.0, 200.0);
+                            let rect = ui
+                                .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
+                                .0;
 
-                        if let Some(tex) = thumbnail {
-                            crate::ui::map_texture::draw_map_thumbnail(
-                                ui.painter(),
-                                tex.id(),
-                                rect,
-                                1.0,
-                            );
-                        } else {
-                            ui.painter()
-                                .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
-                            let status = if let Some(err) = loader.thumbnail_error(&config.map_name)
-                            {
-                                format!("Thumbnail: {err}")
-                            } else if loader.thumbnail_in_flight(&config.map_name) {
-                                strings.loading_maps.to_string()
+                            if let Some(tex) = thumbnail {
+                                crate::ui::map_texture::draw_map_thumbnail(
+                                    ui.painter(),
+                                    tex.id(),
+                                    rect,
+                                    1.0,
+                                );
                             } else {
-                                strings.no_preview.to_string()
-                            };
-                            crate::ui::theme::outlined_text(
-                                ui.painter(),
-                                rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                &status,
-                                egui::FontId::proportional(13.0),
-                                text_secondary(),
-                                Color32::BLACK,
-                            );
-                        }
+                                ui.painter()
+                                    .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
+                                let status =
+                                    if let Some(err) = loader.thumbnail_error(&config.map_name) {
+                                        format!("Thumbnail: {err}")
+                                    } else if loader.thumbnail_in_flight(&config.map_name) {
+                                        strings.loading_maps.to_string()
+                                    } else {
+                                        strings.no_preview.to_string()
+                                    };
+                                crate::ui::theme::outlined_text(
+                                    ui.painter(),
+                                    rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    &status,
+                                    egui::FontId::proportional(13.0),
+                                    text_secondary(),
+                                    Color32::BLACK,
+                                );
+                            }
 
-                        ui.painter().rect_stroke(
-                            rect,
-                            8.0_f32,
-                            Stroke::new(1.0_f32, crate::ui::theme::menu_panel_border_glow()),
-                            egui::StrokeKind::Inside,
-                        );
-                    };
+                            ui.painter().rect_stroke(
+                                rect,
+                                8.0_f32,
+                                Stroke::new(1.0_f32, crate::ui::theme::menu_panel_border_glow()),
+                                egui::StrokeKind::Inside,
+                            );
+                        };
 
                     let draw_map_picker =
                         |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
@@ -315,16 +322,13 @@ pub fn draw(
                     let draw_spawn =
                         |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                             setting_card(ui, &strings.random_spawning, |ui| {
-                                let btn_text = if config.random_spawn {
-                                    "ON"
-                                } else {
-                                    "OFF"
-                                };
-                                let btn = egui::Button::new(btn_text).fill(if config.random_spawn {
-                                    crate::ui::theme::accent_solo_cyan()
-                                } else {
-                                    crate::ui::theme::menu_secondary_button()
-                                });
+                                let btn_text = if config.random_spawn { "ON" } else { "OFF" };
+                                let btn =
+                                    egui::Button::new(btn_text).fill(if config.random_spawn {
+                                        crate::ui::theme::accent_solo_cyan()
+                                    } else {
+                                        crate::ui::theme::menu_secondary_button()
+                                    });
                                 if ui.add(btn).clicked() {
                                     config.random_spawn = !config.random_spawn;
                                 }

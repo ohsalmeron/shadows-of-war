@@ -169,9 +169,10 @@ pub fn draw_queue_overlay(
                     }
                 }
 
-                let cancel = crate::widgets::ThemeButton::new(&sow_i18n::get(lang).main_menu.leave_lobby)
-                    .style(crate::widgets::ThemeButtonStyle::Danger)
-                    .min_size(egui::vec2(200.0, action_min_h));
+                let cancel =
+                    crate::widgets::ThemeButton::new(&sow_i18n::get(lang).main_menu.leave_lobby)
+                        .style(crate::widgets::ThemeButtonStyle::Danger)
+                        .min_size(egui::vec2(200.0, action_min_h));
                 if ui.add(cancel).clicked() {
                     *action = Some(UiAction::LeaveLobby);
                 }
@@ -229,12 +230,7 @@ fn draw_map_briefing(
                     .0;
 
                 if let Some(tex) = thumbnail {
-                    crate::ui::map_texture::draw_map_thumbnail(
-                        ui.painter(),
-                        tex.id(),
-                        rect,
-                        1.0,
-                    );
+                    crate::ui::map_texture::draw_map_thumbnail(ui.painter(), tex.id(), rect, 1.0);
                 } else {
                     ui.painter()
                         .rect_filled(rect, 8.0, Color32::from_black_alpha(120));

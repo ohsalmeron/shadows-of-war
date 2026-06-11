@@ -7,6 +7,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
+#[allow(clippy::too_many_arguments)]
 pub fn export_map(
     map_name: &str,
     display_name: &str,
@@ -62,17 +63,11 @@ pub fn export_map(
     fs::write(output_dir.join("map.bin.br"), out)?;
 
     let preview = sow_map::terrain_preview_image(width, height, &map_file.terrain);
-    sow_map::write_square_thumbnail(
-        &preview,
-        &output_dir.join("thumbnail.webp"),
-    )
-    .map_err(|e| cli_error::user_error("write thumbnail", e))?;
+    sow_map::write_square_thumbnail(&preview, &output_dir.join("thumbnail.webp"))
+        .map_err(|e| cli_error::user_error("write thumbnail", e))?;
 
     if let Err(e) = refresh_catalog(&maps_root()) {
-        eprintln!(
-            "Warning: {}",
-            cli_error::user_error("refresh catalog", e)
-        );
+        eprintln!("Warning: {}", cli_error::user_error("refresh catalog", e));
     }
 
     if single_player_config {

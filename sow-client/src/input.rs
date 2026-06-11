@@ -37,7 +37,10 @@ impl SowApp {
         let vp = crate::viewport::Viewport {
             physical: physical_size,
             scale_factor: sf,
-            logical: Vec2::new(physical_size.width as f32 / sf, physical_size.height as f32 / sf),
+            logical: Vec2::new(
+                physical_size.width as f32 / sf,
+                physical_size.height as f32 / sf,
+            ),
         };
         let needs_reconfigure = vp.wants_reconfigure(self) || force_reconfigure;
 
@@ -198,9 +201,8 @@ impl SowApp {
 
                             if owner != 0 && owner != my_id && is_allied {
                                 let lang = self.ui.app.settings_state.language;
-                                self.ui.app.hud_state.show_error = Some(
-                                    sow_i18n::get(lang).hud.err_break_alliance_boat.clone(),
-                                );
+                                self.ui.app.hud_state.show_error =
+                                    Some(sow_i18n::get(lang).hud.err_break_alliance_boat.clone());
                                 let mx = self.input.last_mouse_x;
                                 let my = self.input.last_mouse_y;
                                 self.open_context_menu_at(mx, my);
@@ -880,6 +882,20 @@ impl SowApp {
     }
 
     pub(crate) fn send_intent(&mut self, intent: sow_core::protocol::GameplayIntent) {
+        match &intent {
+            sow_core::protocol::GameplayIntent::LaunchFleet { target_tile, .. }
+            | sow_core::protocol::GameplayIntent::MoveWarships { target_tile, .. } => {
+                let wx = (*target_tile % self.sim.map_w) as f32 + 0.5;
+                let wy = (*target_tile / self.sim.map_w) as f32 + 0.5;
+                self.ui.click_markers.push(crate::app::ClickMarker {
+                    world_x: wx,
+                    world_y: wy,
+                    start_time: web_time::Instant::now(),
+                });
+            }
+            _ => {}
+        }
+
         if let Some(c) = self.net.client.as_ref() {
             let msg = sow_core::protocol::ClientMessage::Gameplay {
                 intent: intent.clone(),

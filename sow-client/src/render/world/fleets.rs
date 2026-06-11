@@ -11,12 +11,16 @@ pub(crate) fn render(
     let painter = ctx.painter;
     let sf = ctx.sf;
     let zoom_scaled = ctx.zoom_scaled;
+    if zoom_scaled < 5.0 {
+        return;
+    }
 
     if let Some(snap) = &sim.current_snapshot {
         let alpha = crate::render::world::movers::interp_alpha(time, web_time::Instant::now());
 
         for fleet in &snap.fleets {
-            let (wx_curr, wy_curr) = crate::render::world::movers::tile_to_world(fleet.current_tile, sim.map_w);
+            let (wx_curr, wy_curr) =
+                crate::render::world::movers::tile_to_world(fleet.current_tile, sim.map_w);
 
             let mut wx = wx_curr;
             let mut wy = wy_curr;
@@ -27,7 +31,8 @@ pub(crate) fn render(
                     .saturating_sub(2)
                     .min(fleet.path.len().saturating_sub(1));
                 let prev_tile = fleet.path[prev_idx];
-                let (wx_prev, wy_prev) = crate::render::world::movers::tile_to_world(prev_tile, sim.map_w);
+                let (wx_prev, wy_prev) =
+                    crate::render::world::movers::tile_to_world(prev_tile, sim.map_w);
 
                 wx = wx_prev + (wx_curr - wx_prev) * alpha;
                 wy = wy_prev + (wy_curr - wy_prev) * alpha;

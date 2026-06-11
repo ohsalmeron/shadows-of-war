@@ -97,6 +97,7 @@ pub fn leader_page_out_alpha(turn_t: f32) -> f32 {
 
 #[inline]
 pub fn leader_page_in_alpha(turn_t: f32) -> f32 {
-    let u = ((turn_t - LEADER_PAGE_FADE_IN_START) / (1.0 - LEADER_PAGE_FADE_IN_START)).clamp(0.0, 1.0);
+    let u =
+        ((turn_t - LEADER_PAGE_FADE_IN_START) / (1.0 - LEADER_PAGE_FADE_IN_START)).clamp(0.0, 1.0);
     ease_out_quart(u)
 }

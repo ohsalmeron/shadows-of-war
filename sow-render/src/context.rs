@@ -5,6 +5,12 @@ pub struct RenderContext {
     pub command_encoder: gpu::CommandEncoder,
 }
 
+impl Default for RenderContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RenderContext {
     pub fn try_new() -> Result<Self, gpu::NotSupportedError> {
         let context = unsafe {
@@ -68,10 +74,12 @@ impl RenderContext {
     pub fn reset_command_encoder(&mut self) {
         self.context
             .destroy_command_encoder(&mut self.command_encoder);
-        self.command_encoder = self.context.create_command_encoder(gpu::CommandEncoderDesc {
-            name: "main",
-            buffer_count: 2,
-        });
+        self.command_encoder = self
+            .context
+            .create_command_encoder(gpu::CommandEncoderDesc {
+                name: "main",
+                buffer_count: 2,
+            });
     }
 }
 

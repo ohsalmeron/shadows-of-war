@@ -3,40 +3,192 @@ use super::*;
 use crate::render::world::movers::{tile_to_world, world_to_tile};
 use crate::render::world::utils::*;
 
-pub(crate) fn get_upgrade_str(level: u8) -> &'static str {
-    match level {
-        1 => "🏗️ Lvl 1 -> 2",
-        2 => "🏗️ Lvl 2 -> 3",
-        3 => "🏗️ Lvl 3 -> 4",
-        4 => "🏗️ Lvl 4 -> 5",
-        5 => "🏗️ Lvl 5 -> 6",
-        6 => "🏗️ Lvl 6 -> 7",
-        7 => "🏗️ Lvl 7 -> 8",
-        8 => "🏗️ Lvl 8 -> 9",
-        9 => "🏗️ Lvl 9 -> 10",
-        10 => "🏗️ Lvl 10 -> 11",
-        11 => "🏗️ Lvl 11 -> 12",
-        12 => "🏗️ Lvl 12 -> 13",
-        13 => "🏗️ Lvl 13 -> 14",
-        14 => "🏗️ Lvl 14 -> 15",
-        15 => "🏗️ Lvl 15 -> 16",
-        16 => "🏗️ Lvl 16 -> 17",
-        17 => "🏗️ Lvl 17 -> 18",
-        18 => "🏗️ Lvl 18 -> 19",
-        19 => "🏗️ Lvl 19 -> 20",
-        20 => "🏗️ Lvl 20 -> 21",
-        21 => "🏗️ Lvl 21 -> 22",
-        22 => "🏗️ Lvl 22 -> 23",
-        23 => "🏗️ Lvl 23 -> 24",
-        24 => "🏗️ Lvl 24 -> 25",
-        25 => "🏗️ Lvl 25 -> 26",
-        26 => "🏗️ Lvl 26 -> 27",
-        27 => "🏗️ Lvl 27 -> 28",
-        28 => "🏗️ Lvl 28 -> 29",
-        29 => "🏗️ Lvl 29 -> 30",
-        30 => "🏗️ Lvl 30 -> 31",
-        _ => "🏗️ Lvl Upgrade",
+pub(crate) fn upgrade_level_label(level: u8) -> String {
+    format!("Lvl {} -> {}", level, level + 1)
+}
+
+pub(crate) struct BuildingUpgradePlateLine {
+    pub text: String,
+    pub color: egui::Color32,
+    pub scale: f32, // 1.0 main, 0.85 secondary
+}
+
+pub(crate) struct BuildingUpgradePlate {
+    pub anchor: egui::Pos2,
+    pub base_size: f32,
+    pub bobbing: f32,
+    pub border_color: egui::Color32,
+    pub lines: Vec<BuildingUpgradePlateLine>,
+}
+
+pub(crate) fn paint_building_upgrade_plate(
+    painter: &egui::Painter,
+    plate: BuildingUpgradePlate,
+    camera_zoom: f32,
+    sf: f32,
+) {
+    let font_size = (8.0_f32 * camera_zoom / sf).clamp(7.0, 10.0).round();
+
+    let padding_x = 10.0_f32;
+    let padding_y = 6.0_f32;
+    let column_gap = 6.0_f32;
+    let line_gap = 3.0_f32;
+
+    let emoji_size = font_size * 1.4;
+
+    let mut text_w = 0.0_f32;
+    let mut text_h = 0.0_f32;
+    let mut line_sizes = Vec::new();
+
+    for (i, line) in plate.lines.iter().enumerate() {
+        let line_font_size = (font_size * line.scale).round();
+        let font_id = egui::FontId::proportional(line_font_size);
+        let size = sow_ui::widgets::measure_emoji_text(painter, &line.text, &font_id);
+        text_w = text_w.max(size.x);
+        if i > 0 {
+            text_h += line_gap;
+        }
+        text_h += size.y;
+        line_sizes.push(size);
     }
+
+    let box_w = padding_x * 2.0 + emoji_size + column_gap + text_w;
+    let box_h = padding_y * 2.0 + text_h.max(emoji_size);
+
+    let building_top = plate.anchor.y - plate.base_size * 0.5;
+    let gap = 4.0_f32; // small air between icon and plate
+    let plate_center_y = building_top - gap - box_h * 0.5 + plate.bobbing;
+    let badge_rect = egui::Rect::from_center_size(
+        egui::pos2(plate.anchor.x, plate_center_y),
+        egui::vec2(box_w, box_h),
+    );
+
+    painter.rect(
+        badge_rect,
+        6.0_f32,
+        egui::Color32::from_rgba_unmultiplied(15, 23, 42, 210), // Glass slate dark
+        egui::Stroke::new(
+            1.2_f32,
+            egui::Color32::from_rgba_unmultiplied(
+                plate.border_color.r(),
+                plate.border_color.g(),
+                plate.border_color.b(),
+                200,
+            ),
+        ),
+        egui::StrokeKind::Inside,
+    );
+
+    // Left column: 🏗️ emoji centered
+    let emoji_center_x = badge_rect.left() + padding_x + emoji_size * 0.5;
+    let emoji_center_y = badge_rect.center().y;
+    let emoji_center = egui::pos2(emoji_center_x, emoji_center_y);
+
+    if !sow_ui::widgets::paint_emoji_centered(
+        painter,
+        "🏗️",
+        emoji_center,
+        emoji_size,
+        egui::Color32::WHITE,
+    ) {
+        painter.text(
+            emoji_center,
+            egui::Align2::CENTER_CENTER,
+            "🏗️",
+            egui::FontId::proportional(emoji_size * 0.7),
+            egui::Color32::WHITE,
+        );
+    }
+
+    // Right column: left-aligned lines
+    let text_start_x = badge_rect.left() + padding_x + emoji_size + column_gap;
+    let text_start_y = badge_rect.center().y - text_h * 0.5;
+
+    let mut current_y = text_start_y;
+    for (i, line) in plate.lines.iter().enumerate() {
+        let line_font_size = (font_size * line.scale).round();
+        let font_id = egui::FontId::proportional(line_font_size);
+        let size = line_sizes[i];
+
+        let line_pos = egui::pos2(text_start_x, current_y + size.y * 0.5);
+
+        sow_ui::widgets::paint_emoji_text_at(
+            painter,
+            line_pos,
+            egui::Align2::LEFT_CENTER,
+            &line.text,
+            font_id,
+            line.color,
+            false,
+        );
+
+        current_y += size.y + line_gap;
+    }
+}
+
+pub(crate) fn building_kind_emoji(kind: sow_core::game::BuildingKind) -> &'static str {
+    match kind {
+        sow_core::game::BuildingKind::City => "🏛️",
+        sow_core::game::BuildingKind::Factory => "🏭",
+        sow_core::game::BuildingKind::Port => "⚓",
+        sow_core::game::BuildingKind::Bunker => "🛡️",
+    }
+}
+
+pub(crate) fn paint_new_build_ghost(
+    painter: &egui::Painter,
+    kind: sow_core::game::BuildingKind,
+    center: egui::Pos2,
+    base_size: f32,
+) {
+    let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
+    let emoji = building_kind_emoji(kind);
+    if !sow_ui::widgets::try_paint_emoji(painter, emoji, rect, egui::Color32::WHITE) {
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            emoji,
+            egui::FontId::proportional(base_size * 0.7),
+            egui::Color32::WHITE,
+        );
+    }
+}
+
+pub(crate) fn paint_gold_preview_indicator(
+    painter: &egui::Painter,
+    center: egui::Pos2,
+    base_size: f32,
+    amount_text: &str,
+    text_color: egui::Color32,
+    zoom_scaled: f32,
+    final_scale: f32,
+) {
+    let font_size = (zoom_scaled * 0.65 * final_scale).clamp(10.0, 20.0).round();
+    let font_id = egui::FontId::proportional(font_size);
+    let emoji_size = font_size * 1.4;
+    let amount_size = sow_ui::widgets::measure_emoji_text(painter, amount_text, &font_id);
+    let gap = 1.0_f32;
+    let total_w = emoji_size + gap + amount_size.x;
+    let start_x = center.x - total_w * 0.5;
+    let indicator_y = center.y + base_size * 0.4;
+
+    sow_ui::widgets::paint_emoji_centered(
+        painter,
+        "🪙",
+        egui::pos2(start_x + emoji_size * 0.5, indicator_y),
+        emoji_size,
+        egui::Color32::WHITE,
+    );
+
+    sow_ui::widgets::paint_emoji_text_at(
+        painter,
+        egui::pos2(start_x + emoji_size + gap, indicator_y),
+        egui::Align2::LEFT_CENTER,
+        amount_text,
+        font_id,
+        text_color,
+        true,
+    );
 }
 
 #[allow(unused_variables)]
@@ -58,7 +210,7 @@ pub(crate) fn render(
     let edge_cache_stale = sim
         .current_snapshot
         .as_ref()
-        .map_or(false, |s| !s.dirty_tiles.is_empty());
+        .is_some_and(|s| !s.dirty_tiles.is_empty());
     let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
         egui::Order::Background,
         egui::Id::new("world_buildings"),
@@ -70,6 +222,7 @@ pub(crate) fn render(
         d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
             .unwrap_or(1.0)
     });
+    let far_zoom_threshold = ClientVisualConfig::default().far_zoom_lod_threshold;
     let zoom_factor = ((zoom_scaled - 0.6) / 9.4).clamp(0.0, 1.0);
     let min_lod_scale = 0.5; // Scale when fully zoomed out
     let max_lod_scale = 1.0; // Scale when fully zoomed in
@@ -116,7 +269,7 @@ pub(crate) fn render(
             128.0 // LOD 3: Major sector-level grouping
         } else if zoom_scaled < 1.2 {
             64.0 // LOD 2: Intermediate grid grouping
-        } else if zoom_scaled < 2.5 {
+        } else if zoom_scaled < far_zoom_threshold {
             24.0 // LOD 1: Close clustering
         } else {
             1.0 // No clustering
@@ -141,7 +294,7 @@ pub(crate) fn render(
 
             for b in &snap.buildings {
                 if zoom_scaled < 0.6 && b.kind != sow_core::game::BuildingKind::City {
-                    continue; // Skip rendering Bunkers, Factories, and Ports on LOD 3 to reduce noise
+                    continue;
                 }
 
                 let (bx, by) = tile_to_world(b.tile_idx, sim.map_w);
@@ -317,12 +470,7 @@ pub(crate) fn render(
                     }
                 };
 
-                let emoji = match b.kind {
-                    sow_core::game::BuildingKind::City => "🏛️",
-                    sow_core::game::BuildingKind::Factory => "🏭",
-                    sow_core::game::BuildingKind::Port => "⚓",
-                    sow_core::game::BuildingKind::Bunker => "🛡️",
-                };
+                let emoji = building_kind_emoji(b.kind);
 
                 if !sow_ui::widgets::try_paint_emoji(&painter, emoji, rect, tint) {
                     painter.text(
@@ -380,7 +528,12 @@ pub(crate) fn render(
                                 ),
                             );
 
-                            if !sow_ui::widgets::try_paint_emoji(&painter, emoji, dist_rect, player_color) {
+                            if !sow_ui::widgets::try_paint_emoji(
+                                &painter,
+                                emoji,
+                                dist_rect,
+                                player_color,
+                            ) {
                                 painter.text(
                                     dist_rect.center(),
                                     egui::Align2::CENTER_CENTER,
@@ -392,22 +545,13 @@ pub(crate) fn render(
                         };
 
                         if mods.arsenal > 0 {
-                            draw_district(
-                                "🚀",
-                                (b_id % 6) as usize,
-                            );
+                            draw_district("🚀", (b_id % 6) as usize);
                         }
                         if mods.port > 0 {
-                            draw_district(
-                                "⚓",
-                                ((b_id + 2) % 6) as usize,
-                            );
+                            draw_district("⚓", ((b_id + 2) % 6) as usize);
                         }
                         if mods.foundry > 0 {
-                            draw_district(
-                                "🏭",
-                                ((b_id + 4) % 6) as usize,
-                            );
+                            draw_district("🏭", ((b_id + 4) % 6) as usize);
                         }
                     }
                 }
@@ -999,95 +1143,36 @@ pub(crate) fn render(
                 let target_l = b.target_level;
                 let queued_count = (target_l as i32 - active_l as i32).max(0) as u32;
 
-                let main_text = get_upgrade_str(active_l);
-                let queued_text = if queued_count > 1 {
-                    Some(format!("(+{} queued)", queued_count - 1))
-                } else {
-                    None
-                };
+                let main_text = upgrade_level_label(active_l);
+                let text_color = egui::Color32::from_rgb(254, 240, 138); // Very soft warm golden text
 
+                let mut lines = vec![BuildingUpgradePlateLine {
+                    text: main_text,
+                    color: text_color,
+                    scale: 1.0,
+                }];
+
+                if queued_count > 1 {
+                    lines.push(BuildingUpgradePlateLine {
+                        text: format!("(+{} queued)", queued_count - 1),
+                        color: text_color,
+                        scale: 0.85,
+                    });
+                }
+
+                let border_color = egui::Color32::from_rgb(250, 204, 21); // Amber / Gold
                 let elapsed = time.start_time.elapsed().as_secs_f32();
                 let bobbing = (elapsed * 3.0).sin() * 1.5;
 
-                let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
-                let font_id = egui::FontId::proportional(font_size);
-
-                let main_size = sow_ui::widgets::measure_emoji_text(&painter, main_text, &font_id);
-                let mut rect_w = main_size.x;
-                let mut rect_h = main_size.y;
-
-                let queued_size = if let Some(ref qt) = queued_text {
-                    let size = sow_ui::widgets::measure_emoji_text(&painter, qt, &font_id);
-                    rect_w = rect_w.max(size.x);
-                    rect_h += size.y + 2.0; // 2px vertical spacing between lines
-                    Some(size)
-                } else {
-                    None
+                let plate = BuildingUpgradePlate {
+                    anchor: center,
+                    base_size,
+                    bobbing,
+                    border_color,
+                    lines,
                 };
 
-                let padding_x = 8.0_f32;
-                let padding_y = 4.0_f32;
-                let box_w = rect_w + padding_x * 2.0;
-                let box_h = rect_h + padding_y * 2.0;
-
-                let badge_y = center.y - base_size * 0.7 + bobbing;
-                let badge_rect = egui::Rect::from_center_size(
-                    egui::pos2(center.x, badge_y),
-                    egui::vec2(box_w, box_h),
-                );
-
-                let border_color = egui::Color32::from_rgb(250, 204, 21); // Amber / Gold
-                painter.rect(
-                    badge_rect,
-                    6.0_f32,
-                    egui::Color32::from_rgba_unmultiplied(15, 23, 42, 210), // Glass slate dark
-                    egui::Stroke::new(
-                        1.2_f32,
-                        egui::Color32::from_rgba_unmultiplied(
-                            border_color.r(),
-                            border_color.g(),
-                            border_color.b(),
-                            180,
-                        ),
-                    ),
-                    egui::StrokeKind::Inside,
-                );
-
-                let text_color = egui::Color32::from_rgb(254, 240, 138); // Very soft warm golden text
-
-                if let Some(qt) = queued_text {
-                    let line1_y = badge_rect.center().y - rect_h / 2.0 + main_size.y / 2.0;
-                    sow_ui::widgets::paint_emoji_text_at(
-                        &painter,
-                        egui::pos2(center.x, line1_y),
-                        egui::Align2::CENTER_CENTER,
-                        main_text,
-                        font_id.clone(),
-                        text_color,
-                        false,
-                    );
-
-                    let line2_y = line1_y + main_size.y / 2.0 + 2.0 + queued_size.unwrap().y / 2.0;
-                    sow_ui::widgets::paint_emoji_text_at(
-                        &painter,
-                        egui::pos2(center.x, line2_y),
-                        egui::Align2::CENTER_CENTER,
-                        &qt,
-                        font_id,
-                        text_color,
-                        false,
-                    );
-                } else {
-                    sow_ui::widgets::paint_emoji_text_at(
-                        &painter,
-                        badge_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        main_text,
-                        font_id,
-                        text_color,
-                        false,
-                    );
-                }
+                paint_building_upgrade_plate(&painter, plate, input.camera_zoom, sf);
             }
 
             // Render floating stats tooltip on hover
@@ -1111,35 +1196,28 @@ pub(crate) fn render(
                         let s = &sow_i18n::get(lang).hud;
                         ui.cached_hovered_building_tooltip = match b.kind {
                             sow_core::game::BuildingKind::Bunker => {
-                                let stat1 = s.build_bunker_coverage.replace(
-                                    "{}",
-                                    &config.bunker_range.round().to_string(),
-                                );
+                                let stat1 = s
+                                    .build_bunker_coverage
+                                    .replace("{}", &config.bunker_range.round().to_string());
                                 format!("{}\n{}", s.build_bunker_title, stat1)
                             }
                             sow_core::game::BuildingKind::Factory => {
-                                let stat1 = s.build_factory_gold.replace(
-                                    "{}",
-                                    &format!("{:.1}", config.factory_gold_income),
-                                );
+                                let stat1 = s
+                                    .build_factory_gold
+                                    .replace("{}", &format!("{:.1}", config.factory_gold_income));
                                 format!("{}\n{}", s.build_factory_title, stat1)
                             }
                             sow_core::game::BuildingKind::Port => {
                                 let title = s
                                     .build_port_title
                                     .replace("{}", &b.active_level.to_string());
-                                let stat2 = s.build_port_troops.replace(
-                                    "{}",
-                                    &format!("{:.1}", b.active_level as f64 * 25.0),
-                                );
-                                let stat3 = s.build_port_gold.replace(
-                                    "{}",
-                                    &format!("{:.1}", b.active_level as f64 * 50.0),
-                                );
-                                format!(
-                                    "{}\n{}\n{}\n{}",
-                                    title, s.build_port_fleet, stat2, stat3
-                                )
+                                let stat2 = s
+                                    .build_port_troops
+                                    .replace("{}", &format!("{:.1}", b.active_level as f64 * 25.0));
+                                let stat3 = s
+                                    .build_port_gold
+                                    .replace("{}", &format!("{:.1}", b.active_level as f64 * 50.0));
+                                format!("{}\n{}\n{}\n{}", title, s.build_port_fleet, stat2, stat3)
                             }
                             _ => String::new(),
                         };
@@ -1195,7 +1273,7 @@ pub(crate) fn render(
                         painter.text(
                             egui::pos2(center.x, tooltip_y),
                             egui::Align2::CENTER_CENTER,
-                            &tooltip_text,
+                            tooltip_text,
                             font_id,
                             egui::Color32::WHITE,
                         );
@@ -1302,183 +1380,99 @@ pub(crate) fn render(
                     egui::Stroke::new(3.0_f32, outline_color),
                 ));
 
-                // Draw Bunker range circle preview for new placement only (not upgrades)
-                if kind == sow_core::game::BuildingKind::Bunker && !is_stack {
-                    let current_range = config.bunker_range as f32;
-                    let s_radius = (current_range * input.camera_zoom) / sf;
-                    let range_color = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 120);
-                    let range_fill = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 10);
-                    painter.circle_filled(preview_center, s_radius, range_fill);
-                    painter.circle_stroke(
-                        preview_center,
-                        s_radius,
-                        egui::Stroke::new(1.25_f32, range_color),
-                    );
+                let base_size = get_building_icon_size(zoom_scaled) * final_scale;
+
+                if is_stack {
+                    // 1. Upgrade hover highlight: glow only, no duplicate sprite
+                    let glow_color = if has_gold {
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 45)
+                    // Soft white highlight glow
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30) // Soft red warning glow
+                    };
+                    painter.circle_filled(preview_center, base_size * 0.55, glow_color);
+
+                    // 2. Upgrade plate
+                    if let Some(sb) = stack_target {
+                        let current_lvl = sb.active_level();
+                        let target_lvl = sb.level;
+                        let elapsed = time.start_time.elapsed().as_secs_f32();
+                        let bobbing = (elapsed * 3.0).sin() * 1.5;
+
+                        let border_color = if has_gold {
+                            egui::Color32::from_rgb(250, 204, 21) // Gold
+                        } else {
+                            egui::Color32::from_rgb(239, 68, 68) // Red
+                        };
+
+                        let main_color = egui::Color32::from_rgb(254, 240, 138); // soft gold
+
+                        let mut lines = vec![BuildingUpgradePlateLine {
+                            text: upgrade_level_label(current_lvl),
+                            color: main_color,
+                            scale: 1.0,
+                        }];
+
+                        if target_lvl > current_lvl {
+                            lines.push(BuildingUpgradePlateLine {
+                                text: format!("(+{} queued)", target_lvl - current_lvl),
+                                color: main_color,
+                                scale: 0.85,
+                            });
+                        }
+
+                        let plate = BuildingUpgradePlate {
+                            anchor: preview_center,
+                            base_size,
+                            bobbing,
+                            border_color,
+                            lines,
+                        };
+
+                        paint_building_upgrade_plate(&painter, plate, input.camera_zoom, sf);
+                    }
+                } else {
+                    // New placement: ghost emoji and range circle
+                    if kind == sow_core::game::BuildingKind::Bunker {
+                        let current_range = config.bunker_range as f32;
+                        let s_radius = (current_range * input.camera_zoom) / sf;
+                        let range_color = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 120);
+                        let range_fill = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 10);
+                        painter.circle_filled(preview_center, s_radius, range_fill);
+                        painter.circle_stroke(
+                            preview_center,
+                            s_radius,
+                            egui::Stroke::new(1.25_f32, range_color),
+                        );
+                    }
+
+                    paint_new_build_ghost(&painter, kind, preview_center, base_size);
                 }
 
-                // Draw preview ghost sprite
-                let base_size = get_building_icon_size(zoom_scaled) * final_scale;
-                let rect =
-                    egui::Rect::from_center_size(preview_center, egui::vec2(base_size, base_size));
-
-                let emoji = match kind {
-                    sow_core::game::BuildingKind::City => "🏛️",
-                    sow_core::game::BuildingKind::Factory => "🏭",
-                    sow_core::game::BuildingKind::Port => "⚓",
-                    sow_core::game::BuildingKind::Bunker => "🛡️",
+                // 3. Gold surplus/deficit indicator below
+                let (amount_text, text_color) = if has_gold {
+                    let leftover = ui.app.hud_state.gold - cost;
+                    (
+                        format!("+{}", sow_ui::utils::format_number(leftover)),
+                        egui::Color32::from_rgb(74, 222, 128), // Green
+                    )
+                } else {
+                    let deficit = cost - ui.app.hud_state.gold;
+                    (
+                        format!("-{}", sow_ui::utils::format_number(deficit)),
+                        egui::Color32::from_rgb(248, 113, 113), // Red
+                    )
                 };
 
-                let ghost_alpha = if is_valid && has_gold { 140 } else { 80 };
-                let tint = egui::Color32::from_rgba_unmultiplied(
-                    outline_color.r(),
-                    outline_color.g(),
-                    outline_color.b(),
-                    ghost_alpha,
+                paint_gold_preview_indicator(
+                    &painter,
+                    preview_center,
+                    base_size,
+                    &amount_text,
+                    text_color,
+                    zoom_scaled,
+                    final_scale,
                 );
-
-                if !sow_ui::widgets::try_paint_emoji(&painter, emoji, rect, tint) {
-                    painter.text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        emoji,
-                        egui::FontId::proportional(base_size * 0.7),
-                        tint,
-                    );
-                }
-
-                // Upgrade badge for stacking
-                if let Some(sb) = stack_target {
-                    let current_lvl = sb.active_level();
-                    let target_lvl = sb.level;
-                    let base_size = get_building_icon_size(zoom_scaled) * final_scale;
-                    let elapsed = time.start_time.elapsed().as_secs_f32();
-                    let bobbing = (elapsed * 3.0).sin() * 1.5;
-
-                    let badge_text = if target_lvl > current_lvl {
-                        format!(
-                            "Lvl {} -> {} (+{} queued)",
-                            current_lvl,
-                            target_lvl + 1,
-                            target_lvl - current_lvl
-                        )
-                    } else {
-                        format!("Lvl {} -> {}", current_lvl, current_lvl + 1)
-                    };
-                    let cost_text = format!("{}g", sow_ui::utils::format_number(cost));
-
-                    let font_size = (10.0_f32 * input.camera_zoom / sf).clamp(9.0, 13.0).round();
-                    let font_id = egui::FontId::proportional(font_size);
-                    let galley = painter.layout_no_wrap(
-                        badge_text.clone(),
-                        font_id.clone(),
-                        egui::Color32::WHITE,
-                    );
-                    let cost_galley = painter.layout_no_wrap(
-                        cost_text.clone(),
-                        egui::FontId::proportional(font_size * 0.85),
-                        egui::Color32::WHITE,
-                    );
-
-                    let padding_x = 8.0_f32;
-                    let padding_y = 4.0_f32;
-                    let rect_w =
-                        galley.rect.width().max(cost_galley.rect.width()) + padding_x * 2.0;
-                    let line_h = galley.rect.height();
-                    let rect_h = line_h * 2.0 + padding_y * 3.0;
-
-                    let badge_y = preview_center.y - base_size * 0.75 + bobbing;
-                    let badge_rect = egui::Rect::from_center_size(
-                        egui::pos2(preview_center.x, badge_y),
-                        egui::vec2(rect_w, rect_h),
-                    );
-
-                    let border_color = if has_gold {
-                        egui::Color32::from_rgb(250, 204, 21)
-                    } else {
-                        egui::Color32::from_rgb(239, 68, 68)
-                    };
-                    painter.rect(
-                        badge_rect,
-                        6.0_f32,
-                        egui::Color32::from_rgba_unmultiplied(15, 23, 42, 220),
-                        egui::Stroke::new(
-                            1.2_f32,
-                            egui::Color32::from_rgba_unmultiplied(
-                                border_color.r(),
-                                border_color.g(),
-                                border_color.b(),
-                                200,
-                            ),
-                        ),
-                        egui::StrokeKind::Inside,
-                    );
-
-                    // Level text
-                    painter.text(
-                        egui::pos2(preview_center.x, badge_y - line_h * 0.35),
-                        egui::Align2::CENTER_CENTER,
-                        &badge_text,
-                        font_id.clone(),
-                        egui::Color32::from_rgb(254, 240, 138),
-                    );
-                    // Cost text
-                    let cost_color = if has_gold {
-                        egui::Color32::from_rgb(74, 222, 128) // Green
-                    } else {
-                        egui::Color32::from_rgb(248, 113, 113) // Red
-                    };
-                    painter.text(
-                        egui::pos2(preview_center.x, badge_y + line_h * 0.45),
-                        egui::Align2::CENTER_CENTER,
-                        &cost_text,
-                        egui::FontId::proportional(font_size * 0.85),
-                        cost_color,
-                    );
-                }
-
-                // If player cannot afford the structure, render the red deficit circular panel
-                if !has_gold && !is_stack {
-                    let base_size = get_building_icon_size(zoom_scaled) * final_scale;
-                    let deficit = cost - ui.app.hud_state.gold;
-                    let radius = base_size * 0.28;
-
-                    painter.circle_filled(
-                        preview_center,
-                        radius + 2.0_f32,
-                        egui::Color32::from_black_alpha(180),
-                    );
-                    painter.circle_filled(
-                        preview_center,
-                        radius + 2.0_f32,
-                        egui::Color32::from_rgba_unmultiplied(220, 38, 38, 35),
-                    );
-
-                    painter.circle_stroke(
-                        preview_center,
-                        radius,
-                        egui::Stroke::new(
-                            2.5_f32,
-                            egui::Color32::from_rgba_unmultiplied(239, 68, 68, 180),
-                        ),
-                    );
-
-                    let text_val = sow_ui::utils::format_gold_shortfall(deficit);
-                    let font_size = (zoom_scaled * 0.65 * final_scale).clamp(10.0, 20.0).round();
-                    let font_id = egui::FontId::proportional(font_size);
-                    let galley = painter.layout_no_wrap(
-                        text_val,
-                        font_id,
-                        egui::Color32::from_rgb(248, 113, 113),
-                    );
-                    let text_pos = preview_center - galley.rect.size() / 2.0;
-                    crate::hud::nameplate::paint_glow_nameplate_galley(
-                        &painter,
-                        text_pos,
-                        galley,
-                        egui::Color32::from_rgba_unmultiplied(239, 68, 68, 180),
-                        false,
-                    );
-                }
             }
         }
     }

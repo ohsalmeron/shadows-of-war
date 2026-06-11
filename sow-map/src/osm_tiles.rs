@@ -187,13 +187,7 @@ pub fn tile_for_world_px(x: f64, y: f64, zoom: u32) -> TileKey {
     }
 }
 
-pub fn tiles_covering_rect(
-    x0: f64,
-    y0: f64,
-    x1: f64,
-    y1: f64,
-    zoom: u32,
-) -> Vec<TileKey> {
+pub fn tiles_covering_rect(x0: f64, y0: f64, x1: f64, y1: f64, zoom: u32) -> Vec<TileKey> {
     let min_x = x0.min(x1);
     let max_x = x0.max(x1);
     let min_y = y0.min(y1);
@@ -213,10 +207,9 @@ fn request_tile_async(key: TileKey) {
     let url = tile_url(key.z, key.x, key.y);
     let tx = tile_tx().clone();
     let mut request = ehttp::Request::get(&url);
-    request.headers.insert(
-        "User-Agent".to_owned(),
-        OSM_USER_AGENT.to_owned(),
-    );
+    request
+        .headers
+        .insert("User-Agent".to_owned(), OSM_USER_AGENT.to_owned());
     ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
         let send = match result {
             Ok(res) if res.ok => decode_tile_response(&res.bytes).map(|img| {
@@ -461,8 +454,7 @@ mod tests {
 
         let mut img = RgbaImage::new(1, 1);
         img.put_pixel(0, 0, image::Rgba([242, 239, 233, 255]));
-        let encoded =
-            classify_osm_to_rgba_with_heightmap(&img, 0.0, 0.0, 0.0, 0.0, &hm);
+        let encoded = classify_osm_to_rgba_with_heightmap(&img, 0.0, 0.0, 0.0, 0.0, &hm);
         assert_eq!(encoded.get_pixel(0, 0).0[2], 156);
     }
 }

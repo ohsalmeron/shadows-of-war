@@ -85,17 +85,15 @@ impl SowClient {
 
         // Wait for the open event, or close/error events before returning
         match open_rx.await {
-            Ok(Ok(())) => {
-                Ok(Self {
-                    ws,
-                    rx,
-                    socket_closed,
-                    _onmessage: onmessage_callback,
-                    _onclose: onclose_callback,
-                    _onerror: onerror_callback,
-                    _onopen: onopen_callback,
-                })
-            }
+            Ok(Ok(())) => Ok(Self {
+                ws,
+                rx,
+                socket_closed,
+                _onmessage: onmessage_callback,
+                _onclose: onclose_callback,
+                _onerror: onerror_callback,
+                _onopen: onopen_callback,
+            }),
             Ok(Err(e)) => {
                 let _ = ws.set_onopen(None);
                 let _ = ws.set_onclose(None);

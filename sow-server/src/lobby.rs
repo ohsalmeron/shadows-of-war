@@ -114,8 +114,7 @@ fn promote_countdown(games: &mut [ServerLobby]) {
 
     // Pick the first waiting public lobby, or a private lobby with at least two players.
     let target = games.iter_mut().find(|g| {
-        matches!(g.phase, LobbyPhase::Waiting)
-            && (!g.is_private || g.players.len() >= 2)
+        matches!(g.phase, LobbyPhase::Waiting) && (!g.is_private || g.players.len() >= 2)
     });
 
     if let Some(lobby) = target {
@@ -160,10 +159,7 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
 
 fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<u64> {
     if let Some(id) = requested {
-        if games
-            .iter()
-            .any(|g| g.id == id && g.joinable())
-        {
+        if games.iter().any(|g| g.id == id && g.joinable()) {
             return Some(id);
         }
         return None;

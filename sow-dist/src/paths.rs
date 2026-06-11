@@ -5,8 +5,7 @@ pub const PORTAL_WASM: &str = "sow_client_bg.wasm";
 
 /// Remote prod server working dir (`$HOME/shadowsofwar` on VPS).
 pub fn remote_data_prod(remote_home: &str) -> String {
-    std::env::var("SOW_REMOTE_DATA_PROD")
-        .unwrap_or_else(|_| format!("{remote_home}/shadowsofwar"))
+    std::env::var("SOW_REMOTE_DATA_PROD").unwrap_or_else(|_| format!("{remote_home}/shadowsofwar"))
 }
 
 /// Remote PTR server working dir.

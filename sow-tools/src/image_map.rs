@@ -23,7 +23,10 @@ pub fn generate_from_image(path: &Path) -> Result<GeneratedMap, Box<dyn Error>> 
     let img = image::open(path)?.to_rgba8();
     let src_w = img.width();
     let src_h = img.height();
-    println!("Source image: {src_w}x{src_h} ({} pixels)", src_w as u64 * src_h as u64);
+    println!(
+        "Source image: {src_w}x{src_h} ({} pixels)",
+        src_w as u64 * src_h as u64
+    );
 
     let result = generate_from_rgba(&img, None).map_err(|e| -> Box<dyn Error> { e.into() })?;
 
@@ -108,6 +111,9 @@ mod tests {
         assert!((w as u64) * (h as u64) <= maps::MAX_MAP_PIXELS as u64);
         let src_ar = 2800.0 / 1448.0;
         let dst_ar = w as f64 / h as f64;
-        assert!((src_ar - dst_ar).abs() < 0.05, "aspect {src_ar} vs {dst_ar}");
+        assert!(
+            (src_ar - dst_ar).abs() < 0.05,
+            "aspect {src_ar} vs {dst_ar}"
+        );
     }
 }

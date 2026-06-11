@@ -1,5 +1,5 @@
-use crate::render::world::movers::{tile_to_world, world_to_tile};
 use super::*;
+use crate::render::world::movers::{tile_to_world, world_to_tile};
 
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
@@ -11,6 +11,9 @@ pub(crate) fn render(
 ) {
     let painter = ctx.painter;
     let sf = ctx.sf;
+    if ctx.zoom_scaled < 5.0 {
+        return;
+    }
 
     if let Some(snap) = &sim.current_snapshot {
         let map_w = sim.map_w;
@@ -155,17 +158,12 @@ pub(crate) fn render(
             }
 
             let troops_val = attack.troops;
-            let entry = ui.attack_troop_labels.entry(attack.id).or_insert_with(|| {
-                (
-                    troops_val,
-                    sow_ui::utils::format_number(troops_val),
-                )
-            });
+            let entry = ui
+                .attack_troop_labels
+                .entry(attack.id)
+                .or_insert_with(|| (troops_val, sow_ui::utils::format_number(troops_val)));
             if (entry.0 - troops_val).abs() > 0.0001 {
-                *entry = (
-                    troops_val,
-                    sow_ui::utils::format_number(troops_val),
-                );
+                *entry = (troops_val, sow_ui::utils::format_number(troops_val));
             }
             let troops_str = &entry.1;
             let color = if is_incoming {
@@ -175,9 +173,13 @@ pub(crate) fn render(
             };
 
             let font_id = egui::FontId::proportional(13.0);
-            let galley = middle_painter.layout_no_wrap(troops_str.to_owned(), font_id.clone(), color);
+            let galley =
+                middle_painter.layout_no_wrap(troops_str.to_owned(), font_id.clone(), color);
             let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
-            let anchor = egui::pos2(screen_x - row_w / 2.0, screen_y - galley.rect.height() / 2.0);
+            let anchor = egui::pos2(
+                screen_x - row_w / 2.0,
+                screen_y - galley.rect.height() / 2.0,
+            );
             crate::hud::nameplate::paint_glow_troops_row(
                 &middle_painter,
                 anchor,
@@ -213,7 +215,7 @@ pub(crate) fn render(
                             && ui
                                 .silo_cooldowns
                                 .get(&b.id)
-                                .map_or(true, |&exp| current_tick >= exp)
+                                .is_none_or(|&exp| current_tick >= exp)
                     })
                     .min_by_key(|b| {
                         let bx = (b.tile_idx % sim.map_w) as i32;
@@ -230,7 +232,7 @@ pub(crate) fn render(
                         && ui
                             .silo_cooldowns
                             .get(&b.id)
-                            .map_or(false, |&exp| current_tick < exp)
+                            .is_some_and(|&exp| current_tick < exp)
                 }) {
                     let (bwx, bwy) = tile_to_world(b.tile_idx, map_w);
                     let bsx = (input.camera_x + bwx * input.camera_zoom) / sf;
@@ -399,7 +401,7 @@ pub(crate) fn render(
                         egui::vec2(ghost_size, ghost_size),
                     );
                     let tint = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 140);
-                    if !sow_ui::widgets::try_paint_emoji(&painter, "☢️", rect, tint) {
+                    if !sow_ui::widgets::try_paint_emoji(painter, "☢️", rect, tint) {
                         painter.text(
                             tgt_center,
                             egui::Align2::CENTER_CENTER,

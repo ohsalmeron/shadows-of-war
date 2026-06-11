@@ -139,10 +139,15 @@ pub struct DeathNameplateAnimation {
     pub duration: web_time::Duration,
     pub seed: u32,
     pub player_type: sow_core::player::PlayerType,
-    pub leader: sow_core::player::Leader,
     pub player_id: u16,
     pub nameplate_size: f32,
-    pub troops: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClickMarker {
+    pub world_x: f32,
+    pub world_y: f32,
+    pub start_time: web_time::Instant,
 }
 
 #[allow(clippy::type_complexity)]
@@ -176,13 +181,9 @@ pub struct UiState {
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
     pub nameplate_galleys: std::collections::HashMap<
         u16,
-        (
-            String,
-            String,
-            egui::FontId,
-            std::sync::Arc<egui::Galley>,
-        ),
+        (String, String, egui::FontId, std::sync::Arc<egui::Galley>),
     >,
+    pub nameplate_troops_last_update: std::collections::HashMap<u16, web_time::Instant>,
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,
     pub star_svg_registered: bool,
@@ -202,6 +203,7 @@ pub struct UiState {
     /// Client-side nuke silo cooldown tracking: building id → tick when ready.
     pub silo_cooldowns: std::collections::HashMap<u64, u64>,
     pub mover_scene: crate::render::world::movers::MoverScene,
+    pub click_markers: Vec<ClickMarker>,
 }
 
 /// Wall-clock anchor for render-behind-by-one-tick interpolation between sim snapshots.
@@ -282,7 +284,7 @@ impl Default for SowApp {
 
 impl SowApp {
     pub fn new() -> Self {
-        #[cfg(all(not(target_arch = "wasm32")))]
+        #[cfg(not(target_arch = "wasm32"))]
         {
             let _ = env_logger::builder()
                 .filter_level(log::LevelFilter::Info)
@@ -542,6 +544,7 @@ impl SowApp {
                 last_projectiles: std::collections::HashMap::new(),
                 active_upgrades: Vec::new(),
                 nameplate_galleys: std::collections::HashMap::new(),
+                nameplate_troops_last_update: std::collections::HashMap::new(),
                 cached_player_colors: Vec::new(),
                 cached_player_count: 0,
                 star_svg_registered: false,
@@ -558,6 +561,7 @@ impl SowApp {
                 rail_state: crate::render::world::railways::RailState::new(),
                 silo_cooldowns: std::collections::HashMap::new(),
                 mover_scene: crate::render::world::movers::MoverScene::new(),
+                click_markers: Vec::new(),
             },
             time: TimeState {
                 interp,
@@ -693,10 +697,10 @@ impl SowApp {
     pub(crate) fn begin_enter_game_loader(&mut self) {
         self.ui.app.phase = sow_ui::app::ClientPhase::Splash;
         let lang = self.ui.app.settings_state.language;
-        self.ui.app.splash_state.reset_anim(
-            sow_ui::ui::loading_screen::SplashJob::EnterGame,
-            lang,
-        );
+        self.ui
+            .app
+            .splash_state
+            .reset_anim(sow_ui::ui::loading_screen::SplashJob::EnterGame, lang);
     }
 
     /// Whether the map/mover GPU path should paint this frame (hidden during splash loads).
@@ -708,9 +712,7 @@ impl SowApp {
             ClientPhase::Playing => true,
             ClientPhase::Splash => {
                 let s = &self.ui.app.splash_state;
-                matches!(s.job, SplashJob::EnterGame)
-                    && s.done
-                    && s.fadeout_start.is_some()
+                matches!(s.job, SplashJob::EnterGame) && s.done && s.fadeout_start.is_some()
             }
             ClientPhase::MainMenu => false,
         }
@@ -911,7 +913,9 @@ impl SowApp {
                 self.sim.current_snapshot = Some(snap);
                 self.sim.engine = Some(new_engine);
                 self.sim.tile_upgrades = vec![0; (map_w * map_h) as usize];
-                self.time.interp.set_tick_dur_ms(self.sim.config.tick_rate_ms);
+                self.time
+                    .interp
+                    .set_tick_dur_ms(self.sim.config.tick_rate_ms);
                 self.time.interp.stamp_applied(web_time::Instant::now());
                 self.sim.offline_tick_timer = 0.0;
                 self.sim.offline_last_update = web_time::Instant::now();
@@ -958,7 +962,11 @@ impl SowApp {
                             }
 
                             if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-                                target_name = sow_core::player::display_name(target.id, &target.name, target.player_type);
+                                target_name = sow_core::player::display_name(
+                                    target.id,
+                                    &target.name,
+                                    target.player_type,
+                                );
                                 if !tile_found
                                     && (target.centroid_x > 0.001 || target.centroid_y > 0.001)
                                 {
@@ -981,8 +989,10 @@ impl SowApp {
 
                             // Spawn floating notice only if we are the conqueror!
                             if conqueror_id == my_id && my_id != 0 {
-                                let bounty_text =
-                                    format!("🪙 +{}", sow_ui::utils::format_number(gold_bounty as f64));
+                                let bounty_text = format!(
+                                    "🪙 +{}",
+                                    sow_ui::utils::format_number(gold_bounty as f64)
+                                );
                                 self.ui.floating_notices.push(crate::app::FloatingNotice {
                                     text: bounty_text,
                                     world_x: wx,
@@ -997,27 +1007,40 @@ impl SowApp {
                             if self.input.screen_w >= 600.0 {
                                 // Spawn death nameplate animation
                                 let mut target_player_type = sow_core::player::PlayerType::Bot;
-                                let mut target_leader = sow_core::player::Leader::default();
                                 let mut player_color = egui::Color32::WHITE;
-                                let mut target_troops = 0.0;
                                 let mut target_nameplate_size = 0.0;
 
-                                if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
+                                if let Some(target) =
+                                    snap.players.iter().find(|p| p.id == player_id)
+                                {
                                     target_player_type = target.player_type;
-                                    target_leader = target.leader;
-                                    player_color = egui::Color32::from_rgb(
-                                        (target.color[0] * 255.0) as u8,
-                                        (target.color[1] * 255.0) as u8,
-                                        (target.color[2] * 255.0) as u8,
-                                    );
-                                    target_troops = target.troops;
+                                    player_color =
+                                        crate::hud::nameplate::ensure_readable_nameplate_color(
+                                            target.color,
+                                        );
                                     target_nameplate_size = target.nameplate_size;
                                 }
 
                                 // Prefer smoothed label positions and sizes if available
-                                let anim_wx = self.ui.label_positions.get(&player_id).map(|p| p.0).unwrap_or(wx);
-                                let anim_wy = self.ui.label_positions.get(&player_id).map(|p| p.1).unwrap_or(wy);
-                                let anim_size = self.ui.label_sizes.get(&player_id).copied().unwrap_or(target_nameplate_size).max(0.2);
+                                let anim_wx = self
+                                    .ui
+                                    .label_positions
+                                    .get(&player_id)
+                                    .map(|p| p.0)
+                                    .unwrap_or(wx);
+                                let anim_wy = self
+                                    .ui
+                                    .label_positions
+                                    .get(&player_id)
+                                    .map(|p| p.1)
+                                    .unwrap_or(wy);
+                                let anim_size = self
+                                    .ui
+                                    .label_sizes
+                                    .get(&player_id)
+                                    .copied()
+                                    .unwrap_or(target_nameplate_size)
+                                    .max(0.2);
 
                                 let seed = (player_id as u32)
                                     .wrapping_mul(2654435761)
@@ -1029,13 +1052,11 @@ impl SowApp {
                                         world_x: anim_wx,
                                         world_y: anim_wy,
                                         start_time: now_instant,
-                                        duration: web_time::Duration::from_millis(1800),
+                                        duration: web_time::Duration::from_millis(1200),
                                         seed,
                                         player_type: target_player_type,
-                                        leader: target_leader,
                                         player_id,
                                         nameplate_size: anim_size,
-                                        troops: target_troops,
                                     },
                                 );
                             }
@@ -1115,7 +1136,9 @@ impl SowApp {
                             snap.players
                                 .iter()
                                 .find(|p| p.id == victim_id)
-                                .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
+                                .map(|p| {
+                                    sow_core::player::display_name(p.id, &p.name, p.player_type)
+                                })
                                 .unwrap_or_else(|| format!("Player {}", victim_id))
                         };
 

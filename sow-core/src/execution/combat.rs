@@ -1,7 +1,4 @@
-use super::{
-    refund_fleet_troops_to_player, PrioritizedTile,
-    RETREAT_PENALTY_VS_PLAYER,
-};
+use super::{refund_fleet_troops_to_player, PrioritizedTile, RETREAT_PENALTY_VS_PLAYER};
 use crate::engine::SowEngine;
 use crate::game::{GameEvent, GamePhase};
 use crate::game_config::max_tiles_cap_for_troops;
@@ -231,8 +228,7 @@ impl SowEngine {
                             &self.state.config,
                         );
                         let scale = if self.state.config.bunker_priority > 0.0 {
-                            self.state.config.bunker_strength
-                                / self.state.config.bunker_priority
+                            self.state.config.bunker_strength / self.state.config.bunker_priority
                         } else {
                             0.0
                         };

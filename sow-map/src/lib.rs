@@ -6,9 +6,9 @@ pub mod editor;
 #[cfg(feature = "generator")]
 pub mod generator;
 #[cfg(feature = "generator")]
-pub mod image_pipeline;
-#[cfg(feature = "generator")]
 pub mod heightmap;
+#[cfg(feature = "generator")]
+pub mod image_pipeline;
 #[cfg(feature = "generator")]
 pub mod thumbnail;
 

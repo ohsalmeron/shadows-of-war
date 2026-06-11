@@ -15,6 +15,26 @@ pub fn nameplate_matte_player_rgb(rgb: [f32; 3]) -> egui::Color32 {
     egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
+/// Brightens any player colors that are too dark for clean font rendering on the map,
+/// ensuring a minimum relative luminance of 0.60 for optimal legibility.
+pub fn ensure_readable_nameplate_color(rgb: [f32; 3]) -> egui::Color32 {
+    let lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    let target_lum = 0.60;
+    let factor = if lum < target_lum {
+        (target_lum - lum) / (1.0 - lum).max(0.001)
+    } else {
+        0.0
+    };
+    let r = rgb[0] + (1.0 - rgb[0]) * factor;
+    let g = rgb[1] + (1.0 - rgb[1]) * factor;
+    let b = rgb[2] + (1.0 - rgb[2]) * factor;
+    egui::Color32::from_rgb(
+        (r * 255.0).round().clamp(0.0, 255.0) as u8,
+        (g * 255.0).round().clamp(0.0, 255.0) as u8,
+        (b * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
 /// Draw the text galley directly with high performance (no outline).
 pub fn paint_nameplate_galley(painter: &egui::Painter, pos: egui::Pos2, galley: Arc<egui::Galley>) {
     if !galley.is_empty() {

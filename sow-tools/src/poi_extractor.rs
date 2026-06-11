@@ -7,9 +7,15 @@ pub struct POISpawn {
 }
 
 const PLACE_TYPES: &[&str] = &[
-    "city", "town", "village", "suburb", "hamlet", "neighbourhood",
+    "city",
+    "town",
+    "village",
+    "suburb",
+    "hamlet",
+    "neighbourhood",
 ];
 
+#[allow(clippy::too_many_arguments)]
 pub fn extract_bots(
     data: &Value,
     min_lon: f64,

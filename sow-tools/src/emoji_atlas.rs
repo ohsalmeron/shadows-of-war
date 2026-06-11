@@ -113,6 +113,7 @@ fn twemoji_filenames(emoji: &str) -> Vec<String> {
     names
 }
 
+#[allow(clippy::type_complexity)]
 fn pack_grid(
     entries: &[(String, RgbaImage)],
     cell: u32,
@@ -136,7 +137,10 @@ fn pack_grid(
     Ok((atlas, rects))
 }
 
-fn write_webp(atlas: &RgbaImage, path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn write_webp(
+    atlas: &RgbaImage,
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

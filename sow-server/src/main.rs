@@ -301,7 +301,9 @@ async fn main() {
                 axum::response::Response::builder()
                     .header("Content-Type", "application/octet-stream")
                     .header("Cache-Control", "public, max-age=60")
-                    .body(axum::body::Body::from(map_catalog::catalog_bytes().to_vec()))
+                    .body(axum::body::Body::from(
+                        map_catalog::catalog_bytes().to_vec(),
+                    ))
                     .unwrap()
             }),
         );

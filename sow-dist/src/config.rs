@@ -103,7 +103,6 @@ impl DeployConfig {
     pub fn web_root_ptr(&self) -> String {
         format!("/var/www/{}/html", self.ptr_domain())
     }
-
 }
 
 pub fn load_dotenv(repo_root: &Path) {

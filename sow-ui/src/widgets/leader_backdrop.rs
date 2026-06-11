@@ -1,11 +1,13 @@
 //! Full-screen leader hero backdrop — on-demand load, book-style page turns between leaders.
 
-use crate::ui::asset_loader::AssetLoader;
 use crate::ui::animation::{
     leader_page_in_alpha, leader_page_out_alpha, leader_page_turn_t, LEADER_PAGE_FADE_IN_START,
     LEADER_PAGE_LOADING_MIN, LEADER_PAGE_TURN_DURATION,
 };
-use crate::widgets::avatar_picker::{draw_leader_picker_overlay_gradient, leader_background_cover_uv};
+use crate::ui::asset_loader::AssetLoader;
+use crate::widgets::avatar_picker::{
+    draw_leader_picker_overlay_gradient, leader_background_cover_uv,
+};
 use egui::{Color32, Rect, Ui};
 use sow_core::player::Leader;
 use web_time::Instant;
@@ -57,10 +59,7 @@ impl LeaderBackdropTransition {
 }
 
 fn leader_page_index(leader: Leader) -> usize {
-    Leader::ALL
-        .iter()
-        .position(|&l| l == leader)
-        .unwrap_or(0)
+    Leader::ALL.iter().position(|&l| l == leader).unwrap_or(0)
 }
 
 fn paint_portrait_clipped(
@@ -92,10 +91,8 @@ fn draw_loading_page(ui: &mut Ui, page_rect: Rect, label: &str, opacity: f32) {
         Color32::from_rgba_unmultiplied(12, 14, 22, (250.0 * opacity) as u8),
     );
     let center = page_rect.center();
-    let spinner_rect = Rect::from_center_size(
-        center - egui::vec2(0.0, 12.0),
-        egui::vec2(30.0, 30.0),
-    );
+    let spinner_rect =
+        Rect::from_center_size(center - egui::vec2(0.0, 12.0), egui::vec2(30.0, 30.0));
     ui.scope_builder(egui::UiBuilder::new().max_rect(spinner_rect), |ui| {
         ui.vertical_centered(|ui| {
             ui.spinner();
@@ -130,6 +127,7 @@ fn paint_page_spine(ui: &Ui, screen_rect: Rect, turn_t: f32, forward: bool) {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_page_turn(
     ui: &mut Ui,
     screen_rect: Rect,
@@ -163,24 +161,18 @@ fn draw_page_turn(
     if let Some(tex) = incoming_tex {
         paint_portrait_clipped(ui, screen_rect, in_rect, tex, mobile, in_alpha);
     } else if in_alpha > 0.001 {
-        ui.painter()
-            .with_clip_rect(screen_rect)
-            .rect_filled(
-                in_rect,
-                0.0,
-                Color32::from_rgba_unmultiplied(12, 14, 22, (250.0 * in_alpha) as u8),
-            );
+        ui.painter().with_clip_rect(screen_rect).rect_filled(
+            in_rect,
+            0.0,
+            Color32::from_rgba_unmultiplied(12, 14, 22, (250.0 * in_alpha) as u8),
+        );
         if turn_t >= LEADER_PAGE_FADE_IN_START {
             draw_loading_page(ui, in_rect, loading_label, in_alpha);
         }
     }
 }
 
-fn advance_phase(
-    transition: &mut LeaderBackdropTransition,
-    target_ready: bool,
-    now: Instant,
-) {
+fn advance_phase(transition: &mut LeaderBackdropTransition, target_ready: bool, now: Instant) {
     let elapsed = now.duration_since(transition.started_at).as_secs_f32();
 
     match transition.phase {
@@ -212,6 +204,7 @@ fn advance_phase(
 }
 
 /// Draw hero backdrop; returns true when `selected` changed this frame.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_leader_hero_backdrop(
     ui: &mut Ui,
     screen_rect: Rect,

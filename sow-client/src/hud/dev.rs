@@ -39,29 +39,6 @@ impl SowApp {
             self.ui.app.hud_state.fleets.clear();
             self.ui.app.hud_state.players.clear();
         }
-
-        // Gold gain detection: compare current gold to previous frame
-        if my_pid != 0 {
-            let current_gold = self.ui.app.hud_state.gold;
-            let prev = self.ui.app.hud_state.prev_gold;
-            // Skip the very first frame (prev_gold == 0 and we just loaded)
-            if prev > 0.1 {
-                let delta = current_gold - prev;
-                if delta > 5.0 {
-                    self.ui.app.hud_state.gold_gain = Some(delta);
-                    self.ui.app.hud_state.gold_gain_at = Some(web_time::Instant::now());
-                }
-            }
-            self.ui.app.hud_state.prev_gold = current_gold;
-        }
-
-        // Expire popup after 2.5 seconds
-        if let Some(at) = self.ui.app.hud_state.gold_gain_at {
-            if at.elapsed().as_secs_f32() > 2.5 {
-                self.ui.app.hud_state.gold_gain = None;
-                self.ui.app.hud_state.gold_gain_at = None;
-            }
-        }
     }
 
     pub(crate) fn render_dev_panels(&mut self, ctx: &egui::Context) {
@@ -71,9 +48,15 @@ impl SowApp {
         let inset = if compact { 8.0 } else { 12.0 };
 
         let stats = if let Some(ping) = self.net.current_ping_ms {
-            format!("{ping}ms · {} fps", self.time.current_fps)
+            format!(
+                "{ping}ms · {} fps · Zoom: {:.2}",
+                self.time.current_fps, self.input.camera_zoom
+            )
         } else {
-            format!("{} fps", self.time.current_fps)
+            format!(
+                "{} fps · Zoom: {:.2}",
+                self.time.current_fps, self.input.camera_zoom
+            )
         };
 
         let painter = ctx.layer_painter(egui::LayerId::new(

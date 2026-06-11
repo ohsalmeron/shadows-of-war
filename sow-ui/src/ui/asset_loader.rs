@@ -96,12 +96,15 @@ pub enum UiSplashTexture {
 
 #[cfg(test)]
 mod avatar_tests {
-    use super::{AvatarFetchKey, AssetLoader};
+    use super::{AssetLoader, AvatarFetchKey};
     use sow_core::player::Leader;
 
     #[test]
     fn avatar_filenames_match_static_tree() {
-        assert_eq!(AssetLoader::avatar_filename(AvatarFetchKey::Fallback), "null.webp");
+        assert_eq!(
+            AssetLoader::avatar_filename(AvatarFetchKey::Fallback),
+            "null.webp"
+        );
         assert_eq!(
             AssetLoader::avatar_filename(AvatarFetchKey::Leader(Leader::SunTzu)),
             "sun_tzu.webp"
@@ -223,7 +226,7 @@ impl AssetLoader {
         if !self.avatar_retry_ready(key, Instant::now()) {
             return;
         }
-        if self.avatars_fetch_pending.iter().any(|pending| *pending == key) {
+        if self.avatars_fetch_pending.contains(&key) {
             if front {
                 self.avatars_fetch_pending.retain(|pending| *pending != key);
                 self.avatars_fetch_pending.insert(0, key);
@@ -298,7 +301,7 @@ impl AssetLoader {
                 permanent,
             },
         );
-        if !permanent && !self.avatars_fetch_pending.iter().any(|pending| *pending == key) {
+        if !permanent && !self.avatars_fetch_pending.contains(&key) {
             self.avatars_fetch_pending.push(key);
         }
     }
@@ -320,16 +323,14 @@ impl AssetLoader {
 
         match key {
             AvatarFetchKey::Fallback => {
-                let texture = ctx.load_texture(
-                    "avatar_null",
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                );
+                let texture =
+                    ctx.load_texture("avatar_null", color_image, egui::TextureOptions::LINEAR);
                 self.avatar_fallback = Some(texture);
             }
             AvatarFetchKey::Leader(leader) => {
                 let tex_name = format!("avatar_{}", Self::leader_slug(leader));
-                let texture = ctx.load_texture(&tex_name, color_image, egui::TextureOptions::LINEAR);
+                let texture =
+                    ctx.load_texture(&tex_name, color_image, egui::TextureOptions::LINEAR);
                 self.avatars.insert(leader, texture);
             }
         }
@@ -362,7 +363,7 @@ impl AssetLoader {
         if !self.leader_retry_ready(key, Instant::now()) {
             return;
         }
-        if self.leaders_fetch_pending.iter().any(|pending| *pending == key) {
+        if self.leaders_fetch_pending.contains(&key) {
             if front {
                 self.leaders_fetch_pending.retain(|pending| *pending != key);
                 self.leaders_fetch_pending.insert(0, key);
@@ -384,7 +385,8 @@ impl AssetLoader {
         }
         self.leader_portrait_focus = Some(key);
         self.leaders_fetch_pending.retain(|pending| *pending == key);
-        self.leader_decode_pending.retain(|(pending, _)| *pending == key);
+        self.leader_decode_pending
+            .retain(|(pending, _)| *pending == key);
         if !self.leader_portrait_loaded(key) {
             self.request_leader_portrait_priority(leader, mobile);
         }
@@ -473,13 +475,17 @@ impl AssetLoader {
 
         if self.leader_portrait_focus == Some(key)
             && !permanent
-            && !self.leaders_fetch_pending.iter().any(|pending| *pending == key)
+            && !self.leaders_fetch_pending.contains(&key)
         {
             self.leaders_fetch_pending.push(key);
         }
     }
 
-    pub fn leader_retry_debug(&self, leader: Leader, mobile: bool) -> Option<(u32, Duration, &str)> {
+    pub fn leader_retry_debug(
+        &self,
+        leader: Leader,
+        mobile: bool,
+    ) -> Option<(u32, Duration, &str)> {
         let key = LeaderPortraitKey { leader, mobile };
         let state = self.leader_retry_state.get(&key)?;
         let now = Instant::now();
@@ -498,8 +504,7 @@ impl AssetLoader {
     }
 
     fn decode_leader_portrait_bytes(bytes: &[u8]) -> Result<egui::ColorImage, String> {
-        let mut image = image::load_from_memory(bytes)
-            .map_err(|e| format!("decode: {e}"))?;
+        let mut image = image::load_from_memory(bytes).map_err(|e| format!("decode: {e}"))?;
         if image.width() > 2048 || image.height() > 2048 {
             image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
         }
@@ -527,8 +532,7 @@ impl AssetLoader {
             self.leader_decode_pending.clear();
             return;
         };
-        self.leader_decode_pending
-            .retain(|(key, _)| *key == focus);
+        self.leader_decode_pending.retain(|(key, _)| *key == focus);
     }
 
     /// Decode and upload at most `max_per_frame` queued portraits for the focused leader.
@@ -728,12 +732,9 @@ impl AssetLoader {
                 read_avatar_webp(&filename).map(|bytes| (key, bytes))
             };
 
-            for key in std::iter::once(AvatarFetchKey::Fallback).chain(
-                Leader::ALL
-                    .iter()
-                    .copied()
-                    .map(AvatarFetchKey::Leader),
-            ) {
+            for key in std::iter::once(AvatarFetchKey::Fallback)
+                .chain(Leader::ALL.iter().copied().map(AvatarFetchKey::Leader))
+            {
                 if self.avatar_loaded(key) {
                     continue;
                 }
@@ -762,7 +763,7 @@ impl AssetLoader {
         if kind.loaded_in(self) || self.boot_ui_in_flight.contains(&kind) {
             return;
         }
-        if self.boot_ui_fetch_pending.iter().any(|pending| *pending == kind) {
+        if self.boot_ui_fetch_pending.contains(&kind) {
             return;
         }
         self.boot_ui_fetch_pending.push(kind);
@@ -812,7 +813,9 @@ impl AssetLoader {
         height: u32,
         rgba: &[u8],
     ) -> bool {
-        let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+        let expected = (width as usize)
+            .saturating_mul(height as usize)
+            .saturating_mul(4);
         if rgba.len() != expected {
             log::warn!(
                 "ui splash texture {:?} size mismatch: got {} expected {}",
@@ -823,8 +826,7 @@ impl AssetLoader {
             return false;
         }
 
-        let color_image =
-            egui::ColorImage::from_rgba_unmultiplied([width as _, height as _], rgba);
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([width as _, height as _], rgba);
         let texture = ctx.load_texture(
             match kind {
                 UiSplashTexture::LoaderEmpty => "ui_loader_empty",
@@ -850,14 +852,16 @@ impl AssetLoader {
     }
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {
-        if !self.thumbnails.contains_key(sow_core::maps::DEFAULT_MAP_KEY) {
+        if !self
+            .thumbnails
+            .contains_key(sow_core::maps::DEFAULT_MAP_KEY)
+        {
             let bytes = sow_core::repo_asset_bytes!("maps/world/thumbnail.webp");
             if let Some(color_image) =
                 crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
             {
                 let key = sow_core::maps::DEFAULT_MAP_KEY.to_string();
-                let texture =
-                    ctx.load_texture(&key, color_image, egui::TextureOptions::LINEAR);
+                let texture = ctx.load_texture(&key, color_image, egui::TextureOptions::LINEAR);
                 self.thumbnails.insert(key, texture);
             }
         }
@@ -887,8 +891,7 @@ impl AssetLoader {
                 let image_rgba = image.to_rgba8();
                 let size = [image_rgba.width() as _, image_rgba.height() as _];
                 let pixels = image_rgba.as_flat_samples();
-                let color_image =
-                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
                 ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
             };
 
@@ -948,8 +951,7 @@ impl AssetLoader {
                 let image_rgba = image.to_rgba8();
                 let size = [image_rgba.width() as _, image_rgba.height() as _];
                 let pixels = image_rgba.as_flat_samples();
-                let color_image =
-                    egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
                 ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
             };
 
@@ -1022,9 +1024,12 @@ impl AssetLoader {
                 .to_rgba8();
             let size = [image.width() as _, image.height() as _];
             let pixels = image.as_flat_samples();
-            let color_image =
-                egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-            let texture = ctx.load_texture(icon.texture_name(), color_image, egui::TextureOptions::LINEAR);
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            let texture = ctx.load_texture(
+                icon.texture_name(),
+                color_image,
+                egui::TextureOptions::LINEAR,
+            );
             self.hud_icons.insert(icon, texture);
         }
     }

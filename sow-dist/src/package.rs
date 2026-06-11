@@ -60,7 +60,11 @@ fn package_input_hash(paths: &Paths, profile: Profile, version: &str) -> Result<
     if wasm.is_file() {
         h.update(wasm::file_sha256(&wasm)?.as_bytes());
     }
-    hash_tree_dir(&mut h, &paths.shell, &["rs", "toml", "js", "html", "template", "svg"])?;
+    hash_tree_dir(
+        &mut h,
+        &paths.shell,
+        &["rs", "toml", "js", "html", "template", "svg"],
+    )?;
     Ok(format!("{:x}", h.finalize()))
 }
 
@@ -140,14 +144,7 @@ pub fn build(
     wasm::bindgen(paths, out_dir, &bindgen_name)?;
     copy_shell_extras(paths, out_dir)?;
     build_index_html(
-        paths,
-        out_dir,
-        version,
-        &js_file,
-        &wasm_file,
-        &build_ts,
-        profile,
-        cfg,
+        paths, out_dir, version, &js_file, &wasm_file, &build_ts, profile, cfg,
     )?;
     match profile {
         Profile::Crazygames => inject_crazygames(out_dir.join("index.html"), cfg)?,
@@ -170,7 +167,13 @@ pub fn build(
             fs::remove_file(&js_path)?;
             let js_br = format!("{js_file}.br");
             let wasm_br = format!("{wasm_file}.br");
-            patch_index_br(out_dir.join("index.html"), &js_file, &wasm_file, &js_br, &wasm_br)?;
+            patch_index_br(
+                out_dir.join("index.html"),
+                &js_file,
+                &wasm_file,
+                &js_br,
+                &wasm_br,
+            )?;
             (js_br, wasm_br)
         }
         Profile::SelfHosted => {
@@ -232,6 +235,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_index_html(
     paths: &Paths,
     out_dir: &Path,
@@ -298,7 +302,10 @@ fn inject_portal_slots(html_path: PathBuf, sdk_line: Option<&str>, boot_line: &s
         }
     }
     if !sdk_ok || !boot_ok {
-        bail!("inject_portal_slots: missing portal slots in {}", html_path.display());
+        bail!(
+            "inject_portal_slots: missing portal slots in {}",
+            html_path.display()
+        );
     }
     fs::write(html_path, lines.join("\n") + "\n")?;
     Ok(())
@@ -306,20 +313,21 @@ fn inject_portal_slots(html_path: PathBuf, sdk_line: Option<&str>, boot_line: &s
 
 fn inject_crazygames(html_path: PathBuf, cfg: &DeployConfig) -> Result<()> {
     let sdk = r#"    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>"#;
+    let site_url = cfg.site_url();
     let boot = format!(
-        r#"        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{maps}";"#,
+        r#"        window.SOW_PORTAL = "crazygames"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{site_url}/maps";"#,
         ws = cfg.ws_url(&cfg.site_origin),
-        maps = format!("{}/maps", cfg.site_url()),
+        site_url = site_url,
     );
     inject_portal_slots(html_path, Some(sdk), &boot)
 }
 
 fn inject_site_embed(html_path: PathBuf, cfg: &DeployConfig) -> Result<()> {
+    let site_url = cfg.site_url();
     let boot = format!(
-        r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{maps}"; window.SOW_ASSETS_URL = "{assets}";"#,
+        r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{site_url}/maps"; window.SOW_ASSETS_URL = "{site_url}/assets";"#,
         ws = cfg.ws_url(&cfg.site_origin),
-        maps = format!("{}/maps", cfg.site_url()),
-        assets = format!("{}/assets", cfg.site_url()),
+        site_url = site_url,
     );
     inject_portal_slots(html_path, None, &boot)
 }
@@ -351,9 +359,8 @@ fn write_sw(
 }
 
 fn write_manifest(out: &Path, version: &str, js: &str, wasm: &str, ts: &str) -> Result<()> {
-    let json = format!(
-        r#"{{"js":"{js}","wasm":"{wasm}","build_ts":"{ts}","version":"{version}"}}"#,
-    );
+    let json =
+        format!(r#"{{"js":"{js}","wasm":"{wasm}","build_ts":"{ts}","version":"{version}"}}"#,);
     fs::write(out.join("game-manifest.json"), json)?;
     Ok(())
 }
@@ -367,11 +374,7 @@ fn stage_static_assets(paths: &Paths, out: &Path) -> Result<()> {
     println!("==> Staging assets/static (no maps/) → {}", dest.display());
     let src = format!("{}/", paths.assets_static.display());
     let dst = format!("{}/", dest.display());
-    process::run(
-        "rsync",
-        &["-a", "--exclude=maps/", &src, &dst],
-        None,
-    )?;
+    process::run("rsync", &["-a", "--exclude=maps/", &src, &dst], None)?;
     println!("✅ Staging assets/static finished");
     Ok(())
 }
@@ -396,7 +399,10 @@ fn prune_querystring_artifacts(root: &Path) -> Result<()> {
 
 pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
     if dir.join("assets/cdn").exists() {
-        bail!("{} must not contain assets/cdn/ (CDN is remote only)", dir.display());
+        bail!(
+            "{} must not contain assets/cdn/ (CDN is remote only)",
+            dir.display()
+        );
     }
     match profile {
         Profile::Crazygames | Profile::SiteDev => {
@@ -436,14 +442,10 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
             }
         }
         Profile::SelfHosted => {
-            let has_wasm = fs::read_dir(dir)?
-                .filter_map(|e| e.ok())
-                .any(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .ends_with("_bg.wasm")
-                        && !e.file_name().to_string_lossy().ends_with(".br")
-                });
+            let has_wasm = fs::read_dir(dir)?.filter_map(|e| e.ok()).any(|e| {
+                e.file_name().to_string_lossy().ends_with("_bg.wasm")
+                    && !e.file_name().to_string_lossy().ends_with(".br")
+            });
             if !has_wasm {
                 bail!("missing raw *_bg.wasm");
             }

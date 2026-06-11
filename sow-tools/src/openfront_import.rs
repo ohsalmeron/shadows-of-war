@@ -45,7 +45,7 @@ pub fn run_import(args: ImportArgs) -> Result<(), Box<dyn std::error::Error>> {
     fs::write(out_dir.join("map.bin.br"), brotli_out)?;
 
     let thumb_path = out_dir.join("thumbnail.webp");
-    if let Ok(img) = image::open(&input.join("image.png")) {
+    if let Ok(img) = image::open(input.join("image.png")) {
         sow_map::write_square_thumbnail(&img, &thumb_path)
             .map_err(|e| format!("thumbnail: {e}"))?;
     } else {
@@ -136,7 +136,10 @@ fn push_spawn(entry: &Value, spawns: &mut Vec<MapSpawn>) {
     spawns.push(MapSpawn { name, flag, x, y });
 }
 
-fn import_from_bin_or_manifest(dir: &Path, key: &str) -> Result<MapFile, Box<dyn std::error::Error>> {
+fn import_from_bin_or_manifest(
+    dir: &Path,
+    key: &str,
+) -> Result<MapFile, Box<dyn std::error::Error>> {
     let raw = read_map_payload(dir)?;
     if raw.len() >= 4 && &raw[0..4] == map_file::MAP_MAGIC {
         return Ok(map_file::parse(&raw)?);
@@ -144,15 +147,11 @@ fn import_from_bin_or_manifest(dir: &Path, key: &str) -> Result<MapFile, Box<dyn
 
     let manifest_path = dir.join("manifest.json");
     if !manifest_path.exists() {
-        return Err(
-            "Need image.png, map.bin, or manifest.json + legacy terrain".into(),
-        );
+        return Err("Need image.png, map.bin, or manifest.json + legacy terrain".into());
     }
 
     let manifest: Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
-    let map_info = manifest
-        .get("map")
-        .ok_or("manifest missing map section")?;
+    let map_info = manifest.get("map").ok_or("manifest missing map section")?;
     let width = map_info.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let height = map_info.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let num_land = map_info
@@ -199,7 +198,8 @@ fn write_placeholder_thumbnail(
     map_file: &MapFile,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let preview = sow_map::terrain_preview_image(map_file.width, map_file.height, &map_file.terrain);
+    let preview =
+        sow_map::terrain_preview_image(map_file.width, map_file.height, &map_file.terrain);
     sow_map::write_square_thumbnail(&preview, path).map_err(|e| e.into())
 }
 

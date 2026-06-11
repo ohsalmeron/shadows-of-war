@@ -26,7 +26,10 @@ fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32) -> u32 {
 /// Cheapest possible gold cost for a building.
 #[inline]
 fn cheapest_gold_cost(cfg: &crate::game_config::GameConfig) -> f64 {
-    cfg.cost_city.min(cfg.cost_bunker).min(cfg.cost_factory).min(cfg.cost_port)
+    cfg.cost_city
+        .min(cfg.cost_bunker)
+        .min(cfg.cost_factory)
+        .min(cfg.cost_port)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -335,11 +338,7 @@ impl SowEngine {
                                     }
                                 }
                             } else if let Some(p_prop) = self.state.player(proposer) {
-                                accept = !should_reject_traitor_request(
-                                    p_prop,
-                                    tick,
-                                    traitor_roll,
-                                );
+                                accept = !should_reject_traitor_request(p_prop, tick, traitor_roll);
                             } else {
                                 accept = false;
                             }
@@ -369,13 +368,14 @@ impl SowEngine {
             {
                 let share_interval = {
                     let mut rng = WyRand::new(
-                        self.state.seed.wrapping_add(bot_id as u64).wrapping_add(7919),
+                        self.state
+                            .seed
+                            .wrapping_add(bot_id as u64)
+                            .wrapping_add(7919),
                     );
                     rng.next_int(400, 1200) as u64
                 };
-                if self.state.tick > share_interval
-                    && self.state.tick % share_interval < 2
-                {
+                if self.state.tick > share_interval && self.state.tick % share_interval < 2 {
                     for req in &self.resource_requests_proposed {
                         if req.target != bot_id {
                             continue;
@@ -441,11 +441,14 @@ impl SowEngine {
             {
                 let req_interval = {
                     let mut rng = WyRand::new(
-                        self.state.seed.wrapping_add(bot_id as u64).wrapping_add(1337),
+                        self.state
+                            .seed
+                            .wrapping_add(bot_id as u64)
+                            .wrapping_add(1337),
                     );
                     rng.next_int(600, 1200) as u64 // every 30-60 seconds
                 };
-                if self.state.tick > req_interval && self.state.tick % req_interval == 0 {
+                if self.state.tick > req_interval && self.state.tick.is_multiple_of(req_interval) {
                     if let Some(p_me) = self.state.player(bot_id) {
                         let is_weak = p_me.troops < p_me.max_troops * 0.25 || p_me.gold < 30_000.0;
                         if is_weak && !p_me.alliances.is_empty() {
@@ -453,7 +456,9 @@ impl SowEngine {
                             let mut target_id = None;
                             for &ally_id in &p_me.alliances {
                                 if let Some(p_ally) = self.state.player(ally_id) {
-                                    if p_ally.alive && p_ally.player_type == crate::player::PlayerType::Human {
+                                    if p_ally.alive
+                                        && p_ally.player_type == crate::player::PlayerType::Human
+                                    {
                                         target_id = Some(ally_id);
                                         break;
                                     }
@@ -498,12 +503,15 @@ impl SowEngine {
             if bot_iq >= 120 {
                 let share_interval = {
                     let mut rng = WyRand::new(
-                        self.state.seed.wrapping_add(bot_id as u64).wrapping_add(7919),
+                        self.state
+                            .seed
+                            .wrapping_add(bot_id as u64)
+                            .wrapping_add(7919),
                     );
                     rng.next_int(400, 1200) as u64
                 };
                 if self.state.tick > share_interval
-                    && self.state.tick % share_interval == 0
+                    && self.state.tick.is_multiple_of(share_interval)
                 {
                     let share_chance = (60i32 - bot_iq as i32 / 3).clamp(10, 50);
                     let roll = self
@@ -536,10 +544,8 @@ impl SowEngine {
                             if let Some(ally_id) = ally_to_help {
                                 // Random % of troops (5-15%) and gold (10-25%)
                                 let p_me = self.state.player_mut(bot_id).unwrap();
-                                let troop_pct =
-                                    p_me.bot_rng.next_int(5, 15) as f64 / 100.0;
-                                let gold_pct =
-                                    p_me.bot_rng.next_int(10, 25) as f64 / 100.0;
+                                let troop_pct = p_me.bot_rng.next_int(5, 15) as f64 / 100.0;
+                                let gold_pct = p_me.bot_rng.next_int(10, 25) as f64 / 100.0;
                                 let troops_avail = p_me.troops;
                                 let gold_avail = p_me.gold;
                                 p_me.iq_points -= send_cost;
@@ -600,21 +606,17 @@ impl SowEngine {
 
             // ── Propose Alliances ──────────────────────────────────────────
             let current_points = self.state.player(bot_id).unwrap().iq_points;
-            let is_under_attack = self
-                .attacks
-                .iter()
-                .any(|att| {
-                    att.target_owner == bot_id
-                        && self
-                            .state
-                            .player(bot_id)
-                            .map(|p| !p.alliances.contains(&att.owner_id))
-                            .unwrap_or(true)
-                });
+            let is_under_attack = self.attacks.iter().any(|att| {
+                att.target_owner == bot_id
+                    && self
+                        .state
+                        .player(bot_id)
+                        .map(|p| !p.alliances.contains(&att.owner_id))
+                        .unwrap_or(true)
+            });
             let expand_first = has_neutral && !is_under_attack;
 
-            if current_points >= alliance_cost && !neighbor_players.is_empty() && !expand_first
-            {
+            if current_points >= alliance_cost && !neighbor_players.is_empty() && !expand_first {
                 let mut proposed_target = None;
                 let (me_alliances, me_troops, me_tile_count) = {
                     let p_me = self.state.player(bot_id).unwrap();
@@ -652,8 +654,7 @@ impl SowEngine {
                             .player(neighbor)
                             .map(|p| p.player_type)
                             .unwrap_or(PlayerType::Bot);
-                        let valid_target =
-                            is_valid_alliance_target(bot_id, neighbor, neigh_type);
+                        let valid_target = is_valid_alliance_target(bot_id, neighbor, neigh_type);
                         let can_send = self.can_send_alliance_request(bot_id, neighbor);
 
                         let has_room = me_alliances.len() < max_alliances;
@@ -665,8 +666,7 @@ impl SowEngine {
                                 let p_me = self.state.player_mut(bot_id).unwrap();
                                 p_me.bot_rng.next_int(0, 100)
                             };
-                            let roll_cap =
-                                alliance_propose_roll_cap(bot_id, bot_iq, can_renew);
+                            let roll_cap = alliance_propose_roll_cap(bot_id, bot_iq, can_renew);
 
                             if can_renew {
                                 meets_threshold = roll < roll_cap;
@@ -896,7 +896,7 @@ impl SowEngine {
                         p_me.alliances
                             .iter()
                             .copied()
-                            .filter(|id| neighbor_players.contains(&id))
+                            .filter(|id| neighbor_players.contains(id))
                             .collect()
                     };
                     let mut betray_then_attack: Option<u16> = None;
@@ -1070,11 +1070,12 @@ impl SowEngine {
                         let mut largest_attack = 0.0;
                         for att in &self.attacks {
                             // targets already excludes allies and teammates
-                            if att.target_owner == bot_id && targets.contains(&att.owner_id) {
-                                if att.troops > largest_attack {
-                                    largest_attack = att.troops;
-                                    defender_target = Some(att.owner_id);
-                                }
+                            if att.target_owner == bot_id
+                                && targets.contains(&att.owner_id)
+                                && att.troops > largest_attack
+                            {
+                                largest_attack = att.troops;
+                                defender_target = Some(att.owner_id);
                             }
                         }
                     }
@@ -1247,10 +1248,9 @@ impl SowEngine {
                 && b.kind == BuildingKind::City
                 && b.modules.arsenal > 0
                 && !b.under_construction
+                && self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0
             {
-                if self.silo_cooldowns.get(&b.id).copied().unwrap_or(0) == 0 {
-                    has_silo = true;
-                }
+                has_silo = true;
             }
         }
         if !has_silo {
@@ -1503,8 +1503,18 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().iq_points = 100.0;
         engine.state.player_mut(1).unwrap().alliances.push(2);
         engine.state.player_mut(2).unwrap().alliances.push(1);
-        engine.state.player_mut(1).unwrap().alliance_timers.insert(2, 500);
-        engine.state.player_mut(2).unwrap().alliance_timers.insert(1, 500);
+        engine
+            .state
+            .player_mut(1)
+            .unwrap()
+            .alliance_timers
+            .insert(2, 500);
+        engine
+            .state
+            .player_mut(2)
+            .unwrap()
+            .alliance_timers
+            .insert(1, 500);
         engine.state.player_mut(1).unwrap().troops = 2500.0;
         engine.state.player_mut(2).unwrap().troops = 1000.0;
         // Give bot 1 neutral expansion option so diplomacy propose is skipped; 2x should not auto-break.
@@ -1582,8 +1592,10 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
 
         // Give bot 1 a silo
-        let mut m1 = crate::building::CityModules::default();
-        m1.arsenal = 1;
+        let m1 = crate::building::CityModules {
+            arsenal: 1,
+            ..Default::default()
+        };
         engine.buildings.push(crate::building::Building {
             id: 100,
             owner_id: 1,
@@ -1608,8 +1620,10 @@ mod bot_iq_alliance_tests {
         });
 
         // Give bot 2 a SAM covering the city
-        let mut m2 = crate::building::CityModules::default();
-        m2.shield = 1;
+        let m2 = crate::building::CityModules {
+            shield: 1,
+            ..Default::default()
+        };
         engine.buildings.push(crate::building::Building {
             id: 102,
             owner_id: 2,
@@ -1654,8 +1668,10 @@ mod bot_iq_alliance_tests {
         engine.state.player_mut(1).unwrap().player_type = crate::player::PlayerType::Nation;
 
         // Give bot 1 a silo
-        let mut m1 = crate::building::CityModules::default();
-        m1.arsenal = 1;
+        let m1 = crate::building::CityModules {
+            arsenal: 1,
+            ..Default::default()
+        };
         engine.buildings.push(crate::building::Building {
             id: 100,
             owner_id: 1,
@@ -1684,7 +1700,7 @@ mod bot_iq_alliance_tests {
 
         engine.refresh_building_grid();
         let mut decisions = Vec::new();
-        engine.maybe_launch_nuke(1, &mut decisions, 135, &vec![2]);
+        engine.maybe_launch_nuke(1, &mut decisions, 135, &[2]);
         assert!(!decisions.is_empty());
         assert_eq!(engine.recent_nuke_targets[0].1, 1);
     }

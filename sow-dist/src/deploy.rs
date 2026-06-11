@@ -18,7 +18,12 @@ pub fn resolve_remote_maps(gcp: &GcpConfig, unit: &str, env_var: &str, fallback:
     fallback.to_string()
 }
 
-pub fn resolve_remote_workdir(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
+pub fn resolve_remote_workdir(
+    gcp: &GcpConfig,
+    unit: &str,
+    env_var: &str,
+    fallback: &str,
+) -> String {
     if let Ok(p) = std::env::var(env_var) {
         return p;
     }

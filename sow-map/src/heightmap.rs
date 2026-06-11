@@ -18,9 +18,7 @@ pub struct WorldHeightmap {
 impl WorldHeightmap {
     /// Load from the first available path (see [`heightmap_search_paths`]).
     pub fn load() -> Result<Self, String> {
-        WORLD_HEIGHTMAP
-            .get_or_init(|| Self::load_from_disk())
-            .clone()
+        WORLD_HEIGHTMAP.get_or_init(Self::load_from_disk).clone()
     }
 
     /// Build from an in-memory image (tests).
@@ -90,12 +88,8 @@ pub fn heightmap_search_paths() -> Vec<PathBuf> {
         paths.push(PathBuf::from(p));
     }
     if let Some(ws) = workspace_root() {
-        paths.push(
-            ws.join("MapGenerator/assets/maps/giantworldmap/image.png"),
-        );
-        paths.push(
-            ws.join("OpenFrontIO/map-generator/assets/maps/giantworldmap/image.png"),
-        );
+        paths.push(ws.join("MapGenerator/assets/maps/giantworldmap/image.png"));
+        paths.push(ws.join("OpenFrontIO/map-generator/assets/maps/giantworldmap/image.png"));
         paths.push(ws.join("assets/heightmaps/world.png"));
     }
     paths
@@ -173,9 +167,7 @@ mod tests {
 
     #[test]
     fn equirect_sample_rockies_elevation() {
-        let path = heightmap_search_paths()
-            .into_iter()
-            .find(|p| p.is_file());
+        let path = heightmap_search_paths().into_iter().find(|p| p.is_file());
         let Some(_path) = path else {
             eprintln!("skip equirect_sample_rockies_elevation: no heightmap on disk");
             return;
@@ -184,6 +176,6 @@ mod tests {
         let blue = hm.sample_openfront_blue(-110.0, 45.0);
         assert_ne!(blue, 106, "Rockies should not be water");
         let mag = (blue.clamp(140, 200) as i32 - 140) / 2;
-        assert!(mag >= 0 && mag <= 30, "magnitude {mag} from blue {blue}");
+        assert!((0..=30).contains(&mag), "magnitude {mag} from blue {blue}");
     }
 }

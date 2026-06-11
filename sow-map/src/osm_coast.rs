@@ -34,6 +34,7 @@ pub fn map_dimensions(
     (width, height)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn extract_coastlines(
     data: &Value,
     min_lon: f64,
@@ -44,11 +45,13 @@ pub fn extract_coastlines(
     width: u32,
     height: u32,
 ) -> CoastlineGeometry {
-    let (_, _, segments) =
-        collect_geometry(data, min_lon, _min_lat, _max_lon, max_lat, scale, width, height);
+    let (_, _, segments) = collect_geometry(
+        data, min_lon, _min_lat, _max_lon, max_lat, scale, width, height,
+    );
     CoastlineGeometry { segments }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn stamp_water_polygons(
     grid: &mut [MapTile],
     data: &Value,
@@ -60,8 +63,9 @@ pub fn stamp_water_polygons(
     width: u32,
     height: u32,
 ) {
-    let (_, water_rings, _) =
-        collect_geometry(data, min_lon, min_lat, max_lon, max_lat, scale, width, height);
+    let (_, water_rings, _) = collect_geometry(
+        data, min_lon, min_lat, max_lon, max_lat, scale, width, height,
+    );
     for ring in &water_rings {
         fill_polygon(width, height, &ring.points, |idx| {
             grid[idx] = MapTile::from_byte(PURE_WATER);
@@ -117,6 +121,7 @@ pub fn build_landmass_from_coastlines(
     (width, height, grid)
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn collect_geometry(
     data: &Value,
     min_lon: f64,
@@ -143,9 +148,8 @@ fn collect_geometry(
             Some("way") => {
                 if tags_way_is_coastline(tags) {
                     if let Some(geom) = element.get("geometry").and_then(|g| g.as_array()) {
-                        let points = geometry_to_points(
-                            geom, min_lon, max_lat, scale, width, height,
-                        );
+                        let points =
+                            geometry_to_points(geom, min_lon, max_lat, scale, width, height);
                         if points.len() >= 2 {
                             coastlines.push(points);
                         }
@@ -162,9 +166,7 @@ fn collect_geometry(
                 let Some(geom) = element.get("geometry").and_then(|g| g.as_array()) else {
                     continue;
                 };
-                let points = geometry_to_points(
-                    geom, min_lon, max_lat, scale, width, height,
-                );
+                let points = geometry_to_points(geom, min_lon, max_lat, scale, width, height);
                 if points.len() < 3 {
                     continue;
                 }
@@ -180,10 +182,7 @@ fn collect_geometry(
                 let Some(kind) = classify_relation(tags) else {
                     continue;
                 };
-                if tags
-                    .and_then(|t| t.get("natural"))
-                    .and_then(|v| v.as_str())
-                    == Some("coastline")
+                if tags.and_then(|t| t.get("natural")).and_then(|v| v.as_str()) == Some("coastline")
                 {
                     continue;
                 }
@@ -195,9 +194,8 @@ fn collect_geometry(
                         let Some(geom) = member.get("geometry").and_then(|g| g.as_array()) else {
                             continue;
                         };
-                        let points = geometry_to_points(
-                            geom, min_lon, max_lat, scale, width, height,
-                        );
+                        let points =
+                            geometry_to_points(geom, min_lon, max_lat, scale, width, height);
                         if points.len() >= 3 {
                             let ring = LabeledRing { points };
                             match kind {
@@ -341,7 +339,7 @@ fn dilate_barriers(barriers: &mut [bool], width: u32, height: u32) {
                     let nx = x as i32 + dx;
                     let ny = y as i32 + dy;
                     if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
-                        barriers[(ny as usize * w + nx as usize) as usize] = true;
+                        barriers[ny as usize * w + nx as usize] = true;
                     }
                 }
             }
@@ -439,7 +437,7 @@ fn flood_ocean_from_edges(grid: &mut [MapTile], width: u32, height: u32, barrier
             if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
                 continue;
             }
-            let ni = (ny as usize * w + nx as usize) as usize;
+            let ni = ny as usize * w + nx as usize;
             if visited[ni] || barriers[ni] || grid[ni].is_land() {
                 continue;
             }
@@ -450,9 +448,7 @@ fn flood_ocean_from_edges(grid: &mut [MapTile], width: u32, height: u32, barrier
 }
 
 fn tags_way_is_coastline(tags: Option<&Value>) -> bool {
-    tags.and_then(|t| t.get("natural"))
-        .and_then(|v| v.as_str())
-        == Some("coastline")
+    tags.and_then(|t| t.get("natural")).and_then(|v| v.as_str()) == Some("coastline")
 }
 
 fn classify_way(tags: Option<&Value>) -> Option<FillKind> {
@@ -651,12 +647,7 @@ mod tests {
         let width = 30u32;
         let height = 30u32;
         let mut grid = vec![MapTile::from_byte(LAND_PLAINS); (width * height) as usize];
-        let pond = vec![
-            (10.0, 10.0),
-            (20.0, 10.0),
-            (20.0, 20.0),
-            (10.0, 20.0),
-        ];
+        let pond = vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)];
         fill_polygon(width, height, &pond, |idx| {
             grid[idx] = MapTile::from_byte(PURE_WATER);
         });

@@ -14,9 +14,9 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
 #[cfg(feature = "osm")]
-use crate::image_pipeline::generate_from_rgba;
-#[cfg(feature = "osm")]
 use crate::heightmap::{terrain_stats_from_packed, WorldHeightmap};
+#[cfg(feature = "osm")]
+use crate::image_pipeline::generate_from_rgba;
 #[cfg(feature = "osm")]
 use crate::osm_tiles::{
     classify_osm_to_rgba_with_heightmap, fetch_region_blocking, lonlat_to_world_px,
@@ -292,8 +292,7 @@ impl MapEditorSession {
         select_map_key: Option<&str>,
     ) -> Result<(), String> {
         let maps_root = Self::maps_root();
-        let bytes =
-            std::fs::read(maps_root.join("catalog.bin")).map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(maps_root.join("catalog.bin")).map_err(|e| e.to_string())?;
         let catalog = sow_core::map_file::parse_catalog(&bytes).map_err(|e| e.to_string())?;
         let entries = catalog.entries;
         client_app.asset_loader.map_catalog = Some(entries.clone());
@@ -316,9 +315,7 @@ impl MapEditorSession {
                     .asset_loader
                     .ingest_thumbnail(egui_ctx, &normalized, &bytes);
             } else {
-                client_app
-                    .asset_loader
-                    .request_thumbnail(&normalized);
+                client_app.asset_loader.request_thumbnail(&normalized);
             }
         }
         Ok(())
@@ -439,9 +436,11 @@ impl MapEditorSession {
                         self.pending_pan.0 += dx;
                         self.pending_pan.1 += dy;
                     }
-                    self.raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(
-                        logical_x, logical_y,
-                    )));
+                    self.raw_input
+                        .events
+                        .push(egui::Event::PointerMoved(egui::Pos2::new(
+                            logical_x, logical_y,
+                        )));
                 }
             }
             WindowEvent::PointerButton {
@@ -671,8 +670,7 @@ impl MapEditorSession {
             .map_editor
             .msg_blank_created
             .clone();
-        self.editor_ui
-            .show_toast(msg, false);
+        self.editor_ui.show_toast(msg, false);
     }
 
     fn notify_error(&mut self, text: impl Into<String>) {
@@ -683,14 +681,19 @@ impl MapEditorSession {
         self.editor_ui.show_toast(text, false);
     }
 
-    fn gameplay_map_globals(&self, logical_w: f32, logical_h: f32, hover_hex: [f32; 2]) -> MapGlobals {
+    fn gameplay_map_globals(
+        &self,
+        logical_w: f32,
+        logical_h: f32,
+        hover_hex: [f32; 2],
+    ) -> MapGlobals {
         MapGlobals {
             camera_pos: [self.camera_x, self.camera_y],
             zoom: self.camera_zoom,
             time: self.start_time.elapsed().as_secs_f32() % 1000.0,
             screen_size: [logical_w, logical_h],
             map_size: [self.width as f32, self.height as f32],
-            border_thickness: 1.0,
+            border_thickness: 0.5,
             border_darkness: 0.35,
             shore_thickness: 1.0,
             shore_darkness: 1.0,
@@ -705,7 +708,7 @@ impl MapEditorSession {
             fallout_slots: [[0.0; 4]; 8],
             nobuild_slots: [[0.0; 4]; 32],
             sub_voxel_scale: 1.0,
-            blend_mode: 2.0,
+            blend_mode: 0.0,
             _pad3: 0.0,
             _pad4: 0.0,
         }
@@ -782,13 +785,10 @@ impl MapEditorSession {
                 if !self.osm_picker.textures.contains_key(&key) {
                     let name = format!("osm_{}_{}_{}", key.z, key.x, key.y);
                     let size = [img.width() as usize, img.height() as usize];
-                    let color_image =
-                        egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
-                    let handle = self.egui_ctx.load_texture(
-                        name,
-                        color_image,
-                        egui::TextureOptions::LINEAR,
-                    );
+                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+                    let handle =
+                        self.egui_ctx
+                            .load_texture(name, color_image, egui::TextureOptions::LINEAR);
                     self.osm_picker.textures.insert(key, handle);
                 }
             }
@@ -995,12 +995,7 @@ impl MapEditorSession {
 
         let dst = target - (target % 4);
         let encoded = classify_osm_to_rgba_with_heightmap(
-            &stitched,
-            min_lon,
-            min_lat,
-            max_lon,
-            max_lat,
-            &heightmap,
+            &stitched, min_lon, min_lat, max_lon, max_lat, &heightmap,
         );
         let water_px = encoded.pixels().filter(|p| p.0[2] == 106).count();
         let elevated_land = encoded
@@ -1105,9 +1100,7 @@ impl MapEditorSession {
         let mut brotli_bytes = Vec::new();
         {
             let mut writer = brotli::CompressorWriter::new(&mut brotli_bytes, 4096, 11, 22);
-            writer
-                .write_all(&map_bytes)
-                .map_err(|e| e.to_string())?;
+            writer.write_all(&map_bytes).map_err(|e| e.to_string())?;
             writer.flush().map_err(|e| e.to_string())?;
         }
 
@@ -1133,7 +1126,11 @@ impl MapEditorSession {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn write_map_package_native(&mut self, artifacts: MapExportArtifacts, strings: &sow_i18n::MapEditorStrings) {
+    fn write_map_package_native(
+        &mut self,
+        artifacts: MapExportArtifacts,
+        strings: &sow_i18n::MapEditorStrings,
+    ) {
         let maps_root = Self::maps_root();
         let out_dir = maps_root.join(&artifacts.slug);
         if let Err(e) = std::fs::create_dir_all(&out_dir) {
@@ -1142,9 +1139,9 @@ impl MapEditorSession {
         }
 
         let wrote_map = std::fs::write(out_dir.join("map.bin"), &artifacts.map_bytes).is_ok();
-        let wrote_br =
-            std::fs::write(out_dir.join("map.bin.br"), &artifacts.brotli_bytes).is_ok();
-        let wrote_thumb = std::fs::write(out_dir.join("thumbnail.webp"), &artifacts.thumb_webp).is_ok();
+        let wrote_br = std::fs::write(out_dir.join("map.bin.br"), &artifacts.brotli_bytes).is_ok();
+        let wrote_thumb =
+            std::fs::write(out_dir.join("thumbnail.webp"), &artifacts.thumb_webp).is_ok();
 
         if wrote_map && wrote_br && wrote_thumb {
             match Self::refresh_maps_catalog(&maps_root) {
@@ -1154,10 +1151,7 @@ impl MapEditorSession {
                         &self.egui_ctx,
                         Some(&artifacts.slug),
                     ) {
-                        self.notify_info(format!(
-                            "{} (catalog reload: {e})",
-                            strings.msg_saved
-                        ));
+                        self.notify_info(format!("{} (catalog reload: {e})", strings.msg_saved));
                     } else {
                         self.notify_info(&strings.msg_saved_sp);
                     }
@@ -1172,12 +1166,13 @@ impl MapEditorSession {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn download_map_package_wasm(&mut self, artifacts: MapExportArtifacts, strings: &sow_i18n::MapEditorStrings) {
+    fn download_map_package_wasm(
+        &mut self,
+        artifacts: MapExportArtifacts,
+        strings: &sow_i18n::MapEditorStrings,
+    ) {
         let prefix = &artifacts.slug;
-        crate::wasm_export::trigger_download(
-            &format!("{prefix}/map.bin"),
-            &artifacts.map_bytes,
-        );
+        crate::wasm_export::trigger_download(&format!("{prefix}/map.bin"), &artifacts.map_bytes);
         crate::wasm_export::trigger_download(
             &format!("{prefix}/map.bin.br"),
             &artifacts.brotli_bytes,
@@ -1331,12 +1326,14 @@ impl MapEditorSession {
                 let cx = self.width / 2;
                 let cy = self.height / 2;
                 let idx = self.editor_ui.spawns.len() + 1;
-                self.editor_ui.spawns.push(sow_ui::ui::map_editor::SpawnRowUi {
-                    x: cx,
-                    y: cy,
-                    name: format!("Nation {}", idx),
-                    flag: "🏳".to_string(),
-                });
+                self.editor_ui
+                    .spawns
+                    .push(sow_ui::ui::map_editor::SpawnRowUi {
+                        x: cx,
+                        y: cy,
+                        name: format!("Nation {}", idx),
+                        flag: "🏳".to_string(),
+                    });
                 self.notify_info(&sow_i18n::get(lang).map_editor.msg_spawn_placed);
                 self.mark_dirty();
             }
@@ -1457,54 +1454,54 @@ impl MapEditorSession {
 
                 if draw_terrain {
                     if let Some(ref mut mr) = self.map_renderer {
-                    if self.needs_first_upload {
-                        self.render_ctx
-                            .command_encoder
-                            .init_texture(mr.terrain_texture);
-                        self.render_ctx
-                            .command_encoder
-                            .init_texture(mr.owner_texture);
-                        self.needs_first_upload = false;
-                        mr.upload_terrain(&mut self.render_ctx.command_encoder);
-                    }
-
-                    if self.needs_owner_upload {
-                        mr.upload_initial_owners(
-                            &mut self.render_ctx.command_encoder,
-                            &self.render_ctx.context,
-                        );
-                        self.needs_owner_upload = false;
-                    }
-
-                    // Push dirty terrain tiles to GPU (editor brush strokes).
-                    if !self.dirty_tiles.is_empty() {
-                        for &idx in &self.dirty_tiles {
-                            if idx < self.terrain.len() {
-                                mr.terrain[idx] = self.terrain[idx];
-                            }
+                        if self.needs_first_upload {
+                            self.render_ctx
+                                .command_encoder
+                                .init_texture(mr.terrain_texture);
+                            self.render_ctx
+                                .command_encoder
+                                .init_texture(mr.owner_texture);
+                            self.needs_first_upload = false;
+                            mr.upload_terrain(&mut self.render_ctx.command_encoder);
                         }
-                        mr.sync_terrain_to_gpu(
+
+                        if self.needs_owner_upload {
+                            mr.upload_initial_owners(
+                                &mut self.render_ctx.command_encoder,
+                                &self.render_ctx.context,
+                            );
+                            self.needs_owner_upload = false;
+                        }
+
+                        // Push dirty terrain tiles to GPU (editor brush strokes).
+                        if !self.dirty_tiles.is_empty() {
+                            for &idx in &self.dirty_tiles {
+                                if idx < self.terrain.len() {
+                                    mr.terrain[idx] = self.terrain[idx];
+                                }
+                            }
+                            mr.sync_terrain_to_gpu(
+                                &mut self.render_ctx.command_encoder,
+                                &self.render_ctx.context,
+                            );
+                            self.dirty_tiles.clear();
+                        }
+
+                        // Render Map viewport
+                        let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
+                        player_colors[1] = [0.1, 0.6, 0.9, 1.0];
+
+                        let globals = terrain_globals.expect("terrain_globals set in brush mode");
+                        let colors_struct = sow_render::PlayerColors {
+                            colors: player_colors,
+                        };
+
+                        mr.draw(
                             &mut self.render_ctx.command_encoder,
-                            &self.render_ctx.context,
+                            frame.texture_view(),
+                            globals,
+                            colors_struct,
                         );
-                        self.dirty_tiles.clear();
-                    }
-
-                    // Render Map viewport
-                    let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
-                    player_colors[1] = [0.1, 0.6, 0.9, 1.0];
-
-                    let globals = terrain_globals.expect("terrain_globals set in brush mode");
-                    let colors_struct = sow_render::PlayerColors {
-                        colors: player_colors,
-                    };
-
-                    mr.draw(
-                        &mut self.render_ctx.command_encoder,
-                        frame.texture_view(),
-                        globals,
-                        colors_struct,
-                    );
                     }
                 }
 
@@ -1581,8 +1578,14 @@ impl MapEditorSession {
             std::ptr::drop_in_place(&mut this.editor_ui);
             #[cfg(feature = "osm")]
             std::ptr::drop_in_place(&mut this.osm_picker);
-            std::mem::forget(this);
-            (window, surface, render_ctx, gui_painter, client_app, egui_ctx)
+            (
+                window,
+                surface,
+                render_ctx,
+                gui_painter,
+                client_app,
+                egui_ctx,
+            )
         }
     }
 }

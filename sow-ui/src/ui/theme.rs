@@ -273,13 +273,11 @@ pub fn panel_frame(kind: PanelKind, compact: bool) -> egui::Frame {
                 .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
                 .inner_margin(Margin::symmetric(margin_x, margin_y))
         }
-        PanelKind::MapControlsRail => {
-            egui::Frame::NONE
-                .fill(Color32::from_black_alpha(150))
-                .corner_radius(radius::sm())
-                .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
-                .inner_margin(Margin::symmetric(4, margin::TIGHT))
-        }
+        PanelKind::MapControlsRail => egui::Frame::NONE
+            .fill(Color32::from_black_alpha(150))
+            .corner_radius(radius::sm())
+            .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
+            .inner_margin(Margin::symmetric(4, margin::TIGHT)),
         PanelKind::FloatingCard => standard_panel_frame(compact),
         PanelKind::MenuRail => menu_right_panel_frame(compact),
     }
@@ -319,7 +317,12 @@ pub struct CardVisuals {
 
 /// Building / action card chrome used across the HUD.
 #[inline]
-pub fn interact_card(selected: bool, can_afford: bool, hovered: bool, accent: Color32) -> CardVisuals {
+pub fn interact_card(
+    selected: bool,
+    can_afford: bool,
+    hovered: bool,
+    accent: Color32,
+) -> CardVisuals {
     let bg = if selected {
         accent.linear_multiply(0.15)
     } else if hovered {
@@ -332,7 +335,10 @@ pub fn interact_card(selected: bool, can_afford: bool, hovered: bool, accent: Co
     } else if !can_afford {
         Stroke::new(stroke::HAIRLINE, palette::danger())
     } else {
-        Stroke::new(stroke::HAIRLINE, palette::field_border().linear_multiply(0.5))
+        Stroke::new(
+            stroke::HAIRLINE,
+            palette::field_border().linear_multiply(0.5),
+        )
     };
     CardVisuals { bg, stroke }
 }
@@ -369,7 +375,8 @@ pub fn draw_tab(
             Stroke::NONE
         };
 
-        ui.painter().rect(rect, tab_radius, fill, side_stroke, StrokeKind::Inside);
+        ui.painter()
+            .rect(rect, tab_radius, fill, side_stroke, StrokeKind::Inside);
 
         if selected {
             let bar = Rect::from_min_max(
@@ -456,7 +463,8 @@ pub fn draw_icon_tab(
             Stroke::NONE
         };
 
-        ui.painter().rect(rect, tab_radius, fill, side_stroke, StrokeKind::Inside);
+        ui.painter()
+            .rect(rect, tab_radius, fill, side_stroke, StrokeKind::Inside);
 
         if selected {
             let bar = Rect::from_min_max(
@@ -477,7 +485,10 @@ pub fn draw_icon_tab(
 
         if let Some(tex) = texture {
             let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(icon_size));
-            ui.put(icon_rect, Image::new(tex).fit_to_exact_size(icon_rect.size()));
+            ui.put(
+                icon_rect,
+                Image::new(tex).fit_to_exact_size(icon_rect.size()),
+            );
         }
 
         if badge_count > 0 {
@@ -506,7 +517,10 @@ pub fn draw_icon_tab(
 /// Baseline under the tab strip; skips the active tab's bottom edge.
 pub fn draw_tab_baseline(ui: &mut Ui, strip_rect: Rect, active_tab_rect: Option<Rect>) {
     let y = strip_rect.bottom() - tab::BASELINE_H;
-    let baseline = Stroke::new(stroke::HAIRLINE, palette::field_border().linear_multiply(0.85));
+    let baseline = Stroke::new(
+        stroke::HAIRLINE,
+        palette::field_border().linear_multiply(0.85),
+    );
 
     if let Some(active) = active_tab_rect {
         let left = strip_rect.x_range();
@@ -603,10 +617,9 @@ pub fn apply_theme(ctx: &Context) {
         "Default".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_TTF)),
     );
-    fonts.families.insert(
-        egui::FontFamily::Proportional,
-        vec!["Default".to_owned()],
-    );
+    fonts
+        .families
+        .insert(egui::FontFamily::Proportional, vec!["Default".to_owned()]);
     fonts
         .families
         .insert(egui::FontFamily::Monospace, vec!["Default".to_owned()]);
@@ -834,7 +847,11 @@ pub fn map_editor_glass_frame(panel: MapEditorGlassPanel, _compact: bool) -> egu
 pub fn menu_right_panel_frame(compact: bool) -> egui::Frame {
     let fill = Color32::from_rgba_unmultiplied(8, 10, 16, if compact { 175 } else { 155 });
     let margin = if compact { 16 } else { 20 };
-    let radius = if compact { CornerRadius::same(10) } else { CornerRadius::same(12) };
+    let radius = if compact {
+        CornerRadius::same(10)
+    } else {
+        CornerRadius::same(12)
+    };
     egui::Frame::new()
         .fill(fill)
         .stroke(egui::Stroke::new(
@@ -929,9 +946,7 @@ pub fn leader_name_label(ui: &mut Ui, name: &str, size: f32) -> Response {
 pub fn leader_caps_line(ui: &mut Ui, text: &str, size: f32) -> Response {
     let text = text.to_uppercase();
     let font_id = FontId::proportional(size);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text, font_id, Color32::WHITE);
+    let galley = ui.painter().layout_no_wrap(text, font_id, Color32::WHITE);
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
     if ui.is_rect_visible(rect) {
         paint_pixel_shadow_galley(ui.painter(), rect.left_top(), galley, Color32::WHITE);
@@ -943,9 +958,7 @@ pub fn leader_caps_line(ui: &mut Ui, text: &str, size: f32) -> Response {
 pub fn leader_caps_paragraph(ui: &mut Ui, text: &str, size: f32, wrap_w: f32) -> Response {
     let text = text.to_uppercase();
     let font_id = FontId::proportional(size);
-    let galley = ui
-        .painter()
-        .layout(text, font_id, Color32::WHITE, wrap_w);
+    let galley = ui.painter().layout(text, font_id, Color32::WHITE, wrap_w);
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
     if ui.is_rect_visible(rect) {
         paint_pixel_shadow_galley(ui.painter(), rect.left_top(), galley, Color32::WHITE);
@@ -1012,13 +1025,10 @@ pub fn outlined_label(
     font_id: FontId,
     color: Color32,
 ) -> egui::Response {
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.to_owned(), font_id, color);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font_id, color);
     let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
         paint_premium_glow_galley(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
     }
     response
 }
-

@@ -17,11 +17,7 @@ impl AssetConfig {
         let maps_base = Self::resolve_maps_base();
         let assets_base = Self::resolve_assets_base();
         let cache_bust = Self::resolve_cache_bust();
-        log::info!(
-            "AssetConfig maps={} assets={}",
-            maps_base,
-            assets_base
-        );
+        log::info!("AssetConfig maps={} assets={}", maps_base, assets_base);
         Self {
             maps_base,
             assets_base,
@@ -43,7 +39,7 @@ impl AssetConfig {
         let base = self.assets_base.trim_end_matches('/');
         let paths = [format!("{base}/cdn/leaders/{filename}")];
         if self.cache_bust.is_empty() {
-            paths.into_iter().map(String::from).collect()
+            paths.to_vec()
         } else {
             paths
                 .into_iter()
@@ -64,7 +60,7 @@ impl AssetConfig {
         let base = self.assets_base.trim_end_matches('/');
         let paths = [format!("{base}/cdn/avatars/{filename}")];
         if self.cache_bust.is_empty() {
-            paths.into_iter().map(String::from).collect()
+            paths.to_vec()
         } else {
             paths
                 .into_iter()
@@ -78,7 +74,7 @@ impl AssetConfig {
         let base = self.assets_base.trim_end_matches('/');
         let paths = [format!("{base}/cdn/ui/{filename}")];
         if self.cache_bust.is_empty() {
-            paths.into_iter().map(String::from).collect()
+            paths.to_vec()
         } else {
             paths
                 .into_iter()

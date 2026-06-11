@@ -249,7 +249,6 @@ impl MoverRenderer {
             rc.bind(0, &trail_data);
             rc.bind_vertex(0, self.trail_buffer.at(0));
             rc.draw(0, VERTS_PER_QUAD, 0, trail_count);
-            drop(rc);
         }
 
         if sprite_count > 0 {
@@ -262,7 +261,6 @@ impl MoverRenderer {
             rc.bind(0, &sprite_data);
             rc.bind_vertex(0, self.sprite_buffer.at(0));
             rc.draw(0, VERTS_PER_QUAD, 0, sprite_count);
-            drop(rc);
         }
     }
 

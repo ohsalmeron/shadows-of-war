@@ -28,10 +28,7 @@ fn main() {
         let slug = sow_core::maps::map_key(key);
         let br_path = args.maps_root.join(&slug).join("map.bin.br");
         let bytes = std::fs::read(&br_path).unwrap_or_else(|e| {
-            eprintln!(
-                "write-play-catalog: read {}: {e}",
-                br_path.display()
-            );
+            eprintln!("write-play-catalog: read {}: {e}", br_path.display());
             std::process::exit(1);
         });
         let raw = sow_core::map_file::decompress_map_payload(&bytes).unwrap_or_else(|e| {

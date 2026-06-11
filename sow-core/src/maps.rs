@@ -25,7 +25,13 @@ pub fn align_map_dim(v: u32) -> u32 {
 
 /// Compute map pixel dimensions for a bbox at the given scale (lon pixels per degree).
 #[inline]
-pub fn map_dims_for_bbox(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64, scale: f64) -> (u32, u32) {
+pub fn map_dims_for_bbox(
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+    scale: f64,
+) -> (u32, u32) {
     let width = align_map_dim(((max_lon - min_lon) * scale).ceil() as u32);
     let height = align_map_dim(((max_lat - min_lat) * scale).ceil() as u32);
     (width, height)
@@ -114,10 +120,7 @@ pub fn catalog_lookup<'a>(
 }
 
 #[inline]
-pub fn catalog_entry_at<'a>(
-    catalog: &'a [MapCatalogEntry],
-    index: usize,
-) -> Option<&'a MapCatalogEntry> {
+pub fn catalog_entry_at(catalog: &[MapCatalogEntry], index: usize) -> Option<&MapCatalogEntry> {
     if catalog.is_empty() {
         None
     } else {

@@ -139,7 +139,6 @@ impl Default for MainMenuState {
                 crate::widgets::LeaderBackdropTransition::new(leader)
             },
 
-
             error_message: None,
             invite_copied_at: None,
         }
@@ -197,6 +196,7 @@ fn menu_footer_height(section_gap: f32, action_min_h: f32) -> f32 {
         + 6.0
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_menu_footer(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -207,41 +207,57 @@ fn draw_menu_footer(
     lang: sow_i18n::Language,
     version: &str,
 ) {
-    actions::draw_right_column(
-        ui,
-        state,
-        section_gap,
-        action_min_h,
-        compact,
-        action,
-        lang,
-    );
+    actions::draw_right_column(ui, state, section_gap, action_min_h, compact, action, lang);
 
     ui.add_space(section_gap * 0.5);
     let strings = &sow_i18n::get(lang).main_menu;
     let credits = &sow_i18n::get(lang).credits;
     ui.vertical_centered(|ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
-        
+
         let text_color = crate::ui::theme::text_secondary();
         let link_color = crate::ui::theme::accent_solo_cyan();
         let size = 11.0;
 
-        ui.label(egui::RichText::new(&strings.by_playing_you_agree).size(size).color(text_color));
+        ui.label(
+            egui::RichText::new(&strings.by_playing_you_agree)
+                .size(size)
+                .color(text_color),
+        );
 
-        if ui.add(
-            egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service).size(size).color(link_color))
-                .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
-        ).clicked() {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
+                        .size(size)
+                        .color(link_color),
+                )
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .clicked()
+        {
             *action = Some(UiAction::ToggleTerms);
         }
-        
-        ui.label(egui::RichText::new(&strings.and_the).size(size).color(text_color));
-        
-        if ui.add(
-            egui::Button::new(egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy).size(size).color(link_color))
-                .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
-        ).clicked() {
+
+        ui.label(
+            egui::RichText::new(&strings.and_the)
+                .size(size)
+                .color(text_color),
+        );
+
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
+                        .size(size)
+                        .color(link_color),
+                )
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .clicked()
+        {
             *action = Some(UiAction::TogglePrivacy);
         }
 
@@ -249,11 +265,7 @@ fn draw_menu_footer(
 
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            ui.label(
-                egui::RichText::new(version)
-                    .size(size)
-                    .color(text_color),
-            );
+            ui.label(egui::RichText::new(version).size(size).color(text_color));
             ui.label(
                 egui::RichText::new(&credits.based_on_short)
                     .size(size)
@@ -280,24 +292,13 @@ fn draw_menu_right_panel_contents(
     let footer_h = menu_footer_height(section_gap, action_min_h);
     let header_h = profile_height + section_gap;
     // Cap lobby thumbnail on short viewports only — never allocate a flex middle band.
-    let max_lobby_h =
-        (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
+    let max_lobby_h = (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
     let panel_w = ui.available_width();
 
-    let panel_rect = egui::Rect::from_min_size(
-        ui.cursor().min,
-        egui::vec2(panel_w, panel_inner_h),
-    );
+    let panel_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w, panel_inner_h));
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(panel_rect), |ui| {
-        profile::draw_user_profile_header(
-            ui,
-            state,
-            compact,
-            profile_height,
-            asset_loader,
-            lang,
-        );
+        profile::draw_user_profile_header(ui, state, compact, profile_height, asset_loader, lang);
 
         ui.add_space(section_gap);
 
@@ -389,10 +390,7 @@ fn draw_map_download_indicator(
     if !state.is_downloading_map {
         return;
     }
-    let map_name = state
-        .downloading_map_name
-        .as_deref()
-        .unwrap_or("map");
+    let map_name = state.downloading_map_name.as_deref().unwrap_or("map");
     let strings = &sow_i18n::get(lang).main_menu;
     let label = strings
         .downloading_map
@@ -475,64 +473,64 @@ pub fn draw(
     if state.show_single_player_setup {
         single_player_setup::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
-    CentralPanel::default()
-        .frame(
-            Frame::new()
-                .fill(Color32::TRANSPARENT)
-                .inner_margin(outer_pad),
-        )
-        .show_inside(root_ui, |ui| {
-            let screen_rect = ui.ctx().content_rect();
-            let is_mobile = compact;
-            if !state.show_leader_picker {
-                crate::widgets::draw_leader_hero_backdrop(
-                    ui,
-                    screen_rect,
-                    state.selected_leader,
-                    is_mobile,
-                    asset_loader,
-                    &mut state.leader_backdrop,
-                    &strings.loading_leader_portrait,
-                    false,
-                );
-            }
+        CentralPanel::default()
+            .frame(
+                Frame::new()
+                    .fill(Color32::TRANSPARENT)
+                    .inner_margin(outer_pad),
+            )
+            .show_inside(root_ui, |ui| {
+                let screen_rect = ui.ctx().content_rect();
+                let is_mobile = compact;
+                if !state.show_leader_picker {
+                    crate::widgets::draw_leader_hero_backdrop(
+                        ui,
+                        screen_rect,
+                        state.selected_leader,
+                        is_mobile,
+                        asset_loader,
+                        &mut state.leader_backdrop,
+                        &strings.loading_leader_portrait,
+                        false,
+                    );
+                }
 
-            if state.is_waiting {
-                queue_overlay::draw_queue_overlay(
-                    ui,
-                    state,
-                    section_gap,
-                    action_min_h,
-                    &mut action,
-                    asset_loader,
-                    lang,
-                );
-                return;
-            }
-
-            let content_h = ui.available_height();
-            let panel_w =
-                crate::ui::theme::menu_rail_panel_width(ui.available_width(), compact);
-
-            ui.allocate_ui_with_layout(
-                egui::vec2(panel_w, content_h),
-                Layout::top_down(Align::Min),
-                |ui| {
-                    draw_menu_right_panel(
+                if state.is_waiting {
+                    queue_overlay::draw_queue_overlay(
                         ui,
                         state,
                         section_gap,
                         action_min_h,
-                        compact,
-                        profile_height,
-                        content_h,
                         &mut action,
                         asset_loader,
                         lang,
                     );
-                },
-            );
-        });
+                    return;
+                }
+
+                let content_h = ui.available_height();
+                let panel_w =
+                    crate::ui::theme::menu_rail_panel_width(ui.available_width(), compact);
+
+                ui.allocate_ui_with_layout(
+                    egui::vec2(panel_w, content_h),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        draw_menu_right_panel(
+                            ui,
+                            state,
+                            section_gap,
+                            action_min_h,
+                            compact,
+                            profile_height,
+                            content_h,
+                            &mut action,
+                            asset_loader,
+                            lang,
+                        );
+                    },
+                );
+            });
     }
 
     draw_connecting_indicator(root_ui.ctx(), state, lang, compact);

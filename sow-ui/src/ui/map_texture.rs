@@ -54,11 +54,7 @@ pub fn thumbnail_square_side(available_width: f32, compact: bool) -> f32 {
 }
 
 /// Square thumbnail side capped by vertical budget so lobby cards never overflow the flex middle.
-pub fn thumbnail_square_side_bounded(
-    available_width: f32,
-    max_height: f32,
-    compact: bool,
-) -> f32 {
+pub fn thumbnail_square_side_bounded(available_width: f32, max_height: f32, compact: bool) -> f32 {
     let width_side = thumbnail_square_side(available_width, compact);
     if max_height <= 0.0 {
         return width_side;

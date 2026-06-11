@@ -5,12 +5,11 @@ use crate::diplomacy::{
 };
 use crate::execution::AttackExecution;
 use crate::game::GameState;
-use crate::player::PlayerId;
 use crate::pathfinding::WaterPathfinderScratch;
+use crate::player::PlayerId;
 use crate::warp_fleet::WarpFleet;
 use crate::water_components::WaterComponents;
-use serde::{Serialize, Deserialize};
-
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 pub struct PlacementScratch {
@@ -61,8 +60,7 @@ pub struct SowEngine {
 
     pub alliances_proposed: Vec<AllianceProposal>,
     /// `(proposer, target)` → tick when another outgoing request is allowed.
-    pub alliance_request_cooldown_until:
-        std::collections::HashMap<(PlayerId, PlayerId), u32>,
+    pub alliance_request_cooldown_until: std::collections::HashMap<(PlayerId, PlayerId), u32>,
     /// Bot id → tick when another betrayal is allowed.
     pub alliance_betray_cooldown_until: std::collections::HashMap<PlayerId, u32>,
     pub resource_requests_proposed: Vec<ResourceRequestProposed>,
@@ -446,8 +444,7 @@ impl SowEngine {
         // Keep track of names already used to prevent duplicates
         let mut used_names = std::collections::HashSet::new();
 
-        let map_spawns_snapshot: Vec<crate::map_file::MapSpawn> =
-            self.state.map_spawns.clone();
+        let map_spawns_snapshot: Vec<crate::map_file::MapSpawn> = self.state.map_spawns.clone();
 
         // Prepare the fallback historical civilizations pool for extra city-states
         let extra_nations_pool = crate::tribes::HISTORICAL_CIVILIZATIONS;
@@ -498,11 +495,14 @@ impl SowEngine {
                 if !found_name {
                     let mut found_fallback = false;
                     let mut attempts_fallback = 0;
-                    while !found_fallback && attempts_fallback < 100 && !fallback_nations_indices.is_empty() {
+                    while !found_fallback
+                        && attempts_fallback < 100
+                        && !fallback_nations_indices.is_empty()
+                    {
                         let idx = (rng.rand() as usize) % fallback_nations_indices.len();
                         let pool_idx = fallback_nations_indices[idx];
                         let raw_tribe_name = fallback_nations_pool[pool_idx];
-                        
+
                         let name_style = (rng.rand() as usize) % 9;
                         let formatted_name = match name_style {
                             0 => format!("{} Empire", raw_tribe_name),
@@ -515,8 +515,10 @@ impl SowEngine {
                             7 => format!("Grand Duchy of {}", raw_tribe_name),
                             _ => format!("{} Alliance", raw_tribe_name),
                         };
-                        
-                        if !used_names.contains(&formatted_name) && !used_names.contains(&raw_tribe_name.to_string()) {
+
+                        if !used_names.contains(&formatted_name)
+                            && !used_names.contains(raw_tribe_name)
+                        {
                             name = formatted_name;
                             used_names.insert(name.clone());
                             used_names.insert(raw_tribe_name.to_string());
@@ -696,14 +698,11 @@ impl SowEngine {
         for p in &mut self.state.players {
             if p.alive && p.tile_count > 0 {
                 // Desynchronize calculation using player ID as a phase offset
-                let should_recalculate = self.state.tick < 3 || (p.id as usize + self.state.tick as usize) % 15 == 0;
+                let should_recalculate = self.state.tick < 3
+                    || (p.id as usize + self.state.tick as usize).is_multiple_of(15)
+                    || p.nameplate_dirty;
                 if should_recalculate {
                     p.calculate_nameplate(&self.state.map);
-                } else {
-                    let cx = (p.sum_x / p.tile_count as u64) as f32;
-                    let cy = (p.sum_y / p.tile_count as u64) as f32;
-                    p.nameplate_x = cx + p.nameplate_offset_x;
-                    p.nameplate_y = cy + p.nameplate_offset_y;
                 }
             }
         }
@@ -979,8 +978,8 @@ impl SowEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game_config::GameConfig;
     use crate::game::GameState;
+    use crate::game_config::GameConfig;
     use crate::water_components::WaterComponents;
     #[test]
     fn test_spawn_ai_city_states() {
@@ -1021,11 +1020,7 @@ mod tests {
         engine.spawn_ai(2, 0);
         assert_eq!(engine.state.players.len(), 2);
         assert!(
-            engine
-                .state
-                .players
-                .iter()
-                .all(|p| p.name == "Testland"),
+            engine.state.players.iter().all(|p| p.name == "Testland"),
             "anchored spawns use map.bin spawn names"
         );
 

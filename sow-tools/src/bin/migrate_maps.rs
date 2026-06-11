@@ -53,10 +53,7 @@ fn read_map_payload(map_dir: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error
     Err("missing map.bin and map.bin.br".into())
 }
 
-fn load_legacy(
-    key: &str,
-    map_dir: &Path,
-) -> Result<MapFile, Box<dyn std::error::Error>> {
+fn load_legacy(key: &str, map_dir: &Path) -> Result<MapFile, Box<dyn std::error::Error>> {
     let raw = read_map_payload(map_dir)?;
 
     if raw.len() >= 4 && &raw[0..4] == map_file::MAP_MAGIC {
@@ -69,9 +66,7 @@ fn load_legacy(
     }
 
     let manifest: Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
-    let map_info = manifest
-        .get("map")
-        .ok_or("manifest missing map section")?;
+    let map_info = manifest.get("map").ok_or("manifest missing map section")?;
     let width = map_info.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let height = map_info.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let num_land = map_info
@@ -115,8 +110,14 @@ fn load_legacy(
                 .unwrap_or("")
                 .to_string();
             let coords = entry.get("coordinates").and_then(|v| v.as_array());
-            let x = coords.and_then(|c| c.first()).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let y = coords.and_then(|c| c.get(1)).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let x = coords
+                .and_then(|c| c.first())
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let y = coords
+                .and_then(|c| c.get(1))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
             spawns.push(MapSpawn { name, flag, x, y });
         }
     }
@@ -144,7 +145,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if args.dry_run {
-        println!("Dry run — no files will be modified under {}", maps_root.display());
+        println!(
+            "Dry run — no files will be modified under {}",
+            maps_root.display()
+        );
     } else if !args.yes {
         eprintln!(
             "This will rewrite map.bin files, delete manifest.json / mini_map.bin / maps.json, and rebuild catalog.bin under {}.",
@@ -190,7 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 catalog_items.push((slug(&key), header));
                 migrated += 1;
-                if migrated % 10 == 0 {
+                if migrated.is_multiple_of(10) {
                     println!("... {migrated} maps");
                 }
             }

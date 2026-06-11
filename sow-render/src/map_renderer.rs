@@ -147,7 +147,6 @@ fn fill_terrain_buffer(
     }
 }
 
-
 pub struct MapRenderer {
     pub terrain_texture: gpu::Texture,
     pub terrain_view: gpu::TextureView,
@@ -328,7 +327,6 @@ impl MapRenderer {
         let chunk_h = 64;
         let num_chunks = height.div_ceil(chunk_h);
 
-
         Self {
             terrain_texture,
             terrain_view,
@@ -441,7 +439,6 @@ impl MapRenderer {
         );
     }
 
-
     /// Write dirty ownership tiles to the upload buffer and copy to GPU.
     #[allow(unused_variables)]
     pub fn update(
@@ -457,7 +454,6 @@ impl MapRenderer {
             None => 0.016,
         };
         self.last_update = Some(now);
-
 
         // Scale decay based on elapsed time so it completes in exactly `conquest_duration` seconds on all frame rates.
         // We use an accumulator to handle slow decay rates (longer lifetimes) smoothly on high frame rates,
@@ -652,8 +648,6 @@ impl MapRenderer {
             },
         );
         rc.draw(0, 3, 0, 1);
-        drop(rc);
-
     }
 
     pub fn destroy(&mut self, render_ctx: &RenderContext) {
@@ -666,6 +660,5 @@ impl MapRenderer {
         render_ctx
             .context
             .destroy_render_pipeline(&mut self.pipeline);
-
     }
 }

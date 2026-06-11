@@ -54,24 +54,27 @@ pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)
     }
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
     let child = c.spawn().with_context(|| format!("spawn {cmd}"))?;
-    let out = child.wait_with_output().with_context(|| format!("wait {cmd}"))?;
-    
+    let out = child
+        .wait_with_output()
+        .with_context(|| format!("wait {cmd}"))?;
+
     let stdout_str = String::from_utf8_lossy(&out.stdout);
     let stderr_str = String::from_utf8_lossy(&out.stderr);
-    
+
     let mut has_warnings = false;
     let mut has_errors = false;
-    
+
     for line in stdout_str.lines().chain(stderr_str.lines()) {
         let l_lower = line.to_lowercase();
         if l_lower.contains("error:") || l_lower.contains("error ") {
             has_errors = true;
         }
-        if l_lower.contains("warning:") || l_lower.contains("warning ") || l_lower.contains("warn:") {
+        if l_lower.contains("warning:") || l_lower.contains("warning ") || l_lower.contains("warn:")
+        {
             has_warnings = true;
         }
     }
-    
+
     if !out.status.success() {
         print_cmd_executed(cmd, args, env);
         if !stdout_str.is_empty() {
@@ -82,7 +85,7 @@ pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)
         }
         anyhow::bail!("{cmd} failed ({})", out.status);
     }
-    
+
     if has_warnings || has_errors {
         print_cmd_executed(cmd, args, env);
         println!("⚠️  Warnings/Errors detected during execution of {cmd}:");
@@ -99,7 +102,7 @@ pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -121,10 +124,7 @@ pub fn output(cmd: &str, args: &[&str]) -> Result<String> {
         .with_context(|| format!("run {cmd}"))?;
     if !out.status.success() {
         print_cmd_executed(cmd, args, &[]);
-        anyhow::bail!(
-            "{cmd} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+        anyhow::bail!("{cmd} failed: {}", String::from_utf8_lossy(&out.stderr));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }

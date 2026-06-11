@@ -34,20 +34,12 @@ fn split_runs(text: &str) -> Vec<Run<'_>> {
             i = end;
         } else {
             let start = i;
-            i += text[i..]
-                .chars()
-                .next()
-                .map(|c| c.len_utf8())
-                .unwrap_or(1);
+            i += text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
             while i < text.len() {
                 if match_emoji_at(text, i).is_some() {
                     break;
                 }
-                i += text[i..]
-                    .chars()
-                    .next()
-                    .map(|c| c.len_utf8())
-                    .unwrap_or(1);
+                i += text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
             }
             runs.push(Run::Text(&text[start..i]));
         }
@@ -218,7 +210,8 @@ fn paint_runs(
                 x += w;
             }
             Run::Emoji(e) => {
-                let r = Rect::from_center_size(Pos2::new(x + icon_h / 2.0, cy), Vec2::splat(icon_h));
+                let r =
+                    Rect::from_center_size(Pos2::new(x + icon_h / 2.0, cy), Vec2::splat(icon_h));
                 try_paint_emoji(painter, e, r, color);
                 x += icon_h + 2.0;
             }
@@ -255,12 +248,10 @@ impl HudEmojiButton {
 
 impl Widget for HudEmojiButton {
     fn ui(self, ui: &mut Ui) -> Response {
-        let size = self.dim.unwrap_or_else(|| {
-            if cfg!(target_os = "android") {
-                48.0
-            } else {
-                32.0
-            }
+        let size = self.dim.unwrap_or(if cfg!(target_os = "android") {
+            48.0
+        } else {
+            32.0
         });
         let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
 

@@ -31,14 +31,66 @@ pub(crate) fn render(
     let visible_players = ctx.visible_players;
     let terrain = ctx.terrain;
 
+    let current_time = web_time::Instant::now();
+
+    // 1. Always render click markers on top, regardless of zoom
+    let marker_painter = painter.ctx().layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("click_markers"),
+    ));
+
+    if !ui.click_markers.is_empty() {
+        marker_painter.ctx().request_repaint();
+    }
+
+    ui.click_markers.retain(|m| {
+        let elapsed = current_time.duration_since(m.start_time).as_secs_f32();
+        if elapsed > 1.0 {
+            return false;
+        }
+        let screen_x = (input.camera_x + m.world_x * input.camera_zoom) / sf;
+        let screen_y = (input.camera_y + m.world_y * input.camera_zoom) / sf;
+        let center = egui::pos2(screen_x, screen_y);
+
+        let radius = 15.0 * (1.0 - (1.0 - elapsed).powi(3)); // expanding ring
+        let alpha = 1.0 - elapsed;
+        let color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 200.0) as u8);
+
+        marker_painter.circle_stroke(
+            center,
+            radius * zoom_scaled.min(1.0),
+            egui::Stroke::new(1.5_f32, color),
+        );
+
+        let half = 4.0 * zoom_scaled.min(1.0);
+        marker_painter.line_segment(
+            [
+                center + egui::vec2(-half, -half),
+                center + egui::vec2(half, half),
+            ],
+            egui::Stroke::new(1.0_f32, color),
+        );
+        marker_painter.line_segment(
+            [
+                center + egui::vec2(-half, half),
+                center + egui::vec2(half, -half),
+            ],
+            egui::Stroke::new(1.0_f32, color),
+        );
+
+        true
+    });
+
+    if zoom_scaled < 5.0 {
+        return;
+    }
+
     let is_water = |tile_idx: u32| {
         let t = terrain.get(tile_idx as usize).copied().unwrap_or(0);
         (t & 0x80) == 0
     };
 
     if let Some(snap) = &sim.current_snapshot {
-        let current_time = web_time::Instant::now();
-
         // Fallout zones are rendered GPU-side in the map shader (fallout_slots).
 
         ui.active_explosions.retain(|exp| {

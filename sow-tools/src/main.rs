@@ -144,11 +144,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 maps_root: import.maps_root,
             })
         }
-        Some(Commands::RefreshCatalog(args)) => {
-            openfront_import::refresh_catalog(&args.maps_root).map(|_| {
+        Some(Commands::RefreshCatalog(args)) => openfront_import::refresh_catalog(&args.maps_root)
+            .map(|_| {
                 println!("Wrote {}", args.maps_root.join("catalog.bin").display());
-            })
-        }
+            }),
         Some(Commands::ImageMap(args)) => run_image_map(args),
         Some(Commands::PackEmojiAtlas(args)) => {
             let repo_root = std::env::current_dir()?;
@@ -170,9 +169,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let bbox = args
                 .bbox
                 .ok_or("Missing --bbox (use: min_lon,min_lat,max_lon,max_lat)")?;
-            let name = args
-                .name
-                .ok_or("Missing --name for generated map slug")?;
+            let name = args.name.ok_or("Missing --name for generated map slug")?;
             run_generate(
                 &bbox,
                 &name,
@@ -211,9 +208,7 @@ async fn run_generate(
 
     let max_scale = sow_core::maps::max_scale_for_bbox(min_lon, min_lat, max_lon, max_lat);
     let scale = if scale > max_scale {
-        eprintln!(
-            "Warning: scale {scale:.2} exceeds mobile-safe max {max_scale:.2}; clamping."
-        );
+        eprintln!("Warning: scale {scale:.2} exceeds mobile-safe max {max_scale:.2}; clamping.");
         max_scale
     } else {
         scale
@@ -247,15 +242,14 @@ async fn run_generate(
     .await?;
 
     println!("Rasterizing landmass...");
-    let (map_width, map_height, mut terrain_grid) =
-        rasterizer::build_landmass_from_coastlines(
-            &coastlines,
-            min_lon,
-            min_lat,
-            max_lon,
-            max_lat,
-            scale,
-        );
+    let (map_width, map_height, mut terrain_grid) = rasterizer::build_landmass_from_coastlines(
+        &coastlines,
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+        scale,
+    );
 
     println!("Stamping inland water (optional, tile-by-tile)...");
     if let Err(e) = overpass::stamp_water_tiled(
@@ -316,12 +310,17 @@ async fn run_generate(
     )?;
 
     println!("Generation complete! Saved to assets/maps/{name}");
-    println!("Map data © OpenStreetMap contributors (ODbL). See https://www.openstreetmap.org/copyright");
+    println!(
+        "Map data © OpenStreetMap contributors (ODbL). See https://www.openstreetmap.org/copyright"
+    );
     Ok(())
 }
 
 fn run_image_map(args: ImageMapArgs) -> Result<(), Box<dyn Error>> {
-    let display_name = args.display_name.clone().unwrap_or_else(|| args.name.clone());
+    let display_name = args
+        .display_name
+        .clone()
+        .unwrap_or_else(|| args.name.clone());
 
     let (src_w, src_h) = image::image_dimensions(&args.input)?;
     println!(

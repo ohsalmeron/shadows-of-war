@@ -38,7 +38,10 @@ fn call_window_hook_str(name: &str, arg: &str) {
         let Ok(func) = val.dyn_into::<js_sys::Function>() else {
             return;
         };
-        let _ = func.call1(&wasm_bindgen::JsValue::NULL, &wasm_bindgen::JsValue::from_str(arg));
+        let _ = func.call1(
+            &wasm_bindgen::JsValue::NULL,
+            &wasm_bindgen::JsValue::from_str(arg),
+        );
     }
 }
 
@@ -51,7 +54,10 @@ fn call_window_hook_str_ret_string(name: &str, arg: &str) -> Option<String> {
         let Ok(func) = val.dyn_into::<js_sys::Function>() else {
             return None;
         };
-        if let Ok(res) = func.call1(&wasm_bindgen::JsValue::NULL, &wasm_bindgen::JsValue::from_str(arg)) {
+        if let Ok(res) = func.call1(
+            &wasm_bindgen::JsValue::NULL,
+            &wasm_bindgen::JsValue::from_str(arg),
+        ) {
             return res.as_string();
         }
     }
@@ -184,9 +190,7 @@ pub fn update_room(lobby_id: u64, joinable: bool, build_version: &str) {
 }
 
 pub fn invite_link(lobby_id: u64, build_version: &str) -> Option<String> {
-    let json = format!(
-        r#"{{"lobbyId":"{lobby_id}","buildVersion":"{build_version}"}}"#
-    );
+    let json = format!(r#"{{"lobbyId":"{lobby_id}","buildVersion":"{build_version}"}}"#);
     call_window_hook_str_ret_string("SOW_portalInviteLink", &json)
 }
 

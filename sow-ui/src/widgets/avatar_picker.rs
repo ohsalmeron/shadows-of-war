@@ -125,8 +125,8 @@ fn draw_left_vertical_scrollbar(
     let scroll_style = ui.spacing().scroll;
     let mut state = egui::scroll_area::State::load(ui.ctx(), scroll_id).unwrap_or_default();
 
-    let is_hovering_outer_rect = ui.rect_contains_pointer(scroll_outer_rect)
-        || ui.rect_contains_pointer(bar_lane_rect);
+    let is_hovering_outer_rect =
+        ui.rect_contains_pointer(scroll_outer_rect) || ui.rect_contains_pointer(bar_lane_rect);
 
     let outer_margin = scroll_style.bar_outer_margin;
     let full_width = scroll_style.bar_width;
@@ -148,10 +148,9 @@ fn draw_left_vertical_scrollbar(
     );
 
     let is_hovering_bar_area = response.hovered() || response.dragged();
-    let is_hovering_bar_area_t = ui.ctx().animate_bool_responsive(
-        scroll_id.with((1_usize, "bar_hover")),
-        is_hovering_bar_area,
-    );
+    let is_hovering_bar_area_t = ui
+        .ctx()
+        .animate_bool_responsive(scroll_id.with((1_usize, "bar_hover")), is_hovering_bar_area);
 
     let width = lerp(
         scroll_style.floating_width..=full_width,
@@ -246,6 +245,7 @@ fn draw_left_vertical_scrollbar(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_response_drag_or_track_click(
     ui: &mut egui::Ui,
     state: &mut egui::scroll_area::State,
@@ -271,8 +271,8 @@ fn handle_response_drag_or_track_click(
                 .ctx()
                 .data(|d| d.get_temp(drag_offset_id))
                 .unwrap_or(handle_len * 0.5);
-            let new_top = (pos.y - drag_offset)
-                .clamp(scroll_track.top(), scroll_track.top() + handle_travel);
+            let new_top =
+                (pos.y - drag_offset).clamp(scroll_track.top(), scroll_track.top() + handle_travel);
             state.offset.y = if handle_travel > 0.0 {
                 remap(
                     new_top,
@@ -423,11 +423,7 @@ fn draw_leader_hero_text(
         crate::ui::theme::leader_name_label(ui, selected_leader.name(), metrics.name_font);
         crate::ui::theme::leader_caps_line(
             ui,
-            &format!(
-                "{} • {}",
-                selected_civilization.name(),
-                reign_dates
-            ),
+            &format!("{} • {}", selected_civilization.name(), reign_dates),
             metrics.caps_line_font,
         );
         crate::ui::theme::leader_caps_paragraph(
@@ -792,7 +788,8 @@ fn draw_leader_picker_back_button(
                 maintain_aspect_ratio: true,
             },
         ) {
-            let icon_rect = Rect::from_center_size(response.rect.center(), egui::vec2(icon_size, icon_size));
+            let icon_rect =
+                Rect::from_center_size(response.rect.center(), egui::vec2(icon_size, icon_size));
             ui.put(
                 icon_rect,
                 egui::Image::new((texture.id, egui::vec2(icon_size, icon_size)))
@@ -934,12 +931,8 @@ pub fn draw_leader_picker_modal(
 
             ui.scope_builder(egui::UiBuilder::new().max_rect(content_rect), |ui| {
                 if is_mobile {
-                    let (back, column_bottom) = draw_leader_picker_top_column(
-                        ui,
-                        ctx,
-                        &metrics,
-                        content_rect.max.x,
-                    );
+                    let (back, column_bottom) =
+                        draw_leader_picker_top_column(ui, ctx, &metrics, content_rect.max.x);
                     if back {
                         close = true;
                     }
@@ -964,21 +957,18 @@ pub fn draw_leader_picker_modal(
                             egui::pos2(content_rect.max.x, text_bottom),
                         );
                         ui.scope_builder(egui::UiBuilder::new().max_rect(text_rect), |ui| {
-                            ui.with_layout(
-                                egui::Layout::bottom_up(egui::Align::Center),
-                                |ui| {
-                                    ui.set_width(card_w);
-                                    draw_leader_hero_text(
-                                        ui,
-                                        *selected_leader,
-                                        *selected_civilization,
-                                        reign_dates,
-                                        card_w,
-                                        &metrics,
-                                        true,
-                                    );
-                                },
-                            );
+                            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                                ui.set_width(card_w);
+                                draw_leader_hero_text(
+                                    ui,
+                                    *selected_leader,
+                                    *selected_civilization,
+                                    reign_dates,
+                                    card_w,
+                                    &metrics,
+                                    true,
+                                );
+                            });
                         });
                     }
 
@@ -1000,12 +990,8 @@ pub fn draw_leader_picker_modal(
                     let is_desktop_narrow = screen_rect.width() < DESKTOP_NARROW_BREAKPOINT;
                     let back_rect =
                         crate::ui::main_menu::profile::main_menu_avatar_button_rect(ctx);
-                    let (back, column_bottom) = draw_leader_picker_top_column(
-                        ui,
-                        ctx,
-                        &metrics,
-                        content_rect.max.x,
-                    );
+                    let (back, column_bottom) =
+                        draw_leader_picker_top_column(ui, ctx, &metrics, content_rect.max.x);
                     if back {
                         close = true;
                     }
@@ -1032,26 +1018,26 @@ pub fn draw_leader_picker_modal(
                         );
                         if hero_rect.height() > 0.0 && hero_rect.width() > 0.0 {
                             ui.scope_builder(egui::UiBuilder::new().max_rect(hero_rect), |ui| {
-                                ui.with_layout(
-                                    egui::Layout::bottom_up(egui::Align::LEFT),
-                                    |ui| {
-                                        ui.set_width(hero_rect.width());
-                                        draw_leader_hero_text(
-                                            ui,
-                                            *selected_leader,
-                                            *selected_civilization,
-                                            reign_dates,
-                                            hero_rect.width(),
-                                            &metrics,
-                                            false,
-                                        );
-                                    },
-                                );
+                                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                                    ui.set_width(hero_rect.width());
+                                    draw_leader_hero_text(
+                                        ui,
+                                        *selected_leader,
+                                        *selected_civilization,
+                                        reign_dates,
+                                        hero_rect.width(),
+                                        &metrics,
+                                        false,
+                                    );
+                                });
                             });
                         }
                     } else {
                         let text_rect = egui::Rect::from_min_max(
-                            egui::pos2(avatar_lane_x + avatar_size + metrics.rail_text_gap, pick_top),
+                            egui::pos2(
+                                avatar_lane_x + avatar_size + metrics.rail_text_gap,
+                                pick_top,
+                            ),
                             egui::pos2(
                                 (avatar_lane_x + avatar_size + metrics.rail_text_gap + card_w)
                                     .min(content_rect.max.x),

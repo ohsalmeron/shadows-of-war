@@ -339,16 +339,12 @@ fn parse_legal(toml: &str) -> LegalDocument {
 
 /// Privacy policy (English; embedded from sow-web).
 pub fn privacy(_lang: Language) -> &'static LegalDocument {
-    PRIVACY_EN.get_or_init(|| {
-        parse_legal(include_str!("../../sow-web/site/legal/privacy.en.toml"))
-    })
+    PRIVACY_EN.get_or_init(|| parse_legal(include_str!("../../sow-web/site/legal/privacy.en.toml")))
 }
 
 /// Terms of service (English; embedded from sow-web).
 pub fn terms(_lang: Language) -> &'static LegalDocument {
-    TERMS_EN.get_or_init(|| {
-        parse_legal(include_str!("../../sow-web/site/legal/terms.en.toml"))
-    })
+    TERMS_EN.get_or_init(|| parse_legal(include_str!("../../sow-web/site/legal/terms.en.toml")))
 }
 
 #[cfg(not(feature = "map-editor"))]
@@ -432,6 +428,7 @@ fn load_language(
 }
 
 #[cfg(feature = "map-editor")]
+#[allow(clippy::too_many_arguments)]
 fn load_language_with_map_editor(
     main_menu_toml: &str,
     settings_toml: &str,

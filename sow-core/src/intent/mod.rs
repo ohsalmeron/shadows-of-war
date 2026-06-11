@@ -303,7 +303,8 @@ impl SowEngine {
                 }
             }
             GameplayIntent::ExpressEmoji { emoji, pinned } => {
-                let max_emoji_ticks = (3.0 * 1000.0 / self.state.config.tick_rate_ms).round() as u32;
+                let max_emoji_ticks =
+                    (3.0 * 1000.0 / self.state.config.tick_rate_ms).round() as u32;
                 if let Some(player) = self.state.player_mut(stamped.player_id) {
                     player.active_emoji = Some(emoji.clone());
                     player.emoji_pinned = *pinned;
@@ -332,10 +333,7 @@ impl SowEngine {
                             .map(|p| {
                                 let allied = p.alliances.contains(&target);
                                 let timer = p.alliance_timers.get(&target).copied().unwrap_or(0);
-                                (
-                                    allied,
-                                    allied && timer <= ALLIANCE_RENEWAL_WINDOW_TICKS,
-                                )
+                                (allied, allied && timer <= ALLIANCE_RENEWAL_WINDOW_TICKS)
                             })
                             .unwrap_or((false, false));
 
@@ -364,15 +362,13 @@ impl SowEngine {
                                     if !p1.alliances.contains(&target) {
                                         p1.alliances.push(target);
                                     }
-                                    p1.alliance_timers
-                                        .insert(target, ALLIANCE_DURATION_TICKS);
+                                    p1.alliance_timers.insert(target, ALLIANCE_DURATION_TICKS);
                                 }
                                 if let Some(p2) = self.state.player_mut(target) {
                                     if !p2.alliances.contains(&proposer) {
                                         p2.alliances.push(proposer);
                                     }
-                                    p2.alliance_timers
-                                        .insert(proposer, ALLIANCE_DURATION_TICKS);
+                                    p2.alliance_timers.insert(proposer, ALLIANCE_DURATION_TICKS);
                                 }
                                 self.retreat_mutual_aggression(proposer, target);
                             } else if self.can_send_alliance_request(proposer, target) {
@@ -391,24 +387,24 @@ impl SowEngine {
                     .position(|p| p.proposer == target && p.target == acceptor);
                 if let Some(idx) = prop_idx {
                     self.alliances_proposed.remove(idx);
-                    if let Some(rev_idx) = self.alliances_proposed.iter().position(|p| {
-                        p.proposer == acceptor && p.target == target
-                    }) {
+                    if let Some(rev_idx) = self
+                        .alliances_proposed
+                        .iter()
+                        .position(|p| p.proposer == acceptor && p.target == target)
+                    {
                         self.alliances_proposed.remove(rev_idx);
                     }
                     if let Some(p1) = self.state.player_mut(acceptor) {
                         if !p1.alliances.contains(&target) {
                             p1.alliances.push(target);
                         }
-                        p1.alliance_timers
-                            .insert(target, ALLIANCE_DURATION_TICKS);
+                        p1.alliance_timers.insert(target, ALLIANCE_DURATION_TICKS);
                     }
                     if let Some(p2) = self.state.player_mut(target) {
                         if !p2.alliances.contains(&acceptor) {
                             p2.alliances.push(acceptor);
                         }
-                        p2.alliance_timers
-                            .insert(acceptor, ALLIANCE_DURATION_TICKS);
+                        p2.alliance_timers.insert(acceptor, ALLIANCE_DURATION_TICKS);
                     }
                     self.retreat_mutual_aggression(acceptor, target);
                 }
@@ -439,9 +435,7 @@ impl SowEngine {
                         }
                     })
                     .unwrap_or(BOT_BETRAYAL_EMOJI_TICKS);
-                let traitor_until = self
-                    .current_tick_u32()
-                    .saturating_add(TRAITOR_STATUS_TICKS);
+                let traitor_until = self.current_tick_u32().saturating_add(TRAITOR_STATUS_TICKS);
                 if let Some(p1) = self.state.player_mut(breaker) {
                     p1.alliances.retain(|&id| id != target);
                     p1.alliance_timers.remove(&target);
@@ -471,11 +465,15 @@ impl SowEngine {
                     .map(|p| {
                         p.alliances.contains(&target)
                             || (p.team.is_some()
-                                && p.team
-                                    == self.state.player(target).and_then(|t| t.team))
+                                && p.team == self.state.player(target).and_then(|t| t.team))
                     })
                     .unwrap_or(false);
-                if sender != target && is_allied && (g > 0.0 || t > 0.0) && !g.is_nan() && !t.is_nan() {
+                if sender != target
+                    && is_allied
+                    && (g > 0.0 || t > 0.0)
+                    && !g.is_nan()
+                    && !t.is_nan()
+                {
                     let mut actual_g = 0.0;
                     let mut actual_t = 0.0;
                     let mut sender_ok = false;
@@ -497,14 +495,14 @@ impl SowEngine {
                                     (t_player.troops + actual_t).min(t_player.max_troops);
                             }
                         }
-                        self.state.events.push(
-                            crate::game::GameEvent::ResourceTransferred {
+                        self.state
+                            .events
+                            .push(crate::game::GameEvent::ResourceTransferred {
                                 sender_id: sender,
                                 receiver_id: target,
                                 gold: actual_g,
                                 troops: actual_t,
-                            },
-                        );
+                            });
                     }
                 }
             }
@@ -518,24 +516,35 @@ impl SowEngine {
                 let g = *gold;
                 let t = *troops;
                 if proposer != target && (g > 0.0 || t > 0.0) && !g.is_nan() && !t.is_nan() {
-                    let proposer_alive = self.state.player(proposer).map(|p| p.alive).unwrap_or(false);
+                    let proposer_alive = self
+                        .state
+                        .player(proposer)
+                        .map(|p| p.alive)
+                        .unwrap_or(false);
                     let target_alive = self.state.player(target).map(|p| p.alive).unwrap_or(false);
                     if proposer_alive && target_alive {
                         // Clear any existing request between these two
-                        self.resource_requests_proposed.retain(|r| !(r.proposer == proposer && r.target == target));
-                        self.resource_requests_proposed.push(crate::engine::ResourceRequestProposed {
-                            proposer,
-                            target,
-                            gold: g,
-                            troops: t,
-                        });
+                        self.resource_requests_proposed
+                            .retain(|r| !(r.proposer == proposer && r.target == target));
+                        self.resource_requests_proposed.push(
+                            crate::engine::ResourceRequestProposed {
+                                proposer,
+                                target,
+                                gold: g,
+                                troops: t,
+                            },
+                        );
                     }
                 }
             }
             GameplayIntent::AcceptResourceRequest { target_player } => {
                 let acceptor = stamped.player_id;
                 let target = *target_player; // target here is the proposer
-                if let Some(pos) = self.resource_requests_proposed.iter().position(|r| r.proposer == target && r.target == acceptor) {
+                if let Some(pos) = self
+                    .resource_requests_proposed
+                    .iter()
+                    .position(|r| r.proposer == target && r.target == acceptor)
+                {
                     let req = self.resource_requests_proposed.remove(pos);
                     let mut actual_g = 0.0;
                     let mut actual_t = 0.0;
@@ -543,9 +552,17 @@ impl SowEngine {
                     // Acceptor pays the resources
                     if let Some(acc_player) = self.state.player_mut(acceptor) {
                         if acc_player.alive {
-                            actual_g = if req.gold > 0.0 { req.gold.min(acc_player.gold) } else { 0.0 };
+                            actual_g = if req.gold > 0.0 {
+                                req.gold.min(acc_player.gold)
+                            } else {
+                                0.0
+                            };
                             let max_t_to_send = (acc_player.troops - 1.0).max(0.0);
-                            actual_t = if req.troops > 0.0 { req.troops.min(max_t_to_send) } else { 0.0 };
+                            actual_t = if req.troops > 0.0 {
+                                req.troops.min(max_t_to_send)
+                            } else {
+                                0.0
+                            };
                             acc_player.gold -= actual_g;
                             acc_player.troops -= actual_t;
                             acceptor_ok = true;
@@ -556,7 +573,8 @@ impl SowEngine {
                         if let Some(prop_player) = self.state.player_mut(target) {
                             if prop_player.alive {
                                 prop_player.gold += actual_g;
-                                prop_player.troops = (prop_player.troops + actual_t).min(prop_player.max_troops);
+                                prop_player.troops =
+                                    (prop_player.troops + actual_t).min(prop_player.max_troops);
                             }
                         }
                     }
@@ -565,14 +583,18 @@ impl SowEngine {
             GameplayIntent::RejectResourceRequest { target_player } => {
                 let rejector = stamped.player_id;
                 let target = *target_player; // target here is the proposer
-                if let Some(pos) = self.resource_requests_proposed.iter().position(|r| r.proposer == target && r.target == rejector) {
+                if let Some(pos) = self
+                    .resource_requests_proposed
+                    .iter()
+                    .position(|r| r.proposer == target && r.target == rejector)
+                {
                     self.resource_requests_proposed.remove(pos);
-                    self.state.events.push(
-                        crate::game::GameEvent::ResourceRequestRejected {
+                    self.state
+                        .events
+                        .push(crate::game::GameEvent::ResourceRequestRejected {
                             rejector_id: rejector,
                             requester_id: target,
-                        }
-                    );
+                        });
                 }
             }
         }

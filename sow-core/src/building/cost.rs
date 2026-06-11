@@ -14,7 +14,11 @@ pub fn count_kind(buildings: &[Building], owner_id: u16, kind: BuildingKind) -> 
 
 /// Gold price for a new structure.
 #[inline]
-pub fn structure_build_cost_gold(kind: BuildingKind, count: u32, cfg: &crate::game_config::GameConfig) -> f64 {
+pub fn structure_build_cost_gold(
+    kind: BuildingKind,
+    count: u32,
+    cfg: &crate::game_config::GameConfig,
+) -> f64 {
     let base_cost = match kind {
         BuildingKind::City => cfg.cost_city,
         BuildingKind::Bunker => cfg.cost_bunker,

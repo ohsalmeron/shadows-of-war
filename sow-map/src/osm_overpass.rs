@@ -79,6 +79,7 @@ pub fn tile_bboxes(
 }
 
 /// Fetch coastlines one tile at a time, extract projected segments, drop raw JSON each iteration.
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_coastlines_tiled(
     min_lon: f64,
     min_lat: f64,
@@ -139,14 +140,7 @@ pub async fn fetch_coastlines_tiled(
         }
 
         let extracted = crate::osm_coast::extract_coastlines(
-            &json,
-            min_lon,
-            min_lat,
-            max_lon,
-            max_lat,
-            scale,
-            map_width,
-            map_height,
+            &json, min_lon, min_lat, max_lon, max_lat, scale, map_width, map_height,
         );
         log::info!("    {} coastline segments", extracted.segments.len());
 
@@ -172,6 +166,7 @@ pub async fn fetch_coastlines_tiled(
 }
 
 /// Fetch lake/bay polygons one tile at a time and stamp them onto the grid immediately.
+#[allow(clippy::too_many_arguments)]
 pub async fn stamp_water_tiled(
     grid: &mut [sow_core::map::MapTile],
     min_lon: f64,
@@ -217,21 +212,16 @@ pub async fn stamp_water_tiled(
 
         let before = grid.iter().filter(|t| t.is_water()).count();
         crate::osm_coast::stamp_water_polygons(
-            grid,
-            &json,
-            min_lon,
-            min_lat,
-            max_lon,
-            max_lat,
-            scale,
-            map_width,
-            map_height,
+            grid, &json, min_lon, min_lat, max_lon, max_lat, scale, map_width, map_height,
         );
         let after = grid.iter().filter(|t| t.is_water()).count();
         if after > before {
             stamped += 1;
         }
-        eprintln!("    stamped {} new water tiles", after.saturating_sub(before));
+        eprintln!(
+            "    stamped {} new water tiles",
+            after.saturating_sub(before)
+        );
     }
 
     eprintln!("Water stamp done ({stamped} tiles added inland water)");
@@ -370,8 +360,7 @@ mod tests {
     fn clamp_bbox_limits_overpass_tiles() {
         let huge = (-29.0, 25.0, 48.0, 71.0);
         assert!(overpass_tile_count(huge.0, huge.1, huge.2, huge.3) > 1);
-        let (a, b, c, d, clamped) =
-            clamp_bbox_to_tile_budget(huge.0, huge.1, huge.2, huge.3, 1);
+        let (a, b, c, d, clamped) = clamp_bbox_to_tile_budget(huge.0, huge.1, huge.2, huge.3, 1);
         assert!(clamped);
         assert_eq!(overpass_tile_count(a, b, c, d), 1);
     }

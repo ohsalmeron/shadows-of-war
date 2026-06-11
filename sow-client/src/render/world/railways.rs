@@ -35,6 +35,12 @@ pub struct RailState {
     prev_hash: u64,
 }
 
+impl Default for RailState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RailState {
     pub fn new() -> Self {
         Self {
@@ -90,6 +96,7 @@ fn walk_axis_water(
 }
 
 /// Check if an L-shaped path crosses water.
+#[allow(clippy::too_many_arguments)]
 fn l_crosses_water(
     ax: i32,
     ay: i32,
@@ -119,6 +126,7 @@ fn closest_point_on_segment(p: (f32, f32), s0: (f32, f32), s1: (f32, f32)) -> (f
     (x0 + t * dx, y0 + t * dy)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_snap_point(
     state: &RailState,
     p_tx: f32,
@@ -177,7 +185,7 @@ fn find_snap_point(
             };
 
             if let Some(h_first_val) = h_first {
-                if best.map_or(true, |(_, _, _, _, bd)| d2 < bd) {
+                if best.is_none_or(|(_, _, _, _, bd)| d2 < bd) {
                     best = Some((q.0, q.1, h_first_val, seg_idx, d2));
                 }
             }

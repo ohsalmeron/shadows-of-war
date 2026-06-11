@@ -60,7 +60,8 @@ impl SowApp {
             .unwrap_or(0);
 
         // Configuration variables removed from GameConfig
-        let dot_r = ClientVisualConfig::default().ui_lod_dot_radius;
+        let visual_config = ClientVisualConfig::default();
+        let dot_r = visual_config.ui_lod_dot_radius;
 
         let player_count = self
             .sim
@@ -76,11 +77,7 @@ impl SowApp {
                     continue;
                 }
 
-                let (avg_col, avg_row) = if player.nameplate_size > 0.1 {
-                    (player.nameplate_x, player.nameplate_y)
-                } else {
-                    (player.centroid_x, player.centroid_y)
-                };
+                let (avg_col, avg_row) = (player.nameplate_x, player.nameplate_y);
 
                 let target_cx = avg_col + 0.5;
                 let target_cy = avg_row + 0.5;
@@ -100,6 +97,7 @@ impl SowApp {
                 } else if dist > 0.1 {
                     pos.0 += dx * smooth_factor;
                     pos.1 += dy * smooth_factor;
+                    self.ui.egui_ctx.request_repaint();
                 } else {
                     pos.0 = target_cx;
                     pos.1 = target_cy;
@@ -132,21 +130,25 @@ impl SowApp {
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
 
+                let max_world = visual_config.nameplate_max_screen_font / (self.input.camera_zoom / sf).max(0.5);
                 let target_size = if player.nameplate_size > 0.1 {
-                    player.nameplate_size
+                    player.nameplate_size.min(max_world)
                 } else {
                     0.0
                 };
 
-                let size_entry = self
-                    .ui
-                    .label_sizes
-                    .entry(player.id)
-                    .or_insert(target_size);
+                let size_entry = self.ui.label_sizes.entry(player.id).or_insert(target_size);
 
                 let ds = target_size - *size_entry;
                 if ds.abs() > 0.01 {
-                    *size_entry += ds * smooth_factor;
+                    let rate = if ds > 0.0 {
+                        visual_config.nameplate_size_grow_rate
+                    } else {
+                        10.0
+                    };
+                    let smooth_factor_size = 1.0 - (-rate * dt).exp();
+                    *size_entry += ds * smooth_factor_size;
+                    self.ui.egui_ctx.request_repaint();
                 } else {
                     *size_entry = target_size;
                 }

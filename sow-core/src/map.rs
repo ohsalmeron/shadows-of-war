@@ -64,8 +64,6 @@ pub enum TileResource {
     Salt = 9,
 }
 
-
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GameMap {
     pub width: u32,
@@ -333,7 +331,7 @@ mod border_mask_tests {
         let h = 4u32;
         let land = 0x80u32;
         let mut raw: Vec<u32> = (0..(w * h)).map(|_| 1u32 | (land << 16)).collect();
-        let i = (1 * w + 2) as usize;
+        let i = (w + 2) as usize;
         raw[i] = 2 | (land << 16);
         let m = compute_border_mask_u32(&raw, w, h, 1, 1);
         assert_ne!(m, 0, "expected border between owner 1 and 2");

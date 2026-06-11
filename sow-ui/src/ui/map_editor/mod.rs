@@ -256,11 +256,7 @@ pub fn draw_map_editor(
 
             // Row 2: map name, actions, size
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&strings.label_map_name)
-                        .size(13.0)
-                        .strong(),
-                );
+                ui.label(RichText::new(&strings.label_map_name).size(13.0).strong());
                 ui.add(
                     egui::TextEdit::singleline(&mut state.map_name)
                         .desired_width(140.0)
@@ -333,21 +329,15 @@ pub fn draw_map_editor(
                                 &strings.btn_export
                             }
                         };
-                        let export_resp = toolbar_button(
-                            ui,
-                            export_label,
-                            ThemeButtonStyle::Primary,
-                            None,
-                        )
-                        .on_hover_text(&strings.tooltip_export);
+                        let export_resp =
+                            toolbar_button(ui, export_label, ThemeButtonStyle::Primary, None)
+                                .on_hover_text(&strings.tooltip_export);
                         if export_resp.clicked() {
                             state.show_export_confirm = true;
                         }
                     });
                 } else {
-                    let has_selection = osm_view
-                        .and_then(|v| v.selection_screen_rect)
-                        .is_some();
+                    let has_selection = osm_view.and_then(|v| v.selection_screen_rect).is_some();
                     let mut generate_btn = ThemeButton::new(&strings.btn_generate_osm)
                         .style(if has_selection {
                             ThemeButtonStyle::Primary
@@ -357,8 +347,8 @@ pub fn draw_map_editor(
                         .min_size(Vec2::new(TOOLBAR_BTN_MIN_W, TOOLBAR_BTN_H))
                         .text_size(TOOLBAR_TEXT);
                     if !has_selection {
-                        generate_btn = generate_btn
-                            .custom_fill(crate::ui::theme::menu_secondary_button());
+                        generate_btn =
+                            generate_btn.custom_fill(crate::ui::theme::menu_secondary_button());
                     }
                     let generate_resp = ui.add_enabled(has_selection && !busy, generate_btn);
                     if !has_selection {
@@ -407,7 +397,7 @@ pub fn draw_map_editor(
             ui.separator();
             ui.add_space(8.0);
 
-                if state.mode == EditorMode::OsmPicker {
+            if state.mode == EditorMode::OsmPicker {
                 let view = osm_view.cloned().unwrap_or_default();
                 ui.label(RichText::new(&strings.heading_osm).strong());
                 ui.add_space(6.0);
@@ -441,7 +431,11 @@ pub fn draw_map_editor(
                             .replace("{}", &format!("{max_lon:.3}, {max_lat:.3}")),
                     );
                     if let Some(n) = view.overpass_tile_estimate {
-                        ui.label(strings.label_osm_overpass_tiles.replace("{}", &n.to_string()));
+                        ui.label(
+                            strings
+                                .label_osm_overpass_tiles
+                                .replace("{}", &n.to_string()),
+                        );
                         if n > 144 {
                             ui.colored_label(
                                 egui::Color32::from_rgb(220, 120, 80),
@@ -478,8 +472,12 @@ pub fn draw_map_editor(
                 ui.add_space(6.0);
 
                 ui.label(&strings.label_terrain);
-                if paint_chip(ui, &strings.paint_plains, state.selected_paint == EditorPaintKind::Plains)
-                    .clicked()
+                if paint_chip(
+                    ui,
+                    &strings.paint_plains,
+                    state.selected_paint == EditorPaintKind::Plains,
+                )
+                .clicked()
                 {
                     state.selected_paint = EditorPaintKind::Plains;
                 }
@@ -501,8 +499,12 @@ pub fn draw_map_editor(
                 {
                     state.selected_paint = EditorPaintKind::Mountains;
                 }
-                if paint_chip(ui, &strings.paint_lake, state.selected_paint == EditorPaintKind::Water)
-                    .clicked()
+                if paint_chip(
+                    ui,
+                    &strings.paint_lake,
+                    state.selected_paint == EditorPaintKind::Water,
+                )
+                .clicked()
                 {
                     state.selected_paint = EditorPaintKind::Water;
                 }
@@ -539,9 +541,7 @@ pub fn draw_map_editor(
                         .label_strength
                         .replace("{:.1}", &format!("{:.1}", state.brush_strength)),
                 );
-                ui.add(
-                    egui::Slider::new(&mut state.brush_strength, 1.0..=31.0).show_value(false),
-                );
+                ui.add(egui::Slider::new(&mut state.brush_strength, 1.0..=31.0).show_value(false));
 
                 ui.add_space(30.0);
                 ui.heading(&strings.heading_instructions);
@@ -790,9 +790,7 @@ fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView, state: &mut MapEdit
         state.osm_drag_anchor = None;
     }
 
-    let sel = state
-        .osm_selection_screen
-        .or(view.selection_screen_rect);
+    let sel = state.osm_selection_screen.or(view.selection_screen_rect);
     if let Some(sel) = sel {
         painter.rect_stroke(
             sel,
@@ -800,11 +798,7 @@ fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView, state: &mut MapEdit
             Stroke::new(2.0_f32, crate::ui::theme::accent_solo_cyan()),
             egui::StrokeKind::Outside,
         );
-        painter.rect_filled(
-            sel,
-            0.0,
-            Color32::from_rgba_unmultiplied(6, 182, 212, 40),
-        );
+        painter.rect_filled(sel, 0.0, Color32::from_rgba_unmultiplied(6, 182, 212, 40));
     }
 }
 
@@ -858,14 +852,11 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
             brush_r,
             Stroke::new(1.5_f32, accent.linear_multiply(0.85)),
         );
-        painter.circle_filled(
-            center,
-            3.0_f32,
-            accent.linear_multiply(0.9),
-        );
+        painter.circle_filled(center, 3.0_f32, accent.linear_multiply(0.9));
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_confirm_dialog(
     ctx: &Context,
     title: &str,

@@ -134,6 +134,7 @@ async fn main() {
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_millis(tick_interval_ms));
         let mut last_status = std::time::Instant::now();
+        let mut generated_rematch_id: Option<u64> = None;
 
         loop {
             tokio::select! {
@@ -198,9 +199,15 @@ async fn main() {
                             });
                         }
                         RelayEvent::RematchRequest { player_id } => {
-                            info!("Player {} requested a rematch. Generating rematch_lobby_id...", player_id);
-                            // Generate a large random ID to ensure it is handled as a rematch by the orchestrator
-                            let rematch_id = (rand::random::<u64>() % 100_000) + 100_000_000;
+                            let rematch_id = if let Some(id) = generated_rematch_id {
+                                info!("Player {} requested a rematch. Reusing cached rematch_lobby_id {}", player_id, id);
+                                id
+                            } else {
+                                let id = (rand::random::<u64>() % 100_000) + 100_000_000;
+                                info!("Player {} requested a rematch. Generating rematch_lobby_id {}...", player_id, id);
+                                generated_rematch_id = Some(id);
+                                id
+                            };
                             let msg = sow_core::protocol::ServerLobbyClosedMessage {
                                 lobby_id,
                                 reason: "Rematch Requested".to_string(),

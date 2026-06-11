@@ -53,7 +53,7 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
     fs::create_dir_all(cache_dir)?;
     let cache_path = cache_dir.join(format!("{WASM_OPT_TAG}-{hash}.wasm"));
     let cache_path_br = cache_dir.join(format!("{WASM_OPT_TAG}-{hash}.wasm.br"));
-    
+
     if cache_path.is_file() {
         println!("==> wasm-opt cache hit");
         fs::copy(&cache_path, wasm_path)?;
@@ -80,12 +80,12 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
             None,
         )?;
         fs::copy(wasm_path, &cache_path)?;
-        
+
         // Also pre-compress the optimized WASM to cache
         let input = fs::read(wasm_path)?;
         let compressed = brotli_compress(&input)?;
         fs::write(&cache_path_br, compressed)?;
-        
+
         println!("✅ wasm-opt finished");
     } else {
         println!("⚠️  wasm-opt not found — skipping");

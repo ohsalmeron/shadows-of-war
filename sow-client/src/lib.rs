@@ -116,16 +116,16 @@ pub mod hud;
 mod ime;
 pub mod input;
 pub mod loader;
-pub mod net;
-pub mod render;
-pub mod platform_identity;
-pub mod store_portals;
-#[cfg(not(target_arch = "wasm32"))]
-mod paths;
 mod map_cache;
-mod platform_output;
 #[cfg(target_arch = "wasm32")]
 mod map_download;
+pub mod net;
+#[cfg(not(target_arch = "wasm32"))]
+mod paths;
+pub mod platform_identity;
+mod platform_output;
+pub mod render;
+pub mod store_portals;
 mod viewport;
 mod web_canvas;
 
@@ -168,6 +168,16 @@ impl ApplicationHandler for SowApp {
             return;
         }
         self.update(event_loop);
+
+        // Dynamically adjust winit control flow: Poll during active gameplay to ensure simulation
+        // ticks and nameplate/ui transitions animate smoothly even when there are no user input events,
+        // and Wait in other screens (like Main Menu) to preserve CPU and battery.
+        if self.ui.app.phase == sow_ui::app::ClientPhase::Playing {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        } else {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+        }
+
         if let Some(win) = self.active_window() {
             win.request_redraw();
         }

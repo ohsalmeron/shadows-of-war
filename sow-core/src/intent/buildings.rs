@@ -32,7 +32,11 @@ impl SowEngine {
 
         // Check for a nearby same-kind building to stack onto.
         if let Some(target_id) = crate::building::find_upgrade_target_id(
-            &self.state.map, player_id, kind, target_tile, &self.buildings,
+            &self.state.map,
+            player_id,
+            kind,
+            target_tile,
+            &self.buildings,
         ) {
             let count = crate::building::count_kind(&self.buildings, player_id, kind);
             let cost = structure_build_cost_gold(kind, count, &self.state.config);
@@ -44,7 +48,10 @@ impl SowEngine {
             }
             player_mut.gold = (player_mut.gold - cost).max(0.0);
 
-            let idx = self.buildings.binary_search_by_key(&target_id, |b| b.id).unwrap();
+            let idx = self
+                .buildings
+                .binary_search_by_key(&target_id, |b| b.id)
+                .unwrap();
             let b = &mut self.buildings[idx];
             b.level = b.level.saturating_add(1);
             let dur = crate::building::core::upgrade_duration_ticks(b.kind, b.level);
@@ -107,9 +114,6 @@ impl SowEngine {
             level: 1,
         });
     }
-
-
-
 
     pub(super) fn apply_upgrade_city_module_intent(
         &mut self,

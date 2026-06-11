@@ -29,9 +29,3 @@ pub fn format_number(mut num: f64) -> String {
         format!("{:.0}", num.round())
     }
 }
-
-/// Gold still needed (whole units, compact K/M when large).
-pub fn format_gold_shortfall(deficit: f64) -> String {
-    let whole = snap_gold_amount(deficit.max(0.0).ceil());
-    format!("-{}", format_number(whole))
-}

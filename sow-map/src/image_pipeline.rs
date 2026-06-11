@@ -217,10 +217,14 @@ fn downscale(src: &Terrain, dst_w: usize, dst_h: usize) -> Terrain {
     let fy = src.height as f64 / dst_h as f64;
     for ty in 0..dst_h {
         let y0 = (ty as f64 * fy).floor() as usize;
-        let y1 = (((ty + 1) as f64 * fy).ceil() as usize).min(src.height).max(y0 + 1);
+        let y1 = (((ty + 1) as f64 * fy).ceil() as usize)
+            .min(src.height)
+            .max(y0 + 1);
         for tx in 0..dst_w {
             let x0 = (tx as f64 * fx).floor() as usize;
-            let x1 = (((tx + 1) as f64 * fx).ceil() as usize).min(src.width).max(x0 + 1);
+            let x1 = (((tx + 1) as f64 * fx).ceil() as usize)
+                .min(src.width)
+                .max(x0 + 1);
             let mut land_count = 0usize;
             let mut total = 0usize;
             let mut mag_sum = 0.0f32;
@@ -366,8 +370,16 @@ mod tests {
         let result = generate_from_rgba(&img, Some((20, 20))).expect("pipeline");
         assert_eq!(result.width, 20);
         assert!(result.num_land_tiles > 0);
-        let ocean = result.map_data.iter().filter(|b| **b & OCEAN_BIT != 0).count();
-        let shore = result.map_data.iter().filter(|b| **b & SHORE_BIT != 0).count();
+        let ocean = result
+            .map_data
+            .iter()
+            .filter(|b| **b & OCEAN_BIT != 0)
+            .count();
+        let shore = result
+            .map_data
+            .iter()
+            .filter(|b| **b & SHORE_BIT != 0)
+            .count();
         assert!(ocean > 0, "expected ocean tiles");
         assert!(shore > 0, "expected shoreline tiles");
     }

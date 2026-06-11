@@ -19,8 +19,7 @@ impl SowApp {
                     self.sim.my_player_id = Some(1);
                     self.sim.my_lobby_id = Some(0);
 
-                    let map_id =
-                        sow_ui::ui::asset_loader::AssetLoader::map_key(&config.map_name);
+                    let map_id = sow_ui::ui::asset_loader::AssetLoader::map_key(&config.map_name);
                     self.ui.app.main_menu_state.downloading_map_name = Some(map_id.clone());
 
                     let mut config = *config;
@@ -38,9 +37,7 @@ impl SowApp {
                         &map_id,
                         crate::map_cache::load(&map_id),
                     ) {
-                        if let Ok(map_file) =
-                            sow_core::maps::load_map_from_payload(&payload)
-                        {
+                        if let Ok(map_file) = sow_core::maps::load_map_from_payload(&payload) {
                             config.map_width = map_file.width;
                             config.map_height = map_file.height;
                             self.ui
@@ -67,12 +64,7 @@ impl SowApp {
                                     format!("[{}] {}", tag, name)
                                 }
                             },
-                            color: self
-                                .ui
-                                .app
-                                .main_menu_state
-                                .selected_leader
-                                .filler_rgb(),
+                            color: self.ui.app.main_menu_state.selected_leader.filler_rgb(),
                             player_type: sow_core::player::PlayerType::Human,
                             team: None,
                             spawn_x: 0,
@@ -226,8 +218,8 @@ impl SowApp {
                     }
                 }
                 UiAction::FocusTile(col, row) => {
-                    let world_cx = col as f32 + 0.5;
-                    let world_cy = row as f32 + 0.5;
+                    let world_cx = col + 0.5;
+                    let world_cy = row + 0.5;
 
                     // Zoom in to a comfortable battle-focus level
                     let target_zoom = 3.0_f32.max(self.input.camera_zoom);
@@ -268,11 +260,14 @@ impl SowApp {
                     );
                 }
                 UiAction::CopyInviteLink(lobby_id) => {
-                    if let Some(link) = crate::store_portals::invite_link(lobby_id, &crate::get_build_version()) {
+                    if let Some(link) =
+                        crate::store_portals::invite_link(lobby_id, &crate::get_build_version())
+                    {
                         self.ui.egui_ctx.copy_text(link);
                         // Approximate time using instant since we don't have a direct timer in this context
                         // or we can just use the ui input time.
-                        self.ui.app.main_menu_state.invite_copied_at = Some(self.ui.egui_ctx.input(|i| i.time));
+                        self.ui.app.main_menu_state.invite_copied_at =
+                            Some(self.ui.egui_ctx.input(|i| i.time));
                         log::info!("Copied invite link to clipboard.");
                     }
                 }

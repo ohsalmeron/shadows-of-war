@@ -5,9 +5,11 @@ use sow_ui::app::ClientPhase;
 impl SowApp {
     pub fn update_assets(&mut self) {
         for key in crate::map_cache::list_cached_keys() {
-            if !self.ui.app.asset_loader.maps.contains_key(&key) {
-                if let Some(bytes) = crate::map_cache::load(&key) {
-                    self.ui.app.asset_loader.maps.insert(key, bytes);
+            if let std::collections::hash_map::Entry::Vacant(e) =
+                self.ui.app.asset_loader.maps.entry(key)
+            {
+                if let Some(bytes) = crate::map_cache::load(e.key()) {
+                    e.insert(bytes);
                 }
             }
         }
@@ -22,10 +24,7 @@ impl SowApp {
             match res {
                 MapDownloadEvent::CatalogReady(entries) => {
                     self.ui.app.asset_loader.catalog_in_flight = false;
-                    self.ui
-                        .app
-                        .main_menu_state
-                        .apply_map_catalog(&entries);
+                    self.ui.app.main_menu_state.apply_map_catalog(&entries);
                     self.ui.app.asset_loader.map_catalog = Some(entries);
                 }
                 MapDownloadEvent::Progress(downloaded_map_name, progress) => {
@@ -121,11 +120,10 @@ impl SowApp {
                     mobile,
                     bytes,
                 } => {
-                    self.ui.app.asset_loader.enqueue_leader_portrait_bytes(
-                        leader,
-                        mobile,
-                        bytes,
-                    );
+                    self.ui
+                        .app
+                        .asset_loader
+                        .enqueue_leader_portrait_bytes(leader, mobile, bytes);
                 }
                 MapDownloadEvent::BootUiReady { kind, bytes } => {
                     match self.ui.app.asset_loader.ingest_boot_ui_webp_bytes(
@@ -177,15 +175,13 @@ impl SowApp {
                         mobile,
                         reason
                     );
-                    self.ui
-                        .app
-                        .asset_loader
-                        .note_leader_portrait_fetch_failed(leader, mobile, reason.clone());
-                    if let Some((attempt, retry_in, last_error)) = self
-                        .ui
-                        .app
-                        .asset_loader
-                        .leader_retry_debug(leader, mobile)
+                    self.ui.app.asset_loader.note_leader_portrait_fetch_failed(
+                        leader,
+                        mobile,
+                        reason.clone(),
+                    );
+                    if let Some((attempt, retry_in, last_error)) =
+                        self.ui.app.asset_loader.leader_retry_debug(leader, mobile)
                     {
                         log::debug!(
                             "Leader portrait retry scheduled for {:?} mobile={} attempt={} retry_in_ms={} last_error={}",
@@ -211,8 +207,7 @@ impl SowApp {
 
         if self.ui.app.phase == ClientPhase::MainMenu
             || (self.ui.app.phase == ClientPhase::Splash
-                && self.ui.app.splash_state.job
-                    == sow_ui::ui::loading_screen::SplashJob::Boot)
+                && self.ui.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::Boot)
         {
             let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
             let selected = self.ui.app.main_menu_state.selected_leader;
@@ -235,15 +230,14 @@ impl SowApp {
     }
 
     pub(crate) fn start_thumbnail_fetch(&mut self, map_name: String) {
-        let url = self
-            .asset_config
-            .map_url(&map_name, "thumbnail.webp");
+        let url = self.asset_config.map_url(&map_name, "thumbnail.webp");
         let tx = self.tasks.map_tx.clone();
         let map_name_for_closure = map_name.clone();
         let request = ehttp::Request::get(&url);
         log::debug!("Fetching map thumbnail: {}", url);
-        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-            match result {
+        ehttp::fetch(
+            request,
+            move |result: ehttp::Result<ehttp::Response>| match result {
                 Ok(res) if res.ok => {
                     let _ = tx.send(MapDownloadEvent::ThumbnailReady(
                         map_name_for_closure,
@@ -262,8 +256,8 @@ impl SowApp {
                         e.to_string(),
                     ));
                 }
-            }
-        });
+            },
+        );
     }
 
     fn fetch_leader_portrait_at(
@@ -284,8 +278,9 @@ impl SowApp {
         let url = url.clone();
         let urls = urls.clone();
         let request = ehttp::Request::get(&url);
-        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-            match result {
+        ehttp::fetch(
+            request,
+            move |result: ehttp::Result<ehttp::Response>| match result {
                 Ok(res) if res.ok => {
                     let _ = tx.send(MapDownloadEvent::LeaderPortraitReady {
                         leader,
@@ -310,8 +305,8 @@ impl SowApp {
                         reason: e.to_string(),
                     });
                 }
-            }
-        });
+            },
+        );
     }
 
     fn fetch_boot_ui_at(
@@ -330,8 +325,9 @@ impl SowApp {
         let url = url.clone();
         let urls = urls.clone();
         let request = ehttp::Request::get(&url);
-        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-            match result {
+        ehttp::fetch(
+            request,
+            move |result: ehttp::Result<ehttp::Response>| match result {
                 Ok(res) if res.ok => {
                     let _ = tx.send(MapDownloadEvent::BootUiReady {
                         kind,
@@ -353,8 +349,8 @@ impl SowApp {
                         reason: e.to_string(),
                     });
                 }
-            }
-        });
+            },
+        );
     }
 
     fn poll_boot_ui_fetches(&mut self) {
@@ -387,8 +383,9 @@ impl SowApp {
         let url = url.clone();
         let urls = urls.clone();
         let request = ehttp::Request::get(&url);
-        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-            match result {
+        ehttp::fetch(
+            request,
+            move |result: ehttp::Result<ehttp::Response>| match result {
                 Ok(res) if res.ok => {
                     let _ = tx.send(MapDownloadEvent::AvatarReady {
                         leader,
@@ -410,14 +407,12 @@ impl SowApp {
                         reason: e.to_string(),
                     });
                 }
-            }
-        });
+            },
+        );
     }
 
     fn poll_avatar_fetches(&mut self) {
-        use sow_ui::ui::asset_loader::{
-            AssetLoader, AvatarFetchKey, MAX_AVATAR_FETCHES_IN_FLIGHT,
-        };
+        use sow_ui::ui::asset_loader::{AssetLoader, AvatarFetchKey, MAX_AVATAR_FETCHES_IN_FLIGHT};
 
         let priority_leader = self.ui.app.main_menu_state.selected_leader;
         let priority = AvatarFetchKey::Leader(priority_leader);
@@ -445,7 +440,9 @@ impl SowApp {
     }
 
     fn poll_leader_portrait_fetches(&mut self) {
-        use sow_ui::ui::asset_loader::{AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT};
+        use sow_ui::ui::asset_loader::{
+            AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT,
+        };
 
         let compact = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
         let priority_leader = self.ui.app.main_menu_state.selected_leader;

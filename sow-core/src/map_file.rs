@@ -260,9 +260,7 @@ pub fn parse_catalog(data: &[u8]) -> Result<MapCatalog, MapFileError> {
 }
 
 /// Build catalog from map folder keys and parsed headers.
-pub fn catalog_from_headers(
-    items: impl IntoIterator<Item = (String, MapHeader)>,
-) -> MapCatalog {
+pub fn catalog_from_headers(items: impl IntoIterator<Item = (String, MapHeader)>) -> MapCatalog {
     let mut entries: Vec<MapCatalogEntry> = items
         .into_iter()
         .map(|(key, h)| MapCatalogEntry {
@@ -272,7 +270,7 @@ pub fn catalog_from_headers(
             height: h.height,
         })
         .collect();
-    entries.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
+    entries.sort_by_key(|a| a.display_name.to_lowercase());
     MapCatalog { entries }
 }
 
@@ -283,8 +281,7 @@ pub fn decompress_map_payload(bytes: &[u8]) -> Result<Vec<u8>, MapFileError> {
     }
     let mut out = Vec::new();
     let mut decoder = brotli::Decompressor::new(bytes, 4096);
-    std::io::Read::read_to_end(&mut decoder, &mut out)
-        .map_err(|_| MapFileError::TooShort)?;
+    std::io::Read::read_to_end(&mut decoder, &mut out).map_err(|_| MapFileError::TooShort)?;
     Ok(out)
 }
 

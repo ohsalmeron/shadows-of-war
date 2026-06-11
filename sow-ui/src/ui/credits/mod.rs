@@ -1,5 +1,5 @@
-use crate::UiAction;
 use crate::ui::theme::{accent_solo_cyan, text_secondary};
+use crate::UiAction;
 use egui::{Align, Color32, Layout, RichText, ScrollArea};
 use sow_i18n::Language;
 
@@ -110,7 +110,11 @@ pub fn draw(
 
             let body_size = if compact { 13.0 } else { 14.0 };
             let body = |text: &str| RichText::new(text).size(body_size).color(text_secondary());
-            let link = |text: &str| RichText::new(text).size(body_size).color(accent_solo_cyan());
+            let link = |text: &str| {
+                RichText::new(text)
+                    .size(body_size)
+                    .color(accent_solo_cyan())
+            };
 
             ScrollArea::vertical()
                 .auto_shrink([false, false])

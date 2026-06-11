@@ -150,8 +150,22 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
         ptr = cfg.ptr_domain(),
     ))?;
 
-    install_systemd_unit(gcp, paths, "sow-server.service", &user, &home_prod, &home_ptr)?;
-    install_systemd_unit(gcp, paths, "sow-server-ptr.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        "sow-server.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        "sow-server-ptr.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
     install_systemd_unit(gcp, paths, "valkey.service", &user, &home_prod, &home_ptr)?;
 
     for (template, conf_name) in [
@@ -159,7 +173,7 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
         ("play.conf", format!("{}.conf", cfg.play_domain())),
         ("ptr.conf", format!("{}.conf", cfg.ptr_domain())),
     ] {
-        install_nginx_conf(gcp, paths, cfg, &template, &conf_name)?;
+        install_nginx_conf(gcp, paths, cfg, template, &conf_name)?;
     }
 
     let certbot = format!(
@@ -174,7 +188,9 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     );
     gcp.run_remote(&certbot)?;
 
-    gcp.run_remote("sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr")?;
+    gcp.run_remote(
+        "sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr",
+    )?;
 
     Ok(())
 }
@@ -191,7 +207,9 @@ fn install_nginx_conf(
     content = content.replace("__SOW_WWW_MAIN__", &cfg.www_site_domain());
     content = content.replace("__SOW_DOMAIN_PLAY__", &cfg.play_domain());
     content = content.replace("__SOW_DOMAIN_PTR__", &cfg.ptr_domain());
-    let tmp = paths.dist_root().join(format!("bootstrap-nginx-{conf_name}"));
+    let tmp = paths
+        .dist_root()
+        .join(format!("bootstrap-nginx-{conf_name}"));
     fs::write(&tmp, &content)?;
     let remote = format!("/tmp/{conf_name}");
     gcp::scp_to_instance(gcp, &tmp, &remote)?;

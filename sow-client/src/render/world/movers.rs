@@ -160,7 +160,12 @@ impl MoverScene {
             .map(|p| p.color)
             .unwrap_or([0.5, 0.5, 0.5]);
         let color = [rgb[0], rgb[1], rgb[2], 1.0];
-        let trail_color = [rgb[0], rgb[1], rgb[2], 0.59];
+        let trail_color = [
+            rgb[0] * 0.7 + 0.3,
+            rgb[1] * 0.7 + 0.3,
+            rgb[2] * 0.7 + 0.3,
+            0.75,
+        ];
 
         let trail_start = self.trail_points.len() as u32;
         let traveled = fleet.path_cursor.saturating_sub(1);
@@ -214,11 +219,9 @@ impl MoverScene {
                 };
                 (sprite, 0.55 + level as f32 * 0.15, tc)
             }
-            ProjectileKind::SAMMissile => (
-                MoverSpriteId::SamMissile,
-                0.55,
-                [0.39, 0.78, 1.0, 0.39],
-            ),
+            ProjectileKind::SAMMissile => {
+                (MoverSpriteId::SamMissile, 0.55, [0.39, 0.78, 1.0, 0.39])
+            }
             ProjectileKind::Shell => return,
         };
 
@@ -231,8 +234,7 @@ impl MoverScene {
             for i in (0..=traveled).step_by(trail_step) {
                 let p = flight_progress(path_len, i as f32);
                 let (wx, wy) = tile_to_world(proj.path[i], map_w);
-                self.trail_points
-                    .push(lift_world_for_arc(wx, wy, p));
+                self.trail_points.push(lift_world_for_arc(wx, wy, p));
             }
         } else if traveled > 0 {
             let start = traveled.saturating_sub(TRAIL_CAP);

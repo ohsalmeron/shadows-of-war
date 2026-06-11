@@ -140,14 +140,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             MapSpawn {
                 name: "Korinthal".to_string(),
                 flag: String::new(),
-                x: (250.0 * SCALE as f32).round() as u32,
-                y: (350.0 * SCALE as f32).round() as u32,
+                x: (250.0 * SCALE).round() as u32,
+                y: (350.0 * SCALE).round() as u32,
             },
             MapSpawn {
                 name: "Lunareth".to_string(),
                 flag: String::new(),
-                x: (550.0 * SCALE as f32).round() as u32,
-                y: (300.0 * SCALE as f32).round() as u32,
+                x: (550.0 * SCALE).round() as u32,
+                y: (300.0 * SCALE).round() as u32,
             },
         ],
         terrain: terrain_bytes,

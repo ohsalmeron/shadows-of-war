@@ -8,8 +8,6 @@ fn default_game_mode() -> String {
     "FFA".to_string()
 }
 
-
-
 fn default_max_tiles_per_tick_reference_troops() -> f64 {
     1000.0
 }
@@ -29,7 +27,6 @@ pub enum BotDifficulty {
     Terminator,
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GameConfig {
     // ==========================================
@@ -46,8 +43,6 @@ pub struct GameConfig {
     /// Seed used for procedural random number generation.
     #[serde(default = "default_seed")]
     pub seed: u64,
-
-
 
     // ==========================================
     // Map Generation & Spawning
@@ -176,7 +171,6 @@ impl Default for GameConfig {
             bot_difficulty: BotDifficulty::Vanilla,
             seed: 42,
 
-
             // Map Generation & Spawning
             map_name: crate::maps::DEFAULT_MAP_KEY.to_string(),
             game_mode: "FFA".to_string(),
@@ -201,12 +195,12 @@ impl Default for GameConfig {
             momentum_divisor: 1250.0,
 
             // Economy & Income Rates
-            starting_troops: 1000.0,
+            starting_troops: 5000.0,
             starting_gold: 100.0,
             gold_base_income: 4.0,
             troop_base_income: 250.0,
             max_troops_base: 10.0,
-            max_troops_scale: 100.0,
+            max_troops_scale: 350.0,
 
             // Buildings (stacking)
             city_max_troops: 5000.0,

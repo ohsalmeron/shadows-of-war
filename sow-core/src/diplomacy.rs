@@ -136,7 +136,12 @@ mod tests {
     use crate::game_config::GameConfig;
 
     fn sample_player(id: u16, iq: u32) -> Player {
-        let mut p = Player::new_bot(id, format!("P{id}"), [1.0, 0.0, 0.0], &GameConfig::default());
+        let mut p = Player::new_bot(
+            id,
+            format!("P{id}"),
+            [1.0, 0.0, 0.0],
+            &GameConfig::default(),
+        );
         p.iq = iq;
         p
     }
@@ -149,12 +154,7 @@ mod tests {
         let ally = sample_player(2, 80);
         let mut rng = WyRand::new(1);
         assert!(!maybe_betray_for_attack(
-            &bot,
-            &ally,
-            1,
-            100,
-            None,
-            &mut rng,
+            &bot, &ally, 1, 100, None, &mut rng,
         ));
     }
 
@@ -168,27 +168,14 @@ mod tests {
         ally.troops = 500.0;
         let mut rng = WyRand::new(1);
         assert!(maybe_betray_for_attack(
-            &bot,
-            &ally,
-            1,
-            5000,
-            None,
-            &mut rng,
+            &bot, &ally, 1, 5000, None, &mut rng,
         ));
     }
 
     #[test]
     fn standard_tribe_not_valid_target_for_nation() {
-        assert!(!is_valid_alliance_target(
-            8,
-            15,
-            PlayerType::Bot,
-        ));
-        assert!(is_valid_alliance_target(
-            512,
-            100,
-            PlayerType::Bot,
-        ));
+        assert!(!is_valid_alliance_target(8, 15, PlayerType::Bot,));
+        assert!(is_valid_alliance_target(512, 100, PlayerType::Bot,));
     }
 
     #[test]

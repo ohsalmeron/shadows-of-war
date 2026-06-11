@@ -7,9 +7,7 @@ use crate::deploy::{
 use crate::gcp::GcpConfig;
 use crate::infra::{self, ServerArtifacts, ServerShipResult};
 use crate::package::{self, Profile};
-use crate::paths::{
-    remote_data_prod, remote_data_ptr, remote_maps_prod, remote_maps_ptr, Paths,
-};
+use crate::paths::{remote_data_prod, remote_data_ptr, remote_maps_prod, remote_maps_ptr, Paths};
 use crate::wasm;
 use anyhow::Result;
 use std::path::Path;
@@ -29,7 +27,7 @@ impl ReleaseTarget {
         }
     }
 
-    fn out_dir<'a>(self, paths: &'a Paths) -> &'a Path {
+    fn out_dir(self, paths: &Paths) -> &Path {
         match self {
             ReleaseTarget::Cg => &paths.dist_crazygames,
             ReleaseTarget::Prod => &paths.dist_play,
@@ -38,7 +36,10 @@ impl ReleaseTarget {
     }
 
     fn sync_cdn(self) -> bool {
-        matches!(self, ReleaseTarget::Cg | ReleaseTarget::Prod | ReleaseTarget::Ptr)
+        matches!(
+            self,
+            ReleaseTarget::Cg | ReleaseTarget::Prod | ReleaseTarget::Ptr
+        )
     }
 
     fn remote_ship(self) -> bool {
@@ -168,9 +169,7 @@ pub fn run_release(
             let site = paths.site_web.display().to_string();
             let web_main = cfg.web_root_main();
             let cache_b = cache.clone();
-            Some(s.spawn(move || {
-                gcp_b.rsync_dir_with_opts(&cache_b, &site, &web_main, &["-avz"])
-            }))
+            Some(s.spawn(move || gcp_b.rsync_dir_with_opts(&cache_b, &site, &web_main, &["-avz"])))
         } else {
             None
         };
@@ -203,14 +202,7 @@ pub fn run_release(
             .clone()
             .expect("server artifacts required for prod/ptr");
         let server_ship = s.spawn(move || {
-            infra::ship_server(
-                &paths_srv,
-                &gcp_srv,
-                &data_dir,
-                &artifacts,
-                &version,
-                unit,
-            )
+            infra::ship_server(&paths_srv, &gcp_srv, &data_dir, &artifacts, &version, unit)
         });
 
         match target {
@@ -242,13 +234,7 @@ pub fn run_release(
     // Phase 4: finalize + verify
     println!("==> Phase 4: finalize");
     gcp.run_remote("sudo restorecon -R /var/www")?;
-    infra::restart_server_if_needed(
-        paths,
-        &gcp,
-        server_ctx.unit,
-        version,
-        &server_ship,
-    )?;
+    infra::restart_server_if_needed(paths, &gcp, server_ctx.unit, version, &server_ship)?;
 
     println!("==> Phase 4: verify");
     if cdn_shipped {

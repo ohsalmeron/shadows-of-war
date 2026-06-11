@@ -30,8 +30,12 @@ pub fn write_square_thumbnail_from_pixels(
     pixels: &[[u8; 4]],
     path: &Path,
 ) -> Result<(), String> {
-    let rgba = RgbaImage::from_raw(width, height, pixels.iter().flat_map(|p| p.iter().copied()).collect())
-        .ok_or_else(|| "thumbnail pixel buffer size mismatch".to_string())?;
+    let rgba = RgbaImage::from_raw(
+        width,
+        height,
+        pixels.iter().flat_map(|p| p.iter().copied()).collect(),
+    )
+    .ok_or_else(|| "thumbnail pixel buffer size mismatch".to_string())?;
     write_square_thumbnail_from_rgba(&rgba, path)
 }
 

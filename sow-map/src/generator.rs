@@ -163,9 +163,9 @@ fn process_water(grid: &mut [Vec<TerrainTile>], remove_small: bool) {
     let height = grid[0].len();
 
     // Clear ocean flags first!
-    for x in 0..width {
-        for y in 0..height {
-            grid[x][y].ocean = false;
+    for column in grid.iter_mut().take(width) {
+        for tile in column.iter_mut().take(height) {
+            tile.ocean = false;
         }
     }
 
@@ -261,9 +261,9 @@ fn process_shore(grid: &mut [Vec<TerrainTile>]) -> Vec<Coord> {
     let mut shoreline_waters = Vec::new();
     let directions = [(0, 1), (1, 0), (0, -1), (-1, 0)];
 
-    for x in 0..width {
-        for y in 0..height {
-            grid[x][y].shoreline = false;
+    for column in grid.iter_mut().take(width) {
+        for tile in column.iter_mut().take(height) {
+            tile.shoreline = false;
         }
     }
 
@@ -483,7 +483,7 @@ mod tests {
     fn test_simple_map_generation() {
         let width = 10;
         let height = 10;
-        let mut pixels = vec![[106, 106, 106, 255]; (width * height) as usize];
+        let mut pixels = vec![[106, 106, 106, 255]; width * height];
 
         for x in 3..7 {
             for y in 3..7 {
