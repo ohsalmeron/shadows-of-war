@@ -168,7 +168,7 @@ pub struct UiState {
 
     pub label_positions: std::collections::HashMap<u16, (f32, f32)>,
     pub label_sizes: std::collections::HashMap<u16, f32>,
-    /// True only while the player started the offline tutorial from the main menu.
+    /// True while the portal intro or manual offline tutorial overlay is active.
     pub tutorial_active: bool,
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
     pub show_leaderboard: bool,
@@ -285,8 +285,15 @@ pub struct SowApp {
     pub gpu_init_failed: bool,
     pub progress: crate::player_progress::PlayerProgress,
     pub progress_account_id: Option<String>,
+    pub progress_provider: String,
     pub progress_match_recorded: bool,
     pub progress_session_defeats: crate::player_progress::SessionDefeats,
+    #[cfg(target_arch = "wasm32")]
+    pub boot_db_settled: bool,
+    #[cfg(target_arch = "wasm32")]
+    pub boot_route_waiting: bool,
+    #[cfg(target_arch = "wasm32")]
+    pub boot_ready_since: Option<web_time::Instant>,
 }
 
 impl Default for SowApp {
@@ -463,6 +470,7 @@ impl SowApp {
         let last_ping_time = Instant::now();
         let last_frame_time = Instant::now();
 
+        #[allow(unused_mut)]
         let mut sow_app = Self {
             gfx: GraphicsState {
                 window,
@@ -608,10 +616,21 @@ impl SowApp {
             gpu_init_failed: false,
             progress: crate::player_progress::PlayerProgress::default(),
             progress_account_id: None,
+            progress_provider: String::from("local"),
             progress_match_recorded: false,
             progress_session_defeats: crate::player_progress::SessionDefeats::default(),
+            #[cfg(target_arch = "wasm32")]
+            boot_db_settled: false,
+            #[cfg(target_arch = "wasm32")]
+            boot_route_waiting: false,
+            #[cfg(target_arch = "wasm32")]
+            boot_ready_since: None,
         };
-        sow_app.load_portal_progress();
+        #[cfg(target_arch = "wasm32")]
+        if let Some(portal) = crate::store_portals::load_portal_progress() {
+            sow_app.progress = portal;
+        }
+        sow_app.fetch_cloud_progress();
         sow_app
     }
 
@@ -622,17 +641,6 @@ impl SowApp {
         {
             request.headers.insert("X-Platform-Auth", token);
         }
-    }
-
-    fn load_portal_progress(&mut self) {
-        if let Some(json) = crate::store_portals::take_progress_json() {
-            if let Ok(progress) = serde_json::from_str::<crate::player_progress::PlayerProgress>(&json) {
-                self.progress = progress;
-                self.apply_progress_preferences();
-                log::info!("Pre-loaded cached offline progress: level {} ({} XP)", self.progress.level, self.progress.xp);
-            }
-        }
-        self.fetch_cloud_progress();
     }
 
     pub(crate) fn fetch_cloud_progress(&self) {
@@ -664,6 +672,7 @@ impl SowApp {
 
         log::info!("Fetching profile from sow-database: {provider}/{ext_id}");
         let tx = self.tasks.db_tx.clone();
+        let profile_provider = provider.clone();
         let mut request = ehttp::Request::get(&url);
         Self::apply_platform_auth(&mut request);
 
@@ -678,9 +687,11 @@ impl SowApp {
                         }
                         match serde_json::from_slice::<DbAccount>(&res.bytes) {
                             Ok(account) => {
-                                let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded(
-                                    account.profile, account.id,
-                                ));
+                                let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded {
+                                    progress: account.profile,
+                                    account_id: account.id,
+                                    provider: profile_provider,
+                                });
                             }
                             Err(e) => {
                                 log::error!("Failed to parse database profile JSON: {}", e);
@@ -730,10 +741,11 @@ impl SowApp {
             timestamp: u64,
             signature: String,
         }
+        let resolved_provider = conflict.target_provider.clone();
         let payload = ResolveRequest {
             account_id: conflict.current_account_id,
             keep_account_id,
-            target_provider: conflict.target_provider,
+            target_provider: resolved_provider.clone(),
             target_external_id: conflict.target_external_id,
             timestamp,
             signature,
@@ -771,10 +783,11 @@ impl SowApp {
             };
             if parsed.status == "resolved" {
                 if let Some(account) = parsed.account {
-                    let _ = tx.send(crate::player_progress::DbEvent::LinkResolved(
-                        account.profile,
-                        account.id,
-                    ));
+                    let _ = tx.send(crate::player_progress::DbEvent::LinkResolved {
+                        progress: account.profile,
+                        account_id: account.id,
+                        provider: resolved_provider,
+                    });
                 }
             }
         });
@@ -892,14 +905,36 @@ impl SowApp {
         }
     }
 
-    fn save_portal_progress(&self) {
+    pub(crate) fn apply_cloud_profile(
+        &mut self,
+        cloud: crate::player_progress::PlayerProgress,
+        account_id: String,
+        provider: String,
+    ) {
+        let portal = self.progress.clone();
+        self.progress.merge_boot_profile(cloud);
+        self.progress_account_id = Some(account_id);
+        self.progress_provider = provider;
+        if !self.progress.has_history() && portal.has_history() {
+            self.progress = portal;
+        }
+        self.apply_progress_preferences();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn should_portal_auto_intro(&self) -> bool {
+        if !crate::store_portals::is_portal_embed() {
+            return false;
+        }
+        let mm = &self.ui.app.main_menu_state;
+        mm.pending_join_lobby_id.is_none() && !mm.host_private_pending
+    }
+
+    fn save_cloud_progress(&self) {
         let serialized_profile = match serde_json::to_string(&self.progress) {
-            Ok(json) => {
-                crate::store_portals::save_progress(&json);
-                json
-            }
+            Ok(json) => json,
             Err(e) => {
-                log::warn!("Failed to serialize portal progress: {e}");
+                log::warn!("Failed to serialize cloud progress: {e}");
                 return;
             }
         };
@@ -953,6 +988,7 @@ impl SowApp {
                 });
             }
         }
+        crate::store_portals::save_portal_progress(&self.progress);
     }
 
     fn reset_progress_session(&mut self) {
@@ -984,7 +1020,7 @@ impl SowApp {
         self.progress.preferred_leader =
             Some(self.ui.app.main_menu_state.selected_leader);
         self.progress.record_match(won, defeats);
-        self.save_portal_progress();
+        self.save_cloud_progress();
         log::info!(
             "Recorded local match progress: won={won}, defeats={defeats:?}, level={}",
             self.progress.level

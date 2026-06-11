@@ -480,11 +480,13 @@ impl SowApp {
     fn poll_database_events(&mut self) {
         while let Ok(event) = self.tasks.db_rx.try_recv() {
             match event {
-                crate::player_progress::DbEvent::ProfileLoaded(progress, account_id) => {
+                crate::player_progress::DbEvent::ProfileLoaded {
+                    progress,
+                    account_id,
+                    provider,
+                } => {
                     let old_level = self.progress.level;
-                    self.progress = progress;
-                    self.progress_account_id = Some(account_id);
-                    self.apply_progress_preferences();
+                    self.apply_cloud_profile(progress, account_id, provider);
                     log::info!(
                         "Successfully synced profile from cloud database: level {} ({} XP)",
                         self.progress.level,
@@ -494,9 +496,17 @@ impl SowApp {
                         crate::store_portals::happytime();
                     }
                     self.maybe_link_platform_identity();
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        self.boot_db_settled = true;
+                    }
                 }
                 crate::player_progress::DbEvent::LoadFailed => {
                     log::warn!("sow-database sync failed. Continuing with local offline progress.");
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        self.boot_db_settled = true;
+                    }
                 }
                 crate::player_progress::DbEvent::LinkConflict(info) => {
                     log::warn!(
@@ -514,11 +524,13 @@ impl SowApp {
                             target_external_id: info.target_external_id,
                         });
                 }
-                crate::player_progress::DbEvent::LinkResolved(progress, account_id) => {
+                crate::player_progress::DbEvent::LinkResolved {
+                    progress,
+                    account_id,
+                    provider,
+                } => {
                     let old_level = self.progress.level;
-                    self.progress = progress;
-                    self.progress_account_id = Some(account_id);
-                    self.apply_progress_preferences();
+                    self.apply_cloud_profile(progress, account_id, provider);
                     self.ui.app.main_menu_state.active_conflict = None;
                     if self.progress.level > old_level {
                         crate::store_portals::happytime();

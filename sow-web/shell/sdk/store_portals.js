@@ -19,6 +19,16 @@
     return window.SOW_PORTAL === "site";
   }
 
+  function isPortalEmbed() {
+    return (
+      window.SOW_PORTAL === "crazygames" ||
+      window.SOW_PORTAL === "poki" ||
+      window.SOW_PORTAL === "site" ||
+      isOnCrazyGames() ||
+      isOnPoki()
+    );
+  }
+
   function isOnCrazyGames() {
     if (isSiteEmbed()) {
       return false;
@@ -139,11 +149,12 @@
   window.SOW_HOST_PRIVATE_PENDING = false;
   window.SOW_PORTAL_MUTE_AUDIO = false;
   window.SOW_DISABLE_CHAT = false;
-  window.SOW_PORTAL_PROGRESS_JSON = null;
 
   window.SOW_isSiteEmbed = isSiteEmbed;
+  window.SOW_isPortalEmbed = isPortalEmbed;
   window.SOW_isOnCrazyGames = isOnCrazyGames;
   window.SOW_isOnPoki = isOnPoki;
+  window.SOW_PORTAL_PROGRESS_JSON = null;
   window.SOW_portalAdPause = portalAdPause;
   window.SOW_portalAdResume = portalAdResume;
 
@@ -213,6 +224,40 @@
     window.SOW_PENDING_INVITE_LOBBY_ID = null;
   };
 
+  function loadPortalProgressFromSdk() {
+    window.SOW_PORTAL_PROGRESS_JSON = null;
+    if (!isOnCrazyGames() || !crazyGamesSdkReady()) {
+      return;
+    }
+    var data = window.CrazyGames.SDK.data;
+    if (!data || !data.getItem) {
+      return;
+    }
+    try {
+      var raw = data.getItem(SOW_PROGRESS_KEY);
+      if (raw) {
+        window.SOW_PORTAL_PROGRESS_JSON = raw;
+      }
+    } catch (e) {
+      console.warn("CrazyGames data.getItem failed:", e);
+    }
+  }
+
+  window.SOW_portalSaveProgress = function (jsonStr) {
+    if (!isOnCrazyGames() || !crazyGamesSdkReady()) {
+      return;
+    }
+    var data = window.CrazyGames.SDK.data;
+    if (!data || !data.setItem) {
+      return;
+    }
+    try {
+      data.setItem(SOW_PROGRESS_KEY, jsonStr);
+    } catch (e) {
+      console.warn("SOW_portalSaveProgress failed:", e);
+    }
+  };
+
   window.SOW_AUTH_CHANGED = false;
   window.SOW_portalClearAuthChanged = function () {
     window.SOW_AUTH_CHANGED = false;
@@ -240,38 +285,6 @@
     };
   }
 
-  window.SOW_portalSaveData = function (jsonStr) {
-    if (!crazyGamesSdkReady()) {
-      return;
-    }
-    var data = window.CrazyGames.SDK.data;
-    if (!data || !data.setItem) {
-      return;
-    }
-    try {
-      var payload = JSON.parse(jsonStr);
-      data.setItem(payload.key, payload.value);
-    } catch (e) {
-      console.warn("SOW_portalSaveData failed:", e);
-    }
-  };
-
-  window.SOW_portalLoadData = async function (key) {
-    if (!crazyGamesSdkReady()) {
-      return null;
-    }
-    var data = window.CrazyGames.SDK.data;
-    if (!data || !data.getItem) {
-      return null;
-    }
-    try {
-      return await data.getItem(key);
-    } catch (e) {
-      console.warn("SOW_portalLoadData failed:", e);
-      return null;
-    }
-  };
-
   window.SOW_portalShowAuthPrompt = async function () {
     if (!crazyGamesSdkReady() || !window.CrazyGames.SDK.user || !window.CrazyGames.SDK.user.showAuthPrompt) {
       return;
@@ -287,6 +300,24 @@
     } catch (e) {
       console.warn("Auth prompt failed or cancelled:", e);
     }
+  };
+
+  window.SOW_LINK_PROMPT_RESPONSE = null;
+  window.SOW_portalShowAccountLinkPrompt = async function () {
+    if (!crazyGamesSdkReady() || !window.CrazyGames.SDK.user || !window.CrazyGames.SDK.user.showAccountLinkPrompt) {
+      return;
+    }
+    try {
+      var res = await window.CrazyGames.SDK.user.showAccountLinkPrompt();
+      window.SOW_LINK_PROMPT_RESPONSE = res.response; // "yes" or "no"
+    } catch (e) {
+      console.warn("Account link prompt failed:", e);
+      window.SOW_LINK_PROMPT_RESPONSE = "error";
+    }
+  };
+
+  window.SOW_portalClearAccountLinkPrompt = function () {
+    window.SOW_LINK_PROMPT_RESPONSE = null;
   };
 
   window.SOW_portalConsumeBootIntent = function () {
@@ -369,19 +400,7 @@
         }
         installJoinRoomListener();
         window.SOW_portalConsumeBootIntent();
-      }
-
-      if (crazyGamesSdkReady() && window.CrazyGames.SDK.data) {
-        try {
-          var saved = await window.SOW_portalLoadData(SOW_PROGRESS_KEY);
-          if (saved) {
-            window.SOW_PORTAL_PROGRESS_JSON =
-              typeof saved === "string" ? saved : JSON.stringify(saved);
-            console.log("CrazyGames progress loaded");
-          }
-        } catch (e) {
-          console.warn("CrazyGames progress load failed:", e);
-        }
+        loadPortalProgressFromSdk();
       }
     } catch (e) {
       console.warn("CrazyGames SDK init failed:", e);

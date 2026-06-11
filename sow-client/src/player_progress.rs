@@ -53,10 +53,18 @@ pub struct LinkConflictInfo {
 
 #[derive(Clone, Debug)]
 pub enum DbEvent {
-    ProfileLoaded(PlayerProgress, String),
+    ProfileLoaded {
+        progress: PlayerProgress,
+        account_id: String,
+        provider: String,
+    },
     LoadFailed,
     LinkConflict(LinkConflictInfo),
-    LinkResolved(PlayerProgress, String),
+    LinkResolved {
+        progress: PlayerProgress,
+        account_id: String,
+        provider: String,
+    },
 }
 
 /// Computes SHA-256 signature of data with compile-time salt
@@ -69,6 +77,22 @@ pub fn compute_client_signature(data: &str) -> String {
 }
 
 impl PlayerProgress {
+    pub fn has_history(&self) -> bool {
+        self.matches_played > 0
+            || self.wins > 0
+            || self.xp > 0
+            || self.preferred_leader.is_some()
+    }
+
+    /// Prefer cloud profile when it has history; otherwise keep local/CG portal data.
+    pub fn merge_boot_profile(&mut self, cloud: PlayerProgress) {
+        if cloud.has_history() {
+            *self = cloud;
+        } else if !self.has_history() {
+            *self = cloud;
+        }
+    }
+
     pub fn sync_level(&mut self) {
         self.level = 1 + self.xp / 100;
     }

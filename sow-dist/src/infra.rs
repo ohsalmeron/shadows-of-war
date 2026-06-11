@@ -525,8 +525,6 @@ pub fn verify_server_health(
     if cors != "*" {
         bail!("maps API missing CORS header (got: {cors:?})");
     }
-    println!("✅ Maps API OK");
-
     println!("==> Verifying WebSocket {ws_url}");
     let ws_resp = client
         .get(ws_url)
@@ -541,5 +539,102 @@ pub fn verify_server_health(
         bail!("WebSocket proxy failed: {ws_url} → HTTP {status}");
     }
     println!("✅ WebSocket proxy reachable (HTTP {status})");
+    Ok(())
+}
+
+fn hash_deploy_dir(h: &mut Sha256, dir: &Path) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let mut entries: Vec<_> = fs::read_dir(dir)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            hash_deploy_dir(h, &path)?;
+        } else if path.is_file() {
+            hash_file(h, &path)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn hash_deploy_templates(paths: &Paths) -> Result<String> {
+    let mut h = Sha256::new();
+    hash_deploy_dir(&mut h, &paths.deploy_dir())?;
+    Ok(format!("{:x}", h.finalize()))
+}
+
+pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()> {
+    let current_hash = hash_deploy_templates(paths)?;
+    let cache_file = paths.dist_root().join(".sow-deploy-config-hash");
+    let last_hash = fs::read_to_string(&cache_file)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if current_hash == last_hash {
+        println!("==> VPS configurations (Nginx/systemd) unchanged — skipping config deploy");
+        return Ok(());
+    }
+
+    println!("==> VPS configuration changes detected! Deploying Nginx configurations and systemd units...");
+
+    let gcp = cfg.gcp();
+    let login_home = gcp.remote_home(&paths.remote_home_cache())?;
+    let user = gcp.remote_output("whoami")?.trim().to_string();
+    let home_prod = format!("{login_home}/shadowsofwar");
+    let home_ptr = format!("{login_home}/shadowsofwar-ptr");
+
+    // 1. Deploy systemd units
+    for unit_name in &[
+        "sow-server.service",
+        "sow-server-ptr.service",
+        "sow-database.service",
+        "sow-database-ptr.service",
+        "valkey.service",
+    ] {
+        install_systemd_unit(&gcp, paths, unit_name, &user, &home_prod, &home_ptr)?;
+    }
+
+    // 2. Deploy Nginx site configs
+    for (template, conf_name) in [
+        ("main.conf", format!("{}.conf", cfg.site_domain())),
+        ("play.conf", format!("{}.conf", cfg.play_domain())),
+        ("ptr.conf", format!("{}.conf", cfg.ptr_domain())),
+    ] {
+        install_nginx_conf(&gcp, paths, cfg, template, &conf_name)?;
+    }
+
+    // 3. Systemd daemon-reload
+    println!("==> Reloading systemd daemon on VPS...");
+    gcp.run_remote("sudo systemctl daemon-reload")?;
+
+    // 4. Run Certbot to re-apply certificates/redirects on newly deployed config templates
+    println!("==> Re-running Certbot to ensure SSL on new config files...");
+    let certbot = format!(
+        "sudo certbot --nginx --non-interactive --agree-tos --email {email} \
+         -d {main} -d {www} -d {play} -d {ptr} --redirect || true",
+        email = cfg.certbot_email,
+        main = cfg.site_domain(),
+        www = cfg.www_site_domain(),
+        play = cfg.play_domain(),
+        ptr = cfg.ptr_domain(),
+    );
+    gcp.run_remote(&certbot)?;
+
+    // 5. Test and reload Nginx
+    println!("==> Testing and reloading Nginx on VPS...");
+    gcp.run_remote("sudo nginx -t && sudo systemctl reload nginx")?;
+
+    // Save current hash to local cache
+    if let Some(parent) = cache_file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&cache_file, format!("{current_hash}\n"))?;
+    println!("✅ VPS configurations deployed successfully.");
+
     Ok(())
 }

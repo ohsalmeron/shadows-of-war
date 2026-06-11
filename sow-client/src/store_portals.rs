@@ -116,6 +116,41 @@ pub fn load_stop() {
     call_window_hook("SOW_portalLoadStop");
 }
 
+pub fn is_portal_embed() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        get_window_value("SOW_isPortalEmbed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let json = get_window_value("SOW_PORTAL_PROGRESS_JSON")?.as_string()?;
+        if json.is_empty() {
+            return None;
+        }
+        serde_json::from_str(&json).ok()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+pub fn save_portal_progress(progress: &crate::player_progress::PlayerProgress) {
+    let Ok(json) = serde_json::to_string(progress) else {
+        return;
+    };
+    call_window_hook_str("SOW_portalSaveProgress", &json);
+}
+
 /// Read platform identity set by the portal SDK during init.
 pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
     #[cfg(target_arch = "wasm32")]
@@ -235,26 +270,6 @@ pub fn is_chat_disabled() -> bool {
     take_window_bool("SOW_DISABLE_CHAT")
 }
 
-pub fn take_progress_json() -> Option<String> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        get_window_value("SOW_PORTAL_PROGRESS_JSON").and_then(|v| v.as_string())
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        None
-    }
-}
-
-pub fn save_progress(json: &str) {
-    let payload = format!(
-        r#"{{"key":"{}","value":{}}}"#,
-        crate::player_progress::STORAGE_KEY,
-        json
-    );
-    call_window_hook_str("SOW_portalSaveData", &payload);
-}
-
 pub fn happytime() {
     call_window_hook("SOW_portalHappytime");
 }
@@ -269,4 +284,23 @@ pub fn poll_auth_changed() -> bool {
         call_window_hook("SOW_portalClearAuthChanged");
     }
     changed
+}
+
+pub fn show_account_link_prompt() {
+    call_window_hook("SOW_portalShowAccountLinkPrompt");
+}
+
+pub fn poll_account_link_prompt_response() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        get_window_value("SOW_LINK_PROMPT_RESPONSE").and_then(|v| v.as_string())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+pub fn clear_account_link_prompt_response() {
+    call_window_hook("SOW_portalClearAccountLinkPrompt");
 }

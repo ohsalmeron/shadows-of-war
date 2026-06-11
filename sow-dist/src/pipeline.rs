@@ -124,6 +124,9 @@ pub fn run_release(
     let remote_home = gcp.remote_home(&paths.remote_home_cache())?;
     let server_ctx = server_ctx(target, cfg, &gcp, &remote_home)?;
 
+    // Continuous Deployment: Sync VPS configurations (Nginx and systemd units) if templates were modified
+    infra::deploy_configs_if_needed(paths, cfg)?;
+
     // Phase 3: ship everything in parallel
     println!("==> Phase 3: ship");
     let (cdn_shipped, server_ship) = std::thread::scope(|s| -> Result<(bool, ServerShipResult)> {
