@@ -28,6 +28,18 @@ pub fn draw_right_column(
 
     ui.add_space(section_gap);
 
+    let host_btn = ThemeButton::new(&strings.host_private_game)
+        .style(ThemeButtonStyle::Tertiary)
+        .custom_fill(rail_btn_fill)
+        .min_size(egui::vec2(ui.available_width(), action_min_h))
+        .text_size(solo_primary - 4.0);
+
+    if ui.add(host_btn).clicked() {
+        *action = Some(UiAction::HostPrivateLobby);
+    }
+
+    ui.add_space(section_gap);
+
     let btn = ThemeButton::new(&strings.settings)
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)

@@ -125,6 +125,7 @@ pub enum ClientMessage {
         clan_tag: String,
         civilization: crate::player::Civilization,
         leader: crate::player::Leader,
+        database_account_id: Option<String>,
     },
     Gameplay {
         intent: GameplayIntent,

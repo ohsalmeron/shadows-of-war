@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SERVER_CRATES: &[&str] = &["sow-server", "sow-relay", "sow-core", "sow-net"];
+const SERVER_CRATES: &[&str] = &["sow-server", "sow-relay", "sow-database", "sow-core", "sow-net"];
 
 pub fn deploy_infra(
     paths: &Paths,
@@ -166,6 +166,22 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
         &home_prod,
         &home_ptr,
     )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        "sow-database.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        "sow-database-ptr.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
     install_systemd_unit(gcp, paths, "valkey.service", &user, &home_prod, &home_ptr)?;
 
     for (template, conf_name) in [
@@ -189,7 +205,7 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     gcp.run_remote(&certbot)?;
 
     gcp.run_remote(
-        "sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr",
+        "sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr sow-database sow-database-ptr",
     )?;
 
     Ok(())
@@ -250,6 +266,7 @@ fn install_systemd_unit(
 pub struct ServerArtifacts {
     pub server: PathBuf,
     pub relay: PathBuf,
+    pub database: PathBuf,
     pub built: bool,
 }
 
@@ -259,27 +276,28 @@ pub struct ServerShipResult {
     pub version_changed: bool,
 }
 
-pub fn local_server_binaries(paths: &Paths) -> (PathBuf, PathBuf) {
+pub fn local_server_binaries(paths: &Paths) -> (PathBuf, PathBuf, PathBuf) {
     const GNU: &str = "x86_64-unknown-linux-gnu";
     let dir = paths.cargo_target.join(format!("{GNU}/release"));
-    (dir.join("sow-server"), dir.join("sow-relay"))
+    (dir.join("sow-server"), dir.join("sow-relay"), dir.join("sow-database"))
 }
 
 pub fn needs_local_server_build(paths: &Paths) -> Result<bool> {
     let current_hash = hash_server_inputs(paths)?;
     let hash_changed = read_cached_hash(paths) != current_hash;
-    let (server, relay) = local_server_binaries(paths);
-    Ok(hash_changed || !server.is_file() || !relay.is_file())
+    let (server, relay, database) = local_server_binaries(paths);
+    Ok(hash_changed || !server.is_file() || !relay.is_file() || !database.is_file())
 }
 
 /// Phase 1: compile server binaries locally when crate inputs changed.
 pub fn build_server_if_needed(paths: &Paths) -> Result<ServerArtifacts> {
-    let (server, relay) = local_server_binaries(paths);
+    let (server, relay, database) = local_server_binaries(paths);
     if needs_local_server_build(paths)? {
-        let (server, relay) = build_server_binaries(paths)?;
+        let (server, relay, database) = build_server_binaries(paths)?;
         Ok(ServerArtifacts {
             server,
             relay,
+            database,
             built: true,
         })
     } else {
@@ -287,6 +305,7 @@ pub fn build_server_if_needed(paths: &Paths) -> Result<ServerArtifacts> {
         Ok(ServerArtifacts {
             server,
             relay,
+            database,
             built: false,
         })
     }
@@ -294,7 +313,7 @@ pub fn build_server_if_needed(paths: &Paths) -> Result<ServerArtifacts> {
 
 pub fn remote_binaries_missing(gcp: &GcpConfig, data_dir: &str) -> bool {
     gcp.remote_output(&format!(
-        "test -x {data_dir}/sow-server && test -x {data_dir}/sow-relay && echo ok"
+        "test -x {data_dir}/sow-server && test -x {data_dir}/sow-relay && test -x {data_dir}/sow-database && echo ok"
     ))
     .map(|s| s.trim() != "ok")
     .unwrap_or(true)
@@ -318,6 +337,7 @@ pub fn ship_server(
             data_dir,
             &artifacts.server,
             &artifacts.relay,
+            &artifacts.database,
         )?;
         if artifacts.built {
             write_infra_hash(paths)?;
@@ -419,9 +439,9 @@ fn read_cached_hash(paths: &Paths) -> String {
         .to_string()
 }
 
-fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf)> {
+fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, PathBuf)> {
     const GNU: &str = "x86_64-unknown-linux-gnu";
-    println!("==> cargo build --release -p sow-server -p sow-relay ({GNU})");
+    println!("==> cargo build --release -p sow-server -p sow-relay -p sow-database ({GNU})");
     process::run(
         "cargo",
         &[
@@ -431,13 +451,15 @@ fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf)> {
             "sow-server",
             "-p",
             "sow-relay",
+            "-p",
+            "sow-database",
             "--target",
             GNU,
         ],
         Some(&paths.root),
     )?;
     let dir = paths.cargo_target.join(format!("{GNU}/release"));
-    Ok((dir.join("sow-server"), dir.join("sow-relay")))
+    Ok((dir.join("sow-server"), dir.join("sow-relay"), dir.join("sow-database")))
 }
 
 fn rsync_server_binaries(
@@ -446,6 +468,7 @@ fn rsync_server_binaries(
     data_dir: &str,
     server: &Path,
     relay: &Path,
+    database: &Path,
 ) -> Result<()> {
     gcp.rsync(
         cache_dir,
@@ -457,9 +480,14 @@ fn rsync_server_binaries(
         &relay.to_string_lossy(),
         &format!("{data_dir}/sow-relay"),
     )?;
+    gcp.rsync(
+        cache_dir,
+        &database.to_string_lossy(),
+        &format!("{data_dir}/sow-database"),
+    )?;
     gcp.run_remote(&format!(
-        "chmod +x {data_dir}/sow-server {data_dir}/sow-relay && \
-         sudo chcon -t bin_t {data_dir}/sow-server {data_dir}/sow-relay"
+        "chmod +x {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database && \
+         sudo chcon -t bin_t {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database"
     ))?;
     Ok(())
 }

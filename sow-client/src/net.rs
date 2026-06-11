@@ -105,6 +105,14 @@ impl SowApp {
                 self.send_join_if_connected(Some(id), false);
             }
         }
+        if crate::store_portals::poll_auth_changed() {
+            let fallback = self.ui.app.main_menu_state.player_name.clone();
+            let identity = crate::store_portals::load_identity(&fallback);
+            self.ui.app.main_menu_state.player_name = identity.display_name;
+            self.ui.app.main_menu_state.name_locked = identity.name_locked;
+            self.maybe_link_platform_identity();
+            self.fetch_cloud_progress();
+        }
         if let Some(mute) = crate::store_portals::poll_mute_audio_setting() {
             crate::store_portals::apply_mute_audio_setting(mute);
         }

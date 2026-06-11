@@ -5,6 +5,7 @@ members = [
     "sow-net",
     "sow-client",
     "sow-server",
+    "sow-database",
     "sow-ui",
     "sow-tools",
     "sow-relay",
@@ -36,6 +37,7 @@ image = { version = "0.25.10", default-features = false, features = ["webp", "pn
 sow-i18n = { path = "sow-i18n" }
 sow-map = { path = "sow-map", default-features = false }
 sow-ui = { path = "sow-ui" }
+sha2 = "0.10"
 winit = { path = "winit/winit", features = ["android-native-activity"] }
 brotli = "8.0.2"
 crossbeam-channel = "0.5.15"

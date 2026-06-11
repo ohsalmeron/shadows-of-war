@@ -12,6 +12,7 @@ pub enum UiAction {
     RetryConnection,
     JoinLobby(u64),
     LeaveLobby,
+    HostPrivateLobby,
     StartSinglePlayer(Box<sow_core::game_config::GameConfig>),
     SetAttackRatio(f32),
     CenterCamera,
@@ -25,4 +26,8 @@ pub enum UiAction {
     ToggleTerms,
     ToggleDevSidebar,
     CopyInviteLink(u64),
+    ResolveLinkConflict {
+        keep_account_id: String,
+    },
+    PortalShowAuthPrompt,
 }

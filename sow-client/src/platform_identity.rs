@@ -8,6 +8,7 @@ pub struct PlatformIdentity {
     pub external_id: Option<String>,
     pub avatar_url: Option<String>,
     pub name_locked: bool,
+    pub auth_token: Option<String>,
 }
 
 impl PlatformIdentity {
@@ -18,6 +19,7 @@ impl PlatformIdentity {
             external_id: None,
             avatar_url: None,
             name_locked: false,
+            auth_token: None,
         }
     }
 }

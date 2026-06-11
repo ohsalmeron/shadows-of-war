@@ -13,6 +13,8 @@ RestartSec=3
 KillMode=process
 Environment=RUST_LOG=info
 Environment=SOW_REDIS_URL=redis://127.0.0.1:6379
+Environment=SOW_DB_URL=http://127.0.0.1:25595
+Environment=SOW_DB_SECRET=sow_db_ptr_secret_token_placeholder
 Environment=SOW_WS_LISTEN=0.0.0.0:25575
 Environment=SOW_MAPS_HTTP_LISTEN=0.0.0.0:25576
 Environment=SOW_MAPS_ROOT=__HOME_PTR__/assets/maps

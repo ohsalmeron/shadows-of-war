@@ -177,6 +177,15 @@ impl SowApp {
                     }
                     self.ui.app.main_menu_state.is_waiting = true;
                 }
+                UiAction::HostPrivateLobby => {
+                    let join_msg = self.make_join_message(None, true);
+                    if let Ok(json) = bincode::serialize(&join_msg) {
+                        if let Some(c) = self.net.client.as_ref() {
+                            c.send(json);
+                        }
+                    }
+                    self.ui.app.main_menu_state.is_waiting = true;
+                }
                 UiAction::LeaveLobby => {
                     crate::store_portals::left_room();
                     if let Some(c) = self.net.client.as_ref() {
@@ -270,6 +279,12 @@ impl SowApp {
                             Some(self.ui.egui_ctx.input(|i| i.time));
                         log::info!("Copied invite link to clipboard.");
                     }
+                }
+                UiAction::ResolveLinkConflict { keep_account_id } => {
+                    self.resolve_link_conflict(keep_account_id);
+                }
+                UiAction::PortalShowAuthPrompt => {
+                    crate::store_portals::show_auth_prompt();
                 }
             }
         }

@@ -12,6 +12,7 @@ pub enum Language {
 #[derive(Debug, Clone, Deserialize)]
 pub struct MainMenuStrings {
     pub single_player: String,
+    pub host_private_game: String,
     pub ranked_match: String,
     pub settings: String,
     pub waiting_for_lobby: String,
@@ -63,6 +64,14 @@ pub struct MainMenuStrings {
     pub credits_link: String,
     pub copy_invite_link: String,
     pub invite_link_copied: String,
+    pub link_conflict_title: String,
+    pub link_conflict_body: String,
+    pub link_conflict_guest_label: String,
+    pub link_conflict_platform_label: String,
+    pub link_conflict_level: String,
+    pub link_conflict_keep_guest: String,
+    pub link_conflict_keep_platform: String,
+    pub sign_in: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

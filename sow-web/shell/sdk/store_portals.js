@@ -132,11 +132,14 @@
     window.SOW_DISABLE_CHAT = !!settings.disableChat;
   }
 
+  var SOW_PROGRESS_KEY = "sow_player_progress";
+
   window.SOW_PLATFORM_IDENTITY = null;
   window.SOW_PENDING_INVITE_LOBBY_ID = null;
   window.SOW_HOST_PRIVATE_PENDING = false;
   window.SOW_PORTAL_MUTE_AUDIO = false;
   window.SOW_DISABLE_CHAT = false;
+  window.SOW_PORTAL_PROGRESS_JSON = null;
 
   window.SOW_isSiteEmbed = isSiteEmbed;
   window.SOW_isOnCrazyGames = isOnCrazyGames;
@@ -210,6 +213,82 @@
     window.SOW_PENDING_INVITE_LOBBY_ID = null;
   };
 
+  window.SOW_AUTH_CHANGED = false;
+  window.SOW_portalClearAuthChanged = function () {
+    window.SOW_AUTH_CHANGED = false;
+  };
+
+  async function crazyGamesIdentityFromUser(user) {
+    if (!user || !user.username) {
+      return null;
+    }
+    var token = null;
+    try {
+      if (window.CrazyGames.SDK.user.getUserToken) {
+        token = await window.CrazyGames.SDK.user.getUserToken();
+      }
+    } catch (e) {
+      console.warn("CrazyGames getUserToken failed:", e);
+    }
+    return {
+      provider: "crazygames",
+      displayName: user.username,
+      externalId: user.userId || user.id || null,
+      avatarUrl: user.profilePictureUrl || null,
+      nameLocked: true,
+      token: token,
+    };
+  }
+
+  window.SOW_portalSaveData = function (jsonStr) {
+    if (!crazyGamesSdkReady()) {
+      return;
+    }
+    var data = window.CrazyGames.SDK.data;
+    if (!data || !data.setItem) {
+      return;
+    }
+    try {
+      var payload = JSON.parse(jsonStr);
+      data.setItem(payload.key, payload.value);
+    } catch (e) {
+      console.warn("SOW_portalSaveData failed:", e);
+    }
+  };
+
+  window.SOW_portalLoadData = async function (key) {
+    if (!crazyGamesSdkReady()) {
+      return null;
+    }
+    var data = window.CrazyGames.SDK.data;
+    if (!data || !data.getItem) {
+      return null;
+    }
+    try {
+      return await data.getItem(key);
+    } catch (e) {
+      console.warn("SOW_portalLoadData failed:", e);
+      return null;
+    }
+  };
+
+  window.SOW_portalShowAuthPrompt = async function () {
+    if (!crazyGamesSdkReady() || !window.CrazyGames.SDK.user || !window.CrazyGames.SDK.user.showAuthPrompt) {
+      return;
+    }
+    try {
+      var user = await window.CrazyGames.SDK.user.showAuthPrompt();
+      var identity = await crazyGamesIdentityFromUser(user);
+      if (identity) {
+        window.SOW_PLATFORM_IDENTITY = identity;
+        window.SOW_AUTH_CHANGED = true;
+        console.log("Auth prompt successful login:", user.username);
+      }
+    } catch (e) {
+      console.warn("Auth prompt failed or cancelled:", e);
+    }
+  };
+
   window.SOW_portalConsumeBootIntent = function () {
     window.SOW_PENDING_INVITE_LOBBY_ID = null;
     window.SOW_HOST_PRIVATE_PENDING = false;
@@ -249,16 +328,22 @@
         try {
           if (window.CrazyGames.SDK.user.isUserAccountAvailable) {
             var user = await window.CrazyGames.SDK.user.getUser();
-            if (user && user.username) {
-              window.SOW_PLATFORM_IDENTITY = {
-                provider: "crazygames",
-                displayName: user.username,
-                externalId: user.userId || user.id || null,
-                avatarUrl: user.profilePictureUrl || null,
-                nameLocked: true,
-              };
+            var identity = await crazyGamesIdentityFromUser(user);
+            if (identity) {
+              window.SOW_PLATFORM_IDENTITY = identity;
+              window.SOW_AUTH_CHANGED = true;
               console.log("CrazyGames user:", user.username);
             }
+          }
+          if (window.CrazyGames.SDK.user.addAuthListener) {
+            window.CrazyGames.SDK.user.addAuthListener(async function (u) {
+              var identity = await crazyGamesIdentityFromUser(u);
+              if (identity) {
+                window.SOW_PLATFORM_IDENTITY = identity;
+                window.SOW_AUTH_CHANGED = true;
+                console.log("CrazyGames user changed via AuthListener:", u.username);
+              }
+            });
           }
         } catch (e) {
           console.warn("CrazyGames getUser failed:", e);
@@ -284,6 +369,19 @@
         }
         installJoinRoomListener();
         window.SOW_portalConsumeBootIntent();
+      }
+
+      if (crazyGamesSdkReady() && window.CrazyGames.SDK.data) {
+        try {
+          var saved = await window.SOW_portalLoadData(SOW_PROGRESS_KEY);
+          if (saved) {
+            window.SOW_PORTAL_PROGRESS_JSON =
+              typeof saved === "string" ? saved : JSON.stringify(saved);
+            console.log("CrazyGames progress loaded");
+          }
+        } catch (e) {
+          console.warn("CrazyGames progress load failed:", e);
+        }
       }
     } catch (e) {
       console.warn("CrazyGames SDK init failed:", e);
@@ -394,6 +492,20 @@
       game.loadingStop();
     } else if (game.sdkGameLoadingStop) {
       game.sdkGameLoadingStop();
+    }
+  };
+
+  window.SOW_portalHappytime = function () {
+    if (!crazyGamesSdkReady()) {
+      return;
+    }
+    const game = crazyGameApi();
+    if (game && game.happytime) {
+      try {
+        game.happytime();
+      } catch (e) {
+        console.warn("CrazyGames happytime trigger failed:", e);
+      }
     }
   };
 

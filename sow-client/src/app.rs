@@ -253,6 +253,8 @@ pub struct TaskState {
     pub map_rx: crossbeam_channel::Receiver<crate::MapDownloadEvent>,
     pub engine_init_tx: crossbeam_channel::Sender<crate::EngineInitEvent>,
     pub engine_init_rx: crossbeam_channel::Receiver<crate::EngineInitEvent>,
+    pub db_tx: crossbeam_channel::Sender<crate::player_progress::DbEvent>,
+    pub db_rx: crossbeam_channel::Receiver<crate::player_progress::DbEvent>,
     pub pending_engine_init_data: Option<(
         sow_core::game::GameState,
         sow_core::water_components::WaterComponents,
@@ -281,6 +283,10 @@ pub struct SowApp {
     pub(crate) ime_bridge: crate::ime::WasmImeBridge,
     /// Set when Blade/Vulkan init fails; event loop exits on next tick.
     pub gpu_init_failed: bool,
+    pub progress: crate::player_progress::PlayerProgress,
+    pub progress_account_id: Option<String>,
+    pub progress_match_recorded: bool,
+    pub progress_session_defeats: crate::player_progress::SessionDefeats,
 }
 
 impl Default for SowApp {
@@ -341,6 +347,7 @@ impl SowApp {
         let my_player_id: Option<u16> = None;
         let my_lobby_id: Option<u64> = None;
         let (map_tx, map_rx) = crossbeam_channel::unbounded::<MapDownloadEvent>();
+        let (db_tx, db_rx) = crossbeam_channel::unbounded::<crate::player_progress::DbEvent>();
         type EngineInitData = (
             sow_core::game::GameState,
             sow_core::water_components::WaterComponents,
@@ -456,7 +463,7 @@ impl SowApp {
         let last_ping_time = Instant::now();
         let last_frame_time = Instant::now();
 
-        Self {
+        let mut sow_app = Self {
             gfx: GraphicsState {
                 window,
                 surface,
@@ -584,6 +591,8 @@ impl SowApp {
                 map_rx,
                 engine_init_tx,
                 engine_init_rx,
+                db_tx,
+                db_rx,
                 pending_engine_init_data,
                 engine_init_queued_msg,
             },
@@ -597,7 +606,389 @@ impl SowApp {
             #[cfg(target_arch = "wasm32")]
             ime_bridge,
             gpu_init_failed: false,
+            progress: crate::player_progress::PlayerProgress::default(),
+            progress_account_id: None,
+            progress_match_recorded: false,
+            progress_session_defeats: crate::player_progress::SessionDefeats::default(),
+        };
+        sow_app.load_portal_progress();
+        sow_app
+    }
+
+    fn apply_platform_auth(request: &mut ehttp::Request) {
+        if let Some(token) = crate::store_portals::load_identity("Player")
+            .auth_token
+            .filter(|t| !t.is_empty())
+        {
+            request.headers.insert("X-Platform-Auth", token);
         }
+    }
+
+    fn load_portal_progress(&mut self) {
+        if let Some(json) = crate::store_portals::take_progress_json() {
+            if let Ok(progress) = serde_json::from_str::<crate::player_progress::PlayerProgress>(&json) {
+                self.progress = progress;
+                self.apply_progress_preferences();
+                log::info!("Pre-loaded cached offline progress: level {} ({} XP)", self.progress.level, self.progress.xp);
+            }
+        }
+        self.fetch_cloud_progress();
+    }
+
+    pub(crate) fn fetch_cloud_progress(&self) {
+        let (provider, ext_id) = crate::store_portals::database_identity("Player");
+        let display_name = crate::store_portals::load_identity("Player").display_name;
+        let db_url = self.asset_config.database_base.clone();
+
+        let timestamp = web_time::SystemTime::now()
+            .duration_since(web_time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let sig_data = format!("{}:{}:{}", provider, ext_id.as_str(), timestamp);
+        let signature = crate::player_progress::compute_client_signature(&sig_data);
+
+        let encoded_provider = url::form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
+        let encoded_id = url::form_urlencoded::byte_serialize(ext_id.as_bytes()).collect::<String>();
+        let encoded_name = url::form_urlencoded::byte_serialize(display_name.as_bytes()).collect::<String>();
+
+        let url = format!(
+            "{}/profile?provider={}&external_id={}&fallback_name={}&timestamp={}&signature={}",
+            db_url.trim_end_matches('/'),
+            encoded_provider,
+            encoded_id,
+            encoded_name,
+            timestamp,
+            signature
+        );
+
+        log::info!("Fetching profile from sow-database: {provider}/{ext_id}");
+        let tx = self.tasks.db_tx.clone();
+        let mut request = ehttp::Request::get(&url);
+        Self::apply_platform_auth(&mut request);
+
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            match result {
+                Ok(res) => {
+                    if res.ok {
+                        #[derive(serde::Deserialize)]
+                        struct DbAccount {
+                            id: String,
+                            profile: crate::player_progress::PlayerProgress,
+                        }
+                        match serde_json::from_slice::<DbAccount>(&res.bytes) {
+                            Ok(account) => {
+                                let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded(
+                                    account.profile, account.id,
+                                ));
+                            }
+                            Err(e) => {
+                                log::error!("Failed to parse database profile JSON: {}", e);
+                                let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                            }
+                        }
+                    } else {
+                        log::warn!("sow-database responded with HTTP {}", res.status);
+                        let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                    }
+                }
+                Err(e) => {
+                    log::error!("sow-database request failed: {}", e);
+                    let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                }
+            }
+        });
+    }
+
+    pub(crate) fn resolve_link_conflict(&self, keep_account_id: String) {
+        let Some(conflict) = self.ui.app.main_menu_state.active_conflict.clone() else {
+            return;
+        };
+
+        let db_url = self.asset_config.database_base.clone();
+        let url = format!("{}/profile/link/resolve", db_url.trim_end_matches('/'));
+        let timestamp = web_time::SystemTime::now()
+            .duration_since(web_time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let sig_data = format!(
+            "{}:{}:{}:{}:{}",
+            conflict.current_account_id,
+            keep_account_id,
+            conflict.target_provider,
+            conflict.target_external_id,
+            timestamp
+        );
+        let signature = crate::player_progress::compute_client_signature(&sig_data);
+
+        #[derive(serde::Serialize)]
+        struct ResolveRequest {
+            account_id: String,
+            keep_account_id: String,
+            target_provider: String,
+            target_external_id: String,
+            timestamp: u64,
+            signature: String,
+        }
+        let payload = ResolveRequest {
+            account_id: conflict.current_account_id,
+            keep_account_id,
+            target_provider: conflict.target_provider,
+            target_external_id: conflict.target_external_id,
+            timestamp,
+            signature,
+        };
+        let Ok(body) = serde_json::to_vec(&payload) else {
+            return;
+        };
+        let tx = self.tasks.db_tx.clone();
+        let mut request = ehttp::Request::post(&url, body);
+        request.headers.insert("Content-Type", "application/json");
+        Self::apply_platform_auth(&mut request);
+        log::info!("Resolving platform link conflict...");
+        ehttp::fetch(request, move |result| {
+            let Ok(res) = result else {
+                log::error!("Link resolve request failed");
+                return;
+            };
+            if !res.ok {
+                log::warn!("Profile link resolve returned HTTP {}", res.status);
+                return;
+            }
+            #[derive(serde::Deserialize)]
+            struct DbAccount {
+                id: String,
+                profile: crate::player_progress::PlayerProgress,
+            }
+            #[derive(serde::Deserialize)]
+            struct ResolveResponse {
+                status: String,
+                account: Option<DbAccount>,
+            }
+            let Ok(parsed) = serde_json::from_slice::<ResolveResponse>(&res.bytes) else {
+                log::error!("Failed to parse link resolve response");
+                return;
+            };
+            if parsed.status == "resolved" {
+                if let Some(account) = parsed.account {
+                    let _ = tx.send(crate::player_progress::DbEvent::LinkResolved(
+                        account.profile,
+                        account.id,
+                    ));
+                }
+            }
+        });
+    }
+
+    pub(crate) fn maybe_link_platform_identity(&self) {
+        let Some(account_id) = &self.progress_account_id else {
+            return;
+        };
+        let platform = crate::store_portals::load_identity("Player");
+        let Some(ext_id) = platform.external_id.filter(|s| !s.is_empty()) else {
+            return;
+        };
+        if platform.provider == "local" || platform.provider == "self" {
+            return;
+        }
+
+        let db_url = self.asset_config.database_base.clone();
+        let url = format!("{}/profile/link", db_url.trim_end_matches('/'));
+        let timestamp = web_time::SystemTime::now()
+            .duration_since(web_time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let sig_data = format!(
+            "{}:{}:{}:{}",
+            account_id, platform.provider, ext_id, timestamp
+        );
+        let signature = crate::player_progress::compute_client_signature(&sig_data);
+
+        #[derive(serde::Serialize)]
+        struct LinkRequest {
+            account_id: String,
+            target_provider: String,
+            target_external_id: String,
+            timestamp: u64,
+            signature: String,
+        }
+        let current_account_id = account_id.clone();
+        let target_provider = platform.provider.to_string();
+        let target_external_id = ext_id.clone();
+        let payload = LinkRequest {
+            account_id: current_account_id.clone(),
+            target_provider: target_provider.clone(),
+            target_external_id: target_external_id.clone(),
+            timestamp,
+            signature,
+        };
+        let Ok(body) = serde_json::to_vec(&payload) else {
+            return;
+        };
+        let tx = self.tasks.db_tx.clone();
+        let mut request = ehttp::Request::post(&url, body);
+        request.headers.insert("Content-Type", "application/json");
+        Self::apply_platform_auth(&mut request);
+        log::info!(
+            "Attempting to link platform {} to account {}",
+            platform.provider,
+            account_id
+        );
+        ehttp::fetch(request, move |result| {
+            let Ok(res) = result else { return };
+            if !res.ok {
+                log::warn!("Profile link returned HTTP {}", res.status);
+                return;
+            }
+            #[derive(serde::Deserialize)]
+            struct LinkSummary {
+                level: u32,
+            }
+            #[derive(serde::Deserialize)]
+            struct LinkResponse {
+                status: String,
+                existing_account_id: Option<String>,
+                existing: Option<LinkSummary>,
+                current: Option<LinkSummary>,
+            }
+            let Ok(parsed) = serde_json::from_slice::<LinkResponse>(&res.bytes) else {
+                return;
+            };
+            match parsed.status.as_str() {
+                "linked" | "resolved" => {
+                    log::info!("Platform identity linked successfully");
+                }
+                "conflict" => {
+                    if let (Some(existing_id), Some(existing), Some(current)) =
+                        (parsed.existing_account_id, parsed.existing, parsed.current)
+                    {
+                        log::warn!(
+                            "Account link conflict: local level {} vs existing level {} (id {})",
+                            current.level,
+                            existing.level,
+                            existing_id
+                        );
+                        let _ = tx.send(crate::player_progress::DbEvent::LinkConflict(
+                            crate::player_progress::LinkConflictInfo {
+                                current_account_id: current_account_id.clone(),
+                                existing_account_id: existing_id,
+                                existing_level: existing.level,
+                                current_level: current.level,
+                                target_provider,
+                                target_external_id,
+                            },
+                        ));
+                    }
+                }
+                other => log::warn!("Unexpected link status: {other}"),
+            }
+        });
+    }
+
+    pub(crate) fn apply_progress_preferences(&mut self) {
+        if let Some(leader) = self.progress.preferred_leader {
+            self.ui.app.main_menu_state.selected_leader = leader;
+            self.ui.app.main_menu_state.selected_civilization = leader.civilization();
+        }
+    }
+
+    fn save_portal_progress(&self) {
+        let serialized_profile = match serde_json::to_string(&self.progress) {
+            Ok(json) => {
+                crate::store_portals::save_progress(&json);
+                json
+            }
+            Err(e) => {
+                log::warn!("Failed to serialize portal progress: {e}");
+                return;
+            }
+        };
+
+        if let Some(account_id) = &self.progress_account_id {
+            let db_url = self.asset_config.database_base.clone();
+            let url = format!("{}/profile/save", db_url.trim_end_matches('/'));
+
+            let timestamp = web_time::SystemTime::now()
+                .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            // Hash format: "account_id:serialized_profile:timestamp"
+            let sig_data = format!("{}:{}:{}", account_id, serialized_profile, timestamp);
+            let signature = crate::player_progress::compute_client_signature(&sig_data);
+
+            #[derive(serde::Serialize)]
+            struct SaveRequest {
+                account_id: String,
+                profile: crate::player_progress::PlayerProgress,
+                timestamp: u64,
+                signature: String,
+            }
+
+            let payload = SaveRequest {
+                account_id: account_id.clone(),
+                profile: self.progress.clone(),
+                timestamp,
+                signature,
+            };
+
+            if let Ok(body) = serde_json::to_vec(&payload) {
+                let mut request = ehttp::Request::post(&url, body);
+                request.headers.insert("Content-Type", "application/json");
+
+                log::info!("Saving progress to cloud sow-database for account {}...", account_id);
+                ehttp::fetch(request, move |result| {
+                    match result {
+                        Ok(res) => {
+                            if res.ok {
+                                log::info!("Successfully saved progress to sow-database.");
+                            } else {
+                                log::warn!("Failed to save progress to sow-database: HTTP {}", res.status);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("sow-database save request failed: {}", e);
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    fn reset_progress_session(&mut self) {
+        self.progress_match_recorded = false;
+        self.progress_session_defeats = crate::player_progress::SessionDefeats::default();
+    }
+
+    fn maybe_record_match_progress(&mut self, winner: Option<u16>) {
+        if self.progress_match_recorded {
+            return;
+        }
+        let Some(winner_id) = winner else {
+            return;
+        };
+        let my_id = self.sim.my_player_id.unwrap_or(0);
+        if my_id == 0 {
+            return;
+        }
+        self.progress_match_recorded = true;
+
+        // Online ranked matches: relay + sow-database own the outcome; client only reads profile later.
+        if self.progress_account_id.is_some() && !self.net.is_offline {
+            log::info!("Online match ended (winner={winner_id}); stats will sync from sow-database on menu return");
+            return;
+        }
+
+        let won = winner_id == my_id;
+        let defeats = self.progress_session_defeats;
+        self.progress.preferred_leader =
+            Some(self.ui.app.main_menu_state.selected_leader);
+        self.progress.record_match(won, defeats);
+        self.save_portal_progress();
+        log::info!(
+            "Recorded local match progress: won={won}, defeats={defeats:?}, level={}",
+            self.progress.level
+        );
     }
 
     /// Initialize the shared Blade context once; returns false after a fatal error.
@@ -643,6 +1034,7 @@ impl SowApp {
             clan_tag: self.ui.app.main_menu_state.clan_tag.clone(),
             civilization: self.ui.app.main_menu_state.selected_civilization,
             leader: self.ui.app.main_menu_state.selected_leader,
+            database_account_id: self.progress_account_id.clone(),
         }
     }
 
@@ -694,6 +1086,11 @@ impl SowApp {
         self.ui.is_spectating = false;
         self.ui.defeat_time = None;
         self.ui.endgame_cache = None;
+        self.reset_progress_session();
+
+        if was_playing && self.progress_account_id.is_some() {
+            self.fetch_cloud_progress();
+        }
     }
 
     /// Enter the EnterGame splash (fade-in, progress bar, fade-out to Playing).
@@ -862,6 +1259,7 @@ impl SowApp {
                 map_bytes,
                 players,
             } => {
+                self.reset_progress_session();
                 self.sim.config = (*config).clone();
                 let map_w = config.map_width;
                 let map_h = config.map_height;
@@ -944,6 +1342,7 @@ impl SowApp {
                     // Process events produced by the engine during the tick!
                     let my_id = self.sim.my_player_id.unwrap_or(0);
                     let now_instant = web_time::Instant::now();
+                    let mut turn_defeats = crate::player_progress::SessionDefeats::default();
                     for event in e.state.events.drain(..) {
                         if let sow_core::game::GameEvent::PlayerEliminated {
                             player_id,
@@ -987,6 +1386,19 @@ impl SowApp {
                                 {
                                     wx = conqueror.centroid_x + 0.5;
                                     wy = conqueror.centroid_y + 0.5;
+                                }
+                            }
+
+                            if conqueror_id == my_id && my_id != 0 {
+                                if let Some(victim) =
+                                    snap.players.iter().find(|p| p.id == player_id)
+                                {
+                                    use sow_core::player::PlayerType;
+                                    match victim.player_type {
+                                        PlayerType::Human => turn_defeats.players += 1,
+                                        PlayerType::Nation => turn_defeats.empires += 1,
+                                        PlayerType::Bot => turn_defeats.tribes += 1,
+                                    }
                                 }
                             }
 
@@ -1086,6 +1498,18 @@ impl SowApp {
                                 .push_notification(msg, egui::Color32::from_rgb(255, 215, 0));
                         }
                     }
+                    self.progress_session_defeats.players = self
+                        .progress_session_defeats
+                        .players
+                        .saturating_add(turn_defeats.players);
+                    self.progress_session_defeats.empires = self
+                        .progress_session_defeats
+                        .empires
+                        .saturating_add(turn_defeats.empires);
+                    self.progress_session_defeats.tribes = self
+                        .progress_session_defeats
+                        .tribes
+                        .saturating_add(turn_defeats.tribes);
 
                     if let Some(mut existing) = self.sim.current_snapshot.take() {
                         // Detect building level upgrades and completions
@@ -1195,6 +1619,7 @@ impl SowApp {
                         self.ui.app.hud_state.push_notification(message, color);
                     }
 
+                    self.maybe_record_match_progress(snap.winner);
                     self.sim.current_snapshot = Some(snap);
                     self.time.interp.stamp_applied(web_time::Instant::now());
                 }

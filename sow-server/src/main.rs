@@ -42,6 +42,7 @@ enum ServerEvent {
         target_lobby_id: Option<u64>,
         host_private: bool,
         build_version: String,
+        database_account_id: Option<String>,
     },
 
     Leave {
@@ -120,11 +121,52 @@ async fn main() {
                             drop(rcon);
 
                             let mut players_json = Vec::new();
+                            let mut player_ids = Vec::new();
                             for p in &lobby.players {
                                 players_json.push(serde_json::json!({
                                     "player_id": p.player_id,
                                     "name": p.name,
+                                    "database_account_id": p.database_account_id,
                                 }));
+                                if let Some(acc_id) = &p.database_account_id {
+                                    player_ids.push(acc_id.clone());
+                                }
+                            }
+
+                            if !player_ids.is_empty() {
+                                let match_id = lobby.id.to_string();
+                                tokio::spawn(async move {
+                                    let db_base_url = std::env::var("SOW_DB_URL")
+                                        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+                                    let secret_token = std::env::var("SOW_DB_SECRET")
+                                        .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+                                    
+                                    let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
+                                    let client = reqwest::Client::new();
+                                    
+                                    let payload = serde_json::json!({
+                                        "match_id": match_id,
+                                        "player_ids": player_ids,
+                                    });
+
+                                    match client.post(&url)
+                                        .header("Authorization", format!("Bearer {}", secret_token))
+                                        .json(&payload)
+                                        .send()
+                                        .await
+                                    {
+                                        Ok(res) => {
+                                            if res.status().is_success() {
+                                                log::info!("Successfully registered starting match {} with database.", match_id);
+                                            } else {
+                                                log::warn!("Database match/start endpoint returned status: {}", res.status());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to register starting match {} with database: {}", match_id, e);
+                                        }
+                                    }
+                                });
                             }
 
                             let relay_config = serde_json::json!({
@@ -242,9 +284,9 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version } => {
+                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id } => {
                             log::info!("Player {} (clan: {}) joining with version: {}", name, clan_tag, build_version);
-                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private) {
+                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private };
                                     let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)).unwrap();
@@ -349,7 +391,7 @@ async fn main() {
 
                                     if let Ok(msg) = bincode::deserialize::<sow_core::protocol::ClientMessage>(&data) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, host_private, build_version, clan_tag, civilization, leader } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, host_private, build_version, clan_tag, civilization, leader, database_account_id } => {
                                                 let server_version = std::env::var("SOW_BUILD_VERSION")
                                                     .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
 
@@ -370,6 +412,7 @@ async fn main() {
                                                     target_lobby_id,
                                                     host_private,
                                                     build_version,
+                                                    database_account_id,
                                                 }).await;
                                             }
                                             sow_core::protocol::ClientMessage::Gameplay { .. } => {

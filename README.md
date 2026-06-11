@@ -132,6 +132,28 @@ Boot UI and leader portraits load from CDN at runtime for play/ptr shells (shell
 
 `sow ptr` updates PTR shell + PTR server only — never restarts prod.
 
+## CrazyGames QA & Testing Guide
+
+This section outlines how to verify the platform features required for CrazyGames QA approval:
+
+### 1. Private Lobbies & Friend Invites (CrazyGames SDK Room Module)
+* **Hosting**: Click the **HOST PRIVATE GAME** button in the main menu. This registers you as a host and places you in a private queue.
+* **Inviting**: While waiting in the lobby, click the **COPY INVITE LINK** button. This calls the CrazyGames `inviteLink` SDK method and copies a direct deep-link to your clipboard.
+* **Joining**: Open the copied link in another tab or browser. The second client will automatically parse the invite payload on boot, bypass the menu, and directly join your private lobby.
+
+### 2. Instant Multiplayer Intent
+* **Triggering**: During a cold boot with CrazyGames' `isInstantMultiplayer` option enabled, the game shell triggers the instant multiplayer path.
+* **Handoff**: The client reads the `isInstantMultiplayer` flag and immediately sends `Join { host_private: true }` on connect, bypassing the main menu completely and presenting the waiting screen.
+
+### 3. Happytime Victory Celebrations
+* **Victory Event**: On winning a match, the endgame overlay triggers the `game.happytime()` SDK helper.
+* **Verification**: Verify that the victory screen displays without errors, and that the SDK's happytime hook was executed successfully.
+
+### 4. User Accounts & Progress Linking (Unified DB)
+* **Auth Prompt**: Local guests can click the **SIGN IN** button in the user profile header on the main menu. This calls `window.CrazyGames.SDK.user.showAuthPrompt()`.
+* **Syncing**: Once authenticated, the profile is updated with the platform avatar/username, and the client communicates with the cloud database `/profile/link` to bind progress data.
+* **Auth State Updates**: The SDK's `addAuthListener` automatically listens for authentication changes and updates the client credentials and profile state dynamically.
+
 ## License
 
 Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).

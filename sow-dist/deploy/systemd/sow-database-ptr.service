@@ -1,0 +1,20 @@
+[Unit]
+Description=Shadows of War Database Microservice (PTR)
+After=network.target
+
+[Service]
+Type=simple
+User=__DEPLOY_USER__
+WorkingDirectory=__HOME_PTR__
+ExecStart=__HOME_PTR__/sow-database
+Restart=always
+RestartSec=3
+KillMode=process
+Environment=RUST_LOG=info
+Environment=SOW_DB_PORT=25595
+Environment=SOW_VALKEY_URL=redis://127.0.0.1:6379
+Environment=SOW_DB_SECRET=sow_db_ptr_secret_token_placeholder
+Environment=SOW_DB_SALT=sow_db_ptr_salt_placeholder
+
+[Install]
+WantedBy=multi-user.target

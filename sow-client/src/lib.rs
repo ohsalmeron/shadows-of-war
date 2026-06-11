@@ -169,6 +169,8 @@ pub mod net;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;
 pub mod platform_identity;
+mod guest_id;
+pub mod player_progress;
 mod platform_output;
 pub mod render;
 pub mod store_portals;

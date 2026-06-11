@@ -24,6 +24,7 @@ pub struct PlayerConnection {
     pub download_progress: u8,
     pub civilization: sow_core::player::Civilization,
     pub leader: sow_core::player::Leader,
+    pub database_account_id: Option<String>,
 }
 
 pub struct ServerLobby {
@@ -178,6 +179,7 @@ pub fn join_player(
     client_tx: mpsc::Sender<Vec<u8>>,
     target_lobby_id: Option<u64>,
     host_private: bool,
+    database_account_id: Option<String>,
 ) -> Result<(u64, u16, String, bool), String> {
     let lobby_id = if host_private {
         if target_lobby_id.is_some() {
@@ -242,6 +244,7 @@ pub fn join_player(
         download_progress: 0,
         civilization,
         leader,
+        database_account_id,
     });
 
     log::info!("Player {} joined lobby {}", player_id, lobby_id);

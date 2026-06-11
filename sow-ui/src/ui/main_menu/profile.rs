@@ -34,6 +34,7 @@ pub fn draw_user_profile_header(
     profile_height: f32,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
+    action: &mut Option<crate::UiAction>,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     let desired_width = ui.available_width();
@@ -138,10 +139,26 @@ pub fn draw_user_profile_header(
         .circle_filled(dot_center, 4.0, Color32::from_rgb(34, 197, 94));
 
     // --- 2. Compact Text Column (Name only, vertically centered) ---
-    let text_rect = egui::Rect::from_min_max(
-        egui::pos2(avatar_rect.max.x + 12.0, rect.min.y),
-        egui::pos2(rect.max.x - 8.0, rect.max.y),
-    );
+    let (text_rect, btn_rect) = if !state.name_locked {
+        let btn_w = 80.0;
+        let right_margin = 8.0;
+        let text_max_x = rect.max.x - btn_w - right_margin - 8.0;
+        let text_rect = egui::Rect::from_min_max(
+            egui::pos2(avatar_rect.max.x + 12.0, rect.min.y),
+            egui::pos2(text_max_x, rect.max.y),
+        );
+        let btn_rect = egui::Rect::from_min_max(
+            egui::pos2(text_max_x + 8.0, rect.min.y + (rect.height() - 28.0) / 2.0),
+            egui::pos2(rect.max.x - right_margin, rect.min.y + (rect.height() + 28.0) / 2.0),
+        );
+        (text_rect, Some(btn_rect))
+    } else {
+        let text_rect = egui::Rect::from_min_max(
+            egui::pos2(avatar_rect.max.x + 12.0, rect.min.y),
+            egui::pos2(rect.max.x - 8.0, rect.max.y),
+        );
+        (text_rect, None)
+    };
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(text_rect), |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -180,4 +197,16 @@ pub fn draw_user_profile_header(
             }
         });
     });
+
+    if let Some(btn_rect) = btn_rect {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
+            let sign_in_btn = crate::widgets::ThemeButton::new(&strings.sign_in)
+                .style(crate::widgets::ThemeButtonStyle::Secondary)
+                .min_size(egui::vec2(btn_rect.width(), btn_rect.height()))
+                .text_size(11.0);
+            if ui.add(sign_in_btn).clicked() {
+                *action = Some(crate::UiAction::PortalShowAuthPrompt);
+            }
+        });
+    }
 }

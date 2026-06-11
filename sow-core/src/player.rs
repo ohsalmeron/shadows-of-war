@@ -170,6 +170,23 @@ impl Leader {
             Leader::Napoleon => "Grande Armée: Territory-conquering troops expand 20% faster.",
         }
     }
+
+    pub fn civilization(self) -> Civilization {
+        match self {
+            Leader::Caesar => Civilization::Rome,
+            Leader::Cleopatra => Civilization::Egypt,
+            Leader::Ragnar => Civilization::Vikings,
+            Leader::SunTzu => Civilization::China,
+            Leader::Alexander => Civilization::Macedon,
+            Leader::GenghisKhan => Civilization::Mongols,
+            Leader::RichardTheLionheart => Civilization::Angevin,
+            Leader::Vercingetorix => Civilization::Gallic,
+            Leader::Boudica => Civilization::Iceni,
+            Leader::LadySixSky => Civilization::Maya,
+            Leader::Leonidas => Civilization::Sparta,
+            Leader::Napoleon => Civilization::France,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

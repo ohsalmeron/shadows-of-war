@@ -5,8 +5,18 @@ pub mod queue_overlay;
 pub mod single_player_setup;
 
 use crate::UiAction;
-use egui::{Align, CentralPanel, Color32, Frame, Layout};
+use egui::{Align, CentralPanel, Color32, Frame, Layout, RichText, Stroke};
 use sow_core::protocol::LobbyInfo;
+
+#[derive(Clone, Debug)]
+pub struct UiLinkConflictInfo {
+    pub current_account_id: String,
+    pub existing_account_id: String,
+    pub current_level: u32,
+    pub existing_level: u32,
+    pub target_provider: String,
+    pub target_external_id: String,
+}
 
 pub struct MainMenuState {
     pub is_connected: bool,
@@ -37,6 +47,7 @@ pub struct MainMenuState {
     pub error_message: Option<String>,
     pub leader_backdrop: crate::widgets::LeaderBackdropTransition,
     pub invite_copied_at: Option<f64>,
+    pub active_conflict: Option<UiLinkConflictInfo>,
 }
 
 impl Default for MainMenuState {
@@ -116,6 +127,7 @@ impl Default for MainMenuState {
                     .as_millis() as u64,
                 ..Default::default()
             }),
+            active_conflict: None,
             leader_backdrop: {
                 let leader = match web_time::SystemTime::now()
                     .duration_since(web_time::SystemTime::UNIX_EPOCH)
@@ -187,7 +199,9 @@ fn menu_meta_footer_height(section_gap: f32) -> f32 {
 fn menu_footer_height(section_gap: f32, action_min_h: f32) -> f32 {
     let secondary_h = (action_min_h - 10.0).max(action_min_h * 0.875);
     let settings_h = action_min_h * 0.75;
-    action_min_h
+    action_min_h // Solo button
+        + section_gap
+        + action_min_h // Host private button
         + section_gap
         + secondary_h
         + section_gap
@@ -298,7 +312,7 @@ fn draw_menu_right_panel_contents(
     let panel_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w, panel_inner_h));
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(panel_rect), |ui| {
-        profile::draw_user_profile_header(ui, state, compact, profile_height, asset_loader, lang);
+        profile::draw_user_profile_header(ui, state, compact, profile_height, asset_loader, lang, action);
 
         ui.add_space(section_gap);
 
@@ -455,6 +469,134 @@ fn draw_connecting_indicator(
         });
 }
 
+fn draw_link_conflict_modal(
+    root_ui: &mut egui::Ui,
+    action: &mut Option<UiAction>,
+    conflict: &UiLinkConflictInfo,
+    lang: sow_i18n::Language,
+    compact: bool,
+) {
+    let strings = &sow_i18n::get(lang).main_menu;
+    let screen_rect = root_ui.ctx().content_rect();
+    let modal_w = if compact {
+        screen_rect.width() - 32.0
+    } else {
+        480.0
+    };
+
+    egui::Area::new(egui::Id::new("link_conflict_backdrop"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(egui::pos2(0.0, 0.0))
+        .show(root_ui.ctx(), |ui| {
+            ui.painter()
+                .rect_filled(screen_rect, 0.0, crate::ui::theme::menu_backdrop());
+        });
+
+    egui::Window::new(&strings.link_conflict_title)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .fixed_size(egui::vec2(modal_w, if compact { 360.0 } else { 320.0 }))
+        .frame(
+            Frame::new()
+                .fill(crate::ui::theme::panel_bg())
+                .stroke(Stroke::new(
+                    1.5_f32,
+                    crate::ui::theme::accent_solo_cyan_hover(),
+                ))
+                .corner_radius(egui::CornerRadius::same(16))
+                .inner_margin(24.0)
+                .shadow(egui::Shadow {
+                    blur: 32,
+                    spread: 0,
+                    color: crate::ui::theme::accent_solo_cyan().linear_multiply(0.2),
+                    offset: [0, 8],
+                }),
+        )
+        .show(root_ui.ctx(), |ui| {
+            ui.set_width(modal_w - 48.0);
+            ui.vertical_centered(|ui| {
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &strings.link_conflict_title,
+                    egui::FontId::proportional(20.0),
+                    crate::ui::theme::accent_solo_cyan(),
+                );
+                ui.add_space(12.0);
+                ui.label(
+                    RichText::new(&strings.link_conflict_body)
+                        .size(13.0)
+                        .color(crate::ui::theme::text_secondary()),
+                );
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    let col_w = (ui.available_width() - 12.0) / 2.0;
+                    ui.vertical(|ui| {
+                        ui.set_width(col_w);
+                        ui.label(
+                            RichText::new(&strings.link_conflict_guest_label)
+                                .strong()
+                                .color(crate::ui::theme::accent_solo_cyan()),
+                        );
+                        ui.label(
+                            RichText::new(strings.link_conflict_level.replace(
+                                "{}",
+                                &conflict.current_level.to_string(),
+                            ))
+                            .size(16.0),
+                        );
+                    });
+                    ui.vertical(|ui| {
+                        ui.set_width(col_w);
+                        ui.label(
+                            RichText::new(&strings.link_conflict_platform_label)
+                                .strong()
+                                .color(crate::ui::theme::accent_solo_cyan()),
+                        );
+                        ui.label(
+                            RichText::new(strings.link_conflict_level.replace(
+                                "{}",
+                                &conflict.existing_level.to_string(),
+                            ))
+                            .size(16.0),
+                        );
+                    });
+                });
+                ui.add_space(24.0);
+                ui.horizontal(|ui| {
+                    let btn_w = if compact {
+                        ui.available_width()
+                    } else {
+                        (ui.available_width() - 12.0) / 2.0
+                    };
+                    let guest_btn = crate::widgets::ThemeButton::new(&strings.link_conflict_keep_guest)
+                        .style(crate::widgets::ThemeButtonStyle::Secondary)
+                        .min_size(egui::vec2(btn_w, 40.0));
+                    if ui.add(guest_btn).clicked() {
+                        *action = Some(UiAction::ResolveLinkConflict {
+                            keep_account_id: conflict.current_account_id.clone(),
+                        });
+                    }
+                    if !compact {
+                        ui.add_space(12.0);
+                    } else {
+                        ui.add_space(8.0);
+                    }
+                    let platform_btn =
+                        crate::widgets::ThemeButton::new(&strings.link_conflict_keep_platform)
+                            .style(crate::widgets::ThemeButtonStyle::Primary)
+                            .min_size(egui::vec2(btn_w, 40.0));
+                    if ui.add(platform_btn).clicked() {
+                        *action = Some(UiAction::ResolveLinkConflict {
+                            keep_account_id: conflict.existing_account_id.clone(),
+                        });
+                    }
+                });
+            });
+        });
+}
+
 pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -531,6 +673,10 @@ pub fn draw(
                     },
                 );
             });
+    }
+
+    if let Some(conflict) = state.active_conflict.clone() {
+        draw_link_conflict_modal(root_ui, &mut action, &conflict, lang, compact);
     }
 
     draw_connecting_indicator(root_ui.ctx(), state, lang, compact);

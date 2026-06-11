@@ -129,12 +129,16 @@ pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
                 let external_id = js_string_field(&obj, "externalId");
                 let avatar_url = js_string_field(&obj, "avatarUrl");
                 let name_locked = js_bool_field(&obj, "nameLocked").unwrap_or(false);
+                let auth_token = js_string_field(&obj, "token");
                 let provider_static: &'static str = match provider.as_str() {
                     "crazygames" => "crazygames",
                     "poki" => "poki",
                     "gamecenter" => "gamecenter",
                     "playgames" => "playgames",
                     "steam" => "steam",
+                    "discord" => "discord",
+                    "google" => "google",
+                    "meta" => "meta",
                     _ => "self",
                 };
                 return PlatformIdentity {
@@ -143,11 +147,21 @@ pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
                     external_id,
                     avatar_url,
                     name_locked,
+                    auth_token,
                 };
             }
         }
     }
     PlatformIdentity::self_hosted(fallback_name.to_string())
+}
+
+/// Provider + external_id for sow-database (platform login or persistent local guest).
+pub fn database_identity(fallback_name: &str) -> (String, String) {
+    let identity = load_identity(fallback_name);
+    if let Some(ext_id) = identity.external_id.filter(|s| !s.is_empty()) {
+        return (identity.provider.to_string(), ext_id);
+    }
+    ("local".into(), crate::guest_id::load_or_create())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -219,4 +233,40 @@ pub fn poll_mute_audio_setting() -> Option<bool> {
 
 pub fn is_chat_disabled() -> bool {
     take_window_bool("SOW_DISABLE_CHAT")
+}
+
+pub fn take_progress_json() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        get_window_value("SOW_PORTAL_PROGRESS_JSON").and_then(|v| v.as_string())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+pub fn save_progress(json: &str) {
+    let payload = format!(
+        r#"{{"key":"{}","value":{}}}"#,
+        crate::player_progress::STORAGE_KEY,
+        json
+    );
+    call_window_hook_str("SOW_portalSaveData", &payload);
+}
+
+pub fn happytime() {
+    call_window_hook("SOW_portalHappytime");
+}
+
+pub fn show_auth_prompt() {
+    call_window_hook("SOW_portalShowAuthPrompt");
+}
+
+pub fn poll_auth_changed() -> bool {
+    let changed = take_window_bool("SOW_AUTH_CHANGED");
+    if changed {
+        call_window_hook("SOW_portalClearAuthChanged");
+    }
+    changed
 }

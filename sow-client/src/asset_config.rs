@@ -7,6 +7,7 @@ const DEFAULT_ORIGIN: &str = "https://shadowsofwar.io";
 pub struct AssetConfig {
     pub maps_base: String,
     pub assets_base: String,
+    pub database_base: String,
     /// Deploy timestamp for cache busting CDN UI assets.
     pub cache_bust: String,
 }
@@ -16,11 +17,13 @@ impl AssetConfig {
     pub fn resolve() -> Self {
         let maps_base = Self::resolve_maps_base();
         let assets_base = Self::resolve_assets_base();
+        let database_base = Self::resolve_database_base();
         let cache_bust = Self::resolve_cache_bust();
-        log::info!("AssetConfig maps={} assets={}", maps_base, assets_base);
+        log::info!("AssetConfig maps={} assets={} database={}", maps_base, assets_base, database_base);
         Self {
             maps_base,
             assets_base,
+            database_base,
             cache_bust,
         }
     }
@@ -112,6 +115,34 @@ impl AssetConfig {
         format!("{DEFAULT_ORIGIN}/assets")
     }
 
+    fn resolve_database_base() -> String {
+        if let Some(url) = Self::js_global("SOW_DATABASE_URL") {
+            return url;
+        }
+        if let Ok(url) = std::env::var("SOW_DATABASE_URL") {
+            if !url.is_empty() {
+                return url;
+            }
+        }
+        if let Some(url) = std::env::var("SOW_WS_URL")
+            .ok()
+            .and_then(|ws| database_url_from_ws_url(&ws))
+        {
+            return url;
+        }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(url) = Self::js_global("SOW_WS_URL").and_then(|ws| database_url_from_ws_url(&ws))
+        {
+            return url;
+        }
+        let maps_base = Self::resolve_maps_base();
+        if maps_base.ends_with("/maps") {
+            maps_base.replace("/maps", "/api")
+        } else {
+            format!("{DEFAULT_ORIGIN}/api")
+        }
+    }
+
     fn resolve_cache_bust() -> String {
         if let Some(ts) = Self::js_global("SOW_BUILD_TS") {
             if ts != "__BUILD_TS__" && !ts.is_empty() {
@@ -143,5 +174,19 @@ fn maps_url_from_ws_url(ws_url: &str) -> Option<String> {
         Some("http://127.0.0.1:25566/maps".to_string())
     } else {
         Some(format!("https://{host}/maps"))
+    }
+}
+
+fn database_url_from_ws_url(ws_url: &str) -> Option<String> {
+    let rest = ws_url
+        .strip_prefix("wss://")
+        .or_else(|| ws_url.strip_prefix("ws://"))?;
+    let host = rest.split('/').next()?.split(':').next()?;
+    if host == "127.0.0.1" || host == "localhost" {
+        Some("http://127.0.0.1:25585".to_string())
+    } else if host == "play.shadowsofwar.io" || host == "ptr.shadowsofwar.io" {
+        Some("/api".to_string())
+    } else {
+        Some(format!("https://{host}/api"))
     }
 }

@@ -127,6 +127,7 @@ async fn run_bot(
         clan_tag: "".to_string(),
         civilization: sow_core::player::Civilization::Rome,
         leader: sow_core::player::Leader::Caesar,
+        database_account_id: None,
     };
     write
         .send(Message::Binary(bincode::serialize(&join).unwrap()))

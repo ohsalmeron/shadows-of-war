@@ -4,7 +4,7 @@ use redis::Commands;
 use sow_core::protocol::{
     ClientMessage, GameplayIntent, ServerMessage, ServerTurnMessage, StampedIntent, Turn,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, mpsc};
@@ -15,10 +15,48 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 const REDIS_PORTS_KEY: &str = "sow:ports";
 
 fn redis_connect() -> Option<redis::Connection> {
-    let url = std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let url = std::env::var("SOW_VALKEY_URL")
+        .or_else(|_| std::env::var("SOW_REDIS_URL"))
+        .unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
     redis::Client::open(url)
         .ok()
         .and_then(|c| c.get_connection().ok())
+}
+
+fn log_player_exit(con: &mut redis::Connection, match_id: u64, account_id: &str) {
+    let key = format!("sow:match:{match_id}:exits");
+    let _: Result<(), _> = con.rpush(&key, account_id).and_then(|()| con.expire(&key, 3600));
+}
+
+fn trigger_match_finalize(match_id: u64) {
+    tokio::spawn(async move {
+        let db_url =
+            std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+        let secret = std::env::var("SOW_DB_SECRET")
+            .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+        let url = format!(
+            "{}/internal/match-finalize",
+            db_url.trim_end_matches('/')
+        );
+        let payload = serde_json::json!({ "match_id": match_id.to_string() });
+        match reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {secret}"))
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                info!("Match {match_id} finalized via sow-database");
+            }
+            Ok(res) => {
+                warn!("Match finalize for {match_id} returned HTTP {}", res.status());
+            }
+            Err(e) => {
+                error!("Failed to finalize match {match_id}: {e}");
+            }
+        }
+    });
 }
 
 #[derive(serde::Deserialize)]
@@ -34,6 +72,57 @@ struct RelayConfig {
 struct PlayerEntry {
     player_id: u16,
     name: String,
+    database_account_id: Option<String>,
+}
+
+struct MatchTracker {
+    lobby_id: u64,
+    player_accounts: HashMap<u16, String>,
+    in_match: HashSet<u16>,
+    logged_exits: HashSet<String>,
+    finalized: bool,
+    tracked: bool,
+    redis_con: Arc<std::sync::Mutex<Option<redis::Connection>>>,
+}
+
+impl MatchTracker {
+    fn record_exit(&mut self, player_id: u16) {
+        if !self.tracked || self.finalized {
+            self.in_match.remove(&player_id);
+            return;
+        }
+        self.in_match.remove(&player_id);
+        if let Some(account_id) = self.player_accounts.get(&player_id) {
+            if self.logged_exits.insert(account_id.clone()) {
+                let mut guard = self.redis_con.lock().unwrap();
+                if let Some(ref mut con) = *guard {
+                    log_player_exit(con, self.lobby_id, account_id);
+                    info!(
+                        "Logged exit for player {player_id} (account {account_id}) in match {}",
+                        self.lobby_id
+                    );
+                }
+            }
+        }
+        if self.in_match.len() <= 1 {
+            if let Some(winner_id) = self.in_match.iter().copied().next() {
+                if let Some(winner_acc) = self.player_accounts.get(&winner_id) {
+                    if self.logged_exits.insert(winner_acc.clone()) {
+                        let mut guard = self.redis_con.lock().unwrap();
+                        if let Some(ref mut con) = *guard {
+                            log_player_exit(con, self.lobby_id, winner_acc);
+                            info!(
+                                "Logged winner player {winner_id} (account {winner_acc}) in match {}",
+                                self.lobby_id
+                            );
+                        }
+                    }
+                }
+            }
+            self.finalized = true;
+            trigger_match_finalize(self.lobby_id);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -88,12 +177,14 @@ async fn main() {
     let mut tick_number = config.tick_number;
     let mut active_empty_secs = config.active_empty_secs;
     let mut pending_intents = Vec::new();
-    let valid_players: HashMap<u16, String> = config
-        .players
-        .into_iter()
-        .map(|p| (p.player_id, p.name))
-        .collect();
-
+    let mut player_accounts: HashMap<u16, String> = HashMap::new();
+    let mut valid_players: HashMap<u16, String> = HashMap::new();
+    for p in config.players {
+        valid_players.insert(p.player_id, p.name);
+        if let Some(acc) = p.database_account_id {
+            player_accounts.insert(p.player_id, acc);
+        }
+    }
     // player_id -> Sender
     let connected_clients: Arc<Mutex<HashMap<u16, mpsc::UnboundedSender<Vec<u8>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -128,6 +219,18 @@ async fn main() {
     }
     let redis_cleanup = Arc::clone(&redis_con);
     let cleanup_port = port;
+
+    let tracked = !player_accounts.is_empty();
+    let match_tracker = Arc::new(std::sync::Mutex::new(MatchTracker {
+        lobby_id,
+        player_accounts,
+        in_match: valid_players.keys().copied().collect(),
+        logged_exits: HashSet::new(),
+        finalized: false,
+        tracked,
+        redis_con: Arc::clone(&redis_con),
+    }));
+    let match_tracker_tick = Arc::clone(&match_tracker);
 
     // Main Tick Loop
     let tick_interval_ms = config.tick_rate_ms as u64;
@@ -188,11 +291,15 @@ async fn main() {
                 Some(event) = event_rx.recv() => {
                     match event {
                         RelayEvent::Gameplay { player_id, intent } => {
+                            if matches!(intent, GameplayIntent::Resign) {
+                                match_tracker_tick.lock().unwrap().record_exit(player_id);
+                            }
                             pending_intents.push(StampedIntent { player_id, intent });
                         }
                         RelayEvent::Leave { player_id } => {
                             connected_clients_clone.lock().await.remove(&player_id);
                             info!("Player {} left relay {}", player_id, lobby_id);
+                            match_tracker_tick.lock().unwrap().record_exit(player_id);
                             pending_intents.push(StampedIntent {
                                 player_id,
                                 intent: GameplayIntent::MarkDisconnected { is_disconnected: true },

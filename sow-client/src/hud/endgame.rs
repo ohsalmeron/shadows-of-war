@@ -54,6 +54,11 @@ impl SowApp {
         }
 
         if endgame_active {
+            if self.ui.endgame_cache.is_none() {
+                if is_victory {
+                    crate::store_portals::happytime();
+                }
+            }
             self.ui.endgame_cache = Some((is_victory, text_title, text_subtitle));
         }
 

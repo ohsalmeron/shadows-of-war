@@ -19,3 +19,4 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 redis = { workspace = true }
 rand = { workspace = true }
+reqwest = { workspace = true }

@@ -18,6 +18,7 @@ impl SowApp {
         self.poll_leader_portrait_fetches();
         self.poll_boot_ui_fetches();
         self.poll_avatar_fetches();
+        self.poll_database_events();
 
         // Poll map download channel
         while let Ok(res) = self.tasks.map_rx.try_recv() {
@@ -473,6 +474,57 @@ impl SowApp {
             let leader = key.leader;
             let mobile = key.mobile;
             Self::fetch_leader_portrait_at(urls, 0, tx, leader, mobile);
+        }
+    }
+
+    fn poll_database_events(&mut self) {
+        while let Ok(event) = self.tasks.db_rx.try_recv() {
+            match event {
+                crate::player_progress::DbEvent::ProfileLoaded(progress, account_id) => {
+                    let old_level = self.progress.level;
+                    self.progress = progress;
+                    self.progress_account_id = Some(account_id);
+                    self.apply_progress_preferences();
+                    log::info!(
+                        "Successfully synced profile from cloud database: level {} ({} XP)",
+                        self.progress.level,
+                        self.progress.xp
+                    );
+                    if self.progress.level > old_level {
+                        crate::store_portals::happytime();
+                    }
+                    self.maybe_link_platform_identity();
+                }
+                crate::player_progress::DbEvent::LoadFailed => {
+                    log::warn!("sow-database sync failed. Continuing with local offline progress.");
+                }
+                crate::player_progress::DbEvent::LinkConflict(info) => {
+                    log::warn!(
+                        "Platform link conflict: local L{} vs existing L{}",
+                        info.current_level,
+                        info.existing_level
+                    );
+                    self.ui.app.main_menu_state.active_conflict =
+                        Some(sow_ui::ui::main_menu::UiLinkConflictInfo {
+                            current_account_id: info.current_account_id,
+                            existing_account_id: info.existing_account_id,
+                            current_level: info.current_level,
+                            existing_level: info.existing_level,
+                            target_provider: info.target_provider,
+                            target_external_id: info.target_external_id,
+                        });
+                }
+                crate::player_progress::DbEvent::LinkResolved(progress, account_id) => {
+                    let old_level = self.progress.level;
+                    self.progress = progress;
+                    self.progress_account_id = Some(account_id);
+                    self.apply_progress_preferences();
+                    self.ui.app.main_menu_state.active_conflict = None;
+                    if self.progress.level > old_level {
+                        crate::store_portals::happytime();
+                    }
+                }
+            }
         }
     }
 }

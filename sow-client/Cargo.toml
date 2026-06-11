@@ -22,6 +22,8 @@ sow-i18n = { workspace = true }
 egui = { workspace = true }
 blade-egui = { workspace = true }
 bincode.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
 sow-net = { workspace = true }
 brotli = { workspace = true }
 ehttp = { workspace = true, features = ["streaming"] }
@@ -29,6 +31,8 @@ crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 url = { workspace = true }
+sha2 = { workspace = true }
+
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = { workspace = true }
@@ -40,6 +44,7 @@ web-sys = { workspace = true, features = ["Window", "Document", "Element", "Html
 js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = { workspace = true }
 open = { workspace = true }
 env_logger = { workspace = true }
 tokio = { workspace = true }

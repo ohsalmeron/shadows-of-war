@@ -178,6 +178,7 @@
         /* Streamed maps/assets from prod nginx /maps and /assets (single source of truth). */
         window.SOW_MAPS_URL = window.SOW_MAPS_URL || "https://shadowsofwar.io/maps";
         window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "https://shadowsofwar.io/assets";
+        window.SOW_DATABASE_URL = window.SOW_DATABASE_URL || "https://shadowsofwar.io/api";
         /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */
         (function () {
             var h = window.location.hostname;
@@ -193,8 +194,10 @@
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
             } else if (h === "play.shadowsofwar.io") {
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+                window.SOW_DATABASE_URL = "/api";
             } else if (h === "ptr.shadowsofwar.io") {
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://ptr.shadowsofwar.io/ws/";
+                window.SOW_DATABASE_URL = "/api";
             } else if (window.self !== window.top) {
                 window.SOW_PORTAL = window.SOW_PORTAL || "site";
             }
