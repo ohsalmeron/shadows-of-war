@@ -67,7 +67,13 @@ fn world_to_hex(world_pos: vec2<f32>) -> vec2<i32> {
 }
 
 fn hex_distance(a: vec2<i32>, b: vec2<i32>) -> i32 {
-    return max(abs(a.x - b.x), abs(a.y - b.y));
+    let r1 = a.y;
+    let q1 = a.x - (a.y - (a.y & 1)) / 2;
+    let s1 = -q1 - r1;
+    let r2 = b.y;
+    let q2 = b.x - (b.y - (b.y & 1)) / 2;
+    let s2 = -q2 - r2;
+    return (abs(q1 - q2) + abs(r1 - r2) + abs(s1 - s2)) / 2;
 }
 
 fn hex_to_world(hex: vec2<i32>) -> vec2<f32> {
@@ -525,7 +531,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let dist = distance(cell_world, f_center);
             if dist > f_radius * 1.5 { continue; }
 
-            let elapsed = (1.0 - alpha_p) * 15.0;
+            let elapsed = (1.0 - alpha_p) * 7.0;
 
             // 1. SCORCHED EARTH (CRATER / BURN)
             let burn_radius = f_radius * 0.65;
@@ -535,24 +541,40 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 base_color = mix(base_color, charcoal, burn_factor);
             }
 
-            // 2. ACTIVE EXPLOSION & STAGGERED SHOCKWAVE (First 2.0 seconds)
-            if elapsed < 2.0 {
-                let p_exp = elapsed / 2.0;
+            // 2. ACTIVE EXPLOSION & STAGGERED SHOCKWAVE (First 3.0 seconds)
+            if elapsed < 3.0 {
+                let p_exp = elapsed / 3.0;
                 let shockwave_r = p_exp * f_radius;
 
-                // Fireball / Plasma Dome
-                if dist <= shockwave_r {
-                    let age_fade = 1.0 - p_exp;
-                    let dist_factor = 1.0 - dist / shockwave_r;
+                let fire_noise = fract(sin(world_x * 12.3 + world_y * 17.7 - globals.time * 5.0) * 43758.5453);
 
-                    let fire_noise = fract(sin(world_x * 12.3 + world_y * 17.7 - globals.time * 5.0) * 43758.5453);
+                // --- A. Rising Mushroom Cloud & Stem ---
+                let rise = p_exp * f_radius * 0.45;
+                let cap_center = f_center - vec2<f32>(0.0, rise);
+                let dist_cap = distance(cell_world, cap_center);
+                let cap_r = f_radius * 0.42 * (0.35 + 0.65 * p_exp);
+
+                let dist_stem = abs(cell_world.x - f_center.x);
+                let stem_w = f_radius * 0.09 * (1.0 - p_exp * 0.4) * (1.0 + 0.15 * sin(cell_world.y * 1.5 - globals.time * 4.0));
+                let is_in_stem = cell_world.y >= cap_center.y && cell_world.y <= f_center.y && dist_stem <= stem_w;
+                let is_in_cap = dist_cap <= cap_r;
+
+                if is_in_cap || is_in_stem {
+                    let age_fade = 1.0 - p_exp;
+
+                    var dist_factor = 0.0;
+                    if is_in_cap {
+                        dist_factor = 1.0 - dist_cap / cap_r;
+                    } else {
+                        dist_factor = 1.0 - dist_stem / stem_w;
+                    }
 
                     let fire_white = vec3<f32>(2.5, 2.5, 2.5);
                     let fire_yellow = vec3<f32>(2.2, 1.8, 0.3);
                     let fire_red = vec3<f32>(1.8, 0.3, 0.05);
                     let smoke = vec3<f32>(0.05, 0.05, 0.05);
 
-                    let heat = clamp(age_fade * 1.4 - (1.0 - dist_factor) * 0.4 + (fire_noise - 0.5) * 0.35, 0.0, 1.0);
+                    let heat = clamp(age_fade * 1.45 - (1.0 - dist_factor) * 0.45 + (fire_noise - 0.5) * 0.35, 0.0, 1.0);
 
                     var fire_rgb = vec3<f32>(0.0);
                     if heat > 0.8 {
@@ -566,13 +588,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     base_color = mix(base_color, fire_rgb, smoothstep(0.0, 0.2, heat) * age_fade);
                 }
 
-                // Expanding Shockwave Front Ring (Leading Edge)
-                let wave_width = 1.8;
+                // --- B. Blinding Ground-Zero Flash ---
+                if elapsed < 0.35 {
+                    let flash_fade = 1.0 - elapsed / 0.35;
+                    let flash_r = f_radius * 1.1;
+                    if dist <= flash_r {
+                        let flash_intensity = (1.0 - dist / flash_r) * flash_fade * 0.85;
+                        base_color += vec3<f32>(2.5, 2.4, 2.2) * flash_intensity;
+                    }
+                }
+
+                // --- C. Expanding Shockwave Front Ring (Leading Edge) ---
+                let wave_width = 2.0;
                 let edge_dist = abs(dist - shockwave_r);
                 if edge_dist < wave_width {
                     let wave_factor = 1.0 - edge_dist / wave_width;
                     let wave_pulse = wave_factor * wave_factor * (1.0 - p_exp);
-                    base_color += vec3<f32>(2.5, 2.2, 1.8) * wave_pulse * 0.9;
+                    base_color += vec3<f32>(2.5, 2.2, 1.8) * wave_pulse * 1.1;
                 }
             }
 

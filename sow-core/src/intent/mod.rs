@@ -156,8 +156,15 @@ impl SowEngine {
             GameplayIntent::BuildStructure { kind, target_tile } => {
                 self.apply_build_structure_intent(stamped.player_id, *kind, *target_tile);
             }
-            GameplayIntent::UpgradeStructure { .. } => {
-                // Stacking is handled inside BuildStructure; this intent is unused.
+            GameplayIntent::UpgradeStructure { building_id } => {
+                let stack_tile = self
+                    .buildings
+                    .iter()
+                    .find(|b| b.id == *building_id && b.owner_id == stamped.player_id)
+                    .map(|b| (b.kind, b.tile_idx));
+                if let Some((kind, tile)) = stack_tile {
+                    self.apply_build_structure_intent(stamped.player_id, kind, tile);
+                }
             }
             GameplayIntent::UpgradeCityModule {
                 building_id,

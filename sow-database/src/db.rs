@@ -13,6 +13,7 @@ const XP_MATCH: u32 = 20;
 const XP_PER_PLAYER: u32 = 15;
 const XP_PER_EMPIRE: u32 = 8;
 const XP_PER_TRIBE: u32 = 2;
+const XP_PER_ASSIST: u32 = 5;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct SessionDefeats {
@@ -31,6 +32,12 @@ pub struct PlayerProfile {
     pub empires_defeated: u32,
     pub tribes_defeated: u32,
     pub preferred_leader: Option<String>,
+    #[serde(default)]
+    pub kills: u32,
+    #[serde(default)]
+    pub deaths: u32,
+    #[serde(default)]
+    pub assists: u32,
 }
 
 impl Default for PlayerProfile {
@@ -44,6 +51,9 @@ impl Default for PlayerProfile {
             empires_defeated: 0,
             tribes_defeated: 0,
             preferred_leader: None,
+            kills: 0,
+            deaths: 0,
+            assists: 0,
         }
     }
 }
@@ -58,7 +68,14 @@ impl PlayerProfile {
         self.sync_level();
     }
 
-    pub fn record_match(&mut self, won: bool, defeats: SessionDefeats) {
+    pub fn record_match_with_kda(
+        &mut self,
+        won: bool,
+        defeats: SessionDefeats,
+        kills: u32,
+        deaths: u32,
+        assists: u32,
+    ) {
         self.matches_played = self.matches_played.saturating_add(1);
         if won {
             self.wins = self.wins.saturating_add(1);
@@ -66,11 +83,15 @@ impl PlayerProfile {
         self.players_defeated = self.players_defeated.saturating_add(defeats.players);
         self.empires_defeated = self.empires_defeated.saturating_add(defeats.empires);
         self.tribes_defeated = self.tribes_defeated.saturating_add(defeats.tribes);
+        self.kills = self.kills.saturating_add(kills);
+        self.deaths = self.deaths.saturating_add(deaths);
+        self.assists = self.assists.saturating_add(assists);
 
         let mut xp_gain = XP_MATCH;
         xp_gain = xp_gain.saturating_add(defeats.players.saturating_mul(XP_PER_PLAYER));
         xp_gain = xp_gain.saturating_add(defeats.empires.saturating_mul(XP_PER_EMPIRE));
         xp_gain = xp_gain.saturating_add(defeats.tribes.saturating_mul(XP_PER_TRIBE));
+        xp_gain = xp_gain.saturating_add(assists.saturating_mul(XP_PER_ASSIST));
 
         if won {
             xp_gain = xp_gain.saturating_add(XP_WIN);
@@ -128,6 +149,7 @@ pub enum LinkOutcome {
 #[derive(Clone)]
 pub struct PlayerDb {
     client: Client,
+    pub crazygames_api_key: Option<String>,
 }
 
 fn utc_date_string() -> String {
@@ -150,10 +172,13 @@ fn utc_date_string() -> String {
 }
 
 impl PlayerDb {
-    pub fn new(redis_url: &str) -> Self {
+    pub fn new(redis_url: &str, crazygames_api_key: Option<String>) -> Self {
         let client = Client::open(redis_url).expect("Failed to connect to Valkey/Redis");
         info!("Successfully initialized Valkey database connector client.");
-        Self { client }
+        Self {
+            client,
+            crazygames_api_key,
+        }
     }
 
     async fn get_connection(&self) -> Result<redis::aio::MultiplexedConnection, redis::RedisError> {
@@ -282,12 +307,15 @@ impl PlayerDb {
         }
     }
 
-    /// Record a match outcome on the authoritative server-side
-    pub async fn record_match_outcome(
+    /// Record a match outcome with KDA stats from relay-logged client submissions.
+    pub async fn record_match_outcome_with_kda(
         &self,
         account_id: &str,
         won: bool,
         defeats: SessionDefeats,
+        kills: u32,
+        deaths: u32,
+        assists: u32,
         preferred_leader: Option<String>,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
@@ -295,7 +323,9 @@ impl PlayerDb {
 
         if let Some(acc_json) = con.get::<_, Option<String>>(&acc_key).await? {
             let mut account: PlayerAccount = serde_json::from_str(&acc_json)?;
-            account.profile.record_match(won, defeats);
+            account
+                .profile
+                .record_match_with_kda(won, defeats, kills, deaths, assists);
             if let Some(leader) = preferred_leader {
                 account.profile.preferred_leader = Some(leader);
             }
@@ -363,17 +393,51 @@ impl PlayerDb {
         let opponent_count = players.len().saturating_sub(1) as u32;
         for account_id in &players {
             let won = winner.as_ref() == Some(account_id);
-            let defeats = SessionDefeats {
-                players: if won { opponent_count } else { 0 },
-                empires: 0,
-                tribes: 0,
+            let stats_key = format!("sow:match:{match_id}:stats:{account_id}");
+            let stats: Option<std::collections::HashMap<String, String>> =
+                con.hgetall(&stats_key).await?;
+
+            let (defeats, kills, deaths, assists) = if let Some(map) = stats {
+                let parse = |k: &str| map.get(k).and_then(|v| v.parse().ok()).unwrap_or(0);
+                (
+                    SessionDefeats {
+                        players: parse("players_defeated"),
+                        empires: parse("empires_defeated"),
+                        tribes: parse("tribes_defeated"),
+                    },
+                    parse("kills"),
+                    parse("deaths"),
+                    parse("assists"),
+                )
+            } else {
+                (
+                    SessionDefeats {
+                        players: if won { opponent_count } else { 0 },
+                        empires: 0,
+                        tribes: 0,
+                    },
+                    0,
+                    0,
+                    0,
+                )
             };
-            if let Err(e) = self
-                .record_match_outcome(account_id, won, defeats, None)
+
+            match self
+                .record_match_outcome_with_kda(account_id, won, defeats, kills, deaths, assists, None)
                 .await
             {
-                error!("Failed to record outcome for {account_id}: {e}");
+                Ok(account) => {
+                    self.submit_crazygames_score(&account).await;
+                }
+                Err(e) => {
+                    error!("Failed to record outcome for {account_id}: {e}");
+                }
             }
+        }
+
+        let mut stats_keys: Vec<String> = Vec::new();
+        for account_id in &players {
+            stats_keys.push(format!("sow:match:{match_id}:stats:{account_id}"));
         }
 
         let _: () = redis::pipe()
@@ -384,8 +448,31 @@ impl PlayerDb {
             .query_async::<()>(&mut con)
             .await?;
 
+        for key in stats_keys {
+            let _: () = con.del(&key).await?;
+        }
+
         info!("Finalized match {match_id} with {} players", players.len());
         Ok(())
+    }
+
+    pub async fn submit_crazygames_score(&self, account: &PlayerAccount) {
+        let Some(api_key) = &self.crazygames_api_key else {
+            return;
+        };
+
+        if let Some(cg_identity) = account
+            .linked_identities
+            .iter()
+            .find(|li| li.provider == "crazygames")
+        {
+            let score = account.profile.xp;
+            let user_id = &cg_identity.external_id;
+            info!("Submitting CrazyGames leaderboard score for user {user_id}: {score}");
+            if let Err(e) = crate::crazygames::submit_score(api_key, user_id, score).await {
+                error!("Failed to submit CrazyGames leaderboard score: {e}");
+            }
+        }
     }
 
     /// Link a new identity to an existing account (internal; errors on conflict).

@@ -67,11 +67,11 @@ Privacy and Terms body text for the marketing site **and** in-game Settings moda
 
 ## CrazyGames Basic Launch checklist
 
-1. `./sow cg` → upload entire `dist/crazygames/` folder in the Developer Portal.
-2. Run the portal **QA tool** (SDK init, loading, gameplayStart, user, updateRoom).
-3. Submit lobby sizes (FFA / Teams max players) in upload metadata.
-4. Test with two logged-in CG accounts: instant multiplayer host, friend join via CG UI, full match, **PLAY AGAIN** in a private room.
-5. Protocol/server changes ship with `./sow p -v` (rebuilds server when `sow-server` / `sow-relay` / `sow-database` crates changed).
+1. `./sow cg` → upload entire `dist/crazygames/` folder in the Developer Portal (shell + WASM; not WASM alone).
+2. If `/api/profile` or other backend behavior changed, run `./sow p -v` before QA — CG WASM talks to prod APIs.
+3. Run the portal **QA tool** (SDK init, loading, gameplayStart, user, updateRoom).
+4. Submit lobby sizes (FFA / Teams max players) in upload metadata.
+5. Test with two logged-in CG accounts: instant multiplayer host, friend join via CG UI, full match, **PLAY AGAIN** in a private room.
 6. Ads stay off for Basic Launch (`SOW_ENABLE_PORTAL_ADS` is never set in the build).
 
 ## CrazyGames Developer Portal form

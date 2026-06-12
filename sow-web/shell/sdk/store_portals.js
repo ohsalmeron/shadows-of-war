@@ -209,12 +209,30 @@
   window.SOW_HOST_PRIVATE_PENDING = false;
   window.SOW_PORTAL_MUTE_AUDIO = false;
   window.SOW_DISABLE_CHAT = false;
+  window.SOW_PORTAL_LOCALE = null;
 
   function refreshPortalFlags() {
-    window.SOW_isSiteEmbed = isSiteEmbed();
-    window.SOW_isPortalEmbed = isPortalEmbed();
-    window.SOW_isOnCrazyGames = isOnCrazyGames();
-    window.SOW_isOnPoki = isOnPoki();
+    var portal = isPortalEmbed();
+    var site = isSiteEmbed();
+    var crazy = isOnCrazyGames();
+    var poki = isOnPoki();
+    window.SOW_RUNTIME = {
+      portal_embed: portal,
+      site_embed: site,
+      crazygames: crazy,
+      poki: poki,
+    };
+    window.SOW_isSiteEmbed = site;
+    window.SOW_isPortalEmbed = portal;
+    window.SOW_isOnCrazyGames = crazy;
+    window.SOW_isOnPoki = poki;
+    if (portal && "serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) {
+          r.unregister();
+        });
+      });
+    }
   }
   window.SOW_refreshPortalFlags = refreshPortalFlags;
   refreshPortalFlags();
@@ -421,6 +439,15 @@
       console.log("CrazyGames SDK init OK (env=" + env + ")");
 
       if (crazyGamesSdkReady() && window.CrazyGames.SDK.user) {
+        try {
+          var sysInfo = window.CrazyGames.SDK.user.systemInfo;
+          if (sysInfo && sysInfo.locale) {
+            window.SOW_PORTAL_LOCALE = sysInfo.locale;
+            console.log("CrazyGames system locale detected: " + sysInfo.locale);
+          }
+        } catch (e) {
+          console.warn("CrazyGames systemInfo reading failed:", e);
+        }
         try {
           if (window.CrazyGames.SDK.user.isUserAccountAvailable) {
             var user = await window.CrazyGames.SDK.user.getUser();

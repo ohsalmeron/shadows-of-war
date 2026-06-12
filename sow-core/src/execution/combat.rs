@@ -326,6 +326,8 @@ impl SowEngine {
                         x: target_tile.x,
                         y: target_tile.y,
                         new_owner: execution.owner_id,
+                        previous_owner: execution.target_owner,
+                        troops: execution.troops,
                     });
                 } else {
                     let refund = execution.troops.max(0.0);
@@ -361,35 +363,90 @@ impl SowEngine {
                     let bonus_percent = survived_ticks as f64 * 0.0001; // 0.01% per tick
                     let total_reward = base_reward * (1.0 + bonus_percent);
 
-                    // 1. Zero out defeated player
-                    if let Some(target_player) = self.state.player_mut(execution_ref.target_owner) {
+                    let victim_id = execution_ref.target_owner;
+                    let killer_id = execution_ref.owner_id;
+
+                    // Gather tile conquest contributions (deterministic by player id)
+                    let mut contributors: Vec<(u16, u32)> = self
+                        .state
+                        .players
+                        .iter()
+                        .filter_map(|p| {
+                            p.tile_conquests
+                                .get(&victim_id)
+                                .copied()
+                                .filter(|&c| c > 0)
+                                .map(|c| (p.id, c))
+                        })
+                        .collect();
+                    contributors.sort_by_key(|(id, _)| *id);
+
+                    let others: Vec<(u16, u32)> = contributors
+                        .iter()
+                        .filter(|(id, _)| *id != killer_id)
+                        .copied()
+                        .collect();
+                    let assist_tiles: u32 = others.iter().map(|(_, c)| c).sum();
+
+                    let (killer_gold, mut assist_rewards) = if assist_tiles == 0 {
+                        (total_reward, Vec::new())
+                    } else {
+                        let killer_share = total_reward * 0.5;
+                        let assist_pool = total_reward * 0.5;
+                        let mut rewards = Vec::new();
+                        for (id, count) in &others {
+                            let share = assist_pool * (*count as f64 / assist_tiles as f64);
+                            rewards.push((*id, share));
+                        }
+                        (killer_share, rewards)
+                    };
+
+                    // 1. Zero out defeated player and award death
+                    if let Some(target_player) = self.state.player_mut(victim_id) {
                         target_player.gold = 0.0;
                         target_player.alive = false;
+                        target_player.deaths += 1;
                     }
 
-                    // 2. Transfer gold to conqueror
-                    let mut final_gold = total_reward;
-                    if let Some(attacker) = self.state.player_mut(execution_ref.owner_id) {
+                    // 2. Transfer gold and award kill/assists
+                    let mut killer_final_gold = killer_gold;
+                    if let Some(attacker) = self.state.player_mut(killer_id) {
                         let mut bounty_mult = 1.0;
                         if attacker.leader == crate::player::Leader::GenghisKhan {
-                            bounty_mult = 1.5; // +50% bounty gold!
+                            bounty_mult = 1.5;
                         }
-                        final_gold = total_reward * bounty_mult;
-                        attacker.gold += final_gold;
+                        killer_final_gold *= bounty_mult;
+                        attacker.gold += killer_final_gold;
+                        attacker.kills += 1;
+                    }
+
+                    let mut assist_event_rewards = Vec::new();
+                    for (assist_id, share) in &mut assist_rewards {
+                        if let Some(p) = self.state.player_mut(*assist_id) {
+                            p.gold += *share;
+                            p.assists += 1;
+                            assist_event_rewards.push((*assist_id, *share as u32));
+                        }
+                    }
+
+                    // Clear conquest tallies for this victim
+                    for p in &mut self.state.players {
+                        p.tile_conquests.remove(&victim_id);
                     }
 
                     let (ex, ey) = last_captured_tiles
-                        .get(&execution_ref.target_owner)
+                        .get(&victim_id)
                         .copied()
                         .unwrap_or((0, 0));
 
                     // 3. Emit elimination event
                     self.state.events.push(GameEvent::PlayerEliminated {
-                        player_id: execution_ref.target_owner,
-                        conqueror_id: execution_ref.owner_id,
-                        gold_bounty: final_gold as u32,
+                        player_id: victim_id,
+                        conqueror_id: killer_id,
+                        gold_bounty: killer_final_gold as u32,
                         elimination_x: ex,
                         elimination_y: ey,
+                        assists: assist_event_rewards,
                     });
                 }
             }
@@ -621,6 +678,8 @@ impl SowEngine {
                 x: lx,
                 y: ly,
                 new_owner: f_owner,
+                previous_owner: prev_owner,
+                troops: f_troops,
             });
 
             // Drop mutable borrow of self.fleets before calling method on self

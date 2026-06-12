@@ -14,6 +14,7 @@ Environment=RUST_LOG=info
 Environment=SOW_DB_PORT=25595
 Environment=SOW_VALKEY_URL=redis://127.0.0.1:6379
 Environment=SOW_DB_SECRET=sow_db_ptr_secret_token_placeholder
+Environment=CRAZYGAMES_API_KEY=sow_crazygames_ptr_api_key_placeholder
 
 [Install]
 WantedBy=multi-user.target

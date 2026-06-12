@@ -265,6 +265,14 @@ pub struct Player {
     pub civilization: Civilization,
     #[serde(default)]
     pub leader: Leader,
+    #[serde(default)]
+    pub kills: u32,
+    #[serde(default)]
+    pub deaths: u32,
+    #[serde(default)]
+    pub assists: u32,
+    #[serde(default)]
+    pub tile_conquests: std::collections::BTreeMap<PlayerId, u32>,
 }
 
 fn default_wyrand() -> WyRand {
@@ -314,6 +322,10 @@ impl Player {
             traitor_tick: 0,
             civilization: Civilization::Rome,
             leader: Leader::Caesar,
+            kills: 0,
+            deaths: 0,
+            assists: 0,
+            tile_conquests: std::collections::BTreeMap::new(),
         }
     }
     pub fn new_bot(
@@ -347,10 +359,11 @@ impl Player {
             Civilization::Sparta => Leader::Leonidas,
             Civilization::France => Leader::Napoleon,
         };
-        let is_smart_tribe = id.is_multiple_of(100);
         let starting_troops = config.starting_troops;
-        let starting_gold = if is_smart_tribe {
+        let starting_gold = if iq >= 130 {
             config.starting_gold
+        } else if iq >= 100 {
+            config.starting_gold * 0.5
         } else {
             0.0
         };
@@ -390,6 +403,10 @@ impl Player {
             traitor_tick: 0,
             civilization: civ,
             leader,
+            kills: 0,
+            deaths: 0,
+            assists: 0,
+            tile_conquests: std::collections::BTreeMap::new(),
         }
     }
     pub fn new_nation(
@@ -452,6 +469,10 @@ impl Player {
             traitor_tick: 0,
             civilization: civ,
             leader,
+            kills: 0,
+            deaths: 0,
+            assists: 0,
+            tile_conquests: std::collections::BTreeMap::new(),
         }
     }
     pub fn is_human(&self) -> bool {

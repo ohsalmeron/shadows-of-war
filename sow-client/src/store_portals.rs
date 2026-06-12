@@ -135,17 +135,53 @@ pub fn load_stop() {
     call_window_hook("SOW_portalLoadStop");
 }
 
+#[cfg(target_arch = "wasm32")]
+fn read_runtime_bool(key: &str) -> Option<bool> {
+    let runtime = get_window_value("SOW_RUNTIME")?;
+    if runtime.is_null() || runtime.is_undefined() {
+        return None;
+    }
+    js_sys::Reflect::get(&runtime, &wasm_bindgen::JsValue::from_str(key))
+        .ok()
+        .and_then(|v| v.as_bool())
+}
+
 pub fn is_portal_embed() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        get_window_value("SOW_isPortalEmbed")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+        if let Some(b) = read_runtime_bool("portal_embed") {
+            return b;
+        }
+        if let Some(v) = get_window_value("SOW_isPortalEmbed") {
+            if let Some(b) = v.as_bool() {
+                return b;
+            }
+            if v.is_function() {
+                if let Ok(func) = v.dyn_into::<js_sys::Function>() {
+                    if let Ok(res) = func.call0(&wasm_bindgen::JsValue::NULL) {
+                        return res.as_bool().unwrap_or(false);
+                    }
+                }
+            }
+        }
+        false
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         false
     }
+}
+
+pub fn should_fetch_cloud_profile() -> bool {
+    if !is_portal_embed() {
+        return true;
+    }
+    let identity = load_identity("Player");
+    identity.provider == "crazygames"
+        && identity
+            .auth_token
+            .as_ref()
+            .is_some_and(|t| !t.is_empty())
 }
 
 pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> {
@@ -287,6 +323,17 @@ pub fn poll_mute_audio_setting() -> Option<bool> {
 
 pub fn is_chat_disabled() -> bool {
     take_window_bool("SOW_DISABLE_CHAT")
+}
+
+pub fn get_portal_locale() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        get_window_value("SOW_PORTAL_LOCALE").and_then(|v| v.as_string())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
 }
 
 pub fn happytime() {

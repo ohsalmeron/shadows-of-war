@@ -6,6 +6,9 @@ return_to_lobby = "REGRESAR"
 play_again = "JUGAR DE NUEVO"
 spectate = "ESPECTAR"
 winner_emerged = "{} emergió victorioso."
+team_victory_subtitle = "Tu equipo ha conquistado el mundo."
+team_defeat_subtitle = "Tu equipo ha caído."
+team_winner_emerged = "El equipo {} emergió victorioso."
 
 victory_flavors = [
     "El mundo es tuyo. ¿Y ahora qué?",

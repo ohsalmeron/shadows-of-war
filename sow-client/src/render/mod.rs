@@ -116,25 +116,22 @@ impl SowApp {
                         }
                     }
 
-                    // Spawns and tracks active explosions/fallout zones
+                    // Spawns and tracks active fallout zones
                     let current_time = web_time::Instant::now();
                     for (dx, dy, kind) in new_detonations {
                         if let sow_core::game::ProjectileKind::Nuke { level } = kind {
-                            let max_radius = 45.0 + (level.saturating_sub(1) as f32) * 33.0;
-                            let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
-                            let exp_kind = if level >= 2 {
-                                crate::app::ExplosionKind::Hydrogen
-                            } else {
-                                crate::app::ExplosionKind::Atom
-                            };
+                            sow_audio::play_nuke_impact_sound(
+                                level,
+                                dx + 0.5,
+                                dy + 0.5,
+                                self.input.camera_x,
+                                self.input.camera_y,
+                                self.input.camera_zoom,
+                                self.input.screen_w,
+                                self.input.screen_h,
+                            );
 
-                            self.ui.active_explosions.push(crate::app::ActiveExplosion {
-                                x: dx,
-                                y: dy,
-                                start_time: current_time,
-                                max_radius,
-                                kind: exp_kind,
-                            });
+                            let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
                             self.ui.fallout_zones.push(crate::app::FalloutZone {
                                 x: dx,
                                 y: dy,
@@ -153,6 +150,18 @@ impl SowApp {
                             if matches!(proj.kind, sow_core::game::ProjectileKind::Nuke { .. })
                                 && !self.ui.last_projectiles.contains_key(&proj.id)
                             {
+                                let src_x = (proj.src_tile % self.sim.map_w) as f32 + 0.5;
+                                let src_y = (proj.src_tile / self.sim.map_w) as f32 + 0.5;
+                                sow_audio::play_nuke_launch_sound(
+                                    src_x,
+                                    src_y,
+                                    self.input.camera_x,
+                                    self.input.camera_y,
+                                    self.input.camera_zoom,
+                                    self.input.screen_w,
+                                    self.input.screen_h,
+                                );
+
                                 // New nuke — find source building by src_tile
                                 if let Some(b) = snap.buildings.iter().find(|b| {
                                     b.kind == sow_core::game::BuildingKind::City
@@ -354,7 +363,7 @@ impl SowApp {
                         let mut slot = 0usize;
                         self.ui.fallout_zones.retain(|fz| {
                             let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
-                            let duration = 15.0;
+                            let duration = 7.0;
                             if elapsed >= duration {
                                 return false;
                             }

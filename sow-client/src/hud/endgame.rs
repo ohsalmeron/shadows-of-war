@@ -1,7 +1,6 @@
 use crate::app::SowApp;
 use egui::{Align2, Color32, FontId, RichText};
-
-const DEFEAT_PANEL_DELAY: web_time::Duration = web_time::Duration::from_millis(2500);
+use sow_core::protocol::Team;
 
 impl SowApp {
     #[allow(deprecated)]
@@ -19,20 +18,34 @@ impl SowApp {
         if let Some(snap) = &self.sim.current_snapshot {
             if let Some(winner) = snap.winner {
                 endgame_active = true;
-                if winner == my_id {
+                let my_team = snap.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
+                let team_won = snap
+                    .winning_team
+                    .is_some_and(|team| my_team == Some(team));
+                if team_won || (snap.winning_team.is_none() && winner == my_id) {
                     is_victory = true;
                     text_title = strings.victory_title.clone();
-                    text_subtitle = strings.victory_subtitle.clone();
+                    text_subtitle = if snap.winning_team.is_some() {
+                        strings.team_victory_subtitle.clone()
+                    } else {
+                        strings.victory_subtitle.clone()
+                    };
                 } else {
                     is_victory = false;
                     text_title = strings.defeat_title.clone();
-                    let winner_name = snap
-                        .players
-                        .iter()
-                        .find(|p| p.id == winner)
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| sow_i18n::get(lang).hud.default_player_name.clone());
-                    text_subtitle = strings.winner_emerged.replace("{}", &winner_name);
+                    if let Some(winning_team) = snap.winning_team {
+                        text_subtitle = strings
+                            .team_winner_emerged
+                            .replace("{}", team_label(winning_team));
+                    } else {
+                        let winner_name = snap
+                            .players
+                            .iter()
+                            .find(|p| p.id == winner)
+                            .map(|p| p.name.clone())
+                            .unwrap_or_else(|| sow_i18n::get(lang).hud.default_player_name.clone());
+                        text_subtitle = strings.winner_emerged.replace("{}", &winner_name);
+                    }
                 }
             } else if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
                 if !me.alive && me.has_spawned && !self.ui.is_spectating {
@@ -45,38 +58,19 @@ impl SowApp {
             }
         }
 
-        if is_player_defeat {
-            if self.ui.defeat_time.is_none() {
-                self.ui.defeat_time = Some(web_time::Instant::now());
-            }
-        } else {
-            self.ui.defeat_time = None;
-        }
-
         if endgame_active {
             if self.ui.endgame_cache.is_none() {
                 if is_victory {
                     crate::store_portals::happytime();
+                    sow_audio::play_victory_sound();
+                } else if is_player_defeat {
+                    sow_audio::play_defeat_sound();
                 }
             }
             self.ui.endgame_cache = Some((is_victory, text_title, text_subtitle));
         }
 
-        let now = web_time::Instant::now();
-        let defeat_delay_elapsed = self
-            .ui
-            .defeat_time
-            .is_some_and(|t| now.duration_since(t) >= DEFEAT_PANEL_DELAY);
-
-        let show_panel = if is_player_defeat {
-            defeat_delay_elapsed
-        } else {
-            endgame_active
-        };
-
-        if is_player_defeat && !defeat_delay_elapsed {
-            ctx.request_repaint();
-        }
+        let show_panel = endgame_active;
 
         let anim_dur = sow_ui::ui::theme::anim_duration_from_ctx(ctx);
         let anim = sow_ui::ui::animation::panel_in_out_anim(
@@ -202,6 +196,27 @@ impl SowApp {
                             .font(FontId::proportional(subtitle_size)),
                     );
 
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
+                            if me.kills > 0 || me.deaths > 0 || me.assists > 0 {
+                                ui.add_space(space_mid);
+                                let kda_text = format!(
+                                    "K / D / A:  {} / {} / {}",
+                                    me.kills, me.deaths, me.assists
+                                );
+                                ui.label(
+                                    RichText::new(kda_text)
+                                        .color(Color32::WHITE.linear_multiply(alpha))
+                                        .font(FontId::monospace(if is_mobile {
+                                            14.0
+                                        } else {
+                                            18.0
+                                        })),
+                                );
+                            }
+                        }
+                    }
+
                     ui.add_space(space_bot);
 
                     let btn_color = if is_victory {
@@ -259,5 +274,12 @@ impl SowApp {
                     }
                 });
             });
+    }
+}
+
+fn team_label(team: Team) -> &'static str {
+    match team {
+        Team::Red => "Red",
+        Team::Blue => "Blue",
     }
 }

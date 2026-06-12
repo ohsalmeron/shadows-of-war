@@ -496,18 +496,22 @@ pub fn verify_server_health(
     gcp: &GcpConfig,
     maps_url: &str,
     ws_url: &str,
+    db_url: &str,
     unit: &str,
+    db_unit: &str,
 ) -> Result<()> {
-    println!("==> Verifying server ({unit}) on VPS");
-    let active = gcp.remote_output(&format!("systemctl is-active {unit}"))?;
-    if active.trim() != "active" {
-        let logs = gcp
-            .remote_output(&format!("journalctl -u {unit} -n 30 --no-pager"))
-            .unwrap_or_else(|_| String::from("(journalctl unavailable)"));
-        eprintln!("{logs}");
-        bail!("{unit} is not active (got: {})", active.trim());
+    for u in &[unit, db_unit] {
+        println!("==> Verifying service ({u}) on VPS");
+        let active = gcp.remote_output(&format!("systemctl is-active {u}"))?;
+        if active.trim() != "active" {
+            let logs = gcp
+                .remote_output(&format!("journalctl -u {u} -n 30 --no-pager"))
+                .unwrap_or_else(|_| String::from("(journalctl unavailable)"));
+            eprintln!("{logs}");
+            bail!("{u} is not active (got: {})", active.trim());
+        }
+        println!("✅ {u} active");
     }
-    println!("✅ {unit} active");
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -525,6 +529,16 @@ pub fn verify_server_health(
     if cors != "*" {
         bail!("maps API missing CORS header (got: {cors:?})");
     }
+
+    println!("==> Verifying database API {db_url}");
+    let db_resp = client.get(db_url).send().context("db fetch")?;
+    if !db_resp.status().is_success() {
+        let status = db_resp.status();
+        let body = db_resp.text().unwrap_or_default();
+        bail!("database API failed: {} → {} (body: {})", db_url, status, body);
+    }
+    println!("✅ Database API OK");
+
     println!("==> Verifying WebSocket {ws_url}");
     let ws_resp = client
         .get(ws_url)

@@ -170,8 +170,6 @@
     <canvas id="blade" oncontextmenu="return false;"></canvas>
     <div id="version">v__VERSION__</div>
 
-    <script src="./sdk/store_portals.js"></script>
-    <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
         window.SOW_BUILD_VERSION = "__VERSION__";
@@ -203,15 +201,12 @@
             }
         })();
     </script>
+    <script src="./sdk/store_portals.js"></script>
+    <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="module">
         async function run() {
-            var host = window.location.hostname;
-            var ref = document.referrer || "";
-            var isPortal = window.SOW_PORTAL === "crazygames" || window.SOW_PORTAL === "poki"
-                || window.SOW_PORTAL === "site"
-                || /crazygames\\.com$/i.test(host) || /dev-crazygames\\.com$/i.test(host)
-                || /poki\\.com$/i.test(host) || /poki-gdn\\.com$/i.test(host) || /poki\\.io$/i.test(host)
-                || /poki\\.com/i.test(ref) || /poki-gdn\\.com/i.test(ref);
+            var isPortal = window.SOW_RUNTIME && window.SOW_RUNTIME.portal_embed === true
+                || window.SOW_isPortalEmbed === true;
 
             if (typeof window.SOW_initPortalSdk === "function") {
                 await window.SOW_initPortalSdk();

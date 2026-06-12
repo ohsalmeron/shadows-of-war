@@ -893,6 +893,38 @@ impl SowApp {
                     start_time: web_time::Instant::now(),
                 });
             }
+            sow_core::protocol::GameplayIntent::Spawn { x, y } => {
+                sow_audio::play_deploy_sound(
+                    *x as f32 + 0.5,
+                    *y as f32 + 0.5,
+                    self.input.camera_x,
+                    self.input.camera_y,
+                    self.input.camera_zoom,
+                    self.input.screen_w,
+                    self.input.screen_h,
+                );
+                let seed = self
+                    .sim
+                    .engine
+                    .as_ref()
+                    .map(|e| e.state.seed as u32)
+                    .unwrap_or(0);
+                sow_audio::set_music_context(seed, *x as f32 + 0.5, *y as f32 + 0.5);
+            }
+            sow_core::protocol::GameplayIntent::BuildStructure { kind, target_tile } => {
+                let wx = (*target_tile % self.sim.map_w) as f32 + 0.5;
+                let wy = (*target_tile / self.sim.map_w) as f32 + 0.5;
+                sow_audio::play_building_placement_sound(
+                    crate::building_sound_kind(*kind),
+                    wx,
+                    wy,
+                    self.input.camera_x,
+                    self.input.camera_y,
+                    self.input.camera_zoom,
+                    self.input.screen_w,
+                    self.input.screen_h,
+                );
+            }
             _ => {}
         }
 

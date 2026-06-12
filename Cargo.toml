@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "sow-audio",
     "sow-core",
     "sow-render",
     "sow-net",
@@ -65,7 +66,7 @@ axum = "0.8.9"
 tower-http = { version = "0.6.10", features = ["fs", "compression-br", "cors"] }
 futures-channel = "0.3"
 open = "5.3"
-rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "wav"] }
 
 [workspace.dependencies.blade-egui]
 path = "blade/blade-egui"
@@ -83,6 +84,9 @@ features = ["derive"]
 [workspace.dependencies.serde]
 version = "1"
 features = ["derive", "rc"]
+
+[workspace.dependencies.sow-audio]
+path = "sow-audio"
 
 [workspace.dependencies.sow-core]
 path = "sow-core"

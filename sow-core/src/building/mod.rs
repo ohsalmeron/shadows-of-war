@@ -179,6 +179,15 @@ mod tests {
     }
 
     #[test]
+    fn hex_distance_differs_from_manhattan_on_diagonal() {
+        let d_hex = hex_distance(10, 10, 17, 17);
+        let d_man = manhattan(10, 10, 17, 17);
+        assert_eq!(d_man, 14);
+        assert_eq!(d_hex, 11);
+        assert!(d_hex < d_man);
+    }
+
+    #[test]
     fn defense_post_bonus_scales_with_level() {
         let w = 20u32;
         let b = Building {

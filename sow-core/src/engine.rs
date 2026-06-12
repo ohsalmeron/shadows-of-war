@@ -386,6 +386,14 @@ impl SowEngine {
         let win_threshold = (self.state.total_land_tiles as f32
             * self.state.config.map_control_win_percentage) as u32;
 
+        if self.state.config.game_mode == "Teams" {
+            self.check_team_winner(win_threshold);
+        } else {
+            self.check_ffa_winner(win_threshold);
+        }
+    }
+
+    fn check_ffa_winner(&mut self, win_threshold: u32) {
         let mut alive_players = 0;
         let mut last_alive_id = None;
         let mut map_control_winner = None;
@@ -401,23 +409,83 @@ impl SowEngine {
         }
 
         if let Some(wid) = map_control_winner {
-            self.state.winner = Some(wid);
-            self.state.phase = crate::game::GamePhase::GameOver;
-            self.state
-                .events
-                .push(crate::game::GameEvent::GameOver { winner_id: wid });
+            self.end_game(wid, None);
         } else if alive_players == 1 {
-            self.state.winner = last_alive_id;
-            self.state.phase = crate::game::GamePhase::GameOver;
             if let Some(wid) = last_alive_id {
-                self.state
-                    .events
-                    .push(crate::game::GameEvent::GameOver { winner_id: wid });
+                self.end_game(wid, None);
             }
         } else if alive_players == 0 && !self.state.players.is_empty() {
-            // Everyone died? Rare but possible.
             self.state.phase = crate::game::GamePhase::GameOver;
         }
+    }
+
+    fn check_team_winner(&mut self, win_threshold: u32) {
+        use crate::protocol::Team;
+        use std::collections::HashMap;
+
+        let mut team_tiles: HashMap<Team, u32> = HashMap::new();
+        let mut best_player_on_team: HashMap<Team, (u16, u32)> = HashMap::new();
+        let mut unaffiliated_with_land = 0;
+
+        for p in &self.state.players {
+            if !p.alive || p.tile_count == 0 {
+                continue;
+            }
+            let Some(team) = p.team else {
+                unaffiliated_with_land += 1;
+                continue;
+            };
+            *team_tiles.entry(team).or_insert(0) += p.tile_count;
+            best_player_on_team
+                .entry(team)
+                .and_modify(|(best_id, best_tiles)| {
+                    if p.tile_count > *best_tiles {
+                        *best_id = p.id;
+                        *best_tiles = p.tile_count;
+                    }
+                })
+                .or_insert((p.id, p.tile_count));
+        }
+
+        let mut map_control_team = None;
+        let mut teams_with_land = 0;
+        let mut last_team_with_land = None;
+
+        for (&team, &tiles) in &team_tiles {
+            if tiles == 0 {
+                continue;
+            }
+            teams_with_land += 1;
+            last_team_with_land = Some(team);
+            if tiles >= win_threshold {
+                map_control_team = Some(team);
+            }
+        }
+
+        if let Some(team) = map_control_team {
+            if let Some(&(wid, _)) = best_player_on_team.get(&team) {
+                self.end_game(wid, Some(team));
+            }
+        } else if teams_with_land == 1 && unaffiliated_with_land == 0 {
+            if let Some(team) = last_team_with_land {
+                if let Some(&(wid, _)) = best_player_on_team.get(&team) {
+                    self.end_game(wid, Some(team));
+                }
+            }
+        } else if teams_with_land == 0 && unaffiliated_with_land == 0 && !self.state.players.is_empty()
+        {
+            self.state.phase = crate::game::GamePhase::GameOver;
+        }
+    }
+
+    fn end_game(&mut self, winner_id: u16, winning_team: Option<crate::protocol::Team>) {
+        self.state.winner = Some(winner_id);
+        self.state.winning_team = winning_team;
+        self.state.phase = crate::game::GamePhase::GameOver;
+        self.state.events.push(crate::game::GameEvent::GameOver {
+            winner_id,
+            winning_team,
+        });
     }
     pub fn spawn_ai(&mut self, city_state_count: u32, tribe_count: u32) {
         let mut spawned_city_states = 0;
@@ -779,6 +847,9 @@ impl SowEngine {
                     active_emoji: p.active_emoji.clone(),
                     civilization: p.civilization,
                     leader: p.leader,
+                    kills: p.kills,
+                    deaths: p.deaths,
+                    assists: p.assists,
                 }
             })
             .collect();
@@ -947,6 +1018,7 @@ impl SowEngine {
                 })
                 .collect(),
             winner: self.state.winner,
+            winning_team: self.state.winning_team,
             total_land_tiles: self.state.total_land_tiles,
             defense_posts,
             defense_dirty,
@@ -1031,5 +1103,38 @@ mod tests {
         let mut engine = SowEngine::new(state, WaterComponents::default());
         engine.spawn_ai(3, 0);
         assert_eq!(engine.state.players.len(), 3);
+    }
+
+    #[test]
+    fn test_team_map_control_winner() {
+        use crate::protocol::Team;
+
+        let mut config = GameConfig::default();
+        config.game_mode = "Teams".to_string();
+        config.map_control_win_percentage = 0.50;
+        let mut state = GameState::new(42, 10, 10, config);
+        for t in &mut state.map.terrain {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+        state.total_land_tiles = 100;
+
+        let mut red = crate::player::Player::new_human(1, "Red".into(), [1.0, 0.2, 0.2], &state.config);
+        red.team = Some(Team::Red);
+        red.tile_count = 55;
+        red.alive = true;
+
+        let mut blue = crate::player::Player::new_human(2, "Blue".into(), [0.2, 0.5, 1.0], &state.config);
+        blue.team = Some(Team::Blue);
+        blue.tile_count = 10;
+        blue.alive = true;
+
+        state.register_player(red);
+        state.register_player(blue);
+
+        let mut engine = SowEngine::new(state, WaterComponents::default());
+        engine.check_team_winner(50);
+
+        assert_eq!(engine.state.winning_team, Some(Team::Red));
+        assert_eq!(engine.state.winner, Some(1));
     }
 }

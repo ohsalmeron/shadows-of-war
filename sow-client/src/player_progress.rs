@@ -10,6 +10,7 @@ const XP_MATCH: u32 = 20;
 const XP_PER_PLAYER: u32 = 15;
 const XP_PER_EMPIRE: u32 = 8;
 const XP_PER_TRIBE: u32 = 2;
+const XP_PER_ASSIST: u32 = 5;
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct SessionDefeats {
@@ -32,6 +33,12 @@ pub struct PlayerProgress {
     pub tribes_defeated: u32,
     pub preferred_leader: Option<Leader>,
     pub intro_completed: Option<bool>,
+    #[serde(default)]
+    pub kills: u32,
+    #[serde(default)]
+    pub deaths: u32,
+    #[serde(default)]
+    pub assists: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -94,7 +101,14 @@ impl PlayerProgress {
         self.sync_level();
     }
 
-    pub fn record_match(&mut self, won: bool, defeats: SessionDefeats) {
+    pub fn record_match_with_kda(
+        &mut self,
+        won: bool,
+        defeats: SessionDefeats,
+        kills: u32,
+        deaths: u32,
+        assists: u32,
+    ) {
         self.matches_played = self.matches_played.saturating_add(1);
         if won {
             self.wins = self.wins.saturating_add(1);
@@ -102,11 +116,15 @@ impl PlayerProgress {
         self.players_defeated = self.players_defeated.saturating_add(defeats.players);
         self.empires_defeated = self.empires_defeated.saturating_add(defeats.empires);
         self.tribes_defeated = self.tribes_defeated.saturating_add(defeats.tribes);
+        self.kills = self.kills.saturating_add(kills);
+        self.deaths = self.deaths.saturating_add(deaths);
+        self.assists = self.assists.saturating_add(assists);
 
         let mut xp_gain = XP_MATCH;
         xp_gain = xp_gain.saturating_add(defeats.players.saturating_mul(XP_PER_PLAYER));
         xp_gain = xp_gain.saturating_add(defeats.empires.saturating_mul(XP_PER_EMPIRE));
         xp_gain = xp_gain.saturating_add(defeats.tribes.saturating_mul(XP_PER_TRIBE));
+        xp_gain = xp_gain.saturating_add(assists.saturating_mul(XP_PER_ASSIST));
 
         if won {
             xp_gain = xp_gain.saturating_add(XP_WIN);

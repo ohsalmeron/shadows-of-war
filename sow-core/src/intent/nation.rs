@@ -14,13 +14,131 @@ use crate::protocol::{AttackIntent, GameplayIntent, StampedIntent};
 use crate::rng::NextIntExt;
 use wyrand::WyRand;
 
-fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32) -> u32 {
+fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32, bot_iq: u32) -> u32 {
+    let factor = if bot_iq >= 130 {
+        1.0
+    } else if bot_iq >= 100 {
+        0.5
+    } else {
+        0.1
+    };
+
     match kind {
-        BuildingKind::Bunker => ((city_equivalent as f64) * 0.25).floor() as u32,
-        BuildingKind::City => city_equivalent.saturating_add(1),
-        BuildingKind::Factory => ((city_equivalent as f64) * 0.50).floor() as u32,
-        BuildingKind::Port => ((city_equivalent as f64) * 0.20).floor() as u32,
+        BuildingKind::Bunker => ((city_equivalent as f64) * 0.35 * factor).floor() as u32,
+        BuildingKind::City => {
+            let base = (city_equivalent.saturating_add(2) as f64) * factor;
+            (base.floor() as u32).max(1)
+        }
+        BuildingKind::Factory => ((city_equivalent as f64) * 0.65 * factor).floor() as u32,
+        BuildingKind::Port => ((city_equivalent as f64) * 0.30 * factor).floor() as u32,
     }
+}
+
+fn iq_build_interval_base(iq: u32, bot_id: u16) -> u64 {
+    if iq >= 130 {
+        if bot_id.is_multiple_of(8) {
+            10
+        } else {
+            match bot_id % 4 {
+                0 => 40,
+                1 => 60,
+                2 => 50,
+                _ => 80,
+            }
+        }
+    } else if iq >= 100 {
+        match bot_id % 2 {
+            0 => 80,
+            _ => 100,
+        }
+    } else {
+        match bot_id % 3 {
+            0 => 160,
+            1 => 140,
+            _ => 120,
+        }
+    }
+}
+
+fn pick_stack_click_tile(
+    buildings: &[crate::building::Building],
+    bot_id: u16,
+    kind: BuildingKind,
+) -> Option<u32> {
+    let mut best: Option<(u8, u64, u32)> = None;
+    for b in buildings {
+        if b.owner_id != bot_id || b.kind != kind || b.under_construction || b.level >= 5 {
+            continue;
+        }
+        let cand = (b.level, b.id, b.tile_idx);
+        match best {
+            None => best = Some(cand),
+            Some((bl, bid, _)) if b.level < bl || (b.level == bl && b.id < bid) => {
+                best = Some(cand);
+            }
+            _ => {}
+        }
+    }
+    best.map(|(_, _, tile)| tile)
+}
+
+fn stack_build_decision(
+    buildings: &[crate::building::Building],
+    bot_id: u16,
+    kind: BuildingKind,
+    player_gold: f64,
+    cost: f64,
+) -> Option<BotDecision> {
+    let stack_tile = pick_stack_click_tile(buildings, bot_id, kind)?;
+    if player_gold < cost {
+        return None;
+    }
+    Some(BotDecision {
+        bot_id,
+        kind: BotDecisionKind::Build,
+        intent: GameplayIntent::BuildStructure {
+            kind,
+            target_tile: stack_tile,
+        },
+    })
+}
+
+const PLACEMENT_ATTEMPTS: i32 = 8;
+
+fn resolve_structure_from_candidates(
+    map: &crate::map::GameMap,
+    owner_id: u16,
+    kind: BuildingKind,
+    border_candidates: &[u32],
+    interior_candidates: &[(i32, i32)],
+    existing: &crate::building::BuildingGrid,
+    buildings: &[crate::building::Building],
+    scratch: &mut crate::engine::PlacementScratch,
+) -> Option<u32> {
+    let map_w = map.width;
+    for &idx in border_candidates {
+        if let Some(spawn) =
+            resolve_structure_spawn_tile(map, owner_id, kind, idx, existing, buildings, scratch)
+        {
+            return Some(spawn);
+        }
+    }
+    for &(nx, ny) in interior_candidates {
+        if !map.is_valid_coord(nx, ny) {
+            continue;
+        }
+        let (ux, uy) = (nx as u32, ny as u32);
+        if map.owner_id(ux, uy) != owner_id {
+            continue;
+        }
+        let idx = uy * map_w + ux;
+        if let Some(spawn) =
+            resolve_structure_spawn_tile(map, owner_id, kind, idx, existing, buildings, scratch)
+        {
+            return Some(spawn);
+        }
+    }
+    None
 }
 
 /// Cheapest possible gold cost for a building.
@@ -56,7 +174,6 @@ struct AiSlot {
 
 #[derive(Clone, Copy)]
 struct BotAiProfile {
-    interval_base: u64,
     trigger_ratio: f64,
     reserve_ratio: f64,
     expand_ratio: f64,
@@ -66,80 +183,66 @@ struct BotAiProfile {
 fn get_bot_ai_profile(bot_id: u16, is_nation: bool) -> BotAiProfile {
     let is_smart = is_nation || bot_id.is_multiple_of(100);
     if is_smart && bot_id.is_multiple_of(8) {
-        // Apex Dominator / MFO: hyper-aggressive, thinks every ~1-2s, zero hesitation
         BotAiProfile {
-            interval_base: 10,
             trigger_ratio: 0.10,
             reserve_ratio: 0.02,
             expand_ratio: 0.02,
             refuse_human_chance: 0,
         }
     } else if is_smart {
-        // Nations have 4 distinct profiles: 25% Expansionist, 25% Defensive, 25% Balanced, 25% Pacifist
         match bot_id % 4 {
             0 => BotAiProfile {
-                interval_base: 40,
                 trigger_ratio: 0.45,
                 reserve_ratio: 0.15,
                 expand_ratio: 0.15,
                 refuse_human_chance: 20,
             },
             1 => BotAiProfile {
-                interval_base: 60,
                 trigger_ratio: 0.65,
                 reserve_ratio: 0.40,
                 expand_ratio: 0.20,
                 refuse_human_chance: 60,
             },
             2 => BotAiProfile {
-                interval_base: 50,
                 trigger_ratio: 0.55,
                 reserve_ratio: 0.30,
                 expand_ratio: 0.15,
                 refuse_human_chance: 40,
             },
             _ => BotAiProfile {
-                interval_base: 80,
                 trigger_ratio: 0.75,
                 reserve_ratio: 0.50,
                 expand_ratio: 0.25,
                 refuse_human_chance: 80,
             },
         }
+    } else if bot_id.is_multiple_of(20) {
+        BotAiProfile {
+            trigger_ratio: 0.45,
+            reserve_ratio: 0.15,
+            expand_ratio: 0.10,
+            refuse_human_chance: 0,
+        }
     } else {
-        // Tribes (bots): 5% Terminator rare aggro, 95% Vanilla split into Territorial, Standard, and Soft Expansionist
-        if bot_id.is_multiple_of(20) {
-            BotAiProfile {
-                interval_base: 60,
-                trigger_ratio: 0.45,
-                reserve_ratio: 0.15,
+        match bot_id % 3 {
+            0 => BotAiProfile {
+                trigger_ratio: 0.75,
+                reserve_ratio: 0.50,
+                expand_ratio: 0.20,
+                refuse_human_chance: 90,
+            },
+            1 => BotAiProfile {
+                trigger_ratio: 0.65,
+                reserve_ratio: 0.35,
+                expand_ratio: 0.15,
+                refuse_human_chance: 75,
+            },
+            _ => BotAiProfile {
+                trigger_ratio: 0.70,
+                reserve_ratio: 0.30,
                 expand_ratio: 0.10,
-                refuse_human_chance: 0,
-            }
-        } else {
-            match bot_id % 3 {
-                0 => BotAiProfile {
-                    interval_base: 120,
-                    trigger_ratio: 0.75,
-                    reserve_ratio: 0.50,
-                    expand_ratio: 0.20,
-                    refuse_human_chance: 90,
-                },
-                1 => BotAiProfile {
-                    interval_base: 100,
-                    trigger_ratio: 0.65,
-                    reserve_ratio: 0.35,
-                    expand_ratio: 0.15,
-                    refuse_human_chance: 75,
-                },
-                _ => BotAiProfile {
-                    interval_base: 80,
-                    trigger_ratio: 0.70,
-                    reserve_ratio: 0.30,
-                    expand_ratio: 0.10,
-                    refuse_human_chance: 85,
-                },
-            }
+                refuse_human_chance: 85,
+            },
         }
     }
 }
@@ -149,7 +252,7 @@ impl SowEngine {
     ///
     /// - Builds one combined schedule of all AI entities.
     /// - Every scheduled bot acts each tick (no global budget cap).
-    /// - Each bot self-throttles via its own `interval_base` in `get_bot_ai_profile`.
+    /// - Each bot self-throttles via `iq_build_interval_base` keyed on IQ.
     /// - Uses `placement_scratch.border_scratch` for zero-allocation border scanning.
     pub fn execute_ai_think(&mut self) {
         if self.state.phase != crate::game::GamePhase::Playing {
@@ -186,7 +289,7 @@ impl SowEngine {
                     10 // Advanced: react in 1.0s - 2.0s (10 - 20 ticks)
                 }
             } else {
-                profile.interval_base
+                iq_build_interval_base(p.iq, bot_id)
             };
 
             let mut sched_rng = WyRand::new(
@@ -203,15 +306,12 @@ impl SowEngine {
             let phase = tick % interval;
             let do_attack = phase == offset;
 
-            let is_smart = is_nation || (bot_id % 100 == 0);
-
-            // Nations and 1% smart tribes get structure phases at 1/3 and 2/3 intervals
-            let do_structures = if is_smart {
+            let do_structures = if p.iq >= 100 {
                 let one_third = (offset + interval / 3) % interval;
                 let two_thirds = (offset + (interval * 2) / 3) % interval;
                 do_attack || phase == one_third || phase == two_thirds
             } else {
-                false
+                do_attack
             };
 
             if !do_attack && !do_structures {
@@ -224,7 +324,7 @@ impl SowEngine {
 
             schedule.push(AiSlot {
                 bot_id,
-                is_nation: is_smart,
+                is_nation,
                 do_attack,
                 do_structures,
                 profile,
@@ -712,8 +812,8 @@ impl SowEngine {
                 }
             }
 
-            // ── Structure building (Nations only) ───────────────────────
-            if slot.do_structures && slot.is_nation {
+            // ── Structure building (IQ-scaled, all bots) ─────────────────
+            if slot.do_structures {
                 let current_points = self.state.player(bot_id).unwrap().iq_points;
                 if current_points >= build_cost {
                     let (player_gold, player_tile_count) = {
@@ -729,8 +829,9 @@ impl SowEngine {
                             .get(bot_id as usize)
                             .copied()
                             .unwrap_or_default();
-                        let city_equivalent =
-                            agg.ready_city_count.max((player_tile_count / 2000).max(1));
+                        let city_equivalent = agg
+                            .ready_city_count
+                            .max((player_tile_count / 1000).max(1));
                         let build_order = [
                             BuildingKind::Bunker,
                             BuildingKind::City,
@@ -743,7 +844,7 @@ impl SowEngine {
                             }
                             let owned = agg.total_structures_of_kind(kind);
                             let mut target_count =
-                                bot_structure_target_count(kind, city_equivalent);
+                                bot_structure_target_count(kind, city_equivalent, bot_iq);
                             if kind == BuildingKind::Bunker && bot_iq >= 110 {
                                 let mut under_attack = false;
                                 for att in &self.attacks {
@@ -761,124 +862,100 @@ impl SowEngine {
                                 + agg.count_factory
                                 + agg.count_port;
                             let density = total_owned as f32 / player_tile_count.max(1) as f32;
-                            let is_density_high = bot_iq >= 110 && density > 1.0 / 1500.0;
+                            let is_density_high = bot_iq >= 110 && density > 1.0 / 600.0;
+                            let structure_floor = player_tile_count / 800;
+                            let under_structure_floor = total_owned < structure_floor;
+                            let wants_new = owned < target_count || under_structure_floor;
+                            let cost = structure_build_cost_gold(kind, owned, &self.state.config);
 
-                            let mut upgraded = false;
-                            if owned >= target_count || is_density_high {
-                                let mut upgrade_target = None;
-                                let mut best_score = -1.0;
-                                for b in &self.buildings {
-                                    if b.owner_id == bot_id
-                                        && b.kind == kind
-                                        && !b.under_construction
-                                        && b.level < 5
-                                    {
-                                        let mut score = 1.0;
-                                        let mut has_sam = false;
-                                        let (bx, by) = (
-                                            b.tile_idx % self.state.map.width,
-                                            b.tile_idx / self.state.map.width,
-                                        );
-                                        for b2 in &self.buildings {
-                                            if b2.kind == crate::game::BuildingKind::City
-                                                && b2.modules.shield > 0
-                                                && !b2.under_construction
-                                            {
-                                                let (sx, sy) = (
-                                                    b2.tile_idx % self.state.map.width,
-                                                    b2.tile_idx / self.state.map.width,
-                                                );
-                                                if (bx as i32 - sx as i32).abs()
-                                                    + (by as i32 - sy as i32).abs()
-                                                    <= 48
-                                                {
-                                                    has_sam = true;
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        if has_sam {
-                                            score += 10.0;
-                                        }
-                                        if score > best_score {
-                                            best_score = score;
-                                            upgrade_target = Some(b.id);
-                                        }
+                            if !wants_new || is_density_high {
+                                if let Some(d) = stack_build_decision(
+                                    &self.buildings,
+                                    bot_id,
+                                    kind,
+                                    player_gold,
+                                    cost,
+                                ) {
+                                    if let Some(p_me) = self.state.player_mut(bot_id) {
+                                        p_me.iq_points -= build_cost;
                                     }
+                                    decisions.push(d);
+                                    break;
                                 }
-                                if let Some(target_id) = upgrade_target {
-                                    let cost =
-                                        structure_build_cost_gold(kind, owned, &self.state.config);
-                                    if player_gold >= cost {
-                                        if let Some(p_me) = self.state.player_mut(bot_id) {
-                                            p_me.iq_points -= build_cost;
-                                        }
-                                        decisions.push(BotDecision {
-                                            bot_id,
-                                            kind: BotDecisionKind::Build,
-                                            intent: GameplayIntent::UpgradeStructure {
-                                                building_id: target_id,
-                                            },
-                                        });
-                                        upgraded = true;
-                                    }
+                                if !wants_new {
+                                    continue;
                                 }
                             }
 
-                            if upgraded {
-                                break;
-                            }
-
-                            if owned >= target_count {
+                            if !wants_new {
                                 continue;
                             }
                             if player_gold < cheapest_gold_cost(&self.state.config) {
                                 continue;
                             }
-                            let cost = structure_build_cost_gold(kind, owned, &self.state.config);
-                            let map_w = self.state.map.width;
-                            let Some(bot_now) = self.state.player_mut(bot_id) else {
-                                continue;
-                            };
-                            if bot_now.gold < cost {
+                            if self.state.player(bot_id).is_none_or(|p| p.gold < cost) {
                                 continue;
                             }
-
-                            let border_len = bot_now.border_tiles.count_ones();
-                            let mut tile_choice: Option<u32> = None;
-                            if border_len > 0 {
-                                let pick = bot_now.bot_rng.next_int(0, border_len as i32) as usize;
-                                let chosen_idx_opt = bot_now.border_tiles.ones().nth(pick);
-                                if let Some(chosen_idx) = chosen_idx_opt {
-                                    let (bx, by) = (chosen_idx % map_w, chosen_idx / map_w);
-                                    let idx = by * map_w + bx;
-                                    if resolve_structure_spawn_tile(
-                                        &self.state.map,
-                                        bot_id,
-                                        kind,
-                                        idx,
-                                        &self.building_grid,
-                                        &self.buildings,
-                                        &mut self.placement_scratch,
-                                    )
-                                    .is_some()
-                                    {
-                                        tile_choice = Some(idx);
+                            let (border_candidates, interior_candidates) = {
+                                let p = self.state.player_mut(bot_id).unwrap();
+                                let mut border = Vec::new();
+                                let border_len = p.border_tiles.count_ones();
+                                for _ in 0..PLACEMENT_ATTEMPTS {
+                                    if border_len > 0 {
+                                        let pick =
+                                            p.bot_rng.next_int(0, border_len as i32) as usize;
+                                        if let Some(idx) = p.border_tiles.ones().nth(pick) {
+                                            border.push(idx as u32);
+                                        }
                                     }
                                 }
-                            }
-                            let Some(target_tile) = tile_choice else {
-                                continue;
+                                let mut interior = Vec::new();
+                                if p.tile_count > 500 {
+                                    let cx = (p.sum_x / p.tile_count as u64) as i32;
+                                    let cy = (p.sum_y / p.tile_count as u64) as i32;
+                                    for _ in 0..PLACEMENT_ATTEMPTS {
+                                        let dx = p.bot_rng.next_int(-40, 41);
+                                        let dy = p.bot_rng.next_int(-40, 41);
+                                        interior.push((cx + dx, cy + dy));
+                                    }
+                                }
+                                (border, interior)
                             };
-                            if let Some(p_me) = self.state.player_mut(bot_id) {
-                                p_me.iq_points -= build_cost;
-                            }
-                            decisions.push(BotDecision {
+                            if let Some(target_tile) = resolve_structure_from_candidates(
+                                &self.state.map,
                                 bot_id,
-                                kind: BotDecisionKind::Build,
-                                intent: GameplayIntent::BuildStructure { kind, target_tile },
-                            });
-                            break;
+                                kind,
+                                &border_candidates,
+                                &interior_candidates,
+                                &self.building_grid,
+                                &self.buildings,
+                                &mut self.placement_scratch,
+                            ) {
+                                if let Some(p_me) = self.state.player_mut(bot_id) {
+                                    p_me.iq_points -= build_cost;
+                                }
+                                decisions.push(BotDecision {
+                                    bot_id,
+                                    kind: BotDecisionKind::Build,
+                                    intent: GameplayIntent::BuildStructure { kind, target_tile },
+                                });
+                                break;
+                            }
+
+                            // Boxed in: stack on existing (player rules via apply_build_structure_intent)
+                            if let Some(d) = stack_build_decision(
+                                &self.buildings,
+                                bot_id,
+                                kind,
+                                player_gold,
+                                cost,
+                            ) {
+                                if let Some(p_me) = self.state.player_mut(bot_id) {
+                                    p_me.iq_points -= build_cost;
+                                }
+                                decisions.push(d);
+                                break;
+                            }
                         }
                     }
                 }
@@ -1376,8 +1453,9 @@ impl SowEngine {
 
 #[cfg(test)]
 mod bot_iq_alliance_tests {
+    use super::bot_structure_target_count;
     use crate::engine::SowEngine;
-    use crate::game::{GamePhase, GameState};
+    use crate::game::{BuildingKind, GamePhase, GameState};
     use crate::player::Player;
     use crate::water_components::WaterComponents;
 
@@ -1720,6 +1798,291 @@ mod bot_iq_alliance_tests {
         assert!(
             engine.alliances_proposed.is_empty(),
             "Teammates should not be allowed to propose alliance"
+        );
+    }
+
+    fn test_engine_nation_mid_game() -> SowEngine {
+        let w = 64u32;
+        let h = 64u32;
+        let config = crate::game_config::GameConfig::default();
+        let mut game = GameState::new(42, w, h, config.clone());
+        game.phase = GamePhase::Playing;
+
+        for t in game.map.terrain.iter_mut() {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+
+        let owner = 1u16;
+        let mut sum_x = 0u64;
+        let mut sum_y = 0u64;
+        let mut count = 0u32;
+        for y in 10..50 {
+            for x in 10..50 {
+                game.map.set_owner_id(x, y, owner);
+                sum_x += x as u64;
+                sum_y += y as u64;
+                count += 1;
+            }
+        }
+
+        let mut nation = Player::new_nation(1, "Nation1".into(), [1.0, 0.0, 0.0], &config);
+        nation.iq_points = 500.0;
+        nation.gold = 100_000.0;
+        nation.troops = 10_000.0;
+        nation.tile_count = count;
+        nation.sum_x = sum_x;
+        nation.sum_y = sum_y;
+        for x in 10..50 {
+            nation.border_insert(10 * w + x);
+            nation.border_insert(49 * w + x);
+        }
+        for y in 11..49 {
+            nation.border_insert(y * w + 10);
+            nation.border_insert(y * w + 49);
+        }
+        game.players.push(nation);
+        game.player_lookup = vec![None, Some(0)];
+
+        let mut engine = SowEngine::new(game, WaterComponents::default());
+        let city_positions = [(15, 15), (15, 35), (35, 15), (25, 25), (20, 40), (40, 20)];
+        for (i, (cx, cy)) in city_positions.iter().enumerate() {
+            let tile_idx = cy * w + cx;
+            engine.buildings.push(crate::building::Building {
+                id: (i as u64) + 1,
+                owner_id: 1,
+                tile_idx,
+                kind: crate::game::BuildingKind::City,
+                level: 1,
+                under_construction: false,
+                ticks_until_complete: 0,
+                modules: crate::building::CityModules::default(),
+            });
+        }
+        engine.refresh_building_grid();
+        engine.building_aggregates_dirty = true;
+        engine
+    }
+
+    fn test_engine_advanced_tribe() -> SowEngine {
+        let w = 48u32;
+        let h = 48u32;
+        let config = crate::game_config::GameConfig::default();
+        let mut game = GameState::new(42, w, h, config.clone());
+        game.phase = GamePhase::Playing;
+
+        for t in game.map.terrain.iter_mut() {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+
+        let owner = 10u16;
+        let mut sum_x = 0u64;
+        let mut sum_y = 0u64;
+        let mut count = 0u32;
+        for y in 4..28 {
+            for x in 4..28 {
+                game.map.set_owner_id(x, y, owner);
+                sum_x += x as u64;
+                sum_y += y as u64;
+                count += 1;
+            }
+        }
+
+        let mut tribe = Player::new_bot(10, "Tribe10".into(), [0.0, 1.0, 0.0], &config);
+        tribe.iq = 110;
+        tribe.iq_points = 500.0;
+        tribe.gold = 50_000.0;
+        tribe.troops = 5_000.0;
+        tribe.tile_count = count;
+        tribe.sum_x = sum_x;
+        tribe.sum_y = sum_y;
+        for x in 4..28 {
+            tribe.border_insert(4 * w + x);
+            tribe.border_insert(27 * w + x);
+        }
+        for y in 5..27 {
+            tribe.border_insert(y * w + 4);
+            tribe.border_insert(y * w + 27);
+        }
+        game.players.push(tribe);
+        let mut lookup = vec![None; 11];
+        lookup[10] = Some(0);
+        game.player_lookup = lookup;
+
+        let mut engine = SowEngine::new(game, WaterComponents::default());
+        engine.refresh_building_grid();
+        engine.building_aggregates_dirty = true;
+        engine
+    }
+
+    #[test]
+    fn test_nation_keeps_building_mid_game() {
+        let mut engine = test_engine_nation_mid_game();
+        let initial_count = engine.buildings.len();
+        engine.state.config.global_speed_multiplier = 1.0;
+        for _ in 0..2000 {
+            engine.state.tick += 1;
+            engine.execute_income();
+            engine.execute_ai_think();
+        }
+        assert!(
+            engine.buildings.len() > initial_count,
+            "nation should keep placing structures mid-game (had {initial_count}, now {})",
+            engine.buildings.len()
+        );
+    }
+
+    #[test]
+    fn test_advanced_tribe_can_build() {
+        let mut engine = test_engine_advanced_tribe();
+        let initial_count = engine.buildings.len();
+        engine.state.config.global_speed_multiplier = 1.0;
+        for _ in 0..1000 {
+            engine.state.tick += 1;
+            engine.execute_income();
+            engine.execute_ai_think();
+        }
+        assert!(
+            engine.buildings.len() > initial_count,
+            "advanced tribe (id % 10) should build structures (had {initial_count}, now {})",
+            engine.buildings.len()
+        );
+    }
+
+    fn run_building_sim_ticks(engine: &mut SowEngine, ticks: u64) {
+        engine.state.config.global_speed_multiplier = 1.0;
+        for _ in 0..ticks {
+            engine.state.tick += 1;
+            engine.execute_income();
+            engine.execute_ai_think();
+        }
+    }
+
+    fn building_sim_fingerprint(engine: &SowEngine, player_id: u16) -> (usize, u64, f64, f64, Vec<(u64, u32, u8, u8)>) {
+        let mut snaps: Vec<(u64, u32, u8, u8)> = engine
+            .buildings
+            .iter()
+            .filter(|b| b.owner_id == player_id)
+            .map(|b| (b.id, b.tile_idx, b.kind as u8, b.level))
+            .collect();
+        snaps.sort_by_key(|s| s.0);
+        let level_sum: u64 = snaps.iter().map(|s| s.3 as u64).sum();
+        let gold = engine.state.player(player_id).map(|p| p.gold).unwrap_or(0.0);
+        let iq_pts = engine
+            .state
+            .player(player_id)
+            .map(|p| p.iq_points)
+            .unwrap_or(0.0);
+        (snaps.len(), level_sum, gold, iq_pts, snaps)
+    }
+
+    #[test]
+    fn test_ai_building_simulation_is_deterministic() {
+        let mut a = test_engine_nation_mid_game();
+        run_building_sim_ticks(&mut a, 500);
+        let fp_a = building_sim_fingerprint(&a, 1);
+
+        let mut b = test_engine_nation_mid_game();
+        run_building_sim_ticks(&mut b, 500);
+        let fp_b = building_sim_fingerprint(&b, 1);
+
+        assert_eq!(
+            fp_a, fp_b,
+            "identical seed/setup must produce identical building state after 500 ticks"
+        );
+    }
+
+    #[test]
+    fn test_bot_structure_target_count_floor_is_stable() {
+        // Low IQ: factor 0.1 caps non-city kinds at 0, city at least 1
+        assert_eq!(
+            bot_structure_target_count(BuildingKind::City, 10, 85),
+            1
+        );
+        assert_eq!(
+            bot_structure_target_count(BuildingKind::Bunker, 10, 85),
+            0
+        );
+        // Mid IQ: 50% of high-IQ quotas, deterministic floor
+        assert_eq!(
+            bot_structure_target_count(BuildingKind::Factory, 8, 110),
+            2
+        );
+        // High IQ: full quotas
+        assert_eq!(
+            bot_structure_target_count(BuildingKind::Port, 10, 140),
+            3
+        );
+    }
+
+    #[test]
+    fn test_bot_build_stacks_like_player() {
+        let w = 32u32;
+        let config = crate::game_config::GameConfig::default();
+        let mut game = GameState::new(42, w, w, config.clone());
+        game.phase = GamePhase::Playing;
+        for t in game.map.terrain.iter_mut() {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+        for y in 0..w {
+            for x in 0..w {
+                game.map.set_owner_id(x, y, 1);
+            }
+        }
+        let mut nation = Player::new_nation(1, "N".into(), [1.0, 0.0, 0.0], &config);
+        nation.gold = 1_000_000.0;
+        nation.iq = 140;
+        nation.iq_points = 500.0;
+        nation.tile_count = w * w;
+        game.players.push(nation);
+        game.player_lookup = vec![None, Some(0)];
+
+        let mut engine = SowEngine::new(game, WaterComponents::default());
+        engine.buildings.push(crate::building::Building {
+            id: 1,
+            owner_id: 1,
+            tile_idx: 16 * w + 16,
+            kind: BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
+            modules: crate::building::CityModules::default(),
+        });
+        engine.refresh_building_grid();
+
+        let city_tile = 16 * w + 16;
+        engine.apply_stamped_intent(
+            &crate::protocol::StampedIntent {
+                player_id: 1,
+                intent: crate::protocol::GameplayIntent::BuildStructure {
+                    kind: BuildingKind::City,
+                    target_tile: city_tile,
+                },
+            },
+            0,
+        );
+
+        assert_eq!(engine.buildings.len(), 1, "stack must not spawn a second city");
+        assert_eq!(engine.buildings[0].level, 2);
+    }
+
+    #[test]
+    fn test_tribe_buildings_not_purged() {
+        let mut engine = test_engine_two_players(42);
+        engine.buildings.push(crate::building::Building {
+            id: 50,
+            owner_id: 2,
+            tile_idx: 1,
+            kind: crate::game::BuildingKind::City,
+            level: 1,
+            under_construction: false,
+            ticks_until_complete: 0,
+            modules: crate::building::CityModules::default(),
+        });
+        engine.building_aggregates_dirty = true;
+        engine.execute_income();
+        assert!(
+            engine.buildings.iter().any(|b| b.id == 50 && b.owner_id == 2),
+            "standard tribe buildings must not be deleted by income tick"
         );
     }
 }

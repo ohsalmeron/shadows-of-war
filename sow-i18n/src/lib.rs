@@ -9,6 +9,21 @@ pub enum Language {
     German,
 }
 
+impl Language {
+    pub fn from_locale(locale: &str) -> Self {
+        let normalized = locale.to_lowercase();
+        if normalized.starts_with("es") {
+            Language::Spanish
+        } else if normalized.starts_with("fr") {
+            Language::French
+        } else if normalized.starts_with("de") {
+            Language::German
+        } else {
+            Language::English
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct MainMenuStrings {
     pub single_player: String,
@@ -115,6 +130,12 @@ pub struct EndgameStrings {
     pub play_again: String,
     pub spectate: String,
     pub winner_emerged: String,
+    #[serde(default = "default_team_victory_subtitle")]
+    pub team_victory_subtitle: String,
+    #[serde(default = "default_team_defeat_subtitle")]
+    pub team_defeat_subtitle: String,
+    #[serde(default = "default_team_winner_emerged")]
+    pub team_winner_emerged: String,
     pub victory_flavors: Vec<String>,
     pub defeat_flavors: Vec<String>,
 }
@@ -412,6 +433,18 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
             )
         }),
     }
+}
+
+fn default_team_victory_subtitle() -> String {
+    "Your team has conquered the world.".to_string()
+}
+
+fn default_team_defeat_subtitle() -> String {
+    "Your team has fallen.".to_string()
+}
+
+fn default_team_winner_emerged() -> String {
+    "Team {} emerged victorious.".to_string()
 }
 
 #[cfg(not(feature = "map-editor"))]

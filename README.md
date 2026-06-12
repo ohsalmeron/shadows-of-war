@@ -155,7 +155,7 @@ This section outlines how to verify the platform features required for CrazyGame
 * **Auth State Updates**: The SDK's `addAuthListener` automatically listens for authentication changes and updates the client credentials and profile state dynamically.
 
 ### 5. Preview Checklist — Grey User SDK Items
-The Developer Portal preview only marks SDK calls made in the browser. Server-side leaderboard API submits do not count.
+The Developer Portal preview marks client SDK calls in the browser. Authoritative scores are submitted separately from the VPS.
 
 | Checklist item | How to trigger green |
 |---|---|
@@ -163,7 +163,58 @@ The Developer Portal preview only marks SDK calls made in the browser. Server-si
 | Show Account Link Prompt | Play one offline skirmish as guest, then sign in via **SIGN IN** |
 | Submit leaderboard score | Sign in, finish one online match, return to menu (profile refetch calls `submitScore`); check Preview **Logs** tab for `submitScore` |
 
-**Operator setup:** paste the Developer Portal Leaderboard **Encryption Key** into `SOW_CG_LEADERBOARD_ENCRYPTION_KEY` in `sow-web/shell/sdk/store_portals.js`. Preview `submitScore` calls are logged but not saved to the live leaderboard.
+**Operator setup (two keys from Developer Portal → Leaderboard):**
+- **Encryption Key** → `SOW_CG_LEADERBOARD_ENCRYPTION_KEY` in [`sow-web/shell/sdk/store_portals.js`](sow-web/shell/sdk/store_portals.js) (client SDK; QA checklist + widgets)
+- **API Key** → `CRAZYGAMES_API_KEY` on the VPS via [`sow-database.service`](sow-dist/deploy/systemd/sow-database.service) (authoritative server submits after match finalize)
+
+Preview client `submitScore` calls are logged but not saved to the live leaderboard; production ranks use the server API path.
+
+## Sound FX Generation & Spatial Audio Pipeline
+
+We use a high-performance, low-latency audio pipeline designed for zero-allocation spatial audio mixing and robust device resource management on native clients.
+
+### 1. Generating Retro Sound Effects (`sow-tools/sound_synth.py`)
+
+To keep the repository lightweight and avoid large binary blobs, sound effects are programmatically synthesized using a standalone NES-style wave generator. It outputs 16-bit 22050Hz Mono PCM WAV files.
+
+Supported presets:
+*   `death`: 8-bit retro pulse wave arpeggio (C6 -> G5 -> E5 -> C5)
+*   `upgrade`: Fast, bright ascending square wave sweep
+*   `click`: Short, sharp high-frequency UI pop
+*   `conquer`: A triumphant multi-note pulse fanfare
+*   `nuke`: Low-end rumble with aggressive frequency-modulated decay
+
+**Example usage:**
+```bash
+python3 sow-tools/sound_synth.py --preset death -o assets/static/ui/death.wav
+```
+
+### 2. Harmonic Procedural Synthesis (`sow-audio`)
+
+All gameplay sounds share a match-level **MusicSession** keyed by `set_music_context(seed, anchor_wx, anchor_wy)`. The session root (A minor pentatonic degree + octave) is derived from the match seed XOR anchor tile, so every note in a match harmonizes.
+
+Note selection uses game context:
+- Tile coordinates + phrase step pick the scale degree (with voice-leading toward the last note).
+- Combat kind selects interval pattern (1–3 note plucks); troops scale amplitude.
+- Death uses descending pentatonic phrases in a lower octave (same key, softer timbre).
+- Per-event RNG jitters duty, decay, and duration within pleasant bounds.
+
+**Priority tiers** (overlap control):
+- **Background** (0.30 gain): tile capture / combat plucks — dropped when 6 voices active, ducking when stack is busy.
+- **Normal** (0.70 gain): deploy, building placement.
+- **Foreground** (1.0 gain): death, nuke — always plays.
+
+### 3. Spatialization & Audio Worker (`sow-audio`)
+
+The spatial audio system processes world coordinates relative to the camera:
+
+*   **Constant-Power Stereo Panning**: Horizontal viewport position drives left/right gain.
+*   **Distance Attenuation**: Quadratic falloff from viewport center; off-screen events culled.
+*   **Zoom Scaling**: Silent at zoom ≤ 1.5, full volume at zoom ≥ 5.0.
+
+All commands go through a background worker with a persistent `rodio` stream (ALSA-stable on Linux). Polyphony is tracked with estimated voice durations; WASM builds compile to no-op stubs for CrazyGames compliance.
+
+**Asset generation** (`sow-tools/sound_synth.py`) remains available for WAV presets (deploy, UI); most gameplay SFX are synthesized at runtime in `sow-audio`.
 
 ## License
 

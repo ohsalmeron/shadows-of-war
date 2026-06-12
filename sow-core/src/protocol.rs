@@ -146,6 +146,17 @@ pub enum ClientMessage {
     RematchRequest {
         lobby_id: u64,
     },
+    SubmitStats {
+        kills: u32,
+        deaths: u32,
+        assists: u32,
+        #[serde(default)]
+        players_defeated: u32,
+        #[serde(default)]
+        empires_defeated: u32,
+        #[serde(default)]
+        tribes_defeated: u32,
+    },
 }
 
 /// Envelope for all server → client messages (bincode-safe: has a discriminant).
@@ -308,6 +319,12 @@ pub struct PlayerSnapshot {
     pub active_emoji: Option<String>,
     pub civilization: crate::player::Civilization,
     pub leader: crate::player::Leader,
+    #[serde(default)]
+    pub kills: u32,
+    #[serde(default)]
+    pub deaths: u32,
+    #[serde(default)]
+    pub assists: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -439,6 +456,8 @@ pub struct SimSnapshot {
     #[serde(default)]
     pub resource_rejections: Vec<ResourceRejection>,
     pub winner: Option<u16>,
+    #[serde(default)]
+    pub winning_team: Option<Team>,
     pub defense_posts: Vec<u32>,
     pub defense_dirty: bool,
     pub total_land_tiles: u32,

@@ -96,22 +96,6 @@ pub struct InputState {
     pub selected_warships: Vec<u64>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum ExplosionKind {
-    Atom,
-    Hydrogen,
-    MIRVWarhead,
-}
-
-#[derive(Clone, Debug)]
-pub struct ActiveExplosion {
-    pub x: f32,
-    pub y: f32,
-    pub start_time: web_time::Instant,
-    pub max_radius: f32,
-    pub kind: ExplosionKind,
-}
-
 #[derive(Clone, Debug)]
 pub struct FalloutZone {
     pub x: f32,
@@ -185,7 +169,6 @@ pub struct UiState {
     pub show_dev_sidebar: bool,
     pub update_available: bool,
     pub is_spectating: bool,
-    pub active_explosions: Vec<ActiveExplosion>,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
@@ -196,8 +179,6 @@ pub struct UiState {
     pub star_svg_registered: bool,
     pub floating_notices: Vec<FloatingNotice>,
     pub death_nameplates: Vec<DeathNameplateAnimation>,
-    /// Wall-clock when the local player was eliminated (defeat panel delay anchor).
-    pub defeat_time: Option<web_time::Instant>,
     /// Cached endgame copy for panel fade-out (is_victory, title, subtitle).
     pub endgame_cache: Option<(bool, String, String)>,
 
@@ -209,6 +190,7 @@ pub struct UiState {
     pub rail_state: crate::render::world::railways::RailState,
     /// Client-side nuke silo cooldown tracking: building id → tick when ready.
     pub silo_cooldowns: std::collections::HashMap<u64, u64>,
+    pub bunker_last_sound_time: std::collections::HashMap<u64, web_time::Instant>,
     pub mover_scene: crate::render::world::movers::MoverScene,
     pub click_markers: Vec<ClickMarker>,
 }
@@ -287,6 +269,7 @@ pub struct SowApp {
     pub progress_account_id: Option<String>,
     pub progress_provider: String,
     pub progress_match_recorded: bool,
+    pub progress_stats_submitted: bool,
     pub progress_session_defeats: crate::player_progress::SessionDefeats,
     #[cfg(target_arch = "wasm32")]
     pub boot_db_settled: bool,
@@ -561,7 +544,6 @@ impl SowApp {
                 show_dev_sidebar: false,
                 update_available: false,
                 is_spectating: false,
-                active_explosions: Vec::new(),
                 fallout_zones: Vec::new(),
                 last_projectiles: std::collections::HashMap::new(),
                 active_upgrades: Vec::new(),
@@ -572,7 +554,6 @@ impl SowApp {
                 star_svg_registered: false,
                 floating_notices: Vec::new(),
                 death_nameplates: Vec::new(),
-                defeat_time: None,
                 endgame_cache: None,
 
                 cached_hovered_building_id: None,
@@ -582,6 +563,7 @@ impl SowApp {
                 edge_mask_cache: Vec::new(),
                 rail_state: crate::render::world::railways::RailState::new(),
                 silo_cooldowns: std::collections::HashMap::new(),
+                bunker_last_sound_time: std::collections::HashMap::new(),
                 mover_scene: crate::render::world::movers::MoverScene::new(),
                 click_markers: Vec::new(),
             },
@@ -618,6 +600,7 @@ impl SowApp {
             progress_account_id: None,
             progress_provider: String::from("local"),
             progress_match_recorded: false,
+            progress_stats_submitted: false,
             progress_session_defeats: crate::player_progress::SessionDefeats::default(),
             #[cfg(target_arch = "wasm32")]
             boot_db_settled: false,
@@ -632,14 +615,7 @@ impl SowApp {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let identity = crate::store_portals::load_identity("Player");
-            let fetch_cloud = !crate::store_portals::is_portal_embed()
-                || (identity.provider == "crazygames"
-                    && identity
-                        .auth_token
-                        .as_ref()
-                        .is_some_and(|t| !t.is_empty()));
-            if fetch_cloud {
+            if crate::store_portals::should_fetch_cloud_profile() {
                 sow_app.fetch_cloud_progress();
             } else if crate::store_portals::is_portal_embed() {
                 sow_app.boot_db_settled = true;
@@ -915,10 +891,58 @@ impl SowApp {
 
     fn reset_progress_session(&mut self) {
         self.progress_match_recorded = false;
+        self.progress_stats_submitted = false;
         self.progress_session_defeats = crate::player_progress::SessionDefeats::default();
     }
 
-    fn maybe_record_match_progress(&mut self, winner: Option<u16>) {
+    fn maybe_submit_online_stats(&mut self, snap: &sow_core::protocol::SimSnapshot) {
+        if self.progress_stats_submitted {
+            return;
+        }
+        if self.progress_account_id.is_none() || self.net.is_offline {
+            return;
+        }
+        let my_id = self.sim.my_player_id.unwrap_or(0);
+        if my_id == 0 {
+            return;
+        }
+        let Some(me) = snap.players.iter().find(|p| p.id == my_id) else {
+            return;
+        };
+        let game_over = snap.winner.is_some();
+        let eliminated = !me.alive && me.has_spawned;
+        if !game_over && !eliminated {
+            return;
+        }
+        self.progress_stats_submitted = true;
+
+        let msg = sow_core::protocol::ClientMessage::SubmitStats {
+            kills: me.kills,
+            deaths: me.deaths,
+            assists: me.assists,
+            players_defeated: self.progress_session_defeats.players,
+            empires_defeated: self.progress_session_defeats.empires,
+            tribes_defeated: self.progress_session_defeats.tribes,
+        };
+        if let Ok(json) = bincode::serialize(&msg) {
+            if let Some(c) = self.net.client.as_ref() {
+                c.send(json);
+                log::info!(
+                    "Submitted online stats: K/D/A {}/{}/{}",
+                    me.kills,
+                    me.deaths,
+                    me.assists
+                );
+            }
+        }
+    }
+
+    fn maybe_record_match_progress(
+        &mut self,
+        winner: Option<u16>,
+        winning_team: Option<sow_core::protocol::Team>,
+        my_team: Option<sow_core::protocol::Team>,
+    ) {
         if self.progress_match_recorded {
             return;
         }
@@ -937,11 +961,23 @@ impl SowApp {
             return;
         }
 
-        let won = winner_id == my_id;
+        let won = if let Some(team) = winning_team {
+            my_team == Some(team)
+        } else {
+            winner_id == my_id
+        };
         let defeats = self.progress_session_defeats;
+        let (kills, deaths, assists) = self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+            .map(|p| (p.kills, p.deaths, p.assists))
+            .unwrap_or((0, 0, 0));
         self.progress.preferred_leader =
             Some(self.ui.app.main_menu_state.selected_leader);
-        self.progress.record_match(won, defeats);
+        self.progress
+            .record_match_with_kda(won, defeats, kills, deaths, assists);
         self.save_local_progress();
         crate::store_portals::submit_leaderboard_score(self.progress.xp);
         log::info!(
@@ -1043,11 +1079,13 @@ impl SowApp {
             }
         }
         self.ui.is_spectating = false;
-        self.ui.defeat_time = None;
         self.ui.endgame_cache = None;
         self.reset_progress_session();
 
-        if was_playing && self.progress_account_id.is_some() {
+        if was_playing
+            && self.progress_account_id.is_some()
+            && crate::store_portals::should_fetch_cloud_profile()
+        {
             self.fetch_cloud_progress();
         }
     }
@@ -1288,8 +1326,12 @@ impl SowApp {
                     self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
                 self.input.has_snapped_camera_to_spawn = false;
                 self.ui.is_spectating = false;
-                self.ui.defeat_time = None;
                 self.ui.endgame_cache = None;
+                sow_audio::set_music_context(
+                    seed as u32,
+                    map_w as f32 * 0.5,
+                    map_h as f32 * 0.5,
+                );
             }
             sow_core::protocol::SimCommand::Turn(turn) => {
                 if let Some(e) = &mut self.sim.engine {
@@ -1302,6 +1344,7 @@ impl SowApp {
                     let my_id = self.sim.my_player_id.unwrap_or(0);
                     let now_instant = web_time::Instant::now();
                     let mut turn_defeats = crate::player_progress::SessionDefeats::default();
+                    let mut played_combat_this_tick = false;
                     for event in e.state.events.drain(..) {
                         if let sow_core::game::GameEvent::PlayerEliminated {
                             player_id,
@@ -1309,11 +1352,9 @@ impl SowApp {
                             gold_bounty,
                             elimination_x,
                             elimination_y,
+                            assists,
                         } = event
                         {
-                            // Play retro synthesized death sound
-                            crate::audio::play_death_sound();
-
                             let mut wx = 0.5;
                             let mut wy = 0.5;
                             let mut target_name = format!("Player {}", player_id);
@@ -1351,6 +1392,31 @@ impl SowApp {
                                 }
                             }
 
+                            let victim_type = snap
+                                .players
+                                .iter()
+                                .find(|p| p.id == player_id)
+                                .map(|p| p.player_type)
+                                .unwrap_or(sow_core::player::PlayerType::Bot);
+
+                            let seed = (player_id as u32)
+                                .wrapping_mul(2654435761)
+                                .wrapping_add(elimination_x.wrapping_mul(1597334977))
+                                .wrapping_add(elimination_y.wrapping_mul(3512401961));
+
+                            // Play retro synthesized death sound spatially
+                            sow_audio::play_death_sound(
+                                crate::player_sound_type(victim_type),
+                                seed,
+                                wx,
+                                wy,
+                                self.input.camera_x,
+                                self.input.camera_y,
+                                self.input.camera_zoom,
+                                self.input.screen_w,
+                                self.input.screen_h,
+                            );
+
                             if conqueror_id == my_id && my_id != 0 {
                                 if let Some(victim) =
                                     snap.players.iter().find(|p| p.id == player_id)
@@ -1364,7 +1430,7 @@ impl SowApp {
                                 }
                             }
 
-                            // Spawn floating notice only if we are the conqueror!
+                            // Spawn floating notice for killer and assist contributors
                             if conqueror_id == my_id && my_id != 0 {
                                 let bounty_text = format!(
                                     "🪙 +{}",
@@ -1378,6 +1444,22 @@ impl SowApp {
                                     duration: web_time::Duration::from_millis(3000),
                                     color: egui::Color32::from_rgb(250, 204, 21),
                                 });
+                            }
+                            for (assist_id, assist_gold) in &assists {
+                                if *assist_id == my_id && my_id != 0 {
+                                    let bounty_text = format!(
+                                        "🪙 +{} assist",
+                                        sow_ui::utils::format_number(*assist_gold as f64)
+                                    );
+                                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                        text: bounty_text,
+                                        world_x: wx,
+                                        world_y: wy + 0.5,
+                                        start_time: now_instant,
+                                        duration: web_time::Duration::from_millis(3000),
+                                        color: egui::Color32::from_rgb(180, 220, 100),
+                                    });
+                                }
                             }
 
                             // Spawn death nameplate animations on desktop only
@@ -1445,6 +1527,17 @@ impl SowApp {
                                     target_name,
                                     sow_ui::utils::format_number(gold_bounty as f64)
                                 )
+                            } else if assists.iter().any(|(id, _)| *id == my_id) {
+                                let assist_gold = assists
+                                    .iter()
+                                    .find(|(id, _)| *id == my_id)
+                                    .map(|(_, g)| *g)
+                                    .unwrap_or(0);
+                                format!(
+                                    "🤝 Assist on {} (+{} Gold)",
+                                    target_name,
+                                    sow_ui::utils::format_number(assist_gold as f64)
+                                )
                             } else {
                                 let conqueror_name = snap
                                     .players
@@ -1452,12 +1545,99 @@ impl SowApp {
                                     .find(|p| p.id == conqueror_id)
                                     .map(|p| p.name.clone())
                                     .unwrap_or_else(|| format!("Player {}", conqueror_id));
-                                format!("🕊️ {} was eliminated by {}!", target_name, conqueror_name)
+                                if assists.is_empty() {
+                                    format!(
+                                        "🕊️ {} was eliminated by {}!",
+                                        target_name, conqueror_name
+                                    )
+                                } else {
+                                    format!(
+                                        "🕊️ {} was eliminated by {} (+{} assists)",
+                                        target_name,
+                                        conqueror_name,
+                                        assists.len()
+                                    )
+                                }
                             };
                             self.ui
                                 .app
                                 .hud_state
                                 .push_notification(msg, egui::Color32::from_rgb(255, 215, 0));
+                        } else if let sow_core::game::GameEvent::TileCaptured {
+                            x,
+                            y,
+                            new_owner,
+                            previous_owner,
+                            troops,
+                        } = event
+                        {
+                            if played_combat_this_tick || my_id == 0 {
+                                continue;
+                            }
+                            if new_owner != my_id && previous_owner != my_id {
+                                continue;
+                            }
+                            played_combat_this_tick = true;
+
+                            use sow_audio::{CombatSoundKind, play_combat_sound};
+                            use sow_core::player::PlayerType;
+
+                            let kind = if previous_owner == my_id {
+                                CombatSoundKind::CounterAttack
+                            } else if previous_owner == 0 {
+                                CombatSoundKind::WildernessExpansion
+                            } else {
+                                snap.players
+                                    .iter()
+                                    .find(|p| p.id == previous_owner)
+                                    .map(|p| match p.player_type {
+                                        PlayerType::Human => CombatSoundKind::AttackHuman,
+                                        PlayerType::Nation => CombatSoundKind::AttackEmpire,
+                                        PlayerType::Bot => CombatSoundKind::AttackTribe,
+                                    })
+                                    .unwrap_or(CombatSoundKind::AttackTribe)
+                            };
+
+                            let seed = (previous_owner as u32)
+                                .wrapping_mul(2654435761)
+                                .wrapping_add((x as u32).wrapping_mul(1597334977))
+                                .wrapping_add((y as u32).wrapping_mul(3512401961))
+                                .wrapping_add((troops as u32).wrapping_mul(7243));
+
+                            play_combat_sound(
+                                kind,
+                                troops as f32,
+                                seed,
+                                x as f32 + 0.5,
+                                y as f32 + 0.5,
+                                self.input.camera_x,
+                                self.input.camera_y,
+                                self.input.camera_zoom,
+                                self.input.screen_w,
+                                self.input.screen_h,
+                            );
+                        } else if let sow_core::game::GameEvent::StructureSpawned {
+                            tile_idx,
+                            kind,
+                            owner_id,
+                            ..
+                        } = event
+                        {
+                            if owner_id == my_id {
+                                continue;
+                            }
+                            let x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                            let y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                            sow_audio::play_building_placement_sound(
+                                crate::building_sound_kind(kind),
+                                x,
+                                y,
+                                self.input.camera_x,
+                                self.input.camera_y,
+                                self.input.camera_zoom,
+                                self.input.screen_w,
+                                self.input.screen_h,
+                            );
                         }
                     }
                     self.progress_session_defeats.players = self
@@ -1491,6 +1671,22 @@ impl SowApp {
                                             kind: b_new.kind,
                                             level: b_new.level,
                                         },
+                                    );
+                                }
+                                if b_old.under_construction && !b_new.under_construction {
+                                    let wx =
+                                        (b_new.tile_idx % self.sim.map_w) as f32 + 0.5;
+                                    let wy =
+                                        (b_new.tile_idx / self.sim.map_w) as f32 + 0.5;
+                                    sow_audio::play_building_completed_sound(
+                                        crate::building_sound_kind(b_new.kind),
+                                        wx,
+                                        wy,
+                                        self.input.camera_x,
+                                        self.input.camera_y,
+                                        self.input.camera_zoom,
+                                        self.input.screen_w,
+                                        self.input.screen_h,
                                     );
                                 }
                             }
@@ -1581,7 +1777,14 @@ impl SowApp {
                         self.ui.app.hud_state.push_notification(message, color);
                     }
 
-                    self.maybe_record_match_progress(snap.winner);
+                    let my_id = self.sim.my_player_id.unwrap_or(0);
+                    let my_team = snap
+                        .players
+                        .iter()
+                        .find(|p| p.id == my_id)
+                        .and_then(|p| p.team);
+                    self.maybe_submit_online_stats(&snap);
+                    self.maybe_record_match_progress(snap.winner, snap.winning_team, my_team);
                     self.sim.current_snapshot = Some(snap);
                     self.time.interp.stamp_applied(web_time::Instant::now());
                 }

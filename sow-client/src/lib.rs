@@ -157,7 +157,6 @@ pub enum EngineInitEvent {
 
 pub mod app;
 pub mod asset;
-pub mod audio;
 pub mod hud;
 #[cfg(target_arch = "wasm32")]
 mod ime;
@@ -177,6 +176,27 @@ pub mod render;
 pub mod store_portals;
 mod viewport;
 mod web_canvas;
+
+pub(crate) fn player_sound_type(
+    value: sow_core::player::PlayerType,
+) -> sow_audio::PlayerSoundType {
+    match value {
+        sow_core::player::PlayerType::Human => sow_audio::PlayerSoundType::Human,
+        sow_core::player::PlayerType::Nation => sow_audio::PlayerSoundType::Nation,
+        sow_core::player::PlayerType::Bot => sow_audio::PlayerSoundType::Bot,
+    }
+}
+
+pub(crate) fn building_sound_kind(
+    value: sow_core::game::BuildingKind,
+) -> sow_audio::BuildingSoundKind {
+    match value {
+        sow_core::game::BuildingKind::City => sow_audio::BuildingSoundKind::City,
+        sow_core::game::BuildingKind::Bunker => sow_audio::BuildingSoundKind::Bunker,
+        sow_core::game::BuildingKind::Factory => sow_audio::BuildingSoundKind::Factory,
+        sow_core::game::BuildingKind::Port => sow_audio::BuildingSoundKind::Port,
+    }
+}
 
 use app::SowApp;
 use winit::application::ApplicationHandler;

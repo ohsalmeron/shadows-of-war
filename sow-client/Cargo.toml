@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 
 [dependencies]
+sow-audio = { workspace = true }
 sow-core = { workspace = true }
 sow-render = { workspace = true }
 blade-graphics = { workspace = true }
@@ -46,4 +47,3 @@ getrandom = { workspace = true }
 open = { workspace = true }
 env_logger = { workspace = true }
 tokio = { workspace = true }
-rodio = { workspace = true }

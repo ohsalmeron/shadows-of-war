@@ -114,7 +114,9 @@ impl SowApp {
                 crate::store_portals::show_account_link_prompt();
             }
             self.maybe_link_platform_identity();
-            self.fetch_cloud_progress();
+            if crate::store_portals::should_fetch_cloud_profile() {
+                self.fetch_cloud_progress();
+            }
         }
         if let Some(mute) = crate::store_portals::poll_mute_audio_setting() {
             crate::store_portals::apply_mute_audio_setting(mute);

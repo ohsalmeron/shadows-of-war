@@ -104,14 +104,17 @@ async fn main() {
     let secret_token = std::env::var("SOW_DB_SECRET")
         .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
 
+    let crazygames_api_key = std::env::var("CRAZYGAMES_API_KEY").ok();
+
     info!(
-        "Config - Port: {}, Valkey: {}, Secret: [REDACTED]",
+        "Config - Port: {}, Valkey: {}, Secret: [REDACTED], CG API Key Configured: {}",
         port,
-        valkey_url
+        valkey_url,
+        crazygames_api_key.is_some()
     );
 
     // Initialize database connector
-    let player_db = PlayerDb::new(&valkey_url);
+    let player_db = PlayerDb::new(&valkey_url, crazygames_api_key);
 
     let state = Arc::new(AppState {
         db: player_db,
@@ -331,17 +334,20 @@ async fn handle_profile_link(
         )
         .await
     {
-        Ok(LinkOutcome::Linked(account)) => (
-            StatusCode::OK,
-            Json(ProfileLinkResponse {
-                status: "linked".into(),
-                account: Some(account),
-                existing_account_id: None,
-                existing: None,
-                current: None,
-            }),
-        )
-            .into_response(),
+        Ok(LinkOutcome::Linked(account)) => {
+            state.db.submit_crazygames_score(&account).await;
+            (
+                StatusCode::OK,
+                Json(ProfileLinkResponse {
+                    status: "linked".into(),
+                    account: Some(account),
+                    existing_account_id: None,
+                    existing: None,
+                    current: None,
+                }),
+            )
+                .into_response()
+        }
         Ok(LinkOutcome::Conflict {
             existing_account_id,
             existing,
@@ -404,17 +410,20 @@ async fn handle_profile_link_resolve(
         )
         .await
     {
-        Ok(account) => (
-            StatusCode::OK,
-            Json(ProfileLinkResponse {
-                status: "resolved".into(),
-                account: Some(account),
-                existing_account_id: None,
-                existing: None,
-                current: None,
-            }),
-        )
-            .into_response(),
+        Ok(account) => {
+            state.db.submit_crazygames_score(&account).await;
+            (
+                StatusCode::OK,
+                Json(ProfileLinkResponse {
+                    status: "resolved".into(),
+                    account: Some(account),
+                    existing_account_id: None,
+                    existing: None,
+                    current: None,
+                }),
+            )
+                .into_response()
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {

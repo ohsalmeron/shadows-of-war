@@ -563,6 +563,9 @@ pub(crate) fn render(
                 {
                     let radius_world = config.bunker_range as f32;
                     let elapsed = time.start_time.elapsed().as_secs_f32();
+                    let laser_opts = bunker_laser_vfx_opts(painter.ctx());
+                    let low_detail =
+                        input.screen_w < 900.0 || sf > 1.5 || zoom_scaled < 1.0;
 
                     let player_color = if b.owner_id != 0 {
                         player_colors
@@ -573,189 +576,109 @@ pub(crate) fn render(
                         egui::Color32::from_rgb(0, 220, 255)
                     };
 
-                    for attack in &snap.attacks {
+                    let b_col = (b.bx - 0.5).floor() as i32;
+                    let b_row = (b.by - 0.5).floor() as i32;
+
+                    for (attack_idx, attack) in snap.attacks.iter().enumerate() {
                         if attack.target_owner == b.owner_id && attack.troops > 0.0 {
                             if attack.front_cx == 0.0 && attack.front_cy == 0.0 {
                                 continue;
                             }
 
-                            // Convert attack front centroid to world-space coordinates
+                            let attack_col = attack.front_cx.floor() as i32;
+                            let attack_row = attack.front_cy.floor() as i32;
+                            let hex_dist = sow_core::building::hex_distance(
+                                b_col,
+                                b_row,
+                                attack_col,
+                                attack_row,
+                            );
+                            if hex_dist as f32 > radius_world {
+                                continue;
+                            }
+
                             let attack_wx = attack.front_cx + 0.5;
                             let attack_wy = attack.front_cy + 0.5;
 
-                            let dx = attack_wx - b.bx;
-                            let dy = attack_wy - b.by;
-                            let dist = (dx * dx + dy * dy).sqrt();
-
-                            if dist <= radius_world {
-                                // Zero abstraction: shoot directly towards the bunker's own radius boundary in the direction of the attack
-                                let target_wx = if dist > 0.0 {
-                                    b.bx + (dx / dist) * radius_world
+                            let (target_wx, target_wy) = if laser_opts.target_seeking {
+                                (attack_wx, attack_wy)
+                            } else {
+                                let dx = attack_wx - b.bx;
+                                let dy = attack_wy - b.by;
+                                let dist = (dx * dx + dy * dy).sqrt();
+                                if dist > 0.0 {
+                                    (
+                                        b.bx + (dx / dist) * radius_world,
+                                        b.by + (dy / dist) * radius_world,
+                                    )
                                 } else {
-                                    b.bx
-                                };
-                                let target_wy = if dist > 0.0 {
-                                    b.by + (dy / dist) * radius_world
+                                    (b.bx, b.by)
+                                }
+                            };
+
+                            let atk_screen_x =
+                                (input.camera_x + target_wx * input.camera_zoom) / sf;
+                            let atk_screen_y =
+                                (input.camera_y + target_wy * input.camera_zoom) / sf;
+                            let atk_center = egui::pos2(atk_screen_x, atk_screen_y);
+
+                            let glow_color = egui::Color32::from_rgba_unmultiplied(
+                                player_color.r(),
+                                player_color.g(),
+                                player_color.b(),
+                                180,
+                            );
+                            let core_color = egui::Color32::from_rgba_unmultiplied(
+                                player_color.r().saturating_add(120),
+                                player_color.g().saturating_add(120),
+                                player_color.b().saturating_add(120),
+                                255,
+                            );
+
+                            let scatter_seed = b.id.unwrap_or(0);
+                            paint_bunker_laser(
+                                &painter,
+                                center,
+                                atk_center,
+                                elapsed,
+                                glow_color,
+                                core_color,
+                                low_detail,
+                                laser_opts,
+                                scatter_seed,
+                                attack_idx as u32,
+                            );
+
+                            if let Some(b_id) = b.id {
+                                let mut play = false;
+                                let now = web_time::Instant::now();
+                                if let Some(&last_time) = ui.bunker_last_sound_time.get(&b_id) {
+                                    if now.duration_since(last_time).as_millis() >= 300 {
+                                        play = true;
+                                    }
                                 } else {
-                                    b.by
-                                };
-
-                                let atk_screen_x =
-                                    (input.camera_x + target_wx * input.camera_zoom) / sf;
-                                let atk_screen_y =
-                                    (input.camera_y + target_wy * input.camera_zoom) / sf;
-                                let atk_center = egui::pos2(atk_screen_x, atk_screen_y);
-
-                                // Laser colors
-                                let glow_color = egui::Color32::from_rgba_unmultiplied(
-                                    player_color.r(),
-                                    player_color.g(),
-                                    player_color.b(),
-                                    180,
-                                );
-                                let core_color = egui::Color32::from_rgba_unmultiplied(
-                                    player_color.r().saturating_add(120),
-                                    player_color.g().saturating_add(120),
-                                    player_color.b().saturating_add(120),
-                                    255,
-                                );
-
-                                if input.screen_w < 900.0 || sf > 1.5 || zoom_scaled < 1.0 {
-                                    // High-performance clean laser line for low-end / zoomed out
-                                    painter.line_segment(
-                                        [center, atk_center],
-                                        egui::Stroke::new(5.0_f32, glow_color),
-                                    );
-                                    painter.line_segment(
-                                        [center, atk_center],
-                                        egui::Stroke::new(2.0_f32, egui::Color32::WHITE),
-                                    );
-                                    painter.circle_filled(
-                                        atk_center,
-                                        6.0_f32,
-                                        egui::Color32::WHITE,
-                                    );
-                                    painter.circle_filled(atk_center, 9.0_f32, glow_color);
-                                } else {
-                                    // 1. Heavy crackling electrical/lightning conduit (jagged segments)
-                                    let steps = 8;
-                                    let dir = atk_center - center;
-                                    let length = dir.length();
-                                    if length > 1.0 {
-                                        let perp = egui::vec2(-dir.y, dir.x) / length;
-                                        let mut prev_pt = center;
-
-                                        for step in 1..=steps {
-                                            let t = step as f32 / steps as f32;
-                                            let mut pt = center + dir * t;
-                                            if step < steps {
-                                                // Crackle offset using high-frequency sine waves
-                                                let offset_mag = (elapsed * 45.0
-                                                    + step as f32 * 1.6)
-                                                    .sin()
-                                                    * 5.0
-                                                    + (elapsed * 95.0 - step as f32 * 2.3).cos()
-                                                        * 2.5;
-                                                pt += perp * offset_mag;
-                                            }
-
-                                            // Glow outer layer
-                                            painter.line_segment(
-                                                [prev_pt, pt],
-                                                egui::Stroke::new(
-                                                    8.0_f32,
-                                                    glow_color.linear_multiply(0.55),
-                                                ),
-                                            );
-                                            // Intense plasma beam core
-                                            painter.line_segment(
-                                                [prev_pt, pt],
-                                                egui::Stroke::new(3.5_f32, core_color),
-                                            );
-                                            // White hot electric filament
-                                            painter.line_segment(
-                                                [prev_pt, pt],
-                                                egui::Stroke::new(1.2_f32, egui::Color32::WHITE),
-                                            );
-                                            prev_pt = pt;
-                                        }
-                                    }
-
-                                    // 2. Animated firing projectile stream (3 plasma bolts spaced apart)
-                                    let angle =
-                                        (atk_center.y - center.y).atan2(atk_center.x - center.x);
-                                    let trail_len = 20.0_f32;
-                                    for p_idx in 0..3 {
-                                        let t = (elapsed * 3.0 + p_idx as f32 * 0.33) % 1.0;
-                                        let proj_pos = egui::pos2(
-                                            center.x + (atk_center.x - center.x) * t,
-                                            center.y + (atk_center.y - center.y) * t,
-                                        );
-                                        let trail_start = egui::pos2(
-                                            proj_pos.x - angle.cos() * trail_len,
-                                            proj_pos.y - angle.sin() * trail_len,
-                                        );
-
-                                        // High-velocity projectile tail
-                                        painter.line_segment(
-                                            [trail_start, proj_pos],
-                                            egui::Stroke::new(4.5_f32, glow_color),
-                                        );
-                                        painter.circle_filled(
-                                            proj_pos,
-                                            5.0_f32,
-                                            egui::Color32::WHITE,
-                                        );
-                                        painter.circle_filled(proj_pos, 7.5_f32, glow_color);
-                                    }
-
-                                    // 3. Exploding impact sparks + shockwaves
-                                    let ring_t = (elapsed * 4.0) % 1.0;
-                                    painter.circle(
-                                        atk_center,
-                                        ring_t * 26.0,
-                                        egui::Color32::TRANSPARENT,
-                                        egui::Stroke::new(
-                                            2.5_f32,
-                                            egui::Color32::from_rgba_unmultiplied(
-                                                255,
-                                                255,
-                                                255,
-                                                ((1.0 - ring_t) * 230.0) as u8,
-                                            ),
-                                        ),
-                                    );
-
-                                    let spark_t = (elapsed * 6.0) % 1.0;
-                                    for i in 0..8 {
-                                        let angle =
-                                            (i as f32 * 45.0 + elapsed * 280.0).to_radians();
-                                        let spark_len = spark_t * 20.0;
-                                        let spark_start = atk_center
-                                            + egui::vec2(angle.cos(), angle.sin())
-                                                * (spark_len * 0.25);
-                                        let spark_end = atk_center
-                                            + egui::vec2(angle.cos(), angle.sin()) * spark_len;
-                                        painter.line_segment(
-                                            [spark_start, spark_end],
-                                            egui::Stroke::new(
-                                                2.2_f32,
-                                                egui::Color32::from_rgba_unmultiplied(
-                                                    255,
-                                                    235,
-                                                    130,
-                                                    ((1.0 - spark_t) * 255.0) as u8,
-                                                ),
-                                            ),
-                                        );
-                                    }
+                                    play = true;
                                 }
 
-                                // 4. Pulse muzzle flash at bunker center
-                                let muzzle_pulse = (elapsed * 30.0).sin().abs() * 3.5 + 6.0;
-                                painter.circle_filled(center, muzzle_pulse, egui::Color32::WHITE);
-                                painter.circle_filled(center, muzzle_pulse + 5.0, glow_color);
+                                if play {
+                                    ui.bunker_last_sound_time.insert(b_id, now);
+                                    let seed = (b_id as u32).wrapping_mul(31).wrapping_add(attack_idx as u32);
+                                    sow_audio::play_bunker_defense_sound(
+                                        seed,
+                                        b.bx,
+                                        b.by,
+                                        input.camera_x,
+                                        input.camera_y,
+                                        input.camera_zoom,
+                                        input.screen_w,
+                                        input.screen_h,
+                                    );
+                                }
                             }
+
+                            let muzzle_pulse = (elapsed * 30.0).sin().abs() * 3.5 + 6.0;
+                            painter.circle_filled(center, muzzle_pulse, egui::Color32::WHITE);
+                            painter.circle_filled(center, muzzle_pulse + 5.0, glow_color);
                         }
                     }
                 }
@@ -784,15 +707,12 @@ pub(crate) fn render(
                     let age = elapsed - bunker_start;
 
                     let current_range = if age < 1.5 {
-                        // Smooth cubic ease-out for a premium, heavy cybernetic launch feel
                         let t = age / 1.5;
                         let ease = 1.0 - (1.0 - t).powi(3);
                         ease * radius_world
                     } else {
                         radius_world
-                    };
-
-                    let s_radius = current_range * input.camera_zoom / sf * pulse;
+                    } * pulse;
                     let player_color = if b.owner_id != 0 {
                         player_colors
                             .get(b.owner_id as usize)
@@ -802,7 +722,7 @@ pub(crate) fn render(
                         egui::Color32::from_rgb(0, 220, 255)
                     };
 
-                    // 1. Draw dynamic range scanning forcefield (zero-fade solid premium contrast)
+                    // 1. Draw hex-aligned range forcefield
                     let stroke_color = egui::Color32::from_rgba_unmultiplied(
                         player_color.r(),
                         player_color.g(),
@@ -815,30 +735,53 @@ pub(crate) fn render(
                         player_color.b(),
                         35,
                     );
-                    painter.circle_stroke(
-                        center,
-                        s_radius,
-                        egui::Stroke::new(1.5_f32, stroke_color),
-                    );
-                    painter.circle_filled(center, s_radius, fill_color);
+                    if let Some(t_idx) = b.tile_idx {
+                        let map_w = sim.map_w as i32;
+                        let b_col = (t_idx as i32) % map_w;
+                        let b_row = (t_idx as i32) / map_w;
+                        paint_bunker_hex_range(
+                            &painter,
+                            b_col,
+                            b_row,
+                            current_range,
+                            input.camera_x,
+                            input.camera_y,
+                            input.camera_zoom,
+                            sf,
+                            fill_color,
+                            stroke_color,
+                        );
+                    }
 
-                    // 1b. Draw expanding scanning radar pulse wave ripple
+                    // 1b. Draw expanding scanning radar pulse wave ripple (hex ring)
                     let wave_t = (elapsed * 0.8) % 1.0;
-                    let wave_radius = s_radius * wave_t;
+                    let wave_range = current_range * wave_t;
                     let wave_alpha = ((1.0 - wave_t) * 140.0) as u8;
-                    painter.circle_stroke(
-                        center,
-                        wave_radius,
-                        egui::Stroke::new(
-                            1.5_f32,
-                            egui::Color32::from_rgba_unmultiplied(
+                    if wave_range > 0.5 {
+                        if let Some(t_idx) = b.tile_idx {
+                            let map_w = sim.map_w as i32;
+                            let b_col = (t_idx as i32) % map_w;
+                            let b_row = (t_idx as i32) / map_w;
+                            let wave_stroke = egui::Color32::from_rgba_unmultiplied(
                                 player_color.r(),
                                 player_color.g(),
                                 player_color.b(),
                                 wave_alpha,
-                            ),
-                        ),
-                    );
+                            );
+                            paint_bunker_hex_range(
+                                &painter,
+                                b_col,
+                                b_row,
+                                wave_range,
+                                input.camera_x,
+                                input.camera_y,
+                                input.camera_zoom,
+                                sf,
+                                egui::Color32::TRANSPARENT,
+                                wave_stroke,
+                            );
+                        }
+                    }
 
                     // 2. Draw solid glowing square outline around the Bunker itself for visual confirmation
                     let square_half = 0.5 * input.camera_zoom / sf;
@@ -899,9 +842,7 @@ pub(crate) fn render(
                         };
 
                         let hex_dist = |c1: i32, r1: i32, c2: i32, r2: i32| -> i32 {
-                            let dc = (c1 - c2).abs();
-                            let dr = (r1 - r2).abs();
-                            dc.max(dr)
+                            sow_core::building::hex_distance(c1, r1, c2, r2)
                         };
 
                         let border_pulse = (elapsed * 3.5).sin() * 0.15 + 0.85;
@@ -1435,14 +1376,23 @@ pub(crate) fn render(
                     // New placement: ghost emoji and range circle
                     if kind == sow_core::game::BuildingKind::Bunker {
                         let current_range = config.bunker_range as f32;
-                        let s_radius = (current_range * input.camera_zoom) / sf;
                         let range_color = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 120);
                         let range_fill = egui::Color32::from_rgba_unmultiplied(239, 68, 68, 10);
-                        painter.circle_filled(preview_center, s_radius, range_fill);
-                        painter.circle_stroke(
-                            preview_center,
-                            s_radius,
-                            egui::Stroke::new(1.25_f32, range_color),
+                        let (preview_col, preview_row) = world_to_tile(
+                            (preview_center.x * sf - input.camera_x) / input.camera_zoom,
+                            (preview_center.y * sf - input.camera_y) / input.camera_zoom,
+                        );
+                        paint_bunker_hex_range(
+                            &painter,
+                            preview_col,
+                            preview_row,
+                            current_range,
+                            input.camera_x,
+                            input.camera_y,
+                            input.camera_zoom,
+                            sf,
+                            range_fill,
+                            range_color,
                         );
                     }
 

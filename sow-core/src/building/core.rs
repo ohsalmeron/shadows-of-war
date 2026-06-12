@@ -1,4 +1,4 @@
-use super::placement::{idx_xy, manhattan};
+use super::placement::{hex_distance, idx_xy};
 use crate::game::BuildingKind;
 use serde::{Deserialize, Serialize};
 
@@ -227,7 +227,7 @@ pub fn defense_post_priority_bonus(
     let mut bonus: i64 = 0;
     for b in buildings {
         let (bx, by) = idx_xy(b.tile_idx, map_width);
-        let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
+        let d = hex_distance(tile_x as i32, tile_y as i32, bx as i32, by as i32);
         if d <= b.defense_range_cfg(cfg) {
             bonus += cfg.bunker_priority as i64 * b.active_level() as i64;
         }
@@ -314,7 +314,7 @@ impl DefenseGrid {
                     }
                     let bx = b.tile_idx % map_width;
                     let by = b.tile_idx / map_width;
-                    let d = manhattan(tile_x as i32, tile_y as i32, bx as i32, by as i32);
+                    let d = hex_distance(tile_x as i32, tile_y as i32, bx as i32, by as i32);
                     if d <= b.defense_range_cfg(cfg) {
                         bonus += cfg.bunker_priority as i64 * b.active_level() as i64;
                     }

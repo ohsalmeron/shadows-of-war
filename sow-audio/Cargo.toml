@@ -1,0 +1,10 @@
+[package]
+name = "sow-audio"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+description = "Procedural spatial audio for Shadows of War"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+log = { workspace = true }
+rodio = { workspace = true }

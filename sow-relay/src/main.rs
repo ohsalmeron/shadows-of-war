@@ -28,6 +28,33 @@ fn log_player_exit(con: &mut redis::Connection, match_id: u64, account_id: &str)
     let _: Result<(), _> = con.rpush(&key, account_id).and_then(|()| con.expire(&key, 3600));
 }
 
+fn log_player_stats(
+    con: &mut redis::Connection,
+    match_id: u64,
+    account_id: &str,
+    kills: u32,
+    deaths: u32,
+    assists: u32,
+    players_defeated: u32,
+    empires_defeated: u32,
+    tribes_defeated: u32,
+) {
+    let key = format!("sow:match:{match_id}:stats:{account_id}");
+    let _: Result<(), _> = con
+        .hset_multiple(
+            &key,
+            &[
+                ("kills", kills.to_string()),
+                ("deaths", deaths.to_string()),
+                ("assists", assists.to_string()),
+                ("players_defeated", players_defeated.to_string()),
+                ("empires_defeated", empires_defeated.to_string()),
+                ("tribes_defeated", tribes_defeated.to_string()),
+            ],
+        )
+        .and_then(|()| con.expire(&key, 3600));
+}
+
 fn trigger_match_finalize(match_id: u64) {
     tokio::spawn(async move {
         let db_url =
@@ -221,6 +248,7 @@ async fn main() {
     let cleanup_port = port;
 
     let tracked = !player_accounts.is_empty();
+    let accounts_for_ws = player_accounts.clone();
     let match_tracker = Arc::new(std::sync::Mutex::new(MatchTracker {
         lobby_id,
         player_accounts,
@@ -337,7 +365,9 @@ async fn main() {
         let ev_tx = event_tx_clone.clone();
         let clients_map = connected_clients.clone();
         let valid_map = valid_players.clone();
+        let accounts_map = accounts_for_ws.clone();
         let history_arc = match_history.clone();
+        let redis_stats = Arc::clone(&redis_con);
 
         tokio::spawn(async move {
             let ws_stream = match accept_async(stream).await {
@@ -403,6 +433,36 @@ async fn main() {
                                                 let pong = ServerMessage::Pong { client_time };
                                                 let json = bincode::serialize(&pong).unwrap();
                                                 let _ = direct_tx.send(json);
+                                            }
+                                            ClientMessage::SubmitStats {
+                                                kills,
+                                                deaths,
+                                                assists,
+                                                players_defeated,
+                                                empires_defeated,
+                                                tribes_defeated,
+                                            } => {
+                                                if let Some(pid) = my_player_id {
+                                                    if let Some(acc) = accounts_map.get(&pid) {
+                                                        let mut guard = redis_stats.lock().unwrap();
+                                                        if let Some(ref mut con) = *guard {
+                                                            log_player_stats(
+                                                                con,
+                                                                lobby_id,
+                                                                acc,
+                                                                kills,
+                                                                deaths,
+                                                                assists,
+                                                                players_defeated,
+                                                                empires_defeated,
+                                                                tribes_defeated,
+                                                            );
+                                                            info!(
+                                                                "Logged stats for player {pid} (account {acc}): K/D/A {kills}/{deaths}/{assists}"
+                                                            );
+                                                        }
+                                                    }
+                                                }
                                             }
                                             _ => {}
                                         }

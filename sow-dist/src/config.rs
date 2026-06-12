@@ -84,6 +84,10 @@ impl DeployConfig {
         format!("{}/ws/", trim_origin(origin))
     }
 
+    pub fn db_url(&self, origin: &str) -> String {
+        format!("{}/api/profile?provider=local&external_id=healthcheck", trim_origin(origin))
+    }
+
     pub fn sitemap_url(&self) -> String {
         format!("{}/sitemap.xml", self.site_url())
     }

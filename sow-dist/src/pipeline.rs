@@ -12,7 +12,7 @@ use crate::wasm;
 use anyhow::Result;
 use std::path::Path;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReleaseTarget {
     Cg,
     Prod,
@@ -57,14 +57,24 @@ impl ReleaseTarget {
             ReleaseTarget::Ptr => Some("sow-server-ptr"),
         }
     }
+
+    fn db_unit(self) -> Option<&'static str> {
+        match self {
+            ReleaseTarget::Cg => None,
+            ReleaseTarget::Prod => Some("sow-database"),
+            ReleaseTarget::Ptr => Some("sow-database-ptr"),
+        }
+    }
 }
 
 struct ServerCtx {
     unit: &'static str,
+    db_unit: &'static str,
     data_dir: String,
     maps_dir: String,
     maps_url: String,
     ws_url: String,
+    db_url: String,
 }
 
 pub fn run_release(
@@ -105,8 +115,19 @@ pub fn run_release(
     })?;
 
     // Phase 2: package (depends on WASM)
-    println!("==> Phase 2: package");
+    println!("==> Phase 2: package (Self-Hosted)");
     package::build_or_skip(paths, profile, out_dir, version, cfg)?;
+
+    if target == ReleaseTarget::Prod {
+        println!("==> Phase 2b: package (CrazyGames bundle)");
+        package::build_or_skip(
+            paths,
+            package::Profile::Crazygames,
+            &paths.dist_crazygames,
+            version,
+            cfg,
+        )?;
+    }
 
     if !target.remote_ship() {
         // cg: CDN ship + verify only
@@ -238,6 +259,7 @@ pub fn run_release(
     println!("==> Phase 4: finalize");
     gcp.run_remote("sudo restorecon -R /var/www")?;
     infra::restart_server_if_needed(paths, &gcp, server_ctx.unit, version, &server_ship)?;
+    infra::restart_server_if_needed(paths, &gcp, server_ctx.db_unit, version, &server_ship)?;
 
     println!("==> Phase 4: verify");
     if cdn_shipped {
@@ -257,7 +279,9 @@ pub fn run_release(
         &gcp,
         &server_ctx.maps_url,
         &server_ctx.ws_url,
+        &server_ctx.db_url,
         server_ctx.unit,
+        server_ctx.db_unit,
     )?;
     Ok(())
 }
@@ -269,6 +293,7 @@ fn server_ctx(
     remote_home: &str,
 ) -> Result<ServerCtx> {
     let unit = target.server_unit().expect("server unit");
+    let db_unit = target.db_unit().expect("db unit");
     let (env_maps, fallback_maps, origin) = match target {
         ReleaseTarget::Prod => (
             "SOW_REMOTE_MAPS_PROD",
@@ -289,9 +314,11 @@ fn server_ctx(
     };
     Ok(ServerCtx {
         unit,
+        db_unit,
         data_dir: resolve_remote_workdir(gcp, unit, env_workdir, &fallback_workdir),
         maps_dir: resolve_remote_maps(gcp, unit, env_maps, &fallback_maps),
         maps_url: cfg.maps_url(origin),
         ws_url: cfg.ws_url(origin),
+        db_url: cfg.db_url(origin),
     })
 }

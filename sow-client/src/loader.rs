@@ -461,6 +461,11 @@ impl SowApp {
         crate::store_portals::load_stop();
         crate::store_portals::gameplay_stop();
         self.web_loader_hidden = true;
+        if let Some(locale_str) = crate::store_portals::get_portal_locale() {
+            let detected_lang = sow_i18n::Language::from_locale(&locale_str);
+            self.ui.app.settings_state.language = detected_lang;
+            log::info!("Auto-configured language from portal locale: {:?} (source: {})", detected_lang, locale_str);
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -469,6 +474,11 @@ impl SowApp {
         hide_web_loader();
         crate::store_portals::load_stop();
         self.web_loader_hidden = true;
+        if let Some(locale_str) = crate::store_portals::get_portal_locale() {
+            let detected_lang = sow_i18n::Language::from_locale(&locale_str);
+            self.ui.app.settings_state.language = detected_lang;
+            log::info!("Auto-configured language from portal locale: {:?} (source: {})", detected_lang, locale_str);
+        }
         if !self.progress.is_first_game() {
             log::info!("Portal boot: returning player → main menu");
             crate::store_portals::gameplay_stop();

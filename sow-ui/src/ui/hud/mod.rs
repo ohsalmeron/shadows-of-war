@@ -1895,7 +1895,7 @@ pub fn draw(
 
     draw_transfer_panel(ui, state, cancel_intents, lang);
     draw_sync_overlay(ui.ctx(), state, lang);
-    draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang);
+    draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang, asset_loader);
     draw_error_overlay(ui.ctx(), state, lang);
     draw_info_overlay(ui.ctx(), state, lang);
 
@@ -1908,6 +1908,153 @@ fn get_player_display_name(players: &[PlayerSnapshot], id: u16, default: &str) -
         .find(|p| p.id == id)
         .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
         .unwrap_or_else(|| default.to_string())
+}
+
+fn paint_betrayal_ally_portrait(
+    ui: &mut egui::Ui,
+    ally: &PlayerSnapshot,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    alpha: f32,
+    size: f32,
+) {
+    use sow_core::player::PlayerType;
+
+    let (rect, _) = ui.allocate_exact_size(vec2(size, size), egui::Sense::hover());
+    let center = rect.center();
+    let radius = size * 0.5;
+    let inner_r = radius - 2.0;
+
+    let vibrant = Color32::from_rgb(
+        (ally.color[0] * 255.0).round() as u8,
+        (ally.color[1] * 255.0).round() as u8,
+        (ally.color[2] * 255.0).round() as u8,
+    )
+    .linear_multiply(alpha);
+
+    match ally.player_type {
+        PlayerType::Human => {
+            let leader_rgb = ally.leader.filler_rgb();
+            let leader_fill = Color32::from_rgb(
+                (leader_rgb[0] * 255.0).round() as u8,
+                (leader_rgb[1] * 255.0).round() as u8,
+                (leader_rgb[2] * 255.0).round() as u8,
+            )
+            .linear_multiply(alpha);
+            ui.painter().circle_filled(center, inner_r, leader_fill);
+            if let Some(tex) = asset_loader
+                .avatars
+                .get(&ally.leader)
+                .or(asset_loader.avatar_fallback.as_ref())
+            {
+                let image = egui::Image::new(tex)
+                    .fit_to_exact_size(vec2(inner_r * 2.0, inner_r * 2.0))
+                    .corner_radius(egui::CornerRadius::same((inner_r as u8).max(1)));
+                let image_rect =
+                    egui::Rect::from_center_size(center, vec2(inner_r * 2.0, inner_r * 2.0));
+                ui.put(image_rect, image);
+            }
+            ui.painter()
+                .circle_stroke(center, radius, Stroke::new(2.0_f32, leader_fill));
+        }
+        PlayerType::Bot => {
+            ui.painter().circle_filled(center, inner_r, vibrant);
+            let animal = sow_core::player::tribe_animal(ally.id, &ally.name);
+            let emoji_rect =
+                egui::Rect::from_center_size(center, vec2(inner_r * 1.4, inner_r * 1.4));
+            if !crate::widgets::try_paint_emoji(ui.painter(), animal, emoji_rect, Color32::WHITE) {
+                let galley = ui.painter().layout_no_wrap(
+                    animal.to_owned(),
+                    egui::FontId::proportional(inner_r * 1.2),
+                    Color32::WHITE.linear_multiply(alpha),
+                );
+                ui.painter().galley(
+                    egui::pos2(
+                        center.x - galley.size().x / 2.0,
+                        center.y - galley.size().y / 2.0,
+                    ),
+                    galley,
+                    Color32::WHITE.linear_multiply(alpha),
+                );
+            }
+            ui.painter()
+                .circle_stroke(center, radius, Stroke::new(2.0_f32, vibrant));
+        }
+        PlayerType::Nation => {
+            ui.painter().circle_filled(center, inner_r, vibrant);
+            let emoji = ally.leader.menu_emoji();
+            let emoji_rect =
+                egui::Rect::from_center_size(center, vec2(inner_r * 1.4, inner_r * 1.4));
+            if !crate::widgets::try_paint_emoji(ui.painter(), emoji, emoji_rect, Color32::WHITE) {
+                let galley = ui.painter().layout_no_wrap(
+                    emoji.to_owned(),
+                    egui::FontId::proportional(inner_r * 1.2),
+                    Color32::WHITE.linear_multiply(alpha),
+                );
+                ui.painter().galley(
+                    egui::pos2(
+                        center.x - galley.size().x / 2.0,
+                        center.y - galley.size().y / 2.0,
+                    ),
+                    galley,
+                    Color32::WHITE.linear_multiply(alpha),
+                );
+            }
+            ui.painter()
+                .circle_stroke(center, radius, Stroke::new(2.0_f32, vibrant));
+        }
+    }
+
+    ui.painter().circle_stroke(
+        center,
+        radius + 1.5,
+        Stroke::new(1.0_f32, Color32::from_black_alpha((120.0 * alpha) as u8)),
+    );
+}
+
+fn draw_betrayal_ally_card(
+    ui: &mut egui::Ui,
+    ally: &PlayerSnapshot,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    alpha: f32,
+    compact: bool,
+) {
+    let ally_name = sow_core::player::display_name(ally.id, &ally.name, ally.player_type);
+    let subtitle = match ally.player_type {
+        sow_core::player::PlayerType::Bot => "Tribe".to_string(),
+        _ => ally.civilization.name().to_string(),
+    };
+    let avatar_size = if compact { 52.0 } else { 64.0 };
+
+    egui::Frame::new()
+        .fill(crate::ui::theme::nickname_field_bg().linear_multiply(alpha))
+        .stroke(Stroke::new(
+            1.0_f32,
+            crate::ui::theme::nickname_field_border().linear_multiply(alpha),
+        ))
+        .corner_radius(8)
+        .inner_margin(if compact {
+            egui::Margin::symmetric(12, 10)
+        } else {
+            egui::Margin::symmetric(16, 12)
+        })
+        .show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
+            ui.vertical_centered(|ui| {
+                paint_betrayal_ally_portrait(ui, ally, asset_loader, alpha, avatar_size);
+                ui.add_space(if compact { 8.0 } else { 10.0 });
+                ui.label(
+                    RichText::new(&ally_name)
+                        .size(if compact { 16.0 } else { 18.0 })
+                        .strong()
+                        .color(Color32::WHITE.linear_multiply(alpha)),
+                );
+                ui.label(
+                    RichText::new(subtitle)
+                        .size(if compact { 12.0 } else { 13.0 })
+                        .color(crate::ui::theme::accent_ranked_gold().linear_multiply(alpha)),
+                );
+            });
+        });
 }
 
 fn draw_troop_bar(
@@ -2459,6 +2606,7 @@ fn draw_betrayal_overlay(
     state: &mut HudState,
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     lang: Language,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     let strings = &sow_i18n::get(lang).hud;
     if let Some(warning) = state.show_betrayal_warning.clone() {
@@ -2540,13 +2688,25 @@ fn draw_betrayal_overlay(
                 ui.add_space(if compact { 16.0 } else { 12.0 });
 
                 ui.label(
-                    RichText::new(format!(
-                        "If you attack {}, other allies could attack you.",
-                        ally_name
-                    ))
-                    .size(if compact { 14.0 } else { 16.0 })
-                    .color(Color32::WHITE.linear_multiply(alpha)),
+                    RichText::new("If you attack this ally, other allies could attack you.")
+                        .size(if compact { 14.0 } else { 16.0 })
+                        .color(Color32::WHITE.linear_multiply(alpha)),
                 );
+
+                ui.add_space(if compact { 12.0 } else { 16.0 });
+
+                if let Some(ally) = state.players.iter().find(|p| p.id == ally_id) {
+                    draw_betrayal_ally_card(ui, ally, asset_loader, alpha, compact);
+                } else {
+                    ui.label(
+                        RichText::new(&ally_name)
+                            .size(if compact { 16.0 } else { 18.0 })
+                            .strong()
+                            .color(Color32::WHITE.linear_multiply(alpha)),
+                    );
+                }
+
+                ui.add_space(if compact { 12.0 } else { 16.0 });
 
                 ui.label(
                     RichText::new("Are you sure?")
@@ -2564,54 +2724,57 @@ fn draw_betrayal_overlay(
                 };
                 let btn_h = if compact { 40.0 } else { 44.0 };
 
-                ui.allocate_ui_with_layout(
-                    vec2(ui.available_width(), btn_h),
-                    egui::Layout::left_to_right(egui::Align::Center)
-                        .with_main_align(egui::Align::Center),
-                    |ui| {
-                        ui.spacing_mut().item_spacing.x = if compact { 8.0 } else { 16.0 };
+                ui.horizontal(|ui| {
+                    let spacing = if compact { 8.0 } else { 16.0 };
+                    ui.spacing_mut().item_spacing.x = spacing;
 
-                        if ui
-                            .add(
-                                crate::widgets::ThemeButton::new(&strings.betrayal_keep)
-                                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                    .custom_fill(
-                                        crate::ui::theme::menu_secondary_button()
-                                            .linear_multiply(alpha),
-                                    )
-                                    .custom_text_color(Color32::WHITE.linear_multiply(alpha))
-                                    .min_size(vec2(btn_w, btn_h))
-                                    .text_size(if compact { 13.0 } else { 16.0 }),
-                            )
-                            .clicked()
-                        {
-                            state.show_betrayal_warning = None;
-                        }
+                    let right_btn_w = if compact { btn_w } else { 140.0 };
+                    let total_width = btn_w + spacing + right_btn_w;
+                    let available = ui.available_width();
+                    if available > total_width {
+                        ui.add_space((available - total_width) / 2.0);
+                    }
 
-                        if ui
-                            .add(
-                                crate::widgets::ThemeButton::new(&strings.betrayal_yes)
-                                    .style(crate::widgets::ThemeButtonStyle::Danger)
-                                    .custom_fill(
-                                        crate::ui::theme::accent_danger().linear_multiply(alpha),
-                                    )
-                                    .custom_text_color(Color32::WHITE.linear_multiply(alpha))
-                                    .min_size(vec2(if compact { btn_w } else { 140.0 }, btn_h))
-                                    .text_size(if compact { 13.0 } else { 16.0 }),
-                            )
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .clicked()
-                        {
-                            cancel_intents.push(
-                                sow_core::protocol::GameplayIntent::BreakAlliance {
-                                    target_player: ally_id,
-                                },
-                            );
-                            cancel_intents.push(intent);
-                            state.show_betrayal_warning = None;
-                        }
-                    },
-                );
+                    if ui
+                        .add(
+                            crate::widgets::ThemeButton::new(&strings.betrayal_keep)
+                                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                                .custom_fill(
+                                    crate::ui::theme::menu_secondary_button()
+                                        .linear_multiply(alpha),
+                                )
+                                .custom_text_color(Color32::WHITE.linear_multiply(alpha))
+                                .min_size(vec2(btn_w, btn_h))
+                                .text_size(if compact { 13.0 } else { 16.0 }),
+                        )
+                        .clicked()
+                    {
+                        state.show_betrayal_warning = None;
+                    }
+
+                    if ui
+                        .add(
+                            crate::widgets::ThemeButton::new(&strings.betrayal_yes)
+                                .style(crate::widgets::ThemeButtonStyle::Danger)
+                                .custom_fill(
+                                    crate::ui::theme::accent_danger().linear_multiply(alpha),
+                                )
+                                .custom_text_color(Color32::WHITE.linear_multiply(alpha))
+                                .min_size(vec2(right_btn_w, btn_h))
+                                .text_size(if compact { 13.0 } else { 16.0 }),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                    {
+                        cancel_intents.push(
+                            sow_core::protocol::GameplayIntent::BreakAlliance {
+                                target_player: ally_id,
+                            },
+                        );
+                        cancel_intents.push(intent);
+                        state.show_betrayal_warning = None;
+                    }
+                });
             });
         });
 }

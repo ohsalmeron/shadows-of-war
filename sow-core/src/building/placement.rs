@@ -119,6 +119,18 @@ pub fn manhattan(ax: i32, ay: i32, bx: i32, by: i32) -> i32 {
     (ax - bx).abs() + (ay - by).abs()
 }
 
+/// Odd-r offset hex distance (matches map neighbor topology).
+#[inline]
+pub fn hex_distance(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
+    let r1 = y1;
+    let q1 = x1 - (y1 - (y1 & 1)) / 2;
+    let s1 = -q1 - r1;
+    let r2 = y2;
+    let q2 = x2 - (y2 - (y2 & 1)) / 2;
+    let s2 = -q2 - r2;
+    ((q1 - q2).abs() + (r1 - r2).abs() + (s1 - s2).abs()) / 2
+}
+
 /// Land shoreline tile: land terrain with shoreline bit.
 pub fn is_shore_land_tile(map: &GameMap, x: u32, y: u32) -> bool {
     let t = map.terrain[map.ref_id(x, y)];

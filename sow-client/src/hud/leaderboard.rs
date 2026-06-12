@@ -86,6 +86,9 @@ pub struct LeaderboardRanking {
     pub tiles: u32,
     pub troops: f64,
     pub name: String,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -347,7 +350,7 @@ fn paint_leaderboard_player_row(
         .inner_margin(egui::Margin::symmetric(0, 0))
         .show(ui, |ui| {
             ui.set_min_height(metrics.row_height);
-            ui.horizontal(|ui| {
+            let row_response = ui.horizontal(|ui| {
                 ui.allocate_ui_with_layout(
                     Vec2::new(metrics.rank_badge, metrics.row_height),
                     Layout::left_to_right(Align::Center),
@@ -446,6 +449,18 @@ fn paint_leaderboard_player_row(
                     },
                 );
             });
+            let kda_ratio = if ranking.deaths == 0 {
+                ranking.kills as f32 + ranking.assists as f32 * 0.5
+            } else {
+                (ranking.kills as f32 + ranking.assists as f32 * 0.5) / ranking.deaths as f32
+            };
+            row_response.response.on_hover_ui(|ui| {
+                ui.label(format!(
+                    "K/D/A: {}/{}/{}",
+                    ranking.kills, ranking.deaths, ranking.assists
+                ));
+                ui.label(format!("Ratio: {kda_ratio:.2}"));
+            });
         });
 }
 
@@ -542,6 +557,9 @@ impl SowApp {
                 tiles: p.tile_count,
                 troops: p.troops,
                 name,
+                kills: p.kills,
+                deaths: p.deaths,
+                assists: p.assists,
             });
 
             if team_mode {
@@ -1075,6 +1093,24 @@ impl SowApp {
                 });
 
             ui.add(egui::Slider::new(&mut sub_voxel_scale, 1.0..=8.0).text("Sub-Voxel Scale"));
+
+            ui.separator();
+            ui.label(RichText::new("Bunker Laser VFX").strong().color(Color32::WHITE));
+            let mut laser_target = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
+            });
+            let mut laser_arc = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_arc"), || true)
+            });
+            let mut laser_scatter = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_scatter"), || false)
+            });
+            ui.checkbox(&mut laser_target, "Target seeking");
+            ui.checkbox(&mut laser_arc, "Plasma arc");
+            ui.checkbox(&mut laser_scatter, "Volley scatter");
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_target"), laser_target));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_arc"), laser_arc));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter));
 
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));

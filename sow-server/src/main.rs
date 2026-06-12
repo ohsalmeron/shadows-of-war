@@ -457,6 +457,7 @@ async fn main() {
                                                 let json = bincode::serialize(&pong).unwrap();
                                                 let _ = direct_tx.try_send(json);
                                             }
+                                            sow_core::protocol::ClientMessage::SubmitStats { .. } => {}
                                         }
                                         continue;
                                     }

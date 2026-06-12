@@ -142,6 +142,10 @@ pub enum GameEvent {
         x: u32,
         y: u32,
         new_owner: u16,
+        #[serde(default)]
+        previous_owner: u16,
+        #[serde(default)]
+        troops: f64,
     },
     PlayerEliminated {
         player_id: u16,
@@ -149,9 +153,12 @@ pub enum GameEvent {
         gold_bounty: u32,
         elimination_x: u32,
         elimination_y: u32,
+        #[serde(default)]
+        assists: Vec<(u16, u32)>,
     },
     GameOver {
         winner_id: u16,
+        winning_team: Option<crate::protocol::Team>,
     },
     StructureSpawned {
         id: u64,
@@ -205,6 +212,8 @@ pub struct GameState {
     pub player_lookup: Vec<Option<usize>>,
     pub tick: u64,
     pub winner: Option<u16>,
+    #[serde(default)]
+    pub winning_team: Option<crate::protocol::Team>,
     pub events: Vec<GameEvent>,
     #[serde(default = "default_one")]
     pub next_fleet_id: u64,
@@ -243,6 +252,7 @@ impl GameState {
             player_lookup: Vec::new(),
             tick: 0,
             winner: None,
+            winning_team: None,
             events: Vec::new(),
             next_fleet_id: 1,
             next_building_id: 1,
@@ -265,24 +275,48 @@ impl GameState {
     }
 
     pub fn place_spawn(&mut self, pid: u16, cx: u32, cy: u32) {
+        use std::collections::VecDeque;
+
         let r = config::SPAWN_RADIUS as i32;
+        let mut target_count = 0;
         for dy in -r..=r {
             for dx in -r..=r {
-                if dx * dx + dy * dy > r * r {
-                    continue;
-                }
-                let nx = cx as i32 + dx;
-                let ny = cy as i32 + dy;
-                if self.map.is_valid_coord(nx, ny) {
-                    let (ux, uy) = (nx as u32, ny as u32);
-                    if self.map.owner_id(ux, uy) == 0
-                        && self.map.terrain[self.map.ref_id(ux, uy)].is_land()
-                    {
-                        self.set_tile_owner(ux, uy, pid);
-                    }
+                if dx * dx + dy * dy <= r * r {
+                    target_count += 1;
                 }
             }
         }
+
+        let map_size = (self.map.width * self.map.height) as usize;
+        let mut visited = vec![false; map_size];
+        let mut queue = VecDeque::new();
+
+        let start_idx = self.map.ref_id(cx, cy);
+        visited[start_idx] = true;
+        queue.push_back((cx, cy));
+
+        let mut owned_count = 0;
+
+        while let Some((x, y)) = queue.pop_front() {
+            if self.map.owner_id(x, y) == 0
+                && self.map.terrain[self.map.ref_id(x, y)].is_land()
+            {
+                self.set_tile_owner(x, y, pid);
+                owned_count += 1;
+                if owned_count >= target_count {
+                    break;
+                }
+            }
+
+            self.map.for_each_neighbor(x, y, |nx, ny| {
+                let n_idx = self.map.ref_id(nx, ny);
+                if !visited[n_idx] {
+                    visited[n_idx] = true;
+                    queue.push_back((nx, ny));
+                }
+            });
+        }
+
         if let Some(p) = self.player_mut(pid) {
             p.has_spawned = true;
         }
@@ -334,6 +368,9 @@ impl GameState {
                 p.sum_x += x as u64;
                 p.sum_y += y as u64;
                 p.tile_count += 1;
+                if old_owner != 0 && old_owner != new_owner {
+                    *p.tile_conquests.entry(old_owner).or_insert(0) += 1;
+                }
             }
         }
         self.map.set_owner_id(x, y, new_owner);
