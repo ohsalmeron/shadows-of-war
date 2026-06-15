@@ -17,50 +17,17 @@ impl SowApp {
             sow_core::register_game_assets(&self.ui.egui_ctx);
         });
 
-        #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
+            #[cfg(target_arch = "wasm32")]
             crate::viewport::sync_wasm_window(self, win.as_ref());
-        }
 
-        let wanted = self
-            .gfx
-            .window
-            .as_ref()
-            .map(|w| crate::viewport::Viewport::measure(w.as_ref()));
-
-        if let Some(ref vp) = wanted {
-            if vp.wants_reconfigure(self) {
-                self.apply_surface_resize(vp.physical, false);
+            let vp = crate::viewport::Viewport::measure(win.as_ref());
+            if vp.physical_changed(self) {
+                self.apply_surface_resize(vp.physical);
             }
         }
 
         let draw_world = self.should_draw_world();
-
-        if let Some(win) = self.gfx.window.as_ref() {
-            win.pre_present_notify();
-        }
-        let Some(frame) = self.gfx.surface.as_mut().map(|s| s.acquire_frame()) else {
-            return;
-        };
-
-        let configured = self.gfx.configured_physical;
-        let frame_bad = !crate::viewport::frame_matches_configured(&frame, configured);
-        let window_ahead = wanted.as_ref().is_some_and(|vp| {
-            vp.physical.width != configured.width || vp.physical.height != configured.height
-        });
-        if frame_bad || window_ahead {
-            if let Some(vp) = wanted {
-                self.apply_surface_resize(vp.physical, frame_bad);
-            }
-            if let Some(win) = self.gfx.window.as_ref() {
-                win.request_redraw();
-            }
-            return;
-        }
-
-        let sf = wanted.as_ref().map(|v| v.scale_factor).unwrap_or(1.0);
-        crate::viewport::Viewport::from_configured(self, sf).sync_to_app(self);
-        crate::viewport::scale_pointer_events(&mut self.ui.raw_input, sf);
 
         if self.gfx.pending_session_cleanup {
             self.gfx.pending_session_cleanup = false;
@@ -76,6 +43,11 @@ impl SowApp {
         }
 
         if let Some(ref mut s) = self.gfx.surface {
+            if let Some(win) = self.gfx.window.as_ref() {
+                win.pre_present_notify();
+            }
+            let frame = s.acquire_frame();
+
             let mut render_ctx = match self.gfx.render_ctx.take() {
                 Some(ctx) => ctx,
                 None => return,
@@ -485,6 +457,23 @@ impl SowApp {
             self.gfx.render_ctx = Some(render_ctx);
 
             // ── UI UPDATE ───────────────────────────────────────
+            let vp = self
+                .gfx
+                .window
+                .as_ref()
+                .map(|w| crate::viewport::Viewport::measure(w.as_ref()))
+                .unwrap_or(crate::viewport::Viewport {
+                    physical: winit::dpi::PhysicalSize::new(
+                        self.input.screen_w as u32,
+                        self.input.screen_h as u32,
+                    ),
+                    scale_factor: 1.0,
+                    logical: egui::Vec2::new(self.input.screen_w, self.input.screen_h),
+                });
+            crate::viewport::apply_to_egui(self, &vp);
+            crate::viewport::scale_pointer_events(&mut self.ui.raw_input, vp.scale_factor);
+            let sf = vp.scale_factor;
+
             let frame_now = Instant::now();
             let dt = frame_now
                 .duration_since(self.time.last_frame_time)
@@ -711,17 +700,14 @@ impl SowApp {
                 };
                 match render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
                     Ok(s) => {
-                        self.gfx.configured_physical =
-                            winit::dpi::PhysicalSize::new(sz.width.max(1), sz.height.max(1));
-                        let vp = crate::viewport::Viewport::from_configured(
-                            self,
-                            win.scale_factor() as f32,
-                        );
-                        vp.sync_to_app(self);
+                        self.input.screen_w = sz.width as f32;
+                        self.input.screen_h = sz.height as f32;
                         let zmax =
                             camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                         self.input.camera_zoom =
                             self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                        let vp = crate::viewport::Viewport::measure(win.as_ref());
+                        crate::viewport::apply_to_egui(self, &vp);
                         let format = s.info().format;
 
                         if let Some(sp) = self.gfx.prev_sync_point.take() {

@@ -32,8 +32,6 @@ pub struct GraphicsState {
     pub needs_first_upload: bool,
     /// Deferred teardown after instant exit (must not run mid-frame during UI actions).
     pub pending_session_cleanup: bool,
-    /// Physical pixels of the last successful GPU surface reconfigure.
-    pub configured_physical: winit::dpi::PhysicalSize<u32>,
 }
 
 pub struct NetState {
@@ -465,7 +463,6 @@ impl SowApp {
                 prev_sync_point,
                 needs_first_upload,
                 pending_session_cleanup: false,
-                configured_physical: winit::dpi::PhysicalSize::new(0, 0),
             },
             net: NetState {
                 client: net_client,
