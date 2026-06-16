@@ -24,17 +24,21 @@ impl SowApp {
         }
     }
 
-    /// Sync snapshot attacks/fleets/players into hud_state so `hud::draw` can render them.
+    /// Sync snapshot attacks/fleets/players into hud_state when the sim tick advances.
     pub(crate) fn sync_hud_combat_state(&mut self) {
         let my_pid = self.sim.my_player_id.unwrap_or(0);
         self.ui.app.hud_state.my_player_id = my_pid;
         self.ui.app.hud_state.map_w = self.sim.map_w;
 
         if let Some(snap) = &self.sim.current_snapshot {
-            self.ui.app.hud_state.attacks = snap.attacks.clone();
-            self.ui.app.hud_state.fleets = snap.fleets.clone();
-            self.ui.app.hud_state.players = snap.players.clone();
-        } else {
+            if self.ui.hud_combat_sync_tick != snap.tick {
+                self.ui.hud_combat_sync_tick = snap.tick;
+                self.ui.app.hud_state.attacks = snap.attacks.clone();
+                self.ui.app.hud_state.fleets = snap.fleets.clone();
+                self.ui.app.hud_state.players = snap.players.clone();
+            }
+        } else if self.ui.hud_combat_sync_tick != 0 {
+            self.ui.hud_combat_sync_tick = 0;
             self.ui.app.hud_state.attacks.clear();
             self.ui.app.hud_state.fleets.clear();
             self.ui.app.hud_state.players.clear();

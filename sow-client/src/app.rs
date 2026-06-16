@@ -12,6 +12,32 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use web_time::{Duration, Instant};
 
+/// Subset of [`sow_core::protocol::ProjectileSnapshot`] for detonation / launch detection.
+#[derive(Clone, Copy, Debug)]
+pub struct TrackedProjectile {
+    pub kind: sow_core::game::ProjectileKind,
+    pub dst_tile: u32,
+    pub path_cursor: usize,
+    pub steps_per_tick: u8,
+    pub path_len: usize,
+}
+
+impl TrackedProjectile {
+    pub fn from_snapshot(proj: &sow_core::protocol::ProjectileSnapshot) -> Self {
+        Self {
+            kind: proj.kind,
+            dst_tile: proj.dst_tile,
+            path_cursor: proj.path_cursor,
+            steps_per_tick: proj.steps_per_tick,
+            path_len: proj.path.len(),
+        }
+    }
+
+    pub fn at_path_end(&self) -> bool {
+        self.path_cursor + self.steps_per_tick as usize >= self.path_len
+    }
+}
+
 /// Cached nameplate text layouts — rebuilt only when name, font, or troops change.
 pub struct CachedNameplate {
     pub display_name: String,
@@ -32,6 +58,8 @@ pub struct GraphicsState {
     pub needs_first_upload: bool,
     /// Deferred teardown after instant exit (must not run mid-frame during UI actions).
     pub pending_session_cleanup: bool,
+    /// Last viewport applied to egui (`physical_w`, `physical_h`, `scale_factor`).
+    pub last_egui_viewport: Option<(u32, u32, f32)>,
 }
 
 pub struct NetState {
@@ -168,7 +196,7 @@ pub struct UiState {
     pub update_available: bool,
     pub is_spectating: bool,
     pub fallout_zones: Vec<FalloutZone>,
-    pub last_projectiles: std::collections::HashMap<u64, sow_core::protocol::ProjectileSnapshot>,
+    pub last_projectiles: std::collections::HashMap<u64, TrackedProjectile>,
     pub active_upgrades: Vec<ActiveUpgradeAnimation>,
     pub nameplate_galleys: std::collections::HashMap<u16, CachedNameplate>,
     pub nameplate_troops_last_update: std::collections::HashMap<u16, web_time::Instant>,
@@ -188,6 +216,8 @@ pub struct UiState {
     pub rail_state: crate::render::world::railways::RailState,
     /// Client-side nuke silo cooldown tracking: building id → tick when ready.
     pub silo_cooldowns: std::collections::HashMap<u64, u64>,
+    /// Last sim tick copied into `hud_state` combat vecs.
+    pub hud_combat_sync_tick: u64,
     pub bunker_last_sound_time: std::collections::HashMap<u64, web_time::Instant>,
     pub mover_scene: crate::render::world::movers::MoverScene,
     pub click_markers: Vec<ClickMarker>,
@@ -463,6 +493,7 @@ impl SowApp {
                 prev_sync_point,
                 needs_first_upload,
                 pending_session_cleanup: false,
+                last_egui_viewport: None,
             },
             net: NetState {
                 client: net_client,
@@ -560,6 +591,7 @@ impl SowApp {
                 edge_mask_cache: Vec::new(),
                 rail_state: crate::render::world::railways::RailState::new(),
                 silo_cooldowns: std::collections::HashMap::new(),
+                hud_combat_sync_tick: 0,
                 bunker_last_sound_time: std::collections::HashMap::new(),
                 mover_scene: crate::render::world::movers::MoverScene::new(),
                 click_markers: Vec::new(),

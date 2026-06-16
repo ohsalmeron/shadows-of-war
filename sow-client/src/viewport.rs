@@ -45,20 +45,6 @@ impl Viewport {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-pub fn sync_wasm_window(app: &SowApp, win: &dyn winit::window::Window) {
-    let (w, h) = crate::web_canvas::canvas_logical_size();
-    let sf = win.scale_factor();
-    let expected_w = (w * sf) as u32;
-    let expected_h = (h * sf) as u32;
-
-    if expected_w.abs_diff(app.input.screen_w as u32) > 1
-        || expected_h.abs_diff(app.input.screen_h as u32) > 1
-    {
-        let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
-    }
-}
-
 pub fn apply_to_egui(app: &mut SowApp, vp: &Viewport) {
     app.ui.egui_ctx.set_pixels_per_point(vp.scale_factor);
     app.ui.raw_input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vp.logical));

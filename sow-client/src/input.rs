@@ -90,6 +90,7 @@ impl SowApp {
         let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
         self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
         crate::viewport::apply_to_egui(self, &vp);
+        self.gfx.last_egui_viewport = Some((physical_size.width, physical_size.height, sf));
 
         if recreate_surface {
             self.check_surface();

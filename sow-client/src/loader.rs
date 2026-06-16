@@ -73,24 +73,14 @@ impl SowApp {
         self.ui.app.main_menu_state.cached_map = None;
         self.ui.app.main_menu_state.cached_map_key = None;
         self.net.pending_lobby_rejoin = false;
+        self.ui.hud_combat_sync_tick = 0;
+        self.ui.last_projectiles.clear();
 
-        let config = GameConfig {
-            map_width: 1,
-            map_height: 1,
-            nation_count: 0,
-            bot_count: 0,
-            ..Default::default()
-        };
-        self.dispatch_sim_command(SimCommand::Init {
-            config: Box::new(config),
-            seed: 0,
-            map_bytes: vec![0b10000000],
-            players: vec![],
-        });
+        self.dispatch_sim_command(SimCommand::Shutdown);
         self.ui.label_positions.clear();
         self.ui.label_sizes.clear();
-        self.sim.current_snapshot = None;
         self.gfx.needs_first_upload = true;
+        self.gfx.last_egui_viewport = None;
         self.release_client_game_gpu();
     }
 
