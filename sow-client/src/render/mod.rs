@@ -17,36 +17,64 @@ impl SowApp {
             sow_core::register_game_assets(&self.ui.egui_ctx);
         });
 
-        let frame_vp = if let Some(win) = self.gfx.window.as_ref() {
-            let vp = crate::viewport::Viewport::measure(win.as_ref());
-            if vp.physical_changed(self) {
-                self.apply_surface_resize(vp.physical);
+        #[cfg(target_arch = "wasm32")]
+        if let Some(win) = self.gfx.window.as_ref() {
+            crate::viewport::sync_wasm_window(self, win.as_ref());
+        }
+
+        let wanted = self
+            .gfx
+            .window
+            .as_ref()
+            .map(|w| crate::viewport::Viewport::measure(w.as_ref()));
+
+        if let Some(ref vp) = wanted {
+            if vp.wants_reconfigure(self) {
+                self.apply_surface_resize(vp.physical, false);
             }
-            Some(vp)
-        } else {
-            None
-        };
+        }
 
         let draw_world = self.should_draw_world();
+
+        if let Some(win) = self.gfx.window.as_ref() {
+            win.pre_present_notify();
+        }
+        let Some(frame) = self.gfx.surface.as_mut().map(|s| s.acquire_frame()) else {
+            return;
+        };
+
+        let configured = self.gfx.configured_physical;
+        let window_ahead = wanted.as_ref().is_some_and(|vp| {
+            vp.physical.width != configured.width || vp.physical.height != configured.height
+        });
+        if window_ahead {
+            if let Some(vp) = wanted {
+                self.apply_surface_resize(vp.physical, false);
+            }
+            if let Some(win) = self.gfx.window.as_ref() {
+                win.request_redraw();
+            }
+            return;
+        }
+
+        let sf = wanted.as_ref().map(|v| v.scale_factor).unwrap_or(1.0);
+        crate::viewport::Viewport::from_configured(self, sf).sync_to_app(self);
+        crate::viewport::scale_pointer_events(&mut self.ui.raw_input, sf);
 
         if self.gfx.pending_session_cleanup {
             self.gfx.pending_session_cleanup = false;
             if self.ui.app.phase == ClientPhase::MainMenu {
-                if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+                if let Some(render_ctx) = self.gfx.render_ctx.take() {
                     if let Some(sp) = self.gfx.prev_sync_point.take() {
                         let _ = render_ctx.context.wait_for(&sp, !0);
                     }
+                    self.gfx.render_ctx = Some(render_ctx);
+                    self.cleanup_game_session_stub();
                 }
-                self.cleanup_game_session_stub();
             }
         }
 
         if let Some(ref mut s) = self.gfx.surface {
-            if let Some(win) = self.gfx.window.as_ref() {
-                win.pre_present_notify();
-            }
-            let frame = s.acquire_frame();
-
             let mut render_ctx = match self.gfx.render_ctx.take() {
                 Some(ctx) => ctx,
                 None => return,
@@ -74,12 +102,15 @@ impl SowApp {
                     let mut new_detonations = Vec::new();
                     if let Some(snap) = &self.sim.current_snapshot {
                         for (id, prev_proj) in &self.ui.last_projectiles {
-                            if !snap.projectiles.iter().any(|p| p.id == *id)
-                                && prev_proj.at_path_end()
-                            {
-                                let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
-                                let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
-                                new_detonations.push((dst_x, dst_y, prev_proj.kind));
+                            if !snap.projectiles.iter().any(|p| p.id == *id) {
+                                let at_end = prev_proj.path_cursor
+                                    + (prev_proj.steps_per_tick as usize)
+                                    >= prev_proj.path_len;
+                                if at_end {
+                                    let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
+                                    let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
+                                    new_detonations.push((dst_x, dst_y, prev_proj.kind));
+                                }
                             }
                         }
                     }
@@ -122,15 +153,17 @@ impl SowApp {
                             {
                                 let src_x = (proj.src_tile % self.sim.map_w) as f32 + 0.5;
                                 let src_y = (proj.src_tile / self.sim.map_w) as f32 + 0.5;
-                                sow_audio::play_nuke_launch_sound(sow_audio::SpatialSoundParams {
-                                    wx: src_x,
-                                    wy: src_y,
-                                    camera_x: self.input.camera_x,
-                                    camera_y: self.input.camera_y,
-                                    camera_zoom: self.input.camera_zoom,
-                                    screen_w: self.input.screen_w,
-                                    screen_h: self.input.screen_h,
-                                });
+                                sow_audio::play_nuke_launch_sound(
+                                    sow_audio::SpatialSoundParams {
+                                        wx: src_x,
+                                        wy: src_y,
+                                        camera_x: self.input.camera_x,
+                                        camera_y: self.input.camera_y,
+                                        camera_zoom: self.input.camera_zoom,
+                                        screen_w: self.input.screen_w,
+                                        screen_h: self.input.screen_h,
+                                    }
+                                );
 
                                 // New nuke — find source building by src_tile
                                 if let Some(b) = snap.buildings.iter().find(|b| {
@@ -150,11 +183,9 @@ impl SowApp {
                             .retain(|_, expires| *expires > current_tick);
                     }
 
-                    // Sync last_projectiles (lightweight track for detonation / launch audio).
+                    // Sync last_projectiles
                     if let Some(snap) = &self.sim.current_snapshot {
-                        self.ui
-                            .last_projectiles
-                            .retain(|id, _| snap.projectiles.iter().any(|p| p.id == *id));
+                        self.ui.last_projectiles.clear();
                         for proj in &snap.projectiles {
                             self.ui.last_projectiles.insert(
                                 proj.id,
@@ -172,42 +203,36 @@ impl SowApp {
                     let mut sub_voxel_scale = 1.0f32;
                     let mut conquest_duration = 2.5f32;
 
-                    if self.ui.show_dev_sidebar {
-                        self.ui.egui_ctx.data_mut(|d| {
-                            border_thickness = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_thickness"),
-                                || 0.5f32,
-                            );
-                            border_darkness = *d
-                                .get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || {
-                                    0.35f32
-                                });
-                            shore_thickness = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_shore_thickness"),
-                                || 1.0f32,
-                            );
-                            shore_darkness = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_shore_darkness"),
-                                || 1.0f32,
-                            );
-                            territory_opacity = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_territory_opacity"),
-                                || 1.0f32,
-                            );
-                            blend_mode = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_blend_mode"),
-                                || 0.0f32,
-                            );
-                            sub_voxel_scale = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_sub_voxel_scale"),
-                                || 1.0f32,
-                            );
-                            conquest_duration = *d.get_temp_mut_or_insert_with(
-                                egui::Id::new("dev_conquest_duration"),
-                                || 2.5f32,
-                            );
-                        });
-                    }
+                    self.ui.egui_ctx.data_mut(|d| {
+                        border_thickness = *d
+                            .get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.5f32);
+                        border_darkness = *d
+                            .get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32);
+                        shore_thickness = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_shore_thickness"),
+                            || 1.0f32,
+                        );
+                        shore_darkness = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_shore_darkness"),
+                            || 1.0f32,
+                        );
+                        territory_opacity = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_territory_opacity"),
+                            || 1.0f32,
+                        );
+                        blend_mode = *d
+                            .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
+                                0.0f32
+                            });
+                        sub_voxel_scale = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_sub_voxel_scale"),
+                            || 1.0f32,
+                        );
+                        conquest_duration = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_conquest_duration"),
+                            || 2.5f32,
+                        );
+                    });
 
                     let dirty = self
                         .sim
@@ -466,22 +491,6 @@ impl SowApp {
             self.gfx.render_ctx = Some(render_ctx);
 
             // ── UI UPDATE ───────────────────────────────────────
-            let vp = frame_vp.unwrap_or(crate::viewport::Viewport {
-                physical: winit::dpi::PhysicalSize::new(
-                    self.input.screen_w as u32,
-                    self.input.screen_h as u32,
-                ),
-                scale_factor: 1.0,
-                logical: egui::Vec2::new(self.input.screen_w, self.input.screen_h),
-            });
-            let vp_key = (vp.physical.width, vp.physical.height, vp.scale_factor);
-            if self.gfx.last_egui_viewport != Some(vp_key) {
-                crate::viewport::apply_to_egui(self, &vp);
-                self.gfx.last_egui_viewport = Some(vp_key);
-            }
-            crate::viewport::scale_pointer_events(&mut self.ui.raw_input, vp.scale_factor);
-            let sf = vp.scale_factor;
-
             let frame_now = Instant::now();
             let dt = frame_now
                 .duration_since(self.time.last_frame_time)
@@ -653,12 +662,11 @@ impl SowApp {
 
             // ── DRAWING UI ──────────────────────────────────────────
             if let Some(ref mut gp) = self.gfx.gui_painter {
-                let ppp = egui_output.pixels_per_point;
                 let screen_desc = blade_egui::ScreenDescriptor {
                     physical_size: (self.input.screen_w as u32, self.input.screen_h as u32),
-                    scale_factor: ppp,
+                    scale_factor: sf,
                 };
-                let paint_jobs = self.ui.egui_ctx.tessellate(egui_output.shapes, ppp);
+                let paint_jobs = self.ui.egui_ctx.tessellate(egui_output.shapes, sf);
                 gp.update_textures(
                     &mut render_ctx.command_encoder,
                     &egui_output.textures_delta,
@@ -703,29 +711,23 @@ impl SowApp {
         }
         if self.gfx.surface.is_none() {
             if let Some(ref win) = self.gfx.window {
-                #[cfg(target_arch = "wasm32")]
-                let (pw, ph) = crate::web_canvas::physical_viewport_size();
-                #[cfg(target_arch = "wasm32")]
-                let sz = winit::dpi::PhysicalSize::new(pw.max(1), ph.max(1));
-                #[cfg(not(target_arch = "wasm32"))]
                 let sz = win.surface_size();
                 let Some(render_ctx) = self.gfx.render_ctx.take() else {
                     return;
                 };
-                #[cfg(target_arch = "wasm32")]
-                crate::web_canvas::set_canvas_backing_store_size(sz.width, sz.height);
-                match render_ctx.create_surface(win, sz.width, sz.height) {
+                match render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
                     Ok(s) => {
-                        self.input.screen_w = sz.width as f32;
-                        self.input.screen_h = sz.height as f32;
+                        self.gfx.configured_physical =
+                            winit::dpi::PhysicalSize::new(sz.width.max(1), sz.height.max(1));
+                        let vp = crate::viewport::Viewport::from_configured(
+                            self,
+                            win.scale_factor() as f32,
+                        );
+                        vp.sync_to_app(self);
                         let zmax =
                             camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                         self.input.camera_zoom =
                             self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-                        let vp = crate::viewport::Viewport::measure(win.as_ref());
-                        crate::viewport::apply_to_egui(self, &vp);
-                        self.gfx.last_egui_viewport =
-                            Some((vp.physical.width, vp.physical.height, vp.scale_factor));
                         let format = s.info().format;
 
                         if let Some(sp) = self.gfx.prev_sync_point.take() {

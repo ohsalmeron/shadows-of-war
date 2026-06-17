@@ -182,6 +182,20 @@ fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool
 }
 
 fn cmd_native(paths: &Paths) -> Result<()> {
-    println!("==> Running native client locally...");
-    process::run("cargo", &["run", "--bin", "client"], Some(&paths.root))
+    println!("==> Running native client (release, max-perf, VERBOSE)...");
+    process::run_env(
+        "cargo",
+        &[
+            "run",
+            "--release",
+            "--bin",
+            "client",
+            "--",
+        ],
+        Some(&paths.root),
+        &[
+            ("RUSTFLAGS", "-C target-cpu=native"),
+            ("VERBOSE", "1"),
+        ],
+    )
 }

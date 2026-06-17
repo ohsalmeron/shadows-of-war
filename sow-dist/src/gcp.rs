@@ -54,7 +54,20 @@ impl GcpConfig {
         args.push("--command".into());
         args.push(script.into());
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        process::run("gcloud", &refs, None)
+        let mut attempts = 0;
+        loop {
+            match process::run("gcloud", &refs, None) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= 3 {
+                        return Err(e);
+                    }
+                    println!("⚠️ ssh warning: connection blip, retrying in 5s (attempt {attempts}/3)...");
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                }
+            }
+        }
     }
 
     pub fn remote_output(&self, script: &str) -> Result<String> {
@@ -62,7 +75,20 @@ impl GcpConfig {
         args.push("--command".into());
         args.push(script.into());
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        process::output("gcloud", &refs)
+        let mut attempts = 0;
+        loop {
+            match process::output("gcloud", &refs) {
+                Ok(out) => return Ok(out),
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= 3 {
+                        return Err(e);
+                    }
+                    println!("⚠️ ssh warning: connection blip, retrying in 5s (attempt {attempts}/3)...");
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                }
+            }
+        }
     }
 
     pub fn ssh_ready(&self) -> bool {
@@ -200,18 +226,23 @@ pub fn enable_os_login(project: &str) -> Result<()> {
     )?;
     if !account.is_empty() {
         println!("==> Granting OS Admin Login to {account}");
-        process::run(
-            "gcloud",
-            &[
+        let status = std::process::Command::new("gcloud")
+            .args(&[
                 "projects",
                 "add-iam-policy-binding",
                 project,
                 &format!("--member=user:{account}"),
                 "--role=roles/compute.osAdminLogin",
                 "--condition=None",
-            ],
-            None,
-        )?;
+                "--quiet",
+            ])
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            _ => {
+                println!("⚠️ Warning: add-iam-policy-binding failed. This is expected if Service Usage API is disabled on the project. Proceeding anyway...");
+            }
+        }
     }
     Ok(())
 }

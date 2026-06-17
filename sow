@@ -17,4 +17,4 @@ mkdir -p "${CARGO_TARGET_DIR}"
 
 BIN="${CARGO_TARGET_DIR}/release/sow"
 cargo build -q -p sow-dist --release
-exec "${BIN}" "$@"
+exec "${BIN}" "${@:-native}"

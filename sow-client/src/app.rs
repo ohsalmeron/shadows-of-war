@@ -56,6 +56,7 @@ pub struct GraphicsState {
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
+    pub configured_physical: winit::dpi::PhysicalSize<u32>,
     /// Deferred teardown after instant exit (must not run mid-frame during UI actions).
     pub pending_session_cleanup: bool,
     /// Last viewport applied to egui (`physical_w`, `physical_h`, `scale_factor`).
@@ -492,6 +493,7 @@ impl SowApp {
                 gui_painter,
                 prev_sync_point,
                 needs_first_upload,
+                configured_physical: winit::dpi::PhysicalSize::new(0, 0),
                 pending_session_cleanup: false,
                 last_egui_viewport: None,
             },

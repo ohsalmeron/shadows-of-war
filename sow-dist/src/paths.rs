@@ -65,8 +65,8 @@ impl Paths {
             cargo_target: std::env::var("CARGO_TARGET_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| root.join("target")),
-            wasm_opt_cache: root.join("dist/.sow-wasm-opt-cache"),
-            infra_hash_cache: root.join("dist/.sow-infra-hash"),
+            wasm_opt_cache: root.join("dist/.sow-state/wasm-opt-cache"),
+            infra_hash_cache: root.join("dist/.sow-state/infra-hash"),
             root,
         })
     }
@@ -76,17 +76,19 @@ impl Paths {
     }
 
     pub fn deployed_version_cache(&self, unit: &str) -> PathBuf {
-        self.root
-            .join("dist")
-            .join(format!(".sow-deployed-version-{unit}"))
+        self.state_dir().join(format!("deployed-version-{unit}"))
     }
 
     pub fn remote_home_cache(&self) -> PathBuf {
-        self.root.join("dist/.sow-remote-home")
+        self.state_dir().join("remote-home")
     }
 
     pub fn dist_root(&self) -> PathBuf {
         self.root.join("dist")
+    }
+
+    pub fn state_dir(&self) -> PathBuf {
+        self.root.join("dist/.sow-state")
     }
 
     pub fn deploy_dir(&self) -> PathBuf {
@@ -107,10 +109,10 @@ impl Paths {
     }
 
     pub fn package_hash_cache(&self, key: &str) -> PathBuf {
-        self.dist_root().join(format!(".sow-package-hash-{key}"))
+        self.state_dir().join(format!("package-hash-{key}"))
     }
 
     pub fn cdn_hash_cache(&self) -> PathBuf {
-        self.dist_root().join(".sow-cdn-hash")
+        self.state_dir().join("cdn-hash")
     }
 }

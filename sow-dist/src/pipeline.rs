@@ -150,11 +150,9 @@ pub fn run_release(
 
     // Phase 3: ship everything in parallel
     println!("==> Phase 3: ship");
-    let (cdn_shipped, server_ship) = std::thread::scope(|s| -> Result<(bool, ServerShipResult)> {
-        let paths_cdn = paths.clone();
-        let cfg_cdn = cfg.clone();
-        let gcp_cdn = s.spawn(move || cdn::ship_or_skip(&paths_cdn, &cfg_cdn));
-
+    // Phase 3a: ship everything except CDN in parallel
+    // CDN must run AFTER marketing mirror to avoid the mirror wiping CDN assets.
+    let server_ship = std::thread::scope(|s| -> Result<ServerShipResult> {
         let shell_sync = match target {
             ReleaseTarget::Prod => {
                 let gcp_a = gcp.clone();
@@ -201,6 +199,7 @@ pub fn run_release(
                     &web_main,
                     &SyncOpts {
                         mirror: true,
+                        preserve_basenames: vec!["assets".into()],
                         ..SyncOpts::default()
                     },
                 )
@@ -262,13 +261,16 @@ pub fn run_release(
         }
         maps_sync.join().unwrap()?;
         let server_ship = server_ship.join().unwrap()?;
-        let cdn_shipped = gcp_cdn.join().unwrap()?;
-        Ok((cdn_shipped, server_ship))
+        Ok(server_ship)
     })?;
+
+    // Phase 3b: CDN sync runs AFTER marketing mirror completes.
+    // The marketing mirror preserves `/assets/` but CDN must always re-sync
+    // to guarantee assets are present after any mirror cleanup.
+    let cdn_shipped = cdn::ship_or_skip(paths, cfg)?;
 
     // Phase 4: finalize + verify
     println!("==> Phase 4: finalize");
-    gcp.run_remote("sudo restorecon -R /var/www")?;
     infra::restart_server_if_needed(paths, &gcp, server_ctx.unit, version, &server_ship)?;
     infra::restart_server_if_needed(paths, &gcp, server_ctx.db_unit, version, &server_ship)?;
 

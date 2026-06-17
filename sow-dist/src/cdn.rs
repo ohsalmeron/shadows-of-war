@@ -57,7 +57,6 @@ pub fn ship_or_skip(paths: &Paths, cfg: &DeployConfig) -> Result<bool> {
         &SyncOpts::default(),
     )?;
     gcp.run_remote(&format!("chmod -R a+rX {assets_path}/cdn"))?;
-    gcp.run_remote(&format!("sudo restorecon -R {assets_path}/cdn"))?;
 
     if let Some(parent) = cache.parent() {
         fs::create_dir_all(parent)?;

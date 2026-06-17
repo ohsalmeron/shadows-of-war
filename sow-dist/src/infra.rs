@@ -69,67 +69,9 @@ fn wait_for_ssh(gcp: &GcpConfig) -> Result<()> {
     bail!("SSH not ready after {MAX_SECS}s")
 }
 
-/// OS Login may not populate google-sudoers on first boot; grant sudo via one-shot startup script.
-fn ensure_os_admin_sudo(gcp: &GcpConfig) -> Result<()> {
-    if gcp
-        .remote_output("sudo -n whoami")
-        .map(|s| s.trim() == "root")
-        .unwrap_or(false)
-    {
-        return Ok(());
-    }
-    let user = gcp.remote_output("whoami")?.trim().to_string();
-    println!("==> Enabling passwordless sudo for {user} (startup script)");
-    let script = format!(
-        "#!/bin/bash\nset -euo pipefail\n\
-         gpasswd --add {user} google-sudoers 2>/dev/null || true\n\
-         echo '{user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-sow-deploy\n\
-         chmod 0440 /etc/sudoers.d/99-sow-deploy\n"
-    );
-    let tmp = std::env::temp_dir().join("sow-sudo-bootstrap.sh");
-    fs::write(&tmp, script)?;
-    process::run(
-        "gcloud",
-        &[
-            "compute",
-            "instances",
-            "add-metadata",
-            &gcp.instance,
-            &format!("--project={}", gcp.project),
-            &format!("--zone={}", gcp.zone),
-            &format!("--metadata-from-file=startup-script={}", tmp.display()),
-        ],
-        None,
-    )?;
-    process::run(
-        "gcloud",
-        &[
-            "compute",
-            "instances",
-            "reset",
-            &gcp.instance,
-            &format!("--project={}", gcp.project),
-            &format!("--zone={}", gcp.zone),
-            "--quiet",
-        ],
-        None,
-    )?;
-    fs::remove_file(&tmp).ok();
-    wait_for_ssh(gcp)?;
-    if !gcp
-        .remote_output("sudo -n whoami")
-        .map(|s| s.trim() == "root")
-        .unwrap_or(false)
-    {
-        bail!("sudo still unavailable after startup script — check OS Login / IAM");
-    }
-    Ok(())
-}
-
-/// Debian 13 on GCP uses OS Login; sudo is granted via startup-script metadata.
+/// Debian 13 on GCP uses OS Login; sudo is granted via roles/compute.osAdminLogin.
 /// No SELinux, no firewalld — ufw handles the host firewall.
 fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Result<()> {
-    ensure_os_admin_sudo(gcp)?;
     let login_home = gcp.remote_home(&paths.remote_home_cache())?;
     let user = gcp.remote_output("whoami")?.trim().to_string();
     let home_prod = format!("{login_home}/shadowsofwar");
@@ -143,9 +85,10 @@ fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
          sudo apt-get install -y nginx valkey certbot python3-certbot-nginx ufw",
     )?;
 
-    // Host firewall: allow SSH + web only; GCP firewall is the outer layer
+    // Host firewall: allow SSH from GCP IAP only, and web traffic publicly.
+    // GCP firewall is the outer layer, but UFW adds defense-in-depth on the host.
     gcp.run_remote(
-        "sudo ufw allow ssh && \
+        "sudo ufw allow proto tcp from 35.235.240.0/20 to any port 22 && \
          sudo ufw allow http && \
          sudo ufw allow https && \
          echo 'y' | sudo ufw enable",
@@ -162,6 +105,15 @@ fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
         play = cfg.play_domain(),
         ptr = cfg.ptr_domain(),
     ))?;
+
+    // Ensure default environment files with placeholders exist but do not overwrite them
+    gcp.run_remote(
+        "sudo mkdir -p /etc/default && \
+         sudo touch /etc/default/shadowsofwar /etc/default/shadowsofwar-ptr && \
+         (test -s /etc/default/shadowsofwar || echo -e 'SOW_DB_SECRET=REPLACE_WITH_SOW_DB_SECRET\\nCRAZYGAMES_API_KEY=REPLACE_WITH_CRAZYGAMES_API_KEY' | sudo tee /etc/default/shadowsofwar >/dev/null) && \
+         (test -s /etc/default/shadowsofwar-ptr || echo -e 'SOW_DB_SECRET=REPLACE_WITH_SOW_DB_SECRET\\nCRAZYGAMES_API_KEY=REPLACE_WITH_CRAZYGAMES_API_KEY' | sudo tee /etc/default/shadowsofwar-ptr >/dev/null) && \
+         sudo chmod 600 /etc/default/shadowsofwar /etc/default/shadowsofwar-ptr"
+    )?;
 
     install_systemd_unit(gcp, paths, cfg, "sow-server.service", &user, &home_prod, &home_ptr)?;
     install_systemd_unit(gcp, paths, cfg, "sow-server-ptr.service", &user, &home_prod, &home_ptr)?;
@@ -222,8 +174,7 @@ fn install_nginx_conf(
     gcp::scp_to_instance(gcp, &tmp, &remote)?;
     gcp.run_remote(&format!(
         "sudo mv {remote} /etc/nginx/conf.d/{conf_name} && \
-         sudo chown root:root /etc/nginx/conf.d/{conf_name} && sudo chmod 644 /etc/nginx/conf.d/{conf_name} && \
-         sudo restorecon /etc/nginx/conf.d/{conf_name}"
+         sudo chown root:root /etc/nginx/conf.d/{conf_name} && sudo chmod 644 /etc/nginx/conf.d/{conf_name}"
     ))?;
     fs::remove_file(&tmp).ok();
     Ok(())
@@ -248,10 +199,6 @@ fn install_systemd_unit(
     content = content.replace("__SOW_PTR_WS_PORT__", &cfg.ptr_ws_port());
     content = content.replace("__SOW_PTR_MAPS_PORT__", &cfg.ptr_maps_port());
     content = content.replace("__SOW_PTR_DB_PORT__", &cfg.ptr_db_port());
-    // Secrets are never in the repo — admin must set real values on the VPS after bootstrap.
-    // Leave sentinels so services fail-fast with an obvious error if not replaced.
-    content = content.replace("__SOW_DB_SECRET__", "REPLACE_WITH_SOW_DB_SECRET");
-    content = content.replace("__SOW_CG_API_KEY__", "REPLACE_WITH_CRAZYGAMES_API_KEY");
     let tmp = paths.dist_root().join(format!("bootstrap-{name}"));
     fs::write(&tmp, &content)?;
     let remote = format!("/tmp/{name}");
@@ -337,6 +284,10 @@ pub fn ship_server(
     let remote_missing = remote_binaries_missing(gcp, data_dir);
     let need_ship = artifacts.built || remote_missing;
     if need_ship {
+        let db_unit = if unit == "sow-server-ptr" { "sow-database-ptr" } else { "sow-database" };
+        println!("==> Stopping services {unit} and {db_unit} to copy binaries...");
+        gcp.run_remote(&format!("sudo systemctl stop {unit} {db_unit} || true"))?;
+
         rsync_server_binaries(
             gcp,
             data_dir,
@@ -477,8 +428,7 @@ fn rsync_server_binaries(
     gcp.sync_file(relay, &format!("{data_dir}/sow-relay"))?;
     gcp.sync_file(database, &format!("{data_dir}/sow-database"))?;
     gcp.run_remote(&format!(
-        "chmod +x {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database && \
-         sudo chcon -t bin_t {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database"
+        "chmod +x {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database"
     ))?;
     Ok(())
 }
@@ -579,7 +529,7 @@ pub fn hash_deploy_templates(paths: &Paths) -> Result<String> {
 
 pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()> {
     let current_hash = hash_deploy_templates(paths)?;
-    let cache_file = paths.dist_root().join(".sow-deploy-config-hash");
+    let cache_file = paths.state_dir().join("deploy-config-hash");
     let last_hash = fs::read_to_string(&cache_file)
         .unwrap_or_default()
         .trim()
