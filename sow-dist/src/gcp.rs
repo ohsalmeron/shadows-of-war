@@ -65,7 +65,9 @@ impl GcpConfig {
                     if attempts >= 3 {
                         return Err(e);
                     }
-                    println!("⚠️ ssh warning: connection blip, retrying in 5s (attempt {attempts}/3)...");
+                    println!(
+                        "⚠️ ssh warning: connection blip, retrying in 5s (attempt {attempts}/3)..."
+                    );
                     std::thread::sleep(std::time::Duration::from_secs(5));
                 }
             }
@@ -86,7 +88,9 @@ impl GcpConfig {
                     if attempts >= 3 {
                         return Err(e);
                     }
-                    println!("⚠️ ssh warning: connection blip, retrying in 5s (attempt {attempts}/3)...");
+                    println!(
+                        "⚠️ ssh warning: connection blip, retrying in 5s (attempt {attempts}/3)..."
+                    );
                     std::thread::sleep(std::time::Duration::from_secs(5));
                 }
             }
@@ -229,7 +233,7 @@ pub fn enable_os_login(project: &str) -> Result<()> {
     if !account.is_empty() {
         println!("==> Granting OS Admin Login to {account}");
         let status = std::process::Command::new("gcloud")
-            .args(&[
+            .args([
                 "projects",
                 "add-iam-policy-binding",
                 project,

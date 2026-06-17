@@ -124,10 +124,8 @@ pub fn check_any_cargo_lock(cargo_target: &Path) -> bool {
         .filter_map(|e| e.ok())
     {
         let name = entry.file_name().to_string_lossy();
-        if name == ".cargo-lock" || name == ".cargo-build-lock" {
-            if is_locked(entry.path()) {
-                return true;
-            }
+        if (name == ".cargo-lock" || name == ".cargo-build-lock") && is_locked(entry.path()) {
+            return true;
         }
     }
     false
