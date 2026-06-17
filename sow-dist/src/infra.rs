@@ -392,9 +392,7 @@ fn read_cached_hash(paths: &Paths) -> String {
 
 fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, PathBuf)> {
     const GNU: &str = "x86_64-unknown-linux-gnu";
-    if process::check_any_cargo_lock(&paths.cargo_target) {
-        println!("==> Cargo target directory is locked by another process. Waiting for lock...");
-    }
+    process::wait_for_cargo_unlock(&paths.cargo_target);
     println!("==> cargo build --release -p sow-server -p sow-relay -p sow-database ({GNU})");
     process::run(
         "cargo",

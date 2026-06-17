@@ -11,9 +11,7 @@ use wasm_bindgen_cli_support::Bindgen;
 const WASM_OPT_TAG: &str = "oz-v1";
 
 pub fn compile(paths: &Paths) -> Result<()> {
-    if process::check_any_cargo_lock(&paths.cargo_target) {
-        println!("==> Cargo target directory is locked by another process. Waiting for lock...");
-    }
+    process::wait_for_cargo_unlock(&paths.cargo_target);
     println!("==> Compiling WASM (wasm-release)...");
     process::run_env(
         "cargo",

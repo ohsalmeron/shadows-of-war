@@ -132,3 +132,29 @@ pub fn check_any_cargo_lock(cargo_target: &Path) -> bool {
     }
     false
 }
+
+/// Block until no other cargo build holds the target-directory lock.
+/// Prints a status line every `interval` seconds so the terminal never looks hung.
+pub fn wait_for_cargo_unlock(cargo_target: &Path) {
+    if !check_any_cargo_lock(cargo_target) {
+        return;
+    }
+    println!("==> Waiting for another cargo build to finish (target dir is locked)...");
+    let interval = std::time::Duration::from_secs(3);
+    let start = std::time::Instant::now();
+    let mut warned_secs = 0u64;
+    loop {
+        std::thread::sleep(interval);
+        if !check_any_cargo_lock(cargo_target) {
+            let elapsed = start.elapsed().as_secs();
+            println!("==> Cargo lock released after {elapsed}s — proceeding.");
+            return;
+        }
+        let elapsed = start.elapsed().as_secs();
+        // Print a reminder every 15 s so the user knows we're still alive.
+        if elapsed / 15 > warned_secs / 15 {
+            println!("    still waiting... ({elapsed}s elapsed)");
+            warned_secs = elapsed;
+        }
+    }
+}
