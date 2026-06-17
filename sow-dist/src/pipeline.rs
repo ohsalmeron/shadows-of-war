@@ -89,9 +89,7 @@ pub fn run_release(
     // Phase 1: local builds in parallel
     println!("==> Phase 1: build");
     let server_artifacts = std::thread::scope(|s| -> Result<Option<ServerArtifacts>> {
-        let paths_wasm = paths.clone();
         let paths_cdn = paths.clone();
-        let paths_srv = paths.clone();
         // CDN prep is cargo-free — run it in parallel with the WASM compile.
         let cdn_h = if target.sync_cdn() {
             Some(s.spawn(move || cdn::prepare(&paths_cdn)))
@@ -100,9 +98,9 @@ pub fn run_release(
         };
         // WASM and server both invoke cargo and share the package cache.
         // Run them sequentially to avoid "Blocking waiting for file lock" noise.
-        wasm::compile(&paths_wasm)?;
+        wasm::compile(paths)?;
         let server = if target.server_unit().is_some() {
-            Some(infra::build_server_if_needed(&paths_srv)?)
+            Some(infra::build_server_if_needed(paths)?)
         } else {
             None
         };
