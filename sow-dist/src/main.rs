@@ -51,7 +51,7 @@ enum Command {
         #[command(flatten)]
         opts: VersionOpts,
     },
-    /// One-time Fedora VPS bootstrap on GCP (destroys/recreates sow-server VM).
+    /// One-time Debian 13 VPS bootstrap on GCP (destroys/recreates sow-server VM).
     #[command(name = "infra")]
     Infra {
         /// Required to delete existing VMs and recreate sow-server on sow-server-ip.

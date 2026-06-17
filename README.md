@@ -29,7 +29,7 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 | `sow-client` | Game executable (native + WASM) |
 | `sow-map` | Map editor + generation |
 | `sow-tools` | CLI: OSM bbox, heightmap import |
-| `sow-dist` | WASM `dist/` build + deploy; Fedora VPS templates in `sow-dist/deploy/`; Android/iOS shells in `sow-dist/deploy/` |
+| `sow-dist` | WASM `dist/` build + deploy; Debian 13 VPS templates in `sow-dist/deploy/`; Android/iOS shells in `sow-dist/deploy/` |
 | `sow-web/site/` | Marketing site (static HTML: landing, privacy, terms) |
 | `sow-web/shell/` | Game shell (WASM loader, index template, portal SDK) |
 | `assets/` | Art sources (`static/`, online `maps/`, published `cdn/`) |
@@ -60,7 +60,7 @@ gcloud config set project YOUR_PROJECT_ID   # or set SOW_GCP_PROJECT in sow-dist
 ```
 
 ```bash
-./sow infra --confirm-destroy   # one-time: recreate Fedora VPS on GCP (nginx, TLS, valkey)
+./sow infra --confirm-destroy   # one-time: recreate Debian 13 VPS on GCP (nginx, TLS, valkey, ufw)
 ./sow ptr -v                    # staging: PTR shell + PTR server + cdn/
 ./sow prod -v                   # prod: play + marketing + prod server + cdn/
 ./sow p -v                      # same as prod
@@ -90,7 +90,7 @@ Full optional list: [`sow-dist/.env.example`](sow-dist/.env.example).
 
 | Command | Output | VPS content | Server / infra |
 |---------|--------|-------------|----------------|
-| `infra --confirm-destroy` | — | — | Recreate Fedora VM on GCP; nginx, TLS, valkey, systemd (reproducible from `sow-dist/deploy/`) |
+| `infra --confirm-destroy` | — | — | Recreate Debian 13 VM on GCP; nginx, TLS, valkey, systemd (reproducible from `sow-dist/deploy/`) |
 | `cg` / `crazygames` | `dist/crazygames/` | CDN sync only | No |
 | `p` / `prod` | `dist/play/` + marketing | play + shadowsofwar.io | Syncs server binaries + restarts `sow-server` when crates or version changed |
 | `ptr` | `dist/ptr/` | ptr.shadowsofwar.io | Syncs server binaries + restarts `sow-server-ptr` only — never prod |

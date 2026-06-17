@@ -25,7 +25,7 @@ pub fn deploy_infra(
     gcp::enable_os_login(project)?;
     let gcp = cfg.gcp();
     if bootstrap_only {
-        bootstrap_fedora(paths, cfg, &gcp)?;
+        bootstrap_debian(paths, cfg, &gcp)?;
     } else {
         if !confirm_destroy {
             bail!("Refusing to destroy/recreate VPS without --confirm-destroy (or use --bootstrap-only)");
@@ -37,7 +37,7 @@ pub fn deploy_infra(
         if let (Some(name), Some(region)) = (&cfg.test_static_ip, &cfg.test_static_ip_region) {
             gcp::release_static_ip(project, region, name)?;
         }
-        gcp::create_fedora_vm(
+        gcp::create_debian_vm(
             project,
             &cfg.gcp_zone,
             &cfg.gcp_instance,
@@ -45,10 +45,10 @@ pub fn deploy_infra(
         )?;
         fs::remove_file(paths.remote_home_cache()).ok();
         wait_for_ssh(&gcp)?;
-        bootstrap_fedora(paths, cfg, &gcp)?;
+        bootstrap_debian(paths, cfg, &gcp)?;
     }
     println!(
-        "✅ Fedora VPS ready on {} ({})",
+        "✅ Debian VPS ready on {} ({})",
         cfg.gcp_instance, cfg.gcp_static_ip
     );
     Ok(())
@@ -69,7 +69,7 @@ fn wait_for_ssh(gcp: &GcpConfig) -> Result<()> {
     bail!("SSH not ready after {MAX_SECS}s")
 }
 
-/// Fedora 44 OS Login may not populate google-sudoers; grant sudo via one-shot startup script.
+/// OS Login may not populate google-sudoers on first boot; grant sudo via one-shot startup script.
 fn ensure_os_admin_sudo(gcp: &GcpConfig) -> Result<()> {
     if gcp
         .remote_output("sudo -n whoami")
@@ -126,21 +126,29 @@ fn ensure_os_admin_sudo(gcp: &GcpConfig) -> Result<()> {
     Ok(())
 }
 
-fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Result<()> {
+/// Debian 13 on GCP uses OS Login; sudo is granted via startup-script metadata.
+/// No SELinux, no firewalld — ufw handles the host firewall.
+fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Result<()> {
     ensure_os_admin_sudo(gcp)?;
     let login_home = gcp.remote_home(&paths.remote_home_cache())?;
     let user = gcp.remote_output("whoami")?.trim().to_string();
     let home_prod = format!("{login_home}/shadowsofwar");
     let home_ptr = format!("{login_home}/shadowsofwar-ptr");
 
-    println!("==> Bootstrap Fedora (user={user}, prod={home_prod})");
+    println!("==> Bootstrap Debian 13 (user={user}, prod={home_prod})");
 
+    // Install packages — valkey is in Debian 13 (trixie) main
     gcp.run_remote(
-        "sudo dnf -y install nginx valkey certbot python3-certbot-nginx firewalld && \
-         sudo systemctl enable --now firewalld && \
-         sudo firewall-cmd --permanent --add-service=http --add-service=https && \
-         sudo firewall-cmd --reload && \
-         sudo setsebool -P httpd_can_network_connect 1",
+        "sudo apt-get update -qq && \
+         sudo apt-get install -y nginx valkey certbot python3-certbot-nginx ufw",
+    )?;
+
+    // Host firewall: allow SSH + web only; GCP firewall is the outer layer
+    gcp.run_remote(
+        "sudo ufw allow ssh && \
+         sudo ufw allow http && \
+         sudo ufw allow https && \
+         echo 'y' | sudo ufw enable",
     )?;
 
     let web_main = cfg.web_root_main();
@@ -149,49 +157,16 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     gcp.run_remote(&format!(
         "mkdir -p {home_prod}/assets/maps {home_ptr}/assets/maps && \
          sudo mkdir -p {web_main} {web_play} {web_ptr} && \
-         sudo chown -R {user}:$(id -gn) /var/www/{main} /var/www/{play} /var/www/{ptr} && \
-         sudo restorecon -R /var/www",
+         sudo chown -R {user}:$(id -gn) /var/www/{main} /var/www/{play} /var/www/{ptr}",
         main = cfg.site_domain(),
         play = cfg.play_domain(),
         ptr = cfg.ptr_domain(),
     ))?;
 
-    install_systemd_unit(
-        gcp,
-        paths,
-        cfg,
-        "sow-server.service",
-        &user,
-        &home_prod,
-        &home_ptr,
-    )?;
-    install_systemd_unit(
-        gcp,
-        paths,
-        cfg,
-        "sow-server-ptr.service",
-        &user,
-        &home_prod,
-        &home_ptr,
-    )?;
-    install_systemd_unit(
-        gcp,
-        paths,
-        cfg,
-        "sow-database.service",
-        &user,
-        &home_prod,
-        &home_ptr,
-    )?;
-    install_systemd_unit(
-        gcp,
-        paths,
-        cfg,
-        "sow-database-ptr.service",
-        &user,
-        &home_prod,
-        &home_ptr,
-    )?;
+    install_systemd_unit(gcp, paths, cfg, "sow-server.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(gcp, paths, cfg, "sow-server-ptr.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(gcp, paths, cfg, "sow-database.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(gcp, paths, cfg, "sow-database-ptr.service", &user, &home_prod, &home_ptr)?;
     install_systemd_unit(gcp, paths, cfg, "valkey.service", &user, &home_prod, &home_ptr)?;
 
     for (template, conf_name) in [

@@ -263,8 +263,8 @@ fn gcloud_allow_missing(args: &[&str]) -> Result<()> {
     bail!("gcloud failed ({})", out.status);
 }
 
-pub fn create_fedora_vm(project: &str, zone: &str, name: &str, static_ip: &str) -> Result<()> {
-    println!("==> Creating Fedora VM {name} with static IP {static_ip}");
+pub fn create_debian_vm(project: &str, zone: &str, name: &str, static_ip: &str) -> Result<()> {
+    println!("==> Creating Debian 13 VM {name} with static IP {static_ip}");
     process::run(
         "gcloud",
         &[
@@ -276,10 +276,10 @@ pub fn create_fedora_vm(project: &str, zone: &str, name: &str, static_ip: &str) 
             &format!("--zone={zone}"),
             "--machine-type=e2-small",
             "--boot-disk-size=30GB",
-            "--image-family=fedora-cloud-44-x86-64",
-            "--image-project=fedora-cloud",
+            "--image-family=debian-13",
+            "--image-project=debian-cloud",
             &format!("--address={static_ip}"),
-            "--tags=http-server,https-server",
+            "--tags=http-server,https-server,sow-game",
             "--metadata=enable-oslogin=TRUE",
         ],
         None,
