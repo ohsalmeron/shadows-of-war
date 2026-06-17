@@ -115,11 +115,51 @@ fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
          sudo chmod 600 /etc/default/shadowsofwar /etc/default/shadowsofwar-ptr"
     )?;
 
-    install_systemd_unit(gcp, paths, cfg, "sow-server.service", &user, &home_prod, &home_ptr)?;
-    install_systemd_unit(gcp, paths, cfg, "sow-server-ptr.service", &user, &home_prod, &home_ptr)?;
-    install_systemd_unit(gcp, paths, cfg, "sow-database.service", &user, &home_prod, &home_ptr)?;
-    install_systemd_unit(gcp, paths, cfg, "sow-database-ptr.service", &user, &home_prod, &home_ptr)?;
-    install_systemd_unit(gcp, paths, cfg, "valkey.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "sow-server.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "sow-server-ptr.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "sow-database.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "sow-database-ptr.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "valkey.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
 
     for (template, conf_name) in [
         ("main.conf", format!("{}.conf", cfg.site_domain())),
@@ -284,7 +324,11 @@ pub fn ship_server(
     let remote_missing = remote_binaries_missing(gcp, data_dir);
     let need_ship = artifacts.built || remote_missing;
     if need_ship {
-        let db_unit = if unit == "sow-server-ptr" { "sow-database-ptr" } else { "sow-database" };
+        let db_unit = if unit == "sow-server-ptr" {
+            "sow-database-ptr"
+        } else {
+            "sow-database"
+        };
         println!("==> Stopping services {unit} and {db_unit} to copy binaries...");
         gcp.run_remote(&format!("sudo systemctl stop {unit} {db_unit} || true"))?;
 

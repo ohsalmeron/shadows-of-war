@@ -231,7 +231,6 @@ pub fn load_dotenv(repo_root: &Path) {
     }
 }
 
-
 fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }

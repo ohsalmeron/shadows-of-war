@@ -249,4 +249,3 @@ pub(crate) fn ensure_canvas_tabindex() {
         let _ = canvas.set_attribute("tabindex", "0");
     }
 }
-

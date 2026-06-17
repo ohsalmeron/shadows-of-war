@@ -77,7 +77,10 @@ impl SowApp {
                         gpu::DisplaySync::Tear
                     };
                     #[cfg(target_arch = "wasm32")]
-                    crate::web_canvas::set_canvas_backing_store_size(physical_size.width, physical_size.height);
+                    crate::web_canvas::set_canvas_backing_store_size(
+                        physical_size.width,
+                        physical_size.height,
+                    );
                     render_ctx.context.reconfigure_surface(
                         s,
                         gpu::SurfaceConfig {
@@ -909,17 +912,15 @@ impl SowApp {
                 });
             }
             sow_core::protocol::GameplayIntent::Spawn { x, y } => {
-                sow_audio::play_deploy_sound(
-                    sow_audio::SpatialSoundParams {
-                        wx: *x as f32 + 0.5,
-                        wy: *y as f32 + 0.5,
-                        camera_x: self.input.camera_x,
-                        camera_y: self.input.camera_y,
-                        camera_zoom: self.input.camera_zoom,
-                        screen_w: self.input.screen_w,
-                        screen_h: self.input.screen_h,
-                    }
-                );
+                sow_audio::play_deploy_sound(sow_audio::SpatialSoundParams {
+                    wx: *x as f32 + 0.5,
+                    wy: *y as f32 + 0.5,
+                    camera_x: self.input.camera_x,
+                    camera_y: self.input.camera_y,
+                    camera_zoom: self.input.camera_zoom,
+                    screen_w: self.input.screen_w,
+                    screen_h: self.input.screen_h,
+                });
                 let seed = self
                     .sim
                     .engine
@@ -941,7 +942,7 @@ impl SowApp {
                         camera_zoom: self.input.camera_zoom,
                         screen_w: self.input.screen_w,
                         screen_h: self.input.screen_h,
-                    }
+                    },
                 );
             }
             _ => {}

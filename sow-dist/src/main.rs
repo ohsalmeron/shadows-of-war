@@ -160,7 +160,7 @@ fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
 
 fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    println!("==> local v{version} (no CDN sync, prod wss/CDN at runtime)");
+    println!("==> local wasm v{version}");
     wasm::compile(paths)?;
     let cfg = config::local_config();
     package::build_or_skip(
@@ -186,17 +186,8 @@ fn cmd_native(paths: &Paths) -> Result<()> {
     println!("==> Running native client (release, max-perf, VERBOSE)...");
     process::run_env(
         "cargo",
-        &[
-            "run",
-            "--release",
-            "--bin",
-            "client",
-            "--",
-        ],
+        &["run", "--release", "--bin", "client", "--"],
         Some(&paths.root),
-        &[
-            ("RUSTFLAGS", "-C target-cpu=native"),
-            ("VERBOSE", "1"),
-        ],
+        &[("RUSTFLAGS", "-C target-cpu=native"), ("VERBOSE", "1")],
     )
 }

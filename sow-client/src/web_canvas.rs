@@ -67,4 +67,3 @@ pub fn set_canvas_backing_store_size(width: u32, height: u32) {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_canvas_backing_store_size(_width: u32, _height: u32) {}
-

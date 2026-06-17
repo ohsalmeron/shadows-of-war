@@ -153,17 +153,15 @@ impl SowApp {
                             {
                                 let src_x = (proj.src_tile % self.sim.map_w) as f32 + 0.5;
                                 let src_y = (proj.src_tile / self.sim.map_w) as f32 + 0.5;
-                                sow_audio::play_nuke_launch_sound(
-                                    sow_audio::SpatialSoundParams {
-                                        wx: src_x,
-                                        wy: src_y,
-                                        camera_x: self.input.camera_x,
-                                        camera_y: self.input.camera_y,
-                                        camera_zoom: self.input.camera_zoom,
-                                        screen_w: self.input.screen_w,
-                                        screen_h: self.input.screen_h,
-                                    }
-                                );
+                                sow_audio::play_nuke_launch_sound(sow_audio::SpatialSoundParams {
+                                    wx: src_x,
+                                    wy: src_y,
+                                    camera_x: self.input.camera_x,
+                                    camera_y: self.input.camera_y,
+                                    camera_zoom: self.input.camera_zoom,
+                                    screen_w: self.input.screen_w,
+                                    screen_h: self.input.screen_h,
+                                });
 
                                 // New nuke — find source building by src_tile
                                 if let Some(b) = snap.buildings.iter().find(|b| {
@@ -736,10 +734,7 @@ impl SowApp {
                         #[cfg(not(target_arch = "wasm32"))]
                         let sf = win.scale_factor() as f32;
 
-                        let vp = crate::viewport::Viewport::from_configured(
-                            self,
-                            sf,
-                        );
+                        let vp = crate::viewport::Viewport::from_configured(self, sf);
                         vp.sync_to_app(self);
                         let zmax =
                             camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);

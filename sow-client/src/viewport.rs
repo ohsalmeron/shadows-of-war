@@ -74,8 +74,6 @@ impl Viewport {
     }
 }
 
-
-
 #[cfg(target_arch = "wasm32")]
 pub fn sync_wasm_window(app: &SowApp, win: &dyn winit::window::Window) {
     let (w, h) = crate::web_canvas::canvas_logical_size();
