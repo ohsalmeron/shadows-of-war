@@ -32,7 +32,7 @@ pub fn draw_left_column(
             ui,
             label,
             egui::FontId::proportional(16.0),
-            crate::ui::theme::text_secondary(),
+            crate::ui::theme::palette::text_muted(),
         );
     } else {
         let ffa_lobbies: Vec<_> = state
@@ -58,7 +58,7 @@ pub fn draw_left_column(
                     ui.label(
                         egui::RichText::new(&strings.thumbnail_load_failed)
                             .size(11.0)
-                            .color(crate::ui::theme::text_secondary()),
+                            .color(crate::ui::theme::palette::text_muted()),
                     );
                 } else if asset_loader.thumbnail_in_flight(&lobby.map_name) {
                     ui.horizontal(|ui| {
@@ -66,7 +66,7 @@ pub fn draw_left_column(
                         ui.label(
                             egui::RichText::new(&strings.loading_thumbnail)
                                 .size(11.0)
-                                .color(crate::ui::theme::text_secondary()),
+                                .color(crate::ui::theme::palette::text_muted()),
                         );
                     });
                 }

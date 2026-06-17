@@ -181,7 +181,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
             let can_afford = state.gold >= cost;
 
             let tint = if is_selected {
-                crate::ui::theme::accent_solo_cyan()
+                crate::ui::theme::palette::neon_cyan()
             } else if !can_afford {
                 egui::Color32::from_rgb(180, 50, 50)
             } else {
@@ -207,7 +207,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                     sow_core::game::BuildingKind::Port => "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
                 };
 
-                ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::accent_solo_cyan()));
+                ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::palette::neon_cyan()));
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
                 ui.add_space(6.0);
@@ -227,7 +227,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                 is_selected,
                 can_afford,
                 is_hovered,
-                crate::ui::theme::accent_solo_cyan(),
+                crate::ui::theme::palette::neon_cyan(),
             );
             ui.painter().rect(
                 rect,
@@ -240,7 +240,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
             // Hotkey badge (top-left corner)
             if !compact {
                 let hotkey_color = if is_selected {
-                    crate::ui::theme::accent_solo_cyan()
+                    crate::ui::theme::palette::neon_cyan()
                 } else {
                     egui::Color32::from_white_alpha(120)
                 };
@@ -278,7 +278,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
             let text_color = if !can_afford {
                 egui::Color32::from_rgb(239, 68, 68)
             } else if is_selected {
-                crate::ui::theme::accent_solo_cyan()
+                crate::ui::theme::palette::neon_cyan()
             } else {
                 egui::Color32::GRAY
             };
@@ -339,7 +339,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                 let stroke = if is_selected {
                     egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(239, 68, 68))
                 } else {
-                    egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.5))
+                    egui::Stroke::new(1.0_f32, crate::ui::theme::palette::field_border().linear_multiply(0.5))
                 };
 
                 let (rect, mut resp) = ui.allocate_exact_size(
@@ -355,7 +355,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                 });
 
                 let final_bg = if resp.hovered() && !is_selected {
-                    crate::ui::theme::nickname_field_bg().linear_multiply(0.3)
+                    crate::ui::theme::palette::field_bg().linear_multiply(0.3)
                 } else {
                     bg_color
                 };
@@ -417,9 +417,9 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
 
 fn tab_accent(tab: BottomHudTab) -> Color32 {
     match tab {
-        BottomHudTab::Controls => crate::ui::theme::accent_solo_cyan(),
-        BottomHudTab::BattleLog => crate::ui::theme::accent_danger(),
-        BottomHudTab::EventLog => crate::ui::theme::accent_ranked_gold_hover(),
+        BottomHudTab::Controls => crate::ui::theme::palette::neon_cyan(),
+        BottomHudTab::BattleLog => crate::ui::theme::palette::danger(),
+        BottomHudTab::EventLog => crate::ui::theme::palette::neon_gold_hover(),
     }
 }
 
@@ -452,15 +452,7 @@ fn draw_browser_tab_strip(
 
         for (tab, badge) in tabs {
             let selected = state.bottom_tab == tab;
-            let resp = crate::ui::theme::draw_icon_tab(
-                ui,
-                asset_loader.hud_icon(tab.hud_icon()),
-                selected,
-                tab_accent(tab),
-                badge,
-                tab_w,
-                compact,
-            );
+            let resp = crate::ui::theme::draw_tab(ui, crate::ui::theme::TabContent::Icon(asset_loader.hud_icon(tab.hud_icon())), selected, tab_accent(tab), badge, tab_w, compact,);
             if selected {
                 active_rect = Some(resp.rect);
             }
@@ -527,13 +519,13 @@ fn draw_event_log_tab(
         ui.label(
             RichText::new(&strings.event_log_title)
                 .size(10.0)
-                .color(crate::ui::theme::text_secondary())
+                .color(crate::ui::theme::palette::text_muted())
                 .strong(),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let clear_btn = crate::widgets::ThemeButton::new(&strings.event_log_clear)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                .custom_fill(crate::ui::theme::menu_secondary_button())
+                .custom_fill(crate::ui::theme::palette::button_inactive())
                 .text_size(10.0);
             if ui.add(clear_btn).clicked() {
                 state.event_log.clear();
@@ -614,7 +606,7 @@ fn draw_event_log_tab(
                                 ui.label(
                                     RichText::new(format_relative_time(entry.spawned_at, lang))
                                         .size(9.0)
-                                        .color(crate::ui::theme::text_secondary()),
+                                        .color(crate::ui::theme::palette::text_muted()),
                                 );
                             });
                         });
@@ -719,13 +711,13 @@ fn draw_battle_log_tab(
 
             for (kind, troops, label, attack_id, fleet_id, retreating) in rows {
                 let (icon, accent) = match kind {
-                    DispatchKind::Incoming => ("⚔", crate::ui::theme::accent_danger()),
-                    DispatchKind::Outgoing => ("🛡", crate::ui::theme::accent_solo_cyan()),
-                    DispatchKind::Navy => ("⛴", crate::ui::theme::accent_solo_cyan()),
+                    DispatchKind::Incoming => ("⚔", crate::ui::theme::palette::danger()),
+                    DispatchKind::Outgoing => ("🛡", crate::ui::theme::palette::neon_cyan()),
+                    DispatchKind::Navy => ("⛴", crate::ui::theme::palette::neon_cyan()),
                 };
 
                 egui::Frame::NONE
-                    .fill(crate::ui::theme::panel_bg_transparent())
+                    .fill(crate::ui::theme::palette::surface_transparent())
                     .stroke(Stroke::new(
                         crate::ui::theme::stroke::EMPHASIS,
                         accent.linear_multiply(0.55),
@@ -751,7 +743,7 @@ fn draw_battle_log_tab(
                                 ui.label(
                                     RichText::new(crate::utils::format_number(troops))
                                         .size(10.0)
-                                        .color(crate::ui::theme::text_secondary()),
+                                        .color(crate::ui::theme::palette::text_muted()),
                                 );
                             });
                             ui.with_layout(
@@ -772,7 +764,7 @@ fn draw_battle_log_tab(
                                                         .custom_fill(accent.linear_multiply(0.25))
                                                         .stroke(Stroke::new(
                                                             crate::ui::theme::stroke::HAIRLINE,
-                                                            crate::ui::theme::accent_danger_border(),
+                                                            crate::ui::theme::palette::danger_border(),
                                                         ))
                                                         .min_size(vec2(28.0, 28.0))
                                                         .text_size(10.0);
@@ -800,7 +792,7 @@ fn draw_battle_log_tab(
                                                 if let Some(aid) = attack_id {
                                                     let cancel_btn = crate::widgets::ThemeButton::new("X")
                                                         .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                                        .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                        .custom_fill(crate::ui::theme::palette::button_inactive())
                                                         .min_size(vec2(28.0, 28.0))
                                                         .text_size(10.0);
                                                     if ui.add(cancel_btn).clicked()
@@ -817,7 +809,7 @@ fn draw_battle_log_tab(
                                                 if let Some(fid) = fleet_id {
                                                     let cancel_btn = crate::widgets::ThemeButton::new("X")
                                                         .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                                        .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                        .custom_fill(crate::ui::theme::palette::button_inactive())
                                                         .min_size(vec2(28.0, 28.0))
                                                         .text_size(10.0);
                                                     if ui.add(cancel_btn).clicked()
@@ -926,9 +918,9 @@ pub fn draw(
 
             let border_color =
                 if state.selected_building_kind.is_some() || state.selected_nuke_kind.is_some() {
-                    crate::ui::theme::accent_solo_cyan()
+                    crate::ui::theme::palette::neon_cyan()
                 } else {
-                    crate::ui::theme::nickname_field_border().linear_multiply(0.4)
+                    crate::ui::theme::palette::field_border().linear_multiply(0.4)
                 };
 
             let content_margin = if portrait_dock || compact {
@@ -948,7 +940,7 @@ pub fn draw(
             };
 
             egui::Frame::NONE
-                .fill(crate::ui::theme::hud_content_fill())
+                .fill(crate::ui::theme::palette::field_bg())
                 .stroke(egui::Stroke::new(
                     crate::ui::theme::stroke::HAIRLINE,
                     border_color,
@@ -1163,8 +1155,8 @@ pub fn draw(
                 ui.set_max_width(300.0);
                 ui.vertical(|ui| {
                     let frame_res = egui::Frame::menu(&ui.ctx().global_style())
-                        .fill(crate::ui::theme::panel_bg())
-                        .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress)))
+                        .fill(crate::ui::theme::palette::surface())
+                        .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan().linear_multiply(inbox_progress)))
                         .corner_radius(12)
                         .inner_margin(egui::Margin::symmetric(10, 8))
                         .show(ui, |ui| {
@@ -1177,7 +1169,7 @@ pub fn draw(
                                     ui,
                                     &sow_i18n::get(lang).hud.inbox_title,
                                     egui::FontId::proportional(12.0),
-                                    crate::ui::theme::accent_solo_cyan().linear_multiply(inbox_progress),
+                                    crate::ui::theme::palette::neon_cyan().linear_multiply(inbox_progress),
                                 );
                                 ui.add_space(4.0);
 
@@ -1189,7 +1181,7 @@ pub fn draw(
                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.reject_all)
                                                 .min_size(egui::vec2(w, 24.0))
                                                 .text_size(10.0)
-                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                .custom_fill(crate::ui::theme::palette::button_inactive())
                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                         ).clicked() {
                                             for &req in &requests {
@@ -1201,7 +1193,7 @@ pub fn draw(
                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.accept_all)
                                                 .min_size(egui::vec2(w, 24.0))
                                                 .text_size(10.0)
-                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                .custom_fill(crate::ui::theme::palette::button_inactive())
                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                         ).clicked() {
                                             for &req in &requests {
@@ -1251,8 +1243,8 @@ pub fn draw(
                                         }
 
                                         egui::Frame::NONE
-                                            .fill(crate::ui::theme::nickname_field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
-                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
+                                            .fill(crate::ui::theme::palette::field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
+                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::palette::field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
                                             .corner_radius(6)
                                             .inner_margin(egui::Margin::symmetric(8, 6))
                                             .show(ui, |ui| {
@@ -1300,7 +1292,7 @@ pub fn draw(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
@@ -1310,7 +1302,7 @@ pub fn draw(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
@@ -1349,8 +1341,8 @@ pub fn draw(
                                         }
 
                                         egui::Frame::NONE
-                                            .fill(crate::ui::theme::nickname_field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
-                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
+                                            .fill(crate::ui::theme::palette::field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
+                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::palette::field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
                                             .corner_radius(6)
                                             .inner_margin(egui::Margin::symmetric(8, 6))
                                             .show(ui, |ui| {
@@ -1401,7 +1393,7 @@ pub fn draw(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptResourceRequest { target_player: requester.id });
@@ -1411,7 +1403,7 @@ pub fn draw(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::menu_secondary_button())
+                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::RejectResourceRequest { target_player: requester.id });
@@ -1635,7 +1627,7 @@ pub fn draw(
 
         area.show(ui.ctx(), |ui| {
             let frame_res = egui::Frame::window(&ui.ctx().global_style())
-                .fill(crate::ui::theme::panel_bg().linear_multiply(emoji_progress))
+                .fill(crate::ui::theme::palette::surface().linear_multiply(emoji_progress))
                 .stroke(egui::Stroke::new(1.8_f32 * anim_scale, border_glow))
                 .shadow(egui::Shadow {
                     blur: if compact { 12 } else { 16 },
@@ -1695,10 +1687,10 @@ pub fn draw(
                                     };
 
                                     let bg_color = if is_hovered {
-                                        crate::ui::theme::menu_secondary_button_hover()
+                                        crate::ui::theme::palette::button_hovered()
                                             .linear_multiply((0.6 + 0.3 * hover_t) * emoji_progress)
                                     } else {
-                                        crate::ui::theme::nickname_field_bg()
+                                        crate::ui::theme::palette::field_bg()
                                             .linear_multiply(0.4 * emoji_progress)
                                     };
                                     let stroke_color =
@@ -1768,10 +1760,10 @@ pub fn draw(
                                         ui.spacing_mut().item_spacing.x = 6.0 * anim_scale;
 
                                         let text_color = if state.pin_emoji {
-                                            crate::ui::theme::accent_ranked_gold()
+                                            crate::ui::theme::palette::neon_gold()
                                                 .linear_multiply(emoji_progress)
                                         } else {
-                                            crate::ui::theme::text_secondary()
+                                            crate::ui::theme::palette::text_muted()
                                                 .linear_multiply(emoji_progress)
                                         };
 
@@ -1803,18 +1795,18 @@ pub fn draw(
                                         }
 
                                         let bg_color = if state.pin_emoji {
-                                            crate::ui::theme::accent_ranked_gold()
+                                            crate::ui::theme::palette::neon_gold()
                                                 .linear_multiply(0.2)
                                         } else {
-                                            crate::ui::theme::nickname_field_bg()
+                                            crate::ui::theme::palette::field_bg()
                                         };
 
                                         let stroke_color = if state.pin_emoji {
-                                            crate::ui::theme::accent_ranked_gold()
+                                            crate::ui::theme::palette::neon_gold()
                                         } else if is_hovered {
-                                            crate::ui::theme::accent_solo_cyan()
+                                            crate::ui::theme::palette::neon_cyan()
                                         } else {
-                                            crate::ui::theme::nickname_field_border()
+                                            crate::ui::theme::palette::field_border()
                                         };
 
                                         ui.painter().rect(
@@ -1831,7 +1823,7 @@ pub fn draw(
                                                 egui::Align2::CENTER_CENTER,
                                                 "✓",
                                                 egui::FontId::proportional(22.0),
-                                                crate::ui::theme::accent_ranked_gold(),
+                                                crate::ui::theme::palette::neon_gold(),
                                             );
                                         }
                                     });
@@ -2026,10 +2018,10 @@ fn draw_betrayal_ally_card(
     let avatar_size = if compact { 52.0 } else { 64.0 };
 
     egui::Frame::new()
-        .fill(crate::ui::theme::nickname_field_bg().linear_multiply(alpha))
+        .fill(crate::ui::theme::palette::field_bg().linear_multiply(alpha))
         .stroke(Stroke::new(
             1.0_f32,
-            crate::ui::theme::nickname_field_border().linear_multiply(alpha),
+            crate::ui::theme::palette::field_border().linear_multiply(alpha),
         ))
         .corner_radius(8)
         .inner_margin(if compact {
@@ -2051,7 +2043,7 @@ fn draw_betrayal_ally_card(
                 ui.label(
                     RichText::new(subtitle)
                         .size(if compact { 12.0 } else { 13.0 })
-                        .color(crate::ui::theme::accent_ranked_gold().linear_multiply(alpha)),
+                        .color(crate::ui::theme::palette::neon_gold().linear_multiply(alpha)),
                 );
             });
         });
@@ -2080,16 +2072,16 @@ fn draw_troop_bar(
     // The orange bar (dark green visually) is the gap between the actual troops and the animated catchup
     let orange_pct_f32 = (catchup_pct - green_pct).max(0.0);
 
-    let bg_color = crate::ui::theme::nickname_field_bg();
-    let green_color = crate::ui::theme::accent_solo_cyan_hover();
-    let orange_color = crate::ui::theme::accent_solo_cyan();
+    let bg_color = crate::ui::theme::palette::field_bg();
+    let green_color = crate::ui::theme::palette::neon_cyan_hover();
+    let orange_color = crate::ui::theme::palette::neon_cyan();
 
     // Draw background
     ui.painter().rect(
         rect,
         0,
         bg_color,
-        Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()),
+        Stroke::new(1.0_f32, crate::ui::theme::palette::field_border()),
         egui::StrokeKind::Inside,
     );
 
@@ -2114,7 +2106,7 @@ fn draw_troop_bar(
     let shadow = Color32::BLACK;
     if compact {
         let troop_text = crate::utils::format_number(troops);
-        crate::ui::theme::outlined_text(
+        crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(rect.left() + 6.0, rect.center().y),
             Align2::LEFT_CENTER,
@@ -2124,7 +2116,7 @@ fn draw_troop_bar(
             shadow,
         );
         let max_text = crate::utils::format_number(max_troops);
-        crate::ui::theme::outlined_text(
+        crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(rect.right() - 6.0, rect.center().y),
             Align2::RIGHT_CENTER,
@@ -2134,9 +2126,9 @@ fn draw_troop_bar(
             shadow,
         );
         let rate_color = if is_increasing {
-            crate::ui::theme::accent_solo_cyan_hover()
+            crate::ui::theme::palette::neon_cyan_hover()
         } else {
-            crate::ui::theme::accent_danger()
+            crate::ui::theme::palette::danger()
         };
         let rate_text = format!("+{}/s", crate::utils::format_number(troop_rate));
 
@@ -2159,7 +2151,7 @@ fn draw_troop_bar(
         );
         start_x += icon_size + 4.0;
 
-        crate::ui::theme::outlined_text(
+        crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(start_x, rect.center().y),
             Align2::LEFT_CENTER,
@@ -2184,7 +2176,7 @@ fn draw_troop_bar(
         let total_w = galley.rect.width() + 4.0 + icon_size;
         let mut start_x = rect.center().x - total_w / 2.0;
 
-        crate::ui::theme::outlined_text(
+        crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(start_x, rect.center().y),
             Align2::LEFT_CENTER,
@@ -2216,7 +2208,7 @@ fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool, lang: Language)
             ui,
             &sow_i18n::get(lang).hud.spawn_choose_location,
             egui::FontId::proportional(if compact { 16.0 } else { 20.0 }),
-            crate::ui::theme::accent_ranked_gold_hover(),
+            crate::ui::theme::palette::neon_gold_hover(),
         );
         ui.label(
             RichText::new(format!(
@@ -2248,9 +2240,9 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
 
         if !compact {
             let rate_color = if is_increasing {
-                crate::ui::theme::accent_solo_cyan_hover()
+                crate::ui::theme::palette::neon_cyan_hover()
             } else {
-                crate::ui::theme::accent_danger()
+                crate::ui::theme::palette::danger()
             };
             egui::Frame::NONE
                 .stroke(Stroke::new(crate::ui::theme::stroke::HAIRLINE, rate_color))
@@ -2284,7 +2276,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
         egui::Frame::NONE
             .stroke(Stroke::new(
                 crate::ui::theme::stroke::HAIRLINE,
-                crate::ui::theme::accent_ranked_gold_hover(),
+                crate::ui::theme::palette::neon_gold_hover(),
             ))
             .corner_radius(crate::ui::theme::radius::sm())
             .inner_margin(egui::Margin::symmetric(
@@ -2296,7 +2288,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                     ui,
                     &format!("🪙 {}", crate::utils::format_number(state.gold)),
                     egui::FontId::proportional(if compact { 13.0 } else { 14.0 }),
-                    crate::ui::theme::accent_ranked_gold_hover(),
+                    crate::ui::theme::palette::neon_gold_hover(),
                 );
             });
     });
@@ -2369,7 +2361,7 @@ fn draw_attack_ratio_column(ui: &mut egui::Ui, state: &HudState, col_h: f32) -> 
                     ui,
                     &format!("{:.0}%", state.attack_ratio * 100.0),
                     egui::FontId::proportional(11.0),
-                    crate::ui::theme::accent_solo_cyan_hover(),
+                    crate::ui::theme::palette::neon_cyan_hover(),
                 );
 
                 crate::ui::theme::outlined_label(
@@ -2662,12 +2654,12 @@ fn draw_betrayal_overlay(
         vec2(0.0, if compact { y_offset } else { -20.0 + y_offset }),
     );
 
-    let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
+    let border_color = crate::ui::theme::palette::danger().linear_multiply(alpha);
 
     window
         .frame(
             egui::Frame::window(&ctx.global_style())
-                .fill(crate::ui::theme::panel_bg().linear_multiply(alpha))
+                .fill(crate::ui::theme::palette::surface().linear_multiply(alpha))
                 .stroke(egui::Stroke::new(2.0f32 * anim.scale, border_color))
                 .inner_margin(if compact { 16.0 } else { 24.0 })
                 .corner_radius(12),
@@ -2710,7 +2702,7 @@ fn draw_betrayal_overlay(
                     RichText::new("Are you sure?")
                         .size(if compact { 15.0 } else { 18.0 })
                         .strong()
-                        .color(crate::ui::theme::accent_ranked_gold().linear_multiply(alpha)),
+                        .color(crate::ui::theme::palette::neon_gold().linear_multiply(alpha)),
                 );
 
                 ui.add_space(if compact { 32.0 } else { 24.0 });
@@ -2738,7 +2730,7 @@ fn draw_betrayal_overlay(
                             crate::widgets::ThemeButton::new(&strings.betrayal_keep)
                                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                 .custom_fill(
-                                    crate::ui::theme::menu_secondary_button()
+                                    crate::ui::theme::palette::button_inactive()
                                         .linear_multiply(alpha),
                                 )
                                 .custom_text_color(Color32::WHITE.linear_multiply(alpha))
@@ -2755,7 +2747,7 @@ fn draw_betrayal_overlay(
                             crate::widgets::ThemeButton::new(&strings.betrayal_yes)
                                 .style(crate::widgets::ThemeButtonStyle::Danger)
                                 .custom_fill(
-                                    crate::ui::theme::accent_danger().linear_multiply(alpha),
+                                    crate::ui::theme::palette::danger().linear_multiply(alpha),
                                 )
                                 .custom_text_color(Color32::WHITE.linear_multiply(alpha))
                                 .min_size(vec2(right_btn_w, btn_h))
@@ -2991,7 +2983,7 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
 
     let alpha = progress;
     let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
-    let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
+    let border_color = crate::ui::theme::palette::danger().linear_multiply(alpha);
     let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
 
     let target_y = 80.0 + state.safe_area_top;
@@ -3080,7 +3072,7 @@ fn draw_info_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
 
     let alpha = progress;
     let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
-    let border_color = crate::ui::theme::accent_solo_cyan().linear_multiply(alpha);
+    let border_color = crate::ui::theme::palette::neon_cyan().linear_multiply(alpha);
     let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
 
     let target_y = 80.0 + state.safe_area_top;
@@ -3185,7 +3177,7 @@ fn draw_transfer_panel(
             state.gold,
             state.troops,
             "Your Balance",
-            crate::ui::theme::accent_solo_cyan(),
+            crate::ui::theme::palette::neon_cyan(),
         )
     } else {
         let ally_gold = target_player.map(|p| p.gold).unwrap_or(0.0);
@@ -3194,7 +3186,7 @@ fn draw_transfer_panel(
             ally_gold,
             ally_troops,
             "Ally Balance",
-            crate::ui::theme::accent_ranked_gold(),
+            crate::ui::theme::palette::neon_gold(),
         )
     };
 
@@ -3244,7 +3236,7 @@ fn draw_transfer_panel(
             ui.set_width(modal_w);
 
             let frame = crate::ui::theme::standard_panel_frame(false)
-                .fill(crate::ui::theme::panel_bg().linear_multiply(alpha));
+                .fill(crate::ui::theme::palette::surface().linear_multiply(alpha));
 
             let frame_res = frame.show(ui, |ui| {
                 ui.vertical(|ui| {
@@ -3262,7 +3254,7 @@ fn draw_transfer_panel(
                         ui.label(
                             RichText::new(format!("with {}", target_name))
                                 .size(14.0)
-                                .color(crate::ui::theme::text_secondary().linear_multiply(alpha))
+                                .color(crate::ui::theme::palette::text_muted().linear_multiply(alpha))
                                 .strong(),
                         );
                     });
@@ -3283,14 +3275,14 @@ fn draw_transfer_panel(
                                 crate::widgets::ThemeButtonStyle::Tertiary
                             })
                             .custom_fill(if is_send {
-                                crate::ui::theme::accent_solo_cyan().linear_multiply(0.4)
+                                crate::ui::theme::palette::neon_cyan().linear_multiply(0.4)
                             } else {
-                                crate::ui::theme::menu_secondary_button()
+                                crate::ui::theme::palette::button_inactive()
                             })
                             .stroke(egui::Stroke::new(
                                 1.5_f32,
                                 if is_send {
-                                    crate::ui::theme::accent_solo_cyan()
+                                    crate::ui::theme::palette::neon_cyan()
                                 } else {
                                     Color32::TRANSPARENT
                                 },
@@ -3314,14 +3306,14 @@ fn draw_transfer_panel(
                                 crate::widgets::ThemeButtonStyle::Tertiary
                             })
                             .custom_fill(if is_req {
-                                crate::ui::theme::accent_ranked_gold().linear_multiply(0.4)
+                                crate::ui::theme::palette::neon_gold().linear_multiply(0.4)
                             } else {
-                                crate::ui::theme::menu_secondary_button()
+                                crate::ui::theme::palette::button_inactive()
                             })
                             .stroke(egui::Stroke::new(
                                 1.5_f32,
                                 if is_req {
-                                    crate::ui::theme::accent_ranked_gold()
+                                    crate::ui::theme::palette::neon_gold()
                                 } else {
                                     Color32::TRANSPARENT
                                 },
@@ -3356,7 +3348,7 @@ fn draw_transfer_panel(
                                             RichText::new(crate::utils::format_number(
                                                 state.ask_gold,
                                             ))
-                                            .color(crate::ui::theme::accent_ranked_gold())
+                                            .color(crate::ui::theme::palette::neon_gold())
                                             .strong()
                                             .size(15.0),
                                         );
@@ -3371,7 +3363,7 @@ fn draw_transfer_panel(
                                 ui.label(
                                     RichText::new(balance_label)
                                         .size(11.0)
-                                        .color(crate::ui::theme::text_secondary()),
+                                        .color(crate::ui::theme::palette::text_muted()),
                                 );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -3433,7 +3425,7 @@ fn draw_transfer_panel(
                                             RichText::new(crate::utils::format_number(
                                                 state.ask_troops,
                                             ))
-                                            .color(crate::ui::theme::accent_solo_cyan())
+                                            .color(crate::ui::theme::palette::neon_cyan())
                                             .strong()
                                             .size(15.0),
                                         );
@@ -3448,7 +3440,7 @@ fn draw_transfer_panel(
                                 ui.label(
                                     RichText::new(balance_label)
                                         .size(11.0)
-                                        .color(crate::ui::theme::text_secondary()),
+                                        .color(crate::ui::theme::palette::text_muted()),
                                 );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -3497,7 +3489,7 @@ fn draw_transfer_panel(
                         ui.label(
                             RichText::new(&strings.transfer_confirm_body)
                                 .size(12.0)
-                                .color(crate::ui::theme::accent_danger()),
+                                .color(crate::ui::theme::palette::danger()),
                         );
                         ui.add_space(8.0);
                     }
@@ -3510,7 +3502,7 @@ fn draw_transfer_panel(
 
                         let cancel_btn = crate::widgets::ThemeButton::new(&strings.transfer_cancel)
                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                            .custom_fill(crate::ui::theme::menu_secondary_button())
+                            .custom_fill(crate::ui::theme::palette::button_inactive())
                             .min_size(vec2(btn_w, 36.0))
                             .text_size(14.0);
 
@@ -3537,7 +3529,7 @@ fn draw_transfer_panel(
                             .custom_fill(if is_valid {
                                 accent_color
                             } else {
-                                crate::ui::theme::menu_secondary_button()
+                                crate::ui::theme::palette::button_inactive()
                             })
                             .min_size(vec2(btn_w, 36.0))
                             .text_size(14.0);

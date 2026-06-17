@@ -6,10 +6,6 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 sow-core = { workspace = true }
-sow-render = { workspace = true }
-sow-net = { workspace = true }
-blade-egui = { workspace = true }
-blade-graphics = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }
 web-time = { workspace = true }

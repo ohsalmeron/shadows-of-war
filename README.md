@@ -1,247 +1,113 @@
 # Shadows of War
 
-**[shadowsofwar.io](https://shadowsofwar.io)** — Free, open-source MMORTS: world maps, civilizations, alliances, expansion, and economy. Play on web or native desktop and mobile.
+**[shadowsofwar.io](https://shadowsofwar.io)** — A free, open-source MMORTS featuring world maps, civilizations, alliances, expansion, and economy. 
 
-Rust workspace: shared game logic for web (WASM) and native clients.
+*Shadows of War* is built entirely in **Rust** from the ground up. It shares a single deterministic game engine across Web (WASM), native Desktop (Windows/macOS/Linux), and Mobile (iOS/Android) clients, providing a seamless and highly scalable multiplayer experience.
 
-**License:** [AGPL-3.0-or-later](LICENSE)
+---
 
-## Features
+## 🚀 Game Features & Mechanics
 
-- **MMORTS gameplay:** Territory control, structures, diplomacy, and large-scale battles
-- **Civilizations & leaders:** Nations, tribes, and leader identity on world maps
-- **Alliances:** Coordinate with other players for defense and expansion
-- **Multiplayer & single-player:** Online matches and offline play
-- **Cross-platform:** Web, native desktop, iOS, Android
-- **Map tools:** In-game editor, real-world regions, import pipeline
+- **Massive Scale MMORTS:** Expand your territory, construct structures, and engage in large-scale strategic battles on a global map.
+- **Deep Diplomacy:** Forge alliances to conquer neighbors, negotiate trade, or commit betrayal when the time is right.
+- **Civilizations & Identity:** Choose from unique Nations and Tribes. Spawn on world maps derived from real-world OpenStreetMap (OSM) data.
+- **Multiplayer & Skirmish:** Play in Ranked Online Matchmaking, Host Private Lobbies with friends, or play offline against AI bots.
+- **Cross-Platform Play:** The game runs identically in the browser and natively.
 
-## Structure
+---
 
-| Crate / path | Role |
-|--------------|------|
-| `sow-core` | Deterministic simulation (WASM-safe) |
-| `sow-net` | Wire protocol (`bincode`, message envelopes) |
-| `sow-server` | Matchmaking / lobby server |
-| `sow-relay` | Relay for games |
-| `sow-render` | GPU map pipeline (`blade-graphics`, WGSL) |
-| `sow-ui` | Menus and HUD (`egui`) |
-| `sow-i18n` | Localized UI strings (`strings/{en,es}/`) |
-| `sow-client` | Game executable (native + WASM) |
-| `sow-map` | Map editor + generation |
-| `sow-tools` | CLI: OSM bbox, heightmap import |
-| `sow-dist` | WASM `dist/` build + deploy; Debian 13 VPS templates in `sow-dist/deploy/`; Android/iOS shells in `sow-dist/deploy/` |
-| `sow-web/site/` | Marketing site (static HTML: landing, privacy, terms) |
-| `sow-web/shell/` | Game shell (WASM loader, index template, portal SDK) |
-| `assets/` | Art sources (`static/`, online `maps/`, published `cdn/`) |
-| `docs/leaders/` | Leader AI dossier (12 regions, chronological); see `docs/leaders/README.md` |
+## 🛠 Technology Stack
 
-## Web hosts
+Shadows of War is a "full-stack" Rust video game, designed for absolute performance, determinism, and zero-allocation pipelines where possible.
 
-| Host | Role |
-|------|------|
-| `shadowsofwar.io` | Marketing site + shared CDN (`/assets/cdn/`). **Play in browser:** [shadowsofwar.io](https://shadowsofwar.io/) |
-| `play.shadowsofwar.io` | Full-screen game shell (share link) |
-| `ptr.shadowsofwar.io` | Staging game shell |
+### Graphics & UI
+*   **[blade-graphics](https://github.com/kvark/blade):** The rendering pipeline is built on `blade`, a highly optimized, low-overhead WebGPU-like abstraction. It allows us to render thousands of map tiles and units blazingly fast.
+*   **[egui](https://github.com/emilk/egui):** Used for a responsive, immediate-mode interface overlay.
+*   **[winit](https://github.com/rust-windowing/winit):** Handles robust, cross-platform windowing and input events.
 
-## `./sow`
+### Simulation & Networking
+*   **Deterministic Engine (`sow-core`):** The game logic compiles to `wasm32-unknown-unknown` and uses strict integer math and custom RNG to guarantee lockstep synchronization across all clients.
+*   **Relay Server (`sow-relay`):** A lightweight `tokio-tungstenite` WebSocket relay that broadcasts player intents without having to run heavy server-side physics.
+*   **Backend (`sow-database`):** An `axum` REST API backed by **Valkey/Redis** for player profiles, matchmaking, and leaderboards.
 
-Requires host **Rust**, **gcloud** (OS Login + IAP tunnel), and **tar** on your PATH. `./sow` builds a cached release binary under `dist/.cargo-target/`.
+### Procedural Audio (`sow-audio`)
+Instead of shipping massive `.wav` files, the game features a custom **harmonic procedural synthesizer**.
+*   NES-style sound effects (pulse, triangle, sawtooth) are generated mathematically on the fly.
+*   **Harmonic System:** Every note played harmonizes perfectly. The musical key is derived from the match seed, ensuring combat and UI sounds blend into a cohesive soundscape.
+*   **Spatialization:** Constant-power stereo panning and zoom-based attenuation handled via a background `rodio` worker.
 
-### Setup
+---
 
-**`./sow local`** needs no `.env` — it serves WASM locally and talks to public prod wss/CDN at runtime.
+## 🏗 Repository Structure
 
-Remote deploy (`./sow p`, `./sow ptr`, `./sow cg`, `./sow infra`) uses **`gcloud auth login`** + OS Login over **IAP** (`--tunnel-through-iap`; credentials in `~/.config/gcloud/`, never in the repo). File ship uses **tar over gcloud ssh** — no `rsync`. Target GCP project comes from `SOW_GCP_PROJECT` or `gcloud config get-value project`.
-
-```bash
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID   # or set SOW_GCP_PROJECT in sow-dist/.env
-# Optional: cp sow-dist/.env.example sow-dist/.env  # forks / infra certbot email
-```
-
-```bash
-./sow infra --confirm-destroy   # one-time: recreate Debian 13 VPS on GCP (nginx, TLS, valkey, ufw)
-./sow ptr -v                    # staging: PTR shell + PTR server + cdn/
-./sow prod -v                   # prod: play + marketing + prod server + cdn/
-./sow p -v                      # same as prod
-./sow cg                        # CrazyGames dist + cdn/
-./sow local                     # local WASM QA → prod wss/CDN (no .env)
-./sow l                         # same as local
-```
-
-Native client (no local server): `cargo run -p sow-client` → production WebSocket endpoint.
-
-| Env var | Purpose |
-|---------|---------|
-| `SOW_GCP_PROJECT` | GCP project ID (optional if `gcloud config set project` is set) |
-| `SOW_GCP_ZONE` / `SOW_GCP_INSTANCE` | VM zone and name (defaults in code) |
-| `SOW_SITE_ORIGIN` / `SOW_PLAY_ORIGIN` / `SOW_PTR_ORIGIN` | Public HTTPS origins (defaults: shadowsofwar.io) |
-| `SOW_CERTBOT_EMAIL` | TLS contact — required when deploy pushes nginx templates (`./sow p` / `ptr` if `sow-dist/deploy/` changed); always required for `./sow infra` |
-
-**Not in `.env`:** `SOW_DB_SECRET`, `CRAZYGAMES_API_KEY` — set on the VPS only.
-
-**IAP (one-time):** enable IAP API; grant deployer `roles/iap.tunnelResourceAccessor`; restrict public VPC `:22` so SSH is IAP-only.
-
-**SSL recovery** (if HTTPS dies after a bad nginx push): `gcloud compute ssh sow-server --tunnel-through-iap -- 'sudo certbot --nginx …'` then reload nginx.
-
-Full optional list: [`sow-dist/.env.example`](sow-dist/.env.example).
-
-## Commands
-
-| Command | Output | VPS content | Server / infra |
-|---------|--------|-------------|----------------|
-| `infra --confirm-destroy` | — | — | Recreate Debian 13 VM on GCP; nginx, TLS, valkey, systemd (reproducible from `sow-dist/deploy/`) |
-| `cg` / `crazygames` | `dist/crazygames/` | CDN sync only | No |
-| `p` / `prod` | `dist/play/` + marketing | play + shadowsofwar.io | Syncs server binaries + restarts `sow-server` when crates or version changed |
-| `ptr` | `dist/ptr/` | ptr.shadowsofwar.io | Syncs server binaries + restarts `sow-server-ptr` only — never prod |
-| `l` / `local` | `dist/site-dev/` | localhost only | No |
-
-```bash
-./sow cg -v
-./sow prod -v
-./sow ptr -v
-./sow local --build-only
-```
-
-**`./sow p`** / **`./sow ptr`** / **`./sow cg`** run a four-phase pipeline:
-
-1. **Build** (local, parallel) — WASM cargo build, server GNU build (prod/ptr only, skipped when crate inputs unchanged), CDN prep
-2. **Package** — bindgen/minify/brotli into `dist/` (skipped when WASM + shell inputs unchanged)
-3. **Ship** (remote, parallel) — CDN, play/ptr shell, marketing (prod), maps, and server binaries sync together; then one `systemctl restart` when needed
-4. **Verify** — HTTP checks for CDN, play/marketing/sitemap, maps API, WebSocket
-
-Use **`./sow infra --confirm-destroy`** only for a fresh VPS or changes under `sow-dist/deploy/` (nginx, TLS, valkey, systemd). Routine releases use **`./sow p`** / **`./sow ptr`** only.
-
-Details: [sow-web/README.md](sow-web/README.md).
-
-### Asset pipelines
-
-| Pipeline | Source | Destination |
-|----------|--------|-------------|
-| CDN (parallel on cg/prod/ptr) | `assets/cdn/` only | `shadowsofwar.io/html/assets/cdn/` |
-| WASM dist | `sow-web/shell` + compiled client | `dist/play`, `dist/ptr`, or `dist/crazygames` |
-| Static in dist | `assets/static/` (fonts, icons — **not maps**) | `dist/crazygames/assets/static/` only |
-| Maps (online) | `assets/maps/` | VPS maps dir → `/maps/` HTTP API (prod/ptr sync) |
-| Maps (offline) | `assets/static/maps/world/` only | Bundled inside client WASM |
-| Server binaries | `cargo build --release` (`x86_64-unknown-linux-gnu`, glibc) | tar/scp to `$HOME/shadowsofwar/` via gcloud IAP; restart systemd unit |
-| Marketing HTML | `sow-web/site/` | `shadowsofwar.io/html/` (via `sow prod`) |
-
-Boot UI and leader portraits load from CDN at runtime for play/ptr shells (shell-only dist).
-
-### What `sow prod` updates
-
-| Artifact | Picked up? | Notes |
-|----------|------------|-------|
-| Game WASM shell | Yes → play.shadowsofwar.io | — |
-| Marketing site | Yes → shadowsofwar.io | — |
-| CDN (`assets/cdn/`) | Yes (parallel build) | — |
-| Map files | Yes → prod maps dir | — |
-| `sow-server` / `sow-relay` | Yes when server crates changed | sync binaries + orchestrator restart; relays keep running (`KillMode=process`) |
-
-`sow ptr` updates PTR shell + PTR server only — never restarts prod.
-
-## CrazyGames QA & Testing Guide
-
-This section outlines how to verify the platform features required for CrazyGames QA approval:
-
-### 1. Private Lobbies & Friend Invites (CrazyGames SDK Room Module)
-* **Hosting**: Click the **HOST PRIVATE GAME** button in the main menu. This registers you as a host and places you in a private queue.
-* **Inviting**: While waiting in the lobby, click the **COPY INVITE LINK** button. This calls the CrazyGames `inviteLink` SDK method and copies a direct deep-link to your clipboard.
-* **Joining**: Open the copied link in another tab or browser. The second client will automatically parse the invite payload on boot, bypass the menu, and directly join your private lobby.
-
-### 2. Instant Multiplayer Intent
-* **Triggering**: During a cold boot with CrazyGames' `isInstantMultiplayer` option enabled, the game shell triggers the instant multiplayer path.
-* **Handoff**: The client reads the `isInstantMultiplayer` flag and immediately sends `Join { host_private: true }` on connect, bypassing the main menu completely and presenting the waiting screen.
-
-### 3. Happytime Victory Celebrations
-* **Victory Event**: On winning a match, the endgame overlay triggers the `game.happytime()` SDK helper.
-* **Verification**: Verify that the victory screen displays without errors, and that the SDK's happytime hook was executed successfully.
-
-### 4. User Accounts & Progress Linking (Unified DB)
-* **Auth Prompt**: Local guests can click the **SIGN IN** button in the user profile header on the main menu. This calls `window.CrazyGames.SDK.user.showAuthPrompt()`.
-* **Syncing**: Once authenticated, the profile is updated with the platform avatar/username, and the client communicates with the cloud database `/profile/link` to bind progress data.
-* **Auth State Updates**: The SDK's `addAuthListener` automatically listens for authentication changes and updates the client credentials and profile state dynamically.
-
-### 5. Preview Checklist — Grey User SDK Items
-The Developer Portal preview marks client SDK calls in the browser. Authoritative scores are submitted separately from the VPS.
-
-| Checklist item | How to trigger green |
+| Crate / Path | Description |
 |---|---|
-| Show Auth Prompt | Open Preview, click **SIGN IN** on the main menu profile header |
-| Show Account Link Prompt | Play one offline skirmish as guest, then sign in via **SIGN IN** |
-| Submit leaderboard score | Sign in, finish one online match, return to menu (profile refetch calls `submitScore`); check Preview **Logs** tab for `submitScore` |
+| `sow-core` | The deterministic simulation brain. Zero platform dependencies. |
+| `sow-client` | The game executable. Glues the engine, renderer, and netcode together. |
+| `sow-render` | The `blade` WGSL GPU rendering pipeline. |
+| `sow-ui` | The `egui` menus, HUD, and overlays. |
+| `sow-net` | The `bincode` serialized wire protocol and message envelopes. |
+| `sow-relay` | The WebSocket intent broadcaster. |
+| `sow-server` | Lobbies and matchmaking orchestration. |
+| `sow-database` | Player data, profiles, and API microservices. |
+| `sow-tools` | Developer CLI for map generation from OSM bounding boxes and asset packing. |
+| `sow-dist` | Deployment scripts, Docker/Debian VPS templates, and the `./sow` CLI tool. |
 
-**Operator setup (two keys from Developer Portal → Leaderboard):**
-- **Encryption Key** → `SOW_CG_LEADERBOARD_ENCRYPTION_KEY` in [`sow-web/shell/sdk/store_portals.js`](sow-web/shell/sdk/store_portals.js) (client SDK; QA checklist + widgets)
-- **API Key** → `CRAZYGAMES_API_KEY` on the VPS via [`sow-database.service`](sow-dist/deploy/systemd/sow-database.service) (authoritative server submits after match finalize)
+---
 
-Preview client `submitScore` calls are logged but not saved to the live leaderboard; production ranks use the server API path.
+## 🎮 Developer Guide & Building
 
-## Sound FX Generation & Spatial Audio Pipeline
+The project uses a custom deployment script `./sow` to handle building, packing WASM, and deploying to Google Cloud.
 
-We use a high-performance, low-latency audio pipeline designed for zero-allocation spatial audio mixing and robust device resource management on native clients.
+### Playing / Testing Locally
 
-### 1. Generating Retro Sound Effects (`sow-tools/sound_synth.py`)
-
-To keep the repository lightweight and avoid large binary blobs, sound effects are programmatically synthesized using a standalone NES-style wave generator. It outputs 16-bit 22050Hz Mono PCM WAV files.
-
-Supported presets:
-*   `death`: 8-bit retro pulse wave arpeggio (C6 -> G5 -> E5 -> C5)
-*   `upgrade`: Fast, bright ascending square wave sweep
-*   `click`: Short, sharp high-frequency UI pop
-*   `conquer`: A triumphant multi-note pulse fanfare
-*   `nuke`: Low-end rumble with aggressive frequency-modulated decay
-
-**Example usage:**
+**1. Run the Web (WASM) version locally:**
+This will build the WASM payload, serve it locally, and automatically connect to the public production WebSockets (no `.env` required).
 ```bash
-python3 sow-tools/sound_synth.py --preset death -o assets/static/ui/death.wav
+./sow local
+# or its alias:
+./sow l
 ```
 
-### 2. Harmonic Procedural Synthesis (`sow-audio`)
+**2. Run the Native Desktop client:**
+The native client directly connects to the production endpoints by default.
+```bash
+cargo run --release -p sow-client
+```
 
-All gameplay sounds share a match-level **MusicSession** keyed by `set_music_context(seed, anchor_wx, anchor_wy)`. The session root (A minor pentatonic degree + octave) is derived from the match seed XOR anchor tile, so every note in a match harmonizes.
+### Running on Mobile (iOS & Android)
 
-Note selection uses game context:
-- Tile coordinates + phrase step pick the scale degree (with voice-leading toward the last note).
-- Combat kind selects interval pattern (1–3 note plucks); troops scale amplitude.
-- Death uses descending pentatonic phrases in a lower octave (same key, softer timbre).
-- Per-event RNG jitters duty, decay, and duration within pleasant bounds.
+Because the game logic and renderer are built on generic, standard Rust abstractions (`winit` + `blade`), the mobile deployment process relies on standard native toolchains.
 
-**Priority tiers** (overlap control):
-- **Background** (0.30 gain): tile capture / combat plucks — dropped when 6 voices active, ducking when stack is busy.
-- **Normal** (0.70 gain): deploy, building placement.
-- **Foreground** (1.0 gain): death, nuke — always plays.
+**iOS Requirements & Setup:**
+*   **Requirements:** A macOS machine, Xcode installed, and a valid Apple Developer Account (to sign the application).
+*   **Building:** 
+    1. Add the iOS targets via rustup: `rustup target add aarch64-apple-ios x86_64-apple-ios`
+    2. Open the provided Xcode wrapper project located in `sow-dist/deploy/ios/`. 
+    3. In Xcode, configure your Team/Developer License for signing, and hit **Run** to deploy the native app directly to your device or simulator.
 
-### 3. Spatialization & Audio Worker (`sow-audio`)
+**Android Requirements & Setup:**
+*   **Requirements:** Android Studio (or the standalone Android SDK/NDK) and the `cargo-apk` tool (`cargo install cargo-apk`).
+*   **Building:**
+    1. Add the Android targets via rustup: `rustup target add aarch64-linux-android armv7-linux-androideabi`
+    2. Because `winit` handles the `android-native-activity` lifecycle natively, you can build and launch the game directly via `cargo-apk`:
+    ```bash
+    cargo apk run -p sow-client
+    ```
 
-The spatial audio system processes world coordinates relative to the camera:
+### Advanced Deployments (`./sow`)
+The `./sow` script coordinates building the WASM bundles, compiling the GNU binaries for the backend, and shipping them over GCP IAP. *(Requires `gcloud auth login` and `tar`)*
 
-*   **Constant-Power Stereo Panning**: Horizontal viewport position drives left/right gain.
-*   **Distance Attenuation**: Quadratic falloff from viewport center; off-screen events culled.
-*   **Zoom Scaling**: Silent at zoom ≤ 1.5, full volume at zoom ≥ 5.0.
+*   `./sow ptr -v` : Deploys to the staging (PTR) environment.
+*   `./sow prod -v` : Deploys to production (`shadowsofwar.io`).
+*   `./sow cg` : Compiles and synchronizes the CrazyGames distribution.
+*   `./sow infra --confirm-destroy` : Completely reprovisions a fresh Debian 13 VPS with Nginx, TLS, and Valkey.
 
-All commands go through a background worker with a persistent `rodio` stream (ALSA-stable on Linux). Polyphony is tracked with estimated voice durations; WASM builds compile to no-op stubs for CrazyGames compliance.
+---
 
-**Asset generation** (`sow-tools/sound_synth.py`) remains available for WAV presets (deploy, UI); most gameplay SFX are synthesized at runtime in `sow-audio`.
+## 📜 License & Attribution
 
-## License
+Shadows of War is licensed under the [GNU Affero General Public License v3.0 or later (AGPL-3.0)](LICENSE). 
 
-Shadows of War source is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
-
-Copyright holder and third-party notices: [docs/legal/COPYRIGHT](docs/legal/COPYRIGHT) and [docs/legal/NOTICE](docs/legal/NOTICE).
-
-**Upstream:** Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront Inc. and Contributors, AGPL-3.0-or-later). See [LICENSE](LICENSE) for full terms.
-
-### Attribution policy
-
-| Surface | What to show |
-|---------|----------------|
-| In-game UI | `© Shadows of War`, AGPL line, **Based on OpenFront**, links to source and [NOTICE](docs/legal/NOTICE) (Credits modal + main menu) |
-| Marketing site (`sow-web/site/`) | Brand footer + OpenFront + AGPL + source link — no personal name |
-| Repo legal files (`docs/legal/`) | Full copyright holder name (required when conveying source) |
-
-Do not put the copyright holder’s personal name on marketing copy, social bios, or landing hero text.
-
-## Contributing
-
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+Portions of this codebase derive from [OpenFrontIO](https://github.com/openfrontio/OpenFrontIO) (© OpenFront Inc. and Contributors, AGPL-3.0-or-later). 
+Please see the [LICENSE](LICENSE), [COPYRIGHT](docs/legal/COPYRIGHT), and [NOTICE](docs/legal/NOTICE) files for full terms and third-party notices.

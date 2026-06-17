@@ -461,9 +461,7 @@ impl SowApp {
     #[cfg(target_arch = "wasm32")]
     fn finish_boot_route(&mut self) {
         self.boot_route_waiting = false;
-        hide_web_loader();
         crate::store_portals::load_stop();
-        self.web_loader_hidden = true;
         if let Some(locale_str) = crate::store_portals::get_portal_locale() {
             let detected_lang = sow_i18n::Language::from_locale(&locale_str);
             self.ui.app.settings_state.language = detected_lang;
@@ -475,13 +473,13 @@ impl SowApp {
         }
         if !self.progress.is_first_game() {
             log::info!("Portal boot: returning player → main menu");
+            hide_web_loader();
+            self.web_loader_hidden = true;
             crate::store_portals::gameplay_stop();
             self.ui.app.splash_state.done = true;
             self.ui.app.phase = ClientPhase::MainMenu;
         } else {
             log::info!("Portal boot: new player → intro skirmish");
-            // Clear instant multiplayer host intent for first-game players so it doesn't try to host
-            // or cause any interference during/after the intro tutorial.
             self.ui.app.main_menu_state.host_private_pending = false;
             self.start_portal_intro_match();
         }

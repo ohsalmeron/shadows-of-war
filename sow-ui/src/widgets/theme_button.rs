@@ -88,16 +88,16 @@ impl Widget for ThemeButton {
         } else {
             match self.style {
                 ThemeButtonStyle::Primary => {
-                    btn = btn.fill(crate::ui::theme::accent_solo_cyan());
+                    btn = btn.fill(crate::ui::theme::palette::neon_cyan());
                 }
                 ThemeButtonStyle::Secondary => {
-                    btn = btn.fill(crate::ui::theme::accent_ranked_gold());
+                    btn = btn.fill(crate::ui::theme::palette::neon_gold());
                 }
                 ThemeButtonStyle::Tertiary => {
                     btn = btn.fill(crate::ui::theme::palette::button_inactive());
                 }
                 ThemeButtonStyle::Danger => {
-                    btn = btn.fill(crate::ui::theme::accent_danger());
+                    btn = btn.fill(crate::ui::theme::palette::danger());
                 }
             }
         }

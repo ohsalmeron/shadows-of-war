@@ -498,7 +498,7 @@ impl AssetLoader {
     }
 
     pub fn leader_portrait_filename(key: LeaderPortraitKey) -> String {
-        let name_lower = key.leader.name().to_lowercase().replace(' ', "_");
+        let name_lower = Self::leader_slug(key.leader);
         let form = if key.mobile { "mobile" } else { "desktop" };
         format!("{name_lower}_{form}.webp")
     }
@@ -566,7 +566,7 @@ impl AssetLoader {
                 }
             };
 
-            let name_lower = leader.name().to_lowercase().replace(' ', "_");
+            let name_lower = Self::leader_slug(leader);
             let tex_name = if mobile {
                 format!("leader_{name_lower}_mobile")
             } else {
@@ -658,7 +658,7 @@ impl AssetLoader {
     pub fn get_assets_to_fetch(
         &mut self,
         lobbies: &[sow_core::protocol::LobbyInfo],
-    ) -> (Vec<String>, Vec<String>) {
+    ) -> Vec<String> {
         let mut maps_to_fetch = Vec::new();
 
         let mut unique_maps = HashSet::new();
@@ -670,7 +670,6 @@ impl AssetLoader {
         for map_name in &unique_maps {
             self.request_thumbnail(map_name);
         }
-        let thumbs_to_fetch = Vec::new();
 
         // Maps: only fetch if no other map is currently downloading to prevent network congestion
         if self.maps_in_flight.is_empty() {
@@ -697,7 +696,7 @@ impl AssetLoader {
             }
         }
 
-        (thumbs_to_fetch, maps_to_fetch)
+        maps_to_fetch
     }
 
     pub fn flush_except(&mut self, keep: &[String]) {
@@ -881,19 +880,7 @@ impl AssetLoader {
 
         #[cfg(all(not(target_arch = "wasm32"), target_os = "ios"))]
         {
-            let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
-                let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
-
-                if image.width() > 2048 || image.height() > 2048 {
-                    image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
-                }
-
-                let image_rgba = image.to_rgba8();
-                let size = [image_rgba.width() as _, image_rgba.height() as _];
-                let pixels = image_rgba.as_flat_samples();
-                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
-            };
+            let load_image = |name: &str, bytes: &[u8]| decode_and_upload_webp(ctx, name, bytes);
 
             self.ui_loader_empty = Some(load_image(
                 "ui_loader_empty",
@@ -941,19 +928,7 @@ impl AssetLoader {
                     })
             }
 
-            let load_image = |name: &str, bytes: &[u8]| -> TextureHandle {
-                let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
-
-                if image.width() > 2048 || image.height() > 2048 {
-                    image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
-                }
-
-                let image_rgba = image.to_rgba8();
-                let size = [image_rgba.width() as _, image_rgba.height() as _];
-                let pixels = image_rgba.as_flat_samples();
-                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
-            };
+            let load_image = |name: &str, bytes: &[u8]| decode_and_upload_webp(ctx, name, bytes);
 
             let loader_empty = read_ui_webp("loader_empty.webp");
             let loader_full = read_ui_webp("loader_full.webp");
@@ -984,7 +959,7 @@ impl AssetLoader {
                     continue;
                 };
                 if let Ok(color_image) = Self::decode_leader_portrait_bytes(&bytes) {
-                    let name_lower = leader.name().to_lowercase().replace(' ', "_");
+                    let name_lower = Self::leader_slug(leader);
                     let tex_name = if mobile {
                         format!("leader_{name_lower}_mobile")
                     } else {
@@ -1047,6 +1022,20 @@ impl AssetLoader {
             .map(|state| !state.permanent && state.next_retry_at <= now)
             .unwrap_or(true)
     }
+}
+
+fn decode_and_upload_webp(ctx: &egui::Context, name: &str, bytes: &[u8]) -> TextureHandle {
+    let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
+
+    if image.width() > 2048 || image.height() > 2048 {
+        image = image.resize(2048, 2048, image::imageops::FilterType::Triangle);
+    }
+
+    let image_rgba = image.to_rgba8();
+    let size = [image_rgba.width() as _, image_rgba.height() as _];
+    let pixels = image_rgba.as_flat_samples();
+    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+    ctx.load_texture(name, color_image, egui::TextureOptions::LINEAR)
 }
 
 #[cfg(test)]

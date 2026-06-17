@@ -61,7 +61,7 @@ pub fn draw_queue_overlay(
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let compact = super::lobby_compact_layout(ui.ctx());
+    let compact = crate::ui::theme::compact_viewport(ui.ctx());
 
     // Get lobby information
     let mut lobby_info = None;
@@ -107,7 +107,7 @@ pub fn draw_queue_overlay(
                     let timer_color = if lobby.is_counting_down || state.wait_timer_secs > 0.0 {
                         Color32::from_rgb(255, 210, 120)
                     } else {
-                        crate::ui::theme::text_secondary()
+                        crate::ui::theme::palette::text_muted()
                     };
 
                     ui.add_space(2.0);
@@ -187,7 +187,7 @@ pub fn draw_queue_overlay(
                                 ui,
                                 &strings.establishing_tactical_comm,
                                 egui::FontId::proportional(18.0),
-                                crate::ui::theme::text_secondary(),
+                                crate::ui::theme::palette::text_muted(),
                             );
                         });
                     },
@@ -220,10 +220,10 @@ fn draw_map_briefing(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     Frame::NONE
-        .fill(crate::ui::theme::nickname_field_bg())
+        .fill(crate::ui::theme::palette::field_bg())
         .stroke(Stroke::new(
             1.0_f32,
-            crate::ui::theme::nickname_field_border(),
+            crate::ui::theme::palette::field_border(),
         ))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(16.0)
@@ -239,7 +239,7 @@ fn draw_map_briefing(
                     RichText::new(&strings.tactical_briefing)
                         .size(14.0)
                         .strong()
-                        .color(crate::ui::theme::text_secondary()),
+                        .color(crate::ui::theme::palette::text_muted()),
                 );
                 ui.add_space(4.0);
 
@@ -259,17 +259,23 @@ fn draw_map_briefing(
                     .0;
 
                 if let Some(tex) = thumbnail {
-                    crate::ui::map_texture::draw_map_thumbnail(ui.painter(), tex.id(), rect, 1.0);
+                    crate::ui::map_texture::draw_map_thumbnail_uv(
+                        ui.painter(),
+                        tex.id(),
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        1.0,
+                    );
                 } else {
                     ui.painter()
                         .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
-                    crate::ui::theme::outlined_text(
+                    crate::ui::theme::paint_premium_glow_text(
                         ui.painter(),
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
                         &strings.holographic_scanning,
                         egui::FontId::proportional(14.0),
-                        crate::ui::theme::text_secondary(),
+                        crate::ui::theme::palette::text_muted(),
                         Color32::BLACK,
                     );
                 }
@@ -278,7 +284,7 @@ fn draw_map_briefing(
                 ui.painter().rect_stroke(
                     rect,
                     8.0,
-                    Stroke::new(1.5_f32, crate::ui::theme::menu_panel_border_glow()),
+                    Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan_glow()),
                     egui::StrokeKind::Inside,
                 );
 
@@ -297,14 +303,14 @@ fn draw_map_briefing(
 
                         // Mode indicator
                         let (mode_label, mode_color) = if lobby.game_mode == "FFA" {
-                            (&strings.free_for_all, crate::ui::theme::accent_solo_cyan())
+                            (&strings.free_for_all, crate::ui::theme::palette::neon_cyan())
                         } else if lobby.game_mode == "Teams" {
                             (
                                 &strings.team_tactics,
-                                crate::ui::theme::accent_ranked_gold(),
+                                crate::ui::theme::palette::neon_gold(),
                             )
                         } else {
-                            (&strings.simulation, crate::ui::theme::avatar_pink())
+                            (&strings.simulation, crate::ui::theme::palette::pink())
                         };
 
                         Frame::NONE
@@ -333,7 +339,7 @@ fn draw_map_briefing(
                         ui.label(
                             RichText::new(&strings.channel)
                                 .size(11.0)
-                                .color(crate::ui::theme::text_secondary()),
+                                .color(crate::ui::theme::palette::text_muted()),
                         );
                         ui.label(
                             RichText::new(format!("#{:06X}", lobby.id % 0xFFFFFF))
@@ -345,7 +351,7 @@ fn draw_map_briefing(
                         ui.label(
                             RichText::new(&strings.slots)
                                 .size(11.0)
-                                .color(crate::ui::theme::text_secondary()),
+                                .color(crate::ui::theme::palette::text_muted()),
                         );
                         ui.label(
                             RichText::new(format!("{}", lobby.max_players))
@@ -360,7 +366,7 @@ fn draw_map_briefing(
                             ui.label(
                                 RichText::new(key)
                                     .size(12.0)
-                                    .color(crate::ui::theme::text_secondary()),
+                                    .color(crate::ui::theme::palette::text_muted()),
                             );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -399,10 +405,10 @@ fn draw_ready_room(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     Frame::NONE
-        .fill(crate::ui::theme::nickname_field_bg())
+        .fill(crate::ui::theme::palette::field_bg())
         .stroke(Stroke::new(
             1.0_f32,
-            crate::ui::theme::nickname_field_border(),
+            crate::ui::theme::palette::field_border(),
         ))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(16.0)
@@ -417,7 +423,7 @@ fn draw_ready_room(
                         RichText::new(&strings.ready_room)
                             .size(14.0)
                             .strong()
-                            .color(crate::ui::theme::text_secondary()),
+                            .color(crate::ui::theme::palette::text_muted()),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
@@ -438,10 +444,10 @@ fn draw_ready_room(
                         ui.spacing_mut().item_spacing = egui::vec2(0.0, 8.0);
                         for p in &lobby.players {
                             Frame::NONE
-                                .fill(crate::ui::theme::panel_bg_transparent())
+                                .fill(crate::ui::theme::palette::surface_transparent())
                                 .stroke(Stroke::new(
                                     1.0_f32,
-                                    crate::ui::theme::nickname_field_border(),
+                                    crate::ui::theme::palette::field_border(),
                                 ))
                                 .corner_radius(CornerRadius::same(8))
                                 .inner_margin(Margin::symmetric(12, 10))

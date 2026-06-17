@@ -36,15 +36,6 @@ impl BuildingKind {
             BuildingKind::Port => "Port",
         }
     }
-    #[inline]
-    pub fn asset(self) -> crate::assets::Asset {
-        match self {
-            BuildingKind::City => crate::assets::Asset::City,
-            BuildingKind::Bunker => crate::assets::Asset::DefensePost,
-            BuildingKind::Factory => crate::assets::Asset::Factory,
-            BuildingKind::Port => crate::assets::Asset::Port,
-        }
-    }
     pub fn construction_duration_ticks(self) -> u32 {
         match self {
             BuildingKind::City => 20,
@@ -70,10 +61,6 @@ pub enum NukeKind {
 }
 
 impl NukeKind {
-    #[inline]
-    pub fn asset(self) -> crate::assets::Asset {
-        crate::assets::Asset::AtomBomb
-    }
     pub fn gold_cost(self, _prev_launches: u32) -> f64 {
         0.0
     }

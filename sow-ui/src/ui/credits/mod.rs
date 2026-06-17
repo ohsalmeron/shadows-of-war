@@ -1,4 +1,4 @@
-use crate::ui::theme::{accent_solo_cyan, text_secondary};
+use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Align, Color32, Layout, RichText, ScrollArea};
 use sow_i18n::Language;
@@ -41,9 +41,9 @@ pub fn draw(
     let strings = &sow_i18n::get(lang).credits;
     let settings_strings = &sow_i18n::get(lang).settings;
     let mut action = None;
-    let compact = root_ui.ctx().content_rect().width() < 768.0;
+    let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
     let panel_w = if compact {
-        root_ui.ctx().content_rect().width() - 32.0
+        root_ui.ctx().input(|i| i.screen_rect()).width() - 32.0
     } else {
         520.0
     };
@@ -57,7 +57,7 @@ pub fn draw(
         return None;
     }
 
-    let screen_rect = root_ui.ctx().content_rect();
+    let screen_rect = root_ui.ctx().input(|i| i.screen_rect());
     root_ui
         .ctx()
         .layer_painter(egui::LayerId::new(
@@ -109,11 +109,11 @@ pub fn draw(
             ui.add_space(8.0);
 
             let body_size = if compact { 13.0 } else { 14.0 };
-            let body = |text: &str| RichText::new(text).size(body_size).color(text_secondary());
+            let body = |text: &str| RichText::new(text).size(body_size).color(palette::text_muted());
             let link = |text: &str| {
                 RichText::new(text)
                     .size(body_size)
-                    .color(accent_solo_cyan())
+                    .color(palette::neon_cyan())
             };
 
             ScrollArea::vertical()

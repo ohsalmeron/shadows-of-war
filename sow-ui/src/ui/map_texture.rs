@@ -27,21 +27,11 @@ pub fn color_image_from_map_thumbnail_bytes(bytes: &[u8]) -> Option<egui::ColorI
 
 /// Center-crop UV for fitting a texture into a destination rect without stretching.
 pub fn cover_uv(rect_size: egui::Vec2, tex_size: egui::Vec2) -> egui::Rect {
-    let rect_aspect = rect_size.x / rect_size.y;
-    let tex_aspect = tex_size.x / tex_size.y;
-
-    if tex_aspect > rect_aspect {
-        let u_width = rect_aspect / tex_aspect;
-        let u_start = (1.0 - u_width) / 2.0;
-        egui::Rect::from_min_max(egui::pos2(u_start, 0.0), egui::pos2(u_start + u_width, 1.0))
-    } else {
-        let v_height = tex_aspect / rect_aspect;
-        let v_start = (1.0 - v_height) / 2.0;
-        egui::Rect::from_min_max(
-            egui::pos2(0.0, v_start),
-            egui::pos2(1.0, v_start + v_height),
-        )
-    }
+    crate::widgets::avatar_picker::calculate_cover_uv(
+        rect_size,
+        tex_size,
+        crate::widgets::avatar_picker::CoverAnchor::Center,
+    )
 }
 
 /// Map thumbnails are always displayed as 1:1 squares (side length in logical pixels).
@@ -63,21 +53,6 @@ pub fn thumbnail_square_side_bounded(available_width: f32, max_height: f32, comp
     width_side.min((max_height - 2.0).max(48.0))
 }
 
-/// Full-opaque map thumbnail (albedo only — no alpha compositing tricks).
-pub fn draw_map_thumbnail(
-    painter: &Painter,
-    texture: TextureId,
-    rect: egui::Rect,
-    brightness: f32,
-) {
-    draw_map_thumbnail_uv(
-        painter,
-        texture,
-        rect,
-        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-        brightness,
-    );
-}
 
 /// Map thumbnail with explicit UV (use [`cover_uv`] for center-cropped fit).
 pub fn draw_map_thumbnail_uv(

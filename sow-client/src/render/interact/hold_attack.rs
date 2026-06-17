@@ -48,17 +48,8 @@ impl SowApp {
                                 self.input.hold_attack_target = None;
                                 self.input.hold_attack_accum = 0.0;
                             } else {
-                                if let Some(c) = self.net.client.as_ref() {
-                                    if let Ok(json) = bincode::serialize(
-                                        &sow_core::protocol::ClientMessage::Gameplay {
-                                            intent: intent.clone(),
-                                        },
-                                    ) {
-                                        c.send(json);
-                                    }
-                                } else {
-                                    self.sim.offline_intents.push(intent);
-                                }
+                                // ponytail: use unified send_intent instead of duplicated send block
+                                self.send_intent(intent);
                             }
                         }
                     } else {
@@ -78,17 +69,8 @@ impl SowApp {
                                     troops: Some(troops),
                                 };
                                 let intent = sow_core::protocol::GameplayIntent::Attack(attack);
-                                if let Some(c) = self.net.client.as_ref() {
-                                    if let Ok(json) = bincode::serialize(
-                                        &sow_core::protocol::ClientMessage::Gameplay {
-                                            intent: intent.clone(),
-                                        },
-                                    ) {
-                                        c.send(json);
-                                    }
-                                } else {
-                                    self.sim.offline_intents.push(intent);
-                                }
+                                // ponytail: use unified send_intent instead of duplicated send block
+                                self.send_intent(intent);
                             }
                         }
                     }

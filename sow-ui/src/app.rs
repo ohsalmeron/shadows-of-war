@@ -206,40 +206,16 @@ impl ClientApp {
     }
 
     fn apply_modal_toggle(&mut self, action: &UiAction) {
-        match action {
-            UiAction::ToggleSettings => {
-                self.is_settings_open = !self.is_settings_open;
-                if self.is_settings_open {
-                    self.is_credits_open = false;
-                    self.is_privacy_open = false;
-                    self.is_terms_open = false;
-                }
-            }
-            UiAction::ToggleCredits => {
-                self.is_credits_open = !self.is_credits_open;
-                if self.is_credits_open {
-                    self.is_settings_open = false;
-                    self.is_privacy_open = false;
-                    self.is_terms_open = false;
-                }
-            }
-            UiAction::TogglePrivacy => {
-                self.is_privacy_open = !self.is_privacy_open;
-                if self.is_privacy_open {
-                    self.is_settings_open = false;
-                    self.is_credits_open = false;
-                    self.is_terms_open = false;
-                }
-            }
-            UiAction::ToggleTerms => {
-                self.is_terms_open = !self.is_terms_open;
-                if self.is_terms_open {
-                    self.is_settings_open = false;
-                    self.is_credits_open = false;
-                    self.is_privacy_open = false;
-                }
-            }
-            _ => {}
-        }
+        let (s, c, p, t) = match action {
+            UiAction::ToggleSettings => (!self.is_settings_open, false, false, false),
+            UiAction::ToggleCredits => (false, !self.is_credits_open, false, false),
+            UiAction::TogglePrivacy => (false, false, !self.is_privacy_open, false),
+            UiAction::ToggleTerms => (false, false, false, !self.is_terms_open),
+            _ => return,
+        };
+        self.is_settings_open = s;
+        self.is_credits_open = c;
+        self.is_privacy_open = p;
+        self.is_terms_open = t;
     }
 }

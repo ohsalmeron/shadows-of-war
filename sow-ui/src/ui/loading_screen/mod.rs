@@ -270,7 +270,7 @@ pub fn draw(
         format!("{} {}%", sow_i18n::get(lang).loading_screen.loading, pct)
     };
 
-    crate::ui::theme::outlined_text(
+    crate::ui::theme::paint_premium_glow_text(
         root_ui.painter(),
         bar_rect.center(),
         egui::Align2::CENTER_CENTER,

@@ -228,7 +228,7 @@ pub fn draw_map_editor(
     egui::Panel::top("editor_menu")
         .frame(top_frame)
         .show_inside(ui, |ui| {
-            let rail_fill = crate::ui::theme::menu_secondary_button();
+            let rail_fill = crate::ui::theme::palette::button_inactive();
 
             // Row 1: title + exit
             ui.horizontal(|ui| {
@@ -266,7 +266,7 @@ pub fn draw_map_editor(
                 ui.label(
                     RichText::new(strings.label_map_slug_hint.replace("{}", &slug))
                         .size(11.0)
-                        .color(crate::ui::theme::text_secondary()),
+                        .color(crate::ui::theme::palette::text_muted()),
                 );
 
                 ui.separator();
@@ -348,7 +348,7 @@ pub fn draw_map_editor(
                         .text_size(TOOLBAR_TEXT);
                     if !has_selection {
                         generate_btn =
-                            generate_btn.custom_fill(crate::ui::theme::menu_secondary_button());
+                            generate_btn.custom_fill(crate::ui::theme::palette::button_inactive());
                     }
                     let generate_resp = ui.add_enabled(has_selection && !busy, generate_btn);
                     if !has_selection {
@@ -368,7 +368,7 @@ pub fn draw_map_editor(
                             .replacen("{}", &state.height.to_string(), 1),
                     )
                     .size(13.0)
-                    .color(crate::ui::theme::text_secondary()),
+                    .color(crate::ui::theme::palette::text_muted()),
                 );
             });
 
@@ -378,13 +378,13 @@ pub fn draw_map_editor(
                     ui.label(
                         RichText::new(msg)
                             .size(13.0)
-                            .color(crate::ui::theme::text_secondary()),
+                            .color(crate::ui::theme::palette::text_muted()),
                     );
                 }
                 ui.add(
                     egui::ProgressBar::new(0.0)
                         .animate(true)
-                        .fill(crate::ui::theme::accent_solo_cyan()),
+                        .fill(crate::ui::theme::palette::neon_cyan()),
                 );
             }
         });
@@ -462,7 +462,7 @@ pub fn draw_map_editor(
                         ui,
                         &strings.btn_undo,
                         ThemeButtonStyle::Tertiary,
-                        Some(crate::ui::theme::menu_secondary_button()),
+                        Some(crate::ui::theme::palette::button_inactive()),
                     )
                     .on_hover_text(&strings.tooltip_undo);
                     if undo_resp.clicked() {
@@ -550,7 +550,7 @@ pub fn draw_map_editor(
                     ui.add_space(4.0);
                     ui.small(
                         RichText::new(&strings.hint_shortcuts)
-                            .color(crate::ui::theme::text_secondary()),
+                            .color(crate::ui::theme::palette::text_muted()),
                     );
                 }
             }
@@ -719,7 +719,7 @@ pub fn draw_map_editor(
 }
 
 fn paint_chip(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
-    let accent = crate::ui::theme::accent_solo_cyan();
+    let accent = crate::ui::theme::palette::neon_cyan();
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::click());
     let hovered = response.hovered();
@@ -733,7 +733,7 @@ fn paint_chip(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
             visuals.stroke,
             egui::StrokeKind::Inside,
         );
-        crate::ui::theme::outlined_text(
+        crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
             rect.left_center() + Vec2::new(10.0, 0.0),
             Align2::LEFT_CENTER,
@@ -795,7 +795,7 @@ fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView, state: &mut MapEdit
         painter.rect_stroke(
             sel,
             0.0,
-            Stroke::new(2.0_f32, crate::ui::theme::accent_solo_cyan()),
+            Stroke::new(2.0_f32, crate::ui::theme::palette::neon_cyan()),
             egui::StrokeKind::Outside,
         );
         painter.rect_filled(sel, 0.0, Color32::from_rgba_unmultiplied(6, 182, 212, 40));
@@ -807,7 +807,7 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
         return;
     }
     let painter = ui.painter();
-    let accent = crate::ui::theme::accent_solo_cyan();
+    let accent = crate::ui::theme::palette::neon_cyan();
 
     for spawn in &state.spawns {
         let center = tile_center_screen(viewport, spawn.x as f32 + 0.5, spawn.y as f32 + 0.5);
@@ -828,7 +828,7 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
             egui::FontId::proportional((radius * 1.2).clamp(12.0, 22.0)),
             Color32::WHITE,
         );
-        crate::ui::theme::outlined_text(
+        crate::ui::theme::paint_premium_glow_text(
             painter,
             center + Vec2::new(0.0, radius + 6.0),
             Align2::CENTER_TOP,
@@ -941,9 +941,9 @@ fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
 
     let alpha = progress;
     let accent = if state.toast_is_error {
-        crate::ui::theme::accent_danger()
+        crate::ui::theme::palette::danger()
     } else {
-        crate::ui::theme::accent_solo_cyan()
+        crate::ui::theme::palette::neon_cyan()
     };
     let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
     let border_color = accent.linear_multiply(alpha);

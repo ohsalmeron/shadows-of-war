@@ -1,20 +1,14 @@
 use super::MainMenuState;
-use crate::ui::theme::{screen_bg, text_secondary};
+use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, ScrollArea, Stroke};
 
-fn screen_panel_frame() -> Frame {
-    Frame::new()
-        .fill(screen_bg())
-        .inner_margin(Margin::symmetric(16, 10))
-}
-
 fn setting_card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
     let frame = egui::Frame::NONE
-        .fill(crate::ui::theme::nickname_field_bg())
+        .fill(crate::ui::theme::palette::field_bg())
         .stroke(Stroke::new(
             1.0_f32,
-            crate::ui::theme::nickname_field_border(),
+            crate::ui::theme::palette::field_border(),
         ))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(12, 8));
@@ -22,39 +16,17 @@ fn setting_card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::
     frame.show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.vertical(|ui| {
-            ui.label(RichText::new(title).small().color(text_secondary()));
+            ui.label(RichText::new(title).small().color(palette::text_muted()));
             ui.add_space(4.0);
             content(ui);
         });
     });
 }
 
-fn draw_custom_slider(ui: &mut egui::Ui, value: &mut u32, range: std::ops::RangeInclusive<u32>) {
-    ui.horizontal(|ui| {
-        let total_w = ui.available_width();
-        let qty_w = 52.0;
-        let spacing = 8.0;
-        let slider_w = (total_w - qty_w - spacing).max(40.0);
-
-        ui.scope(|ui| {
-            ui.spacing_mut().slider_width = slider_w;
-            ui.add(
-                egui::Slider::new(value, range)
-                    .show_value(false)
-                    .trailing_fill(true),
-            );
-        });
-
-        ui.add_space(spacing);
-        ui.label(RichText::new(value.to_string()).strong());
-    });
-}
-
-fn draw_custom_slider_u64(
-    ui: &mut egui::Ui,
-    value: &mut u64,
-    range: std::ops::RangeInclusive<u64>,
-) {
+fn draw_custom_slider<N>(ui: &mut egui::Ui, value: &mut N, range: std::ops::RangeInclusive<N>)
+where
+    N: egui::emath::Numeric + std::fmt::Display,
+{
     ui.horizontal(|ui| {
         let total_w = ui.available_width();
         let qty_w = 52.0;
@@ -88,22 +60,22 @@ pub fn draw(
     let mut close = false;
 
     egui::Panel::top("solo_header")
-        .frame(screen_panel_frame())
+        .frame(crate::ui::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
             ui.vertical(|ui| {
                 ui.heading(&strings.single_player_skirmish);
                 ui.label(
                     RichText::new(&strings.config_simulation)
                         .small()
-                        .color(text_secondary()),
+                        .color(palette::text_muted()),
                 );
             });
         });
 
     egui::Panel::bottom("solo_footer")
-        .frame(screen_panel_frame())
+        .frame(crate::ui::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
-            let narrow = ui.available_width() < 480.0;
+            let narrow = crate::ui::theme::compact_viewport(ui.ctx());
             if narrow {
                 let start_btn = crate::widgets::ThemeButton::new(&strings.start_simulation)
                     .style(crate::widgets::ThemeButtonStyle::Primary)
@@ -143,7 +115,7 @@ pub fn draw(
         });
 
     egui::CentralPanel::default()
-        .frame(Frame::new().fill(screen_bg()))
+        .frame(Frame::new().fill(egui::Color32::from_rgb(8, 10, 14)))
         .show_inside(root_ui, |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, false])
@@ -168,10 +140,11 @@ pub fn draw(
                                 .0;
 
                             if let Some(tex) = thumbnail {
-                                crate::ui::map_texture::draw_map_thumbnail(
+                                crate::ui::map_texture::draw_map_thumbnail_uv(
                                     ui.painter(),
                                     tex.id(),
                                     rect,
+                                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                                     1.0,
                                 );
                             } else {
@@ -185,13 +158,13 @@ pub fn draw(
                                     } else {
                                         strings.no_preview.to_string()
                                     };
-                                crate::ui::theme::outlined_text(
+                                crate::ui::theme::paint_premium_glow_text(
                                     ui.painter(),
                                     rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     &status,
                                     egui::FontId::proportional(13.0),
-                                    text_secondary(),
+                                    palette::text_muted(),
                                     Color32::BLACK,
                                 );
                             }
@@ -199,7 +172,7 @@ pub fn draw(
                             ui.painter().rect_stroke(
                                 rect,
                                 8.0_f32,
-                                Stroke::new(1.0_f32, crate::ui::theme::menu_panel_border_glow()),
+                                Stroke::new(1.0_f32, crate::ui::theme::palette::neon_cyan_glow()),
                                 egui::StrokeKind::Inside,
                             );
                         };
@@ -298,7 +271,7 @@ pub fn draw(
                                         ui.label(
                                             RichText::new(leader.perk_description())
                                                 .small()
-                                                .color(crate::ui::theme::accent_solo_cyan()),
+                                                .color(crate::ui::theme::palette::neon_cyan()),
                                         );
                                     });
                                 });
@@ -325,9 +298,9 @@ pub fn draw(
                                 let btn_text = if config.random_spawn { "ON" } else { "OFF" };
                                 let btn =
                                     egui::Button::new(btn_text).fill(if config.random_spawn {
-                                        crate::ui::theme::accent_solo_cyan()
+                                        crate::ui::theme::palette::neon_cyan()
                                     } else {
-                                        crate::ui::theme::menu_secondary_button()
+                                        crate::ui::theme::palette::button_inactive()
                                     });
                                 if ui.add(btn).clicked() {
                                     config.random_spawn = !config.random_spawn;
@@ -338,7 +311,7 @@ pub fn draw(
                     let draw_seed_picker =
                         |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
                             setting_card(ui, "WORLD SEED", |ui| {
-                                draw_custom_slider_u64(ui, &mut config.seed, 1..=9999);
+                                draw_custom_slider(ui, &mut config.seed, 1..=9999);
                             });
                         };
 

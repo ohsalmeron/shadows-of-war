@@ -1,6 +1,4 @@
-use crate::ui::theme::{
-    accent_solo_cyan, accent_solo_cyan_hover, menu_secondary_button, screen_bg, text_secondary,
-};
+use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Align, Color32, Frame, Layout, RichText, ScrollArea, Slider, Stroke};
 pub use sow_i18n::Language;
@@ -48,18 +46,13 @@ fn quality_help<'a>(strings: &'a sow_i18n::SettingsStrings, q: &GraphicsQuality)
     }
 }
 
-fn screen_panel_frame() -> Frame {
-    Frame::new()
-        .fill(screen_bg())
-        .inner_margin(egui::Margin::symmetric(16, 10))
-}
 
 pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiAction> {
     let mut action = None;
     let strings = &sow_i18n::get(state.language).settings;
 
     egui::Panel::top("settings_header")
-        .frame(screen_panel_frame())
+        .frame(crate::ui::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading(&strings.title);
@@ -72,7 +65,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
         });
 
     egui::Panel::bottom("settings_footer")
-        .frame(screen_panel_frame())
+        .frame(crate::ui::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
             let back_btn = crate::widgets::ThemeButton::new(&strings.back_button)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
@@ -83,7 +76,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
         });
 
     egui::CentralPanel::default()
-        .frame(Frame::new().fill(screen_bg()))
+        .frame(Frame::new().fill(egui::Color32::from_rgb(8, 10, 14)))
         .show_inside(root_ui, |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, false])
@@ -104,12 +97,12 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                                         let selected = state.graphics_quality == q;
                                         let btn = egui::Button::new(label)
                                             .fill(if selected {
-                                                accent_solo_cyan()
+                                                palette::neon_cyan()
                                             } else {
-                                                menu_secondary_button()
+                                                palette::button_inactive()
                                             })
                                             .stroke(if selected {
-                                                Stroke::new(1.0_f32, accent_solo_cyan_hover())
+                                                Stroke::new(1.0_f32, palette::neon_cyan_hover())
                                             } else {
                                                 Stroke::NONE
                                             });
@@ -122,18 +115,18 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                                 ui.label(
                                     RichText::new(quality_help(strings, &state.graphics_quality))
                                         .small()
-                                        .color(text_secondary()),
+                                        .color(palette::text_muted()),
                                 );
                             });
                             ui.end_row();
 
-                            ui.label(RichText::new(&strings.mute_all).color(text_secondary()));
+                            ui.label(RichText::new(&strings.mute_all).color(palette::text_muted()));
                             if ui.checkbox(&mut state.mute_all, "").changed() {
                                 touch_applied(state);
                             }
                             ui.end_row();
 
-                            ui.label(RichText::new(&strings.music_volume).color(text_secondary()));
+                            ui.label(RichText::new(&strings.music_volume).color(palette::text_muted()));
                             ui.add_enabled_ui(!state.mute_all, |ui| {
                                 if ui
                                     .add(
@@ -147,7 +140,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                             });
                             ui.end_row();
 
-                            ui.label(RichText::new(&strings.sfx_volume).color(text_secondary()));
+                            ui.label(RichText::new(&strings.sfx_volume).color(palette::text_muted()));
                             ui.add_enabled_ui(!state.mute_all, |ui| {
                                 if ui
                                     .add(
@@ -210,14 +203,14 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState) -> Option<UiActio
                         .is_some_and(|t| t.elapsed().as_secs_f32() < 2.0)
                     {
                         ui.label(
-                            RichText::new(&strings.settings_applied).color(accent_solo_cyan()),
+                            RichText::new(&strings.settings_applied).color(palette::neon_cyan()),
                         );
                     }
 
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
                         let link = |label: &str| {
-                            egui::Button::new(RichText::new(label).color(accent_solo_cyan()))
+                            egui::Button::new(RichText::new(label).color(palette::neon_cyan()))
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(Stroke::NONE)
                         };

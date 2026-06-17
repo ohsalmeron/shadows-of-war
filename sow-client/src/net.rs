@@ -418,7 +418,7 @@ impl SowApp {
                             }
 
                             let maps_base = self.asset_config.maps_base.clone();
-                            let (_, maps_to_fetch) = self
+                            let maps_to_fetch = self
                                 .ui
                                 .app
                                 .asset_loader

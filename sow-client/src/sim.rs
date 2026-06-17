@@ -69,6 +69,37 @@ impl SowApp {
                                     .app
                                     .hud_state
                                     .push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+
+                                // ponytail: reuse FloatingNotice to show transferred resources visually
+                                let mut wx = 0.5;
+                                let mut wy = 0.5;
+                                if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
+                                    if me.centroid_x > 0.001 || me.centroid_y > 0.001 {
+                                        wx = me.centroid_x + 0.5;
+                                        wy = me.centroid_y + 0.5;
+                                    }
+                                }
+                                let now_instant = web_time::Instant::now();
+                                if tx.gold > 0.0 {
+                                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                        text: format!("🪙 +{}", sow_ui::utils::format_number(tx.gold)),
+                                        world_x: wx,
+                                        world_y: wy,
+                                        start_time: now_instant,
+                                        duration: web_time::Duration::from_millis(3000),
+                                        color: egui::Color32::from_rgb(250, 204, 21),
+                                    });
+                                }
+                                if tx.troops > 0.0 {
+                                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                        text: format!("🛡️ +{}", sow_ui::utils::format_number(tx.troops)),
+                                        world_x: wx,
+                                        world_y: wy + 0.5,
+                                        start_time: now_instant,
+                                        duration: web_time::Duration::from_millis(3000),
+                                        color: egui::Color32::from_rgb(6, 182, 212), // cyan
+                                    });
+                                }
                             }
                         }
                         for rej in &snap.resource_rejections {
@@ -174,6 +205,37 @@ impl SowApp {
                                 .app
                                 .hud_state
                                 .push_notification(msg, egui::Color32::from_rgb(74, 222, 128));
+
+                            // ponytail: reuse FloatingNotice to show transferred resources visually
+                            let mut wx = 0.5;
+                            let mut wy = 0.5;
+                            if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
+                                if me.centroid_x > 0.001 || me.centroid_y > 0.001 {
+                                    wx = me.centroid_x + 0.5;
+                                    wy = me.centroid_y + 0.5;
+                                }
+                            }
+                            let now_instant = web_time::Instant::now();
+                            if tx.gold > 0.0 {
+                                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                    text: format!("🪙 +{}", sow_ui::utils::format_number(tx.gold)),
+                                    world_x: wx,
+                                    world_y: wy,
+                                    start_time: now_instant,
+                                    duration: web_time::Duration::from_millis(3000),
+                                    color: egui::Color32::from_rgb(250, 204, 21),
+                                });
+                            }
+                            if tx.troops > 0.0 {
+                                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                    text: format!("🛡️ +{}", sow_ui::utils::format_number(tx.troops)),
+                                    world_x: wx,
+                                    world_y: wy + 0.5,
+                                    start_time: now_instant,
+                                    duration: web_time::Duration::from_millis(3000),
+                                    color: egui::Color32::from_rgb(6, 182, 212), // cyan
+                                });
+                            }
                         }
                     }
                     for rej in &snap.resource_rejections {

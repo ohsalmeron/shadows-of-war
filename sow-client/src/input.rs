@@ -945,6 +945,23 @@ impl SowApp {
                     },
                 );
             }
+            sow_core::protocol::GameplayIntent::Attack(attack) => {
+                // ponytail: reuse FloatingNotice to show troops added/sent to the attack
+                let world_x = (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let world_y = (self.input.last_mouse_y as f32 - self.input.camera_y) / self.input.camera_zoom;
+                if let Some(troops) = attack.troops {
+                    if troops > 0.0 {
+                        self.ui.floating_notices.push(crate::app::FloatingNotice {
+                            text: format!("🛡️ +{}", sow_ui::utils::format_number(troops)),
+                            world_x,
+                            world_y,
+                            start_time: web_time::Instant::now(),
+                            duration: web_time::Duration::from_millis(1500),
+                            color: egui::Color32::from_rgb(6, 182, 212), // cyan
+                        });
+                    }
+                }
+            }
             _ => {}
         }
 

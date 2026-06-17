@@ -145,13 +145,11 @@ impl MoverRenderer {
             name: "mover_sprite_instances",
             size: (MAX_SPRITE_INSTANCES * std::mem::size_of::<MoverInstanceGpu>()) as u64,
             memory: gpu::Memory::Upload,
-            bind_point: 0,
         });
         let trail_buffer = context.create_buffer(gpu::BufferDesc {
             name: "mover_trail_instances",
             size: (MAX_TRAIL_SEGMENTS * std::mem::size_of::<TrailSegmentGpu>()) as u64,
             memory: gpu::Memory::Upload,
-            bind_point: 0,
         });
         let sampler = context.create_sampler(gpu::SamplerDesc {
             name: "mover_atlas_sampler",

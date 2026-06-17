@@ -433,8 +433,6 @@ pub(crate) fn render(
                 continue;
             }
 
-            let uri = b.kind.asset().uri();
-
             let base_size = if b.count > 1 {
                 28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)
             } else {

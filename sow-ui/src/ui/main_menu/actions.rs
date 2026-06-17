@@ -12,8 +12,9 @@ pub fn draw_right_column(
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let solo_primary = if compact { 24.0 } else { 28.0 };
-    let rail_btn_fill = crate::ui::theme::menu_secondary_button();
+    let scale = crate::ui::theme::viewport_scale(ui.ctx());
+    let solo_primary = (if compact { 24.0 } else { 28.0 }) * scale;
+    let rail_btn_fill = crate::ui::theme::palette::button_inactive();
     let settings_h = action_min_h * 0.75;
 
     let solo_btn = ThemeButton::new(&strings.single_player)
@@ -44,7 +45,7 @@ pub fn draw_right_column(
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)
         .min_size(egui::vec2(ui.available_width(), settings_h))
-        .text_size(if compact { 16.0 } else { 18.0 });
+        .text_size((if compact { 16.0 } else { 18.0 }) * scale);
 
     if ui.add(btn).clicked() {
         *action = Some(UiAction::ToggleSettings);

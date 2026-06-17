@@ -225,7 +225,7 @@ fn draw_left_vertical_scrollbar(
     }
 
     let visuals = &ui.visuals().widgets.inactive;
-    let accent = crate::ui::theme::accent_solo_cyan();
+    let accent = crate::ui::theme::palette::neon_cyan();
     let track_color = accent.linear_multiply(0.28);
 
     if background_opacity > 0.0 {
@@ -435,11 +435,13 @@ fn draw_leader_hero_text(
     });
 }
 
-fn paint_horizontal_gradient_rect(
+fn paint_gradient_rect(
     painter: &egui::Painter,
     rect: egui::Rect,
-    left: Color32,
-    right: Color32,
+    left_top: Color32,
+    right_top: Color32,
+    right_bottom: Color32,
+    left_bottom: Color32,
 ) {
     if !rect.is_positive() {
         return;
@@ -448,57 +450,22 @@ fn paint_horizontal_gradient_rect(
     mesh.vertices.push(egui::epaint::Vertex {
         pos: rect.left_top(),
         uv: egui::Pos2::ZERO,
-        color: left,
+        color: left_top,
     });
     mesh.vertices.push(egui::epaint::Vertex {
         pos: rect.right_top(),
         uv: egui::Pos2::ZERO,
-        color: right,
+        color: right_top,
     });
     mesh.vertices.push(egui::epaint::Vertex {
         pos: rect.right_bottom(),
         uv: egui::Pos2::ZERO,
-        color: right,
+        color: right_bottom,
     });
     mesh.vertices.push(egui::epaint::Vertex {
         pos: rect.left_bottom(),
         uv: egui::Pos2::ZERO,
-        color: left,
-    });
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
-    painter.add(egui::Shape::mesh(mesh));
-}
-
-fn paint_vertical_gradient_rect(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    top: Color32,
-    bottom: Color32,
-) {
-    if !rect.is_positive() {
-        return;
-    }
-    let mut mesh = egui::Mesh::default();
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.left_top(),
-        uv: egui::Pos2::ZERO,
-        color: top,
-    });
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.right_top(),
-        uv: egui::Pos2::ZERO,
-        color: top,
-    });
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.right_bottom(),
-        uv: egui::Pos2::ZERO,
-        color: bottom,
-    });
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.left_bottom(),
-        uv: egui::Pos2::ZERO,
-        color: bottom,
+        color: left_bottom,
     });
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
@@ -534,18 +501,32 @@ pub(crate) fn draw_leader_picker_overlay_gradient(
             egui::pos2(screen_rect.min.x, screen_rect.max.y - panel_h),
             screen_rect.max,
         );
-        paint_vertical_gradient_rect(painter, gradient_rect, Color32::TRANSPARENT, dark);
+        paint_gradient_rect(
+            painter,
+            gradient_rect,
+            Color32::TRANSPARENT,
+            Color32::TRANSPARENT,
+            dark,
+            dark,
+        );
     } else {
         let panel_w = screen_rect.width() * PANEL_FRAC;
         let gradient_rect = Rect::from_min_max(
             screen_rect.min,
             egui::pos2(screen_rect.min.x + panel_w, screen_rect.max.y),
         );
-        paint_horizontal_gradient_rect(painter, gradient_rect, dark, Color32::TRANSPARENT);
+        paint_gradient_rect(
+            painter,
+            gradient_rect,
+            dark,
+            Color32::TRANSPARENT,
+            Color32::TRANSPARENT,
+            dark,
+        );
     }
 }
 
-fn leader_civilization(leader: sow_core::player::Leader) -> sow_core::player::Civilization {
+pub(crate) fn leader_civilization(leader: sow_core::player::Leader) -> sow_core::player::Civilization {
     match leader {
         sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
         sow_core::player::Leader::Cleopatra => sow_core::player::Civilization::Egypt,
@@ -761,43 +742,13 @@ fn draw_leader_picker_back_button(
     ctx: &egui::Context,
     rect: Rect,
 ) -> egui::Response {
-    static REGISTER_BACK_ONCE: Once = Once::new();
-    REGISTER_BACK_ONCE.call_once(|| {
-        ctx.include_bytes(
-            "bytes://back.svg",
-            sow_core::repo_asset_bytes!("icons/back.svg").as_slice(),
-        );
-    });
-
     let response = ui.put(
         rect,
-        egui::Button::new("")
+        egui::Button::new("◀")
             .min_size(rect.size())
             .corner_radius(egui::CornerRadius::same(6))
             .fill(crate::ui::theme::palette::button_inactive()),
     );
-
-    if ui.is_rect_visible(rect) {
-        let icon_size = rect.width() * 0.5;
-        if let Ok(egui::load::TexturePoll::Ready { texture }) = ctx.try_load_texture(
-            "bytes://back.svg",
-            egui::TextureOptions::default(),
-            egui::load::SizeHint::Size {
-                width: (icon_size * 2.0).round() as u32,
-                height: (icon_size * 2.0).round() as u32,
-                maintain_aspect_ratio: true,
-            },
-        ) {
-            let icon_rect =
-                Rect::from_center_size(response.rect.center(), egui::vec2(icon_size, icon_size));
-            ui.put(
-                icon_rect,
-                egui::Image::new((texture.id, egui::vec2(icon_size, icon_size)))
-                    .tint(Color32::WHITE),
-            );
-        }
-    }
-
     response
 }
 

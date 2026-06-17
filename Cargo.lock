@@ -3837,15 +3837,11 @@ dependencies = [
 name = "sow-ui"
 version = "0.1.0"
 dependencies = [
- "blade-egui",
- "blade-graphics",
  "egui",
  "image",
  "log",
  "sow-core",
  "sow-i18n",
- "sow-net",
- "sow-render",
  "web-time",
 ]
 

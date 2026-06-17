@@ -12,29 +12,29 @@ use egui::{
 /// stay on desktop layout when `width >= 600` even if `height < 600`.
 #[inline]
 pub fn compact_viewport(ctx: &Context) -> bool {
-    let rect = ctx.content_rect();
+    let rect = ctx.input(|i| i.screen_rect());
     let w = rect.width();
     let h = rect.height();
-    if w < 480.0 {
-        return true;
-    }
-    w < 600.0 && h < 600.0
+    w < 768.0 || h < 600.0
 }
 
 /// Scale factor for fixed chrome (buttons, gaps, profile bar) on short viewports.
 #[inline]
 pub fn viewport_scale(ctx: &Context) -> f32 {
-    (ctx.content_rect().height() / 720.0).clamp(0.55, 1.0)
+    (ctx.input(|i| i.screen_rect()).height() / 720.0).clamp(0.55, 1.0)
 }
 
 /// Outer width of the main-menu left rail (content + optional glass frame inset).
+///
+/// Scales with [`viewport_scale`] so embedded portals don't clip button text.
 #[inline]
-pub fn menu_rail_panel_width(available_w: f32, compact: bool) -> f32 {
+pub fn menu_rail_panel_width(available_w: f32, compact: bool, ctx: &Context) -> f32 {
+    let s = viewport_scale(ctx);
     if compact {
-        return available_w.min(360.0);
+        return available_w.min(360.0 * s);
     }
-    // Fixed ~300px content column; desktop glass frame adds 20px inner margin per side.
-    (340.0_f32).min(available_w)
+    // Fixed ~340px content column at 1× scale; shrinks proportionally on short viewports.
+    (340.0 * s).min(available_w)
 }
 
 /// Standard UI animation duration; near-instant when reduced motion is enabled.
@@ -81,7 +81,7 @@ pub fn modal_close_button(ui: &mut Ui) -> Response {
             .custom_fill(Color32::TRANSPARENT)
             .stroke(Stroke::NONE)
             .text_size(20.0)
-            .custom_text_color(text_secondary()),
+            .custom_text_color(palette::text_muted()),
     )
 }
 
@@ -270,23 +270,17 @@ pub fn panel_frame(kind: PanelKind, compact: bool) -> egui::Frame {
             egui::Frame::NONE
                 .fill(Color32::from_black_alpha(150))
                 .corner_radius(radius::md())
-                .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
+                .stroke(Stroke::new(stroke::HAIRLINE, palette::field_border()))
                 .inner_margin(Margin::symmetric(margin_x, margin_y))
         }
         PanelKind::MapControlsRail => egui::Frame::NONE
             .fill(Color32::from_black_alpha(150))
             .corner_radius(radius::sm())
-            .stroke(Stroke::new(stroke::HAIRLINE, nickname_field_border()))
+            .stroke(Stroke::new(stroke::HAIRLINE, palette::field_border()))
             .inner_margin(Margin::symmetric(4, margin::TIGHT)),
         PanelKind::FloatingCard => standard_panel_frame(compact),
         PanelKind::MenuRail => menu_right_panel_frame(compact),
     }
-}
-
-/// Shared fill for active browser tab and connected content card.
-#[inline]
-pub fn hud_content_fill() -> Color32 {
-    palette::field_bg()
 }
 
 pub struct TabStyle {
@@ -303,7 +297,7 @@ pub fn hud_tab_style() -> TabStyle {
     TabStyle {
         inactive_fill: palette::button_inactive(),
         hover_fill: palette::button_hovered(),
-        active_fill: hud_content_fill(),
+        active_fill: palette::field_bg(),
         baseline: palette::field_border(),
         label_active: palette::text_normal(),
         label_inactive: palette::text_muted(),
@@ -343,10 +337,15 @@ pub fn interact_card(
     CardVisuals { bg, stroke }
 }
 
+pub enum TabContent<'a> {
+    Text(&'a str),
+    Icon(Option<&'a TextureHandle>),
+}
+
 /// Browser-style tab: rounded top, flat bottom, accent stripe when selected.
 pub fn draw_tab(
     ui: &mut Ui,
-    label: &str,
+    content: TabContent,
     selected: bool,
     accent: Color32,
     badge_count: usize,
@@ -355,95 +354,8 @@ pub fn draw_tab(
 ) -> Response {
     let style = hud_tab_style();
     let tab_h = tab::height(compact);
+    let tab_radius = radius::tab_top();
     let font_size = if compact { 10.0 } else { 11.0 };
-    let tab_radius = radius::tab_top();
-
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(tab_w, tab_h), Sense::click());
-
-    if ui.is_rect_visible(rect) {
-        let fill = if selected {
-            style.active_fill
-        } else if response.hovered() {
-            style.hover_fill
-        } else {
-            style.inactive_fill
-        };
-
-        let side_stroke = if selected {
-            Stroke::new(stroke::HAIRLINE, accent.linear_multiply(0.6))
-        } else {
-            Stroke::NONE
-        };
-
-        ui.painter()
-            .rect(rect, tab_radius, fill, side_stroke, StrokeKind::Inside);
-
-        if selected {
-            let bar = Rect::from_min_max(
-                Pos2::new(rect.left() + 1.0, rect.top()),
-                Pos2::new(rect.right() - 1.0, rect.top() + tab::ACCENT_BAR_H),
-            );
-            ui.painter().rect_filled(bar, 0, accent);
-        } else {
-            let baseline_y = rect.bottom() - tab::BASELINE_H;
-            let baseline_stroke = if response.hovered() {
-                Stroke::new(stroke::EMPHASIS, accent.linear_multiply(0.85))
-            } else {
-                Stroke::new(stroke::HAIRLINE, style.baseline.linear_multiply(0.7))
-            };
-            ui.painter()
-                .hline(rect.x_range(), baseline_y, baseline_stroke);
-        }
-
-        let label_color = if selected {
-            style.label_active
-        } else {
-            style.label_inactive
-        };
-        ui.painter().text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(font_size),
-            label_color,
-        );
-
-        if badge_count > 0 {
-            let badge_center = rect.right_top() + Vec2::new(-6.0, 6.0);
-            let badge_r = if compact { 5.5 } else { 6.0 };
-            ui.painter()
-                .circle_filled(badge_center, badge_r, palette::danger());
-            let badge_text = if badge_count > 9 {
-                "9+".to_string()
-            } else {
-                badge_count.to_string()
-            };
-            ui.painter().text(
-                badge_center,
-                Align2::CENTER_CENTER,
-                badge_text,
-                FontId::proportional(if compact { 7.0 } else { 7.5 }),
-                Color32::WHITE,
-            );
-        }
-    }
-
-    response
-}
-
-/// Browser-style tab with a centered HUD icon instead of a text label.
-pub fn draw_icon_tab(
-    ui: &mut Ui,
-    texture: Option<&TextureHandle>,
-    selected: bool,
-    accent: Color32,
-    badge_count: usize,
-    tab_w: f32,
-    compact: bool,
-) -> Response {
-    let style = hud_tab_style();
-    let tab_h = tab::height(compact);
-    let tab_radius = radius::tab_top();
     let icon_size = if compact { 20.0 } else { 22.0 };
 
     let (rect, response) = ui.allocate_exact_size(Vec2::new(tab_w, tab_h), Sense::click());
@@ -483,12 +395,29 @@ pub fn draw_icon_tab(
                 .hline(rect.x_range(), baseline_y, baseline_stroke);
         }
 
-        if let Some(tex) = texture {
-            let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(icon_size));
-            ui.put(
-                icon_rect,
-                Image::new(tex).fit_to_exact_size(icon_rect.size()),
-            );
+        match content {
+            TabContent::Text(label) => {
+                let label_color = if selected {
+                    style.label_active
+                } else {
+                    style.label_inactive
+                };
+                ui.painter().text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    label,
+                    FontId::proportional(font_size),
+                    label_color,
+                );
+            }
+            TabContent::Icon(Some(tex)) => {
+                let icon_rect = Rect::from_center_size(rect.center(), Vec2::splat(icon_size));
+                ui.put(
+                    icon_rect,
+                    Image::new(tex).fit_to_exact_size(icon_rect.size()),
+                );
+            }
+            TabContent::Icon(None) => {}
         }
 
         if badge_count > 0 {
@@ -605,6 +534,21 @@ pub fn avatar_pink() -> Color32 {
 #[inline]
 pub fn text_secondary() -> Color32 {
     palette::text_muted()
+}
+
+/// Draw text with a crisp black outline and heavy bottom drop shadow.
+///
+/// Convenience wrapper — delegates to [`paint_premium_glow_text`].
+pub fn outlined_text(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    anchor: Align2,
+    text: &str,
+    font_id: FontId,
+    color: Color32,
+    shadow_color: Color32,
+) {
+    paint_premium_glow_text(painter, pos, anchor, text, font_id, color, shadow_color);
 }
 
 pub fn apply_theme(ctx: &Context) {
@@ -791,26 +735,35 @@ pub fn hud_icon_rail_spacing(ui: &mut egui::Ui) {
 
 #[inline]
 pub fn standard_panel_frame(compact: bool) -> egui::Frame {
-    if compact {
-        egui::Frame::new()
-            .fill(panel_bg())
-            .stroke(egui::Stroke::NONE)
-            .corner_radius(CornerRadius::ZERO)
-            .inner_margin(egui::Margin::same(16))
-            .shadow(egui::Shadow::NONE)
+    let stroke = if compact { egui::Stroke::NONE } else { egui::Stroke::new(1.0_f32, palette::neon_cyan_glow()) };
+    let corner = if compact { CornerRadius::ZERO } else { CornerRadius::same(12) };
+    let margin = if compact { 16 } else { 24 };
+    let shadow = if compact {
+        egui::Shadow::NONE
     } else {
-        egui::Frame::new()
-            .fill(panel_bg())
-            .stroke(egui::Stroke::new(1.0_f32, menu_panel_border_glow()))
-            .corner_radius(CornerRadius::same(12))
-            .inner_margin(egui::Margin::same(24))
-            .shadow(egui::Shadow {
-                blur: 24,
-                spread: 0,
-                color: Color32::from_rgba_unmultiplied(6, 182, 212, 30),
-                offset: [0, 10],
-            })
-    }
+        egui::Shadow {
+            blur: 24,
+            spread: 0,
+            color: Color32::from_rgba_unmultiplied(6, 182, 212, 30),
+            offset: [0, 10],
+        }
+    };
+    egui::Frame::new()
+        .fill(palette::surface())
+        .stroke(stroke)
+        .corner_radius(corner)
+        .inner_margin(egui::Margin::same(margin))
+        .shadow(shadow)
+}
+
+/// Full-screen sub-page frame (settings, single-player setup, etc.).
+///
+/// Shared across all screens that replace the main menu with a top/bottom/center layout.
+#[inline]
+pub fn screen_panel_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(egui::Color32::from_rgb(8, 10, 14))
+        .inner_margin(egui::Margin::symmetric(16, 10))
 }
 
 /// Top vs side chrome in the map editor (shadow strength differs).
@@ -830,7 +783,7 @@ pub fn map_editor_glass_frame(panel: MapEditorGlassPanel, _compact: bool) -> egu
         MapEditorGlassPanel::Side => (24_u8, Margin::symmetric(16, 20), 20_u8, 8),
     };
     egui::Frame::new()
-        .fill(panel_bg_transparent())
+        .fill(palette::surface_transparent())
         .stroke(Stroke::new(1.0_f32, palette::field_border()))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(margin)
@@ -1003,20 +956,6 @@ fn anchor_top_left(pos: egui::Pos2, anchor: Align2, size: egui::Vec2) -> egui::P
     egui::pos2(x, y)
 }
 
-/// Draw text with a crisp black outline and heavy bottom drop shadow.
-///
-/// Convenience wrapper — delegates to [`paint_premium_glow_text`].
-pub fn outlined_text(
-    painter: &egui::Painter,
-    pos: egui::Pos2,
-    anchor: Align2,
-    text: &str,
-    font_id: FontId,
-    color: Color32,
-    shadow_color: Color32,
-) {
-    paint_premium_glow_text(painter, pos, anchor, text, font_id, color, shadow_color);
-}
 
 /// A UI widget that draws text with an outline. Lays out once, paints 7×.
 pub fn outlined_label(

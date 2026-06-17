@@ -1,8 +1,6 @@
 use super::*;
 
-const REQUEST_WEBP: &[u8] = sow_core::repo_asset_bytes!("icons/request.webp");
-const HANDSHAKE_WEBP: &[u8] = sow_core::repo_asset_bytes!("icons/handshake.webp");
-const BETRAY_WEBP: &[u8] = sow_core::repo_asset_bytes!("icons/betray.webp");
+
 
 /// Damped spring overshoot: approaches 1.0 with a single bounce.
 #[inline]
@@ -12,9 +10,9 @@ pub(crate) fn spring_overshoot(t: f32) -> f32 {
 
 use crate::hud::avatar::paint_circular_avatar;
 
-/// Draws a floating WebP status icon (Request, Handshake, Betrayal) with spring entrance animation.
+/// Draws a floating emoji status icon (Request, Handshake, Betrayal) with spring entrance animation.
 #[allow(clippy::too_many_arguments)]
-fn draw_floating_status_icon(
+fn draw_floating_status_emoji(
     painter: &egui::Painter,
     center: egui::Pos2,
     player_id: u16,
@@ -23,9 +21,7 @@ fn draw_floating_status_icon(
     content_h: f32,
     active: bool,
     anim_id_str: &'static str,
-    webp_bytes_uri: &'static str,
-    webp_bytes: &'static [u8],
-    register_once: &'static std::sync::Once,
+    emoji: &str,
     layer_id_str: &'static str,
     color_glow: Option<egui::Color32>,
     flash_alpha: f32,
@@ -36,83 +32,69 @@ fn draw_floating_status_icon(
         return 0.0;
     }
 
-    register_once.call_once(|| {
-        painter.ctx().include_bytes(webp_bytes_uri, webp_bytes);
-    });
-
-    let base_icon_size = font_size * 3.111;
-    let load_res = painter.ctx().try_load_texture(
-        webp_bytes_uri,
-        egui::TextureOptions::default(),
-        egui::load::SizeHint::Size {
-            width: 128,
-            height: 128,
-            maintain_aspect_ratio: true,
-        },
-    );
-
-    if let Ok(egui::load::TexturePoll::Ready { texture }) = load_res {
-        let anim_scale = if active {
-            if anim >= 1.0 {
-                1.0
-            } else {
-                spring_overshoot(anim)
-            }
+    let base_icon_size = font_size * 2.5;
+    let anim_scale = if active {
+        if anim >= 1.0 {
+            1.0
         } else {
-            anim
-        };
-        // Quantize/round size to avoid jitter and glyph/texture atlas issues
-        let size = (base_icon_size * anim_scale).round();
-        if size <= 1.0 {
-            return 0.0;
+            spring_overshoot(anim)
         }
-
-        let req_y = center.y - (content_h / 2.0) - (font_size * 0.30).round() - size / 2.0;
-        let req_rect =
-            egui::Rect::from_center_size(egui::pos2(center.x, req_y), egui::vec2(size, size));
-
-        let icon_painter = painter.ctx().layer_painter(egui::LayerId::new(
-            egui::Order::Middle,
-            egui::Id::new((layer_id_str, player_id)),
-        ));
-
-        if is_me {
-            if let Some(glow_color) = color_glow {
-                let glow_r = size * 0.8;
-                let glow_a = anim * flash_alpha * 0.35;
-                icon_painter.circle_filled(
-                    req_rect.center(),
-                    glow_r * 1.4,
-                    egui::Color32::from_rgba_unmultiplied(
-                        glow_color.r(),
-                        glow_color.g(),
-                        glow_color.b(),
-                        (glow_a * 120.0) as u8,
-                    ),
-                );
-                icon_painter.circle_filled(
-                    req_rect.center(),
-                    glow_r,
-                    egui::Color32::from_rgba_unmultiplied(
-                        glow_color.r(),
-                        glow_color.g(),
-                        glow_color.b(),
-                        (glow_a * 255.0) as u8,
-                    ),
-                );
-            }
-        }
-
-        icon_painter.image(
-            texture.id,
-            req_rect,
-            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-            egui::Color32::WHITE.linear_multiply(anim * flash_alpha),
-        );
-        size + 4.0
     } else {
-        0.0
+        anim
+    };
+    let size = (base_icon_size * anim_scale).round();
+    if size <= 1.0 {
+        return 0.0;
     }
+
+    let req_y = center.y - (content_h / 2.0) - (font_size * 0.30).round() - size / 2.0;
+    let req_rect =
+        egui::Rect::from_center_size(egui::pos2(center.x, req_y), egui::vec2(size, size));
+
+    let icon_painter = painter.ctx().layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new((layer_id_str, player_id)),
+    ));
+
+    if is_me {
+        if let Some(glow_color) = color_glow {
+            let glow_r = size * 0.8;
+            let glow_a = anim * flash_alpha * 0.35;
+            icon_painter.circle_filled(
+                req_rect.center(),
+                glow_r * 1.4,
+                egui::Color32::from_rgba_unmultiplied(
+                    glow_color.r(),
+                    glow_color.g(),
+                    glow_color.b(),
+                    (glow_a * 120.0) as u8,
+                ),
+            );
+            icon_painter.circle_filled(
+                req_rect.center(),
+                glow_r,
+                egui::Color32::from_rgba_unmultiplied(
+                    glow_color.r(),
+                    glow_color.g(),
+                    glow_color.b(),
+                    (glow_a * 255.0) as u8,
+                ),
+            );
+        }
+    }
+
+    let tint = egui::Color32::WHITE.linear_multiply(anim * flash_alpha);
+    if !sow_ui::widgets::try_paint_emoji(&icon_painter, emoji, req_rect, tint) {
+        icon_painter.text(
+            req_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            emoji,
+            egui::FontId::proportional(size * 0.7),
+            tint,
+        );
+    }
+
+    size + 4.0
 }
 
 /// Draws floating animated active express emoji above the nameplate.
@@ -223,17 +205,12 @@ pub(crate) fn render(
         return;
     }
 
-    if let Some(snap) = &sim.current_snapshot {
-        static REGISTER_STAR_ONCE: std::sync::Once = std::sync::Once::new();
-        REGISTER_STAR_ONCE.call_once(|| {
-            painter.ctx().include_bytes(
-                "bytes://star.webp",
-                sow_core::repo_asset_bytes!("icons/star.webp").as_slice(),
-            );
-        });
+    let Some(snap) = &sim.current_snapshot else {
+        return;
+    };
 
-        // visible_players is pre-sorted in mod.rs (local player last, then humans, nations, presence)
-        let mut full_labels_drawn = 0;
+    // visible_players is pre-sorted in mod.rs (local player last, then humans, nations, presence)
+    let mut full_labels_drawn = 0;
 
         let visual_config = ClientVisualConfig::default();
         let far_zoom_threshold = visual_config.far_zoom_lod_threshold;
@@ -480,12 +457,7 @@ pub(crate) fn render(
                 }
                 let content_h = row0_h + total_h;
 
-                // Render floating status indicators (Alliance, Request, Betrayal)
-                static REGISTER_REQUEST_ONCE: std::sync::Once = std::sync::Once::new();
-                static REGISTER_HANDSHAKE_ONCE: std::sync::Once = std::sync::Once::new();
-                static REGISTER_BETRAY_ONCE: std::sync::Once = std::sync::Once::new();
-
-                let req_offset = draw_floating_status_icon(
+                let req_offset = draw_floating_status_emoji(
                     painter,
                     center,
                     player.id,
@@ -494,9 +466,7 @@ pub(crate) fn render(
                     content_h,
                     has_req,
                     "request_anim_progress",
-                    "bytes://request.webp",
-                    REQUEST_WEBP,
-                    &REGISTER_REQUEST_ONCE,
+                    "📨",
                     "floating_request_icon",
                     Some(egui::Color32::from_rgb(34, 211, 238)),
                     1.0,
@@ -507,7 +477,7 @@ pub(crate) fn render(
                 } else {
                     1.0
                 };
-                let allied_offset = draw_floating_status_icon(
+                let allied_offset = draw_floating_status_emoji(
                     painter,
                     center,
                     player.id,
@@ -516,15 +486,13 @@ pub(crate) fn render(
                     content_h,
                     is_allied,
                     "allied_anim_progress",
-                    "bytes://handshake.webp",
-                    HANDSHAKE_WEBP,
-                    &REGISTER_HANDSHAKE_ONCE,
+                    "🤝",
                     "floating_handshake_icon",
                     Some(egui::Color32::from_rgb(255, 200, 60)),
                     flash_alpha,
                 );
 
-                let betrayal_offset = draw_floating_status_icon(
+                let betrayal_offset = draw_floating_status_emoji(
                     painter,
                     center,
                     player.id,
@@ -533,9 +501,7 @@ pub(crate) fn render(
                     content_h,
                     betrayal_flash,
                     "betrayal_anim_progress",
-                    "bytes://betray.webp",
-                    BETRAY_WEBP,
-                    &REGISTER_BETRAY_ONCE,
+                    "🗡️",
                     "floating_betray_icon",
                     Some(egui::Color32::from_rgb(220, 38, 38)),
                     1.0,
@@ -572,20 +538,12 @@ pub(crate) fn render(
                         egui::pos2(cur_x, row12_y + (total_h - avatar_size) / 2.0),
                         egui::vec2(avatar_size, avatar_size),
                     );
-                    let star_uri = "bytes://star.webp";
-                    let size_hint = egui::load::SizeHint::Size {
-                        width: 128,
-                        height: 128,
-                        maintain_aspect_ratio: true,
-                    };
-                    if let Ok(egui::load::TexturePoll::Ready { texture }) = painter
-                        .ctx()
-                        .try_load_texture(star_uri, egui::TextureOptions::default(), size_hint)
-                    {
-                        painter.image(
-                            texture.id,
-                            star_rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    if !sow_ui::widgets::try_paint_emoji(painter, "⭐", star_rect, egui::Color32::WHITE) {
+                        painter.text(
+                            star_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "⭐",
+                            egui::FontId::proportional(avatar_size * 0.7),
                             egui::Color32::WHITE,
                         );
                     }
@@ -694,7 +652,6 @@ pub(crate) fn render(
                 );
             }
         }
-    }
 }
 
 pub(crate) fn render_death_nameplates(

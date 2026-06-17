@@ -272,14 +272,7 @@ pub fn draw_leader_hero_backdrop(
                 loading_label,
             );
         }
-        BackdropPhase::Loading => {
-            if let Some(tex) = incoming_tex {
-                paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
-            } else {
-                draw_loading_page(ui, screen_rect, loading_label, 1.0);
-            }
-        }
-        BackdropPhase::Steady => {
+        BackdropPhase::Loading | BackdropPhase::Steady => {
             if let Some(tex) = incoming_tex {
                 paint_portrait_clipped(ui, screen_rect, screen_rect, tex, mobile, 1.0);
             } else {

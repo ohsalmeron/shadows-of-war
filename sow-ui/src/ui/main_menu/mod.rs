@@ -52,6 +52,25 @@ pub struct MainMenuState {
 
 impl Default for MainMenuState {
     fn default() -> Self {
+        let ms = web_time::SystemTime::now()
+            .duration_since(web_time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let leader = match ms % 12 {
+            0 => sow_core::player::Leader::Caesar,
+            1 => sow_core::player::Leader::Cleopatra,
+            2 => sow_core::player::Leader::Ragnar,
+            3 => sow_core::player::Leader::SunTzu,
+            4 => sow_core::player::Leader::Alexander,
+            5 => sow_core::player::Leader::GenghisKhan,
+            6 => sow_core::player::Leader::RichardTheLionheart,
+            7 => sow_core::player::Leader::Vercingetorix,
+            8 => sow_core::player::Leader::Boudica,
+            9 => sow_core::player::Leader::LadySixSky,
+            10 => sow_core::player::Leader::Leonidas,
+            _ => sow_core::player::Leader::Napoleon,
+        };
+        let civ = crate::widgets::avatar_picker::leader_civilization(leader);
         Self {
             is_connected: false,
             is_connecting: false,
@@ -60,54 +79,10 @@ impl Default for MainMenuState {
             server_address: std::env::var("SOW_WS_URL")
                 .unwrap_or_else(|_| "wss://shadowsofwar.io/ws/".to_string()),
             lobbies: Vec::new(),
-            player_name: {
-                let ms = web_time::SystemTime::now()
-                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                format!("ANON{:03}", ms % 1000)
-            },
+            player_name: format!("ANON{:03}", ms % 1000),
             clan_tag: "".to_string(),
-            selected_leader: {
-                let ms = web_time::SystemTime::now()
-                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                match ms % 12 {
-                    0 => sow_core::player::Leader::Caesar,
-                    1 => sow_core::player::Leader::Cleopatra,
-                    2 => sow_core::player::Leader::Ragnar,
-                    3 => sow_core::player::Leader::SunTzu,
-                    4 => sow_core::player::Leader::Alexander,
-                    5 => sow_core::player::Leader::GenghisKhan,
-                    6 => sow_core::player::Leader::RichardTheLionheart,
-                    7 => sow_core::player::Leader::Vercingetorix,
-                    8 => sow_core::player::Leader::Boudica,
-                    9 => sow_core::player::Leader::LadySixSky,
-                    10 => sow_core::player::Leader::Leonidas,
-                    _ => sow_core::player::Leader::Napoleon,
-                }
-            },
-            selected_civilization: {
-                let ms = web_time::SystemTime::now()
-                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                match ms % 12 {
-                    0 => sow_core::player::Civilization::Rome,
-                    1 => sow_core::player::Civilization::Egypt,
-                    2 => sow_core::player::Civilization::Vikings,
-                    3 => sow_core::player::Civilization::China,
-                    4 => sow_core::player::Civilization::Macedon,
-                    5 => sow_core::player::Civilization::Mongols,
-                    6 => sow_core::player::Civilization::Angevin,
-                    7 => sow_core::player::Civilization::Gallic,
-                    8 => sow_core::player::Civilization::Iceni,
-                    9 => sow_core::player::Civilization::Maya,
-                    10 => sow_core::player::Civilization::Sparta,
-                    _ => sow_core::player::Civilization::France,
-                }
-            },
+            selected_leader: leader,
+            selected_civilization: civ,
             name_locked: false,
             host_private_pending: false,
             in_private_match: false,
@@ -121,36 +96,11 @@ impl Default for MainMenuState {
             show_leader_picker: false,
             show_single_player_setup: false,
             single_player_config: Box::new(sow_core::game_config::GameConfig {
-                seed: web_time::SystemTime::now()
-                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64,
+                seed: ms as u64,
                 ..Default::default()
             }),
             active_conflict: None,
-            leader_backdrop: {
-                let leader = match web_time::SystemTime::now()
-                    .duration_since(web_time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-                    % 12
-                {
-                    0 => sow_core::player::Leader::Caesar,
-                    1 => sow_core::player::Leader::Cleopatra,
-                    2 => sow_core::player::Leader::Ragnar,
-                    3 => sow_core::player::Leader::SunTzu,
-                    4 => sow_core::player::Leader::Alexander,
-                    5 => sow_core::player::Leader::GenghisKhan,
-                    6 => sow_core::player::Leader::RichardTheLionheart,
-                    7 => sow_core::player::Leader::Vercingetorix,
-                    8 => sow_core::player::Leader::Boudica,
-                    9 => sow_core::player::Leader::LadySixSky,
-                    10 => sow_core::player::Leader::Leonidas,
-                    _ => sow_core::player::Leader::Napoleon,
-                };
-                crate::widgets::LeaderBackdropTransition::new(leader)
-            },
-
+            leader_backdrop: crate::widgets::LeaderBackdropTransition::new(leader),
             error_message: None,
             invite_copied_at: None,
         }
@@ -171,10 +121,6 @@ impl MainMenuState {
     }
 }
 
-#[inline]
-pub fn lobby_compact_layout(ctx: &egui::Context) -> bool {
-    crate::ui::theme::compact_viewport(ctx)
-}
 
 pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     if lobbies.is_empty() {
@@ -190,24 +136,20 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     Some(rest[0].clone())
 }
 
-fn menu_meta_footer_height(section_gap: f32) -> f32 {
-    // Note: there is no space for fucking 2 rows of text in that panel you keep doing the same shit over and over
-    // So we stack them in a column to prevent horizontal stretching entirely, and expand height to fit.
-    section_gap * 0.5 + 85.0
+fn menu_meta_footer_height(section_gap: f32, scale: f32) -> f32 {
+    // Stacked legal text column; scale height proportionally.
+    section_gap * 0.5 + 85.0 * scale
 }
 
-fn menu_footer_height(section_gap: f32, action_min_h: f32) -> f32 {
-    let secondary_h = (action_min_h - 10.0).max(action_min_h * 0.875);
+fn menu_footer_height(section_gap: f32, action_min_h: f32, scale: f32) -> f32 {
     let settings_h = action_min_h * 0.75;
     action_min_h // Solo button
         + section_gap
         + action_min_h // Host private button
         + section_gap
-        + secondary_h
-        + section_gap
-        + settings_h
-        + menu_meta_footer_height(section_gap)
-        + 6.0
+        + settings_h // Settings button
+        + menu_meta_footer_height(section_gap, scale)
+        + 6.0 * scale
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -229,8 +171,8 @@ fn draw_menu_footer(
     ui.vertical_centered(|ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
 
-        let text_color = crate::ui::theme::text_secondary();
-        let link_color = crate::ui::theme::accent_solo_cyan();
+        let text_color = crate::ui::theme::palette::text_muted();
+        let link_color = crate::ui::theme::palette::neon_cyan();
         let size = 11.0;
 
         ui.label(
@@ -303,7 +245,8 @@ fn draw_menu_right_panel_contents(
     lang: sow_i18n::Language,
 ) {
     let version = format!("v{}", include_str!("../../../../.version").trim());
-    let footer_h = menu_footer_height(section_gap, action_min_h);
+    let scale = crate::ui::theme::viewport_scale(ui.ctx());
+    let footer_h = menu_footer_height(section_gap, action_min_h, scale);
     let header_h = profile_height + section_gap;
     // Cap lobby thumbnail on short viewports only — never allocate a flex middle band.
     let max_lobby_h = (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
@@ -403,6 +346,36 @@ fn draw_menu_right_panel(
     );
 }
 
+fn draw_indicator_toast(
+    ctx: &egui::Context,
+    id: &str,
+    pad_y: f32,
+    label: &str,
+    color: Color32,
+    compact: bool,
+) {
+    let pad_x = if compact { 24.0 } else { 20.0 };
+    egui::Area::new(egui::Id::new(id))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-pad_x, pad_y))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(Color32::from_black_alpha(140))
+                .corner_radius(8)
+                .inner_margin(egui::Margin::symmetric(12, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(
+                            egui::RichText::new(label)
+                                .color(color)
+                                .size(if compact { 13.0 } else { 14.0 }),
+                        );
+                    });
+                });
+        });
+}
+
 fn draw_map_download_indicator(
     ctx: &egui::Context,
     state: &MainMenuState,
@@ -418,28 +391,15 @@ fn draw_map_download_indicator(
         .downloading_map
         .replacen("{}", map_name, 1)
         .replacen("{}", &state.map_download_progress.to_string(), 1);
-    let pad_x = if compact { 24.0 } else { 20.0 };
     let pad_y = if compact { 96.0 } else { 56.0 };
-
-    egui::Area::new(egui::Id::new("main_menu_map_download"))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-pad_x, pad_y))
-        .show(ctx, |ui| {
-            egui::Frame::NONE
-                .fill(Color32::from_black_alpha(140))
-                .corner_radius(8)
-                .inner_margin(egui::Margin::symmetric(12, 8))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(
-                            egui::RichText::new(label)
-                                .color(crate::ui::theme::accent_solo_cyan())
-                                .size(if compact { 13.0 } else { 14.0 }),
-                        );
-                    });
-                });
-        });
+    draw_indicator_toast(
+        ctx,
+        "main_menu_map_download",
+        pad_y,
+        &label,
+        crate::ui::theme::palette::neon_cyan(),
+        compact,
+    );
 }
 
 fn draw_connecting_indicator(
@@ -451,30 +411,16 @@ fn draw_connecting_indicator(
     if state.is_connected {
         return;
     }
-
     let strings = &sow_i18n::get(lang).main_menu;
-    let pad_x = if compact { 24.0 } else { 20.0 };
     let pad_y = if compact { 56.0 } else { 20.0 };
-
-    egui::Area::new(egui::Id::new("main_menu_connecting"))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-pad_x, pad_y))
-        .show(ctx, |ui| {
-            egui::Frame::NONE
-                .fill(Color32::from_black_alpha(140))
-                .corner_radius(8)
-                .inner_margin(egui::Margin::symmetric(12, 8))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(
-                            egui::RichText::new(&strings.connecting)
-                                .color(crate::ui::theme::text_secondary())
-                                .size(if compact { 13.0 } else { 14.0 }),
-                        );
-                    });
-                });
-        });
+    draw_indicator_toast(
+        ctx,
+        "main_menu_connecting",
+        pad_y,
+        &strings.connecting,
+        crate::ui::theme::palette::text_muted(),
+        compact,
+    );
 }
 
 fn draw_link_conflict_modal(
@@ -497,7 +443,7 @@ fn draw_link_conflict_modal(
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(root_ui.ctx(), |ui| {
             ui.painter()
-                .rect_filled(screen_rect, 0.0, crate::ui::theme::menu_backdrop());
+                .rect_filled(screen_rect, 0.0, crate::ui::theme::palette::backdrop());
         });
 
     egui::Window::new(&strings.link_conflict_title)
@@ -508,17 +454,17 @@ fn draw_link_conflict_modal(
         .fixed_size(egui::vec2(modal_w, if compact { 360.0 } else { 320.0 }))
         .frame(
             Frame::new()
-                .fill(crate::ui::theme::panel_bg())
+                .fill(crate::ui::theme::palette::surface())
                 .stroke(Stroke::new(
                     1.5_f32,
-                    crate::ui::theme::accent_solo_cyan_hover(),
+                    crate::ui::theme::palette::neon_cyan_hover(),
                 ))
                 .corner_radius(egui::CornerRadius::same(16))
                 .inner_margin(24.0)
                 .shadow(egui::Shadow {
                     blur: 32,
                     spread: 0,
-                    color: crate::ui::theme::accent_solo_cyan().linear_multiply(0.2),
+                    color: crate::ui::theme::palette::neon_cyan().linear_multiply(0.2),
                     offset: [0, 8],
                 }),
         )
@@ -529,13 +475,13 @@ fn draw_link_conflict_modal(
                     ui,
                     &strings.link_conflict_title,
                     egui::FontId::proportional(20.0),
-                    crate::ui::theme::accent_solo_cyan(),
+                    crate::ui::theme::palette::neon_cyan(),
                 );
                 ui.add_space(12.0);
                 ui.label(
                     RichText::new(&strings.link_conflict_body)
                         .size(13.0)
-                        .color(crate::ui::theme::text_secondary()),
+                        .color(crate::ui::theme::palette::text_muted()),
                 );
                 ui.add_space(16.0);
                 ui.horizontal(|ui| {
@@ -545,7 +491,7 @@ fn draw_link_conflict_modal(
                         ui.label(
                             RichText::new(&strings.link_conflict_guest_label)
                                 .strong()
-                                .color(crate::ui::theme::accent_solo_cyan()),
+                                .color(crate::ui::theme::palette::neon_cyan()),
                         );
                         ui.label(
                             RichText::new(
@@ -561,7 +507,7 @@ fn draw_link_conflict_modal(
                         ui.label(
                             RichText::new(&strings.link_conflict_platform_label)
                                 .strong()
-                                .color(crate::ui::theme::accent_solo_cyan()),
+                                .color(crate::ui::theme::palette::neon_cyan()),
                         );
                         ui.label(
                             RichText::new(
@@ -615,7 +561,7 @@ pub fn draw(
     lang: sow_i18n::Language,
 ) -> Option<UiAction> {
     let mut action = None;
-    let compact = lobby_compact_layout(root_ui.ctx());
+    let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
     let scale = crate::ui::theme::viewport_scale(root_ui.ctx());
     let outer_pad = 16.0;
     let section_gap = (if compact { 12.0 } else { 16.0 }) * scale;
@@ -663,7 +609,7 @@ pub fn draw(
 
                 let content_h = ui.available_height();
                 let panel_w =
-                    crate::ui::theme::menu_rail_panel_width(ui.available_width(), compact);
+                    crate::ui::theme::menu_rail_panel_width(ui.available_width(), compact, ui.ctx());
 
                 ui.allocate_ui_with_layout(
                     egui::vec2(panel_w, content_h),
@@ -717,7 +663,7 @@ pub fn draw(
             .show(root_ui.ctx(), |ui| {
                 let screen_rect = ui.ctx().content_rect();
                 ui.painter()
-                    .rect_filled(screen_rect, 0.0, crate::ui::theme::menu_backdrop());
+                    .rect_filled(screen_rect, 0.0, crate::ui::theme::palette::backdrop());
             });
 
         // 2. Draw responsive centered window on top
@@ -737,17 +683,17 @@ pub fn draw(
             .fixed_size(egui::vec2(modal_w, 280.0))
             .frame(
                 egui::Frame::new()
-                    .fill(crate::ui::theme::panel_bg())
+                    .fill(crate::ui::theme::palette::surface())
                     .stroke(egui::Stroke::new(
                         1.5_f32,
-                        crate::ui::theme::accent_danger_border(),
+                        crate::ui::theme::palette::danger_border(),
                     ))
                     .corner_radius(egui::CornerRadius::same(16))
                     .inner_margin(24.0)
                     .shadow(egui::Shadow {
                         blur: 32,
                         spread: 0,
-                        color: crate::ui::theme::accent_danger().linear_multiply(0.2),
+                        color: crate::ui::theme::palette::danger().linear_multiply(0.2),
                         offset: [0, 8],
                     }),
             )
@@ -761,7 +707,7 @@ pub fn draw(
                         ui,
                         "⚠️",
                         egui::FontId::proportional(36.0),
-                        crate::ui::theme::accent_danger(),
+                        crate::ui::theme::palette::danger(),
                     );
 
                     ui.add_space(12.0);
@@ -771,7 +717,7 @@ pub fn draw(
                         ui,
                         &strings.connection_error_header,
                         egui::FontId::proportional(22.0),
-                        crate::ui::theme::accent_danger(),
+                        crate::ui::theme::palette::danger(),
                     );
 
                     ui.add_space(16.0);
@@ -779,14 +725,14 @@ pub fn draw(
                     ui.label(
                         egui::RichText::new(err_msg.as_str())
                             .size(14.0)
-                            .color(crate::ui::theme::text_secondary()),
+                            .color(crate::ui::theme::palette::text_muted()),
                     );
 
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new(&strings.connection_error_hint)
                             .size(12.0)
-                            .color(crate::ui::theme::text_secondary()),
+                            .color(crate::ui::theme::palette::text_muted()),
                     );
 
                     ui.add_space(24.0);

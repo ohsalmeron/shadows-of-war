@@ -51,16 +51,16 @@ pub fn draw_user_profile_header(
     }
 
     let bg_color = if is_hovered {
-        crate::ui::theme::menu_secondary_button_hover()
+        crate::ui::theme::palette::button_hovered()
     } else {
-        crate::ui::theme::menu_secondary_button()
+        crate::ui::theme::palette::button_inactive()
     };
 
     ui.painter().rect_filled(rect, 8.0, bg_color);
     ui.painter().rect_stroke(
         rect,
         8.0,
-        Stroke::new(1.0_f32, crate::ui::theme::nickname_field_border()),
+        Stroke::new(1.0_f32, crate::ui::theme::palette::field_border()),
         egui::StrokeKind::Inside,
     );
 
@@ -91,9 +91,9 @@ pub fn draw_user_profile_header(
     }
 
     let btn_bg = if avatar_response.hovered() {
-        crate::ui::theme::nickname_field_border()
+        crate::ui::theme::palette::field_border()
     } else {
-        crate::ui::theme::nickname_field_bg()
+        crate::ui::theme::palette::field_bg()
     };
 
     ui.painter().rect_filled(avatar_rect, 6.0, btn_bg);
@@ -115,7 +115,7 @@ pub fn draw_user_profile_header(
     }
 
     let frame_color = if avatar_response.hovered() {
-        crate::ui::theme::accent_solo_cyan()
+        crate::ui::theme::palette::neon_cyan()
     } else {
         leader_fill
     };
