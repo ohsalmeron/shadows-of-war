@@ -31,6 +31,7 @@ impl GcpConfig {
             format!("--zone={}", self.zone),
             "--tunnel-through-iap".into(),
             "--quiet".into(),
+            "--verbosity=error".into(),
         ]
     }
 
@@ -46,6 +47,7 @@ impl GcpConfig {
             format!("--zone={}", self.zone),
             "--tunnel-through-iap".into(),
             "--quiet".into(),
+            "--verbosity=error".into(),
         ]
     }
 
