@@ -18,8 +18,6 @@ const DEFAULT_PTR_DB_PORT: &str = "25595";
 
 const MISSING_GCP_PROJECT: &str =
     "set SOW_GCP_PROJECT or run: gcloud config set project YOUR_PROJECT_ID";
-const MISSING_CERTBOT: &str =
-    "SOW_CERTBOT_EMAIL is required for ./sow infra — set in sow-dist/.env or shell";
 
 #[derive(Clone, Debug)]
 pub struct DeployConfig {
@@ -162,9 +160,10 @@ pub fn require_deploy_config() -> Result<DeployConfig> {
     Ok(cfg)
 }
 
-/// Full deploy config plus certbot email for `./sow infra`.
+/// Full deploy config for `./sow infra`.
 pub fn require_infra_config() -> Result<DeployConfig> {
-    let email = env_required("SOW_CERTBOT_EMAIL", MISSING_CERTBOT)?;
+    // Default to the project contact email; override with SOW_CERTBOT_EMAIL if needed.
+    let email = env_or("SOW_CERTBOT_EMAIL", "info@shadowsofwar.io");
     let cfg = build_deploy_config(Some(email)).map_err(|e| {
         eprintln!("{e}");
         e
@@ -232,9 +231,6 @@ pub fn load_dotenv(repo_root: &Path) {
     }
 }
 
-fn env_required(key: &str, hint: &str) -> Result<String> {
-    env::var(key).with_context(|| format!("{key} is required — {hint}"))
-}
 
 fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())

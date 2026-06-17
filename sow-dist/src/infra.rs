@@ -248,6 +248,10 @@ fn install_systemd_unit(
     content = content.replace("__SOW_PTR_WS_PORT__", &cfg.ptr_ws_port());
     content = content.replace("__SOW_PTR_MAPS_PORT__", &cfg.ptr_maps_port());
     content = content.replace("__SOW_PTR_DB_PORT__", &cfg.ptr_db_port());
+    // Secrets are never in the repo — admin must set real values on the VPS after bootstrap.
+    // Leave sentinels so services fail-fast with an obvious error if not replaced.
+    content = content.replace("__SOW_DB_SECRET__", "REPLACE_WITH_SOW_DB_SECRET");
+    content = content.replace("__SOW_CG_API_KEY__", "REPLACE_WITH_CRAZYGAMES_API_KEY");
     let tmp = paths.dist_root().join(format!("bootstrap-{name}"));
     fs::write(&tmp, &content)?;
     let remote = format!("/tmp/{name}");

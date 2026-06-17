@@ -44,6 +44,7 @@ pub fn run(cmd: &str, args: &[&str], cwd: Option<&Path>) -> Result<()> {
 }
 
 pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)]) -> Result<()> {
+    print_cmd_executed(cmd, args, env);
     let mut c = Command::new(cmd);
     c.args(args);
     if let Some(dir) = cwd {
@@ -52,57 +53,12 @@ pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)
     for (k, v) in env {
         c.env(k, v);
     }
-    c.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let child = c.spawn().with_context(|| format!("spawn {cmd}"))?;
-    let out = child
-        .wait_with_output()
-        .with_context(|| format!("wait {cmd}"))?;
-
-    let stdout_str = String::from_utf8_lossy(&out.stdout);
-    let stderr_str = String::from_utf8_lossy(&out.stderr);
-
-    let mut has_warnings = false;
-    let mut has_errors = false;
-
-    for line in stdout_str.lines().chain(stderr_str.lines()) {
-        let l_lower = line.to_lowercase();
-        if l_lower.contains("error:") || l_lower.contains("error ") {
-            has_errors = true;
-        }
-        if l_lower.contains("warning:") || l_lower.contains("warning ") || l_lower.contains("warn:")
-        {
-            has_warnings = true;
-        }
+    // Inherit stdio — raw output goes straight to the terminal in real time.
+    c.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+    let status = c.spawn().with_context(|| format!("spawn {cmd}"))?.wait()?;
+    if !status.success() {
+        anyhow::bail!("{cmd} failed ({})", status);
     }
-
-    if !out.status.success() {
-        print_cmd_executed(cmd, args, env);
-        if !stdout_str.is_empty() {
-            println!("{}", stdout_str);
-        }
-        if !stderr_str.is_empty() {
-            eprintln!("{}", stderr_str);
-        }
-        anyhow::bail!("{cmd} failed ({})", out.status);
-    }
-
-    if has_warnings || has_errors {
-        print_cmd_executed(cmd, args, env);
-        println!("⚠️  Warnings/Errors detected during execution of {cmd}:");
-        if !stdout_str.is_empty() {
-            println!("{}", stdout_str);
-        }
-        if !stderr_str.is_empty() {
-            eprintln!("{}", stderr_str);
-        }
-    } else if cmd == "cargo" {
-        for line in stderr_str.lines() {
-            if line.contains("Finished") || line.contains("Compiling") {
-                println!("{line}");
-            }
-        }
-    }
-
     Ok(())
 }
 

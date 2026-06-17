@@ -14,7 +14,7 @@ KillMode=process
 Environment=RUST_LOG=info
 Environment=SOW_REDIS_URL=redis://127.0.0.1:6379
 Environment=SOW_DB_URL=http://127.0.0.1:__SOW_PROD_DB_PORT__
-Environment=SOW_DB_SECRET=sow_db_prod_secret_token_placeholder
+Environment=SOW_DB_SECRET=__SOW_DB_SECRET__
 Environment=SOW_WS_LISTEN=0.0.0.0:__SOW_PROD_WS_PORT__
 Environment=SOW_MAPS_HTTP_LISTEN=0.0.0.0:__SOW_PROD_MAPS_PORT__
 Environment=SOW_MAPS_ROOT=__HOME_PROD__/assets/maps
