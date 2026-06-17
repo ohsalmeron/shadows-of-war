@@ -182,9 +182,7 @@ fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool
 }
 
 fn cmd_native(paths: &Paths) -> Result<()> {
-    if process::check_any_cargo_lock(&paths.cargo_target) {
-        println!("==> Cargo target directory is locked by another process. Waiting for lock...");
-    }
+    process::wait_for_cargo_unlock(&paths.cargo_target);
     println!("==> Running native client (release, max-perf, VERBOSE)...");
     process::run_env(
         "cargo",
