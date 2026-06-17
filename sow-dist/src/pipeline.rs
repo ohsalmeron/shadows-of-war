@@ -92,25 +92,23 @@ pub fn run_release(
         let paths_wasm = paths.clone();
         let paths_cdn = paths.clone();
         let paths_srv = paths.clone();
-        let wasm_h = s.spawn(move || wasm::compile(&paths_wasm));
+        // CDN prep is cargo-free — run it in parallel with the WASM compile.
         let cdn_h = if target.sync_cdn() {
             Some(s.spawn(move || cdn::prepare(&paths_cdn)))
         } else {
             None
         };
-        let srv_h = if target.server_unit().is_some() {
-            Some(s.spawn(move || infra::build_server_if_needed(&paths_srv)))
+        // WASM and server both invoke cargo and share the package cache.
+        // Run them sequentially to avoid "Blocking waiting for file lock" noise.
+        wasm::compile(&paths_wasm)?;
+        let server = if target.server_unit().is_some() {
+            Some(infra::build_server_if_needed(&paths_srv)?)
         } else {
             None
         };
-        wasm_h.join().expect("wasm thread panicked")?;
         if let Some(h) = cdn_h {
             h.join().expect("cdn prep thread panicked")?;
         }
-        let server = match srv_h {
-            Some(h) => Some(h.join().expect("server build thread panicked")?),
-            None => None,
-        };
         Ok(server)
     })?;
 
@@ -150,6 +148,21 @@ pub fn run_release(
 
     // Phase 3: ship everything in parallel
     println!("==> Phase 3: ship");
+    // Print the deployment target banner BEFORE spawning threads so it appears
+    // before any SSH output (e.g. mkdir -p) from the sync threads.
+    match target {
+        ReleaseTarget::Prod => {
+            println!(
+                "==> Deploying play → {} + marketing → {}",
+                cfg.play_domain(),
+                cfg.site_domain()
+            );
+        }
+        ReleaseTarget::Ptr => {
+            println!("==> Deploying ptr → {}", cfg.ptr_domain());
+        }
+        ReleaseTarget::Cg => {}
+    }
     // Phase 3a: ship everything except CDN in parallel
     // CDN must run AFTER marketing mirror to avoid the mirror wiping CDN assets.
     let server_ship = std::thread::scope(|s| -> Result<ServerShipResult> {
@@ -239,20 +252,6 @@ pub fn run_release(
             infra::ship_server(&paths_srv, &gcp_srv, &data_dir, &artifacts, &version, unit)
         });
 
-        match target {
-            ReleaseTarget::Prod => {
-                println!(
-                    "==> Deploying play → {} + marketing → {}",
-                    cfg.play_domain(),
-                    cfg.site_domain()
-                );
-            }
-            ReleaseTarget::Ptr => {
-                println!("==> Deploying ptr → {}", cfg.ptr_domain());
-            }
-            ReleaseTarget::Cg => {}
-        }
-
         if let Some(h) = shell_sync {
             h.join().unwrap()?;
         }
@@ -270,11 +269,9 @@ pub fn run_release(
     let cdn_shipped = cdn::ship_or_skip(paths, cfg)?;
 
     // Phase 4: finalize + verify
-    println!("==> Phase 4: finalize");
+    println!("==> Phase 4: finalize + verify");
     infra::restart_server_if_needed(paths, &gcp, server_ctx.unit, version, &server_ship)?;
     infra::restart_server_if_needed(paths, &gcp, server_ctx.db_unit, version, &server_ship)?;
-
-    println!("==> Phase 4: verify");
     if cdn_shipped {
         cdn::verify_prod_cdn(cfg)?;
         println!("✅ CDN pipeline OK");
