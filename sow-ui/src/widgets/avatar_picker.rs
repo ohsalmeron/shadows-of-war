@@ -1,5 +1,4 @@
 use egui::{emath::remap, lerp, Color32, Rangef, Rect, Sense, Stroke};
-use std::sync::Once;
 
 const LEADER_SELECT_GROW: f32 = 0.1;
 const LEADER_SELECT_ANIM_SECS: f32 = 0.25;
@@ -739,7 +738,7 @@ fn draw_leader_carousel(
 
 fn draw_leader_picker_back_button(
     ui: &mut egui::Ui,
-    ctx: &egui::Context,
+    _ctx: &egui::Context,
     rect: Rect,
 ) -> egui::Response {
     let response = ui.put(

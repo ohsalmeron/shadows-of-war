@@ -43,7 +43,7 @@ pub fn draw(
     let mut action = None;
     let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
     let panel_w = if compact {
-        root_ui.ctx().input(|i| i.screen_rect()).width() - 32.0
+        root_ui.ctx().input(|i| i.content_rect()).width() - 32.0
     } else {
         520.0
     };
@@ -57,7 +57,7 @@ pub fn draw(
         return None;
     }
 
-    let screen_rect = root_ui.ctx().input(|i| i.screen_rect());
+    let screen_rect = root_ui.ctx().input(|i| i.content_rect());
     root_ui
         .ctx()
         .layer_painter(egui::LayerId::new(

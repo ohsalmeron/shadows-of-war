@@ -4,29 +4,6 @@
 #         assets/cdn/ (prod HTTP art only).
 # source: placeholder | original | ai_generated | google_fonts | svg_repo
 
-[game_icons_owned]
-path = "assets/static/icons/"
-source = "original"
-license = "AGPL-3.0-or-later"
-files = ["factory.svg", "port.svg", "defense_post.svg", "atombomb.png"]
-notes = "Original Shadows of War art restored from pre-wipe commit."
-
-[game_icons_placeholder]
-path = "assets/static/icons/"
-source = "placeholder"
-license = "AGPL-3.0-or-later"
-files = [
-  "city.svg",
-  "missile_silo.svg",
-  "trade_ship.png",
-  "transport_ship.png",
-  "battleship.png",
-  "star.webp",
-  "handshake.svg",
-  "sam_missile.png",
-]
-notes = "Themed procedural placeholders (gradients/icons) in-repo."
-
 [hud_icons]
 path = "assets/static/ui/hud/"
 source = "placeholder"
@@ -74,7 +51,6 @@ restored = [
   "ragnar",
   "sun_tzu",
 ]
-placeholder_pending = []
 themed_placeholder = [
   "boudica",
   "leonidas",
@@ -84,17 +60,6 @@ themed_placeholder = [
   "lady_six_sky",
 ]
 
-[diplomacy_ui]
-path = "assets/static/icons/"
-source = "placeholder"
-license = "AGPL-3.0-or-later"
-files = ["request.webp", "handshake.webp", "betray.webp", "nameplate.webp"]
-
-[back_svg]
-path = "assets/static/icons/back.svg"
-source = "placeholder"
-license = "AGPL-3.0-or-later"
-notes = "Replaced SVG Repo asset with TBD placeholder."
 
 [fonts]
 path = "assets/static/fonts/"

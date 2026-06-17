@@ -12,7 +12,7 @@ use egui::{
 /// stay on desktop layout when `width >= 600` even if `height < 600`.
 #[inline]
 pub fn compact_viewport(ctx: &Context) -> bool {
-    let rect = ctx.input(|i| i.screen_rect());
+    let rect = ctx.input(|i| i.content_rect());
     let w = rect.width();
     let h = rect.height();
     w < 768.0 || h < 600.0
@@ -21,7 +21,7 @@ pub fn compact_viewport(ctx: &Context) -> bool {
 /// Scale factor for fixed chrome (buttons, gaps, profile bar) on short viewports.
 #[inline]
 pub fn viewport_scale(ctx: &Context) -> f32 {
-    (ctx.input(|i| i.screen_rect()).height() / 720.0).clamp(0.55, 1.0)
+    (ctx.input(|i| i.content_rect()).height() / 720.0).clamp(0.55, 1.0)
 }
 
 /// Outer width of the main-menu left rail (content + optional glass frame inset).

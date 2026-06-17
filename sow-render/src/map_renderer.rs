@@ -213,6 +213,7 @@ impl MapRenderer {
             name: "terrain_raw",
             size: (terrain_bytes_per_row * height) as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
 
         // Compute static has_water_neighbor list
@@ -285,6 +286,7 @@ impl MapRenderer {
             name: "owner_raw",
             size: (owner_bytes_per_row * height) as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
 
         // --- Shader & pipeline ---

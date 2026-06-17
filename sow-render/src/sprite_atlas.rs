@@ -29,19 +29,7 @@ impl MoverSpriteId {
     }
 }
 
-const SPRITE_FILES: &[&[u8]] = &[
-    sow_core::repo_asset_bytes!("icons/transport_ship.png"),
-    sow_core::repo_asset_bytes!("icons/trade_ship.png"),
-    sow_core::repo_asset_bytes!("icons/battleship.png"),
-    sow_core::repo_asset_bytes!("icons/atombomb.png"),
-    sow_core::repo_asset_bytes!("icons/sam_missile.png"),
-];
-
-fn rasterize_sprite(bytes: &[u8], size: u32) -> Vec<u8> {
-    let img = image::load_from_memory(bytes).expect("sprite png decode");
-    let img = img.resize_exact(size, size, image::imageops::FilterType::Triangle);
-    img.to_rgba8().into_raw()
-}
+const EMOJI_ATLAS_BYTES: &[u8] = sow_core::repo_asset_bytes!("emoji/atlas.webp");
 
 pub struct SpriteAtlas {
     pub texture: gpu::Texture,
@@ -65,22 +53,40 @@ impl SpriteAtlas {
             name: "mover_atlas_upload",
             size: total as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
         let dst = buffer.data();
         let slice = unsafe { std::slice::from_raw_parts_mut(dst, total) };
         slice.fill(0);
 
-        for (i, bytes) in SPRITE_FILES.iter().enumerate() {
-            let rgba = rasterize_sprite(bytes, cell);
+        let atlas_img = image::load_from_memory(EMOJI_ATLAS_BYTES)
+            .expect("failed to load emoji atlas bytes")
+            .to_rgba8();
+
+        // Coordinates from emoji manifest for:
+        // 0: TransportShip -> "🚢" (576, 448)
+        // 1: TradeShip     -> "⛵" (640, 0)
+        // 2: Warship       -> "⚔️" (256, 0)
+        // 3: AtomBomb      -> "💣" (0, 320)
+        // 4: SamMissile    -> "🚀" (512, 448)
+        let coords = [
+            (576, 448), // TransportShip
+            (640, 0),   // TradeShip
+            (256, 0),   // Warship
+            (0, 320),   // AtomBomb
+            (512, 448), // SamMissile
+        ];
+
+        for (i, &(src_x, src_y)) in coords.iter().enumerate() {
             let col = (i as u32) % cols;
             let row = (i as u32) / cols;
             for y in 0..cell {
                 for x in 0..cell {
-                    let src = ((y * cell + x) * 4) as usize;
+                    let pixel = atlas_img.get_pixel(src_x + x, src_y + y);
                     let dst_x = col * cell + x;
                     let dst_y = row * cell + y;
                     let dst_i = (dst_y * bytes_per_row + dst_x * 4) as usize;
-                    slice[dst_i..dst_i + 4].copy_from_slice(&rgba[src..src + 4]);
+                    slice[dst_i..dst_i + 4].copy_from_slice(&pixel.0);
                 }
             }
         }

@@ -48,7 +48,7 @@ impl SowApp {
                                     .unwrap_or("Ally");
                                 let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                     (true, true) => format!(
-                                        "🎁 {} sent 🪙{} & 🛡️{}!",
+                                        "🎁 {} sent 🪙{} & ⚔️{}!",
                                         sender_name,
                                         sow_ui::utils::format_number(tx.gold),
                                         sow_ui::utils::format_number(tx.troops)
@@ -59,7 +59,7 @@ impl SowApp {
                                         sow_ui::utils::format_number(tx.gold)
                                     ),
                                     (false, true) => format!(
-                                        "🛡️ {} sent +{} Troops!",
+                                        "⚔️ {} sent +{} Troops!",
                                         sender_name,
                                         sow_ui::utils::format_number(tx.troops)
                                     ),
@@ -92,7 +92,7 @@ impl SowApp {
                                 }
                                 if tx.troops > 0.0 {
                                     self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                        text: format!("🛡️ +{}", sow_ui::utils::format_number(tx.troops)),
+                                        text: format!("⚔️ +{}", sow_ui::utils::format_number(tx.troops)),
                                         world_x: wx,
                                         world_y: wy + 0.5,
                                         start_time: now_instant,
@@ -184,7 +184,7 @@ impl SowApp {
                                 .unwrap_or("Ally");
                             let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                 (true, true) => format!(
-                                    "🎁 {} sent 🪙{} & 🛡️{}!",
+                                    "🎁 {} sent 🪙{} & ⚔️{}!",
                                     sender_name,
                                     sow_ui::utils::format_number(tx.gold),
                                     sow_ui::utils::format_number(tx.troops)
@@ -195,7 +195,7 @@ impl SowApp {
                                     sow_ui::utils::format_number(tx.gold)
                                 ),
                                 (false, true) => format!(
-                                    "🛡️ {} sent +{} Troops!",
+                                    "⚔️ {} sent +{} Troops!",
                                     sender_name,
                                     sow_ui::utils::format_number(tx.troops)
                                 ),
@@ -228,7 +228,7 @@ impl SowApp {
                             }
                             if tx.troops > 0.0 {
                                 self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                    text: format!("🛡️ +{}", sow_ui::utils::format_number(tx.troops)),
+                                    text: format!("⚔️ +{}", sow_ui::utils::format_number(tx.troops)),
                                     world_x: wx,
                                     world_y: wy + 0.5,
                                     start_time: now_instant,

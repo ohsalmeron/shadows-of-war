@@ -952,7 +952,7 @@ impl SowApp {
                 if let Some(troops) = attack.troops {
                     if troops > 0.0 {
                         self.ui.floating_notices.push(crate::app::FloatingNotice {
-                            text: format!("🛡️ +{}", sow_ui::utils::format_number(troops)),
+                            text: format!("⚔️ +{}", sow_ui::utils::format_number(troops)),
                             world_x,
                             world_y,
                             start_time: web_time::Instant::now(),
