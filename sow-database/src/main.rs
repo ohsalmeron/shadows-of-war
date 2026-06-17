@@ -106,10 +106,20 @@ async fn main() {
 
     let crazygames_api_key = std::env::var("CRAZYGAMES_API_KEY").ok();
 
+    let sanitized_valkey = if let Some(pos) = valkey_url.find('@') {
+        if let Some(scheme_pos) = valkey_url.find("://") {
+            format!("{}***@{}", &valkey_url[..scheme_pos + 3], &valkey_url[pos + 1..])
+        } else {
+            format!("***@{}", &valkey_url[pos + 1..])
+        }
+    } else {
+        valkey_url.clone()
+    };
+
     info!(
         "Config - Port: {}, Valkey: {}, Secret: [REDACTED], CG API Key Configured: {}",
         port,
-        valkey_url,
+        sanitized_valkey,
         crazygames_api_key.is_some()
     );
 

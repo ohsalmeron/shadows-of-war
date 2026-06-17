@@ -3690,6 +3690,7 @@ dependencies = [
  "clap",
  "dotenv",
  "image",
+ "libc",
  "minifier",
  "reqwest",
  "sha2",

@@ -15,6 +15,16 @@ fi
 export CARGO_TARGET_DIR="${ROOT}/dist/.cargo-target"
 mkdir -p "${CARGO_TARGET_DIR}"
 
+# Check if cargo is locked by another build before compiling sow-dist
+for lock in "${CARGO_TARGET_DIR}/.cargo-lock" "${CARGO_TARGET_DIR}/release/.cargo-lock" "${CARGO_TARGET_DIR}/debug/.cargo-lock" "${CARGO_TARGET_DIR}/wasm-release/.cargo-lock"; do
+  if [[ -f "${lock}" ]]; then
+    if ! flock -n "${lock}" true 2>/dev/null; then
+      echo "==> Cargo target directory is locked by another process. Waiting for lock..."
+      break
+    fi
+  fi
+done
+
 BIN="${CARGO_TARGET_DIR}/release/sow"
 cargo build -q -p sow-dist --release
 exec "${BIN}" "${@:-native}"

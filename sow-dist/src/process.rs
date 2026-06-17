@@ -84,3 +84,51 @@ pub fn output(cmd: &str, args: &[&str]) -> Result<String> {
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
+
+#[cfg(unix)]
+pub fn is_locked(path: &Path) -> bool {
+    use std::os::unix::io::AsRawFd;
+    if !path.exists() {
+        return false;
+    }
+    if let Ok(file) = std::fs::File::open(path) {
+        unsafe {
+            let fd = file.as_raw_fd();
+            // LOCK_EX (2) | LOCK_NB (4)
+            let res = libc::flock(fd, 2 | 4);
+            if res == 0 {
+                libc::flock(fd, 8); // LOCK_UN
+                false
+            } else {
+                true
+            }
+        }
+    } else {
+        false
+    }
+}
+
+#[cfg(not(unix))]
+pub fn is_locked(_path: &Path) -> bool {
+    false
+}
+
+pub fn check_any_cargo_lock(cargo_target: &Path) -> bool {
+    if !cargo_target.is_dir() {
+        return false;
+    }
+    for entry in walkdir::WalkDir::new(cargo_target)
+        .min_depth(1)
+        .max_depth(4)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let name = entry.file_name().to_string_lossy();
+        if name == ".cargo-lock" || name == ".cargo-build-lock" {
+            if is_locked(entry.path()) {
+                return true;
+            }
+        }
+    }
+    false
+}

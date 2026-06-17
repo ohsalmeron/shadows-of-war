@@ -28,6 +28,13 @@ impl SowApp {
         if physical_size.width == 0 || physical_size.height == 0 {
             return;
         }
+        // ponytail: bypass winit scale_factor on web to avoid initial 1.0 zoom mismatch.
+        #[cfg(target_arch = "wasm32")]
+        let sf = web_sys::window()
+            .map(|window| window.device_pixel_ratio() as f32)
+            .unwrap_or(1.0)
+            .max(0.01);
+        #[cfg(not(target_arch = "wasm32"))]
         let sf = self
             .gfx
             .window
@@ -69,6 +76,8 @@ impl SowApp {
                     } else {
                         gpu::DisplaySync::Tear
                     };
+                    #[cfg(target_arch = "wasm32")]
+                    crate::web_canvas::set_canvas_backing_store_size(physical_size.width, physical_size.height);
                     render_ctx.context.reconfigure_surface(
                         s,
                         gpu::SurfaceConfig {
@@ -596,6 +605,12 @@ impl SowApp {
                             (egui::MouseWheelUnit::Line, egui::vec2(x, y))
                         }
                         MouseScrollDelta::PixelDelta(pos) => {
+                            // ponytail: query device_pixel_ratio directly on WASM for scroll delta scaling
+                            #[cfg(target_arch = "wasm32")]
+                            let sf = web_sys::window()
+                                .map(|window| window.device_pixel_ratio() as f32)
+                                .unwrap_or(1.0);
+                            #[cfg(not(target_arch = "wasm32"))]
                             let sf = self
                                 .gfx
                                 .window

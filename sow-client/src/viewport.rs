@@ -16,9 +16,22 @@ pub struct Viewport {
 }
 
 impl Viewport {
-    pub fn measure(win: &dyn winit::window::Window) -> Self {
-        let physical = win.surface_size();
-        let scale_factor = win.scale_factor() as f32;
+    pub fn measure(_win: &dyn winit::window::Window) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        let physical = {
+            let (w, h) = crate::web_canvas::physical_viewport_size();
+            PhysicalSize::new(w, h)
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let physical = _win.surface_size();
+
+        // ponytail: winit scale_factor on web defaults to 1.0 initially, so query browser device_pixel_ratio directly.
+        #[cfg(target_arch = "wasm32")]
+        let scale_factor = web_sys::window()
+            .map(|window| window.device_pixel_ratio() as f32)
+            .unwrap_or(1.0);
+        #[cfg(not(target_arch = "wasm32"))]
+        let scale_factor = _win.scale_factor() as f32;
         Self::from_physical(physical, scale_factor.max(0.01))
     }
 
@@ -66,7 +79,10 @@ impl Viewport {
 #[cfg(target_arch = "wasm32")]
 pub fn sync_wasm_window(app: &SowApp, win: &dyn winit::window::Window) {
     let (w, h) = crate::web_canvas::canvas_logical_size();
-    let sf = win.scale_factor();
+    // ponytail: query device_pixel_ratio directly as winit scale_factor is 1.0 initially
+    let sf = web_sys::window()
+        .map(|window| window.device_pixel_ratio())
+        .unwrap_or(1.0);
     let expected_w = (w * sf) as u32;
     let expected_h = (h * sf) as u32;
 

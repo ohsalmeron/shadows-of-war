@@ -711,17 +711,34 @@ impl SowApp {
         }
         if self.gfx.surface.is_none() {
             if let Some(ref win) = self.gfx.window {
+                #[cfg(target_arch = "wasm32")]
+                let (pw, ph) = crate::web_canvas::physical_viewport_size();
+                #[cfg(target_arch = "wasm32")]
+                let sz = winit::dpi::PhysicalSize::new(pw.max(1), ph.max(1));
+                #[cfg(not(target_arch = "wasm32"))]
                 let sz = win.surface_size();
+
                 let Some(render_ctx) = self.gfx.render_ctx.take() else {
                     return;
                 };
-                match render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
+
+                #[cfg(target_arch = "wasm32")]
+                crate::web_canvas::set_canvas_backing_store_size(sz.width, sz.height);
+
+                match render_ctx.create_surface(win, sz.width, sz.height) {
                     Ok(s) => {
-                        self.gfx.configured_physical =
-                            winit::dpi::PhysicalSize::new(sz.width.max(1), sz.height.max(1));
+                        self.gfx.configured_physical = sz;
+                        // ponytail: query device_pixel_ratio directly as winit scale_factor is 1.0 initially
+                        #[cfg(target_arch = "wasm32")]
+                        let sf = web_sys::window()
+                            .map(|window| window.device_pixel_ratio() as f32)
+                            .unwrap_or(1.0);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let sf = win.scale_factor() as f32;
+
                         let vp = crate::viewport::Viewport::from_configured(
                             self,
-                            win.scale_factor() as f32,
+                            sf,
                         );
                         vp.sync_to_app(self);
                         let zmax =
