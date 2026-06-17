@@ -21,7 +21,11 @@ fn new_guest_id() -> String {
 #[cfg(target_arch = "wasm32")]
 fn load() -> Option<String> {
     let storage = web_sys::window()?.local_storage().ok()??;
-    storage.get_item(STORAGE_KEY).ok().flatten().filter(|s| !s.is_empty())
+    storage
+        .get_item(STORAGE_KEY)
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty())
 }
 
 #[cfg(target_arch = "wasm32")]

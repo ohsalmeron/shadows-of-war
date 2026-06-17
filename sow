@@ -16,14 +16,5 @@ export CARGO_TARGET_DIR="${ROOT}/dist/.cargo-target"
 mkdir -p "${CARGO_TARGET_DIR}"
 
 BIN="${CARGO_TARGET_DIR}/release/sow"
-needs_build=0
-if [[ ! -x "${BIN}" ]]; then
-  needs_build=1
-elif find "${ROOT}/sow-dist/src" "${ROOT}/sow-dist/Cargo.toml" -newer "${BIN}" 2>/dev/null | grep -q .; then
-  needs_build=1
-fi
-if [[ "${needs_build}" -eq 1 ]]; then
-  echo "==> building sow..."
-  cargo build -q -p sow-dist --release
-fi
+cargo build -q -p sow-dist --release
 exec "${BIN}" "$@"

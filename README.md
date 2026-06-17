@@ -45,16 +45,19 @@ Rust workspace: shared game logic for web (WASM) and native clients.
 
 ## `./sow`
 
-Requires host **Rust**, **gcloud** (OS Login), and **rsync** on your PATH. `./sow` builds a cached release binary under `dist/.cargo-target/`.
+Requires host **Rust**, **gcloud** (OS Login + IAP tunnel), and **tar** on your PATH. `./sow` builds a cached release binary under `dist/.cargo-target/`.
 
 ### Setup
 
-```bash
-cp sow-dist/.env.example sow-dist/.env
-# Edit sow-dist/.env: SOW_GCP_PROJECT, origins, certbot email (see sow-dist/.env.example)
-```
+**`./sow local`** needs no `.env` — it serves WASM locally and talks to public prod wss/CDN at runtime.
 
-Remote deploy (`./sow p`, `./sow ptr`, `./sow infra`) reads `sow-dist/.env` (gitignored). Without it, `./sow` prints what to set.
+Remote deploy (`./sow p`, `./sow ptr`, `./sow cg`, `./sow infra`) uses **`gcloud auth login`** + OS Login over **IAP** (`--tunnel-through-iap`; credentials in `~/.config/gcloud/`, never in the repo). File ship uses **tar over gcloud ssh** — no `rsync`. Target GCP project comes from `SOW_GCP_PROJECT` or `gcloud config get-value project`.
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID   # or set SOW_GCP_PROJECT in sow-dist/.env
+# Optional: cp sow-dist/.env.example sow-dist/.env  # forks / infra certbot email
+```
 
 ```bash
 ./sow infra --confirm-destroy   # one-time: recreate Fedora VPS on GCP (nginx, TLS, valkey)
@@ -62,7 +65,7 @@ Remote deploy (`./sow p`, `./sow ptr`, `./sow infra`) reads `sow-dist/.env` (git
 ./sow prod -v                   # prod: play + marketing + prod server + cdn/
 ./sow p -v                      # same as prod
 ./sow cg                        # CrazyGames dist + cdn/
-./sow local                     # local WASM QA → prod wss/CDN
+./sow local                     # local WASM QA → prod wss/CDN (no .env)
 ./sow l                         # same as local
 ```
 
@@ -70,22 +73,27 @@ Native client (no local server): `cargo run -p sow-client` → production WebSoc
 
 | Env var | Purpose |
 |---------|---------|
-| `SOW_GCP_PROJECT` | GCP project ID (**required** for remote deploy) |
-| `SOW_GCP_ZONE` | VM zone |
-| `SOW_GCP_INSTANCE` | VM name |
-| `SOW_SITE_ORIGIN` / `SOW_PLAY_ORIGIN` / `SOW_PTR_ORIGIN` | Public HTTPS origins |
-| `SOW_CERTBOT_EMAIL` | TLS certificate contact |
+| `SOW_GCP_PROJECT` | GCP project ID (optional if `gcloud config set project` is set) |
+| `SOW_GCP_ZONE` / `SOW_GCP_INSTANCE` | VM zone and name (defaults in code) |
+| `SOW_SITE_ORIGIN` / `SOW_PLAY_ORIGIN` / `SOW_PTR_ORIGIN` | Public HTTPS origins (defaults: shadowsofwar.io) |
+| `SOW_CERTBOT_EMAIL` | TLS contact — required when deploy pushes nginx templates (`./sow p` / `ptr` if `sow-dist/deploy/` changed); always required for `./sow infra` |
 
-Full list: [`sow-dist/.env.example`](sow-dist/.env.example).
+**Not in `.env`:** `SOW_DB_SECRET`, `CRAZYGAMES_API_KEY` — set on the VPS only.
+
+**IAP (one-time):** enable IAP API; grant deployer `roles/iap.tunnelResourceAccessor`; restrict public VPC `:22` so SSH is IAP-only.
+
+**SSL recovery** (if HTTPS dies after a bad nginx push): `gcloud compute ssh sow-server --tunnel-through-iap -- 'sudo certbot --nginx …'` then reload nginx.
+
+Full optional list: [`sow-dist/.env.example`](sow-dist/.env.example).
 
 ## Commands
 
 | Command | Output | VPS content | Server / infra |
 |---------|--------|-------------|----------------|
 | `infra --confirm-destroy` | — | — | Recreate Fedora VM on GCP; nginx, TLS, valkey, systemd (reproducible from `sow-dist/deploy/`) |
-| `cg` / `crazygames` | `dist/crazygames/` | CDN rsync only | No |
-| `p` / `prod` | `dist/play/` + marketing | play + shadowsofwar.io | Rsyncs server binaries + restarts `sow-server` when crates or version changed |
-| `ptr` | `dist/ptr/` | ptr.shadowsofwar.io | Rsyncs server binaries + restarts `sow-server-ptr` only — never prod |
+| `cg` / `crazygames` | `dist/crazygames/` | CDN sync only | No |
+| `p` / `prod` | `dist/play/` + marketing | play + shadowsofwar.io | Syncs server binaries + restarts `sow-server` when crates or version changed |
+| `ptr` | `dist/ptr/` | ptr.shadowsofwar.io | Syncs server binaries + restarts `sow-server-ptr` only — never prod |
 | `l` / `local` | `dist/site-dev/` | localhost only | No |
 
 ```bash
@@ -99,7 +107,7 @@ Full list: [`sow-dist/.env.example`](sow-dist/.env.example).
 
 1. **Build** (local, parallel) — WASM cargo build, server GNU build (prod/ptr only, skipped when crate inputs unchanged), CDN prep
 2. **Package** — bindgen/minify/brotli into `dist/` (skipped when WASM + shell inputs unchanged)
-3. **Ship** (remote, parallel) — CDN, play/ptr shell, marketing (prod), maps, and server binaries rsync together; then one `systemctl restart` when needed
+3. **Ship** (remote, parallel) — CDN, play/ptr shell, marketing (prod), maps, and server binaries sync together; then one `systemctl restart` when needed
 4. **Verify** — HTTP checks for CDN, play/marketing/sitemap, maps API, WebSocket
 
 Use **`./sow infra --confirm-destroy`** only for a fresh VPS or changes under `sow-dist/deploy/` (nginx, TLS, valkey, systemd). Routine releases use **`./sow p`** / **`./sow ptr`** only.
@@ -113,9 +121,9 @@ Details: [sow-web/README.md](sow-web/README.md).
 | CDN (parallel on cg/prod/ptr) | `assets/cdn/` only | `shadowsofwar.io/html/assets/cdn/` |
 | WASM dist | `sow-web/shell` + compiled client | `dist/play`, `dist/ptr`, or `dist/crazygames` |
 | Static in dist | `assets/static/` (fonts, icons — **not maps**) | `dist/crazygames/assets/static/` only |
-| Maps (online) | `assets/maps/` | VPS maps dir → `/maps/` HTTP API (prod/ptr rsync) |
+| Maps (online) | `assets/maps/` | VPS maps dir → `/maps/` HTTP API (prod/ptr sync) |
 | Maps (offline) | `assets/static/maps/world/` only | Bundled inside client WASM |
-| Server binaries | `cargo build --release` (`x86_64-unknown-linux-gnu`, glibc) | Rsync to `$HOME/shadowsofwar/` via gcloud; restart systemd unit |
+| Server binaries | `cargo build --release` (`x86_64-unknown-linux-gnu`, glibc) | tar/scp to `$HOME/shadowsofwar/` via gcloud IAP; restart systemd unit |
 | Marketing HTML | `sow-web/site/` | `shadowsofwar.io/html/` (via `sow prod`) |
 
 Boot UI and leader portraits load from CDN at runtime for play/ptr shells (shell-only dist).
@@ -128,7 +136,7 @@ Boot UI and leader portraits load from CDN at runtime for play/ptr shells (shell
 | Marketing site | Yes → shadowsofwar.io | — |
 | CDN (`assets/cdn/`) | Yes (parallel build) | — |
 | Map files | Yes → prod maps dir | — |
-| `sow-server` / `sow-relay` | Yes when server crates changed | rsync binaries + orchestrator restart; relays keep running (`KillMode=process`) |
+| `sow-server` / `sow-relay` | Yes when server crates changed | sync binaries + orchestrator restart; relays keep running (`KillMode=process`) |
 
 `sow ptr` updates PTR shell + PTR server only — never restarts prod.
 

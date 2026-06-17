@@ -14,6 +14,25 @@ pub(crate) struct BunkerLaserVfxOpts {
     pub volley_scatter: bool,
 }
 
+pub(crate) struct WorldPaintCamera {
+    pub camera_x: f32,
+    pub camera_y: f32,
+    pub camera_zoom: f32,
+    pub sf: f32,
+}
+
+pub(crate) struct BunkerLaserPaint {
+    pub center: egui::Pos2,
+    pub atk_center: egui::Pos2,
+    pub elapsed: f32,
+    pub glow_color: egui::Color32,
+    pub core_color: egui::Color32,
+    pub low_detail: bool,
+    pub opts: BunkerLaserVfxOpts,
+    pub scatter_seed: u64,
+    pub scatter_slot: u32,
+}
+
 pub(crate) fn bunker_laser_vfx_opts(ctx: &egui::Context) -> BunkerLaserVfxOpts {
     ctx.data(|d| BunkerLaserVfxOpts {
         target_seeking: d
@@ -51,13 +70,16 @@ pub(crate) fn paint_bunker_hex_range(
     center_col: i32,
     center_row: i32,
     range: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    sf: f32,
+    camera: WorldPaintCamera,
     fill_color: egui::Color32,
     stroke_color: egui::Color32,
 ) {
+    let WorldPaintCamera {
+        camera_x,
+        camera_y,
+        camera_zoom,
+        sf,
+    } = camera;
     let range_i = range.ceil() as i32;
     let half = camera_zoom / sf * 0.5;
     let cell = half * 2.0;
@@ -97,18 +119,18 @@ pub(crate) fn paint_bunker_hex_range(
     }
 }
 
-pub(crate) fn paint_bunker_laser(
-    painter: &egui::Painter,
-    center: egui::Pos2,
-    atk_center: egui::Pos2,
-    elapsed: f32,
-    glow_color: egui::Color32,
-    core_color: egui::Color32,
-    low_detail: bool,
-    opts: BunkerLaserVfxOpts,
-    scatter_seed: u64,
-    scatter_slot: u32,
-) {
+pub(crate) fn paint_bunker_laser(painter: &egui::Painter, paint: BunkerLaserPaint) {
+    let BunkerLaserPaint {
+        center,
+        atk_center,
+        elapsed,
+        glow_color,
+        core_color,
+        low_detail,
+        opts,
+        scatter_seed,
+        scatter_slot,
+    } = paint;
     let mut end = atk_center;
     if opts.volley_scatter {
         let (jx, jy) = deterministic_scatter_jitter(scatter_seed, scatter_slot, 18.0);
@@ -117,7 +139,10 @@ pub(crate) fn paint_bunker_laser(
 
     if low_detail {
         painter.line_segment([center, end], egui::Stroke::new(5.0_f32, glow_color));
-        painter.line_segment([center, end], egui::Stroke::new(2.0_f32, egui::Color32::WHITE));
+        painter.line_segment(
+            [center, end],
+            egui::Stroke::new(2.0_f32, egui::Color32::WHITE),
+        );
         painter.circle_filled(end, 6.0, egui::Color32::WHITE);
         painter.circle_filled(end, 9.0, glow_color);
         return;
@@ -157,7 +182,10 @@ pub(crate) fn paint_bunker_laser(
             egui::Stroke::new(8.0_f32, glow_color.linear_multiply(0.55)),
         );
         painter.line_segment([prev_pt, pt], egui::Stroke::new(3.5_f32, core_color));
-        painter.line_segment([prev_pt, pt], egui::Stroke::new(1.2_f32, egui::Color32::WHITE));
+        painter.line_segment(
+            [prev_pt, pt],
+            egui::Stroke::new(1.2_f32, egui::Color32::WHITE),
+        );
         prev_pt = pt;
     }
 
@@ -168,13 +196,19 @@ pub(crate) fn paint_bunker_laser(
         let proj_pos = if let Some(ctrl) = arc_ctrl {
             quad_bezier(center, ctrl, end, t)
         } else {
-            egui::pos2(center.x + (end.x - center.x) * t, center.y + (end.y - center.y) * t)
+            egui::pos2(
+                center.x + (end.x - center.x) * t,
+                center.y + (end.y - center.y) * t,
+            )
         };
         let trail_start = egui::pos2(
             proj_pos.x - angle.cos() * trail_len,
             proj_pos.y - angle.sin() * trail_len,
         );
-        painter.line_segment([trail_start, proj_pos], egui::Stroke::new(4.5_f32, glow_color));
+        painter.line_segment(
+            [trail_start, proj_pos],
+            egui::Stroke::new(4.5_f32, glow_color),
+        );
         painter.circle_filled(proj_pos, 5.0, egui::Color32::WHITE);
         painter.circle_filled(proj_pos, 7.5, glow_color);
     }
@@ -192,15 +226,22 @@ pub(crate) fn paint_bunker_laser(
 
     let spark_t = (elapsed * 6.0) % 1.0;
     for i in 0..8 {
-        let spark_angle = (i as f32 * 45.0 + elapsed * 280.0 + scatter_slot as f32 * 17.0).to_radians();
+        let spark_angle =
+            (i as f32 * 45.0 + elapsed * 280.0 + scatter_slot as f32 * 17.0).to_radians();
         let spark_len = spark_t * 20.0;
-        let spark_start = end + egui::vec2(spark_angle.cos(), spark_angle.sin()) * (spark_len * 0.25);
+        let spark_start =
+            end + egui::vec2(spark_angle.cos(), spark_angle.sin()) * (spark_len * 0.25);
         let spark_end = end + egui::vec2(spark_angle.cos(), spark_angle.sin()) * spark_len;
         painter.line_segment(
             [spark_start, spark_end],
             egui::Stroke::new(
                 2.2_f32,
-                egui::Color32::from_rgba_unmultiplied(255, 235, 130, ((1.0 - spark_t) * 255.0) as u8),
+                egui::Color32::from_rgba_unmultiplied(
+                    255,
+                    235,
+                    130,
+                    ((1.0 - spark_t) * 255.0) as u8,
+                ),
             ),
         );
     }

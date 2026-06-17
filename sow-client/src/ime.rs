@@ -233,18 +233,3 @@ fn schedule_double_raf_focus(input: &HtmlInputElement) {
     let _ = win.request_animation_frame(outer.as_ref().unchecked_ref());
     outer.forget();
 }
-
-/// Best-effort: canvas must be focusable for some mobile browsers when tabbing / accessibility tools run.
-pub(crate) fn ensure_canvas_tabindex() {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return,
-    };
-    let document = match window.document() {
-        Some(d) => d,
-        None => return,
-    };
-    if let Some(canvas) = document.get_element_by_id("blade") {
-        let _ = canvas.set_attribute("tabindex", "0");
-    }
-}

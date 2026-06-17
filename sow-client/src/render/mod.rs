@@ -74,12 +74,12 @@ impl SowApp {
                     let mut new_detonations = Vec::new();
                     if let Some(snap) = &self.sim.current_snapshot {
                         for (id, prev_proj) in &self.ui.last_projectiles {
-                            if !snap.projectiles.iter().any(|p| p.id == *id) {
-                                if prev_proj.at_path_end() {
-                                    let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
-                                    let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
-                                    new_detonations.push((dst_x, dst_y, prev_proj.kind));
-                                }
+                            if !snap.projectiles.iter().any(|p| p.id == *id)
+                                && prev_proj.at_path_end()
+                            {
+                                let dst_x = (prev_proj.dst_tile % self.sim.map_w) as f32;
+                                let dst_y = (prev_proj.dst_tile / self.sim.map_w) as f32;
+                                new_detonations.push((dst_x, dst_y, prev_proj.kind));
                             }
                         }
                     }
@@ -90,13 +90,15 @@ impl SowApp {
                         if let sow_core::game::ProjectileKind::Nuke { level } = kind {
                             sow_audio::play_nuke_impact_sound(
                                 level,
-                                dx + 0.5,
-                                dy + 0.5,
-                                self.input.camera_x,
-                                self.input.camera_y,
-                                self.input.camera_zoom,
-                                self.input.screen_w,
-                                self.input.screen_h,
+                                sow_audio::SpatialSoundParams {
+                                    wx: dx + 0.5,
+                                    wy: dy + 0.5,
+                                    camera_x: self.input.camera_x,
+                                    camera_y: self.input.camera_y,
+                                    camera_zoom: self.input.camera_zoom,
+                                    screen_w: self.input.screen_w,
+                                    screen_h: self.input.screen_h,
+                                },
                             );
 
                             let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
@@ -120,15 +122,15 @@ impl SowApp {
                             {
                                 let src_x = (proj.src_tile % self.sim.map_w) as f32 + 0.5;
                                 let src_y = (proj.src_tile / self.sim.map_w) as f32 + 0.5;
-                                sow_audio::play_nuke_launch_sound(
-                                    src_x,
-                                    src_y,
-                                    self.input.camera_x,
-                                    self.input.camera_y,
-                                    self.input.camera_zoom,
-                                    self.input.screen_w,
-                                    self.input.screen_h,
-                                );
+                                sow_audio::play_nuke_launch_sound(sow_audio::SpatialSoundParams {
+                                    wx: src_x,
+                                    wy: src_y,
+                                    camera_x: self.input.camera_x,
+                                    camera_y: self.input.camera_y,
+                                    camera_zoom: self.input.camera_zoom,
+                                    screen_w: self.input.screen_w,
+                                    screen_h: self.input.screen_h,
+                                });
 
                                 // New nuke — find source building by src_tile
                                 if let Some(b) = snap.buildings.iter().find(|b| {
@@ -150,9 +152,9 @@ impl SowApp {
 
                     // Sync last_projectiles (lightweight track for detonation / launch audio).
                     if let Some(snap) = &self.sim.current_snapshot {
-                        self.ui.last_projectiles.retain(|id, _| {
-                            snap.projectiles.iter().any(|p| p.id == *id)
-                        });
+                        self.ui
+                            .last_projectiles
+                            .retain(|id, _| snap.projectiles.iter().any(|p| p.id == *id));
                         for proj in &snap.projectiles {
                             self.ui.last_projectiles.insert(
                                 proj.id,
@@ -172,10 +174,10 @@ impl SowApp {
 
                     if self.ui.show_dev_sidebar {
                         self.ui.egui_ctx.data_mut(|d| {
-                            border_thickness = *d
-                                .get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || {
-                                    0.5f32
-                                });
+                            border_thickness = *d.get_temp_mut_or_insert_with(
+                                egui::Id::new("dev_thickness"),
+                                || 0.5f32,
+                            );
                             border_darkness = *d
                                 .get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || {
                                     0.35f32
@@ -192,10 +194,10 @@ impl SowApp {
                                 egui::Id::new("dev_territory_opacity"),
                                 || 1.0f32,
                             );
-                            blend_mode = *d
-                                .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
-                                    0.0f32
-                                });
+                            blend_mode = *d.get_temp_mut_or_insert_with(
+                                egui::Id::new("dev_blend_mode"),
+                                || 0.0f32,
+                            );
                             sub_voxel_scale = *d.get_temp_mut_or_insert_with(
                                 egui::Id::new("dev_sub_voxel_scale"),
                                 || 1.0f32,
@@ -651,11 +653,12 @@ impl SowApp {
 
             // ── DRAWING UI ──────────────────────────────────────────
             if let Some(ref mut gp) = self.gfx.gui_painter {
+                let ppp = egui_output.pixels_per_point;
                 let screen_desc = blade_egui::ScreenDescriptor {
                     physical_size: (self.input.screen_w as u32, self.input.screen_h as u32),
-                    scale_factor: sf,
+                    scale_factor: ppp,
                 };
-                let paint_jobs = self.ui.egui_ctx.tessellate(egui_output.shapes, sf);
+                let paint_jobs = self.ui.egui_ctx.tessellate(egui_output.shapes, ppp);
                 gp.update_textures(
                     &mut render_ctx.command_encoder,
                     &egui_output.textures_delta,
@@ -700,11 +703,18 @@ impl SowApp {
         }
         if self.gfx.surface.is_none() {
             if let Some(ref win) = self.gfx.window {
+                #[cfg(target_arch = "wasm32")]
+                let (pw, ph) = crate::web_canvas::physical_viewport_size();
+                #[cfg(target_arch = "wasm32")]
+                let sz = winit::dpi::PhysicalSize::new(pw.max(1), ph.max(1));
+                #[cfg(not(target_arch = "wasm32"))]
                 let sz = win.surface_size();
                 let Some(render_ctx) = self.gfx.render_ctx.take() else {
                     return;
                 };
-                match render_ctx.create_surface(win, sz.width.max(1), sz.height.max(1)) {
+                #[cfg(target_arch = "wasm32")]
+                crate::web_canvas::set_canvas_backing_store_size(sz.width, sz.height);
+                match render_ctx.create_surface(win, sz.width, sz.height) {
                     Ok(s) => {
                         self.input.screen_w = sz.width as f32;
                         self.input.screen_h = sz.height as f32;
@@ -714,11 +724,8 @@ impl SowApp {
                             self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
                         let vp = crate::viewport::Viewport::measure(win.as_ref());
                         crate::viewport::apply_to_egui(self, &vp);
-                        self.gfx.last_egui_viewport = Some((
-                            vp.physical.width,
-                            vp.physical.height,
-                            vp.scale_factor,
-                        ));
+                        self.gfx.last_egui_viewport =
+                            Some((vp.physical.width, vp.physical.height, vp.scale_factor));
                         let format = s.info().format;
 
                         if let Some(sp) = self.gfx.prev_sync_point.take() {

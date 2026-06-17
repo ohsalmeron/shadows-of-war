@@ -1095,7 +1095,11 @@ impl SowApp {
             ui.add(egui::Slider::new(&mut sub_voxel_scale, 1.0..=8.0).text("Sub-Voxel Scale"));
 
             ui.separator();
-            ui.label(RichText::new("Bunker Laser VFX").strong().color(Color32::WHITE));
+            ui.label(
+                RichText::new("Bunker Laser VFX")
+                    .strong()
+                    .color(Color32::WHITE),
+            );
             let mut laser_target = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
             });
@@ -1110,7 +1114,9 @@ impl SowApp {
             ui.checkbox(&mut laser_scatter, "Volley scatter");
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_target"), laser_target));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_arc"), laser_arc));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter));
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter)
+            });
 
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));

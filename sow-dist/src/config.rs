@@ -1,9 +1,25 @@
 use crate::gcp::GcpConfig;
-use anyhow::{Context, Result};
+use crate::process;
+use anyhow::{bail, Context, Result};
 use std::env;
 use std::path::Path;
 
-const MISSING_ENV: &str = "copy sow-dist/.env.example to sow-dist/.env and set required variables";
+const DEFAULT_SITE_ORIGIN: &str = "https://shadowsofwar.io";
+const DEFAULT_PLAY_ORIGIN: &str = "https://play.shadowsofwar.io";
+const DEFAULT_PTR_ORIGIN: &str = "https://ptr.shadowsofwar.io";
+
+// Internal service ports — override via env if you change them on the VPS.
+const DEFAULT_PROD_WS_PORT: &str = "25565";
+const DEFAULT_PROD_MAPS_PORT: &str = "25566";
+const DEFAULT_PROD_DB_PORT: &str = "25585";
+const DEFAULT_PTR_WS_PORT: &str = "25575";
+const DEFAULT_PTR_MAPS_PORT: &str = "25576";
+const DEFAULT_PTR_DB_PORT: &str = "25595";
+
+const MISSING_GCP_PROJECT: &str =
+    "set SOW_GCP_PROJECT or run: gcloud config set project YOUR_PROJECT_ID";
+const MISSING_CERTBOT: &str =
+    "SOW_CERTBOT_EMAIL is required for ./sow infra — set in sow-dist/.env or shell";
 
 #[derive(Clone, Debug)]
 pub struct DeployConfig {
@@ -22,24 +38,6 @@ pub struct DeployConfig {
 }
 
 impl DeployConfig {
-    pub fn load() -> Result<Self> {
-        let gcp_project = env_required("SOW_GCP_PROJECT")?;
-        Ok(Self {
-            gcp_project,
-            gcp_zone: env_or("SOW_GCP_ZONE", "us-central1-a"),
-            gcp_instance: env_or("SOW_GCP_INSTANCE", "sow-server"),
-            gcp_static_ip: env_or("SOW_GCP_STATIC_IP", "sow-server-ip"),
-            site_origin: env_required("SOW_SITE_ORIGIN")?,
-            play_origin: env_required("SOW_PLAY_ORIGIN")?,
-            ptr_origin: env_required("SOW_PTR_ORIGIN")?,
-            certbot_email: env_required("SOW_CERTBOT_EMAIL")?,
-            test_instance: env_optional("SOW_GCP_TEST_INSTANCE"),
-            test_zone: env_optional("SOW_GCP_TEST_ZONE"),
-            test_static_ip: env_optional("SOW_GCP_TEST_STATIC_IP"),
-            test_static_ip_region: env_optional("SOW_GCP_TEST_STATIC_IP_REGION"),
-        })
-    }
-
     pub fn gcp(&self) -> GcpConfig {
         GcpConfig {
             project: self.gcp_project.clone(),
@@ -85,7 +83,10 @@ impl DeployConfig {
     }
 
     pub fn db_url(&self, origin: &str) -> String {
-        format!("{}/api/profile?provider=local&external_id=healthcheck", trim_origin(origin))
+        format!(
+            "{}/api/profile?provider=local&external_id=healthcheck",
+            trim_origin(origin)
+        )
     }
 
     pub fn sitemap_url(&self) -> String {
@@ -107,6 +108,121 @@ impl DeployConfig {
     pub fn web_root_ptr(&self) -> String {
         format!("/var/www/{}/html", self.ptr_domain())
     }
+
+    pub fn prod_ws_port(&self) -> String {
+        env_or("SOW_PROD_WS_PORT", DEFAULT_PROD_WS_PORT)
+    }
+
+    pub fn prod_maps_port(&self) -> String {
+        env_or("SOW_PROD_MAPS_PORT", DEFAULT_PROD_MAPS_PORT)
+    }
+
+    pub fn prod_db_port(&self) -> String {
+        env_or("SOW_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)
+    }
+
+    pub fn ptr_ws_port(&self) -> String {
+        env_or("SOW_PTR_WS_PORT", DEFAULT_PTR_WS_PORT)
+    }
+
+    pub fn ptr_maps_port(&self) -> String {
+        env_or("SOW_PTR_MAPS_PORT", DEFAULT_PTR_MAPS_PORT)
+    }
+
+    pub fn ptr_db_port(&self) -> String {
+        env_or("SOW_PTR_DB_PORT", DEFAULT_PTR_DB_PORT)
+    }
+}
+
+/// Public prod origins for `./sow local` — no `.env` or GCP required.
+pub fn local_config() -> DeployConfig {
+    let (site_origin, play_origin, ptr_origin) = load_origins();
+    DeployConfig {
+        gcp_project: String::new(),
+        gcp_zone: String::new(),
+        gcp_instance: String::new(),
+        gcp_static_ip: String::new(),
+        site_origin,
+        play_origin,
+        ptr_origin,
+        certbot_email: String::new(),
+        test_instance: None,
+        test_zone: None,
+        test_static_ip: None,
+        test_static_ip_region: None,
+    }
+}
+
+/// GCP project + origins for `./sow cg`, `./sow p`, `./sow ptr`.
+pub fn require_deploy_config() -> Result<DeployConfig> {
+    let cfg = build_deploy_config(None).map_err(|e| {
+        eprintln!("{e}");
+        e
+    })?;
+    Ok(cfg)
+}
+
+/// Full deploy config plus certbot email for `./sow infra`.
+pub fn require_infra_config() -> Result<DeployConfig> {
+    let email = env_required("SOW_CERTBOT_EMAIL", MISSING_CERTBOT)?;
+    let cfg = build_deploy_config(Some(email)).map_err(|e| {
+        eprintln!("{e}");
+        e
+    })?;
+    Ok(cfg)
+}
+
+fn build_deploy_config(certbot_email: Option<String>) -> Result<DeployConfig> {
+    let (gcp_project, gcp_zone, gcp_instance, gcp_static_ip) = load_gcp_fields()?;
+    let (site_origin, play_origin, ptr_origin) = load_origins();
+    Ok(DeployConfig {
+        gcp_project,
+        gcp_zone,
+        gcp_instance,
+        gcp_static_ip,
+        site_origin,
+        play_origin,
+        ptr_origin,
+        certbot_email: certbot_email
+            .or_else(|| env_optional("SOW_CERTBOT_EMAIL"))
+            .unwrap_or_default(),
+        test_instance: env_optional("SOW_GCP_TEST_INSTANCE"),
+        test_zone: env_optional("SOW_GCP_TEST_ZONE"),
+        test_static_ip: env_optional("SOW_GCP_TEST_STATIC_IP"),
+        test_static_ip_region: env_optional("SOW_GCP_TEST_STATIC_IP_REGION"),
+    })
+}
+
+fn load_gcp_fields() -> Result<(String, String, String, String)> {
+    Ok((
+        resolve_gcp_project()?,
+        env_or("SOW_GCP_ZONE", "us-central1-a"),
+        env_or("SOW_GCP_INSTANCE", "sow-server"),
+        env_or("SOW_GCP_STATIC_IP", "sow-server-ip"),
+    ))
+}
+
+fn load_origins() -> (String, String, String) {
+    (
+        env_or("SOW_SITE_ORIGIN", DEFAULT_SITE_ORIGIN),
+        env_or("SOW_PLAY_ORIGIN", DEFAULT_PLAY_ORIGIN),
+        env_or("SOW_PTR_ORIGIN", DEFAULT_PTR_ORIGIN),
+    )
+}
+
+fn resolve_gcp_project() -> Result<String> {
+    if let Ok(v) = env::var("SOW_GCP_PROJECT") {
+        let v = v.trim().to_string();
+        if !v.is_empty() && v != "your-gcp-project-id" {
+            return Ok(v);
+        }
+    }
+    let project = process::output("gcloud", &["config", "get-value", "project"])
+        .context("could not read gcloud default project")?;
+    if project.is_empty() || project == "(unset)" {
+        bail!("SOW_GCP_PROJECT is required — {MISSING_GCP_PROJECT}");
+    }
+    Ok(project)
 }
 
 pub fn load_dotenv(repo_root: &Path) {
@@ -116,8 +232,8 @@ pub fn load_dotenv(repo_root: &Path) {
     }
 }
 
-fn env_required(key: &str) -> Result<String> {
-    env::var(key).with_context(|| format!("{key} is required — {MISSING_ENV}"))
+fn env_required(key: &str, hint: &str) -> Result<String> {
+    env::var(key).with_context(|| format!("{key} is required — {hint}"))
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -147,11 +263,4 @@ fn origin_host(origin: &str) -> String {
         .next()
         .unwrap_or(&s)
         .to_string()
-}
-
-pub fn require_remote_config() -> Result<DeployConfig> {
-    DeployConfig::load().map_err(|e| {
-        eprintln!("{e}");
-        e
-    })
 }

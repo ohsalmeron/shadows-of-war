@@ -261,97 +261,58 @@ impl SowApp {
         );
     }
 
-    fn fetch_leader_portrait_at(
-        urls: Vec<String>,
-        index: usize,
+    fn fetch_leader_portrait(
+        url: String,
         tx: crossbeam_channel::Sender<MapDownloadEvent>,
         leader: sow_core::player::Leader,
         mobile: bool,
     ) {
-        let Some(url) = urls.get(index) else {
-            let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
-                leader,
-                mobile,
-                reason: "no leader portrait URLs".to_string(),
-            });
-            return;
-        };
-        let url = url.clone();
-        let urls = urls.clone();
         let request = ehttp::Request::get(&url);
-        ehttp::fetch(
-            request,
-            move |result: ehttp::Result<ehttp::Response>| match result {
-                Ok(res) if res.ok => {
-                    let _ = tx.send(MapDownloadEvent::LeaderPortraitReady {
-                        leader,
-                        mobile,
-                        bytes: res.bytes,
-                    });
-                }
-                Ok(res) if res.status == 404 && index + 1 < urls.len() => {
-                    Self::fetch_leader_portrait_at(urls, index + 1, tx, leader, mobile);
-                }
-                Ok(res) => {
-                    let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
-                        leader,
-                        mobile,
-                        reason: format!("HTTP {}", res.status),
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(MapDownloadEvent::LeaderPortraitFailed {
-                        leader,
-                        mobile,
-                        reason: e.to_string(),
-                    });
-                }
-            },
-        );
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            let send = match result {
+                Ok(res) if res.ok => MapDownloadEvent::LeaderPortraitReady {
+                    leader,
+                    mobile,
+                    bytes: res.bytes,
+                },
+                Ok(res) => MapDownloadEvent::LeaderPortraitFailed {
+                    leader,
+                    mobile,
+                    reason: format!("HTTP {}", res.status),
+                },
+                Err(e) => MapDownloadEvent::LeaderPortraitFailed {
+                    leader,
+                    mobile,
+                    reason: e.to_string(),
+                },
+            };
+            let _ = tx.send(send);
+        });
     }
 
-    fn fetch_boot_ui_at(
-        urls: Vec<String>,
-        index: usize,
+    fn fetch_boot_ui(
+        url: String,
         tx: crossbeam_channel::Sender<MapDownloadEvent>,
         kind: sow_ui::ui::asset_loader::UiSplashTexture,
     ) {
-        let Some(url) = urls.get(index) else {
-            let _ = tx.send(MapDownloadEvent::BootUiFailed {
-                kind,
-                reason: "no boot UI URLs".to_string(),
-            });
-            return;
-        };
-        let url = url.clone();
-        let urls = urls.clone();
         let request = ehttp::Request::get(&url);
-        ehttp::fetch(
-            request,
-            move |result: ehttp::Result<ehttp::Response>| match result {
-                Ok(res) if res.ok => {
-                    let _ = tx.send(MapDownloadEvent::BootUiReady {
-                        kind,
-                        bytes: res.bytes,
-                    });
-                }
-                Ok(res) if res.status == 404 && index + 1 < urls.len() => {
-                    Self::fetch_boot_ui_at(urls, index + 1, tx, kind);
-                }
-                Ok(res) => {
-                    let _ = tx.send(MapDownloadEvent::BootUiFailed {
-                        kind,
-                        reason: format!("HTTP {}", res.status),
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(MapDownloadEvent::BootUiFailed {
-                        kind,
-                        reason: e.to_string(),
-                    });
-                }
-            },
-        );
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            let send = match result {
+                Ok(res) if res.ok => MapDownloadEvent::BootUiReady {
+                    kind,
+                    bytes: res.bytes,
+                },
+                Ok(res) => MapDownloadEvent::BootUiFailed {
+                    kind,
+                    reason: format!("HTTP {}", res.status),
+                },
+                Err(e) => MapDownloadEvent::BootUiFailed {
+                    kind,
+                    reason: e.to_string(),
+                },
+            };
+            let _ = tx.send(send);
+        });
     }
 
     fn poll_boot_ui_fetches(&mut self) {
@@ -361,55 +322,36 @@ impl SowApp {
             let Some(kind) = self.ui.app.asset_loader.take_next_boot_ui_fetch_pending() else {
                 break;
             };
-            let urls = self.asset_config.boot_ui_asset_urls(kind.filename());
-            log::debug!("Fetching boot UI {:?} urls={:?}", kind, urls);
+            let url = self.asset_config.boot_ui_asset_url(kind.filename());
+            log::debug!("Fetching boot UI {:?} url={}", kind, url);
             let tx = self.tasks.map_tx.clone();
-            Self::fetch_boot_ui_at(urls, 0, tx, kind);
+            Self::fetch_boot_ui(url, tx, kind);
         }
     }
 
-    fn fetch_avatar_at(
-        urls: Vec<String>,
-        index: usize,
+    fn fetch_avatar(
+        url: String,
         tx: crossbeam_channel::Sender<MapDownloadEvent>,
         leader: Option<sow_core::player::Leader>,
     ) {
-        let Some(url) = urls.get(index) else {
-            let _ = tx.send(MapDownloadEvent::AvatarFailed {
-                leader,
-                reason: "no avatar URLs".to_string(),
-            });
-            return;
-        };
-        let url = url.clone();
-        let urls = urls.clone();
         let request = ehttp::Request::get(&url);
-        ehttp::fetch(
-            request,
-            move |result: ehttp::Result<ehttp::Response>| match result {
-                Ok(res) if res.ok => {
-                    let _ = tx.send(MapDownloadEvent::AvatarReady {
-                        leader,
-                        bytes: res.bytes,
-                    });
-                }
-                Ok(res) if res.status == 404 && index + 1 < urls.len() => {
-                    Self::fetch_avatar_at(urls, index + 1, tx, leader);
-                }
-                Ok(res) => {
-                    let _ = tx.send(MapDownloadEvent::AvatarFailed {
-                        leader,
-                        reason: format!("HTTP {}", res.status),
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(MapDownloadEvent::AvatarFailed {
-                        leader,
-                        reason: e.to_string(),
-                    });
-                }
-            },
-        );
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            let send = match result {
+                Ok(res) if res.ok => MapDownloadEvent::AvatarReady {
+                    leader,
+                    bytes: res.bytes,
+                },
+                Ok(res) => MapDownloadEvent::AvatarFailed {
+                    leader,
+                    reason: format!("HTTP {}", res.status),
+                },
+                Err(e) => MapDownloadEvent::AvatarFailed {
+                    leader,
+                    reason: e.to_string(),
+                },
+            };
+            let _ = tx.send(send);
+        });
     }
 
     fn poll_avatar_fetches(&mut self) {
@@ -429,14 +371,14 @@ impl SowApp {
             };
 
             let filename = AssetLoader::avatar_filename(key);
-            let urls = self.asset_config.avatar_urls(&filename);
+            let url = self.asset_config.avatar_url(&filename);
             let leader = match key {
                 AvatarFetchKey::Fallback => None,
                 AvatarFetchKey::Leader(l) => Some(l),
             };
-            log::debug!("Fetching avatar {:?} urls={:?}", key, urls);
+            log::debug!("Fetching avatar {:?} url={}", key, url);
             let tx = self.tasks.map_tx.clone();
-            Self::fetch_avatar_at(urls, 0, tx, leader);
+            Self::fetch_avatar(url, tx, leader);
         }
     }
 
@@ -463,17 +405,17 @@ impl SowApp {
             };
 
             let filename = AssetLoader::leader_portrait_filename(key);
-            let urls = self.asset_config.leader_portrait_urls(&filename);
+            let url = self.asset_config.leader_portrait_url(&filename);
             log::debug!(
-                "Fetching leader portrait {:?} mobile={} urls={:?}",
+                "Fetching leader portrait {:?} mobile={} url={}",
                 key.leader,
                 key.mobile,
-                urls
+                url
             );
             let tx = self.tasks.map_tx.clone();
             let leader = key.leader;
             let mobile = key.mobile;
-            Self::fetch_leader_portrait_at(urls, 0, tx, leader, mobile);
+            Self::fetch_leader_portrait(url, tx, leader, mobile);
         }
     }
 

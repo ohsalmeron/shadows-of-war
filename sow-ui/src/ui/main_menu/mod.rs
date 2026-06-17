@@ -312,7 +312,15 @@ fn draw_menu_right_panel_contents(
     let panel_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w, panel_inner_h));
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(panel_rect), |ui| {
-        profile::draw_user_profile_header(ui, state, compact, profile_height, asset_loader, lang, action);
+        profile::draw_user_profile_header(
+            ui,
+            state,
+            compact,
+            profile_height,
+            asset_loader,
+            lang,
+            action,
+        );
 
         ui.add_space(section_gap);
 
@@ -540,10 +548,11 @@ fn draw_link_conflict_modal(
                                 .color(crate::ui::theme::accent_solo_cyan()),
                         );
                         ui.label(
-                            RichText::new(strings.link_conflict_level.replace(
-                                "{}",
-                                &conflict.current_level.to_string(),
-                            ))
+                            RichText::new(
+                                strings
+                                    .link_conflict_level
+                                    .replace("{}", &conflict.current_level.to_string()),
+                            )
                             .size(16.0),
                         );
                     });
@@ -555,10 +564,11 @@ fn draw_link_conflict_modal(
                                 .color(crate::ui::theme::accent_solo_cyan()),
                         );
                         ui.label(
-                            RichText::new(strings.link_conflict_level.replace(
-                                "{}",
-                                &conflict.existing_level.to_string(),
-                            ))
+                            RichText::new(
+                                strings
+                                    .link_conflict_level
+                                    .replace("{}", &conflict.existing_level.to_string()),
+                            )
                             .size(16.0),
                         );
                     });
@@ -570,9 +580,10 @@ fn draw_link_conflict_modal(
                     } else {
                         (ui.available_width() - 12.0) / 2.0
                     };
-                    let guest_btn = crate::widgets::ThemeButton::new(&strings.link_conflict_keep_guest)
-                        .style(crate::widgets::ThemeButtonStyle::Secondary)
-                        .min_size(egui::vec2(btn_w, 40.0));
+                    let guest_btn =
+                        crate::widgets::ThemeButton::new(&strings.link_conflict_keep_guest)
+                            .style(crate::widgets::ThemeButtonStyle::Secondary)
+                            .min_size(egui::vec2(btn_w, 40.0));
                     if ui.add(guest_btn).clicked() {
                         *action = Some(UiAction::ResolveLinkConflict {
                             keep_account_id: conflict.current_account_id.clone(),

@@ -298,9 +298,7 @@ impl GameState {
         let mut owned_count = 0;
 
         while let Some((x, y)) = queue.pop_front() {
-            if self.map.owner_id(x, y) == 0
-                && self.map.terrain[self.map.ref_id(x, y)].is_land()
-            {
+            if self.map.owner_id(x, y) == 0 && self.map.terrain[self.map.ref_id(x, y)].is_land() {
                 self.set_tile_owner(x, y, pid);
                 owned_count += 1;
                 if owned_count >= target_count {

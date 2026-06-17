@@ -384,7 +384,7 @@ impl MapEditorSession {
                                 },
                                 usage: gpu::TextureUsage::TARGET,
                                 display_sync: gpu::DisplaySync::Tear,
-                                color_space: gpu::ColorSpace::Srgb,
+                                color_space: gpu::ColorSpace::Linear,
                                 ..gpu::SurfaceConfig::default()
                             },
                         );

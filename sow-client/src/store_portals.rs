@@ -177,11 +177,7 @@ pub fn should_fetch_cloud_profile() -> bool {
         return true;
     }
     let identity = load_identity("Player");
-    identity.provider == "crazygames"
-        && identity
-            .auth_token
-            .as_ref()
-            .is_some_and(|t| !t.is_empty())
+    identity.provider == "crazygames" && identity.auth_token.as_ref().is_some_and(|t| !t.is_empty())
 }
 
 pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> {

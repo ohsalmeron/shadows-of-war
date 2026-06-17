@@ -167,7 +167,7 @@
         <h1>Shadows of War</h1>
         <p>Shadows of War is a free, open-source MMORTS strategy game on world maps. Play solo offline or join online multiplayer lobbies: lead civilizations, forge alliances, expand territory, and grow your economy in massive real-time battles. Free to play on CrazyGames, Poki, and shadowsofwar.io.</p>
     </div>
-    <canvas id="blade" oncontextmenu="return false;"></canvas>
+    <canvas id="blade" oncontextmenu="return false;" tabindex="0"></canvas>
     <div id="version">v__VERSION__</div>
 
     <script type="text/javascript">

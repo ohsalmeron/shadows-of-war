@@ -4,7 +4,7 @@ use crate::deploy::{
     resolve_remote_maps, resolve_remote_workdir, verify_marketing_embed, verify_play_host,
     verify_sitemap,
 };
-use crate::gcp::GcpConfig;
+use crate::gcp::{GcpConfig, SyncOpts};
 use crate::infra::{self, ServerArtifacts, ServerShipResult};
 use crate::package::{self, Profile};
 use crate::paths::{remote_data_prod, remote_data_ptr, remote_maps_prod, remote_maps_ptr, Paths};
@@ -153,67 +153,78 @@ pub fn run_release(
     let (cdn_shipped, server_ship) = std::thread::scope(|s| -> Result<(bool, ServerShipResult)> {
         let paths_cdn = paths.clone();
         let cfg_cdn = cfg.clone();
-        let cache = paths.dist_root();
         let gcp_cdn = s.spawn(move || cdn::ship_or_skip(&paths_cdn, &cfg_cdn));
 
-        let shell_rsync = match target {
+        let shell_sync = match target {
             ReleaseTarget::Prod => {
                 let gcp_a = gcp.clone();
-                let dist = paths.dist_play.display().to_string();
+                let dist = paths.dist_play.clone();
                 let web_play = cfg.web_root_play();
-                let cache_a = cache.clone();
                 Some(s.spawn(move || {
-                    gcp_a.rsync_dir_with_opts(
-                        &cache_a,
+                    gcp_a.sync_dir(
                         &dist,
                         &web_play,
-                        &["-avzL", "--delete", "--exclude=*.bin"],
+                        &SyncOpts {
+                            mirror: true,
+                            preserve_basenames: vec!["*.bin".into()],
+                            exclude_basenames: vec![],
+                        },
                     )
                 }))
             }
             ReleaseTarget::Ptr => {
                 let gcp_a = gcp.clone();
-                let dist = paths.dist_ptr.display().to_string();
+                let dist = paths.dist_ptr.clone();
                 let web_ptr = cfg.web_root_ptr();
-                let cache_a = cache.clone();
                 Some(s.spawn(move || {
-                    gcp_a.rsync_dir_with_opts(
-                        &cache_a,
+                    gcp_a.sync_dir(
                         &dist,
                         &web_ptr,
-                        &["-avzL", "--delete", "--exclude=*.bin"],
+                        &SyncOpts {
+                            mirror: true,
+                            preserve_basenames: vec!["*.bin".into()],
+                            exclude_basenames: vec![],
+                        },
                     )
                 }))
             }
             ReleaseTarget::Cg => None,
         };
 
-        let site_rsync = if target.ship_marketing() {
+        let site_sync = if target.ship_marketing() {
             let gcp_b = gcp.clone();
-            let site = paths.site_web.display().to_string();
+            let site = paths.site_web.clone();
             let web_main = cfg.web_root_main();
-            let cache_b = cache.clone();
-            Some(s.spawn(move || gcp_b.rsync_dir_with_opts(&cache_b, &site, &web_main, &["-avz"])))
+            Some(s.spawn(move || {
+                gcp_b.sync_dir(
+                    &site,
+                    &web_main,
+                    &SyncOpts {
+                        mirror: true,
+                        ..SyncOpts::default()
+                    },
+                )
+            }))
         } else {
             None
         };
 
         let maps_dir = server_ctx.maps_dir.clone();
         let gcp_f = gcp.clone();
-        let maps = paths.assets_maps.display().to_string();
-        let cache_f = cache.clone();
-        let maps_rsync = s.spawn(move || {
-            gcp_f.rsync_dir_with_opts(
-                &cache_f,
+        let maps = paths.assets_maps.clone();
+        let maps_sync = s.spawn(move || {
+            gcp_f.sync_dir(
                 &maps,
                 maps_dir.trim_end_matches('/'),
-                &[
-                    "-avz",
-                    "--exclude=map.bin",
-                    "--exclude=mini_map.bin",
-                    "--exclude=manifest.json",
-                    "--exclude=maps.json",
-                ],
+                &SyncOpts {
+                    exclude_basenames: vec![
+                        "map.bin".into(),
+                        "mini_map.bin".into(),
+                        "manifest.json".into(),
+                        "maps.json".into(),
+                    ],
+                    ..SyncOpts::default()
+                },
             )
         });
 
@@ -243,13 +254,13 @@ pub fn run_release(
             ReleaseTarget::Cg => {}
         }
 
-        if let Some(h) = shell_rsync {
+        if let Some(h) = shell_sync {
             h.join().unwrap()?;
         }
-        if let Some(h) = site_rsync {
+        if let Some(h) = site_sync {
             h.join().unwrap()?;
         }
-        maps_rsync.join().unwrap()?;
+        maps_sync.join().unwrap()?;
         let server_ship = server_ship.join().unwrap()?;
         let cdn_shipped = gcp_cdn.join().unwrap()?;
         Ok((cdn_shipped, server_ship))

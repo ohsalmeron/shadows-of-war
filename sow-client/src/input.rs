@@ -20,10 +20,7 @@ impl SowApp {
         }
     }
 
-    pub(crate) fn apply_surface_resize(
-        &mut self,
-        physical_size: winit::dpi::PhysicalSize<u32>,
-    ) {
+    pub(crate) fn apply_surface_resize(&mut self, physical_size: winit::dpi::PhysicalSize<u32>) {
         if physical_size.width == 0 || physical_size.height == 0 {
             return;
         }
@@ -63,6 +60,20 @@ impl SowApp {
                 let _ = render_ctx.context.wait_for(&sp, !0);
             }
             if let Some(ref mut s) = self.gfx.surface {
+                #[cfg(target_arch = "wasm32")]
+                if let Some(win) = self.gfx.window.as_ref() {
+                    let _ = win.request_surface_size(winit::dpi::Size::Logical(
+                        winit::dpi::LogicalSize::new(
+                            physical_size.width as f64 / sf as f64,
+                            physical_size.height as f64 / sf as f64,
+                        ),
+                    ));
+                }
+                #[cfg(target_arch = "wasm32")]
+                crate::web_canvas::set_canvas_backing_store_size(
+                    physical_size.width,
+                    physical_size.height,
+                );
                 let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
                     gpu::DisplaySync::Block
                 } else {
@@ -78,7 +89,7 @@ impl SowApp {
                         },
                         usage: gpu::TextureUsage::TARGET,
                         display_sync,
-                        color_space: gpu::ColorSpace::Srgb,
+                        color_space: gpu::ColorSpace::Linear,
                         ..Default::default()
                     },
                 );
@@ -873,15 +884,15 @@ impl SowApp {
                 });
             }
             sow_core::protocol::GameplayIntent::Spawn { x, y } => {
-                sow_audio::play_deploy_sound(
-                    *x as f32 + 0.5,
-                    *y as f32 + 0.5,
-                    self.input.camera_x,
-                    self.input.camera_y,
-                    self.input.camera_zoom,
-                    self.input.screen_w,
-                    self.input.screen_h,
-                );
+                sow_audio::play_deploy_sound(sow_audio::SpatialSoundParams {
+                    wx: *x as f32 + 0.5,
+                    wy: *y as f32 + 0.5,
+                    camera_x: self.input.camera_x,
+                    camera_y: self.input.camera_y,
+                    camera_zoom: self.input.camera_zoom,
+                    screen_w: self.input.screen_w,
+                    screen_h: self.input.screen_h,
+                });
                 let seed = self
                     .sim
                     .engine
@@ -895,13 +906,15 @@ impl SowApp {
                 let wy = (*target_tile / self.sim.map_w) as f32 + 0.5;
                 sow_audio::play_building_placement_sound(
                     crate::building_sound_kind(*kind),
-                    wx,
-                    wy,
-                    self.input.camera_x,
-                    self.input.camera_y,
-                    self.input.camera_zoom,
-                    self.input.screen_w,
-                    self.input.screen_h,
+                    sow_audio::SpatialSoundParams {
+                        wx,
+                        wy,
+                        camera_x: self.input.camera_x,
+                        camera_y: self.input.camera_y,
+                        camera_zoom: self.input.camera_zoom,
+                        screen_w: self.input.screen_w,
+                        screen_h: self.input.screen_h,
+                    },
                 );
             }
             _ => {}

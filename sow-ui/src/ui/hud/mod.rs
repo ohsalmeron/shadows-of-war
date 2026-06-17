@@ -2657,12 +2657,10 @@ fn draw_betrayal_overlay(
         520.0
     };
 
-    let window = window
-        .fixed_size(vec2(panel_w, 0.0))
-        .anchor(
-            egui::Align2::CENTER_CENTER,
-            vec2(0.0, if compact { y_offset } else { -20.0 + y_offset }),
-        );
+    let window = window.fixed_size(vec2(panel_w, 0.0)).anchor(
+        egui::Align2::CENTER_CENTER,
+        vec2(0.0, if compact { y_offset } else { -20.0 + y_offset }),
+    );
 
     let border_color = crate::ui::theme::accent_danger().linear_multiply(alpha);
 
@@ -2766,11 +2764,9 @@ fn draw_betrayal_overlay(
                         .on_hover_cursor(egui::CursorIcon::PointingHand)
                         .clicked()
                     {
-                        cancel_intents.push(
-                            sow_core::protocol::GameplayIntent::BreakAlliance {
-                                target_player: ally_id,
-                            },
-                        );
+                        cancel_intents.push(sow_core::protocol::GameplayIntent::BreakAlliance {
+                            target_player: ally_id,
+                        });
                         cancel_intents.push(intent);
                         state.show_betrayal_warning = None;
                     }

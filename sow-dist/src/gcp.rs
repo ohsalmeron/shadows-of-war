@@ -1,7 +1,7 @@
 use crate::process;
 use anyhow::{bail, Context, Result};
-use std::fs;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 #[derive(Clone, Debug)]
 pub struct GcpConfig {
@@ -10,76 +10,47 @@ pub struct GcpConfig {
     pub instance: String,
 }
 
+/// Remote directory sync options (replaces rsync flags).
+#[derive(Clone, Debug, Default)]
+pub struct SyncOpts {
+    /// Delete remote children before upload (rsync `--delete`), except `preserve_basenames`.
+    pub mirror: bool,
+    /// Top-level basenames to keep when `mirror` (e.g. `*.bin` on play shell).
+    pub preserve_basenames: Vec<String>,
+    /// File basenames omitted from the upload archive.
+    pub exclude_basenames: Vec<String>,
+}
+
 impl GcpConfig {
-    pub fn ssh_prefix(&self) -> Vec<String> {
+    fn ssh_base_args(&self) -> Vec<String> {
         vec![
             "compute".into(),
             "ssh".into(),
             self.instance.clone(),
             format!("--project={}", self.project),
             format!("--zone={}", self.zone),
+            "--tunnel-through-iap".into(),
             "--quiet".into(),
         ]
     }
 
-    pub fn rsync_shell(&self, cache_dir: &Path) -> Result<String> {
-        let script = cache_dir.join(".sow-gcloud-rsync-sh");
-        if let Some(parent) = script.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let content = format!(
-            "#!/bin/bash\nset -euo pipefail\nhost=\"$1\"\nshift\nexec gcloud compute ssh \"$host\" \
-             --project={} --zone={} --quiet -- \"$@\"\n",
-            self.project, self.zone
-        );
-        fs::write(&script, content)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&script, fs::Permissions::from_mode(0o755))?;
-        }
-        Ok(script.to_string_lossy().into())
+    pub fn ssh_prefix(&self) -> Vec<String> {
+        self.ssh_base_args()
     }
 
-    pub fn rsync_with_opts(
-        &self,
-        cache_dir: &Path,
-        local: &str,
-        remote_path: &str,
-        opts: &[&str],
-    ) -> Result<()> {
-        let remote = format!("{}:{}", self.instance, remote_path);
-        let shell = self.rsync_shell(cache_dir)?;
-        let mut args: Vec<&str> = vec!["-e", &shell];
-        args.extend_from_slice(opts);
-        args.push(local);
-        args.push(&remote);
-        process::run("rsync", &args, None)
-    }
-
-    pub fn rsync_dir_with_opts(
-        &self,
-        cache_dir: &Path,
-        local_dir: &str,
-        remote_path: &str,
-        opts: &[&str],
-    ) -> Result<()> {
-        let local = format!("{}/", local_dir.trim_end_matches('/'));
-        let remote = format!("{}:{}/", self.instance, remote_path.trim_end_matches('/'));
-        let shell = self.rsync_shell(cache_dir)?;
-        let mut args: Vec<&str> = vec!["-e", &shell];
-        args.extend_from_slice(opts);
-        args.push(&local);
-        args.push(&remote);
-        process::run("rsync", &args, None)
-    }
-
-    pub fn rsync(&self, cache_dir: &Path, local: &str, remote_path: &str) -> Result<()> {
-        self.rsync_with_opts(cache_dir, local, remote_path, &["-avz"])
+    fn scp_base_args(&self) -> Vec<String> {
+        vec![
+            "compute".into(),
+            "scp".into(),
+            format!("--project={}", self.project),
+            format!("--zone={}", self.zone),
+            "--tunnel-through-iap".into(),
+            "--quiet".into(),
+        ]
     }
 
     pub fn run_remote(&self, script: &str) -> Result<()> {
-        let mut args: Vec<String> = self.ssh_prefix();
+        let mut args = self.ssh_prefix();
         args.push("--command".into());
         args.push(script.into());
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -87,7 +58,7 @@ impl GcpConfig {
     }
 
     pub fn remote_output(&self, script: &str) -> Result<String> {
-        let mut args: Vec<String> = self.ssh_prefix();
+        let mut args = self.ssh_prefix();
         args.push("--command".into());
         args.push(script.into());
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -95,7 +66,6 @@ impl GcpConfig {
     }
 
     pub fn ssh_ready(&self) -> bool {
-        use std::process::{Command, Stdio};
         let mut args = self.ssh_prefix();
         args.push("--command".into());
         args.push("echo ok".into());
@@ -108,7 +78,7 @@ impl GcpConfig {
     }
 
     pub fn remote_home(&self, cache_file: &Path) -> Result<String> {
-        if let Ok(h) = fs::read_to_string(cache_file) {
+        if let Ok(h) = std::fs::read_to_string(cache_file) {
             let h = h.trim().to_string();
             if !h.is_empty() {
                 return Ok(h);
@@ -119,10 +89,89 @@ impl GcpConfig {
             bail!("could not resolve remote $HOME via gcloud compute ssh");
         }
         if let Some(parent) = cache_file.parent() {
-            fs::create_dir_all(parent).ok();
+            std::fs::create_dir_all(parent).ok();
         }
-        fs::write(cache_file, format!("{home}\n"))?;
+        std::fs::write(cache_file, format!("{home}\n"))?;
         Ok(home)
+    }
+
+    /// Upload a single file via `gcloud compute scp`.
+    pub fn sync_file(&self, local: &Path, remote_path: &str) -> Result<()> {
+        scp_to_instance(self, local, remote_path)
+    }
+
+    /// Upload a directory via tar pipe over `gcloud compute ssh` (needs `gcloud` + `tar` on host).
+    pub fn sync_dir(&self, local_dir: &Path, remote_dir: &str, opts: &SyncOpts) -> Result<()> {
+        if !local_dir.is_dir() {
+            bail!("sync_dir: {} is not a directory", local_dir.display());
+        }
+        let remote = remote_dir.trim_end_matches('/');
+        self.run_remote(&format!("mkdir -p {remote}"))?;
+        if opts.mirror {
+            self.remote_mirror_prepare(remote, opts)?;
+        }
+        self.tar_pipe_dir(local_dir, remote, &opts.exclude_basenames)
+    }
+
+    fn remote_mirror_prepare(&self, remote_dir: &str, opts: &SyncOpts) -> Result<()> {
+        let script = if opts.preserve_basenames.is_empty() {
+            format!("rm -rf {remote_dir:?}/*")
+        } else {
+            let mut prune = String::new();
+            for pat in &opts.preserve_basenames {
+                if !prune.is_empty() {
+                    prune.push_str(" -o ");
+                }
+                prune.push_str(&format!("-name '{pat}'"));
+            }
+            format!(
+                "find {remote_dir:?} -mindepth 1 -maxdepth 1 \\( {prune} \\) -prune -o -exec rm -rf {{}} +"
+            )
+        };
+        self.run_remote(&script)
+    }
+
+    fn tar_pipe_dir(&self, local_dir: &Path, remote_dir: &str, excludes: &[String]) -> Result<()> {
+        let local = local_dir
+            .to_str()
+            .with_context(|| format!("non-UTF-8 path {}", local_dir.display()))?;
+        let remote = remote_dir.trim_end_matches('/');
+
+        let mut tar = Command::new("tar");
+        tar.arg("-C").arg(local).arg("-cf").arg("-");
+        for ex in excludes {
+            tar.arg("--exclude").arg(ex);
+        }
+        tar.arg(".");
+        tar.stdout(Stdio::piped());
+        tar.stderr(Stdio::inherit());
+
+        let mut tar_child = tar.spawn().context("spawn tar")?;
+        let tar_stdout = tar_child.stdout.take().context("tar stdout pipe")?;
+
+        let remote_cmd = format!("tar -xf - -C {remote}");
+        let mut gcloud_args = self.ssh_base_args();
+        gcloud_args.push("--command".into());
+        gcloud_args.push(remote_cmd);
+
+        let refs: Vec<&str> = gcloud_args.iter().map(String::as_str).collect();
+        let gcloud_status = Command::new("gcloud")
+            .args(&refs)
+            .stdin(tar_stdout)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .context("gcloud compute ssh tar extract")?;
+
+        let tar_status = tar_child.wait().context("wait tar")?;
+
+        if !tar_status.success() {
+            bail!("tar failed ({tar_status})");
+        }
+        if !gcloud_status.success() {
+            bail!("gcloud compute ssh tar extract failed ({gcloud_status})");
+        }
+        Ok(())
     }
 }
 
@@ -194,7 +243,6 @@ pub fn release_static_ip(project: &str, region: &str, name: &str) -> Result<()> 
 }
 
 fn gcloud_allow_missing(args: &[&str]) -> Result<()> {
-    use std::process::Command;
     let out = Command::new("gcloud")
         .args(args)
         .output()
@@ -240,18 +288,10 @@ pub fn create_fedora_vm(project: &str, zone: &str, name: &str, static_ip: &str) 
 }
 
 pub fn scp_to_instance(gcp: &GcpConfig, local: &Path, remote_path: &str) -> Result<()> {
-    process::run(
-        "gcloud",
-        &[
-            "compute",
-            "scp",
-            &local.to_string_lossy(),
-            &format!("{}:{}", gcp.instance, remote_path),
-            &format!("--project={}", gcp.project),
-            &format!("--zone={}", gcp.zone),
-            "--quiet",
-        ],
-        None,
-    )
-    .with_context(|| format!("scp {} → {}", local.display(), remote_path))
+    let mut args = gcp.scp_base_args();
+    args.push(local.to_string_lossy().into());
+    args.push(format!("{}:{}", gcp.instance, remote_path));
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    process::run("gcloud", &refs, None)
+        .with_context(|| format!("scp {} → {}", local.display(), remote_path))
 }

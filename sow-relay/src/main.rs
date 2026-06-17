@@ -25,31 +25,37 @@ fn redis_connect() -> Option<redis::Connection> {
 
 fn log_player_exit(con: &mut redis::Connection, match_id: u64, account_id: &str) {
     let key = format!("sow:match:{match_id}:exits");
-    let _: Result<(), _> = con.rpush(&key, account_id).and_then(|()| con.expire(&key, 3600));
+    let _: Result<(), _> = con
+        .rpush(&key, account_id)
+        .and_then(|()| con.expire(&key, 3600));
 }
 
-fn log_player_stats(
-    con: &mut redis::Connection,
-    match_id: u64,
-    account_id: &str,
+struct MatchPlayerStats {
     kills: u32,
     deaths: u32,
     assists: u32,
     players_defeated: u32,
     empires_defeated: u32,
     tribes_defeated: u32,
+}
+
+fn log_player_stats(
+    con: &mut redis::Connection,
+    match_id: u64,
+    account_id: &str,
+    stats: MatchPlayerStats,
 ) {
     let key = format!("sow:match:{match_id}:stats:{account_id}");
     let _: Result<(), _> = con
         .hset_multiple(
             &key,
             &[
-                ("kills", kills.to_string()),
-                ("deaths", deaths.to_string()),
-                ("assists", assists.to_string()),
-                ("players_defeated", players_defeated.to_string()),
-                ("empires_defeated", empires_defeated.to_string()),
-                ("tribes_defeated", tribes_defeated.to_string()),
+                ("kills", stats.kills.to_string()),
+                ("deaths", stats.deaths.to_string()),
+                ("assists", stats.assists.to_string()),
+                ("players_defeated", stats.players_defeated.to_string()),
+                ("empires_defeated", stats.empires_defeated.to_string()),
+                ("tribes_defeated", stats.tribes_defeated.to_string()),
             ],
         )
         .and_then(|()| con.expire(&key, 3600));
@@ -61,10 +67,7 @@ fn trigger_match_finalize(match_id: u64) {
             std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
         let secret = std::env::var("SOW_DB_SECRET")
             .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
-        let url = format!(
-            "{}/internal/match-finalize",
-            db_url.trim_end_matches('/')
-        );
+        let url = format!("{}/internal/match-finalize", db_url.trim_end_matches('/'));
         let payload = serde_json::json!({ "match_id": match_id.to_string() });
         match reqwest::Client::new()
             .post(&url)
@@ -77,7 +80,10 @@ fn trigger_match_finalize(match_id: u64) {
                 info!("Match {match_id} finalized via sow-database");
             }
             Ok(res) => {
-                warn!("Match finalize for {match_id} returned HTTP {}", res.status());
+                warn!(
+                    "Match finalize for {match_id} returned HTTP {}",
+                    res.status()
+                );
             }
             Err(e) => {
                 error!("Failed to finalize match {match_id}: {e}");
@@ -450,12 +456,14 @@ async fn main() {
                                                                 con,
                                                                 lobby_id,
                                                                 acc,
-                                                                kills,
-                                                                deaths,
-                                                                assists,
-                                                                players_defeated,
-                                                                empires_defeated,
-                                                                tribes_defeated,
+                                                                MatchPlayerStats {
+                                                                    kills,
+                                                                    deaths,
+                                                                    assists,
+                                                                    players_defeated,
+                                                                    empires_defeated,
+                                                                    tribes_defeated,
+                                                                },
                                                             );
                                                             info!(
                                                                 "Logged stats for player {pid} (account {acc}): K/D/A {kills}/{deaths}/{assists}"

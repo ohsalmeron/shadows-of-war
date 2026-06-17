@@ -2,12 +2,11 @@ use clap::{Parser, Subcommand};
 use std::error::Error;
 use std::path::PathBuf;
 
-mod cli_error;
 mod emoji_atlas;
 mod exporter;
 mod image_map;
 mod openfront_import;
-mod overpass;
+use sow_map::osm_overpass as overpass;
 mod poi_extractor;
 mod rasterizer;
 
@@ -183,7 +182,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     if let Err(e) = result {
-        cli_error::exit_user_error("command failed", e);
+        eprintln!("sow-tools: command failed: {e}");
+        std::process::exit(1);
     }
     Ok(())
 }

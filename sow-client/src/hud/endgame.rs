@@ -18,10 +18,12 @@ impl SowApp {
         if let Some(snap) = &self.sim.current_snapshot {
             if let Some(winner) = snap.winner {
                 endgame_active = true;
-                let my_team = snap.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
-                let team_won = snap
-                    .winning_team
-                    .is_some_and(|team| my_team == Some(team));
+                let my_team = snap
+                    .players
+                    .iter()
+                    .find(|p| p.id == my_id)
+                    .and_then(|p| p.team);
+                let team_won = snap.winning_team.is_some_and(|team| my_team == Some(team));
                 if team_won || (snap.winning_team.is_none() && winner == my_id) {
                     is_victory = true;
                     text_title = strings.victory_title.clone();

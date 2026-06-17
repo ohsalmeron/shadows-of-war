@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use log::{info, error, warn};
+use log::{error, info, warn};
 use redis::{AsyncCommands, Client};
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const ANALYTICS_UNIQUE: &str = "sow:analytics:unique_users";
@@ -20,6 +20,14 @@ pub struct SessionDefeats {
     pub players: u32,
     pub empires: u32,
     pub tribes: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MatchOutcomeKda {
+    pub defeats: SessionDefeats,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -111,7 +119,7 @@ pub struct PlayerAccount {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LinkedIdentity {
-    pub provider: String,   // "crazygames", "poki", "steam", "playgames", "gamecenter", "local"
+    pub provider: String, // "crazygames", "poki", "steam", "playgames", "gamecenter", "local"
     pub external_id: String, // Stable unique ID from the platform
 }
 
@@ -242,11 +250,11 @@ impl PlayerDb {
         let id_key = Self::identity_key(&provider, &external_id);
 
         // 1. Try to find existing account ID mapped to this identity
-        if let Some(account_id) = con.get::<_, Option<String>>(&id_key).await? {
-            if let Ok(account) = Self::load_account(&mut con, &account_id).await {
-                let _: () = Self::record_analytics(&mut con, &account.id, false).await?;
-                return Ok(account);
-            }
+        if let Some(account_id) = con.get::<_, Option<String>>(&id_key).await?
+            && let Ok(account) = Self::load_account(&mut con, &account_id).await
+        {
+            let _: () = Self::record_analytics(&mut con, &account.id, false).await?;
+            return Ok(account);
         }
 
         // 2. Not found, create new stable account ID and register
@@ -281,12 +289,19 @@ impl PlayerDb {
 
         let _: () = Self::record_analytics(&mut con, &random_id, true).await?;
 
-        info!("Created new account {} in Valkey for identity {:?}/{:?}", new_account.id, identity.provider, identity.external_id);
+        info!(
+            "Created new account {} in Valkey for identity {:?}/{:?}",
+            new_account.id, identity.provider, identity.external_id
+        );
         Ok(new_account)
     }
 
     /// Update player profile stats
-    pub async fn update_profile(&self, account_id: &str, profile: PlayerProfile) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn update_profile(
+        &self,
+        account_id: &str,
+        profile: PlayerProfile,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
         let acc_key = Self::account_key(account_id);
 
@@ -312,10 +327,7 @@ impl PlayerDb {
         &self,
         account_id: &str,
         won: bool,
-        defeats: SessionDefeats,
-        kills: u32,
-        deaths: u32,
-        assists: u32,
+        kda: MatchOutcomeKda,
         preferred_leader: Option<String>,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
@@ -323,9 +335,13 @@ impl PlayerDb {
 
         if let Some(acc_json) = con.get::<_, Option<String>>(&acc_key).await? {
             let mut account: PlayerAccount = serde_json::from_str(&acc_json)?;
-            account
-                .profile
-                .record_match_with_kda(won, defeats, kills, deaths, assists);
+            account.profile.record_match_with_kda(
+                won,
+                kda.defeats,
+                kda.kills,
+                kda.deaths,
+                kda.assists,
+            );
             if let Some(leader) = preferred_leader {
                 account.profile.preferred_leader = Some(leader);
             }
@@ -357,7 +373,10 @@ impl PlayerDb {
             .expire(&key, 3600)
             .query_async::<()>(&mut con)
             .await?;
-        info!("Registered match {match_id} with {} players", player_ids.len());
+        info!(
+            "Registered match {match_id} with {} players",
+            player_ids.len()
+        );
         Ok(())
     }
 
@@ -423,7 +442,17 @@ impl PlayerDb {
             };
 
             match self
-                .record_match_outcome_with_kda(account_id, won, defeats, kills, deaths, assists, None)
+                .record_match_outcome_with_kda(
+                    account_id,
+                    won,
+                    MatchOutcomeKda {
+                        defeats,
+                        kills,
+                        deaths,
+                        assists,
+                    },
+                    None,
+                )
                 .await
             {
                 Ok(account) => {
@@ -476,7 +505,12 @@ impl PlayerDb {
     }
 
     /// Link a new identity to an existing account (internal; errors on conflict).
-    pub async fn link_identity(&self, account_id: &str, provider: String, external_id: String) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn link_identity(
+        &self,
+        account_id: &str,
+        provider: String,
+        external_id: String,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
         Self::link_identity_inner(&mut con, account_id, provider, external_id).await
     }
@@ -522,19 +556,17 @@ impl PlayerDb {
         let id_key = Self::identity_key(&provider, &external_id);
         let mapped: Option<String> = con.get(&id_key).await?;
 
-        if keep_account_id != current_account_id
-            && mapped.as_deref() != Some(keep_account_id)
-        {
+        if keep_account_id != current_account_id && mapped.as_deref() != Some(keep_account_id) {
             return Err("keep_account_id must be current or the existing mapped account".into());
         }
 
         if keep_account_id == current_account_id {
-            if let Some(other_id) = mapped {
-                if other_id != current_account_id {
-                    Self::unlink_identity_from_account(&mut con, &other_id, &provider, &external_id)
-                        .await?;
-                    Self::delete_account_if_orphan(&mut con, &other_id).await?;
-                }
+            if let Some(other_id) = mapped
+                && other_id != current_account_id
+            {
+                Self::unlink_identity_from_account(&mut con, &other_id, &provider, &external_id)
+                    .await?;
+                Self::delete_account_if_orphan(&mut con, &other_id).await?;
             }
             Self::link_identity_inner(&mut con, current_account_id, provider, external_id).await
         } else {
@@ -552,10 +584,10 @@ impl PlayerDb {
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let id_key = Self::identity_key(&provider, &external_id);
 
-        if let Some(linked_id) = con.get::<_, Option<String>>(&id_key).await? {
-            if linked_id != account_id {
-                return Err("Identity already linked to another account".into());
-            }
+        if let Some(linked_id) = con.get::<_, Option<String>>(&id_key).await?
+            && linked_id != account_id
+        {
+            return Err("Identity already linked to another account".into());
         }
 
         let mut account = Self::load_account(con, account_id).await?;
@@ -592,9 +624,9 @@ impl PlayerDb {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let id_key = Self::identity_key(provider, external_id);
         let mut account = Self::load_account(con, account_id).await?;
-        account.linked_identities.retain(|i| {
-            !(i.provider == provider && i.external_id == external_id)
-        });
+        account
+            .linked_identities
+            .retain(|i| !(i.provider == provider && i.external_id == external_id));
         account.updated_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -624,13 +656,8 @@ impl PlayerDb {
                 &identity.external_id,
             )
             .await?;
-            let _ = Self::link_identity_inner(
-                con,
-                to_id,
-                identity.provider,
-                identity.external_id,
-            )
-            .await;
+            let _ = Self::link_identity_inner(con, to_id, identity.provider, identity.external_id)
+                .await;
         }
         Ok(())
     }

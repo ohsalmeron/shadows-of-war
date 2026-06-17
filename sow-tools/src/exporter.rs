@@ -1,4 +1,3 @@
-use crate::cli_error;
 use crate::openfront_import::refresh_catalog;
 use crate::poi_extractor::POISpawn;
 use sow_core::map::MapTile;
@@ -21,12 +20,9 @@ pub fn export_map(
     let output_dir = maps_root().join(map_name);
     let map_bin = output_dir.join("map.bin");
     if map_bin.exists() && !force {
-        return Err(cli_error::user_error(
-            "export map",
-            format!(
-                "{} already exists; re-run with --force to overwrite",
-                map_bin.display()
-            ),
+        return Err(format!(
+            "export map: {} already exists; re-run with --force to overwrite",
+            map_bin.display()
         )
         .into());
     }
@@ -64,10 +60,10 @@ pub fn export_map(
 
     let preview = sow_map::terrain_preview_image(width, height, &map_file.terrain);
     sow_map::write_square_thumbnail(&preview, &output_dir.join("thumbnail.webp"))
-        .map_err(|e| cli_error::user_error("write thumbnail", e))?;
+        .map_err(|e| format!("write thumbnail: {e}"))?;
 
     if let Err(e) = refresh_catalog(&maps_root()) {
-        eprintln!("Warning: {}", cli_error::user_error("refresh catalog", e));
+        eprintln!("Warning: refresh catalog: {e}");
     }
 
     if single_player_config {

@@ -140,10 +140,10 @@ async fn main() {
                                         .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
                                     let secret_token = std::env::var("SOW_DB_SECRET")
                                         .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
-                                    
+
                                     let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
                                     let client = reqwest::Client::new();
-                                    
+
                                     let payload = serde_json::json!({
                                         "match_id": match_id,
                                         "player_ids": player_ids,

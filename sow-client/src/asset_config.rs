@@ -19,7 +19,12 @@ impl AssetConfig {
         let assets_base = Self::resolve_assets_base();
         let database_base = Self::resolve_database_base();
         let cache_bust = Self::resolve_cache_bust();
-        log::info!("AssetConfig maps={} assets={} database={}", maps_base, assets_base, database_base);
+        log::info!(
+            "AssetConfig maps={} assets={} database={}",
+            maps_base,
+            assets_base,
+            database_base
+        );
         Self {
             maps_base,
             assets_base,
@@ -38,51 +43,35 @@ impl AssetConfig {
     }
 
     /// Leader portraits on prod CDN (`/assets/cdn/leaders/`).
-    pub fn leader_portrait_urls(&self, filename: &str) -> Vec<String> {
+    pub fn leader_portrait_url(&self, filename: &str) -> String {
         let base = self.assets_base.trim_end_matches('/');
-        let paths = [format!("{base}/cdn/leaders/{filename}")];
+        let path = format!("{base}/cdn/leaders/{filename}");
         if self.cache_bust.is_empty() {
-            paths.to_vec()
+            path
         } else {
-            paths
-                .into_iter()
-                .map(|p| format!("{p}?v={}", self.cache_bust))
-                .collect()
+            format!("{path}?v={}", self.cache_bust)
         }
     }
 
-    pub fn leader_portrait_url(&self, filename: &str) -> String {
-        self.leader_portrait_urls(filename)
-            .into_iter()
-            .next()
-            .unwrap_or_default()
-    }
-
     /// Leader rail / HUD avatars on prod CDN (`/assets/cdn/avatars/`).
-    pub fn avatar_urls(&self, filename: &str) -> Vec<String> {
+    pub fn avatar_url(&self, filename: &str) -> String {
         let base = self.assets_base.trim_end_matches('/');
-        let paths = [format!("{base}/cdn/avatars/{filename}")];
+        let path = format!("{base}/cdn/avatars/{filename}");
         if self.cache_bust.is_empty() {
-            paths.to_vec()
+            path
         } else {
-            paths
-                .into_iter()
-                .map(|p| format!("{p}?v={}", self.cache_bust))
-                .collect()
+            format!("{path}?v={}", self.cache_bust)
         }
     }
 
     /// Boot loader/splash webp on prod CDN (`/assets/cdn/ui/`).
-    pub fn boot_ui_asset_urls(&self, filename: &str) -> Vec<String> {
+    pub fn boot_ui_asset_url(&self, filename: &str) -> String {
         let base = self.assets_base.trim_end_matches('/');
-        let paths = [format!("{base}/cdn/ui/{filename}")];
+        let path = format!("{base}/cdn/ui/{filename}");
         if self.cache_bust.is_empty() {
-            paths.to_vec()
+            path
         } else {
-            paths
-                .into_iter()
-                .map(|p| format!("{p}?v={}", self.cache_bust))
-                .collect()
+            format!("{path}?v={}", self.cache_bust)
         }
     }
 
@@ -131,7 +120,8 @@ impl AssetConfig {
             return url;
         }
         #[cfg(target_arch = "wasm32")]
-        if let Some(url) = Self::js_global("SOW_WS_URL").and_then(|ws| database_url_from_ws_url(&ws))
+        if let Some(url) =
+            Self::js_global("SOW_WS_URL").and_then(|ws| database_url_from_ws_url(&ws))
         {
             return url;
         }

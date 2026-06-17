@@ -52,7 +52,12 @@ fn spawn_sow_client_connect(
     #[cfg(not(target_arch = "wasm32"))]
     {
         let fut = async move {
-            match tokio::time::timeout(std::time::Duration::from_secs(5), SowClient::connect(&url_clone)).await {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                SowClient::connect(&url_clone),
+            )
+            .await
+            {
                 Ok(Ok(c)) => {
                     let _ = tx.send(Ok(c));
                 }
@@ -95,7 +100,8 @@ fn spawn_sow_client_connect(
         // Set up the timeout
         let closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
             if !finished_clone.swap(true, Ordering::SeqCst) {
-                let _ = tx_for_timeout.send(Err("Connection timed out after 5 seconds".to_string()));
+                let _ =
+                    tx_for_timeout.send(Err("Connection timed out after 5 seconds".to_string()));
             }
         });
 
@@ -157,6 +163,7 @@ pub enum EngineInitEvent {
 
 pub mod app;
 pub mod asset;
+mod guest_id;
 pub mod hud;
 #[cfg(target_arch = "wasm32")]
 mod ime;
@@ -169,17 +176,14 @@ pub mod net;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;
 pub mod platform_identity;
-mod guest_id;
-pub mod player_progress;
 mod platform_output;
+pub mod player_progress;
 pub mod render;
 pub mod store_portals;
 mod viewport;
 mod web_canvas;
 
-pub(crate) fn player_sound_type(
-    value: sow_core::player::PlayerType,
-) -> sow_audio::PlayerSoundType {
+pub(crate) fn player_sound_type(value: sow_core::player::PlayerType) -> sow_audio::PlayerSoundType {
     match value {
         sow_core::player::PlayerType::Human => sow_audio::PlayerSoundType::Human,
         sow_core::player::PlayerType::Nation => sow_audio::PlayerSoundType::Nation,

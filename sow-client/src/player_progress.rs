@@ -77,17 +77,12 @@ impl PlayerProgress {
     }
 
     pub fn has_history(&self) -> bool {
-        self.matches_played > 0
-            || self.wins > 0
-            || self.xp > 0
-            || self.preferred_leader.is_some()
+        self.matches_played > 0 || self.wins > 0 || self.xp > 0 || self.preferred_leader.is_some()
     }
 
     /// Prefer cloud profile when it has history; otherwise keep local/CG portal data.
     pub fn merge_boot_profile(&mut self, cloud: PlayerProgress) {
-        if cloud.has_history() {
-            *self = cloud;
-        } else if !self.has_history() {
+        if cloud.has_history() || !self.has_history() {
             *self = cloud;
         }
     }

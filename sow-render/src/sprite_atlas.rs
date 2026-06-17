@@ -65,6 +65,7 @@ impl SpriteAtlas {
             name: "mover_atlas_upload",
             size: total as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
         let dst = buffer.data();
         let slice = unsafe { std::slice::from_raw_parts_mut(dst, total) };
@@ -84,7 +85,7 @@ impl SpriteAtlas {
                 }
             }
         }
-        context.sync_buffer(buffer);
+        context.sync_buffer(buffer, 0, buffer.size());
 
         let texture = context.create_texture(gpu::TextureDesc {
             name: "mover_atlas",
@@ -122,7 +123,7 @@ impl SpriteAtlas {
 
     pub fn upload(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context) {
         let bytes_per_row = self.width * 4;
-        context.sync_buffer(self.buffer);
+        context.sync_buffer(self.buffer, 0, self.buffer.size());
         let src: gpu::BufferPiece = self.buffer.into();
         let dst: gpu::TexturePiece = self.texture.into();
         let mut transfer = encoder.transfer("mover_atlas_upload");

@@ -125,8 +125,7 @@ fn blend_overlay(base: vec3<f32>, blend: vec3<f32>) -> vec3<f32> {
     );
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn shade_map(in: VertexOutput) -> vec3<f32> {
     let screen_pixel = in.uv * globals.screen_size;
     let world_x = (screen_pixel.x - globals.camera_pos.x) / globals.zoom;
     let world_y = (screen_pixel.y - globals.camera_pos.y) / globals.zoom;
@@ -150,7 +149,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cell_y = cell_hex.y;
 
     if cell_x < 0 || cell_y < 0 || cell_x >= i32(globals.map_size.x) || cell_y >= i32(globals.map_size.y) {
-        return vec4<f32>(0.015, 0.015, 0.02, 1.0); // Sleek dark space/canvas backdrop
+        return vec3<f32>(0.015, 0.015, 0.02); // Sleek dark space/canvas backdrop
     }
 
     let hex_center = hex_to_world(cell_hex);
@@ -748,7 +747,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    // Convert from linear to sRGB
-    let final_color = pow(base_color, vec3<f32>(1.0 / 2.2));
-    return vec4<f32>(final_color, 1.0);
+    return base_color;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4(shade_map(in), 1.0);
+}
+
+@fragment
+fn fs_main_srgb(in: VertexOutput) -> @location(0) vec4<f32> {
+    let c = shade_map(in);
+    return vec4(pow(c, vec3<f32>(1.0 / 2.2)), 1.0);
 }

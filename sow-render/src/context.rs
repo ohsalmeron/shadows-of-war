@@ -24,6 +24,7 @@ impl RenderContext {
         let command_encoder = context.create_command_encoder(gpu::CommandEncoderDesc {
             name: "main",
             buffer_count: 2,
+            manual_barriers: false,
         });
 
         Ok(Self {
@@ -64,7 +65,7 @@ impl RenderContext {
             },
             usage: gpu::TextureUsage::TARGET,
             display_sync,
-            color_space: gpu::ColorSpace::Srgb,
+            color_space: gpu::ColorSpace::Linear,
             ..Default::default()
         };
         self.context.create_surface_configured(window, config)
@@ -79,6 +80,7 @@ impl RenderContext {
             .create_command_encoder(gpu::CommandEncoderDesc {
                 name: "main",
                 buffer_count: 2,
+                manual_barriers: false,
             });
     }
 }

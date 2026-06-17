@@ -9,6 +9,10 @@ license = "AGPL-3.0-or-later"
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
+[[bin]]
+name = "client"
+path = "src/main.rs"
+
 
 [dependencies]
 sow-audio = { workspace = true }

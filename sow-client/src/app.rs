@@ -669,9 +669,12 @@ impl SowApp {
         let display_name = crate::store_portals::load_identity("Player").display_name;
         let db_url = self.asset_config.database_base.clone();
 
-        let encoded_provider = url::form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
-        let encoded_id = url::form_urlencoded::byte_serialize(ext_id.as_bytes()).collect::<String>();
-        let encoded_name = url::form_urlencoded::byte_serialize(display_name.as_bytes()).collect::<String>();
+        let encoded_provider =
+            url::form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
+        let encoded_id =
+            url::form_urlencoded::byte_serialize(ext_id.as_bytes()).collect::<String>();
+        let encoded_name =
+            url::form_urlencoded::byte_serialize(display_name.as_bytes()).collect::<String>();
 
         let url = format!(
             "{}/profile?provider={}&external_id={}&fallback_name={}",
@@ -687,8 +690,9 @@ impl SowApp {
         let mut request = ehttp::Request::get(&url);
         Self::apply_platform_auth(&mut request);
 
-        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-            match result {
+        ehttp::fetch(
+            request,
+            move |result: ehttp::Result<ehttp::Response>| match result {
                 Ok(res) => {
                     if res.ok {
                         #[derive(serde::Deserialize)]
@@ -718,8 +722,8 @@ impl SowApp {
                     log::error!("sow-database request failed: {}", e);
                     let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
                 }
-            }
-        });
+            },
+        );
     }
 
     pub(crate) fn resolve_link_conflict(&self, keep_account_id: String) {
@@ -1003,8 +1007,7 @@ impl SowApp {
             .and_then(|s| s.players.iter().find(|p| p.id == my_id))
             .map(|p| (p.kills, p.deaths, p.assists))
             .unwrap_or((0, 0, 0));
-        self.progress.preferred_leader =
-            Some(self.ui.app.main_menu_state.selected_leader);
+        self.progress.preferred_leader = Some(self.ui.app.main_menu_state.selected_leader);
         self.progress
             .record_match_with_kda(won, defeats, kills, deaths, assists);
         self.save_local_progress();
@@ -1356,11 +1359,7 @@ impl SowApp {
                 self.input.has_snapped_camera_to_spawn = false;
                 self.ui.is_spectating = false;
                 self.ui.endgame_cache = None;
-                sow_audio::set_music_context(
-                    seed as u32,
-                    map_w as f32 * 0.5,
-                    map_h as f32 * 0.5,
-                );
+                sow_audio::set_music_context(seed as u32, map_w as f32 * 0.5, map_h as f32 * 0.5);
             }
             sow_core::protocol::SimCommand::Turn(turn) => {
                 if let Some(e) = &mut self.sim.engine {
@@ -1437,13 +1436,15 @@ impl SowApp {
                             sow_audio::play_death_sound(
                                 crate::player_sound_type(victim_type),
                                 seed,
-                                wx,
-                                wy,
-                                self.input.camera_x,
-                                self.input.camera_y,
-                                self.input.camera_zoom,
-                                self.input.screen_w,
-                                self.input.screen_h,
+                                sow_audio::SpatialSoundParams {
+                                    wx,
+                                    wy,
+                                    camera_x: self.input.camera_x,
+                                    camera_y: self.input.camera_y,
+                                    camera_zoom: self.input.camera_zoom,
+                                    screen_w: self.input.screen_w,
+                                    screen_h: self.input.screen_h,
+                                },
                             );
 
                             if conqueror_id == my_id && my_id != 0 {
@@ -1608,7 +1609,7 @@ impl SowApp {
                             }
                             played_combat_this_tick = true;
 
-                            use sow_audio::{CombatSoundKind, play_combat_sound};
+                            use sow_audio::{play_combat_sound, CombatSoundKind};
                             use sow_core::player::PlayerType;
 
                             let kind = if previous_owner == my_id {
@@ -1629,21 +1630,23 @@ impl SowApp {
 
                             let seed = (previous_owner as u32)
                                 .wrapping_mul(2654435761)
-                                .wrapping_add((x as u32).wrapping_mul(1597334977))
-                                .wrapping_add((y as u32).wrapping_mul(3512401961))
+                                .wrapping_add(x.wrapping_mul(1597334977))
+                                .wrapping_add(y.wrapping_mul(3512401961))
                                 .wrapping_add((troops as u32).wrapping_mul(7243));
 
                             play_combat_sound(
                                 kind,
                                 troops as f32,
                                 seed,
-                                x as f32 + 0.5,
-                                y as f32 + 0.5,
-                                self.input.camera_x,
-                                self.input.camera_y,
-                                self.input.camera_zoom,
-                                self.input.screen_w,
-                                self.input.screen_h,
+                                sow_audio::SpatialSoundParams {
+                                    wx: x as f32 + 0.5,
+                                    wy: y as f32 + 0.5,
+                                    camera_x: self.input.camera_x,
+                                    camera_y: self.input.camera_y,
+                                    camera_zoom: self.input.camera_zoom,
+                                    screen_w: self.input.screen_w,
+                                    screen_h: self.input.screen_h,
+                                },
                             );
                         } else if let sow_core::game::GameEvent::StructureSpawned {
                             tile_idx,
@@ -1659,13 +1662,15 @@ impl SowApp {
                             let y = (tile_idx / self.sim.map_w) as f32 + 0.5;
                             sow_audio::play_building_placement_sound(
                                 crate::building_sound_kind(kind),
-                                x,
-                                y,
-                                self.input.camera_x,
-                                self.input.camera_y,
-                                self.input.camera_zoom,
-                                self.input.screen_w,
-                                self.input.screen_h,
+                                sow_audio::SpatialSoundParams {
+                                    wx: x,
+                                    wy: y,
+                                    camera_x: self.input.camera_x,
+                                    camera_y: self.input.camera_y,
+                                    camera_zoom: self.input.camera_zoom,
+                                    screen_w: self.input.screen_w,
+                                    screen_h: self.input.screen_h,
+                                },
                             );
                         }
                     }
@@ -1703,19 +1708,19 @@ impl SowApp {
                                     );
                                 }
                                 if b_old.under_construction && !b_new.under_construction {
-                                    let wx =
-                                        (b_new.tile_idx % self.sim.map_w) as f32 + 0.5;
-                                    let wy =
-                                        (b_new.tile_idx / self.sim.map_w) as f32 + 0.5;
+                                    let wx = (b_new.tile_idx % self.sim.map_w) as f32 + 0.5;
+                                    let wy = (b_new.tile_idx / self.sim.map_w) as f32 + 0.5;
                                     sow_audio::play_building_completed_sound(
                                         crate::building_sound_kind(b_new.kind),
-                                        wx,
-                                        wy,
-                                        self.input.camera_x,
-                                        self.input.camera_y,
-                                        self.input.camera_zoom,
-                                        self.input.screen_w,
-                                        self.input.screen_h,
+                                        sow_audio::SpatialSoundParams {
+                                            wx,
+                                            wy,
+                                            camera_x: self.input.camera_x,
+                                            camera_y: self.input.camera_y,
+                                            camera_zoom: self.input.camera_zoom,
+                                            screen_w: self.input.screen_w,
+                                            screen_h: self.input.screen_h,
+                                        },
                                     );
                                 }
                             }

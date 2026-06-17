@@ -213,6 +213,7 @@ impl MapRenderer {
             name: "terrain_raw",
             size: (terrain_bytes_per_row * height) as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
 
         // Compute static has_water_neighbor list
@@ -253,7 +254,7 @@ impl MapRenderer {
             terrain_bytes_per_row,
             terrain_slice,
         );
-        context.sync_buffer(terrain_buffer);
+        context.sync_buffer(terrain_buffer, 0, terrain_buffer.size());
 
         // --- Owner texture (R32Uint, dynamic) ---
         // Bits 0..15 = owner_id, bits 16..23 = conquest flash
@@ -285,6 +286,7 @@ impl MapRenderer {
             name: "owner_raw",
             size: (owner_bytes_per_row * height) as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
 
         // --- Shader & pipeline ---
@@ -305,6 +307,13 @@ impl MapRenderer {
         );
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
+        // Fragment entry contract: Linear swapchains use `fs_main`; plain UNORM (wasm WebGL
+        // canvas) uses `fs_main_srgb`. Match on surface format like blade-egui.
+        let fragment_entry = if matches!(surface_format, gpu::TextureFormat::Rgba8Unorm) {
+            "fs_main_srgb"
+        } else {
+            "fs_main"
+        };
         let pipeline = context.create_render_pipeline(gpu::RenderPipelineDesc {
             name: "map_pipeline",
             data_layouts: &[&layout],
@@ -315,7 +324,7 @@ impl MapRenderer {
                 ..Default::default()
             },
             depth_stencil: None,
-            fragment: Some(shader.at("fs_main")),
+            fragment: Some(shader.at(fragment_entry)),
             color_targets: &[gpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(gpu::BlendState::ALPHA_BLENDING),
@@ -385,7 +394,7 @@ impl MapRenderer {
             self.terrain_bytes_per_row,
             terrain_slice,
         );
-        context.sync_buffer(self.terrain_buffer);
+        context.sync_buffer(self.terrain_buffer, 0, self.terrain_buffer.size());
         self.upload_terrain(encoder);
     }
 
@@ -422,7 +431,7 @@ impl MapRenderer {
             slice[dst] = val;
         }
 
-        context.sync_buffer(self.owner_buffer);
+        context.sync_buffer(self.owner_buffer, 0, self.owner_buffer.size());
 
         let src_piece: gpu::BufferPiece = self.owner_buffer.into();
         let dst_piece: gpu::TexturePiece = self.owner_texture.into();
@@ -585,7 +594,7 @@ impl MapRenderer {
             let size_bytes =
                 ((max_y - min_y) * self.owner_bytes_per_row) as u64 + self.width as u64 * 4;
 
-            context.sync_buffer_range(self.owner_buffer, offset_bytes, size_bytes);
+            context.sync_buffer(self.owner_buffer, offset_bytes, size_bytes);
 
             let src_piece: gpu::BufferPiece = self.owner_buffer.at(offset_bytes);
             let mut dst_piece: gpu::TexturePiece = self.owner_texture.into();

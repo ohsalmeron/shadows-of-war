@@ -564,8 +564,7 @@ pub(crate) fn render(
                     let radius_world = config.bunker_range as f32;
                     let elapsed = time.start_time.elapsed().as_secs_f32();
                     let laser_opts = bunker_laser_vfx_opts(painter.ctx());
-                    let low_detail =
-                        input.screen_w < 900.0 || sf > 1.5 || zoom_scaled < 1.0;
+                    let low_detail = input.screen_w < 900.0 || sf > 1.5 || zoom_scaled < 1.0;
 
                     let player_color = if b.owner_id != 0 {
                         player_colors
@@ -588,10 +587,7 @@ pub(crate) fn render(
                             let attack_col = attack.front_cx.floor() as i32;
                             let attack_row = attack.front_cy.floor() as i32;
                             let hex_dist = sow_core::building::hex_distance(
-                                b_col,
-                                b_row,
-                                attack_col,
-                                attack_row,
+                                b_col, b_row, attack_col, attack_row,
                             );
                             if hex_dist as f32 > radius_world {
                                 continue;
@@ -638,15 +634,17 @@ pub(crate) fn render(
                             let scatter_seed = b.id.unwrap_or(0);
                             paint_bunker_laser(
                                 &painter,
-                                center,
-                                atk_center,
-                                elapsed,
-                                glow_color,
-                                core_color,
-                                low_detail,
-                                laser_opts,
-                                scatter_seed,
-                                attack_idx as u32,
+                                BunkerLaserPaint {
+                                    center,
+                                    atk_center,
+                                    elapsed,
+                                    glow_color,
+                                    core_color,
+                                    low_detail,
+                                    opts: laser_opts,
+                                    scatter_seed,
+                                    scatter_slot: attack_idx as u32,
+                                },
                             );
 
                             if let Some(b_id) = b.id {
@@ -662,16 +660,20 @@ pub(crate) fn render(
 
                                 if play {
                                     ui.bunker_last_sound_time.insert(b_id, now);
-                                    let seed = (b_id as u32).wrapping_mul(31).wrapping_add(attack_idx as u32);
+                                    let seed = (b_id as u32)
+                                        .wrapping_mul(31)
+                                        .wrapping_add(attack_idx as u32);
                                     sow_audio::play_bunker_defense_sound(
                                         seed,
-                                        b.bx,
-                                        b.by,
-                                        input.camera_x,
-                                        input.camera_y,
-                                        input.camera_zoom,
-                                        input.screen_w,
-                                        input.screen_h,
+                                        sow_audio::SpatialSoundParams {
+                                            wx: b.bx,
+                                            wy: b.by,
+                                            camera_x: input.camera_x,
+                                            camera_y: input.camera_y,
+                                            camera_zoom: input.camera_zoom,
+                                            screen_w: input.screen_w,
+                                            screen_h: input.screen_h,
+                                        },
                                     );
                                 }
                             }
@@ -744,10 +746,12 @@ pub(crate) fn render(
                             b_col,
                             b_row,
                             current_range,
-                            input.camera_x,
-                            input.camera_y,
-                            input.camera_zoom,
-                            sf,
+                            WorldPaintCamera {
+                                camera_x: input.camera_x,
+                                camera_y: input.camera_y,
+                                camera_zoom: input.camera_zoom,
+                                sf,
+                            },
                             fill_color,
                             stroke_color,
                         );
@@ -773,10 +777,12 @@ pub(crate) fn render(
                                 b_col,
                                 b_row,
                                 wave_range,
-                                input.camera_x,
-                                input.camera_y,
-                                input.camera_zoom,
-                                sf,
+                                WorldPaintCamera {
+                                    camera_x: input.camera_x,
+                                    camera_y: input.camera_y,
+                                    camera_zoom: input.camera_zoom,
+                                    sf,
+                                },
                                 egui::Color32::TRANSPARENT,
                                 wave_stroke,
                             );
@@ -1387,10 +1393,12 @@ pub(crate) fn render(
                             preview_col,
                             preview_row,
                             current_range,
-                            input.camera_x,
-                            input.camera_y,
-                            input.camera_zoom,
-                            sf,
+                            WorldPaintCamera {
+                                camera_x: input.camera_x,
+                                camera_y: input.camera_y,
+                                camera_zoom: input.camera_zoom,
+                                sf,
+                            },
                             range_fill,
                             range_color,
                         );

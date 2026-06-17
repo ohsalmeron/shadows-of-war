@@ -198,26 +198,12 @@ pub fn draw_queue_overlay(
             ui.add_space(8.0);
             if compact {
                 ui.vertical_centered(|ui| {
-                    draw_lobby_bottom_actions(
-                        ui,
-                        state,
-                        lobby_info,
-                        action_min_h,
-                        action,
-                        lang,
-                    );
+                    draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
                 });
             } else {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-                    draw_lobby_bottom_actions(
-                        ui,
-                        state,
-                        lobby_info,
-                        action_min_h,
-                        action,
-                        lang,
-                    );
+                    draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
                 });
             }
             ui.add_space(16.0);

@@ -156,7 +156,7 @@ impl SowApp {
         while let Ok(res) = self.net.connect_rx.try_recv() {
             match res {
                 Ok(client) => {
-                    log::warn!("[CLIENT NET] ✅ Received successfully connected WebSocket client from channel!");
+                    log::info!("[CLIENT NET] ✅ Received successfully connected WebSocket client from channel!");
                     self.ui.app.main_menu_state.is_connected = true;
                     self.ui.app.main_menu_state.is_connecting = false;
                     self.net.ws_connect_fail_backoff_ms = 400;
@@ -257,7 +257,9 @@ impl SowApp {
                     log::error!("Relay connection/reconnection timed out after 15 seconds total");
                     self.net.relay_connect_start = None;
                     self.net.relay_retry_count = 0;
-                    self.ui.app.main_menu_state.error_message = Some("Failed to connect to the game server. Connection timed out.".to_string());
+                    self.ui.app.main_menu_state.error_message = Some(
+                        "Failed to connect to the game server. Connection timed out.".to_string(),
+                    );
                     self.begin_exit_to_main_menu(true);
                 }
             }
@@ -309,8 +311,7 @@ impl SowApp {
                                 "Received ServerStartMessage; entering Splash phase immediately"
                             );
                             self.sync_portal_room(false);
-                            let not_splash =
-                                self.ui.app.phase != sow_ui::app::ClientPhase::Splash;
+                            let not_splash = self.ui.app.phase != sow_ui::app::ClientPhase::Splash;
                             let wrong_job = self.ui.app.splash_state.job
                                 != sow_ui::ui::loading_screen::SplashJob::EnterGame;
 
@@ -738,7 +739,7 @@ impl SowApp {
 
                 // Clear stale connections
                 while self.net.connect_rx.try_recv().is_ok() {
-                    log::warn!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!");
+                    log::info!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!");
                 }
 
                 self.net.relay_connect_start = Some(now);
@@ -786,7 +787,7 @@ impl SowApp {
                     self.begin_exit_to_main_menu(true);
                 }
             } else if self.ui.app.phase != ClientPhase::Splash {
-                log::warn!("[CLIENT NET] Disconnected outside match; reconnecting to orchestrator");
+                log::info!("[CLIENT NET] Disconnected outside match; reconnecting to orchestrator");
                 self.net.ws_url = self.net.orchestrator_url.clone();
                 self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
             }
@@ -805,7 +806,7 @@ impl SowApp {
         {
             self.ui.app.main_menu_state.is_connecting = true;
             let url = self.ui.app.main_menu_state.server_address.clone();
-            log::warn!(
+            log::info!(
                 "[CLIENT NET] 🔄 Auto-reconnect triggered: Spawning WS connection task to {}",
                 url
             );

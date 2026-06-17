@@ -198,7 +198,8 @@ impl SowEngine {
                 );
                 if let Some(spawn_idx) = spawn_ok {
                     let building_id = self.state.next_building_id;
-                    self.state.next_building_id = self.state.next_building_id.wrapping_add(1).max(1);
+                    self.state.next_building_id =
+                        self.state.next_building_id.wrapping_add(1).max(1);
 
                     self.add_building(crate::building::Building {
                         id: building_id,

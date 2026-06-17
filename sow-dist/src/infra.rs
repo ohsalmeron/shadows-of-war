@@ -7,7 +7,13 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SERVER_CRATES: &[&str] = &["sow-server", "sow-relay", "sow-database", "sow-core", "sow-net"];
+const SERVER_CRATES: &[&str] = &[
+    "sow-server",
+    "sow-relay",
+    "sow-database",
+    "sow-core",
+    "sow-net",
+];
 
 pub fn deploy_infra(
     paths: &Paths,
@@ -153,6 +159,7 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     install_systemd_unit(
         gcp,
         paths,
+        cfg,
         "sow-server.service",
         &user,
         &home_prod,
@@ -161,6 +168,7 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     install_systemd_unit(
         gcp,
         paths,
+        cfg,
         "sow-server-ptr.service",
         &user,
         &home_prod,
@@ -169,6 +177,7 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     install_systemd_unit(
         gcp,
         paths,
+        cfg,
         "sow-database.service",
         &user,
         &home_prod,
@@ -177,12 +186,13 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     install_systemd_unit(
         gcp,
         paths,
+        cfg,
         "sow-database-ptr.service",
         &user,
         &home_prod,
         &home_ptr,
     )?;
-    install_systemd_unit(gcp, paths, "valkey.service", &user, &home_prod, &home_ptr)?;
+    install_systemd_unit(gcp, paths, cfg, "valkey.service", &user, &home_prod, &home_ptr)?;
 
     for (template, conf_name) in [
         ("main.conf", format!("{}.conf", cfg.site_domain())),
@@ -195,7 +205,7 @@ fn bootstrap_fedora(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     let certbot = format!(
         "sudo nginx -t && sudo systemctl enable --now nginx valkey && \
          sudo certbot --nginx --non-interactive --agree-tos --email {email} \
-         -d {main} -d {www} -d {play} -d {ptr} --redirect || true",
+         -d {main} -d {www} -d {play} -d {ptr} --redirect",
         email = cfg.certbot_email,
         main = cfg.site_domain(),
         www = cfg.www_site_domain(),
@@ -223,6 +233,12 @@ fn install_nginx_conf(
     content = content.replace("__SOW_WWW_MAIN__", &cfg.www_site_domain());
     content = content.replace("__SOW_DOMAIN_PLAY__", &cfg.play_domain());
     content = content.replace("__SOW_DOMAIN_PTR__", &cfg.ptr_domain());
+    content = content.replace("__SOW_PROD_WS_PORT__", &cfg.prod_ws_port());
+    content = content.replace("__SOW_PROD_MAPS_PORT__", &cfg.prod_maps_port());
+    content = content.replace("__SOW_PROD_DB_PORT__", &cfg.prod_db_port());
+    content = content.replace("__SOW_PTR_WS_PORT__", &cfg.ptr_ws_port());
+    content = content.replace("__SOW_PTR_MAPS_PORT__", &cfg.ptr_maps_port());
+    content = content.replace("__SOW_PTR_DB_PORT__", &cfg.ptr_db_port());
     let tmp = paths
         .dist_root()
         .join(format!("bootstrap-nginx-{conf_name}"));
@@ -241,6 +257,7 @@ fn install_nginx_conf(
 fn install_systemd_unit(
     gcp: &GcpConfig,
     paths: &Paths,
+    cfg: &DeployConfig,
     name: &str,
     user: &str,
     home_prod: &str,
@@ -250,6 +267,12 @@ fn install_systemd_unit(
     content = content.replace("__DEPLOY_USER__", user);
     content = content.replace("__HOME_PROD__", home_prod);
     content = content.replace("__HOME_PTR__", home_ptr);
+    content = content.replace("__SOW_PROD_WS_PORT__", &cfg.prod_ws_port());
+    content = content.replace("__SOW_PROD_MAPS_PORT__", &cfg.prod_maps_port());
+    content = content.replace("__SOW_PROD_DB_PORT__", &cfg.prod_db_port());
+    content = content.replace("__SOW_PTR_WS_PORT__", &cfg.ptr_ws_port());
+    content = content.replace("__SOW_PTR_MAPS_PORT__", &cfg.ptr_maps_port());
+    content = content.replace("__SOW_PTR_DB_PORT__", &cfg.ptr_db_port());
     let tmp = paths.dist_root().join(format!("bootstrap-{name}"));
     fs::write(&tmp, &content)?;
     let remote = format!("/tmp/{name}");
@@ -279,7 +302,11 @@ pub struct ServerShipResult {
 pub fn local_server_binaries(paths: &Paths) -> (PathBuf, PathBuf, PathBuf) {
     const GNU: &str = "x86_64-unknown-linux-gnu";
     let dir = paths.cargo_target.join(format!("{GNU}/release"));
-    (dir.join("sow-server"), dir.join("sow-relay"), dir.join("sow-database"))
+    (
+        dir.join("sow-server"),
+        dir.join("sow-relay"),
+        dir.join("sow-database"),
+    )
 }
 
 pub fn needs_local_server_build(paths: &Paths) -> Result<bool> {
@@ -319,7 +346,7 @@ pub fn remote_binaries_missing(gcp: &GcpConfig, data_dir: &str) -> bool {
     .unwrap_or(true)
 }
 
-/// Phase 3: rsync server binaries and `.version` (no restart).
+/// Phase 3: sync server binaries and `.version` (no restart).
 pub fn ship_server(
     paths: &Paths,
     gcp: &GcpConfig,
@@ -333,7 +360,6 @@ pub fn ship_server(
     if need_ship {
         rsync_server_binaries(
             gcp,
-            &paths.dist_root(),
             data_dir,
             &artifacts.server,
             &artifacts.relay,
@@ -347,12 +373,7 @@ pub fn ship_server(
         println!("==> Server binaries unchanged — skipping ship");
     }
 
-    let version_local = paths.version_file.to_string_lossy();
-    gcp.rsync(
-        &paths.dist_root(),
-        version_local.as_ref(),
-        &format!("{data_dir}/.version"),
-    )?;
+    gcp.sync_file(&paths.version_file, &format!("{data_dir}/.version"))?;
 
     let deployed_cache = paths.deployed_version_cache(unit);
     let last_version = fs::read_to_string(&deployed_cache)
@@ -459,32 +480,23 @@ fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, PathBuf)> {
         Some(&paths.root),
     )?;
     let dir = paths.cargo_target.join(format!("{GNU}/release"));
-    Ok((dir.join("sow-server"), dir.join("sow-relay"), dir.join("sow-database")))
+    Ok((
+        dir.join("sow-server"),
+        dir.join("sow-relay"),
+        dir.join("sow-database"),
+    ))
 }
 
 fn rsync_server_binaries(
     gcp: &GcpConfig,
-    cache_dir: &Path,
     data_dir: &str,
     server: &Path,
     relay: &Path,
     database: &Path,
 ) -> Result<()> {
-    gcp.rsync(
-        cache_dir,
-        &server.to_string_lossy(),
-        &format!("{data_dir}/sow-server"),
-    )?;
-    gcp.rsync(
-        cache_dir,
-        &relay.to_string_lossy(),
-        &format!("{data_dir}/sow-relay"),
-    )?;
-    gcp.rsync(
-        cache_dir,
-        &database.to_string_lossy(),
-        &format!("{data_dir}/sow-database"),
-    )?;
+    gcp.sync_file(server, &format!("{data_dir}/sow-server"))?;
+    gcp.sync_file(relay, &format!("{data_dir}/sow-relay"))?;
+    gcp.sync_file(database, &format!("{data_dir}/sow-database"))?;
     gcp.run_remote(&format!(
         "chmod +x {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database && \
          sudo chcon -t bin_t {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database"
@@ -535,7 +547,12 @@ pub fn verify_server_health(
     if !db_resp.status().is_success() {
         let status = db_resp.status();
         let body = db_resp.text().unwrap_or_default();
-        bail!("database API failed: {} → {} (body: {})", db_url, status, body);
+        bail!(
+            "database API failed: {} → {} (body: {})",
+            db_url,
+            status,
+            body
+        );
     }
     println!("✅ Database API OK");
 
@@ -594,6 +611,16 @@ pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()>
         return Ok(());
     }
 
+    if cfg.certbot_email.trim().is_empty() {
+        eprintln!(
+            "==> VPS deploy templates changed but SOW_CERTBOT_EMAIL is unset — skipping nginx/systemd push"
+        );
+        eprintln!(
+            "    (avoids stripping TLS; set SOW_CERTBOT_EMAIL in sow-dist/.env and re-run ./sow p)"
+        );
+        return Ok(());
+    }
+
     println!("==> VPS configuration changes detected! Deploying Nginx configurations and systemd units...");
 
     let gcp = cfg.gcp();
@@ -610,7 +637,7 @@ pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()>
         "sow-database-ptr.service",
         "valkey.service",
     ] {
-        install_systemd_unit(&gcp, paths, unit_name, &user, &home_prod, &home_ptr)?;
+        install_systemd_unit(&gcp, paths, cfg, unit_name, &user, &home_prod, &home_ptr)?;
     }
 
     // 2. Deploy Nginx site configs
@@ -630,7 +657,7 @@ pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()>
     println!("==> Re-running Certbot to ensure SSL on new config files...");
     let certbot = format!(
         "sudo certbot --nginx --non-interactive --agree-tos --email {email} \
-         -d {main} -d {www} -d {play} -d {ptr} --redirect || true",
+         -d {main} -d {www} -d {play} -d {ptr} --redirect",
         email = cfg.certbot_email,
         main = cfg.site_domain(),
         www = cfg.www_site_domain(),

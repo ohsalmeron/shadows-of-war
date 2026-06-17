@@ -1,4 +1,4 @@
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -57,7 +57,7 @@ pub fn iso_8601_timestamp() -> String {
         .unwrap_or_default();
     let secs = duration.as_secs() as i64;
     let ms = duration.subsec_millis();
-    
+
     let days = secs.div_euclid(86400);
     let rem_secs = secs.rem_euclid(86400);
     let hour = rem_secs / 3600;
@@ -74,15 +74,11 @@ pub fn iso_8601_timestamp() -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if mp < 10 { y } else { y + 1 };
-    
+
     format!("{y:04}-{m:02}-{d:02}T{hour:02}:{min:02}:{sec:02}.{ms:03}Z")
 }
 
-pub async fn submit_score(
-    api_key: &str,
-    user_id: &str,
-    score: u32,
-) -> Result<(), String> {
+pub async fn submit_score(api_key: &str, user_id: &str, score: u32) -> Result<(), String> {
     let timestamp = iso_8601_timestamp();
     let payload = SubmitScoresRequest {
         scores: vec![ScoreEntry {
@@ -105,7 +101,9 @@ pub async fn submit_score(
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Leaderboard score submission failed with status {status}: {text}"));
+        return Err(format!(
+            "Leaderboard score submission failed with status {status}: {text}"
+        ));
     }
 
     log::info!("Successfully submitted score {score} for CrazyGames user {user_id}");

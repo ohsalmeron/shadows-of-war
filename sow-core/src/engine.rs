@@ -472,7 +472,9 @@ impl SowEngine {
                     self.end_game(wid, Some(team));
                 }
             }
-        } else if teams_with_land == 0 && unaffiliated_with_land == 0 && !self.state.players.is_empty()
+        } else if teams_with_land == 0
+            && unaffiliated_with_land == 0
+            && !self.state.players.is_empty()
         {
             self.state.phase = crate::game::GamePhase::GameOver;
         }
@@ -1109,21 +1111,25 @@ mod tests {
     fn test_team_map_control_winner() {
         use crate::protocol::Team;
 
-        let mut config = GameConfig::default();
-        config.game_mode = "Teams".to_string();
-        config.map_control_win_percentage = 0.50;
+        let config = GameConfig {
+            game_mode: "Teams".to_string(),
+            map_control_win_percentage: 0.50,
+            ..Default::default()
+        };
         let mut state = GameState::new(42, 10, 10, config);
         for t in &mut state.map.terrain {
             *t = crate::map::MapTile::from_byte(0b1000_0000);
         }
         state.total_land_tiles = 100;
 
-        let mut red = crate::player::Player::new_human(1, "Red".into(), [1.0, 0.2, 0.2], &state.config);
+        let mut red =
+            crate::player::Player::new_human(1, "Red".into(), [1.0, 0.2, 0.2], &state.config);
         red.team = Some(Team::Red);
         red.tile_count = 55;
         red.alive = true;
 
-        let mut blue = crate::player::Player::new_human(2, "Blue".into(), [0.2, 0.5, 1.0], &state.config);
+        let mut blue =
+            crate::player::Player::new_human(2, "Blue".into(), [0.2, 0.5, 1.0], &state.config);
         blue.team = Some(Team::Blue);
         blue.tile_count = 10;
         blue.alive = true;

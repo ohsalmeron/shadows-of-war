@@ -28,210 +28,77 @@ pub enum BuildingSoundKind {
     Port,
 }
 
-pub fn play_death_sound(
-    player_type: PlayerSoundType,
-    seed: u32,
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
-    #[cfg(not(target_arch = "wasm32"))]
-    native::play_death_sound(
-        player_type,
-        seed,
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
-    #[cfg(target_arch = "wasm32")]
-    let _ = (
-        player_type, seed, wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h,
-    );
+/// World position and camera state for spatial audio panning/attenuation.
+#[derive(Clone, Copy, Debug)]
+pub struct SpatialSoundParams {
+    pub wx: f32,
+    pub wy: f32,
+    pub camera_x: f32,
+    pub camera_y: f32,
+    pub camera_zoom: f32,
+    pub screen_w: f32,
+    pub screen_h: f32,
 }
 
-pub fn play_deploy_sound(
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
+pub fn play_death_sound(player_type: PlayerSoundType, seed: u32, spatial: SpatialSoundParams) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_deploy_sound(
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_death_sound(player_type, seed, spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+    let _ = (player_type, seed, spatial);
+}
+
+pub fn play_deploy_sound(spatial: SpatialSoundParams) {
+    #[cfg(not(target_arch = "wasm32"))]
+    native::play_deploy_sound(spatial);
+    #[cfg(target_arch = "wasm32")]
+    let _ = spatial;
 }
 
 pub fn play_combat_sound(
     kind: CombatSoundKind,
     troops: f32,
     seed: u32,
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
+    spatial: SpatialSoundParams,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_combat_sound(
-        kind,
-        troops,
-        seed,
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_combat_sound(kind, troops, seed, spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (
-        kind, troops, seed, wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h,
-    );
+    let _ = (kind, troops, seed, spatial);
 }
 
-pub fn play_building_placement_sound(
-    kind: BuildingSoundKind,
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
+pub fn play_building_placement_sound(kind: BuildingSoundKind, spatial: SpatialSoundParams) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_building_placement_sound(
-        kind,
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_building_placement_sound(kind, spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (kind, wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+    let _ = (kind, spatial);
 }
 
-pub fn play_building_completed_sound(
-    kind: BuildingSoundKind,
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
+pub fn play_building_completed_sound(kind: BuildingSoundKind, spatial: SpatialSoundParams) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_building_completed_sound(
-        kind,
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_building_completed_sound(kind, spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (kind, wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+    let _ = (kind, spatial);
 }
 
-pub fn play_nuke_launch_sound(
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
+pub fn play_nuke_launch_sound(spatial: SpatialSoundParams) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_nuke_launch_sound(
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_nuke_launch_sound(spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+    let _ = spatial;
 }
 
-pub fn play_nuke_impact_sound(
-    level: u8,
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
+pub fn play_nuke_impact_sound(level: u8, spatial: SpatialSoundParams) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_nuke_impact_sound(
-        level,
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_nuke_impact_sound(level, spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (level, wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+    let _ = (level, spatial);
 }
 
-pub fn play_bunker_defense_sound(
-    seed: u32,
-    wx: f32,
-    wy: f32,
-    camera_x: f32,
-    camera_y: f32,
-    camera_zoom: f32,
-    screen_w: f32,
-    screen_h: f32,
-) {
+pub fn play_bunker_defense_sound(seed: u32, spatial: SpatialSoundParams) {
     #[cfg(not(target_arch = "wasm32"))]
-    native::play_bunker_defense_sound(
-        seed,
-        wx,
-        wy,
-        camera_x,
-        camera_y,
-        camera_zoom,
-        screen_w,
-        screen_h,
-    );
+    native::play_bunker_defense_sound(seed, spatial);
     #[cfg(target_arch = "wasm32")]
-    let _ = (seed, wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+    let _ = (seed, spatial);
 }
 
 pub fn set_music_context(seed: u32, anchor_wx: f32, anchor_wy: f32) {
@@ -314,24 +181,13 @@ mod native {
         MUSIC_SESSION.get_or_init(|| Mutex::new(MusicSession::default()))
     }
 
+    #[derive(Default)]
     struct BuildingSession {
         city_step: u8,
         bunker_step: u8,
         factory_step: u8,
         port_step: u8,
         last_placement: Option<Instant>,
-    }
-
-    impl Default for BuildingSession {
-        fn default() -> Self {
-            Self {
-                city_step: 0,
-                bunker_step: 0,
-                factory_step: 0,
-                port_step: 0,
-                last_placement: None,
-            }
-        }
     }
 
     static BUILDING_SESSION: OnceLock<Mutex<BuildingSession>> = OnceLock::new();
@@ -734,8 +590,8 @@ mod native {
         };
         let octave = session.root_octave.saturating_sub(1).max(2);
         let mut degrees = [0u8; 4];
-        for i in 0..note_count {
-            degrees[i] = base_degree.saturating_sub(i as u8);
+        for (i, degree) in degrees.iter_mut().enumerate().take(note_count) {
+            *degree = base_degree.saturating_sub(i as u8);
         }
         let note_freqs = degrees_to_freqs(octave, &degrees);
         let base_dur = match player_type {
@@ -1271,9 +1127,8 @@ mod native {
             NonZero::new(1).unwrap()
         }
         fn total_duration(&self) -> Option<Duration> {
-            let total_samples = self.pulse1.duration_samples
-                + self.silence_samples
-                + self.pulse2.duration_samples;
+            let total_samples =
+                self.pulse1.duration_samples + self.silence_samples + self.pulse2.duration_samples;
             Some(Duration::from_secs_f32(
                 total_samples as f32 / SAMPLE_RATE as f32,
             ))
@@ -1321,7 +1176,8 @@ mod native {
                 return None;
             }
             let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
-            let vibrato = (2.0 * std::f32::consts::PI * self.vibrato_freq * t).sin() * self.vibrato_depth;
+            let vibrato =
+                (2.0 * std::f32::consts::PI * self.vibrato_freq * t).sin() * self.vibrato_depth;
             let freq = (self.base_freq + vibrato).max(20.0);
             let period = 1.0 / freq;
             let phase = (t % period) / period;
@@ -1538,12 +1394,7 @@ mod native {
         ]
     }
 
-    fn pick_base_degree(
-        session: &MusicSession,
-        wx: f32,
-        wy: f32,
-        rng: &mut SimpleRng,
-    ) -> u8 {
+    fn pick_base_degree(session: &MusicSession, wx: f32, wy: f32, rng: &mut SimpleRng) -> u8 {
         let raw = ((tile_hash(wx, wy)
             .wrapping_add(session.phrase_step)
             .wrapping_add(rng.next_u32() % 3))
@@ -1634,7 +1485,9 @@ mod native {
                 let v_depth = 35.0 * rng.range(0.8, 1.2);
                 let dur = 0.06 + 0.04 * (troops / 3000.0).clamp(0.0, 1.0);
                 let decay = rng.range(14.0, 18.0);
-                ProceduralSound::WarHorn(WarHornSource::new(root, dur, v_freq, v_depth, 0.25, decay, amp))
+                ProceduralSound::WarHorn(WarHornSource::new(
+                    root, dur, v_freq, v_depth, 0.25, decay, amp,
+                ))
             }
             CombatSoundKind::CounterAttack => {
                 let jitter = rng.range(0.95, 1.05);
@@ -1732,15 +1585,16 @@ mod native {
         }
     }
 
-    fn spatial_gains(
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-    ) -> (f32, f32, f32) {
+    fn spatial_gains(spatial: super::SpatialSoundParams) -> (f32, f32, f32) {
+        let super::SpatialSoundParams {
+            wx,
+            wy,
+            camera_x,
+            camera_y,
+            camera_zoom,
+            screen_w,
+            screen_h,
+        } = spatial;
         const ZOOM_FLOOR: f32 = 1.0;
         const ZOOM_FULL: f32 = 10.0;
         const ZOOM_MIN_GAIN: f32 = 0.0;
@@ -1780,21 +1634,11 @@ mod native {
         (left, right, total_volume)
     }
 
-    fn queue_spatial<S>(
-        source: S,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-        priority: SoundPriority,
-    ) where
+    fn queue_spatial<S>(source: S, spatial: super::SpatialSoundParams, priority: SoundPriority)
+    where
         S: Source<Item = f32> + Send + 'static,
     {
-        let (left, right, total_volume) =
-            spatial_gains(wx, wy, camera_x, camera_y, camera_zoom, screen_w, screen_h);
+        let (left, right, total_volume) = spatial_gains(spatial);
 
         if total_volume > 0.01 {
             let duration = source_duration(&source);
@@ -1808,81 +1652,30 @@ mod native {
         }
     }
 
-    pub fn play_spatial<S>(
-        source: S,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-    ) where
+    pub fn play_spatial<S>(source: S, spatial: super::SpatialSoundParams)
+    where
         S: Source<Item = f32> + Send + 'static,
     {
-        queue_spatial(
-            source,
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
-            SoundPriority::Normal,
-        );
+        queue_spatial(source, spatial, SoundPriority::Normal);
     }
 
     pub fn play_death_sound(
         player_type: PlayerSoundType,
         seed: u32,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
+        spatial: super::SpatialSoundParams,
     ) {
+        let super::SpatialSoundParams { wx, wy, .. } = spatial;
         let source = {
             let mut session = music_session().lock().unwrap_or_else(|e| e.into_inner());
             build_death_sound(&mut session, player_type, seed, wx, wy)
         };
-        queue_spatial(
-            source,
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
-            SoundPriority::Foreground,
-        );
+        queue_spatial(source, spatial, SoundPriority::Foreground);
     }
 
-    pub fn play_deploy_sound(
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-    ) {
+    pub fn play_deploy_sound(spatial: super::SpatialSoundParams) {
         let cursor = Cursor::new(DEPLOY_WAV);
         if let Ok(source) = rodio::Decoder::new(cursor) {
-            queue_spatial(
-                source.amplify(0.17),
-                wx,
-                wy,
-                camera_x,
-                camera_y,
-                camera_zoom,
-                screen_w,
-                screen_h,
-                SoundPriority::Normal,
-            );
+            queue_spatial(source.amplify(0.17), spatial, SoundPriority::Normal);
         }
     }
 
@@ -1890,141 +1683,54 @@ mod native {
         kind: CombatSoundKind,
         troops: f32,
         seed: u32,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
+        spatial: super::SpatialSoundParams,
     ) {
+        let super::SpatialSoundParams { wx, wy, .. } = spatial;
         let source = {
             let mut session = music_session().lock().unwrap_or_else(|e| e.into_inner());
             build_procedural_sound(&mut session, kind, troops, seed, wx, wy)
         };
-        queue_spatial(
-            source,
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
-            SoundPriority::Background,
-        );
+        queue_spatial(source, spatial, SoundPriority::Background);
     }
 
     pub fn play_building_placement_sound(
         kind: BuildingSoundKind,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
+        spatial: super::SpatialSoundParams,
     ) {
         queue_spatial(
             BuildingPlacementSource::new(kind),
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
+            spatial,
             SoundPriority::Normal,
         );
     }
 
     pub fn play_building_completed_sound(
         kind: BuildingSoundKind,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
+        spatial: super::SpatialSoundParams,
     ) {
         queue_spatial(
             BuildingCompletionSource::new(kind),
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
+            spatial,
             SoundPriority::Foreground,
         );
     }
 
-    pub fn play_nuke_launch_sound(
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-    ) {
-        queue_spatial(
-            NukeLaunchSource::new(),
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
-            SoundPriority::Foreground,
-        );
+    pub fn play_nuke_launch_sound(spatial: super::SpatialSoundParams) {
+        queue_spatial(NukeLaunchSource::new(), spatial, SoundPriority::Foreground);
     }
 
-    pub fn play_nuke_impact_sound(
-        level: u8,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-    ) {
+    pub fn play_nuke_impact_sound(level: u8, spatial: super::SpatialSoundParams) {
         queue_spatial(
             NukeImpactSource::new(level),
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
+            spatial,
             SoundPriority::Foreground,
         );
     }
 
-    pub fn play_bunker_defense_sound(
-        seed: u32,
-        wx: f32,
-        wy: f32,
-        camera_x: f32,
-        camera_y: f32,
-        camera_zoom: f32,
-        screen_w: f32,
-        screen_h: f32,
-    ) {
+    pub fn play_bunker_defense_sound(seed: u32, spatial: super::SpatialSoundParams) {
         queue_spatial(
             BunkerDefenseSource::new(seed),
-            wx,
-            wy,
-            camera_x,
-            camera_y,
-            camera_zoom,
-            screen_w,
-            screen_h,
+            spatial,
             SoundPriority::Normal,
         );
     }

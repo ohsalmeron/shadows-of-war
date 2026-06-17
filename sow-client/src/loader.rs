@@ -1,6 +1,6 @@
 use crate::app::SowApp;
-use crate::EngineInitEvent;
 use crate::hud::tutorial::TutorialStep;
+use crate::EngineInitEvent;
 use sow_core::game_config::GameConfig;
 use sow_core::protocol::SimCommand;
 use sow_ui::app::ClientPhase;
@@ -243,10 +243,7 @@ impl SowApp {
                                     self.boot_route_waiting = true;
                                     self.boot_ready_since = Some(web_time::Instant::now());
                                 }
-                                splash_show_loading_progress(
-                                    &mut self.ui.app.splash_state,
-                                    0.95,
-                                );
+                                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
                                 let timed_out = self
                                     .boot_ready_since
                                     .is_some_and(|t| t.elapsed() > Duration::from_millis(1500));
@@ -261,8 +258,7 @@ impl SowApp {
                         {
                             self.ui.app.splash_state.done = true;
                             if self.ui.app.splash_state.target_phase.is_none() {
-                                self.ui.app.splash_state.target_phase =
-                                    Some(ClientPhase::MainMenu);
+                                self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
                             }
                         }
                     }
@@ -454,7 +450,11 @@ impl SowApp {
         if let Some(locale_str) = crate::store_portals::get_portal_locale() {
             let detected_lang = sow_i18n::Language::from_locale(&locale_str);
             self.ui.app.settings_state.language = detected_lang;
-            log::info!("Auto-configured language from portal locale: {:?} (source: {})", detected_lang, locale_str);
+            log::info!(
+                "Auto-configured language from portal locale: {:?} (source: {})",
+                detected_lang,
+                locale_str
+            );
         }
     }
 
@@ -467,7 +467,11 @@ impl SowApp {
         if let Some(locale_str) = crate::store_portals::get_portal_locale() {
             let detected_lang = sow_i18n::Language::from_locale(&locale_str);
             self.ui.app.settings_state.language = detected_lang;
-            log::info!("Auto-configured language from portal locale: {:?} (source: {})", detected_lang, locale_str);
+            log::info!(
+                "Auto-configured language from portal locale: {:?} (source: {})",
+                detected_lang,
+                locale_str
+            );
         }
         if !self.progress.is_first_game() {
             log::info!("Portal boot: returning player → main menu");
@@ -523,7 +527,7 @@ impl SowApp {
                 config.map_height = entry.height;
                 config.map_name = entry.key.clone();
             } else {
-                log::warn!("Map '{}' not in catalog.bin", map_id);
+                log::debug!("Map '{}' not in catalog.bin", map_id);
             }
         }
         if let Some(payload) =
@@ -571,8 +575,7 @@ impl SowApp {
         self.tasks.engine_init_queued_msg = Some(start_msg);
 
         if self.ui.app.asset_loader.has_map(&map_id) {
-            self.ui.app.main_menu_state.cached_map =
-                self.ui.app.asset_loader.take_map(&map_id);
+            self.ui.app.main_menu_state.cached_map = self.ui.app.asset_loader.take_map(&map_id);
             self.ui.app.main_menu_state.cached_map_key = Some(map_id.clone());
             self.ui.app.main_menu_state.is_downloading_map = false;
         } else {
@@ -611,8 +614,7 @@ impl SowApp {
                     }
                     Ok(ehttp::streaming::Part::Chunk(chunk)) => {
                         if chunk.is_empty() {
-                            let final_bytes =
-                                std::mem::take(&mut *accumulated.lock().unwrap());
+                            let final_bytes = std::mem::take(&mut *accumulated.lock().unwrap());
                             let _ = tx.send(crate::MapDownloadEvent::MapReady(
                                 map_name_for_closure.clone(),
                                 final_bytes,

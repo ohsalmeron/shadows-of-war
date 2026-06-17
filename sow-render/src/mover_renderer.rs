@@ -145,11 +145,13 @@ impl MoverRenderer {
             name: "mover_sprite_instances",
             size: (MAX_SPRITE_INSTANCES * std::mem::size_of::<MoverInstanceGpu>()) as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
         let trail_buffer = context.create_buffer(gpu::BufferDesc {
             name: "mover_trail_instances",
             size: (MAX_TRAIL_SEGMENTS * std::mem::size_of::<TrailSegmentGpu>()) as u64,
             memory: gpu::Memory::Upload,
+            bind_point: 0,
         });
         let sampler = context.create_sampler(gpu::SamplerDesc {
             name: "mover_atlas_sampler",
@@ -198,7 +200,7 @@ impl MoverRenderer {
             unsafe {
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
             }
-            context.sync_buffer_range(self.sprite_buffer, 0, bytes.len() as u64);
+            context.sync_buffer(self.sprite_buffer, 0, self.sprite_buffer.size());
         }
         if !self.trail_upload.is_empty() {
             let bytes = bytemuck::cast_slice(&self.trail_upload);
@@ -206,7 +208,7 @@ impl MoverRenderer {
             unsafe {
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
             }
-            context.sync_buffer_range(self.trail_buffer, 0, bytes.len() as u64);
+            context.sync_buffer(self.trail_buffer, 0, self.trail_buffer.size());
         }
     }
 

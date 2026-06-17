@@ -149,7 +149,10 @@ pub fn draw_user_profile_header(
         );
         let btn_rect = egui::Rect::from_min_max(
             egui::pos2(text_max_x + 8.0, rect.min.y + (rect.height() - 28.0) / 2.0),
-            egui::pos2(rect.max.x - right_margin, rect.min.y + (rect.height() + 28.0) / 2.0),
+            egui::pos2(
+                rect.max.x - right_margin,
+                rect.min.y + (rect.height() + 28.0) / 2.0,
+            ),
         );
         (text_rect, Some(btn_rect))
     } else {

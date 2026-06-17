@@ -105,25 +105,29 @@ fn stack_build_decision(
 
 const PLACEMENT_ATTEMPTS: i32 = 8;
 
+struct StructureCandidates<'a> {
+    border: &'a [u32],
+    interior: &'a [(i32, i32)],
+}
+
 fn resolve_structure_from_candidates(
     map: &crate::map::GameMap,
     owner_id: u16,
     kind: BuildingKind,
-    border_candidates: &[u32],
-    interior_candidates: &[(i32, i32)],
+    candidates: StructureCandidates<'_>,
     existing: &crate::building::BuildingGrid,
     buildings: &[crate::building::Building],
     scratch: &mut crate::engine::PlacementScratch,
 ) -> Option<u32> {
     let map_w = map.width;
-    for &idx in border_candidates {
+    for &idx in candidates.border {
         if let Some(spawn) =
             resolve_structure_spawn_tile(map, owner_id, kind, idx, existing, buildings, scratch)
         {
             return Some(spawn);
         }
     }
-    for &(nx, ny) in interior_candidates {
+    for &(nx, ny) in candidates.interior {
         if !map.is_valid_coord(nx, ny) {
             continue;
         }
@@ -829,9 +833,8 @@ impl SowEngine {
                             .get(bot_id as usize)
                             .copied()
                             .unwrap_or_default();
-                        let city_equivalent = agg
-                            .ready_city_count
-                            .max((player_tile_count / 1000).max(1));
+                        let city_equivalent =
+                            agg.ready_city_count.max((player_tile_count / 1000).max(1));
                         let build_order = [
                             BuildingKind::Bunker,
                             BuildingKind::City,
@@ -905,7 +908,7 @@ impl SowEngine {
                                         let pick =
                                             p.bot_rng.next_int(0, border_len as i32) as usize;
                                         if let Some(idx) = p.border_tiles.ones().nth(pick) {
-                                            border.push(idx as u32);
+                                            border.push(idx);
                                         }
                                     }
                                 }
@@ -925,8 +928,10 @@ impl SowEngine {
                                 &self.state.map,
                                 bot_id,
                                 kind,
-                                &border_candidates,
-                                &interior_candidates,
+                                StructureCandidates {
+                                    border: &border_candidates,
+                                    interior: &interior_candidates,
+                                },
                                 &self.building_grid,
                                 &self.buildings,
                                 &mut self.placement_scratch,
@@ -1957,7 +1962,9 @@ mod bot_iq_alliance_tests {
         }
     }
 
-    fn building_sim_fingerprint(engine: &SowEngine, player_id: u16) -> (usize, u64, f64, f64, Vec<(u64, u32, u8, u8)>) {
+    type BuildingSimFingerprint = (usize, u64, f64, f64, Vec<(u64, u32, u8, u8)>);
+
+    fn building_sim_fingerprint(engine: &SowEngine, player_id: u16) -> BuildingSimFingerprint {
         let mut snaps: Vec<(u64, u32, u8, u8)> = engine
             .buildings
             .iter()
@@ -1966,7 +1973,11 @@ mod bot_iq_alliance_tests {
             .collect();
         snaps.sort_by_key(|s| s.0);
         let level_sum: u64 = snaps.iter().map(|s| s.3 as u64).sum();
-        let gold = engine.state.player(player_id).map(|p| p.gold).unwrap_or(0.0);
+        let gold = engine
+            .state
+            .player(player_id)
+            .map(|p| p.gold)
+            .unwrap_or(0.0);
         let iq_pts = engine
             .state
             .player(player_id)
@@ -1994,24 +2005,12 @@ mod bot_iq_alliance_tests {
     #[test]
     fn test_bot_structure_target_count_floor_is_stable() {
         // Low IQ: factor 0.1 caps non-city kinds at 0, city at least 1
-        assert_eq!(
-            bot_structure_target_count(BuildingKind::City, 10, 85),
-            1
-        );
-        assert_eq!(
-            bot_structure_target_count(BuildingKind::Bunker, 10, 85),
-            0
-        );
+        assert_eq!(bot_structure_target_count(BuildingKind::City, 10, 85), 1);
+        assert_eq!(bot_structure_target_count(BuildingKind::Bunker, 10, 85), 0);
         // Mid IQ: 50% of high-IQ quotas, deterministic floor
-        assert_eq!(
-            bot_structure_target_count(BuildingKind::Factory, 8, 110),
-            2
-        );
+        assert_eq!(bot_structure_target_count(BuildingKind::Factory, 8, 110), 2);
         // High IQ: full quotas
-        assert_eq!(
-            bot_structure_target_count(BuildingKind::Port, 10, 140),
-            3
-        );
+        assert_eq!(bot_structure_target_count(BuildingKind::Port, 10, 140), 3);
     }
 
     #[test]
@@ -2061,7 +2060,11 @@ mod bot_iq_alliance_tests {
             0,
         );
 
-        assert_eq!(engine.buildings.len(), 1, "stack must not spawn a second city");
+        assert_eq!(
+            engine.buildings.len(),
+            1,
+            "stack must not spawn a second city"
+        );
         assert_eq!(engine.buildings[0].level, 2);
     }
 
@@ -2081,7 +2084,10 @@ mod bot_iq_alliance_tests {
         engine.building_aggregates_dirty = true;
         engine.execute_income();
         assert!(
-            engine.buildings.iter().any(|b| b.id == 50 && b.owner_id == 2),
+            engine
+                .buildings
+                .iter()
+                .any(|b| b.id == 50 && b.owner_id == 2),
             "standard tribe buildings must not be deleted by income tick"
         );
     }

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use egui::{Align2, Color32, CursorIcon, FontId, Galley, Pos2, Rect, Response, Sense, Ui, Vec2, Widget};
+use egui::{
+    Align2, Color32, CursorIcon, FontId, Galley, Pos2, Rect, Response, Sense, Ui, Vec2, Widget,
+};
 
 enum Run<'a> {
     Text(&'a str),
@@ -127,7 +129,11 @@ fn paint_prepared_runs(
 
     for run in &prepared.runs {
         match run {
-            PreparedRun::Text { galley, width, height } => {
+            PreparedRun::Text {
+                galley,
+                width,
+                height,
+            } => {
                 let y = cy - height / 2.0;
                 if outlined {
                     crate::ui::theme::paint_premium_glow_galley(
@@ -142,11 +148,13 @@ fn paint_prepared_runs(
                 }
                 x += width;
             }
-            PreparedRun::Emoji { emoji, width, height } => {
-                let r = Rect::from_center_size(
-                    Pos2::new(x + height / 2.0, cy),
-                    Vec2::splat(*height),
-                );
+            PreparedRun::Emoji {
+                emoji,
+                width,
+                height,
+            } => {
+                let r =
+                    Rect::from_center_size(Pos2::new(x + height / 2.0, cy), Vec2::splat(*height));
                 try_paint_emoji(painter, emoji, r, color);
                 x += width;
             }

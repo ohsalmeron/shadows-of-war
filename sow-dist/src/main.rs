@@ -72,6 +72,9 @@ enum Command {
         #[arg(long)]
         build_only: bool,
     },
+    /// Run native client locally.
+    #[command(name = "native", visible_aliases = ["n"])]
+    Native,
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -107,6 +110,7 @@ fn main() -> Result<()> {
             port,
             build_only,
         } => cmd_local(&paths, opts.version, port, build_only),
+        Command::Native => cmd_native(&paths),
     }
 }
 
@@ -120,7 +124,7 @@ fn resolve_version(paths: &Paths, increment: bool) -> Result<String> {
 
 fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    let cfg = config::require_remote_config()?;
+    let cfg = config::require_deploy_config()?;
     pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Cg, &version)?;
     println!(
         "CrazyGames ready: {} — upload entire folder (no assets/cdn/)",
@@ -131,7 +135,7 @@ fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
 
 fn cmd_prod(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    let cfg = config::require_remote_config()?;
+    let cfg = config::require_deploy_config()?;
     pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Prod, &version)?;
     println!(
         "Prod deployed v{version} → {} + {}",
@@ -142,13 +146,13 @@ fn cmd_prod(paths: &Paths, increment_version: bool) -> Result<()> {
 }
 
 fn cmd_infra(paths: &Paths, confirm_destroy: bool, bootstrap_only: bool) -> Result<()> {
-    let cfg = config::require_remote_config()?;
+    let cfg = config::require_infra_config()?;
     infra::deploy_infra(paths, &cfg, confirm_destroy, bootstrap_only)
 }
 
 fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
-    let cfg = config::require_remote_config()?;
+    let cfg = config::require_deploy_config()?;
     pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Ptr, &version)?;
     println!("PTR deployed v{version} → {}", cfg.ptr_url());
     Ok(())
@@ -158,7 +162,7 @@ fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool
     let version = resolve_version(paths, increment_version)?;
     println!("==> local v{version} (no CDN sync, prod wss/CDN at runtime)");
     wasm::compile(paths)?;
-    let cfg = config::require_remote_config()?;
+    let cfg = config::local_config();
     package::build_or_skip(
         paths,
         Profile::SiteDev,
@@ -175,4 +179,9 @@ fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool
     }
     println!("  → http://127.0.0.1:{port}/ (iframe embed, prod wss/CDN)");
     serve::serve_site_dev(paths, port)
+}
+
+fn cmd_native(paths: &Paths) -> Result<()> {
+    println!("==> Running native client locally...");
+    process::run("cargo", &["run", "--bin", "client"], Some(&paths.root))
 }

@@ -300,7 +300,8 @@ pub(crate) fn render(
                 } else {
                     base_config_size
                 };
-                let raw_scaled = (base_premium_size * ui_text_scale).min(visual_config.nameplate_max_screen_font);
+                let raw_scaled = (base_premium_size * ui_text_scale)
+                    .min(visual_config.nameplate_max_screen_font);
                 let scaled_size = if is_me {
                     raw_scaled.max(visual_config.nameplate_my_size)
                 } else {

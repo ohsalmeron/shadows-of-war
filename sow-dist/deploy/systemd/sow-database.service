@@ -11,7 +11,7 @@ Restart=always
 RestartSec=3
 KillMode=process
 Environment=RUST_LOG=info
-Environment=SOW_DB_PORT=25585
+Environment=SOW_DB_PORT=__SOW_PROD_DB_PORT__
 Environment=SOW_VALKEY_URL=redis://127.0.0.1:6379
 Environment=SOW_DB_SECRET=sow_db_prod_secret_token_placeholder
 Environment=CRAZYGAMES_API_KEY=sow_crazygames_prod_api_key_placeholder

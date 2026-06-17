@@ -17,7 +17,22 @@ pub struct Viewport {
 
 impl Viewport {
     pub fn measure(win: &dyn winit::window::Window) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        let physical = {
+            let (w, h) = crate::web_canvas::physical_viewport_size();
+            if w > 0 && h > 0 {
+                PhysicalSize::new(w, h)
+            } else {
+                win.surface_size()
+            }
+        };
+        #[cfg(not(target_arch = "wasm32"))]
         let physical = win.surface_size();
+        #[cfg(target_arch = "wasm32")]
+        let scale_factor = web_sys::window()
+            .map(|window| window.device_pixel_ratio() as f32)
+            .unwrap_or(1.0);
+        #[cfg(not(target_arch = "wasm32"))]
         let scale_factor = win.scale_factor() as f32;
         let sf = scale_factor.max(0.01);
         Self {

@@ -1,4 +1,5 @@
 use crate::config::DeployConfig;
+use crate::gcp::SyncOpts;
 use crate::paths::Paths;
 use anyhow::{bail, Context, Result};
 use image::codecs::webp::WebPEncoder;
@@ -31,7 +32,7 @@ pub fn prepare(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-/// Phase 3: rsync assets/cdn/ to marketing host. Returns true if rsync ran.
+/// Phase 3: sync assets/cdn/ to marketing host. Returns true if sync ran.
 pub fn ship_or_skip(paths: &Paths, cfg: &DeployConfig) -> Result<bool> {
     let hash = cdn_input_hash(paths)?;
     let cache = paths.cdn_hash_cache();
@@ -50,11 +51,10 @@ pub fn ship_or_skip(paths: &Paths, cfg: &DeployConfig) -> Result<bool> {
     gcp.run_remote(&format!(
         "mkdir -p {assets_path}/cdn/leaders {assets_path}/cdn/ui {assets_path}/cdn/avatars"
     ))?;
-    gcp.rsync_dir_with_opts(
-        &paths.dist_root(),
-        &paths.assets_cdn.display().to_string(),
+    gcp.sync_dir(
+        &paths.assets_cdn,
         &format!("{assets_path}/cdn"),
-        &["-avz", "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r"],
+        &SyncOpts::default(),
     )?;
     gcp.run_remote(&format!("chmod -R a+rX {assets_path}/cdn"))?;
     gcp.run_remote(&format!("sudo restorecon -R {assets_path}/cdn"))?;

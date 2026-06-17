@@ -2,18 +2,18 @@ mod crazygames;
 mod db;
 
 use axum::{
+    Json, Router,
     extract::{Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use db::{LinkOutcome, PlayerDb, PlayerProfile};
+use log::{error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
-use log::{info, warn, error};
 
 struct AppState {
     db: PlayerDb,
@@ -171,9 +171,7 @@ async fn resolve_external_id(
         };
         let verified_id = crazygames::verify_user_token(token).await?;
         if !external_id.is_empty() && external_id != verified_id {
-            warn!(
-                "CrazyGames external_id mismatch: client={external_id} token={verified_id}"
-            );
+            warn!("CrazyGames external_id mismatch: client={external_id} token={verified_id}");
         }
         return Ok(verified_id);
     }
@@ -185,12 +183,11 @@ async fn resolve_external_id(
 
 /// Verify if the request has the correct Authorization bearer secret
 fn verify_internal_auth(headers: &HeaderMap, secret_token: &str) -> bool {
-    if let Some(auth_header) = headers.get(header::AUTHORIZATION) {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return token.trim() == secret_token;
-            }
-        }
+    if let Some(auth_header) = headers.get(header::AUTHORIZATION)
+        && let Ok(auth_str) = auth_header.to_str()
+        && let Some(token) = auth_str.strip_prefix("Bearer ")
+    {
+        return token.trim() == secret_token;
     }
     false
 }
@@ -216,31 +213,29 @@ async fn handle_get_profile(
             .into_response();
     }
 
-    let resolved_external_id = match resolve_external_id(
-        provider,
-        external_id,
-        auth_token.as_deref(),
-    )
-    .await
-    {
-        Ok(id) => id,
-        Err(e) => {
-            warn!("Platform auth failed for /profile {provider}: {e}");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse { error: e }),
-            )
-                .into_response();
-        }
-    };
+    let resolved_external_id =
+        match resolve_external_id(provider, external_id, auth_token.as_deref()).await {
+            Ok(id) => id,
+            Err(e) => {
+                warn!("Platform auth failed for /profile {provider}: {e}");
+                return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
+                    .into_response();
+            }
+        };
 
-    match state.db.get_or_create(
-        provider.to_string(),
-        resolved_external_id,
-        fallback_name,
-    ).await {
+    match state
+        .db
+        .get_or_create(provider.to_string(), resolved_external_id, fallback_name)
+        .await
+    {
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+            .into_response(),
     }
 }
 
@@ -252,12 +247,28 @@ async fn handle_match_start(
 ) -> impl IntoResponse {
     if !verify_internal_auth(&headers, &state.secret_token) {
         warn!("Unauthorized access attempt to /match/start");
-        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "Unauthorized".to_string() })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
     }
 
-    match state.db.register_match_start(&payload.match_id, &payload.player_ids).await {
+    match state
+        .db
+        .register_match_start(&payload.match_id, &payload.player_ids)
+        .await
+    {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+            .into_response(),
     }
 }
 
@@ -269,14 +280,30 @@ async fn handle_match_finalize(
 ) -> impl IntoResponse {
     if !verify_internal_auth(&headers, &state.secret_token) {
         warn!("Unauthorized access attempt to /internal/match-finalize");
-        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "Unauthorized".to_string() })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
     }
 
     match state.db.finalize_match(&payload.match_id).await {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "finalized" }))).into_response(),
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "finalized" })),
+        )
+            .into_response(),
         Err(e) => {
             error!("Failed to finalize match {}: {}", payload.match_id, e);
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() })).into_response()
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
@@ -289,12 +316,28 @@ async fn handle_direct_save(
 ) -> impl IntoResponse {
     if !verify_internal_auth(&headers, &state.secret_token) {
         warn!("Unauthorized access attempt to /internal/save");
-        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "Unauthorized".to_string() })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
     }
 
-    match state.db.update_profile(&payload.account_id, payload.profile).await {
+    match state
+        .db
+        .update_profile(&payload.account_id, payload.profile)
+        .await
+    {
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
-        Err(e) => (StatusCode::NOT_FOUND, Json(ErrorResponse { error: e.to_string() })).into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+            .into_response(),
     }
 }
 
@@ -307,23 +350,16 @@ async fn handle_profile_link(
     let target_provider = payload.target_provider.trim();
     let target_external_id = payload.target_external_id.trim();
     let auth_token = platform_auth_token(&headers);
-    let resolved_external_id = match resolve_external_id(
-        target_provider,
-        target_external_id,
-        auth_token.as_deref(),
-    )
-    .await
-    {
-        Ok(id) => id,
-        Err(e) => {
-            warn!("Platform auth failed for /profile/link: {e}");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse { error: e }),
-            )
-                .into_response();
-        }
-    };
+    let resolved_external_id =
+        match resolve_external_id(target_provider, target_external_id, auth_token.as_deref()).await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                warn!("Platform auth failed for /profile/link: {e}");
+                return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
+                    .into_response();
+            }
+        };
 
     match state
         .db
@@ -382,23 +418,16 @@ async fn handle_profile_link_resolve(
     let target_provider = payload.target_provider.trim();
     let target_external_id = payload.target_external_id.trim();
     let auth_token = platform_auth_token(&headers);
-    let resolved_external_id = match resolve_external_id(
-        target_provider,
-        target_external_id,
-        auth_token.as_deref(),
-    )
-    .await
-    {
-        Ok(id) => id,
-        Err(e) => {
-            warn!("Platform auth failed for /profile/link/resolve: {e}");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse { error: e }),
-            )
-                .into_response();
-        }
-    };
+    let resolved_external_id =
+        match resolve_external_id(target_provider, target_external_id, auth_token.as_deref()).await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                warn!("Platform auth failed for /profile/link/resolve: {e}");
+                return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
+                    .into_response();
+            }
+        };
 
     match state
         .db
@@ -442,11 +471,27 @@ async fn handle_link_identity(
 ) -> impl IntoResponse {
     if !verify_internal_auth(&headers, &state.secret_token) {
         warn!("Unauthorized access attempt to /internal/link");
-        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "Unauthorized".to_string() })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
     }
 
-    match state.db.link_identity(&payload.account_id, payload.provider, payload.external_id).await {
+    match state
+        .db
+        .link_identity(&payload.account_id, payload.provider, payload.external_id)
+        .await
+    {
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() })).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+            .into_response(),
     }
 }

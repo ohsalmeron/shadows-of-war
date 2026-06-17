@@ -1,7 +1,6 @@
 use crate::assets::UI_FONT_FILE;
 use crate::config::DeployConfig;
 use crate::paths::{Paths, PORTAL_JS, PORTAL_WASM};
-use crate::process;
 use crate::wasm;
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
@@ -235,6 +234,25 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copy `src` tree into `dst`, skipping immediate child names in `exclude_top`.
+fn copy_dir_excluding(src: &Path, dst: &Path, exclude_top: &[&str]) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for e in fs::read_dir(src)? {
+        let e = e?;
+        let name = e.file_name();
+        let name = name.to_string_lossy();
+        if e.path().is_dir() {
+            if exclude_top.contains(&name.as_ref()) {
+                continue;
+            }
+            copy_dir_all(&e.path(), &dst.join(e.file_name()))?;
+        } else {
+            fs::copy(e.path(), dst.join(e.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_index_html(
     paths: &Paths,
@@ -372,9 +390,7 @@ fn stage_static_assets(paths: &Paths, out: &Path) -> Result<()> {
     }
     fs::create_dir_all(dest.parent().unwrap())?;
     println!("==> Staging assets/static (no maps/) → {}", dest.display());
-    let src = format!("{}/", paths.assets_static.display());
-    let dst = format!("{}/", dest.display());
-    process::run("rsync", &["-a", "--exclude=maps/", &src, &dst], None)?;
+    copy_dir_excluding(&paths.assets_static, &dest, &["maps"])?;
     println!("✅ Staging assets/static finished");
     Ok(())
 }
