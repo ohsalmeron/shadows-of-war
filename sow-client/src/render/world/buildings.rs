@@ -663,15 +663,8 @@ pub(crate) fn render(
                                         .wrapping_add(attack_idx as u32);
                                     sow_audio::play_bunker_defense_sound(
                                         seed,
-                                        sow_audio::SpatialSoundParams {
-                                            wx: b.bx,
-                                            wy: b.by,
-                                            camera_x: input.camera_x,
-                                            camera_y: input.camera_y,
-                                            camera_zoom: input.camera_zoom,
-                                            screen_w: input.screen_w,
-                                            screen_h: input.screen_h,
-                                        },
+                                        crate::app::audio::SpatialAudioCtx::from_input(input)
+                                            .params(b.bx, b.by),
                                     );
                                 }
                             }

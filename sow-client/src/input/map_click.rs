@@ -1,0 +1,264 @@
+use crate::app::SowApp;
+use super::placement::resolve_build_target_tile;
+
+impl SowApp {
+    pub(crate) fn try_begin_hold_attack(&mut self, x: f64, y: f64, is_touch: bool) {
+        if self.ui.app.hud_state.selected_nuke_kind.is_some() {
+            return;
+        }
+
+        let phase = self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .map(|s| &s.phase)
+            .unwrap_or(&sow_core::game::GamePhase::Lobby);
+        if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+            return;
+        }
+
+        let (col, row) = match self.mouse_to_tile(x, y) {
+            Some(res) => res,
+            None => return,
+        };
+        let idx = (row * self.sim.map_w as i32 + col) as usize;
+        let owner = self
+            .gfx
+            .map_renderer
+            .as_ref()
+            .map(|mr| mr.owners[idx])
+            .unwrap_or(0);
+        let terrain_byte = self
+            .gfx
+            .map_renderer
+            .as_ref()
+            .map(|mr| mr.terrain[idx])
+            .unwrap_or(0);
+        let is_land = (terrain_byte & 0x80) != 0;
+        let my_id = self.sim.my_player_id.unwrap_or(0);
+
+        if is_land && owner != my_id {
+            let is_betrayer = self
+                .sim
+                .current_snapshot
+                .as_ref()
+                .and_then(|s| s.players.iter().find(|p| p.id == owner))
+                .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                .unwrap_or(false);
+            let is_allied = self
+                .sim
+                .current_snapshot
+                .as_ref()
+                .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                .map(|p| p.alliances.contains(&owner) && !is_betrayer)
+                .unwrap_or(false);
+            let is_teammate = self
+                .sim
+                .current_snapshot
+                .as_ref()
+                .map(|s| {
+                    let my_team = s.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
+                    let other_team = s.players.iter().find(|p| p.id == owner).and_then(|p| p.team);
+                    my_team.is_some() && my_team == other_team
+                })
+                .unwrap_or(false);
+
+            let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
+            let attack = sow_core::protocol::AttackIntent {
+                target_owner: owner,
+                troops: Some(troops),
+            };
+            let intent = sow_core::protocol::GameplayIntent::Attack(attack);
+
+            if is_allied || is_teammate {
+                // Do not attack nor open menu on press; handled on release (click) instead
+                return;
+            } else {
+                if !is_touch {
+                    // Desktop: fire immediately
+                    self.send_intent(intent);
+                    self.input.hold_attack_target =
+                        Some((owner, web_time::Instant::now(), x, y, true));
+                } else {
+                    // Mobile: wait for hold to distinguish from tap (context menu)
+                    self.input.hold_attack_target =
+                        Some((owner, web_time::Instant::now(), x, y, false));
+                }
+            }
+            self.input.hold_attack_accum = 0.0;
+        }
+    }
+
+    pub(crate) fn open_context_menu_at(&mut self, x: f64, y: f64) {
+        if let Some((col, row)) = self.mouse_to_tile(x, y) {
+            let idx = (row * self.sim.map_w as i32 + col) as u32;
+
+            // Clear any prior menu state first to avoid animation caching issues
+            self.input.map_context_menu = None;
+            self.input.map_context_menu_active = None;
+            self.input.context_menu_timer = 0.0;
+            self.input.context_menu_open_time = Some(web_time::Instant::now());
+            self.input.map_context_menu_session += 1;
+
+            self.input.map_context_menu = Some((x as f32, y as f32, idx));
+        }
+    }
+
+    pub(crate) fn handle_map_click(&mut self, x: f64, y: f64) {
+        let phase = self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .map(|s| &s.phase)
+            .unwrap_or(&sow_core::game::GamePhase::Lobby);
+
+        let (col, row) = match self.mouse_to_tile(x, y) {
+            Some(res) => res,
+            None => return,
+        };
+
+        if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+            let intent = sow_core::protocol::GameplayIntent::Spawn {
+                x: col as u32,
+                y: row as u32,
+            };
+            self.send_intent(intent);
+        } else if let Some(nuke_kind) = self.ui.app.hud_state.selected_nuke_kind {
+            let tile_idx = (row * self.sim.map_w as i32 + col) as u32;
+            let intent = sow_core::protocol::GameplayIntent::LaunchNuke {
+                kind: nuke_kind,
+                target_tile: tile_idx,
+            };
+            self.send_intent(intent);
+            self.ui.app.hud_state.selected_nuke_kind = None;
+        } else if let Some(kind) = self.ui.app.hud_state.selected_building_kind {
+            if let Some(snap) = &self.sim.current_snapshot {
+                let my_id = self.sim.my_player_id.unwrap_or(0);
+                let owners = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.owners.as_slice())
+                    .unwrap_or(&[]);
+                let terrain = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.terrain.as_slice())
+                    .unwrap_or(&[]);
+
+                let target_res = resolve_build_target_tile(
+                    kind,
+                    col,
+                    row,
+                    self.sim.map_w,
+                    self.sim.map_h,
+                    owners,
+                    terrain,
+                    my_id,
+                    &snap.buildings,
+                );
+
+                let cost = {
+                    let i = sow_core::game::BuildingKind::ALL
+                        .iter()
+                        .position(|&k| k == kind)
+                        .unwrap_or(0);
+                    self.ui.app.hud_state.building_costs[i]
+                };
+
+                let mut valid = true;
+                let mut err_msg = String::new();
+
+                if self.ui.app.hud_state.gold < cost {
+                    valid = false;
+                    let lang = self.ui.app.settings_state.language;
+                    err_msg = sow_i18n::get(lang)
+                        .hud
+                        .err_need_gold
+                        .replace("{}", &sow_ui::utils::format_number(cost));
+                } else {
+                    match target_res {
+                        Ok(_) => {}
+                        Err(msg) => {
+                            valid = false;
+                            err_msg = msg.to_string();
+                        }
+                    }
+                }
+
+                if !valid {
+                    self.ui.app.hud_state.show_error = Some(err_msg);
+                } else {
+                    let target_tile = target_res.unwrap();
+                    let intent =
+                        sow_core::protocol::GameplayIntent::BuildStructure { kind, target_tile };
+                    self.send_intent(intent);
+                }
+            }
+        } else {
+            // Check if we clicked on a Warship we own
+            let mut clicked_warships = Vec::new();
+            if let Some(snap) = &self.sim.current_snapshot {
+                let my_pid = self.sim.my_player_id.unwrap_or(0);
+                let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let world_y = (y as f32 - self.input.camera_y) / self.input.camera_zoom;
+                for f in &snap.fleets {
+                    if f.unit_type == sow_core::game::UnitType::Warship && f.owner_id == my_pid {
+                        let col = (f.current_tile % self.sim.map_w) as f32;
+                        let row = (f.current_tile / self.sim.map_w) as f32;
+                        let wx = col + 0.5;
+                        let wy = row + 0.5;
+                        // Click tolerance (half a tile)
+                        if (wx - world_x).abs() < 0.5 && (wy - world_y).abs() < 0.5 {
+                            clicked_warships.push(f.id);
+                        }
+                    }
+                }
+            }
+            if !clicked_warships.is_empty() {
+                self.input.selected_warships = clicked_warships;
+            } else {
+                self.input.selected_warships.clear();
+
+                // If not selecting warships, check if we clicked on allied territory to open context menu on release
+                let idx = (row * self.sim.map_w as i32 + col) as usize;
+                let owner = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.owners[idx])
+                    .unwrap_or(0);
+                let my_id = self.sim.my_player_id.unwrap_or(0);
+                let is_betrayer = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
+                    .and_then(|s| s.players.iter().find(|p| p.id == owner))
+                    .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                    .unwrap_or(false);
+                let is_allied = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
+                    .and_then(|s| s.players.iter().find(|p| p.id == my_id))
+                    .map(|p| p.alliances.contains(&owner) && !is_betrayer)
+                    .unwrap_or(false);
+                let is_teammate = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
+                    .map(|s| {
+                        let my_team = s.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
+                        let other_team = s.players.iter().find(|p| p.id == owner).and_then(|p| p.team);
+                        my_team.is_some() && my_team == other_team
+                    })
+                    .unwrap_or(false);
+
+                if owner != 0 && owner != my_id && (is_allied || is_teammate) {
+                    self.open_context_menu_at(x, y);
+                }
+            }
+        }
+    }
+}
