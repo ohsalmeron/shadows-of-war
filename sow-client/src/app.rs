@@ -101,6 +101,7 @@ pub struct InputState {
     pub camera_x: f32,
     pub camera_y: f32,
     pub camera_zoom: f32,
+    pub target_zoom: f32,
     pub screen_w: f32,
     pub screen_h: f32,
     pub dragging: bool,
@@ -532,6 +533,7 @@ impl SowApp {
                 camera_x,
                 camera_y,
                 camera_zoom,
+                target_zoom: camera_zoom,
                 screen_w,
                 screen_h,
                 dragging,
@@ -1354,6 +1356,7 @@ impl SowApp {
                 self.ui.mover_scene = crate::render::world::movers::MoverScene::new();
 
                 self.input.camera_zoom = 0.5;
+                self.input.target_zoom = 0.5;
                 self.input.camera_x =
                     self.input.screen_w * 0.5 - (map_w as f32 * 0.5) * self.input.camera_zoom;
                 self.input.camera_y =

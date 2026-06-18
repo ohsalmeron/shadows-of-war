@@ -295,6 +295,7 @@ impl SowApp {
                                     + (target_zoom - self.input.camera_zoom) * speed;
 
                                 self.input.camera_zoom = next_zoom;
+                                self.input.target_zoom = next_zoom;
                                 self.input.camera_x =
                                     self.input.screen_w * 0.5 - next_world_cx * next_zoom;
                                 self.input.camera_y =
@@ -305,6 +306,7 @@ impl SowApp {
                                     && (target_world_cy - next_world_cy).abs() < 0.1
                                 {
                                     self.input.camera_zoom = target_zoom;
+                                    self.input.target_zoom = target_zoom;
                                     self.input.camera_x =
                                         self.input.screen_w * 0.5 - target_world_cx * target_zoom;
                                     self.input.camera_y =

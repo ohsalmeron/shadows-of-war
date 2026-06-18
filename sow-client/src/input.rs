@@ -106,6 +106,7 @@ impl SowApp {
         crate::viewport::Viewport::from_configured(self, sf).sync_to_app(self);
         let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
         self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+        self.input.target_zoom = self.input.camera_zoom;
 
         if recreate_surface {
             self.check_surface();
@@ -651,11 +652,13 @@ impl SowApp {
                             }
                         }
                     };
-                    self.process_camera_zoom(
-                        1.0 + scroll * 0.15,
-                        self.input.last_mouse_x as f32,
-                        self.input.last_mouse_y as f32,
-                    );
+                    let zoom_factor = 1.0 + scroll * 0.15;
+                    self.input.target_zoom *= zoom_factor;
+                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
+                    self.input.target_zoom = self.input.target_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                    if let Some(win) = self.gfx.window.as_ref() {
+                        win.request_redraw();
+                    }
                 }
             }
 
@@ -1003,6 +1006,7 @@ impl SowApp {
         self.input.camera_zoom *= zoom_factor;
         let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
         self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+        self.input.target_zoom = self.input.camera_zoom;
 
         let map_x = (cx - self.input.camera_x) / old_zoom;
         let map_y = (cy - self.input.camera_y) / old_zoom;

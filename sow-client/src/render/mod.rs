@@ -496,6 +496,28 @@ impl SowApp {
             self.time.last_frame_time = frame_now;
             self.ui.raw_input.predicted_dt = dt.min(0.1);
 
+            // Smooth Zoom Lerp
+            let diff = self.input.target_zoom - self.input.camera_zoom;
+            if diff.abs() > 0.0001 {
+                let lerp_factor = (1.0 - f32::exp(-12.0 * dt)).clamp(0.0, 1.0);
+                let new_zoom = self.input.camera_zoom + diff * lerp_factor;
+
+                let cx = self.input.last_mouse_x as f32;
+                let cy = self.input.last_mouse_y as f32;
+
+                let old_zoom = self.input.camera_zoom;
+                self.input.camera_zoom = new_zoom;
+
+                let map_x = (cx - self.input.camera_x) / old_zoom;
+                let map_y = (cy - self.input.camera_y) / old_zoom;
+                self.input.camera_x = cx - map_x * self.input.camera_zoom;
+                self.input.camera_y = cy - map_y * self.input.camera_zoom;
+
+                if let Some(win) = self.gfx.window.as_ref() {
+                    win.request_redraw();
+                }
+            }
+
             if self.ui.app.main_menu_state.is_waiting
                 && self.ui.app.main_menu_state.wait_timer_secs > 0.0
             {
@@ -740,6 +762,7 @@ impl SowApp {
                             camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
                         self.input.camera_zoom =
                             self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                        self.input.target_zoom = self.input.camera_zoom;
                         let format = s.info().format;
 
                         if let Some(sp) = self.gfx.prev_sync_point.take() {

@@ -61,6 +61,7 @@ impl SowApp {
                     self.input.camera_x = 0.0;
                     self.input.camera_y = 0.0;
                     self.input.camera_zoom = 2.0;
+                    self.input.target_zoom = 2.0;
                     self.net.client = None;
                     self.begin_exit_to_main_menu(false);
                 }
@@ -96,6 +97,7 @@ impl SowApp {
                     // Zoom in to a comfortable battle-focus level
                     let target_zoom = 3.0_f32.max(self.input.camera_zoom);
                     self.input.camera_zoom = target_zoom;
+                    self.input.target_zoom = target_zoom;
                     self.input.camera_x = self.input.screen_w * 0.5 - world_cx * target_zoom;
                     self.input.camera_y = self.input.screen_h * 0.5 - world_cy * target_zoom;
                 }
