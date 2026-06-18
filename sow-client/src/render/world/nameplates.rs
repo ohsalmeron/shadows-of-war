@@ -335,23 +335,32 @@ pub(crate) fn render(
                 let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(rgb);
 
                 let mut disc_galley = None;
+                let mut has_disc_emoji = false;
+                let mut disc_rect_size = 0.0;
                 if is_disconnected {
-                    // QUANTIZATION: Round the disconnected font size
-                    let disc_font_size = (font_size * 0.95 * 3.0).round().max(2.0);
-                    let disc_font_id = egui::FontId::proportional(disc_font_size);
-                    let mut job = egui::text::LayoutJob {
-                        break_on_newline: false,
-                        ..Default::default()
-                    };
-                    job.append(
-                        "🔌",
-                        0.0,
-                        egui::text::TextFormat::simple(
-                            disc_font_id,
-                            egui::Color32::from_rgb(239, 68, 68),
-                        ),
-                    );
-                    disc_galley = Some(painter.layout_job(job));
+                    // QUANTIZATION: Round the disconnected size
+                    let disc_size = (font_size * 0.95 * 3.0).round().max(2.0);
+                    disc_rect_size = disc_size;
+                    
+                    let test_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(disc_size, disc_size));
+                    if sow_ui::widgets::try_paint_emoji(painter, "🔌", test_rect, egui::Color32::WHITE) {
+                        has_disc_emoji = true;
+                    } else {
+                        let disc_font_id = egui::FontId::proportional(disc_size);
+                        let mut job = egui::text::LayoutJob {
+                            break_on_newline: false,
+                            ..Default::default()
+                        };
+                        job.append(
+                            "🔌",
+                            0.0,
+                            egui::text::TextFormat::simple(
+                                disc_font_id,
+                                egui::Color32::from_rgb(239, 68, 68),
+                            ),
+                        );
+                        disc_galley = Some(painter.layout_job(job));
+                    }
                 }
 
                 let troops_str = sow_ui::utils::format_number(player.troops);
@@ -454,7 +463,9 @@ pub(crate) fn render(
                 let total_h = avatar_size.max(right_h);
 
                 let mut row0_h = 0.0;
-                if let Some(ref dg) = disc_galley {
+                if has_disc_emoji {
+                    row0_h = disc_rect_size + (font_size * 0.222).round();
+                } else if let Some(ref dg) = disc_galley {
                     row0_h = dg.rect.height() + (font_size * 0.222).round();
                 }
                 let content_h = row0_h + total_h;
@@ -524,11 +535,17 @@ pub(crate) fn render(
 
                 let content_min = egui::pos2(center.x - total_w / 2.0, center.y - content_h / 2.0);
 
-                // Row 0 Status indicators
-                if let Some(dg) = disc_galley {
-                    let row0_pos = egui::pos2(center.x - dg.rect.width() / 2.0, content_min.y);
-                    painter.galley(row0_pos, dg, egui::Color32::WHITE);
-                }
+                 // Row 0 Status indicators
+                 if has_disc_emoji {
+                     let row0_rect = egui::Rect::from_center_size(
+                         egui::pos2(center.x, content_min.y + disc_rect_size / 2.0),
+                         egui::vec2(disc_rect_size, disc_rect_size),
+                     );
+                     sow_ui::widgets::try_paint_emoji(painter, "🔌", row0_rect, egui::Color32::WHITE);
+                 } else if let Some(dg) = disc_galley {
+                     let row0_pos = egui::pos2(center.x - dg.rect.width() / 2.0, content_min.y);
+                     painter.galley(row0_pos, dg, egui::Color32::WHITE);
+                 }
 
                 // Row 1 & 2 layout
                 let row12_y = content_min.y + row0_h;
