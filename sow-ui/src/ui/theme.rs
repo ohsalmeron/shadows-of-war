@@ -846,7 +846,7 @@ pub fn paint_premium_glow_galley(
     shadow_color: Color32,
 ) {
     // 1. Dragged-down shadow (2 passes)
-    for &dy in &[2.0, 4.0] {
+    for &dy in &[1.0, 2.0] {
         painter.galley_with_override_text_color(
             pos + egui::vec2(0.0, dy),
             galley.clone(),
@@ -854,7 +854,7 @@ pub fn paint_premium_glow_galley(
         );
     }
     // 2. Diagonal outline (4 passes)
-    for &(dx, dy) in &[(-1.5, -1.5), (1.5, -1.5), (-1.5, 1.5), (1.5, 1.5)] {
+    for &(dx, dy) in &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
         painter.galley_with_override_text_color(
             pos + egui::vec2(dx, dy),
             galley.clone(),

@@ -1,5 +1,5 @@
 /// Must match `sow-dist/src/assets.rs` `UI_FONT_FILE` and `sow-ui/src/ui_font.rs`.
-const UI_FONT_FILE: &str = "PressStart2P-Regular.ttf";
+const UI_FONT_FILE: &str = "WorkSans-Black.ttf";
 
 fn main() {
     println!("cargo:rerun-if-changed=../assets/static/maps/world");

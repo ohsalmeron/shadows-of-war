@@ -46,8 +46,6 @@ enum Commands {
 
 #[derive(Parser, Debug)]
 struct PackEmojiAtlasArgs {
-    #[arg(long, default_value = "assets/emoji/required.txt")]
-    required: PathBuf,
     #[arg(long, default_value = "assets/static/emoji/atlas.webp")]
     out_atlas: PathBuf,
     #[arg(long, default_value = "sow-core/src/emoji_manifest.rs")]
@@ -152,7 +150,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let repo_root = std::env::current_dir()?;
             let pack_args = emoji_atlas::PackEmojiAtlasArgs {
                 repo_root,
-                required: args.required,
                 out_atlas: args.out_atlas,
                 out_manifest: args.out_manifest,
             };

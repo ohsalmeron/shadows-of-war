@@ -62,19 +62,16 @@ impl SpriteAtlas {
             .expect("failed to load emoji atlas bytes")
             .to_rgba8();
 
-        // Coordinates from emoji manifest for:
-        // 0: TransportShip -> "🚢" (576, 448)
-        // 1: TradeShip     -> "⛵" (640, 0)
-        // 2: Warship       -> "⚔️" (256, 0)
-        // 3: AtomBomb      -> "💣" (0, 320)
-        // 4: SamMissile    -> "🚀" (512, 448)
-        let coords = [
-            (576, 448), // TransportShip
-            (640, 0),   // TradeShip
-            (256, 0),   // Warship
-            (0, 320),   // AtomBomb
-            (512, 448), // SamMissile
-        ];
+        // Look up mover sprite coordinates dynamically from the generated emoji manifest.
+        let emoji_labels = ["🚢", "⛵", "⚔️", "💣", "🚀"];
+        let coords: Vec<(u32, u32)> = emoji_labels
+            .iter()
+            .map(|e| {
+                let r = sow_core::emoji::manifest::lookup(e)
+                    .unwrap_or_else(|| panic!("Mover sprite emoji {e} missing from atlas — run `./sow emoji` to rebuild"));
+                (r.x, r.y)
+            })
+            .collect();
 
         for (i, &(src_x, src_y)) in coords.iter().enumerate() {
             let col = (i as u32) % cols;

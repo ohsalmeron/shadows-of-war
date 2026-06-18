@@ -65,7 +65,7 @@ themed_placeholder = [
 path = "assets/static/fonts/"
 source = "google_fonts"
 license = "SIL Open Font License 1.1"
-files = ["PressStart2P-Regular.ttf"]
+files = ["WorkSans-Black.ttf"]
 
 [emoji_atlas]
 path = "assets/static/emoji/"

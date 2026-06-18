@@ -25,6 +25,7 @@ for lock in "${CARGO_TARGET_DIR}/.cargo-lock" "${CARGO_TARGET_DIR}/release/.carg
   fi
 done
 
-BIN="${CARGO_TARGET_DIR}/release/sow"
-cargo build -p sow-dist --release
+BIN="${CARGO_TARGET_DIR}/debug/sow"
+cargo build -p sow-dist
 exec "${BIN}" "${@:-native}"
+

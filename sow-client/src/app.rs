@@ -1230,7 +1230,7 @@ impl SowApp {
 
             #[cfg(not(any(target_os = "android", target_os = "ios", target_family = "wasm")))]
             let attributes = winit::window::WindowAttributes::default()
-                .with_title("Shadows of War — Native")
+                .with_title("Shadows of War")
                 .with_surface_size(winit::dpi::LogicalSize::new(800.0, 800.0));
 
             match event_loop.create_window(attributes) {

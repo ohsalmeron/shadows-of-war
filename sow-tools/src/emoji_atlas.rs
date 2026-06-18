@@ -8,27 +8,36 @@ const TWEMOJI_BASE: &str = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/a
 
 pub struct PackEmojiAtlasArgs {
     pub repo_root: PathBuf,
-    pub required: PathBuf,
     pub out_atlas: PathBuf,
     pub out_manifest: PathBuf,
 }
 
 pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let _ = &args.repo_root;
-    let required = load_required(&args.required)?;
-    let client = reqwest::blocking::Client::new();
+    let required = scan_source_for_emojis(&args.repo_root)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::blocking::Client::new());
     let mut entries: Vec<(String, RgbaImage)> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
 
     for emoji in &required {
+        if std::env::var("VERBOSE").is_ok() {
+            println!("Fetching Twemoji for emoji: {emoji}");
+        }
         match fetch_twemoji(&client, emoji) {
             Ok(img) => entries.push((emoji.to_string(), img)),
-            Err(e) => missing.push(format!("{emoji}: {e}")),
+            Err(e) => {
+                // Silently skip CDN 404s (e.g. false positives from source scanning)
+                if !e.to_string().contains("twemoji CDN miss") {
+                    missing.push(format!("{emoji}: {e}"));
+                }
+            }
         }
     }
 
     if !missing.is_empty() {
-        return Err(format!("missing emoji glyphs:\n{}", missing.join("\n")).into());
+        println!("Warning: some non-404 fetch errors occurred:\n{}", missing.join("\n"));
     }
 
     entries.sort_by(|a, b| a.0.cmp(&b.0));
@@ -45,16 +54,53 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
     Ok(())
 }
 
-fn load_required(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let raw = fs::read_to_string(path)?;
+fn scan_source_for_emojis(repo_root: &Path) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut out = Vec::new();
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if !out.contains(&line.to_string()) {
-            out.push(line.to_string());
+    let mut stack = vec![repo_root.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            if path != repo_root {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if name.starts_with('.') || name == "target" || name == "dist" || name == "node_modules" {
+                    continue;
+                }
+                if path.parent() == Some(repo_root) && !name.starts_with("sow-") {
+                    continue;
+                }
+            }
+            if std::env::var("VERBOSE").is_ok() {
+                println!("Scanning directory: {}", path.display());
+            }
+            for entry in fs::read_dir(path)? {
+                stack.push(entry?.path());
+            }
+        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            if std::env::var("VERBOSE").is_ok() {
+                println!("Scanning Rust file: {}", path.display());
+            }
+            if let Ok(content) = fs::read_to_string(&path) {
+                let mut current_emoji = String::new();
+                for c in content.chars() {
+                    let cp = c as u32;
+                    let is_emoji = (cp >= 0x203C && cp <= 0x3299)
+                        || (cp >= 0x1F000 && cp <= 0x1FAFF)
+                        || cp == 0xFE0F
+                        || cp == 0x200D
+                        || cp == 0x20E3;
+                    
+                    if is_emoji {
+                        current_emoji.push(c);
+                    } else if !current_emoji.is_empty() {
+                        if !out.contains(&current_emoji) {
+                            out.push(current_emoji.clone());
+                        }
+                        current_emoji.clear();
+                    }
+                }
+                if !current_emoji.is_empty() && !out.contains(&current_emoji) {
+                    out.push(current_emoji);
+                }
+            }
         }
     }
     Ok(out)

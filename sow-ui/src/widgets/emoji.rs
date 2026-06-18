@@ -189,12 +189,12 @@ pub fn try_paint_emoji(painter: &egui::Painter, emoji: &str, rect: Rect, tint: C
         let shadow_tint = Color32::from_black_alpha(alpha);
         // Premium 4-way diagonal outline + 2 dragged shadows matching the text glow style perfectly
         let offsets = [
-            (-1.2, -1.2),
-            (1.2, -1.2),
-            (-1.2, 1.2),
-            (1.2, 1.2),
-            (0.0, 1.5),
-            (0.0, 3.0),
+            (-1.0, -1.0),
+            (1.0, -1.0),
+            (-1.0, 1.0),
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (0.0, 2.0),
         ];
         for (dx, dy) in offsets {
             painter.image(

@@ -281,6 +281,8 @@ pub(crate) fn render(
                     .min(visual_config.nameplate_max_screen_font);
                 let scaled_size = if is_me {
                     raw_scaled.max(visual_config.nameplate_my_size)
+                } else if is_human {
+                    raw_scaled.max(visual_config.nameplate_premium_size)
                 } else {
                     raw_scaled
                 };

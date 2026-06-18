@@ -709,6 +709,16 @@ impl SowApp {
                 .and_then(|s| s.players.iter().find(|p| p.id == my_id))
                 .map(|p| p.alliances.contains(&owner) && !is_betrayer)
                 .unwrap_or(false);
+            let is_teammate = self
+                .sim
+                .current_snapshot
+                .as_ref()
+                .map(|s| {
+                    let my_team = s.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
+                    let other_team = s.players.iter().find(|p| p.id == owner).and_then(|p| p.team);
+                    my_team.is_some() && my_team == other_team
+                })
+                .unwrap_or(false);
 
             let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
             let attack = sow_core::protocol::AttackIntent {
@@ -717,7 +727,7 @@ impl SowApp {
             };
             let intent = sow_core::protocol::GameplayIntent::Attack(attack);
 
-            if is_allied {
+            if is_allied || is_teammate {
                 // Do not attack nor open menu on press; handled on release (click) instead
                 return;
             } else {
@@ -891,8 +901,18 @@ impl SowApp {
                     .and_then(|s| s.players.iter().find(|p| p.id == my_id))
                     .map(|p| p.alliances.contains(&owner) && !is_betrayer)
                     .unwrap_or(false);
+                let is_teammate = self
+                    .sim
+                    .current_snapshot
+                    .as_ref()
+                    .map(|s| {
+                        let my_team = s.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
+                        let other_team = s.players.iter().find(|p| p.id == owner).and_then(|p| p.team);
+                        my_team.is_some() && my_team == other_team
+                    })
+                    .unwrap_or(false);
 
-                if owner != 0 && owner != my_id && is_allied {
+                if owner != 0 && owner != my_id && (is_allied || is_teammate) {
                     self.open_context_menu_at(x, y);
                 }
             }
@@ -946,9 +966,10 @@ impl SowApp {
                 );
             }
             sow_core::protocol::GameplayIntent::Attack(attack) => {
-                // ponytail: reuse FloatingNotice to show troops added/sent to the attack
                 let world_x = (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;
-                let world_y = (self.input.last_mouse_y as f32 - self.input.camera_y) / self.input.camera_zoom;
+                // Offset up by 60 screen pixels to keep the notice from being covered by a finger/mouse
+                let offset_mouse_y = self.input.last_mouse_y as f32 - 60.0;
+                let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
                 if let Some(troops) = attack.troops {
                     if troops > 0.0 {
                         self.ui.floating_notices.push(crate::app::FloatingNotice {

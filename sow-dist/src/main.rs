@@ -75,6 +75,9 @@ enum Command {
     /// Run native client locally.
     #[command(name = "native", visible_aliases = ["n"])]
     Native,
+    /// Pack emoji atlas and manifest from scanned Rust sources.
+    #[command(name = "emoji", visible_aliases = ["e"])]
+    Emoji,
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -111,6 +114,7 @@ fn main() -> Result<()> {
             build_only,
         } => cmd_local(&paths, opts.version, port, build_only),
         Command::Native => cmd_native(&paths),
+        Command::Emoji => cmd_emoji(&paths),
     }
 }
 
@@ -183,11 +187,23 @@ fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool
 
 fn cmd_native(paths: &Paths) -> Result<()> {
     process::wait_for_cargo_unlock(&paths.cargo_target);
-    println!("==> Running native client (release, max-perf, VERBOSE)...");
+    println!("==> Running client (VERBOSE)...");
     process::run_env(
         "cargo",
-        &["run", "--release", "--bin", "client", "--"],
+        &["run", "--bin", "client", "--"],
         Some(&paths.root),
-        &[("RUSTFLAGS", "-C target-cpu=native"), ("VERBOSE", "1")],
+        &[("VERBOSE", "1")],
     )
 }
+
+fn cmd_emoji(paths: &Paths) -> Result<()> {
+    process::wait_for_cargo_unlock(&paths.cargo_target);
+    println!("==> Packing emoji atlas (VERBOSE)...");
+    process::run_env(
+        "cargo",
+        &["run", "--bin", "sow-tools", "--", "pack-emoji-atlas"],
+        Some(&paths.root),
+        &[("VERBOSE", "1")],
+    )
+}
+

@@ -58,8 +58,18 @@ impl SowApp {
                 .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
                 .unwrap_or(false);
 
+            let is_teammate = if let Some(owner) = owner_snapshot {
+                if let Some(my_snap) = my_snapshot {
+                    my_snap.team.is_some() && my_snap.team == owner.team
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             let is_allied = if let Some(owner) = owner_snapshot {
-                owner.alliances.contains(&my_id) && !is_betrayer
+                (owner.alliances.contains(&my_id) && !is_betrayer) || is_teammate
             } else {
                 false
             };
@@ -203,13 +213,13 @@ impl SowApp {
                     let is_t_hovered = hovered_sector == Some(0);
                     let t_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover", tile_idx, 0)), is_t_hovered, 0.15);
 
-                    let is_r_hovered = hovered_sector == Some(1);
+                    let is_r_hovered = hovered_sector == Some(1) && !is_teammate;
                     let r_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover", tile_idx, 1)), is_r_hovered, 0.15);
 
-                    let is_b_hovered = hovered_sector == Some(2);
+                    let is_b_hovered = hovered_sector == Some(2) && !is_teammate;
                     let b_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover", tile_idx, 2)), is_b_hovered, 0.15);
 
-                    let is_l_hovered = hovered_sector == Some(3);
+                    let is_l_hovered = hovered_sector == Some(3) && !is_teammate;
                     let l_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover", tile_idx, 3)), is_l_hovered, 0.15);
 
                     // Dynamic wedge outer radii for hover-burst
@@ -230,7 +240,7 @@ impl SowApp {
                     // 1. Right Wedge (Boat)
                     let r_start = -pi / 4.0 + gap;
                     let r_end = pi / 4.0 - gap;
-                    let r_color = Color32::from_rgb(42, 130, 201);
+                    let r_color = if is_teammate { Color32::from_rgb(100, 116, 139) } else { Color32::from_rgb(42, 130, 201) };
                     let r_pts = get_wedge_points(inner_r, r_outer, r_start, r_end);
                     let r_fill = if is_r_hovered { r_color.linear_multiply(0.20 + 0.15 * r_hover_t) } else { Color32::from_rgba_unmultiplied(15, 23, 42, (185.0 * progress) as u8) };
                     let r_stroke = Stroke::new((1.5 + 1.0 * r_hover_t) * scale, if is_r_hovered { r_color } else { r_color.linear_multiply(0.4 + 0.3 * r_hover_t) });
@@ -247,6 +257,8 @@ impl SowApp {
                         } else {
                             Color32::from_rgb(251, 146, 60)
                         }
+                    } else if is_teammate {
+                        Color32::from_rgb(100, 116, 139)
                     } else if is_allied {
                         Color32::from_rgb(239, 68, 68)
                     } else if has_alliance_request {
@@ -266,6 +278,8 @@ impl SowApp {
                     let l_end = 5.0 * pi / 4.0 - gap;
                     let l_color = if is_own_territory {
                         Color32::from_rgb(34, 211, 238) // Cyan for build
+                    } else if is_teammate {
+                        Color32::from_rgb(100, 116, 139) // Slate gray for teammate
                     } else {
                         Color32::from_rgb(239, 68, 68)  // Red for missile/offensive
                     };
@@ -298,21 +312,22 @@ impl SowApp {
                     };
 
                     let is_top_disabled = !is_friendly;
-                    draw_big_icon(-pi / 2.0, "🙋", t_hover_t, is_top_disabled);
-                    draw_big_icon(0.0, "⛵", r_hover_t, false);
-                    draw_big_icon(pi / 2.0, "🤝", b_hover_t, has_proposed_alliance);
+                    draw_big_icon(-pi / 2.0, "⚖️", t_hover_t, is_top_disabled);
+                    draw_big_icon(0.0, "⛵", r_hover_t, is_teammate);
+                    draw_big_icon(pi / 2.0, "🤝", b_hover_t, has_proposed_alliance || is_teammate);
 
                     let left_icon = if is_own_territory {
                         if has_completed_port { "⚓" } else { "🔧" }
                     } else {
                         "🚀"
                     };
-                    draw_big_icon(pi, left_icon, l_hover_t, false);
+                    draw_big_icon(pi, left_icon, l_hover_t, is_teammate);
 
                     // Center Circle Button
-                    let c_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover_center", tile_idx)), hovered_center, 0.15);
+                    let hovered_center_actual = hovered_center && !is_teammate;
+                    let c_hover_t = ctx.animate_bool_with_time(egui::Id::new(("radial_hover_center", tile_idx)), hovered_center_actual, 0.15);
                     let c_radius = r_center + 6.0 * c_hover_t * scale;
-                    let c_color = if hovered_center {
+                    let c_color = if hovered_center_actual {
                         if is_spawning {
                             Color32::from_rgb(74, 222, 128).linear_multiply(0.20 + 0.15 * c_hover_t)
                         } else {
@@ -322,7 +337,7 @@ impl SowApp {
                         Color32::from_rgba_unmultiplied(15, 23, 42, (200.0 * progress) as u8)
                     };
                     let c_stroke_glow = if is_spawning { Color32::from_rgb(74, 222, 128) } else { Color32::from_rgb(239, 68, 68) };
-                    let c_stroke = Stroke::new((2.0 + 1.0 * c_hover_t) * scale, if hovered_center { c_stroke_glow } else { c_stroke_glow.linear_multiply(0.4 + 0.3 * c_hover_t) });
+                    let c_stroke = Stroke::new((2.0 + 1.0 * c_hover_t) * scale, if hovered_center_actual { c_stroke_glow } else { c_stroke_glow.linear_multiply(0.4 + 0.3 * c_hover_t) });
                     painter.circle(center, c_radius, c_color, c_stroke);
 
                     if scale > 0.05 {
@@ -333,7 +348,7 @@ impl SowApp {
                             egui::Align2::CENTER_CENTER,
                             "⚔",
                             egui::FontId::proportional(text_size),
-                            Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
+                            Color32::from_rgba_unmultiplied(255, 255, 255, if is_teammate { alpha / 2 } else { alpha }),
                         );
                     }
 
@@ -349,7 +364,7 @@ impl SowApp {
                                 // Clicked Center (Spawn / Attack)
                                 if is_spawning {
                                     self.send_intent(sow_core::protocol::GameplayIntent::Spawn { x: col, y: row });
-                                } else {
+                                } else if !is_teammate {
                                     let troops = self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64);
                                     if troops > 0.0 {
                                         let intent = sow_core::protocol::GameplayIntent::Attack(sow_core::protocol::AttackIntent {
@@ -391,7 +406,9 @@ impl SowApp {
                                     self.input.map_context_menu = None;
                                 } else if sector == 1 {
                                     // Right Wedge (Boat) - Launch fleet
-                                    if is_allied {
+                                    if is_teammate {
+                                        // Disabled for teammates
+                                    } else if is_allied {
                                         let lang = self.ui.app.settings_state.language;
                                         self.ui.app.hud_state.show_error = Some(
                                             sow_i18n::get(lang).hud.err_break_alliance_boat.clone(),
@@ -405,7 +422,9 @@ impl SowApp {
                                     self.input.map_context_menu = None;
                                 } else if sector == 2 {
                                     // Bottom Wedge (Alliances)
-                                    if is_friendly {
+                                    if is_teammate {
+                                        // Alliance is permanent, cannot be broken or changed
+                                    } else if is_friendly {
                                         if is_in_renewal_window {
                                             if has_alliance_request {
                                                 self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
@@ -450,7 +469,7 @@ impl SowApp {
                                     if is_own_territory {
                                         ctx.data_mut(|d| d.insert_temp(build_active_id, !radial_build_active));
                                         ctx.data_mut(|d| d.insert_temp(missile_active_id, false));
-                                    } else {
+                                    } else if !is_teammate {
                                         ctx.data_mut(|d| d.insert_temp(missile_active_id, !radial_missile_active));
                                         ctx.data_mut(|d| d.insert_temp(build_active_id, false));
                                     }
