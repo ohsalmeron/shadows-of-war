@@ -55,3 +55,6 @@ sow-dist/deploy/android/
 shadows-of-war*/
 ponytail/
 .rustup/
+.home_mock/
+.home/
+.rustup_home/
