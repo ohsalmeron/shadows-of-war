@@ -456,11 +456,13 @@ impl SowApp {
                                     .unwrap_or((position.x, position.y));
                                 let is_building =
                                     self.ui.app.hud_state.selected_building_kind.is_some();
-                                if is_touch && !is_spawning && !is_building {
+                                let is_nuke =
+                                    self.ui.app.hud_state.selected_nuke_kind.is_some();
+                                if is_touch && !is_spawning && !is_building && !is_nuke {
                                     // Tap on mobile → open context menu
                                     self.open_context_menu_at(sx, sy);
                                 } else {
-                                    // Quick click on desktop or tap during spawn/build → one-shot action
+                                    // Quick click on desktop or tap during spawn/build/nuke → one-shot action
                                     self.handle_map_click(sx, sy);
                                 }
                             }
@@ -667,6 +669,10 @@ impl SowApp {
     }
 
     fn try_begin_hold_attack(&mut self, x: f64, y: f64, is_touch: bool) {
+        if self.ui.app.hud_state.selected_nuke_kind.is_some() {
+            return;
+        }
+
         let phase = self
             .sim
             .current_snapshot
@@ -935,9 +941,16 @@ impl SowApp {
                 });
             }
             sow_core::protocol::GameplayIntent::Spawn { x, y } => {
+                let wx = *x as f32 + 0.5;
+                let wy = *y as f32 + 0.5;
+                self.ui.click_markers.push(crate::app::ClickMarker {
+                    world_x: wx,
+                    world_y: wy,
+                    start_time: web_time::Instant::now(),
+                });
                 sow_audio::play_deploy_sound(sow_audio::SpatialSoundParams {
-                    wx: *x as f32 + 0.5,
-                    wy: *y as f32 + 0.5,
+                    wx,
+                    wy,
                     camera_x: self.input.camera_x,
                     camera_y: self.input.camera_y,
                     camera_zoom: self.input.camera_zoom,
@@ -950,11 +963,16 @@ impl SowApp {
                     .as_ref()
                     .map(|e| e.state.seed as u32)
                     .unwrap_or(0);
-                sow_audio::set_music_context(seed, *x as f32 + 0.5, *y as f32 + 0.5);
+                sow_audio::set_music_context(seed, wx, wy);
             }
             sow_core::protocol::GameplayIntent::BuildStructure { kind, target_tile } => {
                 let wx = (*target_tile % self.sim.map_w) as f32 + 0.5;
                 let wy = (*target_tile / self.sim.map_w) as f32 + 0.5;
+                self.ui.click_markers.push(crate::app::ClickMarker {
+                    world_x: wx,
+                    world_y: wy,
+                    start_time: web_time::Instant::now(),
+                });
                 sow_audio::play_building_placement_sound(
                     crate::building_sound_kind(*kind),
                     sow_audio::SpatialSoundParams {

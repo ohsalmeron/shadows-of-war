@@ -11,7 +11,7 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
-/// Empty splash status → loading screen shows i18n `loading_screen.loading` + progress %.
+/// Empty splash status -> loading screen shows i18n `loading_screen.loading` + progress %.
 fn splash_show_loading(splash: &mut sow_ui::ui::loading_screen::SplashState) {
     splash.status_text.clear();
 }
@@ -472,14 +472,14 @@ impl SowApp {
             );
         }
         if !self.progress.is_first_game() {
-            log::info!("Portal boot: returning player → main menu");
+            log::info!("Portal boot: returning player -> main menu");
             hide_web_loader();
             self.web_loader_hidden = true;
             crate::store_portals::gameplay_stop();
             self.ui.app.splash_state.done = true;
             self.ui.app.phase = ClientPhase::MainMenu;
         } else {
-            log::info!("Portal boot: new player → intro skirmish");
+            log::info!("Portal boot: new player -> intro skirmish");
             self.ui.app.main_menu_state.host_private_pending = false;
             self.start_portal_intro_match();
         }

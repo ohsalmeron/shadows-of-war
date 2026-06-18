@@ -15,7 +15,7 @@ pub fn compact_viewport(ctx: &Context) -> bool {
     let rect = ctx.input(|i| i.content_rect());
     let w = rect.width();
     let h = rect.height();
-    w < 768.0 || h < 600.0
+    w < 768.0 || h < 600.0 || w < h
 }
 
 /// Scale factor for fixed chrome (buttons, gaps, profile bar) on short viewports.
@@ -95,7 +95,7 @@ pub mod palette {
     } // Glassmorphism backdrop
     #[inline]
     pub fn surface() -> Color32 {
-        Color32::from_rgba_unmultiplied(12, 12, 14, 140)
+        Color32::from_rgba_unmultiplied(12, 12, 14, 240)
     } // Translucent glass base
     #[inline]
     pub fn surface_transparent() -> Color32 {
@@ -683,7 +683,7 @@ pub fn hud_panel_frame() -> egui::Frame {
 #[inline]
 pub fn leaderboard_panel_frame() -> egui::Frame {
     egui::Frame::new()
-        .fill(Color32::from_rgba_unmultiplied(6, 8, 12, 235))
+        .fill(Color32::from_rgba_unmultiplied(6, 8, 12, 230))
         .stroke(egui::Stroke::new(
             1.0_f32,
             Color32::from_rgba_unmultiplied(255, 255, 255, 20),
@@ -766,6 +766,114 @@ pub fn standard_panel_frame(compact: bool) -> egui::Frame {
         .inner_margin(egui::Margin::same(margin))
         .shadow(shadow)
 }
+
+/// A reusable standard pop-up modal dialog template (used for Settings, Terms, Privacy, Credits, and Leaderboards).
+pub fn draw_standard_modal<R>(
+    ctx: &egui::Context,
+    is_open: &mut bool,
+    modal_key: &str,
+    title: &str,
+    close_label: &str,
+    reduced_motion: bool,
+    content_ui: impl FnOnce(&mut egui::Ui) -> R,
+) -> Option<R> {
+    if !*is_open {
+        return None;
+    }
+
+    let mut result = None;
+    let compact = compact_viewport(ctx);
+    let panel_w = if compact {
+        ctx.input(|i| i.content_rect()).width() - 32.0
+    } else {
+        520.0
+    };
+
+    let progress = ctx.animate_bool_with_time(
+        egui::Id::new(format!("{modal_key}_animation_progress")),
+        *is_open,
+        anim_duration(reduced_motion),
+    );
+    if progress <= 0.01 {
+        return None;
+    }
+
+    // Semi-transparent scrim backdrop overlay (increased transparency)
+    let screen_rect = ctx.input(|i| i.content_rect());
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new(format!("{modal_key}_scrim")),
+    ))
+    .rect_filled(
+        screen_rect,
+        0.0,
+        Color32::from_black_alpha((150.0 * progress) as u8),
+    );
+
+    let y_offset = if *is_open {
+        let t = progress;
+        if t >= 1.0 {
+            0.0
+        } else {
+            -80.0 * (1.0 - t)
+        }
+    } else {
+        0.0
+    };
+
+    egui::Window::new(format!("{modal_key}_modal"))
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
+        .fixed_size(egui::vec2(panel_w, if compact { 460.0 } else { 420.0 }))
+        .frame(standard_panel_frame(compact))
+        .show(ctx, |ui| {
+            // Header: Title and X Close Button
+            ui.horizontal(|ui| {
+                outlined_label(
+                    ui,
+                    title,
+                    egui::FontId::proportional(if compact { 20.0 } else { 24.0 }),
+                    Color32::WHITE,
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if modal_close_button(ui).clicked() {
+                        *is_open = false;
+                    }
+                });
+            });
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(8.0);
+
+            // Reusable scrollable viewport area
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    result = Some(content_ui(ui));
+                });
+
+            // Footer: Centered exit close button
+            ui.add_space(12.0);
+            ui.vertical_centered(|ui| {
+                let close_btn = crate::widgets::ThemeButton::new(close_label)
+                    .style(crate::widgets::ThemeButtonStyle::Primary)
+                    .min_size(egui::vec2(
+                        if compact { ui.available_width() } else { 160.0 },
+                        40.0,
+                    ));
+                if ui.add(close_btn).clicked() {
+                    *is_open = false;
+                }
+            });
+        });
+
+    result
+}
+
 
 /// Full-screen sub-page frame (settings, single-player setup, etc.).
 ///
@@ -856,16 +964,24 @@ pub fn paint_premium_glow_galley(
     base_color: Color32,
     shadow_color: Color32,
 ) {
-    // 1. Dragged-down shadow (2 passes)
-    for &dy in &[1.0, 2.0] {
-        painter.galley_with_override_text_color(
-            pos + egui::vec2(0.0, dy),
-            galley.clone(),
-            shadow_color,
-        );
-    }
+    let text_height = galley.rect.height();
+    let outline_width = (text_height * 0.05).clamp(0.4, 1.5);
+    let shadow_dy = (text_height * 0.08).clamp(0.8, 2.5);
+
+    // 1. Dragged-down shadow (1 pass)
+    painter.galley_with_override_text_color(
+        pos + egui::vec2(0.0, shadow_dy),
+        galley.clone(),
+        shadow_color,
+    );
+
     // 2. Diagonal outline (4 passes)
-    for &(dx, dy) in &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+    for &(dx, dy) in &[
+        (-outline_width, -outline_width),
+        (outline_width, -outline_width),
+        (-outline_width, outline_width),
+        (outline_width, outline_width),
+    ] {
         painter.galley_with_override_text_color(
             pos + egui::vec2(dx, dy),
             galley.clone(),
@@ -901,6 +1017,28 @@ fn paint_pixel_shadow_galley(
     painter.galley_with_override_text_color(pos, galley, base_color);
 }
 
+/// Thinner soft pixel shadow specifically for regular weight fonts to prevent muddiness.
+fn paint_pixel_shadow_galley_regular(
+    painter: &egui::Painter,
+    pos: Pos2,
+    galley: Arc<Galley>,
+    base_color: Color32,
+) {
+    const LAYERS: [(f32, f32, u8); 3] = [
+        (0.0, 1.0, 160),
+        (1.0, 1.0, 100),
+        (0.0, 2.0, 50),
+    ];
+    for &(dx, dy, alpha) in &LAYERS {
+        painter.galley_with_override_text_color(
+            pos + Vec2::new(dx, dy),
+            galley.clone(),
+            Color32::from_black_alpha(alpha),
+        );
+    }
+    painter.galley_with_override_text_color(pos, galley, base_color);
+}
+
 /// Leader name in caps with a tight pixel shadow and clear size hierarchy vs body text.
 pub fn leader_name_label(ui: &mut Ui, name: &str, size: f32) -> Response {
     leader_caps_line(ui, name, size)
@@ -918,16 +1056,52 @@ pub fn leader_caps_line(ui: &mut Ui, text: &str, size: f32) -> Response {
     response
 }
 
-/// Wrapped all-caps block with pixel shadow (ability / perk text).
+/// Wrapped all-caps block with pixel shadow (ability / perk text) using regular font.
 pub fn leader_caps_paragraph(ui: &mut Ui, text: &str, size: f32, wrap_w: f32) -> Response {
     let text = text.to_uppercase();
-    let font_id = FontId::proportional(size);
+    let font_id = font_regular(size);
     let galley = ui.painter().layout(text, font_id, Color32::WHITE, wrap_w);
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
     if ui.is_rect_visible(rect) {
-        paint_pixel_shadow_galley(ui.painter(), rect.left_top(), galley, Color32::WHITE);
+        paint_pixel_shadow_galley_regular(ui.painter(), rect.left_top(), galley, Color32::WHITE);
     }
     response
+}
+
+/// Paint regular weight font with a lighter/thinner outline and drop shadow.
+pub fn paint_premium_glow_galley_regular(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    galley: Arc<Galley>,
+    base_color: Color32,
+    shadow_color: Color32,
+) {
+    let text_height = galley.rect.height();
+    let outline_width = (text_height * 0.04).clamp(0.4, 1.2);
+    let shadow_dy = (text_height * 0.07).clamp(0.6, 2.0);
+
+    // 1. Dragged-down shadow (1 pass)
+    painter.galley_with_override_text_color(
+        pos + egui::vec2(0.0, shadow_dy),
+        galley.clone(),
+        shadow_color.linear_multiply(0.7),
+    );
+
+    // 2. Diagonal outline (4 passes)
+    for &(dx, dy) in &[
+        (-outline_width, -outline_width),
+        (outline_width, -outline_width),
+        (-outline_width, outline_width),
+        (outline_width, outline_width),
+    ] {
+        painter.galley_with_override_text_color(
+            pos + egui::vec2(dx, dy),
+            galley.clone(),
+            shadow_color,
+        );
+    }
+    // 3. Core text (1 pass)
+    painter.galley_with_override_text_color(pos, galley, base_color);
 }
 
 /// Draw text with a crisp black outline and heavy bottom drop shadow.
@@ -946,9 +1120,14 @@ pub fn paint_premium_glow_text(
     if text.is_empty() {
         return;
     }
+    let is_regular = font_id.family == egui::FontFamily::Name("Regular".into());
     let galley = painter.layout_no_wrap(text.to_owned(), font_id, base_color);
     let anchor_pos = anchor_top_left(pos, anchor, galley.size());
-    paint_premium_glow_galley(painter, anchor_pos, galley, base_color, shadow_color);
+    if is_regular {
+        paint_premium_glow_galley_regular(painter, anchor_pos, galley, base_color, shadow_color);
+    } else {
+        paint_premium_glow_galley(painter, anchor_pos, galley, base_color, shadow_color);
+    }
 }
 
 /// Resolve an `Align2` anchor + size into the top-left position egui galley expects.
@@ -975,10 +1154,15 @@ pub fn outlined_label(
     font_id: FontId,
     color: Color32,
 ) -> egui::Response {
+    let is_regular = font_id.family == egui::FontFamily::Name("Regular".into());
     let galley = ui.painter().layout_no_wrap(text.to_owned(), font_id, color);
     let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
-        paint_premium_glow_galley(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
+        if is_regular {
+            paint_premium_glow_galley_regular(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
+        } else {
+            paint_premium_glow_galley(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
+        }
     }
     response
 }

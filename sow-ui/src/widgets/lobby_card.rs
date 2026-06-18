@@ -29,8 +29,9 @@ pub struct LobbyCardResponse {
 
 impl<'a> Widget for LobbyCard<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let side = self.side.min(ui.available_width());
-        let desired_size = egui::vec2(side, side);
+        let w = ui.available_width();
+        let h = self.side;
+        let desired_size = egui::vec2(w, h);
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 
         let is_hovered = response.hovered();
@@ -109,7 +110,7 @@ impl<'a> Widget for LobbyCard<'a> {
             egui::pos2(top_rect.max.x, top_rect.min.y),
             true,
             &timer_text,
-            egui::FontId::proportional(14.0),
+            crate::ui::theme::font_regular(14.0),
             timer_color,
             Color32::from_black_alpha(180),
             true,

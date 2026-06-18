@@ -281,10 +281,9 @@ impl SowApp {
                             if attack.front_cx == 0.0 && attack.front_cy == 0.0 {
                                 continue;
                             }
-                            let radius = (attack.troops as f32 / std::f32::consts::PI)
-                                .sqrt()
-                                .clamp(1.0, 200.0)
-                                * 2.5;
+                            let norm = (attack.troops as f32 / 100_000.0).clamp(0.0, 1.5);
+                            let intensity = norm.powi(2);
+                            let radius = 5.0 + intensity * 75.0;
                             threat_slots[slot] = [
                                 attack.front_cx,
                                 attack.front_cy,

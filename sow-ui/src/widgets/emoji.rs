@@ -184,17 +184,18 @@ pub fn try_paint_emoji(painter: &egui::Painter, emoji: &str, rect: Rect, tint: C
         return false;
     };
 
-    let alpha = (tint.a() as f32 * 0.65) as u8;
+    let alpha = (tint.a() as f32 * 0.40) as u8;
     if alpha > 0 {
         let shadow_tint = Color32::from_black_alpha(alpha);
-        // Premium 4-way diagonal outline + 2 dragged shadows matching the text glow style perfectly
+        let h = rect.height();
+        let outline_width = (h * 0.04).clamp(0.4, 1.5);
+        let shadow_dy = (h * 0.08).clamp(0.8, 3.0);
         let offsets = [
-            (-1.0, -1.0),
-            (1.0, -1.0),
-            (-1.0, 1.0),
-            (1.0, 1.0),
-            (0.0, 1.0),
-            (0.0, 2.0),
+            (-outline_width, -outline_width),
+            (outline_width, -outline_width),
+            (-outline_width, outline_width),
+            (outline_width, outline_width),
+            (0.0, shadow_dy),
         ];
         for (dx, dy) in offsets {
             painter.image(
@@ -320,7 +321,7 @@ impl Widget for HudEmojiButton {
                 .rect_filled(rect, 6.0, Color32::from_white_alpha(alpha));
         }
 
-        let emoji_size = size * 0.88;
+        let emoji_size = size * 0.65;
         if !try_paint_emoji(
             ui.painter(),
             &self.emoji,

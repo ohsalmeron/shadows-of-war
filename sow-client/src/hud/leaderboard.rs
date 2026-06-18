@@ -1,7 +1,7 @@
 use crate::app::SowApp;
 use crate::hud::avatar::paint_circular_avatar;
 use crate::hud::nameplate::nameplate_matte_player_rgb;
-use egui::{Align, Align2, Color32, FontId, Layout, Pos2, RichText, Sense, Stroke, Vec2};
+use egui::{Align, Align2, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
 use sow_core::player::{Leader, PlayerType};
 use sow_core::protocol::{PlayerSnapshot, Team};
 use std::collections::HashSet;
@@ -660,32 +660,8 @@ impl SowApp {
         team_rankings: &[TeamRanking],
         win_pct: f32,
     ) {
-        ui.set_min_width(metrics.panel_width);
-        ui.set_max_width(metrics.panel_width);
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = if metrics.is_mobile { 10.0 } else { 8.0 };
-
-            if metrics.is_mobile {
-                ui.add_space(44.0);
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Leaderboard")
-                            .size(20.0)
-                            .strong()
-                            .color(Color32::WHITE),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button(RichText::new("✕").size(16.0))
-                            .on_hover_text("Close")
-                            .clicked()
-                        {
-                            self.ui.show_leaderboard = false;
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-            }
 
             ui.vertical_centered(|ui| {
                 egui::Frame::new()
@@ -929,45 +905,33 @@ impl SowApp {
 
         let metrics = LeaderboardMetrics::from_ctx(ctx);
 
-        // Mobile fullscreen overlay (drawn first, under the toggle bar).
-        if self.ui.show_leaderboard && metrics.is_mobile {
-            let screen = ctx.content_rect();
-
-            egui::Area::new(egui::Id::new("leaderboard_mobile_dimmer"))
-                .order(egui::Order::Foreground)
-                .fixed_pos(Pos2::ZERO)
-                .show(ctx, |ui| {
-                    ui.set_min_size(screen.size());
-                    ui.painter()
-                        .rect_filled(screen, 0.0, Color32::from_black_alpha(160));
-                });
-
-            egui::Area::new(egui::Id::new("leaderboard_mobile_fullscreen"))
-                .order(egui::Order::Foreground)
-                .fixed_pos(Pos2::ZERO)
-                .show(ctx, |ui| {
-                    ui.set_min_size(screen.size());
-                    egui::Frame::new()
-                        .fill(Color32::from_rgba_unmultiplied(6, 8, 12, 250))
-                        .inner_margin(egui::Margin::symmetric(16, 12))
-                        .show(ui, |ui| {
-                            self.render_leaderboard_body(
-                                ui,
-                                &metrics,
-                                total_land_tiles,
-                                my_id,
-                                my_team,
-                                team_mode,
-                                search_active,
-                                &filtered,
-                                scroll_row_count,
-                                show_sticky_self,
-                                &team_rankings,
-                                win_pct,
-                            );
-                        });
-                });
-        }
+        // Render leaderboard pop-up modal overlay
+        let mut show_leaderboard = self.ui.show_leaderboard;
+        sow_ui::ui::theme::draw_standard_modal(
+            ctx,
+            &mut show_leaderboard,
+            "leaderboard",
+            "Leaderboard",
+            "CLOSE",
+            self.ui.app.settings_state.reduced_motion,
+            |ui| {
+                self.render_leaderboard_body(
+                    ui,
+                    &metrics,
+                    total_land_tiles,
+                    my_id,
+                    my_team,
+                    team_mode,
+                    search_active,
+                    &filtered,
+                    scroll_row_count,
+                    show_sticky_self,
+                    &team_rankings,
+                    win_pct,
+                );
+            },
+        );
+        self.ui.show_leaderboard = show_leaderboard;
 
         // Single toggle area — always on top, always clickable (trophy toggles open/closed).
         egui::Area::new(egui::Id::new("leaderboard_area"))
@@ -1004,26 +968,6 @@ impl SowApp {
                     ui.add_space(8.0);
                     sow_ui::ui::theme::hud_panel_frame().show(ui, |ui| {
                         self.render_dev_sidebar(ctx, ui);
-                    });
-                }
-
-                if self.ui.show_leaderboard && !metrics.is_mobile {
-                    ui.add_space(8.0);
-                    sow_ui::ui::theme::leaderboard_panel_frame().show(ui, |ui| {
-                        self.render_leaderboard_body(
-                            ui,
-                            &metrics,
-                            total_land_tiles,
-                            my_id,
-                            my_team,
-                            team_mode,
-                            search_active,
-                            &filtered,
-                            scroll_row_count,
-                            show_sticky_self,
-                            &team_rankings,
-                            win_pct,
-                        );
                     });
                 }
             });

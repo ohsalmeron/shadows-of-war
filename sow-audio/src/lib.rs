@@ -752,22 +752,14 @@ mod native {
 
     struct BuildingCompletionSource {
         sample_idx: u64,
-        kind: BuildingSoundKind,
         duration_samples: u64,
     }
 
     impl BuildingCompletionSource {
-        fn new(kind: BuildingSoundKind) -> Self {
-            let duration_secs = match kind {
-                BuildingSoundKind::City => 0.28,
-                BuildingSoundKind::Bunker => 0.40,
-                BuildingSoundKind::Factory => 0.25,
-                BuildingSoundKind::Port => 0.45,
-            };
+        fn new() -> Self {
             Self {
                 sample_idx: 0,
-                kind,
-                duration_samples: (SAMPLE_RATE as f32 * duration_secs) as u64,
+                duration_samples: (SAMPLE_RATE as f32 * 0.28) as u64,
             }
         }
     }
@@ -783,50 +775,17 @@ mod native {
             let mut val = 0.0_f32;
             let amp = 0.16;
 
-            match self.kind {
-                BuildingSoundKind::City => {
-                    let note_dur = 0.07;
-                    let freqs = [523.25, 659.25, 783.99, 1046.50];
-                    let note_idx = (t / note_dur) as usize;
-                    if note_idx < freqs.len() {
-                        let freq = freqs[note_idx];
-                        let t_note = t - note_idx as f32 * note_dur;
-                        let period = 1.0 / freq;
-                        let phase = (t_note % period) / period;
-                        let wave = if phase < 0.25 { 1.0 } else { -1.0 };
-                        val = wave * (-10.0 * t_note).exp();
-                    }
-                }
-                BuildingSoundKind::Bunker => {
-                    let freqs = [146.83, 174.61, 220.00];
-                    for &freq in &freqs {
-                        let period = 1.0 / freq;
-                        let phase = (t % period) / period;
-                        val += (2.0 * phase - 1.0) * (-3.5 * t).exp();
-                    }
-                    val /= freqs.len() as f32;
-                }
-                BuildingSoundKind::Factory => {
-                    let progress = t / 0.25;
-                    let base = 400.0 + 800.0 * progress;
-                    let fm = (2.0 * std::f32::consts::PI * 35.0 * t).sin() * 20.0;
-                    let freq = (base + fm).max(20.0);
-                    let period = 1.0 / freq;
-                    let phase = (t % period) / period;
-                    val = if phase < 0.125 { 1.0 } else { -1.0 };
-                    val *= (-8.0 * t).exp();
-                }
-                BuildingSoundKind::Port => {
-                    let wobble = (2.0 * std::f32::consts::PI * 8.0 * t).sin();
-                    for (base, weight) in [(180.0_f32, 0.6), (220.0, 0.4)] {
-                        let freq = base + 15.0 * wobble;
-                        let period = 1.0 / freq;
-                        let phase = (t % period) / period;
-                        let horn = 2.0 * (2.0 * phase - 1.0).abs() - 1.0;
-                        val += horn * weight;
-                    }
-                    val *= (-2.5 * t).exp();
-                }
+            // ponytail: play the standard bright completion arpeggio for all buildings
+            let note_dur = 0.07;
+            let freqs = [523.25, 659.25, 783.99, 1046.50];
+            let note_idx = (t / note_dur) as usize;
+            if note_idx < freqs.len() {
+                let freq = freqs[note_idx];
+                let t_note = t - note_idx as f32 * note_dur;
+                let period = 1.0 / freq;
+                let phase = (t_note % period) / period;
+                let wave = if phase < 0.25 { 1.0 } else { -1.0 };
+                val = wave * (-10.0 * t_note).exp();
             }
 
             self.sample_idx += 1;
@@ -1708,8 +1667,9 @@ mod native {
         kind: BuildingSoundKind,
         spatial: super::SpatialSoundParams,
     ) {
+        let _ = kind;
         queue_spatial(
-            BuildingCompletionSource::new(kind),
+            BuildingCompletionSource::new(),
             spatial,
             SoundPriority::Foreground,
         );

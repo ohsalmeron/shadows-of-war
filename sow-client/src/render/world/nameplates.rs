@@ -294,7 +294,7 @@ pub(crate) fn render(
                 } else {
                     raw_scaled
                 };
-                if scaled_size < 7.0 && !is_me {
+                if scaled_size < 7.0 && !is_me && !is_human {
                     painter.circle_filled(center, dot_r, pc);
                     painter.circle_stroke(
                         center,

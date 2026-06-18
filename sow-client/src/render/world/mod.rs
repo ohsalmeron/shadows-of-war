@@ -176,18 +176,21 @@ impl SowApp {
                 });
             }
 
-             // Sort once: local player absolutely last (drawn on top of all), then other humans, then nations, then others.
+             // Sort once: other humans on top of all (drawn last), then local player, then nations, then others.
              let my_id = self.sim.my_player_id.unwrap_or(0);
              visible_players.sort_unstable_by(|a, b| {
-                 let a_is_me = a.player.id == my_id;
-                 let b_is_me = b.player.id == my_id;
-                 if a_is_me != b_is_me {
-                     return a_is_me.cmp(&b_is_me);
-                 }
-                 let a_is_human = a.player.player_type == sow_core::player::PlayerType::Human;
-                 let b_is_human = b.player.player_type == sow_core::player::PlayerType::Human;
-                 if a_is_human != b_is_human {
-                     return a_is_human.cmp(&b_is_human); // true (human) comes after false (non-human), so they draw on top of bots/nations
+                 let a_prec = if a.player.player_type == sow_core::player::PlayerType::Human {
+                     if a.player.id == my_id { 1 } else { 2 }
+                 } else {
+                     0
+                 };
+                 let b_prec = if b.player.player_type == sow_core::player::PlayerType::Human {
+                     if b.player.id == my_id { 1 } else { 2 }
+                 } else {
+                     0
+                 };
+                 if a_prec != b_prec {
+                     return a_prec.cmp(&b_prec);
                  }
                  let a_is_nation = a.player.id < 200;
                  let b_is_nation = b.player.id < 200;

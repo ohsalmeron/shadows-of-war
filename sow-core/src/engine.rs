@@ -737,10 +737,20 @@ impl SowEngine {
                 continue;
             }
 
+            let dist: i32 = if tries < 300 {
+                15
+            } else if tries < 600 {
+                10
+            } else if tries < 900 {
+                5
+            } else {
+                0
+            };
+
             let mut valid = true;
 
-            for dy in -15..=15 {
-                for dx in -15..=15 {
+            for dy in -dist..=dist {
+                for dx in -dist..=dist {
                     let nx = sx as i32 + dx;
                     let ny = sy as i32 + dy;
                     if self.state.map.is_valid_coord(nx, ny)
@@ -759,6 +769,34 @@ impl SowEngine {
             }
             tries += 1;
         }
+
+        // Absolute fallback: scan the map for any land tile (preferably unowned)
+        let mut first_land = None;
+        for y in 0..self.state.map.height {
+            for x in 0..self.state.map.width {
+                if self.state.map.terrain[self.state.map.ref_id(x, y)].is_land() {
+                    if self.state.map.owner_id(x, y) == 0 {
+                        return Some((x, y));
+                    }
+                    if first_land.is_none() {
+                        first_land = Some((x, y));
+                    }
+                }
+            }
+        }
+        if let Some(pos) = first_land {
+            return Some(pos);
+        }
+
+        // Extreme fallback: scan the map for any unowned tile
+        for y in 0..self.state.map.height {
+            for x in 0..self.state.map.width {
+                if self.state.map.owner_id(x, y) == 0 {
+                    return Some((x, y));
+                }
+            }
+        }
+
         None
     }
 

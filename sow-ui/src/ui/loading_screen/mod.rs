@@ -153,7 +153,8 @@ pub fn draw(
     let is_mobile = crate::ui::theme::compact_viewport(root_ui.ctx());
     let alpha = (state.opacity * 255.0) as u8;
 
-    let background_tex = if is_mobile {
+    let use_portrait = screen_w < screen_h;
+    let background_tex = if use_portrait {
         asset_loader.splash_mobile.as_ref()
     } else {
         asset_loader.splash_desktop.as_ref()
@@ -191,13 +192,16 @@ pub fn draw(
 
     // Loading bar
     let aspect_ratio = 2064.0 / 512.0;
-    let bar_width = if is_mobile {
+    let base_width = if is_mobile {
         screen_w - 40.0
     } else {
-        600.0f32.min(screen_w * 0.6)
+        640.0f32.min(screen_w * 0.65)
     };
-    let bar_height = bar_width / aspect_ratio;
-    let bottom_padding = (screen_h * 0.15).max(100.0);
+    let max_h = (screen_h * 0.13).max(52.0);
+    let bar_height = (base_width / aspect_ratio).min(max_h);
+    let bar_width = bar_height * aspect_ratio;
+
+    let bottom_padding = (screen_h * 0.14).max(70.0);
     let center_x = screen_rect.center().x;
     let bottom_y = screen_rect.max.y - bottom_padding;
 
@@ -247,7 +251,7 @@ pub fn draw(
     // Loading text
     let text_color = Color32::from_white_alpha(alpha);
     let shadow_color = Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
-    let font_id = egui::FontId::proportional(if is_mobile { 14.0 } else { 16.0 });
+    let font_id = egui::FontId::proportional(if is_mobile { 16.0 } else { 18.0 });
 
     let pct = ((visual_progress * 100.0).clamp(0.0, 100.0)) as i32;
     let status_text = if state.status_text.is_empty() {

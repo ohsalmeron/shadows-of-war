@@ -343,13 +343,17 @@ impl SowApp {
                     if scale > 0.05 {
                         let alpha = (255.0 * progress.clamp(0.0, 1.0)) as u8;
                         let text_size = (24.0 + 8.0 * c_hover_t) * scale;
-                        painter.text(
-                            center,
-                            egui::Align2::CENTER_CENTER,
-                            "⚔",
-                            egui::FontId::proportional(text_size),
-                            Color32::from_rgba_unmultiplied(255, 255, 255, if is_teammate { alpha / 2 } else { alpha }),
-                        );
+                        let tint = Color32::from_rgba_unmultiplied(255, 255, 255, if is_teammate { alpha / 2 } else { alpha });
+                        let icon_rect = egui::Rect::from_center_size(center, egui::vec2(text_size, text_size));
+                        if !sow_ui::widgets::try_paint_emoji(painter, "⚔", icon_rect, tint) {
+                            painter.text(
+                                center,
+                                egui::Align2::CENTER_CENTER,
+                                "⚔",
+                                egui::FontId::proportional(text_size),
+                                tint,
+                            );
+                        }
                     }
 
                     // Click Actions (primary/left only — ignore right-clicks that opened the menu)

@@ -52,15 +52,9 @@ impl SowApp {
         let inset = if compact { 8.0 } else { 12.0 };
 
         let stats = if let Some(ping) = self.net.current_ping_ms {
-            format!(
-                "{ping}ms · {} fps · Zoom: {:.2}",
-                self.time.current_fps, self.input.camera_zoom
-            )
+            format!("{ping}ms · {} fps", self.time.current_fps)
         } else {
-            format!(
-                "{} fps · Zoom: {:.2}",
-                self.time.current_fps, self.input.camera_zoom
-            )
+            format!("{} fps", self.time.current_fps)
         };
 
         let painter = ctx.layer_painter(egui::LayerId::new(

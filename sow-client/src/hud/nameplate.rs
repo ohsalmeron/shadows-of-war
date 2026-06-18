@@ -52,17 +52,25 @@ fn paint_glow_galley(
 ) {
     let black = egui::Color32::BLACK;
 
+    let text_height = galley.rect.height();
+    let outline_width = (text_height * 0.05).clamp(0.4, 1.5);
+    let shadow_dy = (text_height * 0.08).clamp(0.8, 2.5);
+
     if is_tribe {
-        painter.galley_with_override_text_color(pos + egui::vec2(1.0, 1.0), galley.clone(), black);
+        let offset = (text_height * 0.07).clamp(0.5, 2.0);
+        painter.galley_with_override_text_color(pos + egui::vec2(offset, offset), galley.clone(), black);
         painter.galley_with_override_text_color(pos, galley, base_color);
         return;
     }
 
-    // 2 dragged shadows + 4 diagonal outline + 1 core = 7 passes, zero layout cost
-    for &dy in &[1.0, 2.0] {
-        painter.galley_with_override_text_color(pos + egui::vec2(0.0, dy), galley.clone(), black);
-    }
-    for &(dx, dy) in &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+    // 1 dragged shadow + 4 diagonal outline + 1 core = 6 passes, zero layout cost
+    painter.galley_with_override_text_color(pos + egui::vec2(0.0, shadow_dy), galley.clone(), black);
+    for &(dx, dy) in &[
+        (-outline_width, -outline_width),
+        (outline_width, -outline_width),
+        (-outline_width, outline_width),
+        (outline_width, outline_width),
+    ] {
         painter.galley_with_override_text_color(pos + egui::vec2(dx, dy), galley.clone(), black);
     }
     painter.galley_with_override_text_color(pos, galley, base_color);

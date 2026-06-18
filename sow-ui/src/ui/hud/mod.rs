@@ -174,6 +174,10 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
 
         let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
 
+        let btn_size = col_w.min(if compact { 46.0 } else { 56.0 });
+        let gold_plate_h = if compact { 16.0 } else { 20.0 };
+        let total_h = btn_size + 4.0 + gold_plate_h;
+
         for (display_idx, &kind) in active_kinds.iter().enumerate() {
             let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
             let cost = state.building_costs[cost_idx];
@@ -189,7 +193,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
             };
 
             let (rect, mut resp) = ui.allocate_exact_size(
-                egui::vec2(col_w, if compact { 38.0 } else { 44.0 }),
+                egui::vec2(col_w, total_h),
                 egui::Sense::click(),
             );
 
@@ -222,6 +226,16 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                 );
             });
 
+            let square_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.center().x - btn_size * 0.5, rect.top()),
+                egui::vec2(btn_size, btn_size),
+            );
+
+            let plate_rect = egui::Rect::from_center_size(
+                egui::pos2(rect.center().x, square_rect.bottom() + 2.0 + gold_plate_h * 0.5),
+                egui::vec2(btn_size.max(col_w * 0.9), gold_plate_h),
+            );
+
             let is_hovered = resp.hovered();
             let card = crate::ui::theme::interact_card(
                 is_selected,
@@ -229,45 +243,61 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                 is_hovered,
                 crate::ui::theme::palette::neon_cyan(),
             );
+            
             ui.painter().rect(
-                rect,
+                square_rect,
                 crate::ui::theme::radius::SM,
-                card.bg,
+                egui::Color32::TRANSPARENT,
                 card.stroke,
                 egui::StrokeKind::Inside,
             );
 
-            // Hotkey badge (top-left corner)
-            if !compact {
-                let hotkey_color = if is_selected {
-                    crate::ui::theme::palette::neon_cyan()
-                } else {
-                    egui::Color32::from_white_alpha(120)
-                };
+            let icon_size = btn_size * 0.6;
+            if !crate::widgets::try_paint_emoji(ui.painter(), building_emoji(kind), square_rect, tint) {
                 ui.painter().text(
-                    egui::pos2(rect.left() + 5.0, rect.top() + 5.0),
-                    egui::Align2::LEFT_TOP,
-                    format!("{}", display_idx + 1),
-                    egui::FontId::proportional(7.0),
-                    hotkey_color,
-                );
-            }
-
-            let icon_size = if compact { 22.0 } else { 30.0 };
-            let icon_rect = egui::Rect::from_center_size(
-                egui::pos2(rect.center().x, rect.top() + (if compact { 13.0 } else { 16.0 })),
-                egui::vec2(icon_size, icon_size),
-            );
-
-            if !crate::widgets::try_paint_emoji(ui.painter(), building_emoji(kind), icon_rect, tint) {
-                ui.painter().text(
-                    icon_rect.center(),
+                    square_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     building_emoji(kind),
-                    egui::FontId::proportional(icon_size * 0.7),
+                    egui::FontId::proportional(icon_size),
                     tint,
                 );
             }
+
+            let os = ui.ctx().os();
+            let is_mobile_os = os == egui::os::OperatingSystem::IOS || os == egui::os::OperatingSystem::Android;
+            if !is_mobile_os && !compact {
+                let badge_size = 14.0;
+                let badge_rect = egui::Rect::from_min_size(
+                    egui::pos2(square_rect.left() + 2.0, square_rect.top() + 2.0),
+                    egui::vec2(badge_size, badge_size),
+                );
+                let badge_bg = egui::Color32::from_rgba_unmultiplied(15, 20, 30, 240);
+                let badge_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_white_alpha(80));
+                ui.painter().rect(
+                    badge_rect,
+                    egui::CornerRadius::same((badge_size * 0.5) as u8),
+                    badge_bg,
+                    badge_stroke,
+                    egui::StrokeKind::Inside,
+                );
+                ui.painter().text(
+                    badge_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    format!("{}", display_idx + 1),
+                    egui::FontId::proportional(9.0),
+                    egui::Color32::WHITE,
+                );
+            }
+
+            let plate_bg = egui::Color32::from_rgba_unmultiplied(10, 15, 25, 240);
+            let plate_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_white_alpha(40));
+            ui.painter().rect(
+                plate_rect,
+                egui::CornerRadius::same((gold_plate_h * 0.5) as u8),
+                plate_bg,
+                plate_stroke,
+                egui::StrokeKind::Inside,
+            );
 
             let cost_text = if cost.is_infinite() {
                 "N/A".to_string()
@@ -280,7 +310,7 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
             } else if is_selected {
                 crate::ui::theme::palette::neon_cyan()
             } else {
-                egui::Color32::GRAY
+                egui::Color32::from_rgb(230, 230, 230)
             };
 
             let cost_label = if cost_text == "N/A" {
@@ -289,10 +319,10 @@ fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, com
                 format!("🪙 {cost_text}")
             };
 
-            let font_size = if compact { 8.0 } else { 9.0 };
+            let font_size = if compact { 10.0 } else { 12.0 };
             crate::widgets::paint_emoji_text_at(
                 ui.painter(),
-                egui::pos2(rect.center().x, rect.bottom() - (if compact { 5.0 } else { 8.0 })),
+                plate_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 &cost_label,
                 egui::FontId::proportional(font_size),
@@ -598,10 +628,11 @@ fn draw_event_log_tab(
                             ui.add_space(4.0);
 
                             ui.vertical(|ui| {
-                                ui.label(
-                                    RichText::new(&entry.message)
-                                        .size(if compact { 10.0 } else { 11.0 })
-                                        .color(text_color),
+                                crate::widgets::emoji_label(
+                                    ui,
+                                    &entry.message,
+                                    egui::FontId::proportional(if compact { 10.0 } else { 11.0 }),
+                                    text_color,
                                 );
                                 ui.label(
                                     RichText::new(format_relative_time(entry.spawned_at, lang))
@@ -734,11 +765,11 @@ fn draw_battle_log_tab(
                             crate::widgets::try_paint_emoji(ui.painter(), icon, icon_rect, accent);
                             ui.add_space(6.0);
                             ui.vertical(|ui| {
-                                ui.label(
-                                    RichText::new(&label)
-                                        .size(if compact { 11.0 } else { 12.0 })
-                                        .color(accent)
-                                        .strong(),
+                                crate::widgets::emoji_label(
+                                    ui,
+                                    &label,
+                                    egui::FontId::proportional(if compact { 11.0 } else { 12.0 }),
+                                    accent,
                                 );
                                 ui.label(
                                     RichText::new(crate::utils::format_number(troops))
@@ -1229,8 +1260,12 @@ pub fn draw(
                                         (rgb[1] * 255.0) as u8,
                                         (rgb[2] * 255.0) as u8,
                                     ).linear_multiply(inbox_progress);
-                                    let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                    let name = sow_core::player::display_name(requester.id, &requester.name, requester.player_type);
+                                    let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { sow_core::player::tribe_animal(requester.id, &requester.name) };
+                                    let name = if requester.player_type == sow_core::player::PlayerType::Bot {
+                                        if requester.name.is_empty() { format!("Tribe {}", requester.id.saturating_sub(199)) } else { requester.name.clone() }
+                                    } else {
+                                        sow_core::player::display_name(requester.id, &requester.name, requester.player_type)
+                                    };
 
                                     // Animate individual card sliding horizontally with spring overshoot!
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, anim);
@@ -1328,8 +1363,12 @@ pub fn draw(
                                         (rgb[1] * 255.0) as u8,
                                         (rgb[2] * 255.0) as u8,
                                     ).linear_multiply(inbox_progress);
-                                    let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { "🐺" };
-                                    let name = sow_core::player::display_name(requester.id, &requester.name, requester.player_type);
+                                    let icon = if requester.disconnected { "🔌" } else if requester.id < 200 { "⭐" } else { sow_core::player::tribe_animal(requester.id, &requester.name) };
+                                    let name = if requester.player_type == sow_core::player::PlayerType::Bot {
+                                        if requester.name.is_empty() { format!("Tribe {}", requester.id.saturating_sub(199)) } else { requester.name.clone() }
+                                    } else {
+                                        sow_core::player::display_name(requester.id, &requester.name, requester.player_type)
+                                    };
 
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, anim);
                                     let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
@@ -2034,11 +2073,11 @@ fn draw_betrayal_ally_card(
             ui.vertical_centered(|ui| {
                 paint_betrayal_ally_portrait(ui, ally, asset_loader, alpha, avatar_size);
                 ui.add_space(if compact { 8.0 } else { 10.0 });
-                ui.label(
-                    RichText::new(&ally_name)
-                        .size(if compact { 16.0 } else { 18.0 })
-                        .strong()
-                        .color(Color32::WHITE.linear_multiply(alpha)),
+                crate::widgets::emoji_label(
+                    ui,
+                    &ally_name,
+                    egui::FontId::proportional(if compact { 16.0 } else { 18.0 }),
+                    Color32::WHITE.linear_multiply(alpha),
                 );
                 ui.label(
                     RichText::new(subtitle)
@@ -2685,11 +2724,11 @@ fn draw_betrayal_overlay(
                 if let Some(ally) = state.players.iter().find(|p| p.id == ally_id) {
                     draw_betrayal_ally_card(ui, ally, asset_loader, alpha, compact);
                 } else {
-                    ui.label(
-                        RichText::new(&ally_name)
-                            .size(if compact { 16.0 } else { 18.0 })
-                            .strong()
-                            .color(Color32::WHITE.linear_multiply(alpha)),
+                    crate::widgets::emoji_label(
+                        ui,
+                        &ally_name,
+                        egui::FontId::proportional(if compact { 16.0 } else { 18.0 }),
+                        Color32::WHITE.linear_multiply(alpha),
                     );
                 }
 
@@ -3261,11 +3300,12 @@ fn draw_transfer_panel(
                             Color32::WHITE,
                         );
                         ui.add_space(2.0);
-                        ui.label(
-                            RichText::new(format!("with {}", target_name))
-                                .size(14.0)
-                                .color(crate::ui::theme::palette::text_muted().linear_multiply(alpha))
-                                .strong(),
+                        let with_text = format!("with {}", target_name);
+                        crate::widgets::emoji_label(
+                            ui,
+                            &with_text,
+                            egui::FontId::proportional(14.0),
+                            crate::ui::theme::palette::text_muted().linear_multiply(alpha),
                         );
                     });
 

@@ -32,7 +32,6 @@ struct LeaderPickerMetrics {
     carousel_spacing: f32,
     title_font: f32,
     title_gap: f32,
-    title_line_extra: f32,
     name_font: f32,
     caps_line_font: f32,
     caps_para_font: f32,
@@ -70,9 +69,8 @@ impl LeaderPickerMetrics {
             avatar_size: s(if is_mobile { 64.0 } else { 54.0 }),
             scroll_area_pad: s(4.0),
             carousel_spacing: s(12.0),
-            title_font: s(if is_mobile { 20.0 } else { 28.0 }),
-            title_gap: s(12.0),
-            title_line_extra: s(10.0),
+            title_font: s(if is_mobile { 24.0 } else { 36.0 }),
+            title_gap: s(if is_mobile { 18.0 } else { 30.0 }),
             name_font: s(if is_mobile { 32.0 } else { 48.0 }),
             caps_line_font: s(if is_mobile { 15.0 } else { 18.0 }),
             caps_para_font: s(if is_mobile { 15.0 } else { 16.0 }),
@@ -471,20 +469,7 @@ fn paint_gradient_rect(
     painter.add(egui::Shape::mesh(mesh));
 }
 
-fn leader_picker_column_bottom(
-    ctx: &egui::Context,
-    metrics: &LeaderPickerMetrics,
-    content_max_x: f32,
-) -> f32 {
-    let back_rect = crate::ui::main_menu::profile::main_menu_avatar_button_rect(ctx);
-    let title_line_h = metrics.title_font + metrics.title_line_extra;
-    let title_top = back_rect.center().y - title_line_h * 0.5;
-    let title_rect = Rect::from_min_max(
-        egui::pos2(back_rect.max.x + metrics.title_gap, title_top),
-        egui::pos2(content_max_x, title_top + title_line_h),
-    );
-    back_rect.max.y.max(title_rect.max.y)
-}
+
 
 pub(crate) fn draw_leader_picker_overlay_gradient(
     painter: &egui::Painter,
@@ -755,30 +740,33 @@ fn draw_leader_picker_top_column(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     metrics: &LeaderPickerMetrics,
-    content_max_x: f32,
+    _content_max_x: f32,
 ) -> (bool, f32) {
     let back_rect = crate::ui::main_menu::profile::main_menu_avatar_button_rect(ctx);
-    let title_line_h = metrics.title_font + metrics.title_line_extra;
-    let title_top = back_rect.center().y - title_line_h * 0.5;
-    let title_rect = Rect::from_min_max(
-        egui::pos2(back_rect.max.x + metrics.title_gap, title_top),
-        egui::pos2(content_max_x, title_top + title_line_h),
-    );
-
     let back_response = draw_leader_picker_back_button(ui, ctx, back_rect);
 
-    ui.scope_builder(egui::UiBuilder::new().max_rect(title_rect), |ui| {
-        ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-            crate::ui::theme::outlined_label(
-                ui,
-                "CHOOSE YOUR LEADER",
-                egui::FontId::proportional(metrics.title_font),
-                Color32::WHITE,
-            );
-        });
-    });
+    let font_id = egui::FontId::proportional(metrics.title_font);
+    let galley = ui.painter().layout_no_wrap("CHOOSE YOUR LEADER".to_owned(), font_id, Color32::WHITE);
+    let text_size = galley.size();
 
-    let column_bottom = leader_picker_column_bottom(ctx, metrics, content_max_x);
+    let title_top = back_rect.center().y - text_size.y * 0.5;
+    let title_rect = Rect::from_min_size(
+        egui::pos2(back_rect.max.x + metrics.title_gap, title_top),
+        text_size,
+    );
+
+    if ui.is_rect_visible(title_rect) {
+        crate::ui::theme::paint_premium_glow_galley(
+            ui.painter(),
+            title_rect.left_top(),
+            galley,
+            Color32::WHITE,
+            Color32::BLACK,
+        );
+    }
+    ui.allocate_rect(title_rect, egui::Sense::hover());
+
+    let column_bottom = back_rect.max.y.max(title_rect.max.y);
     (back_response.clicked(), column_bottom)
 }
 
@@ -831,11 +819,12 @@ pub fn draw_leader_picker_modal(
             }
 
             let loading_label = &sow_i18n::get(lang).main_menu.loading_leader_portrait;
+            let use_portrait = screen_rect.width() < screen_rect.height();
             crate::widgets::leader_backdrop::draw_leader_hero_backdrop(
                 ui,
                 screen_rect,
                 *selected_leader,
-                is_mobile,
+                use_portrait,
                 asset_loader,
                 leader_backdrop,
                 loading_label,

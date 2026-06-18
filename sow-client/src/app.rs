@@ -1712,7 +1712,8 @@ impl SowApp {
                                         },
                                     );
                                 }
-                                if b_old.under_construction && !b_new.under_construction {
+                                // ponytail: only play building completion sound for the local player
+                                if b_old.under_construction && !b_new.under_construction && b_new.owner_id == my_id {
                                     let wx = (b_new.tile_idx % self.sim.map_w) as f32 + 0.5;
                                     let wy = (b_new.tile_idx / self.sim.map_w) as f32 + 0.5;
                                     sow_audio::play_building_completed_sound(

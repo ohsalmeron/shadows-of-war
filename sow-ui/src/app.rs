@@ -98,10 +98,7 @@ impl ClientApp {
     ) -> Option<UiAction> {
         crate::ui::theme::publish_reduced_motion(ui.ctx(), self.settings_state.reduced_motion);
 
-        let mut action = if self.is_settings_open {
-            crate::ui::settings::draw(ui, &mut self.settings_state)
-        } else {
-            match self.phase {
+        let mut action = match self.phase {
                 ClientPhase::MainMenu => {
                     self.asset_loader.ensure_avatars_loaded(ui.ctx());
                     #[cfg(target_arch = "wasm32")]
@@ -137,7 +134,6 @@ impl ClientApp {
                         &mut self.asset_loader,
                     )
                 }
-            }
         };
 
         if let Some(ref toggle) = &action {
@@ -197,6 +193,20 @@ impl ClientApp {
             self.apply_modal_toggle(toggle);
         } else if let Some(ref toggle) = action {
             if matches!(toggle, UiAction::ToggleTerms) {
+                self.apply_modal_toggle(toggle);
+                action = None;
+            }
+        }
+
+        let settings_action = crate::ui::settings::draw(
+            ui,
+            &mut self.settings_state,
+            &mut self.is_settings_open,
+        );
+        if let Some(ref toggle) = settings_action {
+            self.apply_modal_toggle(toggle);
+        } else if let Some(ref toggle) = action {
+            if matches!(toggle, UiAction::ToggleSettings) {
                 self.apply_modal_toggle(toggle);
                 action = None;
             }

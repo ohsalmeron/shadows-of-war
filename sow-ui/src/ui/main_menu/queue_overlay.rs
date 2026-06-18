@@ -259,11 +259,12 @@ fn draw_map_briefing(
                     .0;
 
                 if let Some(tex) = thumbnail {
+                    let uv = crate::ui::map_texture::cover_uv(rect.size(), tex.size_vec2());
                     crate::ui::map_texture::draw_map_thumbnail_uv(
                         ui.painter(),
                         tex.id(),
                         rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        uv,
                         1.0,
                     );
                 } else {

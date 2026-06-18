@@ -29,8 +29,22 @@ fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32, bot_iq: 
             let base = (city_equivalent.saturating_add(2) as f64) * factor;
             (base.floor() as u32).max(1)
         }
-        BuildingKind::Factory => ((city_equivalent as f64) * 0.65 * factor).floor() as u32,
-        BuildingKind::Port => ((city_equivalent as f64) * 0.30 * factor).floor() as u32,
+        BuildingKind::Factory => {
+            let val = ((city_equivalent as f64) * 0.65 * factor).floor() as u32;
+            if factor > 0.4 {
+                val.max(1)
+            } else {
+                val
+            }
+        }
+        BuildingKind::Port => {
+            let val = ((city_equivalent as f64) * 0.30 * factor).floor() as u32;
+            if factor > 0.4 {
+                val.max(1)
+            } else {
+                val
+            }
+        }
     }
 }
 
@@ -835,12 +849,19 @@ impl SowEngine {
                             .unwrap_or_default();
                         let city_equivalent =
                             agg.ready_city_count.max((player_tile_count / 1000).max(1));
-                        let build_order = [
+                        let mut build_order = [
                             BuildingKind::Bunker,
                             BuildingKind::City,
                             BuildingKind::Factory,
                             BuildingKind::Port,
                         ];
+                        build_order.sort_by(|&a, &b| {
+                            let owned_a = agg.total_structures_of_kind(a);
+                            let owned_b = agg.total_structures_of_kind(b);
+                            let cost_a = structure_build_cost_gold(a, owned_a, &self.state.config);
+                            let cost_b = structure_build_cost_gold(b, owned_b, &self.state.config);
+                            cost_a.partial_cmp(&cost_b).unwrap_or(std::cmp::Ordering::Equal)
+                        });
                         for kind in build_order {
                             if !structure_kind_enabled(kind) {
                                 continue;

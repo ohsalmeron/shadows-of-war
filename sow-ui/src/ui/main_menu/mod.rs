@@ -480,6 +480,99 @@ fn draw_link_conflict_modal(
         });
 }
 
+pub fn draw_terms_privacy_footer(
+    ui: &mut egui::Ui,
+    lang: sow_i18n::Language,
+    action: &mut Option<UiAction>,
+) {
+    let strings = &sow_i18n::get(lang).main_menu;
+    let version = format!("v{}", include_str!("../../../../.version").trim());
+    let credits = &sow_i18n::get(lang).credits;
+    let text_color = crate::ui::theme::palette::text_muted();
+    let link_color = crate::ui::theme::palette::neon_cyan();
+    let size = 11.0;
+
+    ui.with_layout(
+        egui::Layout::left_to_right(egui::Align::Center)
+            .with_main_align(egui::Align::Center),
+        |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+
+            ui.label(
+                egui::RichText::new(strings.by_playing_you_agree.trim_end())
+                    .font(crate::ui::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            // Terms of Service Link
+            let terms_id = ui.make_persistent_id("terms_of_service_link");
+            let terms_hover_t = ui.ctx().animate_bool(terms_id, false);
+            let mut terms_text = egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
+                .font(crate::ui::theme::font_regular(size))
+                .color(link_color);
+            if terms_hover_t > 0.05 {
+                terms_text = terms_text.underline();
+            }
+            let terms_resp = ui.add(egui::Label::new(terms_text).sense(egui::Sense::click()));
+            ui.ctx().animate_bool(terms_id, terms_resp.hovered());
+            if terms_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if terms_resp.clicked() {
+                *action = Some(UiAction::ToggleTerms);
+            }
+
+            ui.label(
+                egui::RichText::new(strings.and_the.trim())
+                    .font(crate::ui::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            // Privacy Policy Link
+            let privacy_id = ui.make_persistent_id("privacy_policy_link");
+            let privacy_hover_t = ui.ctx().animate_bool(privacy_id, false);
+            let mut privacy_text = egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
+                .font(crate::ui::theme::font_regular(size))
+                .color(link_color);
+            if privacy_hover_t > 0.05 {
+                privacy_text = privacy_text.underline();
+            }
+            let privacy_resp = ui.add(egui::Label::new(privacy_text).sense(egui::Sense::click()));
+            ui.ctx().animate_bool(privacy_id, privacy_resp.hovered());
+            if privacy_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if privacy_resp.clicked() {
+                *action = Some(UiAction::TogglePrivacy);
+            }
+
+            ui.label(
+                egui::RichText::new("·")
+                    .font(crate::ui::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            ui.label(
+                egui::RichText::new(&version)
+                    .font(crate::ui::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            ui.label(
+                egui::RichText::new("·")
+                    .font(crate::ui::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            ui.label(
+                egui::RichText::new(&credits.based_on_short)
+                    .font(crate::ui::theme::font_regular(size))
+                    .color(text_color),
+            );
+        },
+    );
+}
+
 pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -495,95 +588,16 @@ pub fn draw(
     let profile_height = 56.0 * scale;
     let strings = &sow_i18n::get(lang).main_menu;
 
+    // Draw the terms/privacy footer always at the bottom of the screen
+    egui::Panel::bottom("main_menu_footer_panel")
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 8)))
+        .show_inside(root_ui, |ui| {
+            draw_terms_privacy_footer(ui, lang, &mut action);
+        });
+
     if state.show_single_player_setup {
         single_player_setup::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
-        let version = format!("v{}", include_str!("../../../../.version").trim());
-        let credits = &sow_i18n::get(lang).credits;
-
-        egui::Panel::bottom("main_menu_footer_panel")
-            .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 8)))
-            .show_inside(root_ui, |ui| {
-                let text_color = crate::ui::theme::palette::text_muted();
-                let link_color = crate::ui::theme::palette::neon_cyan();
-                let size = 11.0;
-
-                ui.with_layout(
-                    egui::Layout::left_to_right(egui::Align::Center)
-                        .with_main_align(egui::Align::Center),
-                    |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-
-                        ui.label(
-                            egui::RichText::new(strings.by_playing_you_agree.trim_end())
-                                .font(crate::ui::theme::font_regular(size))
-                                .color(text_color),
-                        );
-
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
-                                        .font(crate::ui::theme::font_regular(size))
-                                        .color(link_color),
-                                )
-                                .fill(egui::Color32::TRANSPARENT)
-                                .stroke(egui::Stroke::NONE)
-                                .small(),
-                            )
-                            .clicked()
-                        {
-                            action = Some(UiAction::ToggleTerms);
-                        }
-
-                        ui.label(
-                            egui::RichText::new(strings.and_the.trim())
-                                .font(crate::ui::theme::font_regular(size))
-                                .color(text_color),
-                        );
-
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
-                                        .font(crate::ui::theme::font_regular(size))
-                                        .color(link_color),
-                                )
-                                .fill(egui::Color32::TRANSPARENT)
-                                .stroke(egui::Stroke::NONE)
-                                .small(),
-                            )
-                            .clicked()
-                        {
-                            action = Some(UiAction::TogglePrivacy);
-                        }
-
-                        ui.label(
-                            egui::RichText::new("·")
-                                .font(crate::ui::theme::font_regular(size))
-                                .color(text_color),
-                        );
-
-                        ui.label(
-                            egui::RichText::new(&version)
-                                .font(crate::ui::theme::font_regular(size))
-                                .color(text_color),
-                        );
-
-                        ui.label(
-                            egui::RichText::new("·")
-                                .font(crate::ui::theme::font_regular(size))
-                                .color(text_color),
-                        );
-
-                        ui.label(
-                            egui::RichText::new(&credits.based_on_short)
-                                .font(crate::ui::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                    },
-                );
-            });
 
         CentralPanel::default()
             .frame(
@@ -593,13 +607,13 @@ pub fn draw(
             )
             .show_inside(root_ui, |ui| {
                 let screen_rect = ui.ctx().content_rect();
-                let is_mobile = compact;
                 if !state.show_leader_picker {
+                    let use_portrait = screen_rect.width() < screen_rect.height();
                     crate::widgets::draw_leader_hero_backdrop(
                         ui,
                         screen_rect,
                         state.selected_leader,
-                        is_mobile,
+                        use_portrait,
                         asset_loader,
                         &mut state.leader_backdrop,
                         &strings.loading_leader_portrait,

@@ -25,8 +25,12 @@ bullets = [
 [[sections]]
 heading = "Intellectual property"
 paragraphs = [
-  "Source is AGPL-3.0-or-later. Based on OpenFront — © OpenFront and Contributors. See in-game Credits and",
+  "Source is AGPL-3.0-or-later. Based on OpenFront — © OpenFront and Contributors. Full attributions and licenses are available.",
 ]
+
+[[sections.links]]
+label = "in-game Credits"
+url = "#credits"
 
 [[sections.links]]
 label = "GitHub NOTICE"
