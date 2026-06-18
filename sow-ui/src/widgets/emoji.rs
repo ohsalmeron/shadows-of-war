@@ -342,3 +342,70 @@ impl Widget for HudEmojiButton {
         response.on_hover_cursor(CursorIcon::PointingHand)
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceKind {
+    Gold,
+    Troops,
+}
+
+pub struct ResourceLabel {
+    kind: ResourceKind,
+    amount: f64,
+    font_id: FontId,
+    color: Option<Color32>,
+    outlined: bool,
+}
+
+impl ResourceLabel {
+    pub fn gold(amount: f64) -> Self {
+        Self {
+            kind: ResourceKind::Gold,
+            amount,
+            font_id: FontId::proportional(14.0),
+            color: None,
+            outlined: true,
+        }
+    }
+
+    pub fn troops(amount: f64) -> Self {
+        Self {
+            kind: ResourceKind::Troops,
+            amount,
+            font_id: FontId::proportional(14.0),
+            color: None,
+            outlined: true,
+        }
+    }
+
+    pub fn font(mut self, font_id: FontId) -> Self {
+        self.font_id = font_id;
+        self
+    }
+
+    pub fn color(mut self, color: Color32) -> Self {
+        self.color = Some(color);
+        self
+    }
+
+    pub fn outlined(mut self, outlined: bool) -> Self {
+        self.outlined = outlined;
+        self
+    }
+}
+
+impl Widget for ResourceLabel {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let (emoji, default_color) = match self.kind {
+            ResourceKind::Gold => ("🪙", crate::ui::theme::palette::neon_gold_hover()),
+            ResourceKind::Troops => ("🛡️", crate::ui::theme::palette::neon_cyan_hover()),
+        };
+        let color = self.color.unwrap_or(default_color);
+        let text = format!("{} {}", emoji, crate::utils::format_number(self.amount));
+        if self.outlined {
+            outlined_emoji_label(ui, &text, self.font_id, color)
+        } else {
+            emoji_label(ui, &text, self.font_id, color)
+        }
+    }
+}

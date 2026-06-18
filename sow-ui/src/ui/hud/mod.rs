@@ -2284,12 +2284,9 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
                 crate::ui::theme::margin::TIGHT,
             ))
             .show(ui, |ui| {
-                crate::widgets::outlined_emoji_label(
-                    ui,
-                    &format!("🪙 {}", crate::utils::format_number(state.gold)),
-                    egui::FontId::proportional(if compact { 13.0 } else { 14.0 }),
-                    crate::ui::theme::palette::neon_gold_hover(),
-                );
+                ui.add(crate::widgets::ResourceLabel::gold(state.gold).font(
+                    egui::FontId::proportional(if compact { 13.0 } else { 14.0 })
+                ));
             });
     });
 }
@@ -2932,8 +2929,7 @@ fn draw_mobile_selection_bar(
     }
 }
 
-fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
-    let strings = &sow_i18n::get(lang).hud;
+fn draw_error_overlay(ctx: &Context, state: &mut HudState, _lang: Language) {
     let is_active = state.show_error.is_some();
     let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
     let progress =
@@ -3001,17 +2997,27 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
                 .inner_margin(egui::Margin::symmetric(16, 8))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("⚠️").color(border_color).size(12.0));
+                        crate::widgets::outlined_emoji_label(
+                            ui,
+                            "⚠️",
+                            egui::FontId::proportional(12.0),
+                            border_color,
+                        );
                         ui.add_space(6.0);
-                        ui.label(RichText::new(err_msg).color(text_color).size(12.0).strong());
+                        crate::widgets::outlined_emoji_label(
+                            ui,
+                            &err_msg,
+                            egui::FontId::proportional(12.0),
+                            text_color,
+                        );
                     });
-                    ui.label(
-                        RichText::new(&strings.toast_tap_dismiss)
-                            .size(10.0)
-                            .color(text_color.linear_multiply(0.7)),
-                    );
                 });
-            if frame.response.clicked() {
+            let response = ui.interact(
+                frame.response.rect,
+                ui.make_persistent_id("error_toast_click"),
+                egui::Sense::click(),
+            );
+            if response.clicked() {
                 state.show_error = None;
                 state.error_display_timer = None;
             }
@@ -3021,8 +3027,7 @@ fn draw_error_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
     ctx.request_repaint();
 }
 
-fn draw_info_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
-    let strings = &sow_i18n::get(lang).hud;
+fn draw_info_overlay(ctx: &Context, state: &mut HudState, _lang: Language) {
     let is_active = state.show_info.is_some();
     let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
     let progress =
@@ -3090,22 +3095,27 @@ fn draw_info_overlay(ctx: &Context, state: &mut HudState, lang: Language) {
                 .inner_margin(egui::Margin::symmetric(16, 8))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("🤝").color(border_color).size(12.0));
+                        crate::widgets::outlined_emoji_label(
+                            ui,
+                            "🤝",
+                            egui::FontId::proportional(12.0),
+                            border_color,
+                        );
                         ui.add_space(6.0);
-                        ui.label(
-                            RichText::new(info_msg)
-                                .color(text_color)
-                                .size(12.0)
-                                .strong(),
+                        crate::widgets::outlined_emoji_label(
+                            ui,
+                            &info_msg,
+                            egui::FontId::proportional(12.0),
+                            text_color,
                         );
                     });
-                    ui.label(
-                        RichText::new(&strings.toast_tap_dismiss)
-                            .size(10.0)
-                            .color(text_color.linear_multiply(0.7)),
-                    );
                 });
-            if frame.response.clicked() {
+            let response = ui.interact(
+                frame.response.rect,
+                ui.make_persistent_id("info_toast_click"),
+                egui::Sense::click(),
+            );
+            if response.clicked() {
                 state.show_info = None;
                 state.info_display_timer = None;
             }

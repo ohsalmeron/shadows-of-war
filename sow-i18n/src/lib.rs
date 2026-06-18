@@ -195,7 +195,6 @@ pub struct HudStrings {
     pub transfer_request: String,
     pub reject_all: String,
     pub accept_all: String,
-    pub toast_tap_dismiss: String,
     pub err_need_gold: String,
     pub err_break_alliance_boat: String,
     pub err_resources_allies_only: String,
