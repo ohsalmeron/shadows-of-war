@@ -1063,7 +1063,7 @@ impl SowApp {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || 1.0f32)
             });
             let mut bscale = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 1.0f32)
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 0.75f32)
             });
             let mut conquest_duration = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || 2.5f32)
