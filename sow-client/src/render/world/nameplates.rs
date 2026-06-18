@@ -238,14 +238,22 @@ pub(crate) fn render(
             let is_massive_on_screen =
                 normalized_tiles * zoom_scaled_local * zoom_scaled_local >= 1500.0;
 
-            if zoom_scaled < far_zoom_threshold && !is_human && !is_massive_on_screen {
-                painter.circle_filled(center, dot_r * 0.8, pc);
-                painter.circle_stroke(
-                    center,
-                    dot_r * 0.8,
-                    egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
-                );
-                continue;
+            if zoom_scaled < far_zoom_threshold && !is_massive_on_screen {
+                if is_human {
+                    // Hide other human nameplates on second LOD (far zoom) completely
+                    if !is_me {
+                        continue;
+                    }
+                } else {
+                    // Render standard simplified dot representation for bots/nations
+                    painter.circle_filled(center, dot_r * 0.8, pc);
+                    painter.circle_stroke(
+                        center,
+                        dot_r * 0.8,
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(180)),
+                    );
+                    continue;
+                }
             }
 
             let show_full = if is_human {
