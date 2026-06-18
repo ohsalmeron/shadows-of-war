@@ -53,7 +53,6 @@ impl SpriteAtlas {
             name: "mover_atlas_upload",
             size: total as u64,
             memory: gpu::Memory::Upload,
-            bind_point: 0,
         });
         let dst = buffer.data();
         let slice = unsafe { std::slice::from_raw_parts_mut(dst, total) };
