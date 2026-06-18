@@ -222,10 +222,6 @@ pub struct Player {
     #[serde(default)]
     pub nameplate_size: f32,
     #[serde(default)]
-    pub nameplate_offset_x: f32,
-    #[serde(default)]
-    pub nameplate_offset_y: f32,
-    #[serde(default)]
     pub nameplate_dirty: bool,
     #[serde(default = "default_player_gold")]
     pub gold: f64,
@@ -302,8 +298,6 @@ impl Player {
             nameplate_x: 0.0,
             nameplate_y: 0.0,
             nameplate_size: 0.0,
-            nameplate_offset_x: 0.0,
-            nameplate_offset_y: 0.0,
             nameplate_dirty: true,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
@@ -383,8 +377,6 @@ impl Player {
             nameplate_x: 0.0,
             nameplate_y: 0.0,
             nameplate_size: 0.0,
-            nameplate_offset_x: 0.0,
-            nameplate_offset_y: 0.0,
             nameplate_dirty: true,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
@@ -449,8 +441,6 @@ impl Player {
             nameplate_x: 0.0,
             nameplate_y: 0.0,
             nameplate_size: 0.0,
-            nameplate_offset_x: 0.0,
-            nameplate_offset_y: 0.0,
             nameplate_dirty: true,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
@@ -498,8 +488,6 @@ impl Player {
             self.nameplate_x = 0.0;
             self.nameplate_y = 0.0;
             self.nameplate_size = 0.0;
-            self.nameplate_offset_x = 0.0;
-            self.nameplate_offset_y = 0.0;
             self.nameplate_dirty = false;
             return;
         }
@@ -510,8 +498,6 @@ impl Player {
             self.nameplate_x = 0.0;
             self.nameplate_y = 0.0;
             self.nameplate_size = 0.0;
-            self.nameplate_offset_x = 0.0;
-            self.nameplate_offset_y = 0.0;
             self.nameplate_dirty = false;
             return;
         };
@@ -550,8 +536,6 @@ impl Player {
             self.nameplate_x = cx as f32;
             self.nameplate_y = cy as f32;
             self.nameplate_size = 1.5;
-            self.nameplate_offset_x = 0.0;
-            self.nameplate_offset_y = 0.0;
             self.nameplate_dirty = false;
             return;
         }
@@ -578,8 +562,6 @@ impl Player {
             self.nameplate_x = cx as f32;
             self.nameplate_y = cy as f32;
             self.nameplate_size = 1.5;
-            self.nameplate_offset_x = 0.0;
-            self.nameplate_offset_y = 0.0;
             self.nameplate_dirty = false;
             return;
         }
@@ -602,8 +584,6 @@ impl Player {
         self.nameplate_x = land_x as f32;
         self.nameplate_y = land_y as f32 - (font_size / 3.0);
         self.nameplate_size = font_size;
-        self.nameplate_offset_x = 0.0;
-        self.nameplate_offset_y = 0.0;
         self.nameplate_dirty = false;
     }
 }
