@@ -551,6 +551,10 @@ pub fn outlined_text(
     paint_premium_glow_text(painter, pos, anchor, text, font_id, color, shadow_color);
 }
 
+pub fn font_regular(size: f32) -> FontId {
+    FontId::new(size, egui::FontFamily::Name("Regular".into()))
+}
+
 pub fn apply_theme(ctx: &Context) {
     // PressStart2P only — do not pull in egui bundled default/emoji font blobs.
     let mut fonts = egui::FontDefinitions {
@@ -561,12 +565,19 @@ pub fn apply_theme(ctx: &Context) {
         "Default".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_FONT_TTF)),
     );
+    fonts.font_data.insert(
+        "Regular".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_REGULAR_FONT_TTF)),
+    );
     fonts
         .families
         .insert(egui::FontFamily::Proportional, vec!["Default".to_owned()]);
     fonts
         .families
         .insert(egui::FontFamily::Monospace, vec!["Default".to_owned()]);
+    fonts
+        .families
+        .insert(egui::FontFamily::Name("Regular".into()), vec!["Regular".to_owned()]);
     ctx.set_fonts(fonts);
 
     let mut style = Style {

@@ -325,7 +325,7 @@ pub(crate) fn render(
                 let mut betrayal_flash = false;
 
                 if !is_disconnected {
-                    let has_betrayal = player.active_emoji.as_deref() == Some("🗡️");
+                    let has_betrayal = player.traitor;
                     if has_betrayal {
                         betrayal_flash = true;
                     }

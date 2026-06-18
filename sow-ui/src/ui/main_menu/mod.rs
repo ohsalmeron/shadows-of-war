@@ -136,11 +136,6 @@ pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     Some(rest[0].clone())
 }
 
-fn menu_meta_footer_height(section_gap: f32, scale: f32) -> f32 {
-    // Stacked legal text column; scale height proportionally.
-    section_gap * 0.5 + 85.0 * scale
-}
-
 fn menu_footer_height(section_gap: f32, action_min_h: f32, scale: f32) -> f32 {
     let settings_h = action_min_h * 0.75;
     action_min_h // Solo button
@@ -148,7 +143,6 @@ fn menu_footer_height(section_gap: f32, action_min_h: f32, scale: f32) -> f32 {
         + action_min_h // Host private button
         + section_gap
         + settings_h // Settings button
-        + menu_meta_footer_height(section_gap, scale)
         + 6.0 * scale
 }
 
@@ -161,74 +155,8 @@ fn draw_menu_footer(
     compact: bool,
     action: &mut Option<UiAction>,
     lang: sow_i18n::Language,
-    version: &str,
 ) {
     actions::draw_right_column(ui, state, section_gap, action_min_h, compact, action, lang);
-
-    ui.add_space(section_gap * 0.5);
-    let strings = &sow_i18n::get(lang).main_menu;
-    let credits = &sow_i18n::get(lang).credits;
-    ui.vertical_centered(|ui| {
-        ui.spacing_mut().item_spacing.y = 2.0;
-
-        let text_color = crate::ui::theme::palette::text_muted();
-        let link_color = crate::ui::theme::palette::neon_cyan();
-        let size = 11.0;
-
-        ui.label(
-            egui::RichText::new(&strings.by_playing_you_agree)
-                .size(size)
-                .color(text_color),
-        );
-
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
-                        .size(size)
-                        .color(link_color),
-                )
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
-            )
-            .clicked()
-        {
-            *action = Some(UiAction::ToggleTerms);
-        }
-
-        ui.label(
-            egui::RichText::new(&strings.and_the)
-                .size(size)
-                .color(text_color),
-        );
-
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
-                        .size(size)
-                        .color(link_color),
-                )
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
-            )
-            .clicked()
-        {
-            *action = Some(UiAction::TogglePrivacy);
-        }
-
-        ui.add_space(4.0);
-
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            ui.label(egui::RichText::new(version).size(size).color(text_color));
-            ui.label(
-                egui::RichText::new(&credits.based_on_short)
-                    .size(size)
-                    .color(text_color),
-            );
-        });
-    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -244,7 +172,6 @@ fn draw_menu_right_panel_contents(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let version = format!("v{}", include_str!("../../../../.version").trim());
     let scale = crate::ui::theme::viewport_scale(ui.ctx());
     let footer_h = menu_footer_height(section_gap, action_min_h, scale);
     let header_h = profile_height + section_gap;
@@ -289,7 +216,6 @@ fn draw_menu_right_panel_contents(
             compact,
             action,
             lang,
-            &version,
         );
     });
 }
@@ -572,6 +498,93 @@ pub fn draw(
     if state.show_single_player_setup {
         single_player_setup::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
+        let version = format!("v{}", include_str!("../../../../.version").trim());
+        let credits = &sow_i18n::get(lang).credits;
+
+        egui::Panel::bottom("main_menu_footer_panel")
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 8)))
+            .show_inside(root_ui, |ui| {
+                let text_color = crate::ui::theme::palette::text_muted();
+                let link_color = crate::ui::theme::palette::neon_cyan();
+                let size = 11.0;
+
+                ui.with_layout(
+                    egui::Layout::left_to_right(egui::Align::Center)
+                        .with_main_align(egui::Align::Center),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+
+                        ui.label(
+                            egui::RichText::new(strings.by_playing_you_agree.trim_end())
+                                .font(crate::ui::theme::font_regular(size))
+                                .color(text_color),
+                        );
+
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
+                                        .font(crate::ui::theme::font_regular(size))
+                                        .color(link_color),
+                                )
+                                .fill(egui::Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::NONE)
+                                .small(),
+                            )
+                            .clicked()
+                        {
+                            action = Some(UiAction::ToggleTerms);
+                        }
+
+                        ui.label(
+                            egui::RichText::new(strings.and_the.trim())
+                                .font(crate::ui::theme::font_regular(size))
+                                .color(text_color),
+                        );
+
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
+                                        .font(crate::ui::theme::font_regular(size))
+                                        .color(link_color),
+                                )
+                                .fill(egui::Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::NONE)
+                                .small(),
+                            )
+                            .clicked()
+                        {
+                            action = Some(UiAction::TogglePrivacy);
+                        }
+
+                        ui.label(
+                            egui::RichText::new("·")
+                                .font(crate::ui::theme::font_regular(size))
+                                .color(text_color),
+                        );
+
+                        ui.label(
+                            egui::RichText::new(&version)
+                                .font(crate::ui::theme::font_regular(size))
+                                .color(text_color),
+                        );
+
+                        ui.label(
+                            egui::RichText::new("·")
+                                .font(crate::ui::theme::font_regular(size))
+                                .color(text_color),
+                        );
+
+                        ui.label(
+                            egui::RichText::new(&credits.based_on_short)
+                                .font(crate::ui::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                    },
+                );
+            });
+
         CentralPanel::default()
             .frame(
                 Frame::new()

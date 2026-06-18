@@ -317,6 +317,8 @@ pub struct PlayerSnapshot {
     pub resource_requests: Vec<ResourceRequest>,
     pub disconnected: bool,
     pub active_emoji: Option<String>,
+    #[serde(default)]
+    pub traitor: bool,
     pub civilization: crate::player::Civilization,
     pub leader: crate::player::Leader,
     #[serde(default)]

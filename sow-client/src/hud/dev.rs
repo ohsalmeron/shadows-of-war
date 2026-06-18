@@ -67,7 +67,7 @@ impl SowApp {
             egui::Order::Foreground,
             egui::Id::new("dev_stats"),
         ));
-        let font = egui::FontId::monospace(text_size);
+        let font = sow_ui::ui::theme::font_regular(text_size);
         let color = egui::Color32::from_gray(165);
         let galley = painter.layout_no_wrap(stats, font, color);
         let size = galley.size();

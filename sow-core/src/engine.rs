@@ -847,6 +847,7 @@ impl SowEngine {
                     resource_requests,
                     disconnected: p.disconnected,
                     active_emoji: p.active_emoji.clone(),
+                    traitor: p.traitor,
                     civilization: p.civilization,
                     leader: p.leader,
                     kills: p.kills,
