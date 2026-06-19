@@ -343,8 +343,7 @@ impl SowApp {
                                     .unwrap_or((position.x, position.y));
                                 let is_building =
                                     self.ui.app.hud_state.selected_building_kind.is_some();
-                                let is_nuke =
-                                    self.ui.app.hud_state.selected_nuke_kind.is_some();
+                                let is_nuke = self.ui.app.hud_state.selected_nuke_kind.is_some();
                                 if is_touch && !is_spawning && !is_building && !is_nuke {
                                     // Tap on mobile → open context menu
                                     self.open_context_menu_at(sx, sy);

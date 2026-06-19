@@ -1,4 +1,4 @@
-use egui::{Align2, Color32, vec2};
+use egui::{vec2, Align2, Color32};
 use sow_i18n::Language;
 
 use super::super::state::HudState;
@@ -356,6 +356,4 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
         }
         ui.ctx().request_repaint();
     }
-
-
 }

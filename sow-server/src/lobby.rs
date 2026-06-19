@@ -43,6 +43,8 @@ pub struct ServerLobby {
     pub relay_port: Option<u16>,
     /// Player who created this private lobby; only they can ForceStart it.
     pub host_player_id: Option<u16>,
+    pub password: Option<String>,
+    pub host_name: String,
 }
 
 impl ServerLobby {
@@ -56,20 +58,35 @@ fn spawn_waiting_lobby(
     next_id: &mut u64,
     game_mode: &str,
     is_private: bool,
+    config_override: Option<GameConfig>,
+    password: Option<String>,
+    host_name: String,
 ) {
     let id = *next_id;
     *next_id += 1;
-    let mut config = GameConfig::default();
-    static NEXT_MAP_INDEX: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let pool = crate::map_catalog::entries();
-    if let Some(entry) = sow_core::maps::catalog_entry_at(pool, map_idx) {
-        config.map_name = entry.key.clone();
-        config.map_width = entry.width;
-        config.map_height = entry.height;
+    let mut config = if let Some(mut c) = config_override {
+        // Resolve map dimensions from catalog when host provides a config.
+        if let Some(entry) = crate::map_catalog::lookup(&c.map_name) {
+            c.map_width = entry.width;
+            c.map_height = entry.height;
+            c.map_name = entry.key.clone();
+        }
+        c
     } else {
-        log::error!("No maps in catalog; using default config map_name");
-    }
+        let mut c = GameConfig::default();
+        static NEXT_MAP_INDEX: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let pool = crate::map_catalog::entries();
+        if let Some(entry) = sow_core::maps::catalog_entry_at(pool, map_idx) {
+            c.map_name = entry.key.clone();
+            c.map_width = entry.width;
+            c.map_height = entry.height;
+        } else {
+            log::error!("No maps in catalog; using default config map_name");
+        }
+        c
+    };
 
     config.game_mode = game_mode.to_string();
 
@@ -86,6 +103,8 @@ fn spawn_waiting_lobby(
         game_mode: game_mode.to_string(),
         relay_port: None,
         host_player_id: None,
+        password,
+        host_name,
     });
 }
 
@@ -96,7 +115,7 @@ fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         .count()
         < 1
     {
-        spawn_waiting_lobby(games, next_id, "FFA", false);
+        spawn_waiting_lobby(games, next_id, "FFA", false, None, None, String::new());
     }
     if games
         .iter()
@@ -104,7 +123,7 @@ fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         .count()
         < 1
     {
-        spawn_waiting_lobby(games, next_id, "Teams", false);
+        spawn_waiting_lobby(games, next_id, "Teams", false, None, None, String::new());
     }
 }
 
@@ -116,9 +135,11 @@ fn promote_countdown(games: &mut [ServerLobby]) {
         return;
     }
 
-    // Pick the first waiting public lobby, or a private lobby with at least two players.
+    // Auto-promote headless queues as before; skip host-created lobbies (they start via ForceStart).
     let target = games.iter_mut().find(|g| {
-        matches!(g.phase, LobbyPhase::Waiting) && (!g.is_private || g.players.len() >= 2)
+        matches!(g.phase, LobbyPhase::Waiting)
+            && g.host_player_id.is_none()
+            && (!g.is_private || g.players.len() >= 2)
     });
 
     if let Some(lobby) = target {
@@ -183,12 +204,43 @@ pub fn join_player(
     target_lobby_id: Option<u64>,
     host_private: bool,
     database_account_id: Option<String>,
+    host_config: Option<Box<GameConfig>>,
+    password: Option<String>,
 ) -> Result<(u64, u16, String, bool), String> {
+    let mut is_new_host = false;
     let lobby_id = if host_private {
         if target_lobby_id.is_some() {
             return Err("Cannot host private room with a target lobby".to_string());
         }
-        spawn_waiting_lobby(games, next_id, "FFA", true);
+        let game_mode = host_config
+            .as_ref()
+            .map(|c| c.game_mode.clone())
+            .unwrap_or_else(|| "FFA".to_string());
+        spawn_waiting_lobby(
+            games,
+            next_id,
+            &game_mode,
+            true,
+            host_config.map(|c| *c),
+            password.clone(),
+            name.clone(),
+        );
+        is_new_host = true;
+        games.last().unwrap().id
+    } else if host_config.is_some() && target_lobby_id.is_none() {
+        // Host-created public lobby
+        let config = host_config.unwrap();
+        let game_mode = config.game_mode.clone();
+        spawn_waiting_lobby(
+            games,
+            next_id,
+            &game_mode,
+            false,
+            Some(*config),
+            password.clone(),
+            name.clone(),
+        );
+        is_new_host = true;
         games.last().unwrap().id
     } else if let Some(req) = target_lobby_id {
         match resolve_join_target(Some(req), games) {
@@ -197,7 +249,7 @@ pub fn join_player(
                 if req >= 100000000 {
                     // Rematch room doesn't exist yet, we must be the first to arrive! Create it.
                     log::info!("Creating rematch private lobby {}", req);
-                    spawn_waiting_lobby(games, next_id, "FFA", true);
+                    spawn_waiting_lobby(games, next_id, "FFA", true, None, None, String::new());
                     let new_lobby = games.last_mut().unwrap();
                     new_lobby.id = req; // Override the ID to match the rematch ID
                     req
@@ -210,7 +262,7 @@ pub fn join_player(
         match resolve_join_target(None, games) {
             Some(id) => id,
             None => {
-                spawn_waiting_lobby(games, next_id, "FFA", false);
+                spawn_waiting_lobby(games, next_id, "FFA", false, None, None, String::new());
                 games.last().unwrap().id
             }
         }
@@ -223,6 +275,11 @@ pub fn join_player(
 
     if !lobby.joinable() {
         return Err("Lobby is not accepting joins".to_string());
+    }
+    if let Some(ref lobby_pw) = lobby.password.clone() {
+        if password.as_deref() != Some(lobby_pw.as_str()) {
+            return Err("Wrong password".to_string());
+        }
     }
     let max = lobby.config.max_players as usize;
     if lobby.players.len() >= max {
@@ -250,7 +307,7 @@ pub fn join_player(
         database_account_id,
     });
 
-    if host_private {
+    if is_new_host {
         lobby.host_player_id = Some(player_id);
     }
 
@@ -305,7 +362,7 @@ fn start_match(lobby: &mut ServerLobby) {
 }
 
 pub fn force_start(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
-    let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id && g.is_private) else {
+    let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) else {
         return;
     };
     if lobby.host_player_id != Some(player_id) {
@@ -318,13 +375,19 @@ pub fn force_start(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
         LobbyPhase::Waiting => {
             lobby.phase = LobbyPhase::CountingDown;
             lobby.countdown_secs = 3.0;
-            log::info!("Lobby {} force-started by host player {}", lobby_id, player_id);
+            log::info!(
+                "Lobby {} force-started by host player {}",
+                lobby_id,
+                player_id
+            );
         }
-        LobbyPhase::CountingDown => {
-            if lobby.countdown_secs > 3.0 {
-                lobby.countdown_secs = 3.0;
-                log::info!("Lobby {} countdown snapped to 3s by host player {}", lobby_id, player_id);
-            }
+        LobbyPhase::CountingDown if lobby.countdown_secs > 3.0 => {
+            lobby.countdown_secs = 3.0;
+            log::info!(
+                "Lobby {} countdown snapped to 3s by host player {}",
+                lobby_id,
+                player_id
+            );
         }
         _ => {}
     }
@@ -473,12 +536,17 @@ pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
                 leader: p.leader,
             })
             .collect(),
+        has_password: g.password.is_some(),
+        host_name: g.host_name.clone(),
+        bot_count: g.config.bot_count,
+        nation_count: g.config.nation_count,
+        bot_difficulty: g.config.bot_difficulty,
     }
 }
 
-/// Private lobbies are omitted from the global LobbiesBroadcast; push state to members directly.
+/// Host-created lobbies (private or public) are synced to members so all players see the roster.
 pub fn sync_private_lobby_to_members(lobby: &ServerLobby) {
-    if !lobby.is_private || !lobby.joinable() {
+    if lobby.host_player_id.is_none() || !lobby.joinable() {
         return;
     }
     let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby

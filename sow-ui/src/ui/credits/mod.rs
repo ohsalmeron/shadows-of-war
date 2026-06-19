@@ -49,7 +49,11 @@ pub fn draw(
         reduced_motion,
         |ui| {
             let body_size = if compact { 13.0 } else { 14.0 };
-            let body = |text: &str| RichText::new(text).size(body_size).color(palette::text_muted());
+            let body = |text: &str| {
+                RichText::new(text)
+                    .size(body_size)
+                    .color(palette::text_muted())
+            };
             let link = |text: &str| {
                 RichText::new(text)
                     .size(body_size)

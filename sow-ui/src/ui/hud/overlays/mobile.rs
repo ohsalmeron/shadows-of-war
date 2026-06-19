@@ -1,4 +1,4 @@
-use egui::{Color32, pos2};
+use egui::{pos2, Color32};
 use sow_i18n::Language;
 
 use super::super::state::HudState;

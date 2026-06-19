@@ -162,8 +162,12 @@ pub fn build(
         Profile::Crazygames => {
             wasm::brotli_file(&wasm_path)?;
             wasm::brotli_file(&js_path)?;
-            fs::remove_file(&wasm_path)?;
-            fs::remove_file(&js_path)?;
+            wasm::require_brotli_sidecar(&wasm_path)?;
+            wasm::require_brotli_sidecar(&js_path)?;
+            fs::remove_file(&wasm_path)
+                .with_context(|| format!("remove uncompressed wasm {}", wasm_path.display()))?;
+            fs::remove_file(&js_path)
+                .with_context(|| format!("remove uncompressed js {}", js_path.display()))?;
             let js_br = format!("{js_file}.br");
             let wasm_br = format!("{wasm_file}.br");
             patch_index_br(
@@ -178,6 +182,8 @@ pub fn build(
         Profile::SelfHosted => {
             wasm::brotli_file(&wasm_path)?;
             wasm::brotli_file(&js_path)?;
+            wasm::require_brotli_sidecar(&wasm_path)?;
+            wasm::require_brotli_sidecar(&js_path)?;
             write_sw(paths, out_dir, version, &js_file, &wasm_file, &build_ts)?;
             write_manifest(out_dir, version, &js_file, &wasm_file, &build_ts)?;
             (js_file.clone(), wasm_file.clone())
@@ -458,12 +464,31 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
             }
         }
         Profile::SelfHosted => {
-            let has_wasm = fs::read_dir(dir)?.filter_map(|e| e.ok()).any(|e| {
-                e.file_name().to_string_lossy().ends_with("_bg.wasm")
-                    && !e.file_name().to_string_lossy().ends_with(".br")
-            });
-            if !has_wasm {
+            let mut wasm_name = None;
+            let mut js_name = None;
+            for e in fs::read_dir(dir)? {
+                let e = e?;
+                let name = e.file_name().to_string_lossy().into_owned();
+                if name.ends_with("_bg.wasm") && !name.ends_with(".br") {
+                    wasm_name = Some(name);
+                } else if name.starts_with("sow_client_")
+                    && name.ends_with(".js")
+                    && !name.ends_with(".br")
+                {
+                    js_name = Some(name);
+                }
+            }
+            let Some(wasm_name) = wasm_name else {
                 bail!("missing raw *_bg.wasm");
+            };
+            let Some(js_name) = js_name else {
+                bail!("missing raw sow_client_*.js");
+            };
+            if !dir.join(format!("{wasm_name}.br")).is_file() {
+                bail!("missing brotli sidecar {wasm_name}.br");
+            }
+            if !dir.join(format!("{js_name}.br")).is_file() {
+                bail!("missing brotli sidecar {js_name}.br");
             }
         }
         Profile::SiteDev => {

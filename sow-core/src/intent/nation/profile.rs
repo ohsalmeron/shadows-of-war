@@ -1,6 +1,4 @@
-
 use crate::protocol::GameplayIntent;
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) enum BotDecisionKind {
@@ -98,4 +96,3 @@ pub(super) fn get_bot_ai_profile(bot_id: u16, is_nation: bool) -> BotAiProfile {
         }
     }
 }
-

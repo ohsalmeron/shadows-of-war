@@ -39,14 +39,7 @@ impl SowApp {
 
         for p in players {
             if p.player_type == sow_core::player::PlayerType::Human {
-                new_engine.spawn_human(
-                    p.id,
-                    p.name,
-                    p.color,
-                    p.team,
-                    p.civilization,
-                    p.leader,
-                );
+                new_engine.spawn_human(p.id, p.name, p.color, p.team, p.civilization, p.leader);
             }
         }
 

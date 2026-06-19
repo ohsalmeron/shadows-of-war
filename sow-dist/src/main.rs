@@ -9,7 +9,6 @@ mod paths;
 mod pipeline;
 mod process;
 mod serve;
-mod tools;
 mod version;
 mod wasm;
 
@@ -206,4 +205,3 @@ fn cmd_emoji(paths: &Paths) -> Result<()> {
         &[("VERBOSE", "1")],
     )
 }
-

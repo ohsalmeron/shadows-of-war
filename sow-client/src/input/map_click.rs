@@ -1,5 +1,5 @@
-use crate::app::SowApp;
 use super::placement::resolve_build_target_tile;
+use crate::app::SowApp;
 
 impl SowApp {
     pub(crate) fn try_begin_hold_attack(&mut self, x: f64, y: f64, is_touch: bool) {
@@ -57,8 +57,16 @@ impl SowApp {
                 .current_snapshot
                 .as_ref()
                 .map(|s| {
-                    let my_team = s.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
-                    let other_team = s.players.iter().find(|p| p.id == owner).and_then(|p| p.team);
+                    let my_team = s
+                        .players
+                        .iter()
+                        .find(|p| p.id == my_id)
+                        .and_then(|p| p.team);
+                    let other_team = s
+                        .players
+                        .iter()
+                        .find(|p| p.id == owner)
+                        .and_then(|p| p.team);
                     my_team.is_some() && my_team == other_team
                 })
                 .unwrap_or(false);
@@ -249,8 +257,16 @@ impl SowApp {
                     .current_snapshot
                     .as_ref()
                     .map(|s| {
-                        let my_team = s.players.iter().find(|p| p.id == my_id).and_then(|p| p.team);
-                        let other_team = s.players.iter().find(|p| p.id == owner).and_then(|p| p.team);
+                        let my_team = s
+                            .players
+                            .iter()
+                            .find(|p| p.id == my_id)
+                            .and_then(|p| p.team);
+                        let other_team = s
+                            .players
+                            .iter()
+                            .find(|p| p.id == owner)
+                            .and_then(|p| p.team);
                         my_team.is_some() && my_team == other_team
                     })
                     .unwrap_or(false);

@@ -4,10 +4,9 @@ use std::time::{Duration, Instant};
 
 use rodio::source::Source;
 
-use crate::{BuildingSoundKind, SpatialSoundParams};
-use super::engine::{queue_spatial, SimpleRng, SoundPriority, SAMPLE_RATE};
+use super::engine::{SAMPLE_RATE, SimpleRng, SoundPriority, queue_spatial};
 use super::tone::{note_envelope, sweep_envelope, warm_at};
-
+use crate::{BuildingSoundKind, SpatialSoundParams};
 
 #[derive(Default)]
 struct BuildingSession {
@@ -405,10 +404,7 @@ impl Source for BunkerDefenseSource {
     }
 }
 
-pub fn play_building_placement_sound(
-    kind: BuildingSoundKind,
-    spatial: SpatialSoundParams,
-) {
+pub fn play_building_placement_sound(kind: BuildingSoundKind, spatial: SpatialSoundParams) {
     queue_spatial(
         BuildingPlacementSource::new(kind),
         spatial,
@@ -416,10 +412,7 @@ pub fn play_building_placement_sound(
     );
 }
 
-pub fn play_building_completed_sound(
-    kind: BuildingSoundKind,
-    spatial: SpatialSoundParams,
-) {
+pub fn play_building_completed_sound(kind: BuildingSoundKind, spatial: SpatialSoundParams) {
     let _ = kind;
     queue_spatial(
         BuildingCompletionSource::new(),

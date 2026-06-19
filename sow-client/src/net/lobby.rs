@@ -29,6 +29,11 @@ pub(crate) fn seed_joined_lobby_entry(
             map_name: ack.map_name.clone(),
             game_mode: "FFA".to_string(),
             players: vec![me],
+            has_password: false,
+            host_name: String::new(),
+            bot_count: 0,
+            nation_count: 0,
+            bot_difficulty: Default::default(),
         });
     }
 }
@@ -85,8 +90,12 @@ impl SowApp {
         });
     }
 
-    pub(crate) fn send_join_if_connected(&mut self, target_lobby_id: Option<u64>, host_private: bool) {
-        let join_msg = self.make_join_message(target_lobby_id, host_private);
+    pub(crate) fn send_join_if_connected(
+        &mut self,
+        target_lobby_id: Option<u64>,
+        host_private: bool,
+    ) {
+        let join_msg = self.make_join_message(target_lobby_id, host_private, None, None);
         if let Ok(json) = bincode::serialize(&join_msg) {
             if let Some(c) = self.net.client.as_ref() {
                 c.send(json);

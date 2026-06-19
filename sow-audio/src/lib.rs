@@ -119,7 +119,6 @@ pub fn play_defeat_sound() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 

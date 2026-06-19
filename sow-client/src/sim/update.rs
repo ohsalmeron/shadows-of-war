@@ -74,7 +74,10 @@ impl SowApp {
                                 let now_instant = web_time::Instant::now();
                                 if tx.gold > 0.0 {
                                     self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                        text: format!("🪙 +{}", sow_ui::utils::format_number(tx.gold)),
+                                        text: format!(
+                                            "🪙 +{}",
+                                            sow_ui::utils::format_number(tx.gold)
+                                        ),
                                         world_x: wx,
                                         world_y: wy,
                                         start_time: now_instant,
@@ -84,7 +87,10 @@ impl SowApp {
                                 }
                                 if tx.troops > 0.0 {
                                     self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                        text: format!("⚔️ +{}", sow_ui::utils::format_number(tx.troops)),
+                                        text: format!(
+                                            "⚔️ +{}",
+                                            sow_ui::utils::format_number(tx.troops)
+                                        ),
                                         world_x: wx,
                                         world_y: wy + 0.5,
                                         start_time: now_instant,
@@ -212,7 +218,10 @@ impl SowApp {
                             }
                             if tx.troops > 0.0 {
                                 self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                    text: format!("⚔️ +{}", sow_ui::utils::format_number(tx.troops)),
+                                    text: format!(
+                                        "⚔️ +{}",
+                                        sow_ui::utils::format_number(tx.troops)
+                                    ),
                                     world_x: wx,
                                     world_y: wy + 0.5,
                                     start_time: now_instant,
@@ -371,22 +380,21 @@ impl SowApp {
             self.ui.app.hud_state.max_troops = player.max_troops;
 
             // Compute correct actual troop rate
-            let mut rate = 0.0;
             if let Some(e) = &self.sim.engine {
                 let my_pid = self.sim.my_player_id.unwrap_or(1);
-                let agg = e.building_aggregates.get(my_pid as usize).copied().unwrap_or_default();
-                let leader = player.leader;
-                let sun_tzu_mult = if leader == sow_core::player::Leader::SunTzu { 1.20 } else { 1.0 };
-                let ragnar_mult = if leader == sow_core::player::Leader::Ragnar { 1.50 } else { 1.0 };
-                let vercingetorix_mult = if leader == sow_core::player::Leader::Vercingetorix { 1.50 } else { 1.0 };
-
-                let base_rate = self.sim.config.troop_base_income
-                    + 50.0 * agg.city_levels as f64 * vercingetorix_mult
-                    + 80.0 * agg.armory_levels as f64 * sun_tzu_mult
-                    + self.sim.config.port_troop_income * agg.port_levels as f64 * ragnar_mult;
-                rate = base_rate * self.sim.config.global_speed_multiplier;
+                let agg = e
+                    .building_aggregates
+                    .get(my_pid as usize)
+                    .copied()
+                    .unwrap_or_default();
+                self.ui.app.hud_state.troop_rate =
+                    sow_core::execution::income_rates::troop_income_per_second(
+                        player.tile_count,
+                        agg,
+                        player.leader,
+                        &self.sim.config,
+                    ) * self.sim.config.global_speed_multiplier;
             }
-            self.ui.app.hud_state.troop_rate = rate;
         }
     }
 }

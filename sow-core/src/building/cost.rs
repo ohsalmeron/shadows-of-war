@@ -25,7 +25,9 @@ pub fn structure_build_cost_gold(
         BuildingKind::Factory => cfg.cost_factory,
         BuildingKind::Port => cfg.cost_port,
     };
-    base_cost * 1.1f64.powi(count as i32)
+    let cap_mult = cfg.cost_scale_cap_multiplier.max(1.0);
+    let scaled = base_cost * 1.1f64.powi(count as i32);
+    scaled.min(base_cost * cap_mult)
 }
 
 #[inline]

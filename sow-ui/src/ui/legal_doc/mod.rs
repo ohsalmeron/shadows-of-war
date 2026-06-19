@@ -26,7 +26,11 @@ pub fn draw(
             ui.add(
                 egui::Label::new(
                     RichText::new(&doc.updated)
-                        .font(crate::ui::theme::font_regular(if compact { 12.0 } else { 13.0 }))
+                        .font(crate::ui::theme::font_regular(if compact {
+                            12.0
+                        } else {
+                            13.0
+                        }))
                         .color(palette::text_muted()),
                 )
                 .wrap(),

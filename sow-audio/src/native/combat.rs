@@ -3,15 +3,14 @@ use std::time::Duration;
 
 use rodio::source::Source;
 
-use crate::{CombatSoundKind, SpatialSoundParams};
 use super::death::PulseSource;
-use super::engine::{ArpeggioSource, SimpleRng, queue_spatial, SoundPriority, SAMPLE_RATE};
+use super::engine::{ArpeggioSource, SAMPLE_RATE, SimpleRng, SoundPriority, queue_spatial};
 use super::music::{
-    degrees_to_freqs, freq_at, music_session, note_dur_samples, pick_base_degree, tile_hash,
-    MusicSession,
+    MusicSession, degrees_to_freqs, freq_at, music_session, note_dur_samples, pick_base_degree,
+    tile_hash,
 };
 use super::tone::{sweep_envelope, warm_at};
-
+use crate::{CombatSoundKind, SpatialSoundParams};
 
 struct DoublePulseSource {
     pulse1: PulseSource,
@@ -77,14 +76,7 @@ struct WarHornSource {
 }
 
 impl WarHornSource {
-    fn new(
-        freq: f32,
-        dur: f32,
-        v_freq: f32,
-        v_depth: f32,
-        decay: f32,
-        amp: f32,
-    ) -> Self {
+    fn new(freq: f32, dur: f32, v_freq: f32, v_depth: f32, decay: f32, amp: f32) -> Self {
         Self {
             sample_idx: 0,
             duration_samples: (SAMPLE_RATE as f32 * dur) as u64,
@@ -416,9 +408,7 @@ fn build_procedural_sound(
             let v_depth = 18.0 * rng.range(0.85, 1.15);
             let dur = 0.08 + 0.05 * (troops / 3000.0).clamp(0.0, 1.0);
             let decay = rng.range(10.0, 14.0);
-            ProceduralSound::WarHorn(WarHornSource::new(
-                root, dur, v_freq, v_depth, decay, amp,
-            ))
+            ProceduralSound::WarHorn(WarHornSource::new(root, dur, v_freq, v_depth, decay, amp))
         }
         CombatSoundKind::CounterAttack => {
             let jitter = rng.range(0.95, 1.05);

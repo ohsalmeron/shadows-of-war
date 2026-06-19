@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod bot_iq_alliance_tests {
-    use crate::intent::nation::structures::bot_structure_target_count;
     use crate::engine::SowEngine;
     use crate::game::{BuildingKind, GamePhase, GameState};
+    use crate::intent::nation::structures::bot_structure_target_count;
     use crate::player::Player;
     use crate::water_components::WaterComponents;
 

@@ -1,6 +1,3 @@
-
-
-
 /// Damped spring overshoot: approaches 1.0 with a single bounce.
 #[inline]
 pub(crate) fn spring_overshoot(t: f32) -> f32 {
@@ -9,7 +6,7 @@ pub(crate) fn spring_overshoot(t: f32) -> f32 {
 
 /// Draws a floating emoji status icon (Request, Handshake, Betrayal) with spring entrance animation.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn draw_floating_status_emoji(
+pub(crate) fn draw_floating_status_emoji(
     painter: &egui::Painter,
     center: egui::Pos2,
     player_id: u16,
@@ -95,7 +92,7 @@ pub(super) fn draw_floating_status_emoji(
 }
 
 /// Draws floating animated active express emoji above the nameplate.
-pub(super) fn draw_express_emoji(
+pub(crate) fn draw_express_emoji(
     painter: &egui::Painter,
     center: egui::Pos2,
     player_id: u16,

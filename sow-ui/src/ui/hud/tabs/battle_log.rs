@@ -1,7 +1,7 @@
-use egui::{Color32, RichText, Stroke, vec2};
+use egui::{vec2, Color32, RichText, Stroke};
 use sow_i18n::Language;
 
-use super::super::state::{HudState, get_player_display_name};
+use super::super::state::{get_player_display_name, HudState};
 
 pub(in crate::ui::hud) enum DispatchKind {
     Incoming,

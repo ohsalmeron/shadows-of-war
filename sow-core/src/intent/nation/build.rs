@@ -45,17 +45,20 @@ impl SowEngine {
                         BuildingKind::Port,
                     ];
                     build_order.sort_by(|&a, &b| {
-                        let owned_a = agg.total_structures_of_kind(a);
-                        let owned_b = agg.total_structures_of_kind(b);
-                        let cost_a = structure_build_cost_gold(a, owned_a, &self.state.config);
-                        let cost_b = structure_build_cost_gold(b, owned_b, &self.state.config);
-                        cost_a.partial_cmp(&cost_b).unwrap_or(std::cmp::Ordering::Equal)
+                        let levels_a = agg.levels_of_kind(a);
+                        let levels_b = agg.levels_of_kind(b);
+                        let cost_a = structure_build_cost_gold(a, levels_a, &self.state.config);
+                        let cost_b = structure_build_cost_gold(b, levels_b, &self.state.config);
+                        cost_a
+                            .partial_cmp(&cost_b)
+                            .unwrap_or(std::cmp::Ordering::Equal)
                     });
                     for kind in build_order {
                         if !structure_kind_enabled(kind) {
                             continue;
                         }
                         let owned = agg.total_structures_of_kind(kind);
+                        let level_count = agg.levels_of_kind(kind);
                         let mut target_count =
                             bot_structure_target_count(kind, city_equivalent, bot_iq);
                         if kind == BuildingKind::Bunker && bot_iq >= 110 {
@@ -70,16 +73,14 @@ impl SowEngine {
                                 target_count += 3;
                             }
                         }
-                        let total_owned = agg.count_city
-                            + agg.count_bunker
-                            + agg.count_factory
-                            + agg.count_port;
+                        let total_owned =
+                            agg.count_city + agg.count_bunker + agg.count_factory + agg.count_port;
                         let density = total_owned as f32 / player_tile_count.max(1) as f32;
                         let is_density_high = bot_iq >= 110 && density > 1.0 / 600.0;
                         let structure_floor = player_tile_count / 800;
                         let under_structure_floor = total_owned < structure_floor;
                         let wants_new = owned < target_count || under_structure_floor;
-                        let cost = structure_build_cost_gold(kind, owned, &self.state.config);
+                        let cost = structure_build_cost_gold(kind, level_count, &self.state.config);
 
                         if !wants_new || is_density_high {
                             if let Some(d) = stack_build_decision(
@@ -115,8 +116,7 @@ impl SowEngine {
                             let border_len = p.border_tiles.count_ones();
                             for _ in 0..PLACEMENT_ATTEMPTS {
                                 if border_len > 0 {
-                                    let pick =
-                                        p.bot_rng.next_int(0, border_len as i32) as usize;
+                                    let pick = p.bot_rng.next_int(0, border_len as i32) as usize;
                                     if let Some(idx) = p.border_tiles.ones().nth(pick) {
                                         border.push(idx);
                                     }
@@ -158,13 +158,9 @@ impl SowEngine {
                         }
 
                         // Boxed in: stack on existing (player rules via apply_build_structure_intent)
-                        if let Some(d) = stack_build_decision(
-                            &self.buildings,
-                            bot_id,
-                            kind,
-                            player_gold,
-                            cost,
-                        ) {
+                        if let Some(d) =
+                            stack_build_decision(&self.buildings, bot_id, kind, player_gold, cost)
+                        {
                             if let Some(p_me) = self.state.player_mut(bot_id) {
                                 p_me.iq_points -= build_cost;
                             }

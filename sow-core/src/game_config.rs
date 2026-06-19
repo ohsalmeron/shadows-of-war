@@ -20,6 +20,30 @@ fn default_troop_base_income() -> f64 {
     2.0
 }
 
+fn default_cost_scale_cap_multiplier() -> f64 {
+    10.0
+}
+
+fn default_territory_gold_amount() -> f64 {
+    1.0
+}
+
+fn default_territory_gold_tiles() -> u32 {
+    4
+}
+
+fn default_territory_troop_amount() -> f64 {
+    1.0
+}
+
+fn default_territory_troop_tiles() -> u32 {
+    8
+}
+
+fn default_city_troop_income() -> f64 {
+    50.0
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum BotDifficulty {
     #[default]
@@ -115,6 +139,18 @@ pub struct GameConfig {
     pub max_troops_base: f64,
     /// How much extra troop capacity is gained based on total territory owned.
     pub max_troops_scale: f64,
+    /// Gold per second per `territory_gold_tiles` owned (smooth fractional scaling).
+    #[serde(default = "default_territory_gold_amount")]
+    pub territory_gold_amount: f64,
+    /// Tiles per territory gold interval (e.g. 4 → 1 gold/s per 4 tiles).
+    #[serde(default = "default_territory_gold_tiles")]
+    pub territory_gold_tiles: u32,
+    /// Troops per second per `territory_troop_tiles` owned (smooth fractional scaling).
+    #[serde(default = "default_territory_troop_amount")]
+    pub territory_troop_amount: f64,
+    /// Tiles per territory troop interval (e.g. 8 → 1 troop/s per 8 tiles).
+    #[serde(default = "default_territory_troop_tiles")]
+    pub territory_troop_tiles: u32,
 
     // ==========================================
     // Buildings (stacking model — each placed building adds its flat bonus)
@@ -123,6 +159,9 @@ pub struct GameConfig {
     pub city_max_troops: f64,
     /// Gold income per second added per City.
     pub city_gold_income: f64,
+    /// Troop income per second added per City level.
+    #[serde(default = "default_city_troop_income")]
+    pub city_troop_income: f64,
     /// Defense range/radius of each Bunker.
     pub bunker_range: f64,
     /// Extra attack frontier priority per Bunker within range.
@@ -143,6 +182,9 @@ pub struct GameConfig {
     pub cost_factory: f64,
     /// Gold cost to place a Port.
     pub cost_port: f64,
+    /// Max multiplier applied to structure base cost as count grows (cost plateaus at base × this).
+    #[serde(default = "default_cost_scale_cap_multiplier")]
+    pub cost_scale_cap_multiplier: f64,
     /// Gold cost to launch a nuke.
     pub nuke_cost: f64,
 
@@ -201,10 +243,15 @@ impl Default for GameConfig {
             troop_base_income: 250.0,
             max_troops_base: 10.0,
             max_troops_scale: 350.0,
+            territory_gold_amount: 1.0,
+            territory_gold_tiles: 4,
+            territory_troop_amount: 1.0,
+            territory_troop_tiles: 8,
 
             // Buildings (stacking)
             city_max_troops: 5000.0,
             city_gold_income: 4.0,
+            city_troop_income: 50.0,
             bunker_range: 14.0,
             bunker_priority: 120.0,
             bunker_strength: 4.0,
@@ -215,6 +262,7 @@ impl Default for GameConfig {
             cost_bunker: 75.0,
             cost_factory: 125.0,
             cost_port: 150.0,
+            cost_scale_cap_multiplier: 10.0,
             nuke_cost: 5.0,
 
             player_civilization: crate::player::Civilization::Rome,

@@ -1,13 +1,14 @@
+use crate::diplomacy::maybe_betray_for_attack;
 use crate::engine::SowEngine;
 use crate::game::{BuildingKind, NukeKind};
 use crate::protocol::{AttackIntent, GameplayIntent};
-use crate::diplomacy::maybe_betray_for_attack;
 use crate::rng::NextIntExt;
 use wyrand::WyRand;
 
 use super::profile::{AiSlot, BotDecision, BotDecisionKind};
 
 impl SowEngine {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn nation_run_combat_for_slot(
         &mut self,
         slot: &AiSlot,
@@ -139,10 +140,7 @@ impl SowEngine {
                                 p_me.alliances.contains(&p.id)
                                     || (p_me.team.is_some() && p_me.team == p.team)
                             };
-                            if !is_friendly
-                                && p.troops < min_troops
-                                && !p.border_tiles.is_empty()
-                            {
+                            if !is_friendly && p.troops < min_troops && !p.border_tiles.is_empty() {
                                 min_troops = p.troops;
                                 best_target_p_id = Some(p.id);
                             }
@@ -156,8 +154,7 @@ impl SowEngine {
                             let border_len = target_p.border_tiles.count_ones();
                             if border_len > 0 {
                                 let pick_idx = (self.state.tick as usize) % border_len;
-                                if let Some(t_tile) = target_p.border_tiles.ones().nth(pick_idx)
-                                {
+                                if let Some(t_tile) = target_p.border_tiles.ones().nth(pick_idx) {
                                     let border_tiles =
                                         &self.state.player(bot_id).unwrap().border_tiles;
                                     if let Ok(_route) = crate::warp_fleet::resolve_fleet_route(
@@ -249,11 +246,9 @@ impl SowEngine {
                             if let (Some(p_t), Some(p_b)) =
                                 (self.state.player(t_id), self.state.player(best_target))
                             {
-                                let t_is_tribe = p_t.player_type
-                                    == crate::player::PlayerType::Bot
+                                let t_is_tribe = p_t.player_type == crate::player::PlayerType::Bot
                                     && t_id % 100 != 0;
-                                let b_is_tribe = p_b.player_type
-                                    == crate::player::PlayerType::Bot
+                                let b_is_tribe = p_b.player_type == crate::player::PlayerType::Bot
                                     && !best_target.is_multiple_of(100);
 
                                 if (t_is_tribe && !b_is_tribe)
@@ -338,7 +333,6 @@ impl SowEngine {
         }
     }
 
-
     pub(super) fn maybe_launch_nuke(
         &mut self,
         bot_id: u16,
@@ -349,7 +343,7 @@ impl SowEngine {
         if bot_iq < 100 {
             return;
         }
-    
+
         if self.building_aggregates_dirty {
             self.building_aggregates = crate::building::core::aggregate_buildings_per_player(
                 self.buildings.iter().copied(),
@@ -357,7 +351,7 @@ impl SowEngine {
             );
             self.building_aggregates_dirty = false;
         }
-    
+
         let agg = self
             .building_aggregates
             .get(bot_id as usize)
@@ -366,7 +360,7 @@ impl SowEngine {
         if agg.arsenal_levels == 0 {
             return;
         }
-    
+
         let mut has_silo = false;
         for b in &self.buildings {
             if b.owner_id == bot_id
@@ -381,18 +375,18 @@ impl SowEngine {
         if !has_silo {
             return;
         }
-    
+
         let Some(player) = self.state.player(bot_id) else {
             return;
         };
         let cost = self.state.config.nuke_cost;
         let perceived_cost = cost;
-    
+
         if player.gold < perceived_cost {
             return;
         }
         let kind = NukeKind::AtomBomb;
-    
+
         // Find crown leader
         let mut leader = 0;
         let mut leader_tiles = 0;
@@ -402,20 +396,20 @@ impl SowEngine {
                 leader_tiles = p.tile_count;
             }
         }
-    
+
         let mut primary_target = targets.first().copied().unwrap_or(0);
         if targets.contains(&leader) {
             primary_target = leader;
         }
-    
+
         if primary_target == 0 || primary_target == bot_id {
             return;
         }
-    
+
         // Find best structure to nuke
         let mut best_score = -1.0;
         let mut best_tile = 0;
-    
+
         for b in &self.buildings {
             if b.owner_id != primary_target || b.under_construction {
                 continue;
@@ -435,10 +429,10 @@ impl SowEngine {
                 BuildingKind::Factory => 15000.0 * (b.level as f64),
                 BuildingKind::Port => 10000.0 * (b.level as f64),
             };
-    
+
             let bx = b.tile_idx % self.state.map.width;
             let by = b.tile_idx / self.state.map.width;
-    
+
             // SAM avoidance
             let mut sam_covered = false;
             for b2 in &self.buildings {
@@ -468,20 +462,20 @@ impl SowEngine {
             if sam_covered {
                 score -= 100000.0;
             }
-    
+
             // Target dedup
             for (to, tt, _) in &self.recent_nuke_targets {
                 if *to == primary_target && *tt == b.tile_idx {
                     score -= 50000.0;
                 }
             }
-    
+
             if score > best_score {
                 best_score = score;
                 best_tile = b.tile_idx;
             }
         }
-    
+
         if best_score > 0.0 {
             self.recent_nuke_targets
                 .push((primary_target, best_tile, self.state.tick));

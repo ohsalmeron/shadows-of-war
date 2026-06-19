@@ -1,4 +1,3 @@
-
 use std::sync::Arc;
 use web_time::{Duration, Instant};
 
@@ -153,6 +152,7 @@ pub struct DeathNameplateAnimation {
     pub player_type: sow_core::player::PlayerType,
     pub player_id: u16,
     pub nameplate_size: f32,
+    pub by_nuke: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -213,6 +213,13 @@ pub struct UiState {
     pub bunker_last_sound_time: std::collections::HashMap<u64, web_time::Instant>,
     pub mover_scene: crate::render::world::movers::MoverScene,
     pub click_markers: Vec<ClickMarker>,
+}
+
+impl UiState {
+    pub fn invalidate_egui_dependent_caches(&mut self) {
+        self.nameplate_galleys.clear();
+        self.nameplate_troops_last_update.clear();
+    }
 }
 
 /// Wall-clock anchor for render-behind-by-one-tick interpolation between sim snapshots.

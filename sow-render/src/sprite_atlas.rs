@@ -67,8 +67,11 @@ impl SpriteAtlas {
         let coords: Vec<(u32, u32)> = emoji_labels
             .iter()
             .map(|e| {
-                let r = sow_core::emoji::manifest::lookup(e)
-                    .unwrap_or_else(|| panic!("Mover sprite emoji {e} missing from atlas — run `./sow emoji` to rebuild"));
+                let r = sow_core::emoji::manifest::lookup(e).unwrap_or_else(|| {
+                    panic!(
+                        "Mover sprite emoji {e} missing from atlas — run `./sow emoji` to rebuild"
+                    )
+                });
                 (r.x, r.y)
             })
             .collect();

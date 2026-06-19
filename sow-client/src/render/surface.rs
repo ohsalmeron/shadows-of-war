@@ -73,6 +73,8 @@ impl SowApp {
 
                         self.ui.egui_ctx = egui::Context::default();
                         sow_ui::ui::theme::apply_theme(&self.ui.egui_ctx);
+                        self.ui.invalidate_egui_dependent_caches();
+                        sow_core::register_game_assets(&self.ui.egui_ctx);
                         log::info!("Successfully created surface on retry.");
                     }
                     Err(e) => {

@@ -46,18 +46,14 @@ fn quality_help<'a>(strings: &'a sow_i18n::SettingsStrings, q: &GraphicsQuality)
     }
 }
 
-
-pub fn draw(
-    root_ui: &mut egui::Ui,
-    state: &mut SettingsState,
-    is_open: &mut bool,
-) -> Option<UiAction> {
+pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) -> Option<UiAction> {
+    let mut open = is_open;
     let mut action = None;
     let strings = &sow_i18n::get(state.language).settings;
 
     let res = crate::ui::theme::draw_standard_modal(
         root_ui.ctx(),
-        is_open,
+        &mut open,
         "settings",
         &strings.title,
         &strings.back_button,
@@ -111,10 +107,7 @@ pub fn draw(
                     ui.label(RichText::new(&strings.music_volume).color(palette::text_muted()));
                     ui.add_enabled_ui(!state.mute_all, |ui| {
                         if ui
-                            .add(
-                                Slider::new(&mut state.music_volume, 0.0..=1.0)
-                                    .show_value(true),
-                            )
+                            .add(Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(true))
                             .changed()
                         {
                             touch_applied(state);
@@ -125,10 +118,7 @@ pub fn draw(
                     ui.label(RichText::new(&strings.sfx_volume).color(palette::text_muted()));
                     ui.add_enabled_ui(!state.mute_all, |ui| {
                         if ui
-                            .add(
-                                Slider::new(&mut state.sfx_volume, 0.0..=1.0)
-                                    .show_value(true),
-                            )
+                            .add(Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(true))
                             .changed()
                         {
                             touch_applied(state);
@@ -169,9 +159,9 @@ pub fn draw(
                         });
                     ui.end_row();
 
-                    ui.label("");
+                    ui.label(RichText::new(&strings.reduced_motion).color(palette::text_muted()));
                     if ui
-                        .checkbox(&mut state.reduced_motion, &strings.reduced_motion)
+                        .checkbox(&mut state.reduced_motion, "")
                         .on_hover_text(&strings.reduced_motion_help)
                         .changed()
                     {
@@ -184,9 +174,7 @@ pub fn draw(
                 .applied_hint_until
                 .is_some_and(|t| t.elapsed().as_secs_f32() < 2.0)
             {
-                ui.label(
-                    RichText::new(&strings.settings_applied).color(palette::neon_cyan()),
-                );
+                ui.label(RichText::new(&strings.settings_applied).color(palette::neon_cyan()));
             }
 
             ui.add_space(8.0);
@@ -211,7 +199,7 @@ pub fn draw(
         },
     );
 
-    if res.is_some() && !*is_open {
+    if res.is_some() && !open {
         action = Some(UiAction::ToggleSettings);
     }
     action

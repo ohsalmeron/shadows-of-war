@@ -5,10 +5,10 @@ use blade_graphics as gpu;
 use egui::{Context, RawInput, Rect};
 use sow_core::protocol::SimSnapshot;
 use sow_net::client::SowClient;
+use sow_render::{MapRenderer, RenderContext};
 use sow_ui::ClientApp;
 use std::collections::HashMap;
 use web_time::{Duration, Instant};
-use sow_render::{MapRenderer, RenderContext};
 
 impl Default for SowApp {
     fn default() -> Self {

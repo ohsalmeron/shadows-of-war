@@ -1,14 +1,13 @@
+use super::super::*;
 use super::bunker::paint_bunker_effects;
 use super::cluster;
 use super::overlays::paint_building_overlays;
 use super::plates::*;
 use super::preview::paint_building_placement_preview;
-use super::super::*;
 
 use crate::config::ClientVisualConfig;
 use crate::render::world::movers::world_to_tile;
 use crate::render::world::utils::*;
-
 
 #[allow(unused_variables)]
 pub(crate) fn render(
@@ -69,10 +68,8 @@ pub(crate) fn render(
                 None
             };
 
-
-        let mut rendered_buildings = cluster::collect_rendered_buildings(
-            snap, sim.map_w, zoom_scaled, far_zoom_threshold,
-        );
+        let mut rendered_buildings =
+            cluster::collect_rendered_buildings(snap, sim.map_w, zoom_scaled, far_zoom_threshold);
         rendered_buildings.sort_by(|a, b| {
             a.by.partial_cmp(&b.by)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -248,23 +245,58 @@ pub(crate) fn render(
                     }
                 }
 
-
-            paint_bunker_effects(
-                ui, sim, input, time, gfx, ctx, &painter, snap, config, &b,
-                center, base_size, zoom_scaled, sf, edge_cache_stale, player_colors,
-            );
+                paint_bunker_effects(
+                    ui,
+                    sim,
+                    input,
+                    time,
+                    gfx,
+                    ctx,
+                    &painter,
+                    snap,
+                    config,
+                    &b,
+                    center,
+                    base_size,
+                    zoom_scaled,
+                    sf,
+                    edge_cache_stale,
+                    player_colors,
+                );
             }
 
             paint_building_overlays(
-                ui, sim, input, time, &painter, snap, config, &b,
-                center, base_size, zoom_scaled, final_scale, sf,
-                hovered_tile_idx, player_colors,
+                ui,
+                sim,
+                input,
+                time,
+                &painter,
+                snap,
+                config,
+                &b,
+                center,
+                base_size,
+                zoom_scaled,
+                final_scale,
+                sf,
+                hovered_tile_idx,
+                player_colors,
             );
         }
 
         paint_building_placement_preview(
-            ui, sim, input, time, gfx, &painter, snap,
-            hovered_tile_idx, zoom_scaled, final_scale, sf, config,
+            ui,
+            sim,
+            input,
+            time,
+            gfx,
+            &painter,
+            snap,
+            hovered_tile_idx,
+            zoom_scaled,
+            final_scale,
+            sf,
+            config,
         );
     }
 }

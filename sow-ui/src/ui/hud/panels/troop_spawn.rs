@@ -1,4 +1,4 @@
-use egui::{Align2, Color32, RichText, Stroke, pos2, vec2};
+use egui::{pos2, vec2, Align2, Color32, RichText, Stroke};
 use sow_i18n::Language;
 
 use super::super::state::HudState;
@@ -153,7 +153,12 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     }
 }
 
-pub(in crate::ui::hud) fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact: bool, lang: Language) {
+pub(in crate::ui::hud) fn draw_spawn_panel(
+    ui: &mut egui::Ui,
+    secs: f32,
+    compact: bool,
+    lang: Language,
+) {
     ui.vertical_centered(|ui| {
         if compact {
             ui.add_space(8.0);
@@ -179,7 +184,12 @@ pub(in crate::ui::hud) fn draw_spawn_panel(ui: &mut egui::Ui, secs: f32, compact
     });
 }
 
-pub(in crate::ui::hud) fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, lang: Language) {
+pub(in crate::ui::hud) fn draw_persistent_header(
+    ui: &mut egui::Ui,
+    state: &HudState,
+    compact: bool,
+    lang: Language,
+) {
     if let Some(secs) = state.spawn_timer_secs {
         draw_spawn_panel(ui, secs, compact, lang);
         return;
@@ -239,7 +249,7 @@ pub(in crate::ui::hud) fn draw_persistent_header(ui: &mut egui::Ui, state: &HudS
             ))
             .show(ui, |ui| {
                 ui.add(crate::widgets::ResourceLabel::gold(state.gold).font(
-                    egui::FontId::proportional(if compact { 11.0 } else { 12.0 })
+                    egui::FontId::proportional(if compact { 11.0 } else { 12.0 }),
                 ));
             });
     });

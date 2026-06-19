@@ -137,8 +137,16 @@ pub fn hud_icon_rail_spacing(ui: &mut egui::Ui) {
 
 #[inline]
 pub fn standard_panel_frame(compact: bool) -> egui::Frame {
-    let stroke = if compact { egui::Stroke::NONE } else { egui::Stroke::new(1.0_f32, palette::neon_cyan_glow()) };
-    let corner = if compact { CornerRadius::ZERO } else { CornerRadius::same(12) };
+    let stroke = if compact {
+        egui::Stroke::NONE
+    } else {
+        egui::Stroke::new(1.0_f32, palette::neon_cyan_glow())
+    };
+    let corner = if compact {
+        CornerRadius::ZERO
+    } else {
+        CornerRadius::same(12)
+    };
     let margin = if compact { 16 } else { 24 };
     let shadow = if compact {
         egui::Shadow::NONE
@@ -264,7 +272,6 @@ pub fn draw_standard_modal<R>(
 
     result
 }
-
 
 /// Full-screen sub-page frame (settings, single-player setup, etc.).
 ///

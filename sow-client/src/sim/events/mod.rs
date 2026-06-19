@@ -24,6 +24,7 @@ impl SowApp {
                     elimination_x,
                     elimination_y,
                     assists,
+                    by_nuke,
                 } => {
                     self.handle_player_eliminated(
                         snap,
@@ -36,6 +37,7 @@ impl SowApp {
                         elimination_x,
                         elimination_y,
                         &assists,
+                        by_nuke,
                     );
                 }
                 sow_core::game::GameEvent::TileCaptured {

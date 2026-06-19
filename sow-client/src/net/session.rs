@@ -7,6 +7,8 @@ impl SowApp {
         &self,
         target_lobby_id: Option<u64>,
         host_private: bool,
+        host_config: Option<Box<sow_core::game_config::GameConfig>>,
+        password: Option<String>,
     ) -> sow_core::protocol::ClientMessage {
         sow_core::protocol::ClientMessage::Join {
             name: self.ui.app.main_menu_state.player_name.clone(),
@@ -18,6 +20,8 @@ impl SowApp {
             civilization: self.ui.app.main_menu_state.selected_civilization,
             leader: self.ui.app.main_menu_state.selected_leader,
             database_account_id: self.progress_account_id.clone(),
+            host_config,
+            password,
         }
     }
 

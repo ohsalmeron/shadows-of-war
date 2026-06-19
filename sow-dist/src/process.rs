@@ -62,17 +62,6 @@ pub fn run_env(cmd: &str, args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)
     Ok(())
 }
 
-pub fn which(cmd: &str) -> Option<String> {
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        let p = dir.join(cmd);
-        if p.is_file() {
-            return p.into_os_string().into_string().ok();
-        }
-    }
-    None
-}
-
 pub fn output(cmd: &str, args: &[&str]) -> Result<String> {
     let out = Command::new(cmd)
         .args(args)

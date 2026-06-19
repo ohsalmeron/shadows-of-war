@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::input::placement::*;
     use sow_core::game::BuildingKind;

@@ -3,10 +3,7 @@ use sow_i18n::Language;
 
 use super::overlays::{betrayal, error_info, sync};
 use super::panels::transfer;
-use super::state::{
-    BottomHudTab, HudState, dispatch_count,
-    incoming_dispatch_count,
-};
+use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudState};
 use crate::ui::asset_loader::AssetLoader;
 
 mod bottom;
@@ -38,8 +35,8 @@ pub fn draw(
     let mut action = None;
 
     let rect = ui.ctx().content_rect();
-    let compact = rect.width() < 768.0 || rect.width() < rect.height() * 1.25;
-    let portrait_dock = rect.height() > rect.width();
+    let compact = crate::ui::theme::compact_viewport(ui.ctx());
+    let portrait_dock = crate::ui::theme::portrait_layout(ui.ctx());
     let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
     let anim_hover = crate::ui::theme::anim_duration_hover_from_ctx(ui.ctx());
 
@@ -99,9 +96,21 @@ pub fn draw(
     };
 
     draw_bottom_panel(
-        ui, state, cancel_intents, lang, asset_loader, &mut action,
-        portrait_dock, compact, panel_w, log_tabs_enabled, dispatch_total,
-        event_unread, bottom_anchor, bottom_offset, panel_radius,
+        ui,
+        state,
+        cancel_intents,
+        lang,
+        asset_loader,
+        &mut action,
+        portrait_dock,
+        compact,
+        panel_w,
+        log_tabs_enabled,
+        dispatch_total,
+        event_unread,
+        bottom_anchor,
+        bottom_offset,
+        panel_radius,
     );
     draw_top_icons(ui, state, lang, &mut action, asset_loader);
     draw_alliance_inbox(ui, state, cancel_intents, lang, anim, asset_loader);

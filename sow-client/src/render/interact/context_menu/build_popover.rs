@@ -2,19 +2,32 @@ use crate::app::SowApp;
 use egui::Color32;
 
 impl SowApp {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_build_popover(
-        &mut self, _ui: &mut egui::Ui, ctx: &egui::Context, tile_idx: u32,
-        center: egui::Pos2, scale: f32, compact: bool, screen: egui::Rect,
-        outer_r: f32, col: u32, row: u32, is_own_territory: bool, radial_build_active: bool,
+        &mut self,
+        _ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        tile_idx: u32,
+        center: egui::Pos2,
+        scale: f32,
+        compact: bool,
+        screen: egui::Rect,
+        outer_r: f32,
+        col: u32,
+        row: u32,
+        is_own_territory: bool,
+        radial_build_active: bool,
         build_active_id: egui::Id,
     ) {
         // Render Build sub-popover
         if radial_build_active && is_own_territory {
-            let mut area = egui::Area::new(egui::Id::new("radial_build_popover"))
-                .order(egui::Order::Tooltip);
+            let mut area =
+                egui::Area::new(egui::Id::new("radial_build_popover")).order(egui::Order::Tooltip);
 
             if compact {
-                area = area.fixed_pos(screen.center()).pivot(egui::Align2::CENTER_CENTER);
+                area = area
+                    .fixed_pos(screen.center())
+                    .pivot(egui::Align2::CENTER_CENTER);
             } else {
                 area = area.fixed_pos(center - egui::vec2(outer_r + 240.0, 150.0));
             }
@@ -380,10 +393,25 @@ impl SowApp {
 
                                 for &(kind, label, desc) in &buildings_list {
                                     let my_player_id = self.sim.my_player_id.unwrap_or(1);
-                                    let count = self.sim.current_snapshot.as_ref()
-                                        .map(|s| s.buildings.iter().filter(|b| b.owner_id == my_player_id && b.kind == kind).count() as u32)
+                                    let count = self
+                                        .sim
+                                        .current_snapshot
+                                        .as_ref()
+                                        .map(|s| {
+                                            s.buildings
+                                                .iter()
+                                                .filter(|b| {
+                                                    b.owner_id == my_player_id && b.kind == kind
+                                                })
+                                                .map(|b| b.level as u32)
+                                                .sum()
+                                        })
                                         .unwrap_or(0);
-                                    let cost = sow_core::building::structure_build_cost_gold(kind, count, &self.sim.config);
+                                    let cost = sow_core::building::structure_build_cost_gold(
+                                        kind,
+                                        count,
+                                        &self.sim.config,
+                                    );
                                     let is_disabled = self.ui.app.hud_state.gold < cost;
 
                                     let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
@@ -491,6 +519,5 @@ impl SowApp {
                     });
             });
         }
-
     }
 }

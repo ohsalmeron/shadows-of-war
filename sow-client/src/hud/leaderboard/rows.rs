@@ -9,15 +9,10 @@ pub const INITIAL_VISIBLE_LIMIT: usize = 10;
 pub(super) const REFRESH_INTERVAL_SECS: f32 = 2.0;
 pub(super) const SCROLL_LOAD_STEP: usize = 10;
 pub(super) const SCROLL_NEAR_BOTTOM: f32 = 24.0;
-const DESKTOP_PANEL_W: f32 = 700.0;
 pub(super) const TABLE_HEADER_H: f32 = 18.0;
-const ROW_COL_SPACING: f32 = 32.0;
-const DESKTOP_FRAME_H_MARGIN: f32 = 24.0;
-const MOBILE_FRAME_H_MARGIN: f32 = 32.0;
 
 pub(super) struct LeaderboardMetrics {
     pub(super) is_mobile: bool,
-    pub(super) panel_width: f32,
     pub(super) row_height: f32,
     pub(super) rank_badge: f32,
     pub(super) avatar_radius: f32,
@@ -29,12 +24,10 @@ pub(super) struct LeaderboardMetrics {
 
 impl LeaderboardMetrics {
     pub(super) fn from_ctx(ctx: &egui::Context) -> Self {
-        let screen = ctx.content_rect();
         let is_mobile = sow_ui::ui::theme::compact_viewport(ctx);
         if is_mobile {
             Self {
                 is_mobile: true,
-                panel_width: screen.width(),
                 row_height: 52.0,
                 rank_badge: 34.0,
                 avatar_radius: 14.0,
@@ -46,7 +39,6 @@ impl LeaderboardMetrics {
         } else {
             Self {
                 is_mobile: false,
-                panel_width: DESKTOP_PANEL_W,
                 row_height: 48.0,
                 rank_badge: 32.0,
                 avatar_radius: 13.0,
@@ -60,22 +52,6 @@ impl LeaderboardMetrics {
 
     fn avatar_col_w(&self) -> f32 {
         self.avatar_radius * 2.0 + 8.0
-    }
-
-    fn name_col_w(&self) -> f32 {
-        let frame_h_margin = if self.is_mobile {
-            MOBILE_FRAME_H_MARGIN
-        } else {
-            DESKTOP_FRAME_H_MARGIN
-        };
-        (self.panel_width
-            - frame_h_margin
-            - self.rank_badge
-            - self.avatar_col_w()
-            - self.control_col_w
-            - self.troops_col_w
-            - ROW_COL_SPACING)
-            .max(80.0)
     }
 }
 
@@ -176,7 +152,11 @@ pub(super) fn rank_badge_style(rank_1based: usize) -> (&'static str, Color32, Co
     }
 }
 
-pub(super) fn paint_rank_badge(ui: &mut egui::Ui, rank_1based: usize, metrics: &LeaderboardMetrics) {
+pub(super) fn paint_rank_badge(
+    ui: &mut egui::Ui,
+    rank_1based: usize,
+    metrics: &LeaderboardMetrics,
+) {
     let (icon, fg, bg) = rank_badge_style(rank_1based);
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(metrics.rank_badge), egui::Sense::hover());
     let painter = ui.painter();
@@ -277,7 +257,20 @@ pub(super) fn paint_player_icon(
 }
 
 pub(super) fn paint_leaderboard_header(ui: &mut egui::Ui, metrics: &LeaderboardMetrics) {
+    let scroll_bar_style = ui.spacing().scroll;
+    let scrollbar_w = scroll_bar_style.bar_width + scroll_bar_style.bar_outer_margin * 2.0;
+    let spacing = ui.spacing().item_spacing.x;
+
     ui.horizontal(|ui| {
+        let name_w = (ui.available_width()
+            - scrollbar_w
+            - metrics.rank_badge
+            - metrics.avatar_col_w()
+            - metrics.control_col_w
+            - metrics.troops_col_w
+            - 4.0 * spacing)
+            .max(80.0);
+
         ui.allocate_exact_size(
             Vec2::new(metrics.rank_badge, TABLE_HEADER_H),
             Sense::hover(),
@@ -287,10 +280,10 @@ pub(super) fn paint_leaderboard_header(ui: &mut egui::Ui, metrics: &LeaderboardM
             Sense::hover(),
         );
         ui.allocate_ui_with_layout(
-            Vec2::new(metrics.name_col_w(), TABLE_HEADER_H),
+            Vec2::new(name_w, TABLE_HEADER_H),
             Layout::left_to_right(Align::Center),
             |ui| {
-                ui.set_width(metrics.name_col_w());
+                ui.set_width(name_w);
                 ui.label(header_label("Player"));
             },
         );
@@ -350,6 +343,20 @@ pub(super) fn paint_leaderboard_player_row(
         .show(ui, |ui| {
             ui.set_min_height(metrics.row_height);
             let row_response = ui.horizontal(|ui| {
+                let spacing = ui.spacing().item_spacing.x;
+                let scroll_bar_style = ui.spacing().scroll;
+                let scrollbar_w =
+                    scroll_bar_style.bar_width + scroll_bar_style.bar_outer_margin * 2.0;
+                let extra_sub = if is_sticky_self { scrollbar_w } else { 0.0 };
+                let name_w = (ui.available_width()
+                    - extra_sub
+                    - metrics.rank_badge
+                    - metrics.avatar_col_w()
+                    - metrics.control_col_w
+                    - metrics.troops_col_w
+                    - 4.0 * spacing)
+                    .max(80.0);
+
                 ui.allocate_ui_with_layout(
                     Vec2::new(metrics.rank_badge, metrics.row_height),
                     Layout::left_to_right(Align::Center),
@@ -382,10 +389,10 @@ pub(super) fn paint_leaderboard_player_row(
                 );
 
                 ui.allocate_ui_with_layout(
-                    Vec2::new(metrics.name_col_w(), metrics.row_height),
+                    Vec2::new(name_w, metrics.row_height),
                     Layout::left_to_right(Align::Center),
                     |ui| {
-                        ui.set_width(metrics.name_col_w());
+                        ui.set_width(name_w);
                         if let Some(ref row_display) = display {
                             let mut name_text = row_display.name.clone();
                             if highlight {

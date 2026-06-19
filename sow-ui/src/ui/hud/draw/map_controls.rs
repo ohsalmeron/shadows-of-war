@@ -2,7 +2,7 @@ use crate::UiAction;
 use egui::Align2;
 use sow_i18n::Language;
 
-use super::super::state::{BottomHudTab, HudState, hud_map_controls_anchor_offset};
+use super::super::state::{hud_map_controls_anchor_offset, BottomHudTab, HudState};
 
 pub(in crate::ui::hud) fn draw_map_controls(
     ui: &mut egui::Ui,
@@ -114,4 +114,3 @@ pub(in crate::ui::hud) fn draw_map_controls(
                 });
         });
 }
-

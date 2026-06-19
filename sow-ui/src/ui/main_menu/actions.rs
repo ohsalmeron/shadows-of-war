@@ -13,41 +13,52 @@ pub fn draw_right_column(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     let scale = crate::ui::theme::viewport_scale(ui.ctx());
-    let solo_primary = (if compact { 24.0 } else { 28.0 }) * scale;
+    let primary_text = (if compact { 24.0 } else { 28.0 }) * scale;
+    let secondary_text = primary_text - 4.0;
+    let settings_text = (if compact { 16.0 } else { 18.0 }) * scale;
     let rail_btn_fill = crate::ui::theme::palette::button_inactive();
     let settings_h = action_min_h * 0.75;
+    let w = ui.available_width();
 
     let solo_btn = ThemeButton::new(&strings.single_player)
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)
-        .min_size(egui::vec2(ui.available_width(), action_min_h))
-        .text_size(solo_primary);
-
+        .min_size(egui::vec2(w, action_min_h))
+        .text_size(primary_text);
     if ui.add(solo_btn).clicked() {
         state.show_single_player_setup = true;
     }
 
     ui.add_space(section_gap);
 
-    let host_btn = ThemeButton::new(&strings.host_private_game)
+    let create_btn = ThemeButton::new(&strings.create_game_btn)
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)
-        .min_size(egui::vec2(ui.available_width(), action_min_h))
-        .text_size(solo_primary - 4.0);
-
-    if ui.add(host_btn).clicked() {
-        *action = Some(UiAction::HostPrivateLobby);
+        .min_size(egui::vec2(w, action_min_h))
+        .text_size(secondary_text);
+    if ui.add(create_btn).clicked() {
+        *action = Some(UiAction::OpenCreateGame);
     }
 
     ui.add_space(section_gap);
 
-    let btn = ThemeButton::new(&strings.settings)
+    let join_btn = ThemeButton::new(&strings.join_game_btn)
         .style(ThemeButtonStyle::Tertiary)
         .custom_fill(rail_btn_fill)
-        .min_size(egui::vec2(ui.available_width(), settings_h))
-        .text_size((if compact { 16.0 } else { 18.0 }) * scale);
+        .min_size(egui::vec2(w, action_min_h))
+        .text_size(secondary_text);
+    if ui.add(join_btn).clicked() {
+        *action = Some(UiAction::OpenJoinBrowser);
+    }
 
-    if ui.add(btn).clicked() {
+    ui.add_space(section_gap);
+
+    let settings_btn = ThemeButton::new(&strings.settings)
+        .style(ThemeButtonStyle::Tertiary)
+        .custom_fill(rail_btn_fill)
+        .min_size(egui::vec2(w, settings_h))
+        .text_size(settings_text);
+    if ui.add(settings_btn).clicked() {
         *action = Some(UiAction::ToggleSettings);
     }
 }

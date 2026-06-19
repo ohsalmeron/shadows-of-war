@@ -1,16 +1,37 @@
 use crate::UiAction;
-use egui::{Color32, Slider, Stroke, vec2};
+use egui::{vec2, Color32, CornerRadius, Stroke};
 use sow_i18n::Language;
 
-use super::battle_log;
-use super::event_log;
 use super::super::overlays::mobile;
 use super::super::panels::troop_spawn;
-use super::super::state::{BottomHudTab, HudState, building_emoji};
+use super::super::state::{building_emoji, BottomHudTab, HudState};
+use super::battle_log;
+use super::event_log;
 
 const ATTACK_RATIO_COL_W: f32 = 64.0;
+const ATTACK_RATIO_KNOB_D: f32 = 28.0;
+const ATTACK_RATIO_TRACK_W: f32 = 10.0;
+const ATTACK_RATIO_MIN: f32 = 0.01;
+const ATTACK_RATIO_MAX: f32 = 1.0;
 
-pub(in crate::ui::hud) fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut HudState, width: f32, compact: bool) {
+#[inline]
+fn attack_ratio_from_track_y(track: egui::Rect, y: f32) -> f32 {
+    let t = 1.0 - ((y - track.top()) / track.height()).clamp(0.0, 1.0);
+    ATTACK_RATIO_MIN + t * (ATTACK_RATIO_MAX - ATTACK_RATIO_MIN)
+}
+
+#[inline]
+fn attack_ratio_knob_y(track: egui::Rect, ratio: f32) -> f32 {
+    let t = ((ratio - ATTACK_RATIO_MIN) / (ATTACK_RATIO_MAX - ATTACK_RATIO_MIN)).clamp(0.0, 1.0);
+    track.bottom() - t * track.height()
+}
+
+pub(in crate::ui::hud) fn draw_buildings_strip(
+    ui: &mut egui::Ui,
+    state: &mut HudState,
+    width: f32,
+    compact: bool,
+) {
     ui.set_width(width);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = if compact { 4.0 } else { 12.0 };
@@ -101,7 +122,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut Hu
                 is_hovered,
                 crate::ui::theme::palette::neon_cyan(),
             );
-            
+
             ui.painter().rect(
                 square_rect,
                 crate::ui::theme::radius::SM,
@@ -341,7 +362,15 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
 
         for (tab, badge) in tabs {
             let selected = state.bottom_tab == tab;
-            let resp = crate::ui::theme::draw_tab(ui, crate::ui::theme::TabContent::Icon(asset_loader.hud_icon(tab.hud_icon())), selected, tab_accent(tab), badge, tab_w, compact,);
+            let resp = crate::ui::theme::draw_tab(
+                ui,
+                crate::ui::theme::TabContent::Icon(asset_loader.hud_icon(tab.hud_icon())),
+                selected,
+                tab_accent(tab),
+                badge,
+                tab_w,
+                compact,
+            );
             if selected {
                 active_rect = Some(resp.rect);
             }
@@ -363,29 +392,37 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
     crate::ui::theme::draw_tab_baseline(ui, strip_response.response.rect, active_rect);
     active_rect
 }
-pub(in crate::ui::hud) fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMain, main_w: f32) -> f32 {
+pub(in crate::ui::hud) fn hud_sidebar_row_height(
+    compact: bool,
+    spawn_active: bool,
+    main: HudSidebarMain,
+    main_w: f32,
+    chrome_scale: f32,
+) -> f32 {
+    let s = if compact { chrome_scale } else { 1.0 };
     if spawn_active {
-        return if compact { 72.0 } else { 56.0 };
+        return if compact { 72.0 * s } else { 56.0 };
     }
-    let header_h = if compact { 24.0 } else { 22.0 };
+    let header_h = if compact { 24.0 * s } else { 22.0 };
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
     let body_h = match main {
         HudSidebarMain::Controls => {
             let num_items = 4.0;
             let mut available_width = main_w;
             if sow_core::config::ENABLE_MISSILE_STRUCTURES {
-                let nuke_w = if compact { 32.0 } else { 36.0 };
+                let nuke_w = if compact { 32.0 * s } else { 36.0 };
                 let extra_w = 4.0 + 8.0 + 4.0 + nuke_w + (if compact { 4.0 } else { 12.0 });
                 available_width = (available_width - extra_w).max(50.0);
             }
-            let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
-            let btn_size = col_w.min(if compact { 40.0 } else { 48.0 });
-            let gold_plate_h = if compact { 14.0 } else { 18.0 };
+            let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 }))
+                / num_items;
+            let btn_size = col_w.min(if compact { 40.0 * s } else { 48.0 });
+            let gold_plate_h = if compact { 14.0 * s } else { 18.0 };
             btn_size + 4.0 + gold_plate_h
         }
         HudSidebarMain::BattleLog | HudSidebarMain::EventLog => {
             if compact {
-                120.0
+                120.0 * s
             } else {
                 140.0
             }
@@ -401,55 +438,181 @@ pub(in crate::ui::hud) enum HudSidebarMain {
     EventLog,
 }
 
-pub(in crate::ui::hud) fn draw_attack_ratio_column(ui: &mut egui::Ui, state: &HudState, col_h: f32) -> Option<f32> {
-    let ratio_troops = (state.troops * (state.attack_ratio as f64)).max(0.0);
+fn paint_attack_ratio_label(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    text: &str,
+    font_size: f32,
+    color: Color32,
+) {
+    let font_id = egui::FontId::proportional(font_size);
+    let galley = painter.layout_no_wrap(text.to_owned(), font_id, color);
+    let pos = rect.center() - galley.size() * 0.5;
+    crate::ui::theme::paint_premium_glow_galley(painter, pos, galley, color, Color32::BLACK);
+}
+
+pub(in crate::ui::hud) fn draw_attack_ratio_column(
+    ui: &mut egui::Ui,
+    state: &HudState,
+    col_h: f32,
+) -> Option<f32> {
     let mut changed_ratio = None;
+    let dur = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
+    let pct_h = 14.0;
+    let troop_h = 13.0;
+    let label_gap = 3.0;
+    let track_h =
+        (col_h - pct_h - troop_h - label_gap * 2.0 - ATTACK_RATIO_KNOB_D).clamp(24.0, 56.0);
+    let widget_h = track_h + ATTACK_RATIO_KNOB_D;
 
-    ui.allocate_ui_with_layout(
-        vec2(ATTACK_RATIO_COL_W, col_h),
-        egui::Layout::top_down(egui::Align::Center),
-        |ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
+    let (col_rect, _) =
+        ui.allocate_exact_size(vec2(ATTACK_RATIO_COL_W, col_h), egui::Sense::hover());
+    let col_left = col_rect.left();
+    let col_top = col_rect.top();
 
-            // 1. Percentage label above slider
-            crate::ui::theme::outlined_label(
-                ui,
-                &format!("{:.0}%", state.attack_ratio * 100.0),
-                egui::FontId::proportional(11.0),
-                crate::ui::theme::palette::neon_cyan_hover(),
-            );
+    let pct_rect = egui::Rect::from_min_size(
+        egui::pos2(col_left, col_top),
+        vec2(ATTACK_RATIO_COL_W, pct_h),
+    );
+    let slider_outer = egui::Rect::from_min_size(
+        egui::pos2(col_left, col_top + pct_h + label_gap),
+        vec2(ATTACK_RATIO_COL_W, widget_h),
+    );
+    let troop_rect = egui::Rect::from_min_size(
+        egui::pos2(col_left, slider_outer.bottom() + label_gap),
+        vec2(ATTACK_RATIO_COL_W, troop_h),
+    );
 
-            // 2. Compact vertical slider in the middle
-            let slider_h = (col_h - 32.0).clamp(16.0, 64.0);
-            let mut ratio = state.attack_ratio;
-            let changed = ui
-                .scope(|ui| {
-                    ui.spacing_mut().slider_width = slider_h;
-                    ui.spacing_mut().slider_rail_height = 12.0; // wider/more noticeable rail
-                    ui.visuals_mut().widgets.inactive.bg_fill = crate::ui::theme::palette::neon_cyan().linear_multiply(0.25);
-                    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0_f32, crate::ui::theme::palette::neon_cyan());
-                    ui.visuals_mut().widgets.hovered.bg_stroke = Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan_hover());
-                    ui.visuals_mut().widgets.active.bg_stroke = Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan_hover());
+    let slider_id = ui.id().with("attack_ratio_slider");
+    let track =
+        egui::Rect::from_center_size(slider_outer.center(), vec2(ATTACK_RATIO_TRACK_W, track_h));
 
-                    let slider = Slider::new(&mut ratio, 0.01..=1.0)
-                        .show_value(false)
-                        .vertical();
-                    ui.add_sized(vec2(24.0, slider_h), slider).changed()
-                })
-                .inner;
-            if changed {
+    let response = ui.interact(slider_outer, slider_id, egui::Sense::click_and_drag());
+
+    let mut ratio = state.attack_ratio;
+    if response.dragged() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let new_ratio = attack_ratio_from_track_y(track, pos.y);
+            if (new_ratio - ratio).abs() > f32::EPSILON {
+                ratio = new_ratio;
                 changed_ratio = Some(ratio);
             }
+        }
+    } else if response.clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            ratio = attack_ratio_from_track_y(track, pos.y);
+            changed_ratio = Some(ratio);
+        }
+    }
 
-            // 3. Troop quantity label below slider
-            crate::ui::theme::outlined_label(
-                ui,
-                &crate::utils::format_number(ratio_troops),
-                egui::FontId::proportional(10.0),
-                Color32::from_rgb(220, 230, 220),
-            );
-        },
+    let dragging = response.dragged() || response.is_pointer_button_down_on();
+    let display_ratio = if dragging {
+        ratio
+    } else {
+        ui.ctx().animate_value_with_time(
+            slider_id.with("attack_ratio_anim"),
+            state.attack_ratio,
+            dur,
+        )
+    };
+    let display_troops = if dragging {
+        (state.troops * ratio as f64).max(0.0) as f32
+    } else {
+        ui.ctx().animate_value_with_time(
+            slider_id.with("attack_troops_anim"),
+            (state.troops * state.attack_ratio as f64).max(0.0) as f32,
+            dur,
+        )
+    };
+
+    let painter = ui.painter();
+    if ui.is_rect_visible(pct_rect) {
+        paint_attack_ratio_label(
+            painter,
+            pct_rect,
+            &format!("{:.0}%", display_ratio * 100.0),
+            11.0,
+            crate::ui::theme::palette::neon_cyan_hover(),
+        );
+    }
+    if ui.is_rect_visible(troop_rect) {
+        paint_attack_ratio_label(
+            painter,
+            troop_rect,
+            &crate::utils::format_number(display_troops as f64),
+            10.0,
+            Color32::from_rgb(220, 230, 220),
+        );
+    }
+
+    let is_hovered = response.hovered();
+    let is_active = response.is_pointer_button_down_on();
+    let hover_t = ui.ctx().animate_bool(slider_id.with("hover"), is_hovered);
+    let active_t = ui.ctx().animate_bool(slider_id.with("active"), is_active);
+
+    let rail_fill = crate::ui::theme::palette::neon_cyan().linear_multiply(0.25);
+    let rail_stroke = Stroke::new(
+        1.0 + hover_t * 0.5 + active_t * 0.5,
+        crate::ui::theme::palette::neon_cyan().lerp_to_gamma(
+            crate::ui::theme::palette::neon_cyan_hover(),
+            hover_t + active_t * 0.5,
+        ),
     );
+    painter.rect(
+        track,
+        CornerRadius::same((ATTACK_RATIO_TRACK_W * 0.5) as u8),
+        rail_fill,
+        rail_stroke,
+        egui::StrokeKind::Inside,
+    );
+
+    let knob_cy = attack_ratio_knob_y(track, ratio);
+    let fill_top = knob_cy.min(track.bottom());
+    if fill_top < track.bottom() {
+        let fill_rect =
+            egui::Rect::from_min_max(egui::pos2(track.left(), fill_top), track.right_bottom());
+        painter.rect(
+            fill_rect,
+            CornerRadius::same((ATTACK_RATIO_TRACK_W * 0.5) as u8),
+            crate::ui::theme::palette::neon_cyan_hover().linear_multiply(0.55),
+            Stroke::NONE,
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    let knob_r = ATTACK_RATIO_KNOB_D * 0.5;
+    let knob_rect = egui::Rect::from_center_size(
+        egui::pos2(track.center().x, knob_cy),
+        vec2(ATTACK_RATIO_KNOB_D, ATTACK_RATIO_KNOB_D),
+    );
+    let knob_fill = crate::ui::theme::palette::field_bg().linear_multiply(0.92 + hover_t * 0.08);
+    let knob_stroke = Stroke::new(1.5 + active_t, crate::ui::theme::palette::neon_cyan_hover());
+    painter.circle(knob_rect.center(), knob_r, knob_fill, knob_stroke);
+    if hover_t > 0.01 || active_t > 0.01 {
+        painter.circle(
+            knob_rect.center(),
+            knob_r + 2.0,
+            Color32::TRANSPARENT,
+            Stroke::new(
+                2.0_f32,
+                crate::ui::theme::palette::neon_cyan()
+                    .linear_multiply(hover_t * 0.35 + active_t * 0.25),
+            ),
+        );
+    }
+
+    let emoji_size = ATTACK_RATIO_KNOB_D * 0.55;
+    let emoji_rect = egui::Rect::from_center_size(knob_rect.center(), vec2(emoji_size, emoji_size));
+    if !crate::widgets::try_paint_emoji(painter, "⚔", emoji_rect, Color32::WHITE) {
+        painter.text(
+            knob_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "⚔",
+            egui::FontId::proportional(emoji_size),
+            Color32::WHITE,
+        );
+    }
+
     changed_ratio
 }
 
@@ -478,7 +641,12 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
             0.0
         };
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
-    let row_h = hud_sidebar_row_height(compact, spawn_active, main, main_w);
+    let chrome_scale = if compact {
+        crate::ui::theme::viewport_scale(ui.ctx())
+    } else {
+        1.0
+    };
+    let row_h = hud_sidebar_row_height(compact, spawn_active, main, main_w, chrome_scale);
 
     ui.allocate_ui_with_layout(
         vec2(content_w, row_h),

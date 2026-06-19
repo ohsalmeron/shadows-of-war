@@ -5,7 +5,11 @@ use crate::protocol::GameplayIntent;
 
 use super::profile::{BotDecision, BotDecisionKind};
 
-pub(super) fn bot_structure_target_count(kind: BuildingKind, city_equivalent: u32, bot_iq: u32) -> u32 {
+pub(super) fn bot_structure_target_count(
+    kind: BuildingKind,
+    city_equivalent: u32,
+    bot_iq: u32,
+) -> u32 {
     let factor = if bot_iq >= 130 {
         1.0
     } else if bot_iq >= 100 {

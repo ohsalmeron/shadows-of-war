@@ -6,7 +6,7 @@ use tower_http::services::ServeDir;
 fn kill_port_holders(port: u16) {
     let port_str = port.to_string();
     if let Ok(out) = std::process::Command::new("lsof")
-        .args(&["-t", "-i", &format!("tcp:{port_str}")])
+        .args(["-t", "-i", &format!("tcp:{port_str}")])
         .output()
     {
         let stdout = String::from_utf8_lossy(&out.stdout);
@@ -15,7 +15,7 @@ fn kill_port_holders(port: u16) {
             if !pid.is_empty() {
                 println!("==> Port {port} is in use. Killing process {pid}...");
                 let _ = std::process::Command::new("kill")
-                    .args(&["-9", pid])
+                    .args(["-9", pid])
                     .status();
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }

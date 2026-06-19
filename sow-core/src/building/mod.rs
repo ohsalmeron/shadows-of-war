@@ -206,4 +206,44 @@ mod tests {
         let bonus_far = defense_post_priority_bonus(&[b], 0, 0, w, &cfg);
         assert_eq!(bonus_far, 0);
     }
+
+    #[test]
+    fn structure_build_cost_base_and_cap() {
+        let cfg = crate::game_config::GameConfig::default();
+        let city_base = cfg.cost_city;
+        let cap = city_base * cfg.cost_scale_cap_multiplier;
+
+        assert_eq!(
+            structure_build_cost_gold(BuildingKind::City, 0, &cfg),
+            city_base
+        );
+        let at_24 = structure_build_cost_gold(BuildingKind::City, 24, &cfg);
+        assert!(at_24 < cap);
+        assert!(at_24 > city_base);
+
+        for count in [25, 50, 100] {
+            assert_eq!(
+                structure_build_cost_gold(BuildingKind::City, count, &cfg),
+                cap
+            );
+        }
+    }
+
+    #[test]
+    fn structure_build_cost_cap_per_kind() {
+        let cfg = crate::game_config::GameConfig::default();
+        let cases = [
+            (BuildingKind::City, cfg.cost_city),
+            (BuildingKind::Bunker, cfg.cost_bunker),
+            (BuildingKind::Factory, cfg.cost_factory),
+            (BuildingKind::Port, cfg.cost_port),
+        ];
+        for (kind, base) in cases {
+            assert_eq!(structure_build_cost_gold(kind, 0, &cfg), base);
+            assert_eq!(
+                structure_build_cost_gold(kind, 100, &cfg),
+                base * cfg.cost_scale_cap_multiplier
+            );
+        }
+    }
 }

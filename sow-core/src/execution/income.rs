@@ -1,5 +1,6 @@
 use crate::building::aggregate_buildings_per_player;
 use crate::engine::SowEngine;
+use crate::execution::income_rates::{gold_income_per_second, troop_income_per_second};
 use crate::game::GamePhase;
 
 impl SowEngine {
@@ -74,26 +75,8 @@ impl SowEngine {
             }
             self.state.players[idx].max_troops = max_tr;
 
-            let sun_tzu_mult = if leader == crate::player::Leader::SunTzu {
-                1.20
-            } else {
-                1.0
-            };
-            let ragnar_mult = if leader == crate::player::Leader::Ragnar {
-                1.50
-            } else {
-                1.0
-            };
-            let vercingetorix_mult = if leader == crate::player::Leader::Vercingetorix {
-                1.50
-            } else {
-                1.0
-            };
-
-            let mut troop_income = config.per_tick(config.troop_base_income)
-                + config.per_tick(50.0) * agg.city_levels as f64 * vercingetorix_mult
-                + config.per_tick(80.0) * agg.armory_levels as f64 * sun_tzu_mult
-                + config.per_tick(config.port_troop_income) * agg.port_levels as f64 * ragnar_mult;
+            let troop_ps = troop_income_per_second(tiles_owned, agg, leader, &config);
+            let mut troop_income = config.per_tick(troop_ps);
 
             if is_standard_bot {
                 troop_income *= 0.75;
@@ -101,31 +84,9 @@ impl SowEngine {
             self.state.players[idx].troops = (safe_troops + troop_income).min(max_tr);
 
             let safe_gold = self.state.players[idx].gold.max(0.0);
-            let cleo_mult = if leader == crate::player::Leader::Cleopatra {
-                1.50
-            } else {
-                1.0
-            };
-            let boudica_mult = if leader == crate::player::Leader::Boudica {
-                1.50
-            } else {
-                1.0
-            };
 
-            let lady_six_sky_mult = if leader == crate::player::Leader::LadySixSky {
-                1.50
-            } else {
-                1.0
-            };
-
-            let factory_gold_income =
-                agg.factory_levels as f64 * config.factory_gold_income * lady_six_sky_mult;
-
-            let mut gold_income = config.per_tick(config.gold_base_income)
-                + config.per_tick(config.city_gold_income) * agg.city_levels as f64 * boudica_mult
-                + config.per_tick(100.0) * agg.foundry_levels as f64 * cleo_mult
-                + config.per_tick(config.port_gold_income) * agg.port_levels as f64 * ragnar_mult
-                + config.per_tick(factory_gold_income);
+            let gold_ps = gold_income_per_second(tiles_owned, agg, leader, &config);
+            let mut gold_income = config.per_tick(gold_ps);
 
             if is_standard_bot {
                 gold_income *= 0.75;

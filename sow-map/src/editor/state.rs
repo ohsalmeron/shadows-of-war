@@ -9,9 +9,7 @@ use web_time::Instant;
 use winit::window::Window;
 
 #[cfg(feature = "osm")]
-use crate::osm_tiles::{
-    OsmTileCache, TileKey,
-};
+use crate::osm_tiles::{OsmTileCache, TileKey};
 #[cfg(feature = "osm")]
 pub(crate) struct OsmPickerState {
     pub(crate) center_lon: f64,

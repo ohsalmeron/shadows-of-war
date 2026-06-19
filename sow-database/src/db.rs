@@ -165,7 +165,6 @@ fn utc_date_string() -> String {
     format!("{:04}-{:02}-{:02}", dt.year, dt.month, dt.day)
 }
 
-
 impl PlayerDb {
     pub fn new(redis_url: &str, crazygames_api_key: Option<String>) -> Self {
         let client = Client::open(redis_url).expect("Failed to connect to Valkey/Redis");

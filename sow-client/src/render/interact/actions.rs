@@ -31,7 +31,7 @@ impl SowApp {
                     spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
                 }
                 UiAction::JoinLobby(id) => {
-                    let join_msg = self.make_join_message(Some(id), false);
+                    let join_msg = self.make_join_message(Some(id), false, None, None);
                     self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
                     if let Ok(json) = bincode::serialize(&join_msg) {
                         if let Some(c) = self.net.client.as_ref() {
@@ -41,7 +41,7 @@ impl SowApp {
                     self.ui.app.main_menu_state.is_waiting = true;
                 }
                 UiAction::HostPrivateLobby => {
-                    let join_msg = self.make_join_message(None, true);
+                    let join_msg = self.make_join_message(None, true, None, None);
                     if let Ok(json) = bincode::serialize(&join_msg) {
                         if let Some(c) = self.net.client.as_ref() {
                             c.send(json);
@@ -49,6 +49,70 @@ impl SowApp {
                     }
                     self.ui.app.main_menu_state.is_waiting = true;
                     self.ui.app.main_menu_state.is_lobby_host = true;
+                }
+                UiAction::OpenCreateGame => {
+                    self.ui.app.main_menu_state.show_create_game = true;
+                }
+                UiAction::OpenJoinBrowser => {
+                    self.ui.app.main_menu_state.show_join_browser = true;
+                }
+                UiAction::CloseOverlay => {
+                    self.ui.app.main_menu_state.show_create_game = false;
+                    self.ui.app.main_menu_state.show_join_browser = false;
+                }
+                UiAction::CreateGame {
+                    config,
+                    is_private,
+                    password,
+                } => {
+                    let join_msg = self.make_join_message(None, is_private, Some(config), password);
+                    if let Ok(json) = bincode::serialize(&join_msg) {
+                        if let Some(c) = self.net.client.as_ref() {
+                            c.send(json);
+                        }
+                    }
+                    self.ui.app.main_menu_state.is_waiting = true;
+                    self.ui.app.main_menu_state.is_lobby_host = true;
+                    self.ui.app.main_menu_state.show_create_game = false;
+                }
+                UiAction::JoinWithCode => {
+                    let code = self
+                        .ui
+                        .app
+                        .main_menu_state
+                        .join_lobby_code
+                        .trim()
+                        .to_string();
+                    if let Ok(lobby_id) = code.parse::<u64>() {
+                        let join_msg = self.make_join_message(Some(lobby_id), false, None, None);
+                        self.ui.app.main_menu_state.pending_join_lobby_id = Some(lobby_id);
+                        if let Ok(json) = bincode::serialize(&join_msg) {
+                            if let Some(c) = self.net.client.as_ref() {
+                                c.send(json);
+                            }
+                        }
+                        self.ui.app.main_menu_state.is_waiting = true;
+                        self.ui.app.main_menu_state.show_join_browser = false;
+                    }
+                }
+                UiAction::JoinWithPassword(lobby_id) => {
+                    let password = self.ui.app.main_menu_state.join_password_input.clone();
+                    let pw = if password.is_empty() {
+                        None
+                    } else {
+                        Some(password)
+                    };
+                    let join_msg = self.make_join_message(Some(lobby_id), false, None, pw);
+                    self.ui.app.main_menu_state.pending_join_lobby_id = Some(lobby_id);
+                    if let Ok(json) = bincode::serialize(&join_msg) {
+                        if let Some(c) = self.net.client.as_ref() {
+                            c.send(json);
+                        }
+                    }
+                    self.ui.app.main_menu_state.is_waiting = true;
+                    self.ui.app.main_menu_state.show_join_browser = false;
+                    self.ui.app.main_menu_state.join_password_for_lobby = None;
+                    self.ui.app.main_menu_state.join_password_input.clear();
                 }
                 UiAction::LeaveLobby => {
                     crate::store_portals::left_room();

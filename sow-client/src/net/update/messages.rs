@@ -1,12 +1,13 @@
 use crate::app::SowApp;
-use crate::MapDownloadEvent;
 use crate::net::lobby::{apply_lobbies_broadcast, seed_joined_lobby_entry};
+use crate::MapDownloadEvent;
 use sow_ui::app::ClientPhase;
 use web_time::Instant;
 
 impl SowApp {
     pub(super) fn process_ws_messages(
-        &mut self, _now: Instant,
+        &mut self,
+        _now: Instant,
     ) -> (bool, Option<u16>, bool, Option<u64>) {
         let mut ws_disconnected = false;
         #[cfg(target_arch = "wasm32")]
@@ -138,6 +139,11 @@ impl SowApp {
                                                     map_name: "Loading...".to_string(),
                                                     game_mode: "FFA".to_string(),
                                                     players: sync_msg.players.clone(),
+                                                    has_password: false,
+                                                    host_name: String::new(),
+                                                    bot_count: 0,
+                                                    nation_count: 0,
+                                                    bot_difficulty: Default::default(),
                                                 },
                                             );
                                         }
@@ -248,7 +254,7 @@ impl SowApp {
                                 log::info!("Auto-requeueing to a new lobby...");
                                 self.ui.app.phase = ClientPhase::MainMenu;
                                 self.ui.app.main_menu_state.is_waiting = true;
-                                let join_msg = self.make_join_message(None, false);
+                                let join_msg = self.make_join_message(None, false, None, None);
                                 c.send(bincode::serialize(&join_msg).unwrap());
                             } else {
                                 crate::store_portals::left_room();
@@ -441,6 +447,11 @@ impl SowApp {
             } // end if !ws_disconnected
         } // end if let Some(c)
 
-        (ws_disconnected, switch_to_relay, exit_to_menu_after_net, pending_rematch)
+        (
+            ws_disconnected,
+            switch_to_relay,
+            exit_to_menu_after_net,
+            pending_rematch,
+        )
     }
 }

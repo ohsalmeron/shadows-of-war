@@ -1336,4 +1336,3 @@ pub fn bot_territory_color(game_seed: u64, bot_id: u16) -> [f32; 3] {
         ]
     }
 }
-

@@ -58,7 +58,6 @@ pub fn selection_grow_scale(
     1.0 + grow * t
 }
 
-
 /// Snappy ease-out quart — fast page turns, no lazy drift.
 #[inline]
 pub fn ease_out_quart(t: f32) -> f32 {

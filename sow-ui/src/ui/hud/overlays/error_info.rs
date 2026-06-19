@@ -1,4 +1,4 @@
-use egui::{Color32, Context, vec2};
+use egui::{vec2, Color32, Context};
 use sow_i18n::Language;
 use web_time::{Duration, Instant};
 

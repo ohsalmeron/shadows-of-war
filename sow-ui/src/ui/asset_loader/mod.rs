@@ -139,7 +139,6 @@ impl UiSplashTexture {
     }
 }
 
-
 mod avatars;
 mod boot;
 mod hud_icons;
@@ -292,7 +291,6 @@ impl AssetLoader {
             }
         }
     }
-
 }
 
 #[cfg(test)]

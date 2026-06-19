@@ -1,6 +1,6 @@
 use crate::diplomacy::{
-    alliance_propose_roll_cap, is_valid_alliance_target,
-    should_reject_traitor_request, ALLIANCE_RENEWAL_WINDOW_TICKS,
+    alliance_propose_roll_cap, is_valid_alliance_target, should_reject_traitor_request,
+    ALLIANCE_RENEWAL_WINDOW_TICKS,
 };
 use crate::engine::SowEngine;
 use crate::player::PlayerType;
@@ -52,6 +52,7 @@ impl SowEngine {
         (neighbor_players, has_neutral)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn nation_run_diplomacy_for_slot(
         &mut self,
         bot_id: u16,
@@ -297,9 +298,7 @@ impl SowEngine {
                 );
                 rng.next_int(400, 1200) as u64
             };
-            if self.state.tick > share_interval
-                && self.state.tick.is_multiple_of(share_interval)
-            {
+            if self.state.tick > share_interval && self.state.tick.is_multiple_of(share_interval) {
                 let share_chance = (60i32 - bot_iq as i32 / 3).clamp(10, 50);
                 let roll = self
                     .state

@@ -1,5 +1,7 @@
 pub mod actions;
 pub mod browser;
+pub mod create_game;
+pub mod join_browser;
 pub mod profile;
 pub mod queue_overlay;
 pub mod single_player_setup;
@@ -7,6 +9,14 @@ pub mod single_player_setup;
 use crate::UiAction;
 use egui::{Align, CentralPanel, Color32, Frame, Layout, RichText, Stroke};
 use sow_core::protocol::LobbyInfo;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GameModeFilter {
+    #[default]
+    All,
+    Ffa,
+    Teams,
+}
 
 #[derive(Clone, Debug)]
 pub struct UiLinkConflictInfo {
@@ -31,6 +41,17 @@ pub struct MainMenuState {
     pub host_private_pending: bool,
     pub in_private_match: bool,
     pub is_lobby_host: bool,
+    // Create Game screen
+    pub show_create_game: bool,
+    pub create_game_config: Box<sow_core::game_config::GameConfig>,
+    pub create_game_is_private: bool,
+    pub create_game_password: String,
+    // Join Browser screen
+    pub show_join_browser: bool,
+    pub join_mode_filter: GameModeFilter,
+    pub join_lobby_code: String,
+    pub join_password_input: String,
+    pub join_password_for_lobby: Option<u64>,
     pub pending_join_lobby_id: Option<u64>,
     pub joined_lobby_id: Option<u64>,
     pub downloading_map_name: Option<String>,
@@ -88,6 +109,18 @@ impl Default for MainMenuState {
             host_private_pending: false,
             in_private_match: false,
             is_lobby_host: false,
+            show_create_game: false,
+            create_game_config: Box::new(sow_core::game_config::GameConfig {
+                seed: ms as u64,
+                ..Default::default()
+            }),
+            create_game_is_private: false,
+            create_game_password: String::new(),
+            show_join_browser: false,
+            join_mode_filter: GameModeFilter::All,
+            join_lobby_code: String::new(),
+            join_password_input: String::new(),
+            join_password_for_lobby: None,
             pending_join_lobby_id: None,
             joined_lobby_id: None,
             downloading_map_name: None,
@@ -121,8 +154,18 @@ impl MainMenuState {
             &mut cfg.map_height,
         );
     }
-}
 
+    pub fn apply_map_catalog_create(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
+        let cfg = &mut self.create_game_config;
+        cfg.map_name = sow_core::maps::resolve_map_name(catalog, &cfg.map_name);
+        sow_core::maps::apply_catalog_dimensions(
+            catalog,
+            &mut cfg.map_name,
+            &mut cfg.map_width,
+            &mut cfg.map_height,
+        );
+    }
+}
 
 pub fn primary_lobby_for_browser(lobbies: &[LobbyInfo]) -> Option<LobbyInfo> {
     if lobbies.is_empty() {
@@ -142,10 +185,31 @@ fn menu_footer_height(section_gap: f32, action_min_h: f32, scale: f32) -> f32 {
     let settings_h = action_min_h * 0.75;
     action_min_h // Solo button
         + section_gap
-        + action_min_h // Host private button
+        + action_min_h // Create button
+        + section_gap
+        + action_min_h // Join button
         + section_gap
         + settings_h // Settings button
         + 6.0 * scale
+}
+
+fn menu_layout_chrome(ctx: &egui::Context, panel_h: f32, compact: bool) -> (f32, f32, f32) {
+    let scale = crate::ui::theme::viewport_scale(ctx);
+    let mut section_gap = (if compact { 12.0 } else { 16.0 }) * scale;
+    let mut action_min_h = (if compact { 64.0 } else { 72.0 }) * scale;
+    let mut profile_height = 56.0 * scale;
+
+    let footer_h = menu_footer_height(section_gap, action_min_h, scale);
+    let header_h = profile_height + section_gap;
+    let min_lobby = 32.0;
+    let needed = header_h + section_gap + footer_h + section_gap + min_lobby;
+    let shrink = crate::ui::theme::fit_scale(needed, panel_h);
+    if shrink < 1.0 {
+        section_gap *= shrink;
+        action_min_h *= shrink;
+        profile_height *= shrink;
+    }
+    (section_gap, action_min_h, profile_height)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -175,11 +239,10 @@ fn draw_menu_right_panel_contents(
     lang: sow_i18n::Language,
 ) {
     let scale = crate::ui::theme::viewport_scale(ui.ctx());
-    let footer_h = menu_footer_height(section_gap, action_min_h, scale);
-    let header_h = profile_height + section_gap;
-    // Cap lobby thumbnail on short viewports only — never allocate a flex middle band.
-    let max_lobby_h = (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
+    let portrait = !compact || crate::ui::theme::portrait_layout(ui.ctx());
+    let landscape_compact = compact && !portrait;
     let panel_w = ui.available_width();
+    let header_h = profile_height + section_gap;
 
     let panel_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w, panel_inner_h));
 
@@ -193,32 +256,68 @@ fn draw_menu_right_panel_contents(
             lang,
             action,
         );
-
         ui.add_space(section_gap);
 
-        browser::draw_left_column(
-            ui,
-            state,
-            section_gap,
-            action_min_h,
-            compact,
-            max_lobby_h,
-            action,
-            asset_loader,
-            lang,
-        );
+        if landscape_compact {
+            let row_h = (panel_inner_h - header_h).max(0.0);
+            let action_col_w = (panel_w * 0.38).clamp(120.0, 160.0);
+            let lobby_w = (panel_w - action_col_w - section_gap).max(80.0);
 
-        ui.add_space(section_gap);
+            ui.horizontal(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(lobby_w, row_h),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        browser::draw_left_column(
+                            ui,
+                            state,
+                            section_gap,
+                            action_min_h,
+                            compact,
+                            row_h,
+                            action,
+                            asset_loader,
+                            lang,
+                        );
+                    },
+                );
+                ui.add_space(section_gap);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(action_col_w, row_h),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        draw_menu_footer(
+                            ui,
+                            state,
+                            section_gap,
+                            action_min_h,
+                            compact,
+                            action,
+                            lang,
+                        );
+                    },
+                );
+            });
+        } else {
+            let footer_h = menu_footer_height(section_gap, action_min_h, scale);
+            let max_lobby_h = (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
 
-        draw_menu_footer(
-            ui,
-            state,
-            section_gap,
-            action_min_h,
-            compact,
-            action,
-            lang,
-        );
+            browser::draw_left_column(
+                ui,
+                state,
+                section_gap,
+                action_min_h,
+                compact,
+                max_lobby_h,
+                action,
+                asset_loader,
+                lang,
+            );
+
+            ui.add_space(section_gap);
+
+            draw_menu_footer(ui, state, section_gap, action_min_h, compact, action, lang);
+        }
     });
 }
 
@@ -294,11 +393,11 @@ fn draw_indicator_toast(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(
-                            egui::RichText::new(label)
-                                .color(color)
-                                .size(if compact { 13.0 } else { 14.0 }),
-                        );
+                        ui.label(egui::RichText::new(label).color(color).size(if compact {
+                            13.0
+                        } else {
+                            14.0
+                        }));
                     });
                 });
         });
@@ -493,10 +592,91 @@ pub fn draw_terms_privacy_footer(
     let text_color = crate::ui::theme::palette::text_muted();
     let link_color = crate::ui::theme::palette::neon_cyan();
     let size = 11.0;
+    let narrow = ui.available_width() < 480.0;
+
+    let draw_terms_link = |ui: &mut egui::Ui, action: &mut Option<UiAction>| {
+        let terms_id = ui.make_persistent_id("terms_of_service_link");
+        let terms_hover_t = ui.ctx().animate_bool(terms_id, false);
+        let mut terms_text = egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
+            .font(crate::ui::theme::font_regular(size))
+            .color(link_color);
+        if terms_hover_t > 0.05 {
+            terms_text = terms_text.underline();
+        }
+        let terms_resp = ui.add(egui::Label::new(terms_text).sense(egui::Sense::click()));
+        ui.ctx().animate_bool(terms_id, terms_resp.hovered());
+        if terms_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if terms_resp.clicked() {
+            *action = Some(UiAction::ToggleTerms);
+        }
+    };
+
+    let draw_privacy_link = |ui: &mut egui::Ui, action: &mut Option<UiAction>| {
+        let privacy_id = ui.make_persistent_id("privacy_policy_link");
+        let privacy_hover_t = ui.ctx().animate_bool(privacy_id, false);
+        let mut privacy_text = egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
+            .font(crate::ui::theme::font_regular(size))
+            .color(link_color);
+        if privacy_hover_t > 0.05 {
+            privacy_text = privacy_text.underline();
+        }
+        let privacy_resp = ui.add(egui::Label::new(privacy_text).sense(egui::Sense::click()));
+        ui.ctx().animate_bool(privacy_id, privacy_resp.hovered());
+        if privacy_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if privacy_resp.clicked() {
+            *action = Some(UiAction::TogglePrivacy);
+        }
+    };
+
+    if narrow {
+        ui.with_layout(
+            egui::Layout::top_down(egui::Align::Center).with_cross_align(egui::Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(
+                        egui::RichText::new(strings.by_playing_you_agree.trim_end())
+                            .font(crate::ui::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_terms_link(ui, action);
+                    ui.label(
+                        egui::RichText::new(strings.and_the.trim())
+                            .font(crate::ui::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_privacy_link(ui, action);
+                });
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(
+                        egui::RichText::new(&version)
+                            .font(crate::ui::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(crate::ui::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    ui.label(
+                        egui::RichText::new(&credits.based_on_short)
+                            .font(crate::ui::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                });
+            },
+        );
+        return;
+    }
 
     ui.with_layout(
-        egui::Layout::left_to_right(egui::Align::Center)
-            .with_main_align(egui::Align::Center),
+        egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Center),
         |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
 
@@ -506,23 +686,7 @@ pub fn draw_terms_privacy_footer(
                     .color(text_color),
             );
 
-            // Terms of Service Link
-            let terms_id = ui.make_persistent_id("terms_of_service_link");
-            let terms_hover_t = ui.ctx().animate_bool(terms_id, false);
-            let mut terms_text = egui::RichText::new(&sow_i18n::get(lang).settings.terms_of_service)
-                .font(crate::ui::theme::font_regular(size))
-                .color(link_color);
-            if terms_hover_t > 0.05 {
-                terms_text = terms_text.underline();
-            }
-            let terms_resp = ui.add(egui::Label::new(terms_text).sense(egui::Sense::click()));
-            ui.ctx().animate_bool(terms_id, terms_resp.hovered());
-            if terms_resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
-            if terms_resp.clicked() {
-                *action = Some(UiAction::ToggleTerms);
-            }
+            draw_terms_link(ui, action);
 
             ui.label(
                 egui::RichText::new(strings.and_the.trim())
@@ -530,23 +694,7 @@ pub fn draw_terms_privacy_footer(
                     .color(text_color),
             );
 
-            // Privacy Policy Link
-            let privacy_id = ui.make_persistent_id("privacy_policy_link");
-            let privacy_hover_t = ui.ctx().animate_bool(privacy_id, false);
-            let mut privacy_text = egui::RichText::new(&sow_i18n::get(lang).settings.privacy_policy)
-                .font(crate::ui::theme::font_regular(size))
-                .color(link_color);
-            if privacy_hover_t > 0.05 {
-                privacy_text = privacy_text.underline();
-            }
-            let privacy_resp = ui.add(egui::Label::new(privacy_text).sense(egui::Sense::click()));
-            ui.ctx().animate_bool(privacy_id, privacy_resp.hovered());
-            if privacy_resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
-            if privacy_resp.clicked() {
-                *action = Some(UiAction::TogglePrivacy);
-            }
+            draw_privacy_link(ui, action);
 
             ui.label(
                 egui::RichText::new("·")
@@ -580,14 +728,11 @@ pub fn draw(
     state: &mut MainMenuState,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
+    reduced_motion: bool,
 ) -> Option<UiAction> {
     let mut action = None;
     let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
-    let scale = crate::ui::theme::viewport_scale(root_ui.ctx());
     let outer_pad = 16.0;
-    let section_gap = (if compact { 12.0 } else { 16.0 }) * scale;
-    let action_min_h = (if compact { 64.0 } else { 72.0 }) * scale;
-    let profile_height = 56.0 * scale;
     let strings = &sow_i18n::get(lang).main_menu;
 
     // Draw the terms/privacy footer always at the bottom of the screen
@@ -597,10 +742,9 @@ pub fn draw(
             draw_terms_privacy_footer(ui, lang, &mut action);
         });
 
-    if state.show_single_player_setup {
-        single_player_setup::draw(root_ui, state, asset_loader, &mut action, lang);
+    if state.show_join_browser {
+        join_browser::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
-
         CentralPanel::default()
             .frame(
                 Frame::new()
@@ -624,6 +768,8 @@ pub fn draw(
                 }
 
                 if state.is_waiting {
+                    let (section_gap, action_min_h, _) =
+                        menu_layout_chrome(ui.ctx(), ui.available_height(), compact);
                     queue_overlay::draw_queue_overlay(
                         ui,
                         state,
@@ -637,8 +783,13 @@ pub fn draw(
                 }
 
                 let content_h = ui.available_height();
-                let panel_w =
-                    crate::ui::theme::menu_rail_panel_width(ui.available_width(), compact, ui.ctx());
+                let (section_gap, action_min_h, profile_height) =
+                    menu_layout_chrome(ui.ctx(), content_h, compact);
+                let panel_w = crate::ui::theme::menu_rail_panel_width(
+                    ui.available_width(),
+                    compact,
+                    ui.ctx(),
+                );
 
                 ui.allocate_ui_with_layout(
                     egui::vec2(panel_w, content_h),
@@ -659,6 +810,27 @@ pub fn draw(
                     },
                 );
             });
+    }
+
+    if state.show_create_game {
+        create_game::draw(
+            root_ui,
+            state,
+            asset_loader,
+            &mut action,
+            lang,
+            reduced_motion,
+        );
+    }
+    if state.show_single_player_setup {
+        single_player_setup::draw(
+            root_ui,
+            state,
+            asset_loader,
+            &mut action,
+            lang,
+            reduced_motion,
+        );
     }
 
     if let Some(conflict) = state.active_conflict.clone() {

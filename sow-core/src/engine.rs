@@ -225,6 +225,115 @@ impl SowEngine {
         self.fleets.retain(|f| f.owner_id != player_id);
     }
 
+    pub fn eliminate_player(
+        &mut self,
+        victim_id: u16,
+        conqueror_id: u16,
+        ex: u32,
+        ey: u32,
+        by_nuke: bool,
+    ) {
+        let mut base_reward = 0.0;
+        let mut is_alive = false;
+        if let Some(target_player) = self.state.player(victim_id) {
+            is_alive = target_player.alive;
+            base_reward = match target_player.player_type {
+                crate::player::PlayerType::Bot => 500.0,
+                crate::player::PlayerType::Nation => 1250.0,
+                crate::player::PlayerType::Human => 2500.0,
+            };
+        }
+
+        if !is_alive {
+            return;
+        }
+
+        let survived_ticks = self.state.tick;
+        let bonus_percent = survived_ticks as f64 * 0.0001; // 0.01% per tick
+        let total_reward = base_reward * (1.0 + bonus_percent);
+
+        // Gather tile conquest contributions (deterministic by player id)
+        let mut contributors: Vec<(u16, u32)> = self
+            .state
+            .players
+            .iter()
+            .filter_map(|p| {
+                p.tile_conquests
+                    .get(&victim_id)
+                    .copied()
+                    .filter(|&c| c > 0)
+                    .map(|c| (p.id, c))
+            })
+            .collect();
+        contributors.sort_by_key(|(id, _)| *id);
+
+        let others: Vec<(u16, u32)> = contributors
+            .iter()
+            .filter(|(id, _)| *id != conqueror_id)
+            .copied()
+            .collect();
+        let assist_tiles: u32 = others.iter().map(|(_, c)| c).sum();
+
+        let (killer_gold, mut assist_rewards) = if assist_tiles == 0 {
+            (total_reward, Vec::new())
+        } else {
+            let killer_share = total_reward * 0.5;
+            let assist_pool = total_reward * 0.5;
+            let mut rewards = Vec::new();
+            for (id, count) in &others {
+                let share = assist_pool * (*count as f64 / assist_tiles as f64);
+                rewards.push((*id, share));
+            }
+            (killer_share, rewards)
+        };
+
+        // 1. Zero out defeated player and award death
+        if let Some(target_player) = self.state.player_mut(victim_id) {
+            target_player.gold = 0.0;
+            target_player.alive = false;
+            target_player.deaths += 1;
+        }
+
+        // 2. Transfer gold and award kill/assists
+        let mut killer_final_gold = killer_gold;
+        if let Some(attacker) = self.state.player_mut(conqueror_id) {
+            let mut bounty_mult = 1.0;
+            if attacker.leader == crate::player::Leader::GenghisKhan {
+                bounty_mult = 1.5;
+            }
+            killer_final_gold *= bounty_mult;
+            attacker.gold += killer_final_gold;
+            attacker.kills += 1;
+        }
+
+        let mut assist_event_rewards = Vec::new();
+        for (assist_id, share) in &mut assist_rewards {
+            if let Some(p) = self.state.player_mut(*assist_id) {
+                p.gold += *share;
+                p.assists += 1;
+                assist_event_rewards.push((*assist_id, *share as u32));
+            }
+        }
+
+        // Clear conquest tallies for this victim
+        for p in &mut self.state.players {
+            p.tile_conquests.remove(&victim_id);
+        }
+
+        // 3. Emit elimination event
+        self.state
+            .events
+            .push(crate::game::GameEvent::PlayerEliminated {
+                player_id: victim_id,
+                conqueror_id,
+                gold_bounty: killer_final_gold as u32,
+                elimination_x: ex,
+                elimination_y: ey,
+                assists: assist_event_rewards,
+                by_nuke,
+            });
+    }
+
     #[inline]
     pub fn add_building(&mut self, b: Building) {
         let is_ready_defense = b.kind == crate::game::BuildingKind::Bunker && !b.under_construction;

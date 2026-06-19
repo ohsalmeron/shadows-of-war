@@ -558,7 +558,7 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
                 slot.y + 0.5
             );
             let dist = distance(cell_world, f_center);
-            if dist > f_radius * 1.5 { continue; }
+            if dist > f_radius * 1.05 { continue; }
 
             let elapsed = (1.0 - alpha_p) * 7.0;
 

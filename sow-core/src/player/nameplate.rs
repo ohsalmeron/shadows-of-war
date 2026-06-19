@@ -1,4 +1,3 @@
-
 pub(super) fn largest_owned_cluster_bbox(
     map: &crate::map::GameMap,
     player_id: u16,
@@ -79,7 +78,12 @@ pub(super) fn largest_owned_cluster_bbox(
     }
 }
 
-pub(super) fn nameplate_grid_valid(map: &crate::map::GameMap, player_id: u16, map_x: u32, map_y: u32) -> bool {
+pub(super) fn nameplate_grid_valid(
+    map: &crate::map::GameMap,
+    player_id: u16,
+    map_x: u32,
+    map_y: u32,
+) -> bool {
     let r = map.ref_id(map_x, map_y);
     let tile = map.terrain[r];
     let is_owned = map.owner_id(map_x, map_y) == player_id;
@@ -312,4 +316,3 @@ impl super::Player {
         self.nameplate_dirty = false;
     }
 }
-

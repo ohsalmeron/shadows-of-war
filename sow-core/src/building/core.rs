@@ -160,6 +160,17 @@ impl BuildingAggregate {
             BuildingKind::Port => self.count_port,
         }
     }
+
+    /// Sum of active levels for `kind` (matches `count_kind` / cost scaling).
+    #[inline]
+    pub fn levels_of_kind(self, kind: BuildingKind) -> u32 {
+        match kind {
+            BuildingKind::City => self.city_levels,
+            BuildingKind::Bunker => self.bunker_levels,
+            BuildingKind::Factory => self.factory_levels,
+            BuildingKind::Port => self.port_levels,
+        }
+    }
 }
 
 /// `out[v]` is aggregate for owner id `v` (resize to `max_player_id + 1`).

@@ -414,8 +414,11 @@ pub(super) fn spatial_gains(spatial: crate::SpatialSoundParams) -> (f32, f32, f3
     (left, right, total_volume)
 }
 
-pub(super) fn queue_spatial<S>(source: S, spatial: crate::SpatialSoundParams, priority: SoundPriority)
-where
+pub(super) fn queue_spatial<S>(
+    source: S,
+    spatial: crate::SpatialSoundParams,
+    priority: SoundPriority,
+) where
     S: Source<Item = f32> + Send + 'static,
 {
     let (left, right, total_volume) = spatial_gains(spatial);

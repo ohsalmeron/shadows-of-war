@@ -1,7 +1,7 @@
 use super::MainMenuState;
 use crate::ui::theme::palette;
 use crate::UiAction;
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, ScrollArea, Stroke};
+use egui::{Color32, CornerRadius, Margin, RichText, Stroke};
 
 fn setting_card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
     let frame = egui::Frame::NONE
@@ -53,297 +53,218 @@ pub fn draw(
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     action: &mut Option<UiAction>,
     lang: sow_i18n::Language,
+    reduced_motion: bool,
 ) {
     state.single_player_config.player_leader = state.selected_leader;
     state.single_player_config.player_civilization = state.selected_civilization;
+
+    if let Some(catalog) = &asset_loader.map_catalog {
+        state.apply_map_catalog(catalog);
+    }
+
     let strings = &sow_i18n::get(lang).main_menu;
-    let mut close = false;
+    let mut is_open = state.show_single_player_setup;
+    let mut should_close = false;
 
-    egui::Panel::top("solo_header")
-        .frame(crate::ui::theme::screen_panel_frame())
-        .show_inside(root_ui, |ui| {
-            ui.vertical(|ui| {
-                ui.heading(&strings.single_player_skirmish);
-                ui.label(
-                    RichText::new(&strings.config_simulation)
-                        .small()
-                        .color(palette::text_muted()),
-                );
+    crate::ui::theme::draw_standard_modal(
+        root_ui.ctx(),
+        &mut is_open,
+        "single_player_setup",
+        &strings.single_player_skirmish,
+        &strings.back,
+        reduced_motion,
+        |ui| {
+            let config = &mut state.single_player_config;
+            let item_gap = 10.0;
+
+            // Leader card
+            setting_card(ui, "ACTIVE LEADER & CIVILIZATION", |ui| {
+                let leader = config.player_leader;
+                let civ = config.player_civilization;
+                ui.horizontal(|ui| {
+                    let (icon_rect, _) =
+                        ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::hover());
+                    if !crate::widgets::try_paint_emoji(
+                        ui.painter(),
+                        leader.menu_emoji(),
+                        icon_rect,
+                        egui::Color32::WHITE,
+                    ) {
+                        ui.label(RichText::new(leader.menu_emoji()).size(18.0));
+                    }
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(format!("{} ({})", leader.name(), civ.name())).strong(),
+                        );
+                        ui.label(
+                            RichText::new(leader.perk_description())
+                                .small()
+                                .color(crate::ui::theme::palette::neon_cyan()),
+                        );
+                    });
+                });
             });
-        });
 
-    egui::Panel::bottom("solo_footer")
-        .frame(crate::ui::theme::screen_panel_frame())
-        .show_inside(root_ui, |ui| {
-            let narrow = crate::ui::theme::compact_viewport(ui.ctx());
-            if narrow {
-                let start_btn = crate::widgets::ThemeButton::new(&strings.start_simulation)
-                    .style(crate::widgets::ThemeButtonStyle::Primary)
-                    .min_size(egui::vec2(ui.available_width(), 36.0));
-                if ui.add(start_btn).clicked() {
-                    *action = Some(UiAction::StartSinglePlayer(Box::new(
-                        *state.single_player_config.clone(),
-                    )));
-                    close = true;
-                }
-                ui.add_space(6.0);
-                let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
-                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                    .min_size(egui::vec2(ui.available_width(), 36.0));
-                if ui.add(cancel_btn).clicked() {
-                    close = true;
-                }
+            ui.add_space(item_gap);
+
+            // Map preview
+            let map_name = config.map_name.clone();
+            asset_loader.request_thumbnail(&map_name);
+            let thumbnail = asset_loader.thumbnail(&config.map_name);
+            let aspect = 1.77_f32;
+            let w = ui.available_width();
+            let h = (w / aspect).clamp(48.0, 200.0);
+            let rect = ui
+                .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
+                .0;
+
+            if let Some(tex) = thumbnail {
+                crate::ui::map_texture::draw_map_thumbnail_uv(
+                    ui.painter(),
+                    tex.id(),
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    1.0,
+                );
             } else {
-                ui.columns(2, |cols| {
-                    let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
-                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                        .min_size(egui::vec2(cols[0].available_width(), 36.0));
-                    if cols[0].add(cancel_btn).clicked() {
-                        close = true;
-                    }
-                    let start_btn = crate::widgets::ThemeButton::new(&strings.start_simulation)
-                        .style(crate::widgets::ThemeButtonStyle::Primary)
-                        .min_size(egui::vec2(cols[1].available_width(), 36.0));
-                    if cols[1].add(start_btn).clicked() {
-                        *action = Some(UiAction::StartSinglePlayer(Box::new(
-                            *state.single_player_config.clone(),
-                        )));
-                        close = true;
-                    }
-                });
+                ui.painter()
+                    .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
+                let status = if let Some(err) = asset_loader.thumbnail_error(&config.map_name) {
+                    format!("Thumbnail: {err}")
+                } else if asset_loader.thumbnail_in_flight(&config.map_name) {
+                    strings.loading_maps.to_string()
+                } else {
+                    strings.no_preview.to_string()
+                };
+                crate::ui::theme::paint_premium_glow_text(
+                    ui.painter(),
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &status,
+                    egui::FontId::proportional(13.0),
+                    palette::text_muted(),
+                    Color32::BLACK,
+                );
             }
-        });
 
-    egui::CentralPanel::default()
-        .frame(Frame::new().fill(egui::Color32::from_rgb(8, 10, 14)))
-        .show_inside(root_ui, |ui| {
-            ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    if let Some(catalog) = &asset_loader.map_catalog {
-                        state.apply_map_catalog(catalog);
-                    }
-                    let map_name = state.single_player_config.map_name.clone();
-                    asset_loader.request_thumbnail(&map_name);
-                    let loader = &*asset_loader;
-                    let config = &mut state.single_player_config;
-                    let item_gap = 10.0;
+            ui.painter().rect_stroke(
+                rect,
+                8.0_f32,
+                Stroke::new(1.0_f32, crate::ui::theme::palette::neon_cyan_glow()),
+                egui::StrokeKind::Inside,
+            );
 
-                    let draw_preview =
-                        |ui: &mut egui::Ui, config: &sow_core::game_config::GameConfig| {
-                            let thumbnail = loader.thumbnail(&config.map_name);
-                            let aspect = 1.77_f32;
-                            let w = ui.available_width();
-                            let h = (w / aspect).clamp(48.0, 200.0);
-                            let rect = ui
-                                .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
-                                .0;
+            ui.add_space(item_gap);
 
-                            if let Some(tex) = thumbnail {
-                                crate::ui::map_texture::draw_map_thumbnail_uv(
-                                    ui.painter(),
-                                    tex.id(),
-                                    rect,
-                                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                    1.0,
-                                );
+            // Map picker
+            setting_card(ui, &strings.map_selection, |ui| {
+                let selected_label = asset_loader
+                    .map_catalog
+                    .as_ref()
+                    .and_then(|c| sow_core::maps::catalog_lookup(c, &config.map_name))
+                    .map(|e| e.display_name.as_str())
+                    .unwrap_or(config.map_name.as_str());
+                egui::ComboBox::from_id_salt("sp_map")
+                    .width(ui.available_width())
+                    .selected_text(selected_label)
+                    .show_ui(ui, |ui| {
+                        if let Some(catalog) = &asset_loader.map_catalog {
+                            if catalog.is_empty() {
+                                ui.label(&strings.no_maps_found);
                             } else {
-                                ui.painter()
-                                    .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
-                                let status =
-                                    if let Some(err) = loader.thumbnail_error(&config.map_name) {
-                                        format!("Thumbnail: {err}")
-                                    } else if loader.thumbnail_in_flight(&config.map_name) {
-                                        strings.loading_maps.to_string()
+                                for map_entry in catalog {
+                                    let label = if asset_loader.has_map(&map_entry.key) {
+                                        format!(
+                                            "{}{}",
+                                            map_entry.display_name, strings.map_offline_tag
+                                        )
                                     } else {
-                                        strings.no_preview.to_string()
+                                        map_entry.display_name.clone()
                                     };
-                                crate::ui::theme::paint_premium_glow_text(
-                                    ui.painter(),
-                                    rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    &status,
-                                    egui::FontId::proportional(13.0),
-                                    palette::text_muted(),
-                                    Color32::BLACK,
-                                );
-                            }
-
-                            ui.painter().rect_stroke(
-                                rect,
-                                8.0_f32,
-                                Stroke::new(1.0_f32, crate::ui::theme::palette::neon_cyan_glow()),
-                                egui::StrokeKind::Inside,
-                            );
-                        };
-
-                    let draw_map_picker =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, &strings.map_selection, |ui| {
-                                let selected_label = loader
-                                    .map_catalog
-                                    .as_ref()
-                                    .and_then(|c| {
-                                        sow_core::maps::catalog_lookup(c, &config.map_name)
-                                    })
-                                    .map(|e| e.display_name.as_str())
-                                    .unwrap_or(config.map_name.as_str());
-                                egui::ComboBox::from_id_salt("sp_map")
-                                    .width(ui.available_width())
-                                    .selected_text(selected_label)
-                                    .show_ui(ui, |ui| {
-                                        if let Some(catalog) = &loader.map_catalog {
-                                            if catalog.is_empty() {
-                                                ui.label(&strings.no_maps_found);
-                                            } else {
-                                                for map_entry in catalog {
-                                                    let label = if loader.has_map(&map_entry.key) {
-                                                        format!(
-                                                            "{}{}",
-                                                            map_entry.display_name,
-                                                            strings.map_offline_tag
-                                                        )
-                                                    } else {
-                                                        map_entry.display_name.clone()
-                                                    };
-                                                    ui.selectable_value(
-                                                        &mut config.map_name,
-                                                        map_entry.key.clone(),
-                                                        label,
-                                                    );
-                                                }
-                                            }
-                                        } else {
-                                            ui.label(&strings.loading_maps);
-                                        }
-                                    });
-                            });
-                        };
-
-                    let draw_diff =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, &strings.bot_difficulty, |ui| {
-                                egui::ComboBox::from_id_salt("sp_diff")
-                                    .width(ui.available_width())
-                                    .selected_text(format!("{:?}", config.bot_difficulty))
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(
-                                            &mut config.bot_difficulty,
-                                            sow_core::game_config::BotDifficulty::Vanilla,
-                                            "Vanilla",
-                                        );
-                                        ui.selectable_value(
-                                            &mut config.bot_difficulty,
-                                            sow_core::game_config::BotDifficulty::Terminator,
-                                            "Terminator",
-                                        );
-                                    });
-                            });
-                        };
-
-                    let draw_leader_picker =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, "ACTIVE LEADER & CIVILIZATION", |ui| {
-                                let leader = config.player_leader;
-                                let civ = config.player_civilization;
-                                ui.horizontal(|ui| {
-                                    let (icon_rect, _) = ui.allocate_exact_size(
-                                        egui::vec2(28.0, 28.0),
-                                        egui::Sense::hover(),
+                                    ui.selectable_value(
+                                        &mut config.map_name,
+                                        map_entry.key.clone(),
+                                        label,
                                     );
-                                    if !crate::widgets::try_paint_emoji(
-                                        ui.painter(),
-                                        leader.menu_emoji(),
-                                        icon_rect,
-                                        egui::Color32::WHITE,
-                                    ) {
-                                        ui.label(RichText::new(leader.menu_emoji()).size(18.0));
-                                    }
-                                    ui.vertical(|ui| {
-                                        ui.label(
-                                            RichText::new(format!(
-                                                "{} ({})",
-                                                leader.name(),
-                                                civ.name()
-                                            ))
-                                            .strong(),
-                                        );
-                                        ui.label(
-                                            RichText::new(leader.perk_description())
-                                                .small()
-                                                .color(crate::ui::theme::palette::neon_cyan()),
-                                        );
-                                    });
-                                });
-                            });
-                        };
-
-                    let draw_bots =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, &strings.tribes_count, |ui| {
-                                draw_custom_slider(ui, &mut config.bot_count, 0..=1000);
-                            });
-                        };
-
-                    let draw_nations =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, &strings.nations_count, |ui| {
-                                draw_custom_slider(ui, &mut config.nation_count, 0..=400);
-                            });
-                        };
-
-                    let draw_spawn =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, &strings.random_spawning, |ui| {
-                                let btn_text = if config.random_spawn { "ON" } else { "OFF" };
-                                let btn =
-                                    egui::Button::new(btn_text).fill(if config.random_spawn {
-                                        crate::ui::theme::palette::neon_cyan()
-                                    } else {
-                                        crate::ui::theme::palette::button_inactive()
-                                    });
-                                if ui.add(btn).clicked() {
-                                    config.random_spawn = !config.random_spawn;
                                 }
-                            });
-                        };
+                            }
+                        } else {
+                            ui.label(&strings.loading_maps);
+                        }
+                    });
+            });
 
-                    let draw_seed_picker =
-                        |ui: &mut egui::Ui, config: &mut sow_core::game_config::GameConfig| {
-                            setting_card(ui, "WORLD SEED", |ui| {
-                                draw_custom_slider(ui, &mut config.seed, 1..=9999);
-                            });
-                        };
+            ui.add_space(item_gap);
 
-                    let two_col = ui.available_width() >= 720.0;
-                    if two_col {
-                        ui.columns(2, |cols| {
-                            cols[0].spacing_mut().item_spacing.y = item_gap;
-                            draw_preview(&mut cols[0], config);
-                            draw_map_picker(&mut cols[0], config);
-                            draw_diff(&mut cols[0], config);
-                            draw_seed_picker(&mut cols[0], config);
+            // Difficulty
+            setting_card(ui, &strings.bot_difficulty, |ui| {
+                egui::ComboBox::from_id_salt("sp_diff")
+                    .width(ui.available_width())
+                    .selected_text(format!("{:?}", config.bot_difficulty))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut config.bot_difficulty,
+                            sow_core::game_config::BotDifficulty::Vanilla,
+                            "Vanilla",
+                        );
+                        ui.selectable_value(
+                            &mut config.bot_difficulty,
+                            sow_core::game_config::BotDifficulty::Terminator,
+                            "Terminator",
+                        );
+                    });
+            });
 
-                            cols[1].spacing_mut().item_spacing.y = item_gap;
-                            draw_leader_picker(&mut cols[1], config);
-                            draw_bots(&mut cols[1], config);
-                            draw_nations(&mut cols[1], config);
-                            draw_spawn(&mut cols[1], config);
-                        });
-                    } else {
-                        draw_leader_picker(ui, config);
-                        draw_preview(ui, config);
-                        draw_map_picker(ui, config);
-                        draw_diff(ui, config);
-                        draw_bots(ui, config);
-                        draw_nations(ui, config);
-                        draw_spawn(ui, config);
-                        draw_seed_picker(ui, config);
-                    }
+            ui.add_space(item_gap);
+
+            // Tribes
+            setting_card(ui, &strings.tribes_count, |ui| {
+                draw_custom_slider(ui, &mut config.bot_count, 0..=1000);
+            });
+
+            ui.add_space(item_gap);
+
+            // Nations
+            setting_card(ui, &strings.nations_count, |ui| {
+                draw_custom_slider(ui, &mut config.nation_count, 0..=400);
+            });
+
+            ui.add_space(item_gap);
+
+            // Spawn
+            setting_card(ui, &strings.random_spawning, |ui| {
+                let btn_text = if config.random_spawn { "ON" } else { "OFF" };
+                let btn = egui::Button::new(btn_text).fill(if config.random_spawn {
+                    crate::ui::theme::palette::neon_cyan()
+                } else {
+                    crate::ui::theme::palette::button_inactive()
                 });
-        });
+                if ui.add(btn).clicked() {
+                    config.random_spawn = !config.random_spawn;
+                }
+            });
 
-    if close {
+            ui.add_space(item_gap);
+
+            // World seed
+            setting_card(ui, "WORLD SEED", |ui| {
+                draw_custom_slider(ui, &mut config.seed, 1..=9999);
+            });
+
+            ui.add_space(16.0);
+
+            // Start button
+            let start_btn = crate::widgets::ThemeButton::new(&strings.start_simulation)
+                .style(crate::widgets::ThemeButtonStyle::Primary)
+                .min_size(egui::vec2(ui.available_width(), 40.0));
+            if ui.add(start_btn).clicked() {
+                *action = Some(UiAction::StartSinglePlayer(Box::new(*config.clone())));
+                should_close = true;
+            }
+        },
+    );
+
+    if should_close || !is_open {
         state.show_single_player_setup = false;
     }
 }

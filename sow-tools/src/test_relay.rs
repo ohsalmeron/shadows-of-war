@@ -120,6 +120,8 @@ async fn main() {
         civilization: sow_core::player::Civilization::Rome,
         leader: sow_core::player::Leader::Caesar,
         database_account_id: None,
+        host_config: None,
+        password: None,
     };
     ws_send(&mut write, &join).await;
 

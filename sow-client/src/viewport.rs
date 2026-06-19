@@ -94,7 +94,14 @@ pub fn sync_wasm_window(app: &SowApp, win: &dyn winit::window::Window) {
 pub fn apply_to_egui(app: &mut SowApp, vp: &Viewport) {
     app.ui.egui_ctx.set_pixels_per_point(vp.scale_factor);
     app.ui.raw_input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vp.logical));
-    app.ui.raw_input.safe_area_insets = None;
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.ui.raw_input.safe_area_insets = Some(crate::web_canvas::read_safe_area_insets());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        app.ui.raw_input.safe_area_insets = None;
+    }
 }
 
 pub fn scale_pointer_events(raw_input: &mut egui::RawInput, scale_factor: f32) {

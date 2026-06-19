@@ -50,9 +50,9 @@ pub fn thumbnail_square_side_bounded(available_width: f32, max_height: f32, comp
         return width_side;
     }
     // Only shrink when vertical budget is tight; never grow past width-based size.
-    width_side.min((max_height - 2.0).max(48.0))
+    let min_side = if max_height < 56.0 { 24.0 } else { 48.0 };
+    width_side.min((max_height * 0.85 - 2.0).max(min_side))
 }
-
 
 /// Map thumbnail with explicit UV (use [`cover_uv`] for center-cropped fit).
 pub fn draw_map_thumbnail_uv(

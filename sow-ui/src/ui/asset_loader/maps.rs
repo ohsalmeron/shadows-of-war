@@ -73,5 +73,4 @@ impl AssetLoader {
     pub fn drain_thumbnail_fetch_pending(&mut self) -> Vec<String> {
         self.thumbnails_fetch_pending.drain(..).collect()
     }
-
 }

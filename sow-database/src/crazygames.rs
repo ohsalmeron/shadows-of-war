@@ -59,7 +59,6 @@ pub fn iso_8601_timestamp() -> String {
     )
 }
 
-
 pub async fn submit_score(api_key: &str, user_id: &str, score: u32) -> Result<(), String> {
     let timestamp = iso_8601_timestamp();
     let payload = SubmitScoresRequest {

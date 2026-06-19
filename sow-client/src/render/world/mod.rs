@@ -176,31 +176,39 @@ impl SowApp {
                 });
             }
 
-             // Sort once: other humans on top of all (drawn last), then local player, then nations, then others.
-             let my_id = self.sim.my_player_id.unwrap_or(0);
-             visible_players.sort_unstable_by(|a, b| {
-                 let a_prec = if a.player.player_type == sow_core::player::PlayerType::Human {
-                     if a.player.id == my_id { 1 } else { 2 }
-                 } else {
-                     0
-                 };
-                 let b_prec = if b.player.player_type == sow_core::player::PlayerType::Human {
-                     if b.player.id == my_id { 1 } else { 2 }
-                 } else {
-                     0
-                 };
-                 if a_prec != b_prec {
-                     return a_prec.cmp(&b_prec);
-                 }
-                 let a_is_nation = a.player.id < 200;
-                 let b_is_nation = b.player.id < 200;
-                 if a_is_nation != b_is_nation {
-                     return a_is_nation.cmp(&b_is_nation); // true (nation) comes after false (tribe), so they draw on top of tribes
-                 }
-                 b.lod_presence
-                     .partial_cmp(&a.lod_presence)
-                     .unwrap_or(std::cmp::Ordering::Equal)
-             });
+            // Sort once: other humans on top of all (drawn last), then local player, then nations, then others.
+            let my_id = self.sim.my_player_id.unwrap_or(0);
+            visible_players.sort_unstable_by(|a, b| {
+                let a_prec = if a.player.player_type == sow_core::player::PlayerType::Human {
+                    if a.player.id == my_id {
+                        1
+                    } else {
+                        2
+                    }
+                } else {
+                    0
+                };
+                let b_prec = if b.player.player_type == sow_core::player::PlayerType::Human {
+                    if b.player.id == my_id {
+                        1
+                    } else {
+                        2
+                    }
+                } else {
+                    0
+                };
+                if a_prec != b_prec {
+                    return a_prec.cmp(&b_prec);
+                }
+                let a_is_nation = a.player.id < 200;
+                let b_is_nation = b.player.id < 200;
+                if a_is_nation != b_is_nation {
+                    return a_is_nation.cmp(&b_is_nation); // true (nation) comes after false (tribe), so they draw on top of tribes
+                }
+                b.lod_presence
+                    .partial_cmp(&a.lod_presence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             let zoom_scaled = self.input.camera_zoom / sf;
 

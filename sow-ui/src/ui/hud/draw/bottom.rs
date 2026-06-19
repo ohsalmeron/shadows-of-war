@@ -1,11 +1,12 @@
 use crate::UiAction;
-use egui::{Align2, vec2};
+use egui::{vec2, Align2};
 use sow_i18n::Language;
 
 use super::super::state::{BottomHudTab, HudState};
 use super::super::tabs::controls;
 use crate::ui::asset_loader::AssetLoader;
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui::hud) fn draw_bottom_panel(
     ui: &mut egui::Ui,
     state: &mut HudState,
@@ -143,5 +144,4 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
             bottom_hud_area.response.rect,
         );
     });
-
 }

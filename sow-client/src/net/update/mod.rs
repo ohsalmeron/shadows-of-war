@@ -67,14 +67,14 @@ impl SowApp {
                             .app
                             .main_menu_state
                             .pending_join_lobby_id);
-                        let join_msg = self.make_join_message(target, false);
+                        let join_msg = self.make_join_message(target, false, None, None);
                         if let Ok(json) = bincode::serialize(&join_msg) {
                             client.send(json);
                         }
                         self.net.pending_lobby_rejoin = false;
                     } else if self.ui.app.main_menu_state.host_private_pending {
                         log::info!("Hosting private lobby (portal instant / play again)");
-                        let join_msg = self.make_join_message(None, true);
+                        let join_msg = self.make_join_message(None, true, None, None);
                         if let Ok(json) = bincode::serialize(&join_msg) {
                             client.send(json);
                         }
@@ -85,7 +85,7 @@ impl SowApp {
                             && self.ui.app.main_menu_state.joined_lobby_id.is_none()
                         {
                             log::info!("Joining lobby {} from portal invite", id);
-                            let join_msg = self.make_join_message(Some(id), false);
+                            let join_msg = self.make_join_message(Some(id), false, None, None);
                             if let Ok(json) = bincode::serialize(&join_msg) {
                                 client.send(json);
                             }
@@ -151,7 +151,6 @@ impl SowApp {
 
         let (mut ws_disconnected, switch_to_relay, exit_to_menu_after_net, pending_rematch) =
             self.process_ws_messages(now);
-
 
         if let Some(rematch_id) = pending_rematch {
             crate::store_portals::gameplay_stop();

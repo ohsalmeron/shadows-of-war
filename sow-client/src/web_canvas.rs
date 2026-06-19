@@ -1,17 +1,36 @@
 //! Web viewport logical size for wasm32.
 //!
-//! Fullscreen shells (play, CrazyGames) use `window.innerWidth` / `innerHeight`.
-//! `winit` emits `SurfaceResized` after `request_surface_size`; [`crate::input`]
-//! reconfigures the GPU surface and updates egui from that event.
+//! Uses `visualViewport` when available so egui layout matches the visible canvas
+//! (mobile browser chrome, dynamic toolbars). `winit` emits `SurfaceResized` after
+//! `request_surface_size`; [`crate::input`] reconfigures the GPU surface from that event.
 
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
-/// Logical viewport size from the browser window (not `#blade` client box).
 #[cfg(target_arch = "wasm32")]
-pub fn canvas_logical_size() -> (f64, f64) {
+fn parse_css_px(s: &str) -> f32 {
+    let s = s.trim();
+    if s.is_empty() || s == "auto" {
+        return 0.0;
+    }
+    if let Some(num) = s.strip_suffix("px") {
+        return num.parse().unwrap_or(0.0);
+    }
+    s.parse().unwrap_or(0.0)
+}
+
+/// Logical viewport size preferring the visible region (`visualViewport`).
+#[cfg(target_arch = "wasm32")]
+pub fn visible_logical_size() -> (f64, f64) {
     let Some(window) = web_sys::window() else {
         return (800.0, 600.0);
     };
+    if let Some(vv) = window.visual_viewport() {
+        let w = vv.width();
+        let h = vv.height();
+        if w > 0.0 && h > 0.0 {
+            return (w, h);
+        }
+    }
     let w = window
         .inner_width()
         .ok()
@@ -25,12 +44,23 @@ pub fn canvas_logical_size() -> (f64, f64) {
     (w, h)
 }
 
+/// Logical viewport size from the browser window (not `#blade` client box).
+#[cfg(target_arch = "wasm32")]
+pub fn canvas_logical_size() -> (f64, f64) {
+    visible_logical_size()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn canvas_logical_size() -> (f64, f64) {
     (800.0, 600.0)
 }
 
-/// Physical viewport size from the browser window (`innerWidth/Height × devicePixelRatio`).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn visible_logical_size() -> (f64, f64) {
+    canvas_logical_size()
+}
+
+/// Physical viewport size from the browser window (logical × devicePixelRatio).
 #[cfg(target_arch = "wasm32")]
 pub fn physical_viewport_size() -> (u32, u32) {
     let (w, h) = canvas_logical_size();
@@ -43,6 +73,42 @@ pub fn physical_viewport_size() -> (u32, u32) {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn physical_viewport_size() -> (u32, u32) {
     (800, 600)
+}
+
+/// Safe-area insets from CSS custom properties (`--sow-sa*` in the shell template).
+#[cfg(target_arch = "wasm32")]
+pub fn read_safe_area_insets() -> egui::SafeAreaInsets {
+    use egui::epaint::MarginF32;
+    let Some(window) = web_sys::window() else {
+        return egui::SafeAreaInsets(MarginF32::ZERO);
+    };
+    let Some(document) = window.document() else {
+        return egui::SafeAreaInsets(MarginF32::ZERO);
+    };
+    let Some(element) = document.document_element() else {
+        return egui::SafeAreaInsets(MarginF32::ZERO);
+    };
+    let Ok(Some(style)) = window.get_computed_style(&element) else {
+        return egui::SafeAreaInsets(MarginF32::ZERO);
+    };
+    let read = |var: &str| -> f32 {
+        style
+            .get_property_value(var)
+            .map(|v| parse_css_px(&v))
+            .unwrap_or(0.0)
+    };
+    egui::SafeAreaInsets(MarginF32 {
+        left: read("--sow-sal"),
+        top: read("--sow-sat"),
+        right: read("--sow-sar"),
+        bottom: read("--sow-sab"),
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_safe_area_insets() -> egui::SafeAreaInsets {
+    use egui::epaint::MarginF32;
+    egui::SafeAreaInsets(MarginF32::ZERO)
 }
 
 /// Set `#blade` backing-store pixels before Blade reconfigures the WebGL surface.
@@ -67,3 +133,32 @@ pub fn set_canvas_backing_store_size(width: u32, height: u32) {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_canvas_backing_store_size(_width: u32, _height: u32) {}
+
+/// Request a winit resize when the browser visible viewport changes (URL bar, rotation).
+#[cfg(target_arch = "wasm32")]
+pub fn install_viewport_listeners() {
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::JsCast;
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    let Some(vv) = window.visual_viewport() else {
+        return;
+    };
+
+    let bump = Closure::<dyn FnMut()>::new(|| {
+        if let Some(window) = web_sys::window() {
+            if let Ok(ev) = web_sys::Event::new("resize") {
+                let _ = window.dispatch_event(&ev);
+            }
+        }
+    });
+    let _ = vv.add_event_listener_with_callback("resize", bump.as_ref().unchecked_ref());
+    let _ = vv.add_event_listener_with_callback("scroll", bump.as_ref().unchecked_ref());
+    bump.forget();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_viewport_listeners() {}

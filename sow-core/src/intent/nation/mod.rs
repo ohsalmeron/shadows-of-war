@@ -144,17 +144,32 @@ impl SowEngine {
             let (neighbor_players, has_neutral) = self.nation_scan_neighbors(bot_id);
 
             self.nation_run_diplomacy_for_slot(
-                bot_id, bot_iq, alliance_cost, send_cost,
-                &neighbor_players, has_neutral, &mut decisions,
+                bot_id,
+                bot_iq,
+                alliance_cost,
+                send_cost,
+                &neighbor_players,
+                has_neutral,
+                &mut decisions,
             );
 
             self.nation_run_structure_build_for_slot(
-                slot, bot_id, bot_iq, build_cost, &mut decisions,
+                slot,
+                bot_id,
+                bot_iq,
+                build_cost,
+                &mut decisions,
             );
 
             self.nation_run_combat_for_slot(
-                slot, bot_id, bot_iq, attack_cost, alliance_cost,
-                &neighbor_players, has_neutral, &mut decisions,
+                slot,
+                bot_id,
+                bot_iq,
+                attack_cost,
+                alliance_cost,
+                &neighbor_players,
+                has_neutral,
+                &mut decisions,
             );
         }
 

@@ -51,7 +51,5 @@ pub(super) fn sweep_envelope(
     attack_secs: f32,
     tail_secs: f32,
 ) -> f32 {
-    soft_attack(t, attack_secs)
-        * exp_decay(t, decay_rate)
-        * tail_fade(t, duration, tail_secs)
+    soft_attack(t, attack_secs) * exp_decay(t, decay_rate) * tail_fade(t, duration, tail_secs)
 }

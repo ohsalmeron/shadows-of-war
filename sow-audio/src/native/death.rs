@@ -3,13 +3,12 @@ use std::time::Duration;
 
 use rodio::source::Source;
 
-use crate::{PlayerSoundType, SpatialSoundParams};
-use super::engine::{ArpeggioSource, SimpleRng, queue_spatial, SoundPriority, SAMPLE_RATE};
+use super::engine::{ArpeggioSource, SAMPLE_RATE, SimpleRng, SoundPriority, queue_spatial};
 use super::music::{
-    degrees_to_freqs, music_session, note_dur_samples, pick_base_degree, tile_hash, MusicSession,
+    MusicSession, degrees_to_freqs, music_session, note_dur_samples, pick_base_degree, tile_hash,
 };
 use super::tone::{sweep_envelope, warm_at};
-
+use crate::{PlayerSoundType, SpatialSoundParams};
 
 pub(super) fn build_death_sound(
     session: &mut MusicSession,
@@ -111,11 +110,7 @@ impl Source for PulseSource {
     }
 }
 
-pub fn play_death_sound(
-    player_type: PlayerSoundType,
-    seed: u32,
-    spatial: SpatialSoundParams,
-) {
+pub fn play_death_sound(player_type: PlayerSoundType, seed: u32, spatial: SpatialSoundParams) {
     let SpatialSoundParams { wx, wy, .. } = spatial;
     let source = {
         let mut session = music_session().lock().unwrap_or_else(|e| e.into_inner());

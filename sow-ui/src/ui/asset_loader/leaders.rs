@@ -19,7 +19,12 @@ impl AssetLoader {
         self.queue_leader_portrait_fetch(leader, mobile, true);
     }
 
-    pub(crate) fn queue_leader_portrait_fetch(&mut self, leader: Leader, mobile: bool, front: bool) {
+    pub(crate) fn queue_leader_portrait_fetch(
+        &mut self,
+        leader: Leader,
+        mobile: bool,
+        front: bool,
+    ) {
         let key = LeaderPortraitKey { leader, mobile };
         if self.leader_portrait_loaded(key) || self.leaders_in_flight.contains(&key) {
             return;
@@ -245,5 +250,4 @@ impl AssetLoader {
             self.leader_retry_state.remove(&key);
         }
     }
-
 }

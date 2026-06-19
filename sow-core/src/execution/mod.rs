@@ -8,6 +8,7 @@ use wyrand::WyRand;
 
 pub mod combat;
 pub mod income;
+pub mod income_rates;
 pub mod nukes;
 pub mod sam;
 

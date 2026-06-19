@@ -31,4 +31,16 @@ pub enum UiAction {
         keep_account_id: String,
     },
     PortalShowAuthPrompt,
+    // Create Game / Join Browser
+    OpenCreateGame,
+    CreateGame {
+        config: Box<sow_core::game_config::GameConfig>,
+        is_private: bool,
+        password: Option<String>,
+    },
+    OpenJoinBrowser,
+    CloseOverlay,
+    JoinWithCode,
+    /// Join a password-protected lobby — password already stored in state.join_password_input.
+    JoinWithPassword(u64),
 }

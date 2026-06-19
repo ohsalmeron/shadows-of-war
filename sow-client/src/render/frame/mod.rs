@@ -1,16 +1,13 @@
-use sow_render::MapGlobals;
-use sow_ui::app::ClientPhase;
 use crate::app::SowApp;
 use blade_graphics as gpu;
+use sow_render::MapGlobals;
+use sow_ui::app::ClientPhase;
 
 mod ui;
 
 impl SowApp {
     pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-        static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
-        REGISTER_ONCE.call_once(|| {
-            sow_core::register_game_assets(&self.ui.egui_ctx);
-        });
+        sow_core::register_game_assets(&self.ui.egui_ctx);
 
         #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
@@ -120,11 +117,11 @@ impl SowApp {
                                 spatial_audio.params(dx + 0.5, dy + 0.5),
                             );
 
-                            let fallout_radius = 30.0 + (level.saturating_sub(1) as f32) * 22.5;
+                            let blast_radius = sow_core::game::nuke_inner_radius(level) as f32;
                             self.ui.fallout_zones.push(crate::app::FalloutZone {
                                 x: dx,
                                 y: dy,
-                                radius: fallout_radius,
+                                radius: blast_radius,
                                 start_time: current_time,
                             });
                         }
@@ -141,7 +138,9 @@ impl SowApp {
                             {
                                 let src_x = (proj.src_tile % self.sim.map_w) as f32 + 0.5;
                                 let src_y = (proj.src_tile / self.sim.map_w) as f32 + 0.5;
-                                sow_audio::play_nuke_launch_sound(spatial_audio.params(src_x, src_y));
+                                sow_audio::play_nuke_launch_sound(
+                                    spatial_audio.params(src_x, src_y),
+                                );
 
                                 // New nuke — find source building by src_tile
                                 if let Some(b) = snap.buildings.iter().find(|b| {

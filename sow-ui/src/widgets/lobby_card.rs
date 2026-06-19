@@ -116,7 +116,7 @@ impl<'a> Widget for LobbyCard<'a> {
             true,
         );
 
-        let bottom_height = 44.0;
+        let bottom_height = 62.0;
         let bottom_rect =
             egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.max.y - bottom_height), rect.max);
         ui.painter().rect_filled(
@@ -127,44 +127,74 @@ impl<'a> Widget for LobbyCard<'a> {
                 sw: 12,
                 se: 12,
             },
-            Color32::from_black_alpha(200),
+            Color32::from_black_alpha(210),
         );
 
+        let pad = 10.0;
+        let line1_y = bottom_rect.min.y + 8.0;
+        let line2_y = line1_y + 20.0;
+
+        // Line 1: map name (left) + players badge (right)
         let map_text = self.lobby.map_name.to_uppercase();
-        let map_galley = ui.painter().layout_no_wrap(
-            map_text.clone(),
-            egui::FontId::proportional(18.0),
-            Color32::WHITE,
-        );
         crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
-            egui::pos2(
-                bottom_rect.min.x + 12.0,
-                bottom_rect.min.y + (bottom_height - map_galley.size().y) / 2.0,
-            ),
+            egui::pos2(bottom_rect.min.x + pad, line1_y),
             egui::Align2::LEFT_TOP,
             &map_text,
-            egui::FontId::proportional(18.0),
+            egui::FontId::proportional(15.0),
             Color32::WHITE,
             Color32::BLACK,
         );
 
-        let players_text = format!("{}/{}", self.lobby.num_players, self.lobby.max_players);
+        let players_text = format!(
+            "{}/{} players",
+            self.lobby.num_players, self.lobby.max_players
+        );
         paint_badge(
             ui.painter(),
-            egui::pos2(bottom_rect.max.x - 4.0, bottom_rect.min.y - 12.0),
+            egui::pos2(bottom_rect.max.x - pad, line1_y - 1.0),
             true,
             &players_text,
-            egui::FontId::proportional(14.0),
+            egui::FontId::proportional(12.0),
             Color32::WHITE,
-            Color32::from_black_alpha(220),
-            true,
+            Color32::from_black_alpha(200),
+            false,
         );
+
+        // Line 2: bot/nation counts + difficulty
+        let diff_str = match self.lobby.bot_difficulty {
+            sow_core::game_config::BotDifficulty::Terminator => "Terminator",
+            _ => "Vanilla",
+        };
+        let stats_text = format!(
+            "{} tribes  {}  nations  {}",
+            self.lobby.bot_count, self.lobby.nation_count, diff_str,
+        );
+        ui.painter().text(
+            egui::pos2(bottom_rect.min.x + pad, line2_y),
+            egui::Align2::LEFT_TOP,
+            &stats_text,
+            egui::FontId::proportional(11.0),
+            crate::ui::theme::palette::text_muted(),
+        );
+
+        // Host name (if set)
+        if !self.lobby.host_name.is_empty() {
+            let host_text = format!("by {}", self.lobby.host_name);
+            ui.painter().text(
+                egui::pos2(bottom_rect.max.x - pad, line2_y),
+                egui::Align2::RIGHT_TOP,
+                &host_text,
+                egui::FontId::proportional(11.0),
+                crate::ui::theme::palette::neon_cyan(),
+            );
+        }
 
         response
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_badge(
     painter: &egui::Painter,
     pos: egui::Pos2,

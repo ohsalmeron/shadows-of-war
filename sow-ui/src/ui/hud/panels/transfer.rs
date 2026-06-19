@@ -1,9 +1,13 @@
-use egui::{Color32, RichText, Slider, vec2};
+use egui::{vec2, Color32, RichText, Slider};
 use sow_i18n::Language;
 
 use super::super::state::HudState;
 
-pub(in crate::ui::hud) fn transfer_needs_confirm(state: &HudState, max_gold: f64, max_troops: f64) -> bool {
+pub(in crate::ui::hud) fn transfer_needs_confirm(
+    state: &HudState,
+    max_gold: f64,
+    max_troops: f64,
+) -> bool {
     let gold_pct = if max_gold > 0.0 {
         state.ask_gold / max_gold
     } else {

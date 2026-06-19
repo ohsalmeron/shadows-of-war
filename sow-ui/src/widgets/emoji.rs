@@ -116,6 +116,52 @@ pub fn prepare_name(painter: &egui::Painter, text: &str, font_id: &FontId) -> Pr
     }
 }
 
+fn paint_prepared_runs_with_glow(
+    painter: &egui::Painter,
+    rect: Rect,
+    prepared: &PreparedName,
+    color: Color32,
+    style: crate::ui::theme::TextGlowStyle,
+    reference_height: Option<f32>,
+) {
+    let mut x = rect.left();
+    let cy = rect.center().y;
+    let ref_h = reference_height
+        .filter(|h| *h > 0.0)
+        .unwrap_or(prepared.size.y);
+
+    for run in &prepared.runs {
+        match run {
+            PreparedRun::Text {
+                galley,
+                width,
+                height,
+            } => {
+                let y = cy - height / 2.0;
+                crate::ui::theme::text_glow::paint_glow_galley(
+                    painter,
+                    Pos2::new(x, y),
+                    galley.clone(),
+                    color,
+                    style,
+                    Some(ref_h),
+                );
+                x += width;
+            }
+            PreparedRun::Emoji {
+                emoji,
+                width,
+                height,
+            } => {
+                let r =
+                    Rect::from_center_size(Pos2::new(x + height / 2.0, cy), Vec2::splat(*height));
+                try_paint_emoji(painter, emoji, r, color);
+                x += width;
+            }
+        }
+    }
+}
+
 fn paint_prepared_runs(
     painter: &egui::Painter,
     rect: Rect,
@@ -173,6 +219,20 @@ pub fn paint_prepared_name(
 ) {
     let rect = anchor.anchor_size(pos, prepared.size);
     paint_prepared_runs(painter, rect, prepared, color, outlined);
+}
+
+/// Map nameplate glow — shared outline width via `reference_height` (e.g. name line height).
+pub fn paint_prepared_name_with_glow(
+    painter: &egui::Painter,
+    pos: Pos2,
+    anchor: Align2,
+    prepared: &PreparedName,
+    color: Color32,
+    style: crate::ui::theme::TextGlowStyle,
+    reference_height: Option<f32>,
+) {
+    let rect = anchor.anchor_size(pos, prepared.size);
+    paint_prepared_runs_with_glow(painter, rect, prepared, color, style, reference_height);
 }
 
 /// Draw a pixel emoji from the embedded atlas. Returns false if the glyph is not in the atlas.

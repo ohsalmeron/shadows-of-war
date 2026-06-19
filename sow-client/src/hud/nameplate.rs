@@ -42,50 +42,34 @@ pub fn paint_nameplate_galley(painter: &egui::Painter, pos: egui::Pos2, galley: 
     }
 }
 
-/// Paint a pre-laid-out galley with premium outline. Zero layout cost.
-fn paint_glow_galley(
-    painter: &egui::Painter,
-    pos: egui::Pos2,
-    galley: Arc<egui::Galley>,
-    base_color: egui::Color32,
-    is_tribe: bool,
-) {
-    let black = egui::Color32::BLACK;
-
-    let text_height = galley.rect.height();
-    let outline_width = (text_height * 0.05).clamp(0.4, 1.5);
-    let shadow_dy = (text_height * 0.08).clamp(0.8, 2.5);
-
-    if is_tribe {
-        let offset = (text_height * 0.07).clamp(0.5, 2.0);
-        painter.galley_with_override_text_color(pos + egui::vec2(offset, offset), galley.clone(), black);
-        painter.galley_with_override_text_color(pos, galley, base_color);
-        return;
-    }
-
-    // 1 dragged shadow + 4 diagonal outline + 1 core = 6 passes, zero layout cost
-    painter.galley_with_override_text_color(pos + egui::vec2(0.0, shadow_dy), galley.clone(), black);
-    for &(dx, dy) in &[
-        (-outline_width, -outline_width),
-        (outline_width, -outline_width),
-        (-outline_width, outline_width),
-        (outline_width, outline_width),
-    ] {
-        painter.galley_with_override_text_color(pos + egui::vec2(dx, dy), galley.clone(), black);
-    }
-    painter.galley_with_override_text_color(pos, galley, base_color);
-}
-
 pub fn paint_glow_nameplate_galley(
     painter: &egui::Painter,
     pos: egui::Pos2,
     galley: Arc<egui::Galley>,
     base_color: egui::Color32,
-    is_tribe: bool,
 ) {
-    if !galley.is_empty() {
-        paint_glow_galley(painter, pos, galley, base_color, is_tribe);
+    paint_glow_nameplate_galley_with_ref(painter, pos, galley, base_color, None);
+}
+
+pub fn paint_glow_nameplate_galley_with_ref(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    galley: Arc<egui::Galley>,
+    base_color: egui::Color32,
+    reference_height: Option<f32>,
+) {
+    if galley.is_empty() {
+        return;
     }
+    let style = sow_ui::ui::theme::NAMEPLATE;
+    sow_ui::ui::theme::text_glow::paint_glow_galley(
+        painter,
+        pos,
+        galley,
+        base_color,
+        style,
+        reference_height,
+    );
 }
 
 pub fn name_label_size(painter: &egui::Painter, name: &str, font_id: &egui::FontId) -> egui::Vec2 {
@@ -116,7 +100,6 @@ pub fn paint_glow_name_label(
     name: &str,
     font_id: egui::FontId,
     color: egui::Color32,
-    is_tribe: bool,
 ) {
     sow_ui::widgets::paint_emoji_text_at(
         painter,
@@ -125,7 +108,7 @@ pub fn paint_glow_name_label(
         name,
         font_id,
         color,
-        !is_tribe,
+        true,
     );
 }
 
@@ -151,11 +134,17 @@ pub fn paint_glow_troops_row(
     troops_galley: Arc<egui::Galley>,
     font_id: &egui::FontId,
     base_color: egui::Color32,
-    is_tribe: bool,
+    reference_height: Option<f32>,
 ) {
     let icon_size = troops_icon_size(font_id);
     let icon_rect = egui::Rect::from_min_size(pos, egui::vec2(icon_size, icon_size));
     sow_ui::widgets::try_paint_emoji(painter, "⚔", icon_rect, base_color);
     let text_pos = pos + egui::vec2(icon_size + 3.0, 0.0);
-    paint_glow_nameplate_galley(painter, text_pos, troops_galley, base_color, is_tribe);
+    paint_glow_nameplate_galley_with_ref(
+        painter,
+        text_pos,
+        troops_galley,
+        base_color,
+        reference_height,
+    );
 }

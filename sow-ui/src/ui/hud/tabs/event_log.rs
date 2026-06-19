@@ -7,7 +7,7 @@ use super::super::state::HudState;
 pub(in crate::ui::hud) fn event_log_icon(message: &str) -> &'static str {
     let lower = message.to_lowercase();
     if message.contains('☢') || lower.contains("nuke") || lower.contains("missile") {
-        "☢"
+        "☢️"
     } else if message.contains('🪙') || lower.contains("gold") {
         "🪙"
     } else if message.contains('❌') || lower.contains("rejected") {

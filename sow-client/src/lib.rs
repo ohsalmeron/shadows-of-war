@@ -311,6 +311,7 @@ pub fn wasm_main() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(log::Level::Info).expect("error initializing logger");
     log::info!("SOW ENGINE WASM STARTING...");
+    crate::web_canvas::install_viewport_listeners();
 
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);

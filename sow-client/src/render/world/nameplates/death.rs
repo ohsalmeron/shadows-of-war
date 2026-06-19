@@ -1,6 +1,6 @@
+use super::super::*;
 use super::emoji::spring_overshoot;
 use super::render::seed_hash;
-use super::super::*;
 
 pub(crate) fn render_death_nameplates(
     ui: &mut crate::app::UiState,
@@ -110,7 +110,6 @@ pub(crate) fn render_death_nameplates(
             &display_name,
             font_id,
             vibrant_color,
-            false,
         );
 
         // --- 2. Draw Dove (Soul) Flying Upward Separately ---
@@ -143,9 +142,10 @@ pub(crate) fn render_death_nameplates(
         );
         let soul_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
 
-        if !sow_ui::widgets::try_paint_emoji(painter, "🕊️", dove_rect, soul_color) {
+        let emoji = if anim.by_nuke { "☢️" } else { "🕊️" };
+        if !sow_ui::widgets::try_paint_emoji(painter, emoji, dove_rect, soul_color) {
             let emoji_galley = painter.layout_no_wrap(
-                "🕊️".to_owned(),
+                emoji.to_owned(),
                 egui::FontId::proportional(bird_size),
                 soul_color,
             );

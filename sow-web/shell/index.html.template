@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Shadows of War — Free Open-Source MMORTS Strategy Game</title>
     <meta name="description" content="Free, open-source MMORTS on world maps. Play solo offline or join online multiplayer: lead civilizations, forge alliances, expand territory, and grow your economy in massive real-time strategy battles.">
     <meta name="keywords" content="MMORTS, free to play, open source game, multiplayer real-time strategy, world maps, civilizations, alliances, territorial expansion, economy, strategy game, Shadows of War">
@@ -42,6 +42,12 @@
             height: 100%;
             background-color: #0a0a0f;
             overflow: hidden;
+        }
+        :root {
+            --sow-sat: env(safe-area-inset-top, 0px);
+            --sow-sab: env(safe-area-inset-bottom, 0px);
+            --sow-sal: env(safe-area-inset-left, 0px);
+            --sow-sar: env(safe-area-inset-right, 0px);
         }
         canvas {
             display: block;

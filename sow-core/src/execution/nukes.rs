@@ -33,8 +33,8 @@ impl SowEngine {
                 let dst_y = proj.dst_tile / self.state.map.width;
                 match proj.kind {
                     ProjectileKind::Nuke { level } => {
-                        let inner = 12 + (level.saturating_sub(1) as u32) * 10;
-                        let outer = 30 + (level.saturating_sub(1) as u32) * 25;
+                        let inner = crate::game::nuke_inner_radius(level);
+                        let outer = crate::game::nuke_outer_radius(level);
                         detonations.push((dst_x, dst_y, inner, outer, proj.owner_id));
                     }
                     ProjectileKind::SAMMissile => {
@@ -133,5 +133,15 @@ impl SowEngine {
                 outer_radius: outer,
                 owner_id,
             });
+
+        let mut eliminated = Vec::new();
+        for p in &self.state.players {
+            if p.alive && p.tile_count == 0 {
+                eliminated.push(p.id);
+            }
+        }
+        for victim_id in eliminated {
+            self.eliminate_player(victim_id, owner_id, cx, cy, true);
+        }
     }
 }

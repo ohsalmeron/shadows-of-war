@@ -37,7 +37,10 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
     }
 
     if !missing.is_empty() {
-        println!("Warning: some non-404 fetch errors occurred:\n{}", missing.join("\n"));
+        println!(
+            "Warning: some non-404 fetch errors occurred:\n{}",
+            missing.join("\n")
+        );
     }
 
     entries.sort_by(|a, b| a.0.cmp(&b.0));
@@ -54,14 +57,20 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
     Ok(())
 }
 
-fn scan_source_for_emojis(repo_root: &Path) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+fn scan_source_for_emojis(
+    repo_root: &Path,
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut out = Vec::new();
     let mut stack = vec![repo_root.to_path_buf()];
     while let Some(path) = stack.pop() {
         if path.is_dir() {
             if path != repo_root {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
-                if name.starts_with('.') || name == "target" || name == "dist" || name == "node_modules" {
+                if name.starts_with('.')
+                    || name == "target"
+                    || name == "dist"
+                    || name == "node_modules"
+                {
                     continue;
                 }
                 if path.parent() == Some(repo_root) && !name.starts_with("sow-") {
@@ -82,27 +91,30 @@ fn scan_source_for_emojis(repo_root: &Path) -> Result<Vec<String>, Box<dyn std::
                 let mut current_emoji = String::new();
                 for c in content.chars() {
                     let cp = c as u32;
-                    
+
                     // Filter out box/line/geometric drawing characters (0x2500 - 0x257F etc.)
                     // and basic punctuation ranges that bleed into emoji ranges.
-                    let is_line_drawing = (cp >= 0x2500 && cp <= 0x257F) || cp == 0x2500 || cp == 0x2550;
-                    
-                    let is_emoji = !is_line_drawing && (
-                        (cp >= 0x203C && cp <= 0x3299)
-                        || (cp >= 0x1F000 && cp <= 0x1FAFF)
-                        || cp == 0xFE0F
-                        || cp == 0x200D
-                        || cp == 0x20E3
-                    );
-                    
+                    let is_line_drawing =
+                        (0x2500..=0x257F).contains(&cp) || cp == 0x2500 || cp == 0x2550;
+
+                    let is_emoji = !is_line_drawing
+                        && ((0x203C..=0x3299).contains(&cp)
+                            || (0x1F000..=0x1FAFF).contains(&cp)
+                            || cp == 0xFE0F
+                            || cp == 0x200D
+                            || cp == 0x20E3);
+
                     if is_emoji {
                         current_emoji.push(c);
                     } else if !current_emoji.is_empty() {
                         let trimmed = current_emoji.trim();
                         // Ignore pure line/dashes/punctuation strings
-                        if !trimmed.is_empty() 
-                           && !trimmed.chars().all(|ch| ch == '─' || ch == '═' || ch == '━' || ch == '═')
-                           && !out.contains(&current_emoji) {
+                        if !trimmed.is_empty()
+                            && !trimmed
+                                .chars()
+                                .all(|ch| ch == '─' || ch == '═' || ch == '━' || ch == '═')
+                            && !out.contains(&current_emoji)
+                        {
                             out.push(current_emoji.clone());
                         }
                         current_emoji.clear();
@@ -110,9 +122,12 @@ fn scan_source_for_emojis(repo_root: &Path) -> Result<Vec<String>, Box<dyn std::
                 }
                 if !current_emoji.is_empty() {
                     let trimmed = current_emoji.trim();
-                    if !trimmed.is_empty() 
-                       && !trimmed.chars().all(|ch| ch == '─' || ch == '═' || ch == '━' || ch == '═')
-                       && !out.contains(&current_emoji) {
+                    if !trimmed.is_empty()
+                        && !trimmed
+                            .chars()
+                            .all(|ch| ch == '─' || ch == '═' || ch == '━' || ch == '═')
+                        && !out.contains(&current_emoji)
+                    {
                         out.push(current_emoji);
                     }
                 }
@@ -152,7 +167,7 @@ fn fetch_twemoji(
         if let Ok(resp) = client.get(&url).send() {
             if resp.status().is_success() {
                 let bytes = resp.bytes()?;
-                
+
                 // Write to cache
                 let cache_path = cache_dir.join(format!("{}.png", name));
                 let _ = fs::write(&cache_path, &bytes);

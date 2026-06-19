@@ -73,6 +73,16 @@ pub enum ProjectileKind {
     Shell,
 }
 
+/// Tiles cleared to wilderness (ownership wipe + building destruction).
+pub fn nuke_inner_radius(level: u8) -> u32 {
+    12 + (level.saturating_sub(1) as u32) * 10
+}
+
+/// Tiles receiving troop damage only (ownership unchanged).
+pub fn nuke_outer_radius(level: u8) -> u32 {
+    30 + (level.saturating_sub(1) as u32) * 25
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Projectile {
     pub id: u64,
@@ -142,6 +152,8 @@ pub enum GameEvent {
         elimination_y: u32,
         #[serde(default)]
         assists: Vec<(u16, u32)>,
+        #[serde(default)]
+        by_nuke: bool,
     },
     GameOver {
         winner_id: u16,

@@ -138,7 +138,8 @@ pub fn draw_queue_overlay(
                 ui.add_space(section_gap);
 
                 // 2. Middle Flex Content Area
-                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
+                let button_h =
+                    lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
                 let middle_h = ui.available_height() - button_h;
 
                 ui.allocate_ui_with_layout(
@@ -189,7 +190,8 @@ pub fn draw_queue_overlay(
                 );
             } else {
                 // Connecting/Syncing state
-                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
+                let button_h =
+                    lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
                 let middle_h = ui.available_height() - button_h;
                 ui.allocate_ui_with_layout(
                     egui::vec2(ui.available_width(), middle_h),
@@ -320,7 +322,10 @@ fn draw_map_briefing(
 
                         // Mode indicator
                         let (mode_label, mode_color) = if lobby.game_mode == "FFA" {
-                            (&strings.free_for_all, crate::ui::theme::palette::neon_cyan())
+                            (
+                                &strings.free_for_all,
+                                crate::ui::theme::palette::neon_cyan(),
+                            )
                         } else if lobby.game_mode == "Teams" {
                             (
                                 &strings.team_tactics,

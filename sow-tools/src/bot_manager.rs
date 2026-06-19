@@ -128,6 +128,8 @@ async fn run_bot(
         civilization: sow_core::player::Civilization::Rome,
         leader: sow_core::player::Leader::Caesar,
         database_account_id: None,
+        host_config: None,
+        password: None,
     };
     write
         .send(Message::Binary(bincode::serialize(&join).unwrap()))

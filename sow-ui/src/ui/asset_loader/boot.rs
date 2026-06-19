@@ -235,5 +235,4 @@ impl AssetLoader {
             self.request_leader_portrait_priority(leader, true);
         }
     }
-
 }

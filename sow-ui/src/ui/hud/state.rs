@@ -149,11 +149,14 @@ pub(in crate::ui::hud) fn building_emoji(kind: sow_core::game::BuildingKind) -> 
     }
 }
 
-pub(in crate::ui::hud) fn get_player_display_name(players: &[PlayerSnapshot], id: u16, default: &str) -> String {
+pub(in crate::ui::hud) fn get_player_display_name(
+    players: &[PlayerSnapshot],
+    id: u16,
+    default: &str,
+) -> String {
     players
         .iter()
         .find(|p| p.id == id)
         .map(|p| sow_core::player::display_name(p.id, &p.name, p.player_type))
         .unwrap_or_else(|| default.to_string())
 }
-

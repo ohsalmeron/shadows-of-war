@@ -140,7 +140,7 @@ pub fn draw_user_profile_header(
 
     // --- 2. Nickname component & Sign In button ---
     let scale = crate::ui::theme::viewport_scale(ui.ctx());
-    
+
     // Defensive check to ensure nickname doesn't exceed 16 characters
     if state.player_name.chars().count() > 16 {
         state.player_name = state.player_name.chars().take(16).collect();
@@ -163,15 +163,24 @@ pub fn draw_user_profile_header(
     } else {
         let field_h = 32.0 * scale;
         let field_rect = egui::Rect::from_min_max(
-            egui::pos2(avatar_rect.max.x + 12.0 * scale, rect.min.y + (rect.height() - field_h) / 2.0),
-            egui::pos2(rect.max.x - 8.0 * scale, rect.min.y + (rect.height() + field_h) / 2.0),
+            egui::pos2(
+                avatar_rect.max.x + 12.0 * scale,
+                rect.min.y + (rect.height() - field_h) / 2.0,
+            ),
+            egui::pos2(
+                rect.max.x - 8.0 * scale,
+                rect.min.y + (rect.height() + field_h) / 2.0,
+            ),
         );
 
         ui.scope_builder(egui::UiBuilder::new().max_rect(field_rect), |ui| {
             // ponytail: simplified absolute positioning and manual painter rects using a standard egui::Frame layout
             let field_frame = egui::Frame::NONE
                 .fill(crate::ui::theme::palette::field_bg())
-                .stroke(Stroke::new(1.0_f32, crate::ui::theme::palette::field_border()))
+                .stroke(Stroke::new(
+                    1.0_f32,
+                    crate::ui::theme::palette::field_border(),
+                ))
                 .corner_radius(egui::CornerRadius::same(6))
                 .inner_margin(egui::Margin::symmetric(8, 4));
 

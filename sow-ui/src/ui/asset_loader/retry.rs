@@ -10,7 +10,11 @@ impl AssetLoader {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn decode_and_upload_webp(ctx: &egui::Context, name: &str, bytes: &[u8]) -> egui::TextureHandle {
+pub(crate) fn decode_and_upload_webp(
+    ctx: &egui::Context,
+    name: &str,
+    bytes: &[u8],
+) -> egui::TextureHandle {
     let mut image = image::load_from_memory(bytes).expect("Failed to load UI asset");
 
     if image.width() > 2048 || image.height() > 2048 {
@@ -25,5 +29,4 @@ pub(crate) fn decode_and_upload_webp(ctx: &egui::Context, name: &str, bytes: &[u
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

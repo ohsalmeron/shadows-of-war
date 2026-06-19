@@ -1,6 +1,8 @@
 use crate::app::SowApp;
 use crate::hud::tutorial::TutorialStep;
 use sow_core::game_config::GameConfig;
+
+#[cfg(target_arch = "wasm32")]
 use sow_ui::app::ClientPhase;
 
 #[cfg(target_arch = "wasm32")]

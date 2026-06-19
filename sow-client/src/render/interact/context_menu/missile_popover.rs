@@ -2,10 +2,19 @@ use crate::app::SowApp;
 use egui::Color32;
 
 impl SowApp {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_missile_popover(
-        &mut self, _ui: &mut egui::Ui, ctx: &egui::Context, tile_idx: u32,
-        center: egui::Pos2, scale: f32, compact: bool, screen: egui::Rect,
-        outer_r: f32, is_own_territory: bool, radial_missile_active: bool,
+        &mut self,
+        _ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        tile_idx: u32,
+        center: egui::Pos2,
+        scale: f32,
+        compact: bool,
+        screen: egui::Rect,
+        outer_r: f32,
+        is_own_territory: bool,
+        radial_missile_active: bool,
         missile_active_id: egui::Id,
     ) {
         // Render Missile sub-popover
@@ -14,7 +23,9 @@ impl SowApp {
                 .order(egui::Order::Tooltip);
 
             if compact {
-                area = area.fixed_pos(screen.center()).pivot(egui::Align2::CENTER_CENTER);
+                area = area
+                    .fixed_pos(screen.center())
+                    .pivot(egui::Align2::CENTER_CENTER);
             } else {
                 area = area.fixed_pos(center - egui::vec2(outer_r + 240.0, 100.0));
             }
@@ -23,7 +34,9 @@ impl SowApp {
 
             area.show(ctx, |ui| {
                 let response_rect = ui.min_rect();
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("missile_popover_rect"), response_rect));
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("missile_popover_rect"), response_rect)
+                });
 
                 egui::Frame::window(&ctx.global_style())
                     .fill(sow_ui::ui::theme::panel_bg())
@@ -37,7 +50,7 @@ impl SowApp {
                                     egui::RichText::new("NUCLEAR STRIKE")
                                         .strong()
                                         .color(theme_color)
-                                        .size(13.0)
+                                        .size(13.0),
                                 );
                             });
                             ui.add_space(8.0);
@@ -45,18 +58,21 @@ impl SowApp {
                             let card_w = if compact { 280.0 } else { 220.0 };
                             let card_h = 50.0;
 
-                            let nukes = [
-                                (sow_core::game::NukeKind::AtomBomb, "Missile Strike", "☢️"),
-                            ];
+                            let nukes =
+                                [(sow_core::game::NukeKind::AtomBomb, "Missile Strike", "☢️")];
 
                             for &(kind, label, icon) in &nukes {
                                 let cost = kind.gold_cost(0);
                                 let is_disabled = self.ui.app.hud_state.gold < cost;
 
-                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    egui::vec2(card_w, card_h),
+                                    egui::Sense::click(),
+                                );
                                 let is_hovered = resp.hovered() && !is_disabled;
                                 let hover_id = ui.make_persistent_id(("popover_hover", label));
-                                let hover_t = ui.ctx().animate_bool_with_time(hover_id, is_hovered, 0.15);
+                                let hover_t =
+                                    ui.ctx().animate_bool_with_time(hover_id, is_hovered, 0.15);
 
                                 let border_glow = theme_color.linear_multiply(0.3 + 0.7 * hover_t);
                                 let bg_fill = if is_disabled {
@@ -81,7 +97,11 @@ impl SowApp {
                                     egui::Align2::CENTER_CENTER,
                                     icon,
                                     egui::FontId::proportional((22.0 + 4.0 * hover_t) * scale),
-                                    if is_disabled { Color32::GRAY } else { Color32::WHITE }
+                                    if is_disabled {
+                                        Color32::GRAY
+                                    } else {
+                                        Color32::WHITE
+                                    },
                                 );
 
                                 // Label
@@ -90,7 +110,11 @@ impl SowApp {
                                     egui::Align2::LEFT_CENTER,
                                     label,
                                     egui::FontId::proportional(13.0),
-                                    if is_disabled { Color32::GRAY } else { Color32::WHITE }
+                                    if is_disabled {
+                                        Color32::GRAY
+                                    } else {
+                                        Color32::WHITE
+                                    },
                                 );
 
                                 // Cost
@@ -99,14 +123,20 @@ impl SowApp {
                                     egui::Align2::LEFT_CENTER,
                                     format!("{}g", cost as u32),
                                     egui::FontId::proportional(10.5),
-                                    if is_disabled { Color32::from_rgb(180, 100, 100) } else { Color32::from_rgb(251, 191, 36) }
+                                    if is_disabled {
+                                        Color32::from_rgb(180, 100, 100)
+                                    } else {
+                                        Color32::from_rgb(251, 191, 36)
+                                    },
                                 );
 
                                 if !is_disabled && resp.clicked() {
-                                    self.send_intent(sow_core::protocol::GameplayIntent::LaunchNuke {
-                                        kind,
-                                        target_tile: tile_idx,
-                                    });
+                                    self.send_intent(
+                                        sow_core::protocol::GameplayIntent::LaunchNuke {
+                                            kind,
+                                            target_tile: tile_idx,
+                                        },
+                                    );
                                     ctx.data_mut(|d| d.insert_temp(missile_active_id, false));
                                     self.input.map_context_menu = None;
                                 }

@@ -18,10 +18,32 @@ pub fn compact_viewport(ctx: &Context) -> bool {
     w < 768.0 || h < 600.0 || w < h
 }
 
-/// Scale factor for fixed chrome (buttons, gaps, profile bar) on short viewports.
+/// Portrait orientation (height >= width).
+#[inline]
+pub fn portrait_layout(ctx: &Context) -> bool {
+    let rect = ctx.input(|i| i.content_rect());
+    rect.width() < rect.height()
+}
+
+/// Scale factor for fixed chrome (buttons, gaps, profile bar) on short/narrow viewports.
 #[inline]
 pub fn viewport_scale(ctx: &Context) -> f32 {
-    (ctx.input(|i| i.content_rect()).height() / 720.0).clamp(0.55, 1.0)
+    let rect = ctx.input(|i| i.content_rect());
+    let w = rect.width();
+    let h = rect.height();
+    let base = (h / 720.0).min(w / 768.0);
+    let floor = if compact_viewport(ctx) { 0.4 } else { 0.55 };
+    base.clamp(floor, 1.0)
+}
+
+/// Shrink factor when fixed chrome exceeds available space.
+#[inline]
+pub fn fit_scale(needed: f32, available: f32) -> f32 {
+    if needed <= 0.0 || needed <= available {
+        1.0
+    } else {
+        (available / needed).clamp(0.5, 1.0)
+    }
 }
 
 /// Outer width of the main-menu left rail (content + optional glass frame inset).
@@ -88,23 +110,22 @@ pub fn modal_close_button(ui: &mut Ui) -> Response {
 /// Cosmic Rush palette
 pub mod palette;
 
-
 /// Layout tokens — use these instead of magic numbers in HUD code.
 pub mod radius;
 
-
 pub mod stroke;
-
 
 pub mod margin;
 
-pub mod tab;
 mod panels;
+pub mod tab;
 mod tabs;
+pub mod text_glow;
 mod typography;
 
 pub use panels::*;
 pub use tabs::*;
+pub use text_glow::{TextGlowStyle, HUD_PREMIUM, HUD_PREMIUM_REGULAR, NAMEPLATE};
 pub use typography::*;
 
 pub fn menu_backdrop() -> Color32 {
@@ -194,7 +215,9 @@ pub fn apply_theme(ctx: &Context) {
     );
     fonts.font_data.insert(
         "Regular".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(crate::ui_font::UI_REGULAR_FONT_TTF)),
+        std::sync::Arc::new(egui::FontData::from_static(
+            crate::ui_font::UI_REGULAR_FONT_TTF,
+        )),
     );
     fonts
         .families
@@ -202,9 +225,10 @@ pub fn apply_theme(ctx: &Context) {
     fonts
         .families
         .insert(egui::FontFamily::Monospace, vec!["Default".to_owned()]);
-    fonts
-        .families
-        .insert(egui::FontFamily::Name("Regular".into()), vec!["Regular".to_owned()]);
+    fonts.families.insert(
+        egui::FontFamily::Name("Regular".into()),
+        vec!["Regular".to_owned()],
+    );
     ctx.set_fonts(fonts);
 
     let mut style = Style {

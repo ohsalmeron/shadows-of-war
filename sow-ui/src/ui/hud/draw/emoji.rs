@@ -1,7 +1,9 @@
-use egui::{Align2, Color32, RichText, pos2, vec2};
+use egui::{pos2, vec2, Align2, Color32, RichText};
 use sow_i18n::Language;
 
-use super::super::state::{HudState, HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE, hud_map_controls_anchor_offset};
+use super::super::state::{
+    hud_map_controls_anchor_offset, HudState, HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE,
+};
 
 pub(in crate::ui::hud) fn draw_emoji_panel(
     ui: &mut egui::Ui,
@@ -35,12 +37,10 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
 
     let screen_rect = ui.ctx().content_rect();
     let emojis = &[
-        "😀", "😎", "😏", "😂", "🤣", "😋", "😉", "😜",
-        "😍", "🥰", "🥳", "🥺", "😇", "🤩", "👍", "❤️",
-        "😮", "🤔", "🧐", "🙄", "🤯", "🤡", "💩", "🤫",
-        "😠", "😡", "🤬", "😤", "🥵", "🥶", "🤢", "🤮",
-        "⚔️", "🛡️", "🏹", "💣", "💥", "💀", "👑", "💪",
-        "🔥", "👀", "🏳️", "🤝", "💔", "🔌", "⭐", "🐺",
+        "😀", "😎", "😏", "😂", "🤣", "😋", "😉", "😜", "😍", "🥰", "🥳", "🥺", "😇", "🤩", "👍",
+        "❤️", "😮", "🤔", "🧐", "🙄", "🤯", "🤡", "💩", "🤫", "😠", "😡", "🤬", "😤", "🥵", "🥶",
+        "🤢", "🤮", "⚔️", "🛡️", "🏹", "💣", "💥", "💀", "👑", "💪", "🔥", "👀", "🏳️", "🤝", "💔",
+        "🔌", "⭐", "🐺",
     ];
 
     if compact {
@@ -202,81 +202,78 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
                     ui.add_space(8.0 * anim_scale);
 
                     ui.horizontal(|ui| {
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 6.0 * anim_scale;
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 6.0 * anim_scale;
 
-                                    let text_color = if state.pin_emoji {
-                                        crate::ui::theme::palette::neon_gold()
-                                            .linear_multiply(emoji_progress)
-                                    } else {
-                                        crate::ui::theme::palette::text_muted()
-                                            .linear_multiply(emoji_progress)
-                                    };
+                                let text_color = if state.pin_emoji {
+                                    crate::ui::theme::palette::neon_gold()
+                                        .linear_multiply(emoji_progress)
+                                } else {
+                                    crate::ui::theme::palette::text_muted()
+                                        .linear_multiply(emoji_progress)
+                                };
 
-                                    let label_resp = ui.label(
-                                        RichText::new("PIN")
-                                            .size(13.0 * anim_scale)
-                                            .strong()
-                                            .color(text_color),
+                                let label_resp = ui.label(
+                                    RichText::new("PIN")
+                                        .size(13.0 * anim_scale)
+                                        .strong()
+                                        .color(text_color),
+                                );
+
+                                let label_click = ui.interact(
+                                    label_resp.rect,
+                                    ui.make_persistent_id("pin_label_click"),
+                                    egui::Sense::click(),
+                                );
+                                if label_click.clicked() {
+                                    state.pin_emoji = !state.pin_emoji;
+                                }
+
+                                let box_size = 28.0;
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    vec2(box_size, box_size),
+                                    egui::Sense::click(),
+                                );
+
+                                let is_hovered = resp.hovered();
+                                if resp.clicked() {
+                                    state.pin_emoji = !state.pin_emoji;
+                                }
+
+                                let bg_color = if state.pin_emoji {
+                                    crate::ui::theme::palette::neon_gold().linear_multiply(0.2)
+                                } else {
+                                    crate::ui::theme::palette::field_bg()
+                                };
+
+                                let stroke_color = if state.pin_emoji {
+                                    crate::ui::theme::palette::neon_gold()
+                                } else if is_hovered {
+                                    crate::ui::theme::palette::neon_cyan()
+                                } else {
+                                    crate::ui::theme::palette::field_border()
+                                };
+
+                                ui.painter().rect(
+                                    rect,
+                                    4.0,
+                                    bg_color,
+                                    egui::Stroke::new(2.0_f32, stroke_color),
+                                    egui::StrokeKind::Inside,
+                                );
+
+                                if state.pin_emoji {
+                                    ui.painter().text(
+                                        rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        "✓",
+                                        egui::FontId::proportional(22.0),
+                                        crate::ui::theme::palette::neon_gold(),
                                     );
-
-                                    let label_click = ui.interact(
-                                        label_resp.rect,
-                                        ui.make_persistent_id("pin_label_click"),
-                                        egui::Sense::click(),
-                                    );
-                                    if label_click.clicked() {
-                                        state.pin_emoji = !state.pin_emoji;
-                                    }
-
-                                    let box_size = 28.0;
-                                    let (rect, resp) = ui.allocate_exact_size(
-                                        vec2(box_size, box_size),
-                                        egui::Sense::click(),
-                                    );
-
-                                    let is_hovered = resp.hovered();
-                                    if resp.clicked() {
-                                        state.pin_emoji = !state.pin_emoji;
-                                    }
-
-                                    let bg_color = if state.pin_emoji {
-                                        crate::ui::theme::palette::neon_gold().linear_multiply(0.2)
-                                    } else {
-                                        crate::ui::theme::palette::field_bg()
-                                    };
-
-                                    let stroke_color = if state.pin_emoji {
-                                        crate::ui::theme::palette::neon_gold()
-                                    } else if is_hovered {
-                                        crate::ui::theme::palette::neon_cyan()
-                                    } else {
-                                        crate::ui::theme::palette::field_border()
-                                    };
-
-                                    ui.painter().rect(
-                                        rect,
-                                        4.0,
-                                        bg_color,
-                                        egui::Stroke::new(2.0_f32, stroke_color),
-                                        egui::StrokeKind::Inside,
-                                    );
-
-                                    if state.pin_emoji {
-                                        ui.painter().text(
-                                            rect.center(),
-                                            egui::Align2::CENTER_CENTER,
-                                            "✓",
-                                            egui::FontId::proportional(22.0),
-                                            crate::ui::theme::palette::neon_gold(),
-                                        );
-                                    }
-                                });
-                            },
-                        );
+                                }
+                            });
+                        });
                     });
                 });
             });

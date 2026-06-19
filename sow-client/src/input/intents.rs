@@ -44,7 +44,8 @@ impl SowApp {
                 );
             }
             sow_core::protocol::GameplayIntent::Attack(attack) => {
-                let world_x = (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let world_x =
+                    (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;
                 // Offset up by 60 screen pixels to keep the notice from being covered by a finger/mouse
                 let offset_mouse_y = self.input.last_mouse_y as f32 - 60.0;
                 let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;

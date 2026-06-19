@@ -1,4 +1,3 @@
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
@@ -28,4 +27,3 @@ pub(crate) fn hide_web_loader() {
             });
     }
 }
-

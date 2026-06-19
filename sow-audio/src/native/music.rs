@@ -1,6 +1,6 @@
 use std::sync::{Mutex, OnceLock};
 
-use super::engine::{ArpeggioSource, play_ui, SimpleRng, SAMPLE_RATE};
+use super::engine::{ArpeggioSource, SAMPLE_RATE, SimpleRng, play_ui};
 
 pub(super) struct MusicSession {
     pub(super) root_degree: u8,
@@ -34,8 +34,8 @@ pub fn set_music_context(seed: u32, anchor_wx: f32, anchor_wy: f32) {
     session.last_degree = session.root_degree;
 }
 pub(super) const PENTATONIC_SCALE: [f32; 15] = [
-    110.00, 130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00,
-    523.25, 587.33, 659.25, 783.99,
+    110.00, 130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25,
+    587.33, 659.25, 783.99,
 ];
 
 pub(super) fn tile_hash(wx: f32, wy: f32) -> u32 {
@@ -62,7 +62,12 @@ pub(super) fn degrees_to_freqs(octave: u8, degrees: &[u8; 4]) -> [f32; 4] {
     ]
 }
 
-pub(super) fn pick_base_degree(session: &MusicSession, wx: f32, wy: f32, rng: &mut SimpleRng) -> u8 {
+pub(super) fn pick_base_degree(
+    session: &MusicSession,
+    wx: f32,
+    wy: f32,
+    rng: &mut SimpleRng,
+) -> u8 {
     let raw = ((tile_hash(wx, wy)
         .wrapping_add(session.phrase_step)
         .wrapping_add(rng.next_u32() % 3))

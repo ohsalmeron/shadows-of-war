@@ -43,6 +43,8 @@ enum ServerEvent {
         host_private: bool,
         build_version: String,
         database_account_id: Option<String>,
+        host_config: Option<Box<sow_core::game_config::GameConfig>>,
+        password: Option<String>,
     },
 
     Leave {
@@ -288,9 +290,9 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id } => {
+                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id, host_config, password } => {
                             log::info!("Player {} (clan: {}) joining with version: {}", name, clan_tag, build_version);
-                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id) {
+                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id, host_config, password) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private };
                                     let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)).unwrap();
@@ -398,7 +400,7 @@ async fn main() {
 
                                     if let Ok(msg) = bincode::deserialize::<sow_core::protocol::ClientMessage>(&data) {
                                         match msg {
-                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, host_private, build_version, clan_tag, civilization, leader, database_account_id } => {
+                                            sow_core::protocol::ClientMessage::Join { name, is_observer: _, target_lobby_id, host_private, build_version, clan_tag, civilization, leader, database_account_id, host_config, password } => {
                                                 let server_version = std::env::var("SOW_BUILD_VERSION")
                                                     .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
 
@@ -420,6 +422,8 @@ async fn main() {
                                                     host_private,
                                                     build_version,
                                                     database_account_id,
+                                                    host_config,
+                                                    password,
                                                 }).await;
                                             }
                                             sow_core::protocol::ClientMessage::Gameplay { .. } => {

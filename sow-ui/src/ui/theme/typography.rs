@@ -22,32 +22,16 @@ pub fn paint_premium_glow_galley(
     base_color: Color32,
     shadow_color: Color32,
 ) {
-    let text_height = galley.rect.height();
-    let outline_width = (text_height * 0.05).clamp(0.4, 1.5);
-    let shadow_dy = (text_height * 0.08).clamp(0.8, 2.5);
-
-    // 1. Dragged-down shadow (1 pass)
-    painter.galley_with_override_text_color(
-        pos + egui::vec2(0.0, shadow_dy),
-        galley.clone(),
-        shadow_color,
+    super::text_glow::paint_glow_galley_colors(
+        painter,
+        pos,
+        galley,
+        base_color,
+        super::text_glow::HUD_PREMIUM,
+        None,
+        Some(shadow_color),
+        Some(shadow_color),
     );
-
-    // 2. Diagonal outline (4 passes)
-    for &(dx, dy) in &[
-        (-outline_width, -outline_width),
-        (outline_width, -outline_width),
-        (-outline_width, outline_width),
-        (outline_width, outline_width),
-    ] {
-        painter.galley_with_override_text_color(
-            pos + egui::vec2(dx, dy),
-            galley.clone(),
-            shadow_color,
-        );
-    }
-    // 3. Core text (1 pass)
-    painter.galley_with_override_text_color(pos, galley, base_color);
 }
 
 /// Short soft pixel shadow — opaque at the glyph origin, fading over ~2–3 px.
@@ -82,11 +66,7 @@ fn paint_pixel_shadow_galley_regular(
     galley: Arc<Galley>,
     base_color: Color32,
 ) {
-    const LAYERS: [(f32, f32, u8); 3] = [
-        (0.0, 1.0, 160),
-        (1.0, 1.0, 100),
-        (0.0, 2.0, 50),
-    ];
+    const LAYERS: [(f32, f32, u8); 3] = [(0.0, 1.0, 160), (1.0, 1.0, 100), (0.0, 2.0, 50)];
     for &(dx, dy, alpha) in &LAYERS {
         painter.galley_with_override_text_color(
             pos + Vec2::new(dx, dy),
@@ -134,32 +114,16 @@ pub fn paint_premium_glow_galley_regular(
     base_color: Color32,
     shadow_color: Color32,
 ) {
-    let text_height = galley.rect.height();
-    let outline_width = (text_height * 0.04).clamp(0.4, 1.2);
-    let shadow_dy = (text_height * 0.07).clamp(0.6, 2.0);
-
-    // 1. Dragged-down shadow (1 pass)
-    painter.galley_with_override_text_color(
-        pos + egui::vec2(0.0, shadow_dy),
-        galley.clone(),
-        shadow_color.linear_multiply(0.7),
+    super::text_glow::paint_glow_galley_colors(
+        painter,
+        pos,
+        galley,
+        base_color,
+        super::text_glow::HUD_PREMIUM_REGULAR,
+        None,
+        Some(shadow_color),
+        Some(shadow_color.linear_multiply(0.7)),
     );
-
-    // 2. Diagonal outline (4 passes)
-    for &(dx, dy) in &[
-        (-outline_width, -outline_width),
-        (outline_width, -outline_width),
-        (-outline_width, outline_width),
-        (outline_width, outline_width),
-    ] {
-        painter.galley_with_override_text_color(
-            pos + egui::vec2(dx, dy),
-            galley.clone(),
-            shadow_color,
-        );
-    }
-    // 3. Core text (1 pass)
-    painter.galley_with_override_text_color(pos, galley, base_color);
 }
 
 /// Draw text with a crisp black outline and heavy bottom drop shadow.
@@ -204,7 +168,6 @@ fn anchor_top_left(pos: egui::Pos2, anchor: Align2, size: egui::Vec2) -> egui::P
     egui::pos2(x, y)
 }
 
-
 /// A UI widget that draws text with an outline. Lays out once, paints 7×.
 pub fn outlined_label(
     ui: &mut egui::Ui,
@@ -217,7 +180,13 @@ pub fn outlined_label(
     let (rect, response) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
         if is_regular {
-            paint_premium_glow_galley_regular(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
+            paint_premium_glow_galley_regular(
+                ui.painter(),
+                rect.left_top(),
+                galley,
+                color,
+                Color32::BLACK,
+            );
         } else {
             paint_premium_glow_galley(ui.painter(), rect.left_top(), galley, color, Color32::BLACK);
         }

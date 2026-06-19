@@ -126,6 +126,12 @@ pub enum ClientMessage {
         civilization: crate::player::Civilization,
         leader: crate::player::Leader,
         database_account_id: Option<String>,
+        /// When creating a custom lobby (public or private), the host's desired config.
+        #[serde(default)]
+        host_config: Option<Box<crate::game_config::GameConfig>>,
+        /// Password for joining a password-protected lobby, or setting one when creating.
+        #[serde(default)]
+        password: Option<String>,
     },
     Gameplay {
         intent: GameplayIntent,
@@ -187,6 +193,16 @@ pub struct LobbyInfo {
     pub map_name: String,
     pub game_mode: String,
     pub players: Vec<LobbyPlayerSyncState>,
+    #[serde(default)]
+    pub has_password: bool,
+    #[serde(default)]
+    pub host_name: String,
+    #[serde(default)]
+    pub bot_count: u32,
+    #[serde(default)]
+    pub nation_count: u32,
+    #[serde(default)]
+    pub bot_difficulty: crate::game_config::BotDifficulty,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

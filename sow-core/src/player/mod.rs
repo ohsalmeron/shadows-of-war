@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 mod colors;
 mod nameplate;
 
-pub use colors::{NamedColor, PREMIUM_COLORS, bot_territory_color, human_shader_territory_rgb, premium_color};
+pub use colors::{
+    bot_territory_color, human_shader_territory_rgb, premium_color, NamedColor, PREMIUM_COLORS,
+};
 
 use wyrand::WyRand;
 
