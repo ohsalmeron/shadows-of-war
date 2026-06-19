@@ -41,6 +41,8 @@ pub struct ServerLobby {
     pub config: GameConfig,
     pub game_mode: String,
     pub relay_port: Option<u16>,
+    /// Player who created this private lobby; only they can ForceStart it.
+    pub host_player_id: Option<u16>,
 }
 
 impl ServerLobby {
@@ -83,6 +85,7 @@ fn spawn_waiting_lobby(
         config,
         game_mode: game_mode.to_string(),
         relay_port: None,
+        host_player_id: None,
     });
 }
 
@@ -247,6 +250,10 @@ pub fn join_player(
         database_account_id,
     });
 
+    if host_private {
+        lobby.host_player_id = Some(player_id);
+    }
+
     log::info!("Player {} joined lobby {}", player_id, lobby_id);
     Ok((
         lobby_id,
@@ -295,6 +302,32 @@ fn start_match(lobby: &mut ServerLobby) {
         lobby.seed,
         lobby.players.len()
     );
+}
+
+pub fn force_start(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
+    let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id && g.is_private) else {
+        return;
+    };
+    if lobby.host_player_id != Some(player_id) {
+        return;
+    }
+    if lobby.players.is_empty() {
+        return;
+    }
+    match lobby.phase {
+        LobbyPhase::Waiting => {
+            lobby.phase = LobbyPhase::CountingDown;
+            lobby.countdown_secs = 3.0;
+            log::info!("Lobby {} force-started by host player {}", lobby_id, player_id);
+        }
+        LobbyPhase::CountingDown => {
+            if lobby.countdown_secs > 3.0 {
+                lobby.countdown_secs = 3.0;
+                log::info!("Lobby {} countdown snapped to 3s by host player {}", lobby_id, player_id);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {

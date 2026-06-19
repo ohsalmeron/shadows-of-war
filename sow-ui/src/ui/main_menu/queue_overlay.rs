@@ -2,9 +2,14 @@ use super::MainMenuState;
 use crate::UiAction;
 use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
 
-fn lobby_bottom_action_height(compact: bool, action_min_h: f32, show_invite: bool) -> f32 {
+fn lobby_bottom_action_height(
+    compact: bool,
+    action_min_h: f32,
+    show_invite: bool,
+    show_start: bool,
+) -> f32 {
     if compact {
-        let rows = if show_invite { 2.0 } else { 1.0 };
+        let rows = 1.0 + if show_invite { 1.0 } else { 0.0 } + if show_start { 1.0 } else { 0.0 };
         rows * action_min_h + (rows - 1.0) * 8.0 + 24.0
     } else {
         action_min_h + 24.0
@@ -22,6 +27,16 @@ fn draw_lobby_bottom_actions(
     let strings = &sow_i18n::get(lang).main_menu;
     if state.in_private_match {
         if let Some(lobby) = lobby_info {
+            if state.is_lobby_host {
+                let start_btn = crate::widgets::ThemeButton::new(&strings.start_game)
+                    .style(crate::widgets::ThemeButtonStyle::Primary)
+                    .min_size(egui::vec2(200.0, action_min_h));
+                if ui.add(start_btn).clicked() {
+                    *action = Some(UiAction::StartPrivateLobby(lobby.id));
+                }
+                ui.add_space(8.0);
+            }
+
             let now = ui.input(|i| i.time);
             let is_copied = if let Some(t) = state.invite_copied_at {
                 now - t < 2.0
@@ -34,7 +49,7 @@ fn draw_lobby_bottom_actions(
                 &strings.copy_invite_link
             };
             let invite_btn = crate::widgets::ThemeButton::new(label)
-                .style(crate::widgets::ThemeButtonStyle::Primary)
+                .style(crate::widgets::ThemeButtonStyle::Secondary)
                 .min_size(egui::vec2(200.0, action_min_h));
             if ui.add(invite_btn).clicked() {
                 *action = Some(UiAction::CopyInviteLink(lobby.id));
@@ -72,6 +87,7 @@ pub fn draw_queue_overlay(
     }
 
     let show_invite = state.in_private_match && lobby_info.is_some();
+    let show_start = state.in_private_match && state.is_lobby_host && lobby_info.is_some();
 
     // 1. Premium standard panel matching main menu
     let panel_frame = crate::ui::theme::standard_panel_frame(compact);
@@ -122,7 +138,7 @@ pub fn draw_queue_overlay(
                 ui.add_space(section_gap);
 
                 // 2. Middle Flex Content Area
-                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite);
+                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
                 let middle_h = ui.available_height() - button_h;
 
                 ui.allocate_ui_with_layout(
@@ -173,7 +189,7 @@ pub fn draw_queue_overlay(
                 );
             } else {
                 // Connecting/Syncing state
-                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite);
+                let button_h = lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
                 let middle_h = ui.available_height() - button_h;
                 ui.allocate_ui_with_layout(
                     egui::vec2(ui.available_width(), middle_h),

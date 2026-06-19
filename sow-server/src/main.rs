@@ -3,8 +3,8 @@ mod map_catalog;
 
 use futures_util::{SinkExt, StreamExt};
 use lobby::{
-    build_lobby_broadcast, join_player, leave_player, master_tick, sync_private_lobby_to_members,
-    ServerLobby,
+    build_lobby_broadcast, force_start, join_player, leave_player, master_tick,
+    sync_private_lobby_to_members, ServerLobby,
 };
 use redis::Commands;
 use sow_core::protocol::{
@@ -57,6 +57,10 @@ enum ServerEvent {
         lobby_id: u64,
         player_id: u16,
         progress: u8,
+    },
+    ForceStart {
+        lobby_id: u64,
+        player_id: u16,
     },
 }
 
@@ -323,6 +327,9 @@ async fn main() {
                                 sync_private_lobby_to_members(lobby);
                             }
                         }
+                        ServerEvent::ForceStart { lobby_id, player_id } => {
+                            force_start(&mut games, lobby_id, player_id);
+                        }
                     }
                 }
             }
@@ -451,6 +458,16 @@ async fn main() {
                                             }
                                             sow_core::protocol::ClientMessage::RematchRequest { lobby_id: _ } => {
                                                 // Orchestrator ignores RematchRequest, it is handled by the relay server
+                                            }
+                                            sow_core::protocol::ClientMessage::ForceStart { lobby_id, player_id } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    if lobby_id == l_id && player_id == p_id {
+                                                        let _ = ev_tx.send(ServerEvent::ForceStart {
+                                                            lobby_id: l_id,
+                                                            player_id: p_id,
+                                                        }).await;
+                                                    }
+                                                }
                                             }
                                             sow_core::protocol::ClientMessage::Ping { client_time } => {
                                                 let pong = sow_core::protocol::ServerMessage::Pong { client_time };

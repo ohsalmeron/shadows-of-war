@@ -1,8 +1,5 @@
 
 #[cfg(target_arch = "wasm32")]
-use std::time::Duration;
-
-#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
 /// Empty splash status -> loading screen shows i18n `loading_screen.loading` + progress %.

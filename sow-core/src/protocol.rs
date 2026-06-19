@@ -140,6 +140,10 @@ pub enum ClientMessage {
         lobby_id: u64,
         player_id: u16,
     },
+    ForceStart {
+        lobby_id: u64,
+        player_id: u16,
+    },
     Ping {
         client_time: f64,
     },

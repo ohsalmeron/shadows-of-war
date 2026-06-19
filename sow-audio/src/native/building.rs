@@ -6,6 +6,7 @@ use rodio::source::Source;
 
 use crate::{BuildingSoundKind, SpatialSoundParams};
 use super::engine::{queue_spatial, SimpleRng, SoundPriority, SAMPLE_RATE};
+use super::tone::{note_envelope, sweep_envelope, warm_at};
 
 
 #[derive(Default)]
@@ -25,34 +26,14 @@ fn building_session() -> &'static Mutex<BuildingSession> {
 
 const MELODY_RESET: Duration = Duration::from_secs(10);
 
-// Funky Town riff fragment (City)
-const CITY_MELODY: [f32; 8] = [
-    392.00, 392.00, 349.23, 293.66, 261.63, 293.66, 261.63, 233.08,
-];
-// Imperial March opening (Bunker)
-const BUNKER_MELODY: [f32; 8] = [
-    293.66, 293.66, 293.66, 233.08, 349.23, 233.08, 349.23, 587.33,
-];
-// Axel F lead (Factory)
-const FACTORY_MELODY: [f32; 8] = [
-    554.37, 554.37, 466.16, 554.37, 466.16, 415.30, 369.99, 415.30,
-];
-// Sailor's Hornpipe opening (Port)
-const PORT_MELODY: [f32; 8] = [
-    392.00, 493.88, 587.33, 493.88, 392.00, 440.00, 493.88, 392.00,
-];
-
-#[derive(Clone, Copy)]
-enum BuildingWaveKind {
-    Pulse,
-    Sawtooth,
-    Triangle,
-}
+// Original mobile-UI motifs in lower register (220–440 Hz)
+const CITY_MELODY: [f32; 6] = [261.63, 293.66, 329.63, 349.23, 329.63, 293.66];
+const BUNKER_MELODY: [f32; 6] = [220.00, 246.94, 220.00, 196.00, 220.00, 246.94];
+const FACTORY_MELODY: [f32; 6] = [293.66, 329.63, 369.99, 329.63, 293.66, 261.63];
+const PORT_MELODY: [f32; 6] = [329.63, 369.99, 392.00, 369.99, 329.63, 293.66];
 
 struct BuildingPlacementParams {
     freq: f32,
-    wave: BuildingWaveKind,
-    duty: f32,
     decay_rate: f32,
     duration_secs: f32,
     amplitude: f32,
@@ -63,34 +44,26 @@ fn placement_params(kind: BuildingSoundKind) -> BuildingPlacementParams {
     match kind {
         BuildingSoundKind::City => BuildingPlacementParams {
             freq,
-            wave: BuildingWaveKind::Pulse,
-            duty: 0.25,
-            decay_rate: 10.0,
-            duration_secs: 0.12,
+            decay_rate: 8.0,
+            duration_secs: 0.14,
             amplitude: 0.15,
         },
         BuildingSoundKind::Bunker => BuildingPlacementParams {
             freq,
-            wave: BuildingWaveKind::Sawtooth,
-            duty: 0.50,
-            decay_rate: 8.0,
-            duration_secs: 0.15,
+            decay_rate: 7.0,
+            duration_secs: 0.16,
             amplitude: 0.14,
         },
         BuildingSoundKind::Factory => BuildingPlacementParams {
             freq,
-            wave: BuildingWaveKind::Pulse,
-            duty: 0.125,
-            decay_rate: 22.0,
-            duration_secs: 0.08,
+            decay_rate: 12.0,
+            duration_secs: 0.11,
             amplitude: 0.14,
         },
         BuildingSoundKind::Port => BuildingPlacementParams {
             freq,
-            wave: BuildingWaveKind::Triangle,
-            duty: 0.50,
-            decay_rate: 6.0,
-            duration_secs: 0.10,
+            decay_rate: 6.5,
+            duration_secs: 0.13,
             amplitude: 0.13,
         },
     }
@@ -121,11 +94,10 @@ fn advance_building_melody(kind: BuildingSoundKind) -> f32 {
     *step = step.wrapping_add(1);
     freq
 }
+
 struct BuildingPlacementSource {
     sample_idx: u64,
     freq: f32,
-    wave: BuildingWaveKind,
-    duty: f32,
     decay_rate: f32,
     amplitude: f32,
     duration_samples: u64,
@@ -137,8 +109,6 @@ impl BuildingPlacementSource {
         Self {
             sample_idx: 0,
             freq: p.freq,
-            wave: p.wave,
-            duty: p.duty,
             decay_rate: p.decay_rate,
             amplitude: p.amplitude,
             duration_samples: (SAMPLE_RATE as f32 * p.duration_secs) as u64,
@@ -154,20 +124,9 @@ impl Iterator for BuildingPlacementSource {
             return None;
         }
         let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
-        let period = 1.0 / self.freq.max(20.0);
-        let phase = (t % period) / period;
-        let wave_val = match self.wave {
-            BuildingWaveKind::Pulse => {
-                if phase < self.duty {
-                    1.0
-                } else {
-                    -1.0
-                }
-            }
-            BuildingWaveKind::Sawtooth => 2.0 * phase - 1.0,
-            BuildingWaveKind::Triangle => 2.0 * (2.0 * phase - 1.0).abs() - 1.0,
-        };
-        let envelope = (-self.decay_rate * t).exp();
+        let duration = self.duration_samples as f32 / SAMPLE_RATE as f32;
+        let wave_val = warm_at(self.freq, t);
+        let envelope = sweep_envelope(t, duration, self.decay_rate, 0.006, 0.03);
         self.sample_idx += 1;
         Some(wave_val * envelope * self.amplitude)
     }
@@ -216,19 +175,17 @@ impl Iterator for BuildingCompletionSource {
         }
         let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
         let mut val = 0.0_f32;
-        let amp = 0.16;
+        let amp = 0.15;
 
-        // ponytail: play the standard bright completion arpeggio for all buildings
         let note_dur = 0.07;
         let freqs = [523.25, 659.25, 783.99, 1046.50];
         let note_idx = (t / note_dur) as usize;
         if note_idx < freqs.len() {
             let freq = freqs[note_idx];
             let t_note = t - note_idx as f32 * note_dur;
-            let period = 1.0 / freq;
-            let phase = (t_note % period) / period;
-            let wave = if phase < 0.25 { 1.0 } else { -1.0 };
-            val = wave * (-10.0 * t_note).exp();
+            let wave = warm_at(freq, t_note);
+            let envelope = note_envelope(t_note, note_dur, 8.0, 0.005, 0.02);
+            val = wave * envelope;
         }
 
         self.sample_idx += 1;
@@ -278,21 +235,15 @@ impl Iterator for NukeLaunchSource {
             return None;
         }
         let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
+        let duration = self.duration_samples as f32 / SAMPLE_RATE as f32;
         let progress = self.sample_idx as f32 / self.duration_samples as f32;
 
-        let base_freq = 150.0 + 700.0 * progress;
-        let fm = (2.0 * std::f32::consts::PI * 45.0 * t).sin() * 25.0;
+        let base_freq = 180.0 + 340.0 * progress;
+        let fm = (2.0 * std::f32::consts::PI * 35.0 * t).sin() * 12.0;
         let freq = (base_freq + fm).max(20.0);
+        let wave_val = warm_at(freq, t);
 
-        let period = 1.0 / freq;
-        let phase = (t % period) / period;
-        let wave_val = if phase < 0.25 { 1.0 } else { -1.0 };
-
-        let mut envelope = 1.0;
-        let fade_start = 1.2 - 0.15;
-        if t > fade_start {
-            envelope = ((1.2 - t) / 0.15).clamp(0.0, 1.0);
-        }
+        let envelope = sweep_envelope(t, duration, 2.5, 0.01, 0.15);
 
         self.sample_idx += 1;
         Some(wave_val * envelope * 0.18)
@@ -346,20 +297,14 @@ impl Iterator for NukeImpactSource {
         let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
         let duration_secs = 1.2 + (self.level as f32 * 0.3);
 
-        let freq = 120.0 * (-4.0 * t).exp() + 20.0;
-        let fm = (2.0 * std::f32::consts::PI * 150.0 * t).sin() * 8.0;
+        let low_freq = 80.0 * (-3.5 * t).exp() + 35.0;
+        let mid_freq = 180.0 * (-5.0 * t).exp() + 60.0;
+        let low = warm_at(low_freq, t);
+        let mid = warm_at(mid_freq, t) * 0.45;
 
-        let period_saw = 1.0 / (freq + fm).max(20.0);
-        let phase_saw = (t % period_saw) / period_saw;
-        let sawtooth_val = 2.0 * phase_saw - 1.0;
+        let val = low * 0.65 + mid * 0.35;
 
-        let period_tri = 1.0 / (freq * 0.5).max(10.0);
-        let phase_tri = (t % period_tri) / period_tri;
-        let triangle_val = 2.0 * (2.0 * phase_tri - 1.0).abs() - 1.0;
-
-        let val = sawtooth_val * 0.7 + triangle_val * 0.3;
-
-        let mut envelope = (-2.5 * t).exp();
+        let mut envelope = (-2.2 * t).exp();
         let fade_start = duration_secs - 0.2;
         if t > fade_start {
             let linear_fade = (duration_secs - t) / 0.2;
@@ -367,7 +312,7 @@ impl Iterator for NukeImpactSource {
         }
 
         self.sample_idx += 1;
-        Some(val * envelope * 0.25)
+        Some(val * envelope * 0.24)
     }
 }
 
@@ -404,11 +349,10 @@ impl BunkerDefenseSource {
     fn new(seed: u32) -> Self {
         let mut rng = SimpleRng::new(seed);
         let duration = rng.range(0.15, 0.22);
-        // ponytail: lower, warmer frequencies for a modern mobile RTS vibe (Rise of Kingdoms style)
         let start_freq = rng.range(350.0, 480.0);
         let end_freq = rng.range(120.0, 200.0);
         let decay_rate = rng.range(8.0, 12.0);
-        let amplitude = rng.range(0.20, 0.25); // slightly louder since sine is softer than square
+        let amplitude = rng.range(0.20, 0.25);
 
         Self {
             sample_idx: 0,
@@ -433,17 +377,8 @@ impl Iterator for BunkerDefenseSource {
         let progress = self.sample_idx as f32 / self.duration_samples as f32;
 
         let freq = self.start_freq + (self.end_freq - self.start_freq) * progress;
-
-        // ponytail: warm harmonic sine wave combination instead of harsh 8-bit square wave
-        let angle = 2.0 * std::f32::consts::PI * t * freq;
-        let wave_val = angle.sin() * 0.7 + (2.0 * angle).sin() * 0.25 + (3.0 * angle).sin() * 0.05;
-
-        let mut envelope = (-self.decay_rate * t).exp();
-        let fade_start = duration - 0.04;
-        if t > fade_start {
-            let linear_fade = (duration - t) / 0.04;
-            envelope *= linear_fade.clamp(0.0, 1.0);
-        }
+        let wave_val = warm_at(freq, t);
+        let envelope = sweep_envelope(t, duration, self.decay_rate, 0.005, 0.04);
 
         self.sample_idx += 1;
         Some(wave_val * envelope * self.amplitude)
@@ -469,6 +404,7 @@ impl Source for BunkerDefenseSource {
         ))
     }
 }
+
 pub fn play_building_placement_sound(
     kind: BuildingSoundKind,
     spatial: SpatialSoundParams,

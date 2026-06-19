@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::num::NonZero;
 use std::time::Duration;
 
@@ -6,13 +5,12 @@ use rodio::source::Source;
 
 use crate::{CombatSoundKind, SpatialSoundParams};
 use super::death::PulseSource;
-use super::engine::{
-    ArpeggioSource, SimpleRng, queue_spatial, SoundPriority, DEPLOY_WAV, SAMPLE_RATE,
-};
+use super::engine::{ArpeggioSource, SimpleRng, queue_spatial, SoundPriority, SAMPLE_RATE};
 use super::music::{
     degrees_to_freqs, freq_at, music_session, note_dur_samples, pick_base_degree, tile_hash,
     MusicSession,
 };
+use super::tone::{sweep_envelope, warm_at};
 
 
 struct DoublePulseSource {
@@ -74,7 +72,6 @@ struct WarHornSource {
     base_freq: f32,
     vibrato_freq: f32,
     vibrato_depth: f32,
-    duty: f32,
     decay_rate: f32,
     amplitude: f32,
 }
@@ -85,7 +82,6 @@ impl WarHornSource {
         dur: f32,
         v_freq: f32,
         v_depth: f32,
-        duty: f32,
         decay: f32,
         amp: f32,
     ) -> Self {
@@ -95,7 +91,6 @@ impl WarHornSource {
             base_freq: freq,
             vibrato_freq: v_freq,
             vibrato_depth: v_depth,
-            duty,
             decay_rate: decay,
             amplitude: amp,
         }
@@ -109,13 +104,12 @@ impl Iterator for WarHornSource {
             return None;
         }
         let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
+        let duration = self.duration_samples as f32 / SAMPLE_RATE as f32;
         let vibrato =
             (2.0 * std::f32::consts::PI * self.vibrato_freq * t).sin() * self.vibrato_depth;
         let freq = (self.base_freq + vibrato).max(20.0);
-        let period = 1.0 / freq;
-        let phase = (t % period) / period;
-        let val = if phase < self.duty { 1.0 } else { -1.0 };
-        let envelope = (-self.decay_rate * t).exp();
+        let val = warm_at(freq, t);
+        let envelope = sweep_envelope(t, duration, self.decay_rate, 0.008, 0.025);
         self.sample_idx += 1;
         Some(val * envelope * self.amplitude)
     }
@@ -142,7 +136,6 @@ struct SweepSource {
     sample_idx: u64,
     start_freq: f32,
     end_freq: f32,
-    duty: f32,
     decay_rate: f32,
     duration_samples: u64,
     amplitude: f32,
@@ -152,7 +145,6 @@ impl SweepSource {
     fn new(
         start_freq: f32,
         end_freq: f32,
-        duty: f32,
         duration_secs: f32,
         decay_rate: f32,
         amplitude: f32,
@@ -161,7 +153,6 @@ impl SweepSource {
             sample_idx: 0,
             start_freq: start_freq.max(20.0),
             end_freq: end_freq.max(20.0),
-            duty: duty.clamp(0.05, 0.95),
             decay_rate,
             duration_samples: (SAMPLE_RATE as f32 * duration_secs.max(0.01)) as u64,
             amplitude,
@@ -176,12 +167,11 @@ impl Iterator for SweepSource {
             return None;
         }
         let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
+        let duration = self.duration_samples as f32 / SAMPLE_RATE as f32;
         let progress = self.sample_idx as f32 / self.duration_samples.max(1) as f32;
         let freq = self.start_freq + (self.end_freq - self.start_freq) * progress;
-        let period = 1.0 / freq.max(20.0);
-        let phase = (t % period) / period;
-        let val = if phase < self.duty { 1.0 } else { -1.0 };
-        let envelope = (-self.decay_rate * t).exp();
+        let val = warm_at(freq, t);
+        let envelope = sweep_envelope(t, duration, self.decay_rate, 0.005, 0.03);
         self.sample_idx += 1;
         Some(val * envelope * self.amplitude)
     }
@@ -248,6 +238,65 @@ impl Source for DualSweepSource {
         Some(d1.max(d2))
     }
 }
+
+struct DeploySource {
+    sample_idx: u64,
+    duration_samples: u64,
+    start_freq: f32,
+    end_freq: f32,
+    amplitude: f32,
+}
+
+impl DeploySource {
+    fn new() -> Self {
+        Self {
+            sample_idx: 0,
+            duration_samples: (SAMPLE_RATE as f32 * 0.12) as u64,
+            start_freq: 200.0,
+            end_freq: 450.0,
+            amplitude: 0.17,
+        }
+    }
+}
+
+impl Iterator for DeploySource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.sample_idx >= self.duration_samples {
+            return None;
+        }
+        let t = self.sample_idx as f32 / SAMPLE_RATE as f32;
+        let duration = self.duration_samples as f32 / SAMPLE_RATE as f32;
+        let progress = self.sample_idx as f32 / self.duration_samples.max(1) as f32;
+        let freq = self.start_freq + (self.end_freq - self.start_freq) * progress;
+        let val = warm_at(freq, t);
+        let envelope = sweep_envelope(t, duration, 10.0, 0.006, 0.025);
+        self.sample_idx += 1;
+        Some(val * envelope * self.amplitude)
+    }
+}
+
+impl Source for DeploySource {
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+
+    fn sample_rate(&self) -> NonZero<u32> {
+        NonZero::new(SAMPLE_RATE).unwrap()
+    }
+
+    fn channels(&self) -> NonZero<u16> {
+        NonZero::new(1).unwrap()
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        Some(Duration::from_secs_f32(
+            self.duration_samples as f32 / SAMPLE_RATE as f32,
+        ))
+    }
+}
+
 enum ProceduralSound {
     Pulse(PulseSource),
     Arpeggio(ArpeggioSource),
@@ -320,69 +369,66 @@ fn build_procedural_sound(
             let jitter = rng.range(0.95, 1.05);
             let root = base_freq * jitter;
             let troop_scale = (troops / 2000.0).clamp(0.0, 1.0);
-            let start = root * (0.8 - 0.2 * troop_scale);
-            let end = root * (1.5 + 0.5 * troop_scale);
-            let dur = 0.05 + 0.10 * troop_scale;
-            let duty = 0.125 + 0.225 * troop_scale;
-            let decay = 12.0 - 4.0 * troop_scale;
+            let start = root * (0.85 - 0.15 * troop_scale);
+            let end = root * (1.25 + 0.35 * troop_scale);
+            let dur = 0.07 + 0.12 * troop_scale;
+            let decay = 10.0 - 3.0 * troop_scale;
 
             if troops > 1000.0 {
-                let s1 = SweepSource::new(start, end, duty, dur, decay, amp);
-                let s2 = SweepSource::new(start * 0.5, end * 0.5, duty, dur, decay, amp * 0.4);
+                let s1 = SweepSource::new(start, end, dur, decay, amp);
+                let s2 = SweepSource::new(start * 0.5, end * 0.5, dur, decay, amp * 0.35);
                 ProceduralSound::DualSweep(DualSweepSource::new(s1, s2))
             } else {
-                ProceduralSound::Sweep(SweepSource::new(start, end, duty, dur, decay, amp))
+                ProceduralSound::Sweep(SweepSource::new(start, end, dur, decay, amp))
             }
         }
         CombatSoundKind::AttackHuman => {
             let jitter = rng.range(0.975, 1.025);
-            let root = base_freq * jitter;
-            let dur = 0.08 * rng.range(0.9, 1.1);
-            let decay = rng.range(18.0, 22.0);
+            let root = base_freq * jitter * 0.92;
+            let dur = 0.09 * rng.range(0.9, 1.1);
+            let decay = rng.range(14.0, 18.0);
 
             if troops > 1500.0 {
-                let p1 = PulseSource::new(root, 0.125, dur * 0.5, decay, amp);
-                let p2 = PulseSource::new(root * 1.05, 0.125, dur * 0.5, decay, amp);
+                let p1 = PulseSource::new(root, dur * 0.5, decay, amp);
+                let p2 = PulseSource::new(root * 1.03, dur * 0.5, decay, amp * 0.9);
                 ProceduralSound::DoublePulse(DoublePulseSource::new(p1, p2, 0.02))
             } else {
-                ProceduralSound::Pulse(PulseSource::new(root, 0.125, dur, decay, amp))
+                ProceduralSound::Pulse(PulseSource::new(root, dur, decay, amp))
             }
         }
         CombatSoundKind::AttackEmpire => {
             let d1 = (base_degree + 2).min(4);
             let d2 = (base_degree + 4).min(4);
-            let dur_step = 0.06 * (1.0 + (troops / 5000.0).clamp(0.0, 0.5));
+            let dur_step = 0.08 * (1.0 + (troops / 5000.0).clamp(0.0, 0.4));
             let dur = note_dur_samples(dur_step);
-            let decay = rng.range(8.0, 12.0);
+            let decay = rng.range(6.0, 9.0);
             ProceduralSound::Arpeggio(ArpeggioSource::new(
                 degrees_to_freqs(octave, &[base_degree, d1, d2, 0]),
                 [dur, dur, dur, 0],
-                0.50,
                 decay,
-                amp * 1.2,
+                amp * 1.1,
             ))
         }
         CombatSoundKind::AttackTribe => {
-            let jitter = rng.range(0.9, 1.1);
-            let root = base_freq * jitter;
-            let v_freq = 15.0 * rng.range(0.8, 1.2);
-            let v_depth = 35.0 * rng.range(0.8, 1.2);
-            let dur = 0.06 + 0.04 * (troops / 3000.0).clamp(0.0, 1.0);
-            let decay = rng.range(14.0, 18.0);
+            let jitter = rng.range(0.92, 1.08);
+            let root = base_freq * jitter * 0.88;
+            let v_freq = 12.0 * rng.range(0.85, 1.15);
+            let v_depth = 18.0 * rng.range(0.85, 1.15);
+            let dur = 0.08 + 0.05 * (troops / 3000.0).clamp(0.0, 1.0);
+            let decay = rng.range(10.0, 14.0);
             ProceduralSound::WarHorn(WarHornSource::new(
-                root, dur, v_freq, v_depth, 0.25, decay, amp,
+                root, dur, v_freq, v_depth, decay, amp,
             ))
         }
         CombatSoundKind::CounterAttack => {
             let jitter = rng.range(0.95, 1.05);
             let root = base_freq * jitter;
             let troop_scale = (troops / 3000.0).clamp(0.0, 1.0);
-            let dur = 0.14 + 0.06 * troop_scale;
-            let duty = 0.125 + 0.125 * troop_scale;
-            let decay = 10.0 - 2.0 * troop_scale;
+            let dur = 0.16 + 0.06 * troop_scale;
+            let decay = 8.0 - 1.5 * troop_scale;
 
-            let s1 = SweepSource::new(root * 1.1, root * 0.8, duty, dur, decay, amp);
-            let s2 = SweepSource::new(root * 0.7, root * 0.5, duty, dur, decay, amp * 0.6);
+            let s1 = SweepSource::new(root * 1.05, root * 0.85, dur, decay, amp);
+            let s2 = SweepSource::new(root * 0.75, root * 0.58, dur, decay, amp * 0.55);
             ProceduralSound::DualSweep(DualSweepSource::new(s1, s2))
         }
     };
@@ -390,11 +436,9 @@ fn build_procedural_sound(
     session.phrase_step = session.phrase_step.wrapping_add(1);
     sound
 }
+
 pub fn play_deploy_sound(spatial: SpatialSoundParams) {
-    let cursor = Cursor::new(DEPLOY_WAV);
-    if let Ok(source) = rodio::Decoder::new(cursor) {
-        queue_spatial(source.amplify(0.17), spatial, SoundPriority::Normal);
-    }
+    queue_spatial(DeploySource::new(), spatial, SoundPriority::Normal);
 }
 
 pub fn play_combat_sound(

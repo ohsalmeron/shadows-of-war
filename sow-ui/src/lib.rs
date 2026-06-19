@@ -26,6 +26,7 @@ pub enum UiAction {
     ToggleTerms,
     ToggleDevSidebar,
     CopyInviteLink(u64),
+    StartPrivateLobby(u64),
     ResolveLinkConflict {
         keep_account_id: String,
     },

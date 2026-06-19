@@ -5,11 +5,11 @@ use std::time::{Duration, Instant};
 use rodio::source::Source;
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 
+use super::tone::{note_envelope, warm_at};
+
 pub(super) const SAMPLE_RATE: u32 = 22050;
 pub(super) const OPEN_BACKOFF: Duration = Duration::from_secs(2);
 pub(super) const MAX_VOICES: u8 = 6;
-pub(super) const DEPLOY_WAV: &[u8] = include_bytes!("../../../assets/static/ui/deploy.wav");
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SoundPriority {
     Background,
@@ -206,7 +206,6 @@ pub(super) struct ArpeggioSource {
     sample_idx: u64,
     note_freqs: [f32; 4],
     note_durations: [u32; 4],
-    duty: f32,
     decay_rate: f32,
     amplitude: f32,
     total_samples: u64,
@@ -216,7 +215,6 @@ impl ArpeggioSource {
     pub(super) fn new(
         note_freqs: [f32; 4],
         note_durations: [u32; 4],
-        duty: f32,
         decay_rate: f32,
         amplitude: f32,
     ) -> Self {
@@ -225,7 +223,6 @@ impl ArpeggioSource {
             sample_idx: 0,
             note_freqs,
             note_durations,
-            duty,
             decay_rate,
             amplitude,
             total_samples,
@@ -261,21 +258,12 @@ impl Iterator for ArpeggioSource {
             return Some(0.0);
         }
 
-        let period = 1.0 / freq;
-        let phase = (note_t % period) / period;
-        let val = if phase < self.duty { 1.0 } else { -1.0 };
-
-        let envelope = (-self.decay_rate * note_t).exp();
+        let val = warm_at(freq, note_t);
 
         let note_dur_secs = self.note_durations[note_idx] as f32 / SAMPLE_RATE as f32;
-        let fade_start = note_dur_secs - 0.015;
-        let final_fade = if note_t > fade_start {
-            ((note_dur_secs - note_t) / 0.015).clamp(0.0, 1.0)
-        } else {
-            1.0
-        };
+        let envelope = note_envelope(note_t, note_dur_secs, self.decay_rate, 0.005, 0.015);
 
-        Some(val * envelope * final_fade * self.amplitude)
+        Some(val * envelope * self.amplitude)
     }
 }
 

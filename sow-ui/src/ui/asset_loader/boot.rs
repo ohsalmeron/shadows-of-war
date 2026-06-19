@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(not(target_arch = "wasm32"))]
 use super::retry::decode_and_upload_webp;
 
 impl AssetLoader {

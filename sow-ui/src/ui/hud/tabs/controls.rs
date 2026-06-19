@@ -32,8 +32,8 @@ pub(in crate::ui::hud) fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut Hu
 
         let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
 
-        let btn_size = col_w.min(if compact { 46.0 } else { 56.0 });
-        let gold_plate_h = if compact { 16.0 } else { 20.0 };
+        let btn_size = col_w.min(if compact { 40.0 } else { 48.0 });
+        let gold_plate_h = if compact { 14.0 } else { 18.0 };
         let total_h = btn_size + 4.0 + gold_plate_h;
 
         for (display_idx, &kind) in active_kinds.iter().enumerate() {
@@ -110,10 +110,11 @@ pub(in crate::ui::hud) fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut Hu
                 egui::StrokeKind::Inside,
             );
 
-            let icon_size = btn_size * 0.6;
-            if !crate::widgets::try_paint_emoji(ui.painter(), building_emoji(kind), square_rect, tint) {
+            let icon_size = btn_size * 0.48;
+            let icon_rect = egui::Rect::from_center_size(square_rect.center(), egui::vec2(icon_size, icon_size));
+            if !crate::widgets::try_paint_emoji(ui.painter(), building_emoji(kind), icon_rect, tint) {
                 ui.painter().text(
-                    square_rect.center(),
+                    icon_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     building_emoji(kind),
                     egui::FontId::proportional(icon_size),
@@ -177,7 +178,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut Hu
                 format!("🪙 {cost_text}")
             };
 
-            let font_size = if compact { 10.0 } else { 12.0 };
+            let font_size = if compact { 9.0 } else { 10.0 };
             crate::widgets::paint_emoji_text_at(
                 ui.painter(),
                 plate_rect.center(),
@@ -266,9 +267,9 @@ pub(in crate::ui::hud) fn draw_buildings_strip(ui: &mut egui::Ui, state: &mut Hu
                     );
                 }
 
-                let icon_size = if compact { 22.0 } else { 28.0 };
+                let icon_size = if compact { 16.0 } else { 20.0 };
                 let icon_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, rect.top() + (if compact { 13.0 } else { 16.0 })),
+                    egui::pos2(rect.center().x, rect.top() + (if compact { 11.0 } else { 14.0 })),
                     egui::vec2(icon_size, icon_size),
                 );
                 if !crate::widgets::try_paint_emoji(ui.painter(), "☢️", icon_rect, tint) {
@@ -378,8 +379,8 @@ pub(in crate::ui::hud) fn hud_sidebar_row_height(compact: bool, spawn_active: bo
                 available_width = (available_width - extra_w).max(50.0);
             }
             let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
-            let btn_size = col_w.min(if compact { 46.0 } else { 56.0 });
-            let gold_plate_h = if compact { 16.0 } else { 20.0 };
+            let btn_size = col_w.min(if compact { 40.0 } else { 48.0 });
+            let gold_plate_h = if compact { 14.0 } else { 18.0 };
             btn_size + 4.0 + gold_plate_h
         }
         HudSidebarMain::BattleLog | HudSidebarMain::EventLog => {

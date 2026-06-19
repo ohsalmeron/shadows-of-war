@@ -84,14 +84,14 @@ fn build_victory_sound() -> ArpeggioSource {
     let note_freqs = [523.25, 659.25, 783.99, 1046.50];
     let note_dur_samples = (SAMPLE_RATE as f32 * 0.15) as u32;
     let note_durations = [note_dur_samples; 4];
-    ArpeggioSource::new(note_freqs, note_durations, 0.50, 6.0, 0.15)
+    ArpeggioSource::new(note_freqs, note_durations, 5.5, 0.15)
 }
 
 fn build_defeat_sound() -> ArpeggioSource {
     let note_freqs = [261.63, 196.00, 164.81, 130.81];
-    let note_dur_samples = (SAMPLE_RATE as f32 * 0.25) as u32;
+    let note_dur_samples = (SAMPLE_RATE as f32 * 0.28) as u32;
     let note_durations = [note_dur_samples; 4];
-    ArpeggioSource::new(note_freqs, note_durations, 0.125, 3.5, 0.15)
+    ArpeggioSource::new(note_freqs, note_durations, 3.0, 0.12)
 }
 
 pub fn play_victory_sound() {

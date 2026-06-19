@@ -1,10 +1,14 @@
 use crate::app::SowApp;
 use crate::hud::tutorial::TutorialStep;
 use sow_core::game_config::GameConfig;
+use sow_ui::app::ClientPhase;
+
+#[cfg(target_arch = "wasm32")]
+use crate::loader::hide_web_loader;
 
 impl SowApp {
     #[cfg(target_arch = "wasm32")]
-    fn finish_boot_to_main_menu(&mut self) {
+    pub(crate) fn finish_boot_to_main_menu(&mut self) {
         self.boot_route_waiting = false;
         self.ui.app.splash_state.done = true;
         self.ui.app.phase = ClientPhase::MainMenu;
@@ -24,7 +28,7 @@ impl SowApp {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn finish_boot_route(&mut self) {
+    pub(crate) fn finish_boot_route(&mut self) {
         self.boot_route_waiting = false;
         crate::store_portals::load_stop();
         if let Some(locale_str) = crate::store_portals::get_portal_locale() {

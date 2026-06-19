@@ -90,8 +90,8 @@ pub(in crate::ui::hud) fn draw_troop_bar(
         let galley = ui
             .painter()
             .layout_no_wrap(rate_text.clone(), font_id.clone(), rate_color);
-        let icon_size = 14.0;
-        let total_w = icon_size + 4.0 + galley.rect.width();
+        let icon_size = 11.0;
+        let total_w = icon_size + 3.0 + galley.rect.width();
         let mut start_x = rect.center().x - total_w / 2.0;
 
         crate::widgets::try_paint_emoji(
@@ -103,7 +103,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             ),
             Color32::WHITE,
         );
-        start_x += icon_size + 4.0;
+        start_x += icon_size + 3.0;
 
         crate::ui::theme::paint_premium_glow_text(
             ui.painter(),
@@ -126,8 +126,8 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             font_id.clone(),
             Color32::from_rgb(220, 230, 220),
         );
-        let icon_size = 14.0;
-        let total_w = galley.rect.width() + 4.0 + icon_size;
+        let icon_size = 11.0;
+        let total_w = galley.rect.width() + 3.0 + icon_size;
         let mut start_x = rect.center().x - total_w / 2.0;
 
         crate::ui::theme::paint_premium_glow_text(
@@ -139,7 +139,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             Color32::from_rgb(220, 230, 220),
             shadow,
         );
-        start_x += galley.rect.width() + 4.0;
+        start_x += galley.rect.width() + 3.0;
 
         crate::widgets::try_paint_emoji(
             ui.painter(),
@@ -209,7 +209,7 @@ pub(in crate::ui::hud) fn draw_persistent_header(ui: &mut egui::Ui, state: &HudS
                     crate::widgets::outlined_emoji_label(
                         ui,
                         &format!("⚔ +{}/s", crate::utils::format_number(troop_rate)),
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(10.0),
                         rate_color,
                     );
                 });
@@ -239,7 +239,7 @@ pub(in crate::ui::hud) fn draw_persistent_header(ui: &mut egui::Ui, state: &HudS
             ))
             .show(ui, |ui| {
                 ui.add(crate::widgets::ResourceLabel::gold(state.gold).font(
-                    egui::FontId::proportional(if compact { 13.0 } else { 14.0 })
+                    egui::FontId::proportional(if compact { 11.0 } else { 12.0 })
                 ));
             });
     });

@@ -77,6 +77,7 @@ pub struct MainMenuStrings {
     pub ready_room: String,
     pub ready: String,
     pub credits_link: String,
+    pub start_game: String,
     pub copy_invite_link: String,
     pub invite_link_copied: String,
     pub link_conflict_title: String,

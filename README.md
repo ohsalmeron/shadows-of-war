@@ -32,7 +32,7 @@ Shadows of War is a "full-stack" Rust video game, designed for absolute performa
 
 ### Procedural Audio (`sow-audio`)
 Instead of shipping massive `.wav` files, the game features a custom **harmonic procedural synthesizer**.
-*   NES-style sound effects (pulse, triangle, sawtooth) are generated mathematically on the fly.
+*   Warm mobile-RTS sound effects are generated mathematically on the fly using layered sine harmonics.
 *   **Harmonic System:** Every note played harmonizes perfectly. The musical key is derived from the match seed, ensuring combat and UI sounds blend into a cohesive soundscape.
 *   **Spatialization:** Constant-power stereo panning and zoom-based attenuation handled via a background `rodio` worker.
 

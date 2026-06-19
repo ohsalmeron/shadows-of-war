@@ -48,6 +48,7 @@ impl SowApp {
                         }
                     }
                     self.ui.app.main_menu_state.is_waiting = true;
+                    self.ui.app.main_menu_state.is_lobby_host = true;
                 }
                 UiAction::LeaveLobby => {
                     crate::store_portals::left_room();
@@ -58,6 +59,7 @@ impl SowApp {
                         }
                     }
                     self.ui.app.main_menu_state.in_private_match = false;
+                    self.ui.app.main_menu_state.is_lobby_host = false;
                     self.input.camera_x = 0.0;
                     self.input.camera_y = 0.0;
                     self.input.camera_zoom = 2.0;
@@ -143,6 +145,19 @@ impl SowApp {
                         self.ui.app.main_menu_state.invite_copied_at =
                             Some(self.ui.egui_ctx.input(|i| i.time));
                         log::info!("Copied invite link to clipboard.");
+                    }
+                }
+                UiAction::StartPrivateLobby(lobby_id) => {
+                    if let (Some(c), Some(player_id)) =
+                        (self.net.client.as_ref(), self.sim.my_player_id)
+                    {
+                        let msg = sow_core::protocol::ClientMessage::ForceStart {
+                            lobby_id,
+                            player_id,
+                        };
+                        if let Ok(json) = bincode::serialize(&msg) {
+                            c.send(json);
+                        }
                     }
                 }
                 UiAction::ResolveLinkConflict { keep_account_id } => {

@@ -212,7 +212,7 @@ impl SowApp {
                                 splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
                                 let timed_out = self
                                     .boot_ready_since
-                                    .is_some_and(|t| t.elapsed() > Duration::from_millis(1500));
+                                    .is_some_and(|t| t.elapsed() > web_time::Duration::from_millis(1500));
                                 if self.boot_db_settled || timed_out {
                                     self.finish_boot_route();
                                 }

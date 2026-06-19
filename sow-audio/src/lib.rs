@@ -1,4 +1,4 @@
-//! Procedural retro audio effects with spatial panning.
+//! Procedural mobile-RTS harmonic SFX with spatial panning.
 //! Leaf crate: no workspace dependencies beyond rodio (native only).
 
 /// Combat / expansion sound category for procedural synthesis.
