@@ -830,8 +830,8 @@ pub fn draw_standard_modal<R>(
         .fixed_size(egui::vec2(panel_w, if compact { 460.0 } else { 420.0 }))
         .frame(standard_panel_frame(compact))
         .show(ctx, |ui| {
-            // Header: Title and X Close Button
             ui.horizontal(|ui| {
+                ui.set_width(ui.available_width());
                 outlined_label(
                     ui,
                     title,

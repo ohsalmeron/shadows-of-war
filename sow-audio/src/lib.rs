@@ -953,9 +953,6 @@ mod native {
         duration_samples: u64,
         start_freq: f32,
         end_freq: f32,
-        duty: f32,
-        fm_freq: f32,
-        fm_amp: f32,
         decay_rate: f32,
         amplitude: f32,
     }
@@ -963,27 +960,18 @@ mod native {
     impl BunkerDefenseSource {
         fn new(seed: u32) -> Self {
             let mut rng = SimpleRng::new(seed);
-            let duration = rng.range(0.12, 0.18);
-            let start_freq = rng.range(750.0, 1150.0);
-            let end_freq = rng.range(180.0, 320.0);
-            let duty = match rng.next_u32() % 3 {
-                0 => 0.125,
-                1 => 0.25,
-                _ => 0.50,
-            };
-            let fm_freq = rng.range(30.0, 90.0);
-            let fm_amp = rng.range(15.0, 45.0);
-            let decay_rate = rng.range(12.0, 18.0);
-            let amplitude = rng.range(0.12, 0.16);
+            let duration = rng.range(0.15, 0.22);
+            // ponytail: lower, warmer frequencies for a modern mobile RTS vibe (Rise of Kingdoms style)
+            let start_freq = rng.range(350.0, 480.0);
+            let end_freq = rng.range(120.0, 200.0);
+            let decay_rate = rng.range(8.0, 12.0);
+            let amplitude = rng.range(0.20, 0.25); // slightly louder since sine is softer than square
 
             Self {
                 sample_idx: 0,
                 duration_samples: (SAMPLE_RATE as f32 * duration) as u64,
                 start_freq,
                 end_freq,
-                duty,
-                fm_freq,
-                fm_amp,
                 decay_rate,
                 amplitude,
             }
@@ -1001,18 +989,16 @@ mod native {
             let duration = self.duration_samples as f32 / SAMPLE_RATE as f32;
             let progress = self.sample_idx as f32 / self.duration_samples as f32;
 
-            let base_freq = self.start_freq + (self.end_freq - self.start_freq) * progress;
-            let fm = (2.0 * std::f32::consts::PI * self.fm_freq * t).sin() * self.fm_amp;
-            let freq = (base_freq + fm).max(20.0);
+            let freq = self.start_freq + (self.end_freq - self.start_freq) * progress;
 
-            let period = 1.0 / freq;
-            let phase = (t % period) / period;
-            let wave_val = if phase < self.duty { 1.0 } else { -1.0 };
+            // ponytail: warm harmonic sine wave combination instead of harsh 8-bit square wave
+            let angle = 2.0 * std::f32::consts::PI * t * freq;
+            let wave_val = angle.sin() * 0.7 + (2.0 * angle).sin() * 0.25 + (3.0 * angle).sin() * 0.05;
 
             let mut envelope = (-self.decay_rate * t).exp();
-            let fade_start = duration - 0.03;
+            let fade_start = duration - 0.04;
             if t > fade_start {
-                let linear_fade = (duration - t) / 0.03;
+                let linear_fade = (duration - t) / 0.04;
                 envelope *= linear_fade.clamp(0.0, 1.0);
             }
 

@@ -663,19 +663,20 @@ impl SowApp {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = if metrics.is_mobile { 10.0 } else { 8.0 };
 
-            ui.vertical_centered(|ui| {
-                egui::Frame::new()
-                    .fill(sow_ui::ui::theme::nickname_field_bg())
-                    .stroke(egui::Stroke::new(
-                        1.0_f32,
-                        sow_ui::ui::theme::accent_ranked_gold(),
-                    ))
-                    .corner_radius(8.0)
-                    .inner_margin(egui::Margin::symmetric(
-                        if metrics.is_mobile { 14 } else { 12 },
-                        if metrics.is_mobile { 8 } else { 6 },
-                    ))
-                    .show(ui, |ui| {
+            egui::Frame::new()
+                .fill(sow_ui::ui::theme::nickname_field_bg())
+                .stroke(egui::Stroke::new(
+                    1.0_f32,
+                    sow_ui::ui::theme::accent_ranked_gold(),
+                ))
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::symmetric(
+                    if metrics.is_mobile { 14 } else { 12 },
+                    if metrics.is_mobile { 8 } else { 6 },
+                ))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.vertical_centered(|ui| {
                         ui.label(
                             RichText::new(format!(
                                 "👑 Domination Victory: Control {:.0}% of Map",
@@ -686,7 +687,7 @@ impl SowApp {
                             .strong(),
                         );
                     });
-            });
+                });
 
             ui.add_space(4.0);
 
@@ -702,7 +703,9 @@ impl SowApp {
                     if metrics.is_mobile { 6 } else { 4 },
                 ))
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
+                        ui.set_width(ui.available_width());
                         let (search_icon, _) =
                             ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
                         sow_ui::widgets::try_paint_emoji(
@@ -714,7 +717,7 @@ impl SowApp {
                         let response = ui.add(
                             egui::TextEdit::singleline(&mut self.ui.leaderboard_search)
                                 .hint_text("Search players…")
-                                .desired_width(ui.available_width() - 24.0),
+                                .desired_width(ui.available_width() - 32.0),
                         );
                         if !self.ui.leaderboard_search.is_empty() && ui.small_button("✕").clicked()
                         {

@@ -176,9 +176,11 @@ pub fn draw_user_profile_header(
                 .inner_margin(egui::Margin::symmetric(8, 4));
 
             field_frame.show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     let btn_w = 64.0 * scale;
-                    let text_edit_w = (ui.available_width() - btn_w - 8.0 * scale).max(20.0);
+                    let spacing = ui.spacing().item_spacing.x;
+                    let text_edit_w = (ui.available_width() - btn_w - spacing).max(20.0);
 
                     let output_name = egui::TextEdit::singleline(&mut state.player_name)
                         .id(egui::Id::new("main_menu_nickname"))
@@ -204,15 +206,13 @@ pub fn draw_user_profile_header(
                         }
                     }
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let sign_in_btn = crate::widgets::ThemeButton::new(&strings.sign_in)
-                            .style(crate::widgets::ThemeButtonStyle::Secondary)
-                            .min_size(egui::vec2(btn_w, 24.0 * scale))
-                            .text_size(10.0 * scale);
-                        if ui.add(sign_in_btn).clicked() {
-                            *action = Some(crate::UiAction::PortalShowAuthPrompt);
-                        }
-                    });
+                    let sign_in_btn = crate::widgets::ThemeButton::new(&strings.sign_in)
+                        .style(crate::widgets::ThemeButtonStyle::Secondary)
+                        .min_size(egui::vec2(btn_w, 24.0 * scale))
+                        .text_size(10.0 * scale);
+                    if ui.add(sign_in_btn).clicked() {
+                        *action = Some(crate::UiAction::PortalShowAuthPrompt);
+                    }
                 });
             });
         });

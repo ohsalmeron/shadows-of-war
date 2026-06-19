@@ -245,10 +245,10 @@ fn draw_map_briefing(
 
                 // Map Preview Visual
                 let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-                let aspect = if is_mobile { 2.4_f32 } else { 1.77_f32 }; // Panoramic on mobile
+                let aspect = 1.77_f32;
                 let preview_w = ui.available_width();
                 let max_img_h = if is_mobile {
-                    100.0f32
+                    150.0f32
                 } else {
                     (ui.available_height() - 190.0).max(80.0)
                 };

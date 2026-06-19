@@ -26,15 +26,7 @@ impl SowApp {
                     self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
 
                     // Update UI HUD State from my player id
-                    if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| {
-                        s.players
-                            .iter()
-                            .find(|p| p.id == self.sim.my_player_id.unwrap_or(1))
-                    }) {
-                        self.ui.app.hud_state.gold = player.gold;
-                        self.ui.app.hud_state.troops = player.troops;
-                        self.ui.app.hud_state.max_troops = player.max_troops;
-                    }
+                    self.sync_hud_player_state();
                     // Show notifications for actual resource transfers only
                     if let Some(snap) = &self.sim.current_snapshot {
                         let my_id = self.sim.my_player_id.unwrap_or(1);
@@ -162,15 +154,7 @@ impl SowApp {
                     self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
                 }
 
-                if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| {
-                    s.players
-                        .iter()
-                        .find(|p| p.id == self.sim.my_player_id.unwrap_or(1))
-                }) {
-                    self.ui.app.hud_state.gold = player.gold;
-                    self.ui.app.hud_state.troops = player.troops;
-                    self.ui.app.hud_state.max_troops = player.max_troops;
-                }
+                self.sync_hud_player_state();
                 // Show notifications for actual resource transfers only
                 if let Some(snap) = &self.sim.current_snapshot {
                     let my_id = self.sim.my_player_id.unwrap_or(1);
@@ -373,6 +357,36 @@ impl SowApp {
             } else {
                 self.ui.app.hud_state.building_costs[i] = self.sim.config.cost_city;
             }
+        }
+    }
+
+    pub(crate) fn sync_hud_player_state(&mut self) {
+        if let Some(player) = self.sim.current_snapshot.as_ref().and_then(|s| {
+            s.players
+                .iter()
+                .find(|p| p.id == self.sim.my_player_id.unwrap_or(1))
+        }) {
+            self.ui.app.hud_state.gold = player.gold;
+            self.ui.app.hud_state.troops = player.troops;
+            self.ui.app.hud_state.max_troops = player.max_troops;
+
+            // Compute correct actual troop rate
+            let mut rate = 0.0;
+            if let Some(e) = &self.sim.engine {
+                let my_pid = self.sim.my_player_id.unwrap_or(1);
+                let agg = e.building_aggregates.get(my_pid as usize).copied().unwrap_or_default();
+                let leader = player.leader;
+                let sun_tzu_mult = if leader == sow_core::player::Leader::SunTzu { 1.20 } else { 1.0 };
+                let ragnar_mult = if leader == sow_core::player::Leader::Ragnar { 1.50 } else { 1.0 };
+                let vercingetorix_mult = if leader == sow_core::player::Leader::Vercingetorix { 1.50 } else { 1.0 };
+
+                let base_rate = self.sim.config.troop_base_income
+                    + 50.0 * agg.city_levels as f64 * vercingetorix_mult
+                    + 80.0 * agg.armory_levels as f64 * sun_tzu_mult
+                    + self.sim.config.port_troop_income * agg.port_levels as f64 * ragnar_mult;
+                rate = base_rate * self.sim.config.global_speed_multiplier;
+            }
+            self.ui.app.hud_state.troop_rate = rate;
         }
     }
 }

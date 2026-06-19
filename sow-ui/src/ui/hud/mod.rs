@@ -62,6 +62,7 @@ pub struct HudState {
     pub gold: f64,
     pub troops: f64,
     pub max_troops: f64,
+    pub troop_rate: f64,
     pub attack_ratio: f32,
     pub spawn_timer_secs: Option<f32>,
     pub sync_state: Option<sow_core::protocol::ServerSyncStateMessage>,
@@ -1519,21 +1520,21 @@ pub fn draw(
                     ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
                     ui.vertical(|ui| {
                         if ui
-                            .add(crate::widgets::HudButton::new("+").dim(btn_w))
+                            .add(crate::widgets::HudEmojiButton::new("➕").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_zoom_in)
                             .clicked()
                         {
                             action = Some(UiAction::ZoomIn);
                         }
                         if ui
-                            .add(crate::widgets::HudButton::new("-").dim(btn_w))
+                            .add(crate::widgets::HudEmojiButton::new("➖").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_zoom_out)
                             .clicked()
                         {
                             action = Some(UiAction::ZoomOut);
                         }
                         if ui
-                            .add(crate::widgets::HudButton::new("🏠").dim(btn_w))
+                            .add(crate::widgets::HudEmojiButton::new("🏠").dim(btn_w))
                             .on_hover_text(&sow_i18n::get(lang).hud.hover_center_camera)
                             .clicked()
                         {
@@ -2270,7 +2271,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
         return;
     }
 
-    let troop_rate = (state.max_troops * 0.1).max(0.0);
+    let troop_rate = state.troop_rate;
     let is_increasing = true;
     let bar_h = if compact { 24.0 } else { 22.0 };
 
@@ -2332,7 +2333,7 @@ fn draw_persistent_header(ui: &mut egui::Ui, state: &HudState, compact: bool, la
 
 const ATTACK_RATIO_COL_W: f32 = 64.0;
 
-fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMain) -> f32 {
+fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMain, main_w: f32) -> f32 {
     if spawn_active {
         return if compact { 72.0 } else { 56.0 };
     }
@@ -2340,11 +2341,17 @@ fn hud_sidebar_row_height(compact: bool, spawn_active: bool, main: HudSidebarMai
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
     let body_h = match main {
         HudSidebarMain::Controls => {
-            if compact {
-                38.0
-            } else {
-                44.0
+            let num_items = 4.0;
+            let mut available_width = main_w;
+            if sow_core::config::ENABLE_MISSILE_STRUCTURES {
+                let nuke_w = if compact { 32.0 } else { 36.0 };
+                let extra_w = 4.0 + 8.0 + 4.0 + nuke_w + (if compact { 4.0 } else { 12.0 });
+                available_width = (available_width - extra_w).max(50.0);
             }
+            let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
+            let btn_size = col_w.min(if compact { 46.0 } else { 56.0 });
+            let gold_plate_h = if compact { 16.0 } else { 20.0 };
+            btn_size + 4.0 + gold_plate_h
         }
         HudSidebarMain::BattleLog | HudSidebarMain::EventLog => {
             if compact {
@@ -2370,43 +2377,47 @@ fn draw_attack_ratio_column(ui: &mut egui::Ui, state: &HudState, col_h: f32) -> 
 
     ui.allocate_ui_with_layout(
         vec2(ATTACK_RATIO_COL_W, col_h),
-        egui::Layout::left_to_right(egui::Align::Center),
+        egui::Layout::top_down(egui::Align::Center),
         |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.y = 2.0;
 
-            // Slider on the left
-            let slider_h = (col_h - 16.0).clamp(20.0, 44.0);
+            // 1. Percentage label above slider
+            crate::ui::theme::outlined_label(
+                ui,
+                &format!("{:.0}%", state.attack_ratio * 100.0),
+                egui::FontId::proportional(11.0),
+                crate::ui::theme::palette::neon_cyan_hover(),
+            );
+
+            // 2. Compact vertical slider in the middle
+            let slider_h = (col_h - 32.0).clamp(16.0, 64.0);
             let mut ratio = state.attack_ratio;
             let changed = ui
                 .scope(|ui| {
-                    ui.spacing_mut().slider_rail_height = 8.0;
+                    ui.spacing_mut().slider_width = slider_h;
+                    ui.spacing_mut().slider_rail_height = 12.0; // wider/more noticeable rail
+                    ui.visuals_mut().widgets.inactive.bg_fill = crate::ui::theme::palette::neon_cyan().linear_multiply(0.25);
+                    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0_f32, crate::ui::theme::palette::neon_cyan());
+                    ui.visuals_mut().widgets.hovered.bg_stroke = Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan_hover());
+                    ui.visuals_mut().widgets.active.bg_stroke = Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan_hover());
+
                     let slider = Slider::new(&mut ratio, 0.01..=1.0)
                         .show_value(false)
                         .vertical();
-                    ui.add_sized(vec2(28.0, slider_h), slider).changed()
+                    ui.add_sized(vec2(24.0, slider_h), slider).changed()
                 })
                 .inner;
             if changed {
                 changed_ratio = Some(ratio);
             }
 
-            // Labels column on the right
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                crate::ui::theme::outlined_label(
-                    ui,
-                    &format!("{:.0}%", state.attack_ratio * 100.0),
-                    egui::FontId::proportional(11.0),
-                    crate::ui::theme::palette::neon_cyan_hover(),
-                );
-
-                crate::ui::theme::outlined_label(
-                    ui,
-                    &crate::utils::format_number(ratio_troops),
-                    egui::FontId::proportional(10.0),
-                    Color32::from_rgb(220, 230, 220),
-                );
-            });
+            // 3. Troop quantity label below slider
+            crate::ui::theme::outlined_label(
+                ui,
+                &crate::utils::format_number(ratio_troops),
+                egui::FontId::proportional(10.0),
+                Color32::from_rgb(220, 230, 220),
+            );
         },
     );
     changed_ratio
@@ -2437,22 +2448,13 @@ fn draw_hud_sidebar_row(
             0.0
         };
     let row_gap = crate::ui::theme::margin::TIGHT as f32;
-    let row_h = hud_sidebar_row_height(compact, spawn_active, main);
+    let row_h = hud_sidebar_row_height(compact, spawn_active, main, main_w);
 
     ui.allocate_ui_with_layout(
         vec2(content_w, row_h),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
             ui.spacing_mut().item_spacing.x = ratio_gap;
-
-            if show_ratio {
-                ui.push_id("attack_ratio_col", |ui| {
-                    if let Some(ratio) = draw_attack_ratio_column(ui, state, row_h) {
-                        *action = Some(UiAction::SetAttackRatio(ratio));
-                    }
-                });
-                ui.separator();
-            }
 
             ui.allocate_ui_with_layout(
                 vec2(main_w, row_h),
@@ -2497,6 +2499,15 @@ fn draw_hud_sidebar_row(
                     });
                 },
             );
+
+            if show_ratio {
+                ui.separator();
+                ui.push_id("attack_ratio_col", |ui| {
+                    if let Some(ratio) = draw_attack_ratio_column(ui, state, row_h) {
+                        *action = Some(UiAction::SetAttackRatio(ratio));
+                    }
+                });
+            }
         },
     );
 }

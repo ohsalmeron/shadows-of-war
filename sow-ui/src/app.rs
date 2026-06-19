@@ -38,6 +38,7 @@ impl ClientApp {
                 gold: 0.0,
                 troops: 0.0,
                 max_troops: 0.0,
+                troop_rate: 0.0,
 
                 attack_ratio: 0.25,
                 spawn_timer_secs: None,
