@@ -103,6 +103,14 @@ The `./sow` script coordinates building the WASM bundles, compiling the GNU bina
 *   `./sow cg` : Compiles and synchronizes the CrazyGames distribution.
 *   `./sow infra --confirm-destroy` : Completely reprovisions a fresh Debian 13 VPS with Nginx, TLS, and Valkey.
 
+### Source file size guard
+
+Run the workspace compile check and the 600-line monolith guard (allowlisted debt shrinks as splits land):
+
+```bash
+./sow-tools/check.sh
+```
+
 ---
 
 ## 📜 License & Attribution

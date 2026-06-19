@@ -11,7 +11,7 @@ pub(crate) fn render(
 ) {
     let painter = ctx.painter;
     let sf = ctx.sf;
-    if ctx.zoom_scaled < 5.0 {
+    if ctx.zoom_scaled < 0.6 {
         return;
     }
 
