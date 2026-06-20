@@ -29,7 +29,7 @@ impl MoverSpriteId {
     }
 }
 
-const EMOJI_ATLAS_BYTES: &[u8] = sow_core::repo_asset_bytes!("emoji/atlas.webp");
+const EMOJI_ATLAS_BYTES: &[u8] = sow_assets::repo_asset_bytes!("emoji/atlas.webp");
 
 pub struct SpriteAtlas {
     pub texture: gpu::Texture,
@@ -67,7 +67,7 @@ impl SpriteAtlas {
         let coords: Vec<(u32, u32)> = emoji_labels
             .iter()
             .map(|e| {
-                let r = sow_core::emoji::manifest::lookup(e).unwrap_or_else(|| {
+                let r = sow_data::emoji::lookup(e).unwrap_or_else(|| {
                     panic!(
                         "Mover sprite emoji {e} missing from atlas — run `./sow emoji` to rebuild"
                     )

@@ -41,15 +41,15 @@ impl<'a> Widget for LobbyCard<'a> {
 
         let stroke_color = if self.lobby.is_counting_down {
             if is_hovered {
-                crate::ui::theme::palette::neon_cyan_hover()
+                sow_ui_kit::theme::palette::neon_cyan_hover()
             } else {
-                crate::ui::theme::palette::neon_cyan()
+                sow_ui_kit::theme::palette::neon_cyan()
             }
         } else {
             if is_hovered {
-                crate::ui::theme::palette::pink()
+                sow_ui_kit::theme::palette::pink()
             } else {
-                crate::ui::theme::palette::field_border()
+                sow_ui_kit::theme::palette::field_border()
             }
         };
 
@@ -67,7 +67,7 @@ impl<'a> Widget for LobbyCard<'a> {
             );
         } else {
             ui.painter()
-                .rect_filled(rect, 12.0, crate::ui::theme::palette::button_inactive());
+                .rect_filled(rect, 12.0, sow_ui_kit::theme::palette::button_inactive());
         }
 
         ui.painter().rect_stroke(
@@ -91,7 +91,7 @@ impl<'a> Widget for LobbyCard<'a> {
             mode_text,
             egui::FontId::proportional(14.0),
             Color32::WHITE,
-            crate::ui::theme::palette::neon_cyan(),
+            sow_ui_kit::theme::palette::neon_cyan(),
             false,
         );
 
@@ -103,14 +103,14 @@ impl<'a> Widget for LobbyCard<'a> {
         let timer_color = if self.lobby.is_counting_down {
             Color32::from_rgb(255, 210, 120)
         } else {
-            crate::ui::theme::palette::text_muted()
+            sow_ui_kit::theme::palette::text_muted()
         };
         paint_badge(
             ui.painter(),
             egui::pos2(top_rect.max.x, top_rect.min.y),
             true,
             &timer_text,
-            crate::ui::theme::font_regular(14.0),
+            sow_ui_kit::theme::font_regular(14.0),
             timer_color,
             Color32::from_black_alpha(180),
             true,
@@ -136,7 +136,7 @@ impl<'a> Widget for LobbyCard<'a> {
 
         // Line 1: map name (left) + players badge (right)
         let map_text = self.lobby.map_name.to_uppercase();
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             egui::pos2(bottom_rect.min.x + pad, line1_y),
             egui::Align2::LEFT_TOP,
@@ -175,7 +175,7 @@ impl<'a> Widget for LobbyCard<'a> {
             egui::Align2::LEFT_TOP,
             &stats_text,
             egui::FontId::proportional(11.0),
-            crate::ui::theme::palette::text_muted(),
+            sow_ui_kit::theme::palette::text_muted(),
         );
 
         // Host name (if set)
@@ -186,7 +186,7 @@ impl<'a> Widget for LobbyCard<'a> {
                 egui::Align2::RIGHT_TOP,
                 &host_text,
                 egui::FontId::proportional(11.0),
-                crate::ui::theme::palette::neon_cyan(),
+                sow_ui_kit::theme::palette::neon_cyan(),
             );
         }
 
@@ -216,7 +216,7 @@ fn paint_badge(
     painter.rect_filled(badge_rect, 4.0, bg_color);
     let text_pos = badge_rect.center() - galley.size() / 2.0;
     if glow {
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             painter,
             text_pos,
             egui::Align2::LEFT_TOP,

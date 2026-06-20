@@ -1,7 +1,7 @@
 use super::MainMenuState;
-use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
+use sow_ui_kit::theme::palette;
 
 fn setting_card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
     let frame = Frame::NONE
@@ -90,7 +90,7 @@ pub fn draw(
     let mut is_open = state.show_create_game;
     let mut should_close = false;
 
-    crate::ui::theme::draw_standard_modal(
+    sow_ui_kit::theme::draw_standard_modal(
         root_ui.ctx(),
         &mut is_open,
         "create_game",
@@ -114,17 +114,18 @@ pub fn draw(
                 .allocate_exact_size(egui::vec2(w, h), egui::Sense::hover())
                 .0;
             if let Some(tex) = thumbnail {
+                let uv = crate::ui::map_texture::cover_uv(rect.size(), tex.size_vec2());
                 crate::ui::map_texture::draw_map_thumbnail_uv(
                     ui.painter(),
                     tex.id(),
                     rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    uv,
                     1.0,
                 );
             } else {
                 ui.painter()
                     .rect_filled(rect, 8.0, Color32::from_black_alpha(120));
-                crate::ui::theme::paint_premium_glow_text(
+                sow_ui_kit::theme::paint_premium_glow_text(
                     ui.painter(),
                     rect.center(),
                     egui::Align2::CENTER_CENTER,

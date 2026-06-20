@@ -1,8 +1,8 @@
 
 fn draw_leader_hero_text(
     ui: &mut egui::Ui,
-    selected_leader: sow_core::player::Leader,
-    selected_civilization: sow_core::player::Civilization,
+    selected_leader: sow_data::Leader,
+    selected_civilization: sow_data::Civilization,
     reign_dates: &str,
     text_w: f32,
     metrics: &LeaderPickerMetrics,
@@ -109,24 +109,24 @@ pub(crate) fn draw_leader_picker_overlay_gradient(
     }
 }
 
-pub(crate) fn leader_civilization(leader: sow_core::player::Leader) -> sow_core::player::Civilization {
+pub(crate) fn leader_civilization(leader: sow_data::Leader) -> sow_data::Civilization {
     match leader {
-        sow_core::player::Leader::Caesar => sow_core::player::Civilization::Rome,
-        sow_core::player::Leader::Cleopatra => sow_core::player::Civilization::Egypt,
-        sow_core::player::Leader::Ragnar => sow_core::player::Civilization::Vikings,
-        sow_core::player::Leader::SunTzu => sow_core::player::Civilization::China,
-        sow_core::player::Leader::Alexander => sow_core::player::Civilization::Macedon,
-        sow_core::player::Leader::GenghisKhan => sow_core::player::Civilization::Mongols,
-        sow_core::player::Leader::RichardTheLionheart => sow_core::player::Civilization::Angevin,
-        sow_core::player::Leader::Vercingetorix => sow_core::player::Civilization::Gallic,
-        sow_core::player::Leader::Boudica => sow_core::player::Civilization::Iceni,
-        sow_core::player::Leader::LadySixSky => sow_core::player::Civilization::Maya,
-        sow_core::player::Leader::Leonidas => sow_core::player::Civilization::Sparta,
-        sow_core::player::Leader::Napoleon => sow_core::player::Civilization::France,
+        sow_data::Leader::Caesar => sow_data::Civilization::Rome,
+        sow_data::Leader::Cleopatra => sow_data::Civilization::Egypt,
+        sow_data::Leader::Ragnar => sow_data::Civilization::Vikings,
+        sow_data::Leader::SunTzu => sow_data::Civilization::China,
+        sow_data::Leader::Alexander => sow_data::Civilization::Macedon,
+        sow_data::Leader::GenghisKhan => sow_data::Civilization::Mongols,
+        sow_data::Leader::RichardTheLionheart => sow_data::Civilization::Angevin,
+        sow_data::Leader::Vercingetorix => sow_data::Civilization::Gallic,
+        sow_data::Leader::Boudica => sow_data::Civilization::Iceni,
+        sow_data::Leader::LadySixSky => sow_data::Civilization::Maya,
+        sow_data::Leader::Leonidas => sow_data::Civilization::Sparta,
+        sow_data::Leader::Napoleon => sow_data::Civilization::France,
     }
 }
 
-fn leader_filler_color32(leader: sow_core::player::Leader) -> Color32 {
+fn leader_filler_color32(leader: sow_data::Leader) -> Color32 {
     let [r, g, b] = leader.filler_rgb();
     Color32::from_rgb(
         (r * 255.0).round() as u8,
@@ -137,8 +137,8 @@ fn leader_filler_color32(leader: sow_core::player::Leader) -> Color32 {
 
 fn draw_leader_avatar_button(
     ui: &mut egui::Ui,
-    leader: sow_core::player::Leader,
-    selected_leader: sow_core::player::Leader,
+    leader: sow_data::Leader,
+    selected_leader: sow_data::Leader,
     avatar_size: f32,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) -> bool {
@@ -197,8 +197,8 @@ fn draw_leader_avatar_button(
 
 fn draw_leader_rail(
     ui: &mut egui::Ui,
-    selected_leader: &mut sow_core::player::Leader,
-    selected_civilization: &mut sow_core::player::Civilization,
+    selected_leader: &mut sow_data::Leader,
+    selected_civilization: &mut sow_data::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     metrics: &LeaderPickerMetrics,
     rail_h: f32,
@@ -239,7 +239,7 @@ fn draw_leader_rail(
                             ui.vertical(|ui| {
                                 ui.spacing_mut().item_spacing.y = metrics.avatar_list_spacing;
                                 ui.add_space(metrics.avatar_list_pad);
-                                for &leader in sow_core::player::Leader::ALL.iter() {
+                                for &leader in sow_data::Leader::ALL.iter() {
                                     if draw_leader_avatar_button(
                                         ui,
                                         leader,
@@ -273,15 +273,15 @@ fn draw_leader_rail(
 
 fn draw_leader_carousel(
     ui: &mut egui::Ui,
-    selected_leader: &mut sow_core::player::Leader,
-    selected_civilization: &mut sow_core::player::Civilization,
+    selected_leader: &mut sow_data::Leader,
+    selected_civilization: &mut sow_data::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     metrics: &LeaderPickerMetrics,
     scroll_area_h: f32,
     panel_w: f32,
 ) {
     let avatar_size = metrics.avatar_size;
-    let leader_count = sow_core::player::Leader::ALL.len() as f32;
+    let leader_count = sow_data::Leader::ALL.len() as f32;
     let spacing = metrics.carousel_spacing;
     let total_carousel_w = (avatar_size + spacing) * leader_count - spacing;
 
@@ -299,7 +299,7 @@ fn draw_leader_carousel(
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = spacing;
 
-                    for &leader in sow_core::player::Leader::ALL.iter() {
+                    for &leader in sow_data::Leader::ALL.iter() {
                         if draw_leader_avatar_button(
                             ui,
                             leader,

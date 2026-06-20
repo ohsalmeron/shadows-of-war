@@ -51,7 +51,7 @@ pub(in crate::ui::hud) fn draw_top_icons(
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            crate::ui::theme::hud_panel_frame().show(ui, |ui| {
+            sow_ui_kit::theme::hud_panel_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let btn_resp = ui
                         .add(crate::widgets::HudEmojiButton::new("📩"))
@@ -75,7 +75,7 @@ pub(in crate::ui::hud) fn draw_top_icons(
                         }
 
                         let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
-                        crate::ui::theme::paint_count_badge(
+                        sow_ui_kit::theme::paint_count_badge(
                             ui.painter(),
                             badge_center,
                             total_notifications,

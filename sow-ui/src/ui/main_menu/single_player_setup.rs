@@ -1,14 +1,14 @@
 use super::MainMenuState;
-use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Color32, CornerRadius, Margin, RichText, Stroke};
+use sow_ui_kit::theme::palette;
 
 fn setting_card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
     let frame = egui::Frame::NONE
-        .fill(crate::ui::theme::palette::field_bg())
+        .fill(sow_ui_kit::theme::palette::field_bg())
         .stroke(Stroke::new(
             1.0_f32,
-            crate::ui::theme::palette::field_border(),
+            sow_ui_kit::theme::palette::field_border(),
         ))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(12, 8));
@@ -66,7 +66,7 @@ pub fn draw(
     let mut is_open = state.show_single_player_setup;
     let mut should_close = false;
 
-    crate::ui::theme::draw_standard_modal(
+    sow_ui_kit::theme::draw_standard_modal(
         root_ui.ctx(),
         &mut is_open,
         "single_player_setup",
@@ -89,11 +89,12 @@ pub fn draw(
                 .0;
 
             if let Some(tex) = thumbnail {
+                let uv = crate::ui::map_texture::cover_uv(rect.size(), tex.size_vec2());
                 crate::ui::map_texture::draw_map_thumbnail_uv(
                     ui.painter(),
                     tex.id(),
                     rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    uv,
                     1.0,
                 );
             } else {
@@ -106,7 +107,7 @@ pub fn draw(
                 } else {
                     strings.no_preview.to_string()
                 };
-                crate::ui::theme::paint_premium_glow_text(
+                sow_ui_kit::theme::paint_premium_glow_text(
                     ui.painter(),
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -120,7 +121,7 @@ pub fn draw(
             ui.painter().rect_stroke(
                 rect,
                 8.0_f32,
-                Stroke::new(1.0_f32, crate::ui::theme::palette::neon_cyan_glow()),
+                Stroke::new(1.0_f32, sow_ui_kit::theme::palette::neon_cyan_glow()),
                 egui::StrokeKind::Inside,
             );
 
@@ -205,9 +206,9 @@ pub fn draw(
             setting_card(ui, &strings.random_spawning, |ui| {
                 let btn_text = if config.random_spawn { "ON" } else { "OFF" };
                 let btn = egui::Button::new(btn_text).fill(if config.random_spawn {
-                    crate::ui::theme::palette::neon_cyan()
+                    sow_ui_kit::theme::palette::neon_cyan()
                 } else {
-                    crate::ui::theme::palette::button_inactive()
+                    sow_ui_kit::theme::palette::button_inactive()
                 });
                 if ui.add(btn).clicked() {
                     config.random_spawn = !config.random_spawn;

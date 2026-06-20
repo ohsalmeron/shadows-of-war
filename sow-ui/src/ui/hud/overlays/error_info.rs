@@ -6,7 +6,7 @@ use super::super::state::HudState;
 
 pub(in crate::ui::hud) fn draw_error_overlay(ctx: &Context, state: &mut HudState, _lang: Language) {
     let is_active = state.show_error.is_some();
-    let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let anim = sow_ui_kit::theme::anim_duration_from_ctx(ctx);
     let progress =
         ctx.animate_bool_with_time(egui::Id::new("error_toast_animation"), is_active, anim);
 
@@ -54,7 +54,7 @@ pub(in crate::ui::hud) fn draw_error_overlay(ctx: &Context, state: &mut HudState
 
     let alpha = progress;
     let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
-    let border_color = crate::ui::theme::palette::danger().linear_multiply(alpha);
+    let border_color = sow_ui_kit::theme::palette::danger().linear_multiply(alpha);
     let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
 
     let target_y = 80.0 + state.safe_area_top;
@@ -104,7 +104,7 @@ pub(in crate::ui::hud) fn draw_error_overlay(ctx: &Context, state: &mut HudState
 
 pub(in crate::ui::hud) fn draw_info_overlay(ctx: &Context, state: &mut HudState, _lang: Language) {
     let is_active = state.show_info.is_some();
-    let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let anim = sow_ui_kit::theme::anim_duration_from_ctx(ctx);
     let progress =
         ctx.animate_bool_with_time(egui::Id::new("info_toast_animation"), is_active, anim);
 
@@ -152,7 +152,7 @@ pub(in crate::ui::hud) fn draw_info_overlay(ctx: &Context, state: &mut HudState,
 
     let alpha = progress;
     let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
-    let border_color = crate::ui::theme::palette::neon_cyan().linear_multiply(alpha);
+    let border_color = sow_ui_kit::theme::palette::neon_cyan().linear_multiply(alpha);
     let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, (255.0 * alpha) as u8);
 
     let target_y = 80.0 + state.safe_area_top;

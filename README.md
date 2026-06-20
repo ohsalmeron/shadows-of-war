@@ -43,9 +43,15 @@ Instead of shipping massive `.wav` files, the game features a custom **harmonic 
 | Crate / Path | Description |
 |---|---|
 | `sow-core` | The deterministic simulation brain. Zero platform dependencies. |
-| `sow-client` | The game executable. Glues the engine, renderer, and netcode together. |
+| `sow-data` | Static tables: tribe names, premium colors, leader metadata, emoji manifest. |
+| `sow-assets` | Compile-time embedded asset bytes (`include_bytes!`). |
+| `sow-assets-ui` | egui texture upload for embedded atlases and fonts. |
+| `sow-client` | Thin native/WASM entry (`main`, cdylib re-exports). |
+| `sow-client-world` | Client simulation, rendering, networking glue, and HUD shell. |
 | `sow-render` | The `blade` WGSL GPU rendering pipeline. |
-| `sow-ui` | The `egui` menus, HUD, and overlays. |
+| `sow-ui-kit` | Shared egui theme, widgets, and formatting helpers. |
+| `sow-ui` | Menus, HUD screens, settings, and `ClientApp`. |
+| `sow-ui-game` | In-match HUD shared types (leaderboard rows, etc.). |
 | `sow-net` | The `bincode` serialized wire protocol and message envelopes. |
 | `sow-relay` | The WebSocket intent broadcaster. |
 | `sow-server` | Lobbies and matchmaking orchestration. |
@@ -105,11 +111,13 @@ The `./sow` script coordinates building the WASM bundles, compiling the GNU bina
 
 ### Source file size guard
 
-Run the workspace compile check and the 600-line monolith guard (allowlisted debt shrinks as splits land):
+Run the workspace compile check and the 600-line monolith guard:
 
 ```bash
 ./sow-tools/check.sh
 ```
+
+Allowlisted exceptions (static data, integration tests, deferred UI): `player/premium_colors.rs`, `tribes/names.rs`, `intent/nation/tests.rs`, `ui/hud/tabs/controls.rs`, `ui/main_menu/queue_overlay.rs`.
 
 ---
 

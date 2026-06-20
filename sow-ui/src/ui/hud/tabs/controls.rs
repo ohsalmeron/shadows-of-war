@@ -64,7 +64,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             let can_afford = state.gold >= cost;
 
             let tint = if is_selected {
-                crate::ui::theme::palette::neon_cyan()
+                sow_ui_kit::theme::palette::neon_cyan()
             } else if !can_afford {
                 egui::Color32::from_rgb(180, 50, 50)
             } else {
@@ -90,7 +90,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                     sow_core::game::BuildingKind::Port => "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
                 };
 
-                ui.label(egui::RichText::new(name).strong().size(14.0).color(crate::ui::theme::palette::neon_cyan()));
+                ui.label(egui::RichText::new(name).strong().size(14.0).color(sow_ui_kit::theme::palette::neon_cyan()));
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
                 ui.add_space(6.0);
@@ -116,16 +116,16 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             );
 
             let is_hovered = resp.hovered();
-            let card = crate::ui::theme::interact_card(
+            let card = sow_ui_kit::theme::interact_card(
                 is_selected,
                 can_afford,
                 is_hovered,
-                crate::ui::theme::palette::neon_cyan(),
+                sow_ui_kit::theme::palette::neon_cyan(),
             );
 
             ui.painter().rect(
                 square_rect,
-                crate::ui::theme::radius::SM,
+                sow_ui_kit::theme::radius::SM,
                 egui::Color32::TRANSPARENT,
                 card.stroke,
                 egui::StrokeKind::Inside,
@@ -188,7 +188,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             let text_color = if !can_afford {
                 egui::Color32::from_rgb(239, 68, 68)
             } else if is_selected {
-                crate::ui::theme::palette::neon_cyan()
+                sow_ui_kit::theme::palette::neon_cyan()
             } else {
                 egui::Color32::from_rgb(230, 230, 230)
             };
@@ -249,7 +249,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                 let stroke = if is_selected {
                     egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(239, 68, 68))
                 } else {
-                    egui::Stroke::new(1.0_f32, crate::ui::theme::palette::field_border().linear_multiply(0.5))
+                    egui::Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border().linear_multiply(0.5))
                 };
 
                 let (rect, mut resp) = ui.allocate_exact_size(
@@ -265,7 +265,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                 });
 
                 let final_bg = if resp.hovered() && !is_selected {
-                    crate::ui::theme::palette::field_bg().linear_multiply(0.3)
+                    sow_ui_kit::theme::palette::field_bg().linear_multiply(0.3)
                 } else {
                     bg_color
                 };
@@ -327,9 +327,9 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
 
 pub(in crate::ui::hud) fn tab_accent(tab: BottomHudTab) -> Color32 {
     match tab {
-        BottomHudTab::Controls => crate::ui::theme::palette::neon_cyan(),
-        BottomHudTab::BattleLog => crate::ui::theme::palette::danger(),
-        BottomHudTab::EventLog => crate::ui::theme::palette::neon_gold_hover(),
+        BottomHudTab::Controls => sow_ui_kit::theme::palette::neon_cyan(),
+        BottomHudTab::BattleLog => sow_ui_kit::theme::palette::danger(),
+        BottomHudTab::EventLog => sow_ui_kit::theme::palette::neon_gold_hover(),
     }
 }
 
@@ -352,7 +352,7 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
     let mut active_rect = None;
 
     let strip_response = ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = crate::ui::theme::tab::GAP;
+        ui.spacing_mut().item_spacing.x = sow_ui_kit::theme::tab::GAP;
 
         let tabs = [
             (BottomHudTab::Controls, 0_usize),
@@ -362,9 +362,9 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
 
         for (tab, badge) in tabs {
             let selected = state.bottom_tab == tab;
-            let resp = crate::ui::theme::draw_tab(
+            let resp = sow_ui_kit::theme::draw_tab(
                 ui,
-                crate::ui::theme::TabContent::Icon(asset_loader.hud_icon(tab.hud_icon())),
+                sow_ui_kit::theme::TabContent::Icon(asset_loader.hud_icon(tab.hud_icon())),
                 selected,
                 tab_accent(tab),
                 badge,
@@ -389,7 +389,7 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
         }
     });
 
-    crate::ui::theme::draw_tab_baseline(ui, strip_response.response.rect, active_rect);
+    sow_ui_kit::theme::draw_tab_baseline(ui, strip_response.response.rect, active_rect);
     active_rect
 }
 pub(in crate::ui::hud) fn hud_sidebar_row_height(
@@ -404,7 +404,7 @@ pub(in crate::ui::hud) fn hud_sidebar_row_height(
         return if compact { 72.0 * s } else { 56.0 };
     }
     let header_h = if compact { 24.0 * s } else { 22.0 };
-    let row_gap = crate::ui::theme::margin::TIGHT as f32;
+    let row_gap = sow_ui_kit::theme::margin::TIGHT as f32;
     let body_h = match main {
         HudSidebarMain::Controls => {
             let num_items = 4.0;
@@ -448,7 +448,7 @@ fn paint_attack_ratio_label(
     let font_id = egui::FontId::proportional(font_size);
     let galley = painter.layout_no_wrap(text.to_owned(), font_id, color);
     let pos = rect.center() - galley.size() * 0.5;
-    crate::ui::theme::paint_premium_glow_galley(painter, pos, galley, color, Color32::BLACK);
+    sow_ui_kit::theme::paint_premium_glow_galley(painter, pos, galley, color, Color32::BLACK);
 }
 
 pub(in crate::ui::hud) fn draw_attack_ratio_column(
@@ -457,7 +457,7 @@ pub(in crate::ui::hud) fn draw_attack_ratio_column(
     col_h: f32,
 ) -> Option<f32> {
     let mut changed_ratio = None;
-    let dur = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
+    let dur = sow_ui_kit::theme::anim_duration_from_ctx(ui.ctx());
     let pct_h = 14.0;
     let troop_h = 13.0;
     let label_gap = 3.0;
@@ -532,7 +532,7 @@ pub(in crate::ui::hud) fn draw_attack_ratio_column(
             pct_rect,
             &format!("{:.0}%", display_ratio * 100.0),
             11.0,
-            crate::ui::theme::palette::neon_cyan_hover(),
+            sow_ui_kit::theme::palette::neon_cyan_hover(),
         );
     }
     if ui.is_rect_visible(troop_rect) {
@@ -550,11 +550,11 @@ pub(in crate::ui::hud) fn draw_attack_ratio_column(
     let hover_t = ui.ctx().animate_bool(slider_id.with("hover"), is_hovered);
     let active_t = ui.ctx().animate_bool(slider_id.with("active"), is_active);
 
-    let rail_fill = crate::ui::theme::palette::neon_cyan().linear_multiply(0.25);
+    let rail_fill = sow_ui_kit::theme::palette::neon_cyan().linear_multiply(0.25);
     let rail_stroke = Stroke::new(
         1.0 + hover_t * 0.5 + active_t * 0.5,
-        crate::ui::theme::palette::neon_cyan().lerp_to_gamma(
-            crate::ui::theme::palette::neon_cyan_hover(),
+        sow_ui_kit::theme::palette::neon_cyan().lerp_to_gamma(
+            sow_ui_kit::theme::palette::neon_cyan_hover(),
             hover_t + active_t * 0.5,
         ),
     );
@@ -574,7 +574,7 @@ pub(in crate::ui::hud) fn draw_attack_ratio_column(
         painter.rect(
             fill_rect,
             CornerRadius::same((ATTACK_RATIO_TRACK_W * 0.5) as u8),
-            crate::ui::theme::palette::neon_cyan_hover().linear_multiply(0.55),
+            sow_ui_kit::theme::palette::neon_cyan_hover().linear_multiply(0.55),
             Stroke::NONE,
             egui::StrokeKind::Inside,
         );
@@ -585,8 +585,11 @@ pub(in crate::ui::hud) fn draw_attack_ratio_column(
         egui::pos2(track.center().x, knob_cy),
         vec2(ATTACK_RATIO_KNOB_D, ATTACK_RATIO_KNOB_D),
     );
-    let knob_fill = crate::ui::theme::palette::field_bg().linear_multiply(0.92 + hover_t * 0.08);
-    let knob_stroke = Stroke::new(1.5 + active_t, crate::ui::theme::palette::neon_cyan_hover());
+    let knob_fill = sow_ui_kit::theme::palette::field_bg().linear_multiply(0.92 + hover_t * 0.08);
+    let knob_stroke = Stroke::new(
+        1.5 + active_t,
+        sow_ui_kit::theme::palette::neon_cyan_hover(),
+    );
     painter.circle(knob_rect.center(), knob_r, knob_fill, knob_stroke);
     if hover_t > 0.01 || active_t > 0.01 {
         painter.circle(
@@ -595,7 +598,7 @@ pub(in crate::ui::hud) fn draw_attack_ratio_column(
             Color32::TRANSPARENT,
             Stroke::new(
                 2.0_f32,
-                crate::ui::theme::palette::neon_cyan()
+                sow_ui_kit::theme::palette::neon_cyan()
                     .linear_multiply(hover_t * 0.35 + active_t * 0.25),
             ),
         );
@@ -630,7 +633,7 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
     let spawn_active = state.spawn_timer_secs.is_some();
     let show_ratio = !spawn_active;
     let ratio_gap = if show_ratio {
-        crate::ui::theme::margin::COZY as f32
+        sow_ui_kit::theme::margin::COZY as f32
     } else {
         0.0
     };
@@ -640,9 +643,9 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
         } else {
             0.0
         };
-    let row_gap = crate::ui::theme::margin::TIGHT as f32;
+    let row_gap = sow_ui_kit::theme::margin::TIGHT as f32;
     let chrome_scale = if compact {
-        crate::ui::theme::viewport_scale(ui.ctx())
+        sow_ui_kit::theme::viewport_scale(ui.ctx())
     } else {
         1.0
     };
@@ -747,7 +750,7 @@ pub(in crate::ui::hud) fn draw_controls_tab(
 
     if compact {
         if state.spawn_timer_secs.is_none() {
-            ui.add_space(crate::ui::theme::margin::COZY as f32);
+            ui.add_space(sow_ui_kit::theme::margin::COZY as f32);
         }
         mobile::draw_mobile_selection_bar(ui, state, cancel_intents, lang);
     }

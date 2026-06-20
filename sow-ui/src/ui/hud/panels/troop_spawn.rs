@@ -26,16 +26,16 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     // The orange bar (dark green visually) is the gap between the actual troops and the animated catchup
     let orange_pct_f32 = (catchup_pct - green_pct).max(0.0);
 
-    let bg_color = crate::ui::theme::palette::field_bg();
-    let green_color = crate::ui::theme::palette::neon_cyan_hover();
-    let orange_color = crate::ui::theme::palette::neon_cyan();
+    let bg_color = sow_ui_kit::theme::palette::field_bg();
+    let green_color = sow_ui_kit::theme::palette::neon_cyan_hover();
+    let orange_color = sow_ui_kit::theme::palette::neon_cyan();
 
     // Draw background
     ui.painter().rect(
         rect,
         0,
         bg_color,
-        Stroke::new(1.0_f32, crate::ui::theme::palette::field_border()),
+        Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border()),
         egui::StrokeKind::Inside,
     );
 
@@ -60,7 +60,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     let shadow = Color32::BLACK;
     if compact {
         let troop_text = crate::utils::format_number(troops);
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(rect.left() + 6.0, rect.center().y),
             Align2::LEFT_CENTER,
@@ -70,7 +70,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             shadow,
         );
         let max_text = crate::utils::format_number(max_troops);
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(rect.right() - 6.0, rect.center().y),
             Align2::RIGHT_CENTER,
@@ -80,9 +80,9 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             shadow,
         );
         let rate_color = if is_increasing {
-            crate::ui::theme::palette::neon_cyan_hover()
+            sow_ui_kit::theme::palette::neon_cyan_hover()
         } else {
-            crate::ui::theme::palette::danger()
+            sow_ui_kit::theme::palette::danger()
         };
         let rate_text = format!("+{}/s", crate::utils::format_number(troop_rate));
 
@@ -105,7 +105,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
         );
         start_x += icon_size + 3.0;
 
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(start_x, rect.center().y),
             Align2::LEFT_CENTER,
@@ -130,7 +130,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
         let total_w = galley.rect.width() + 3.0 + icon_size;
         let mut start_x = rect.center().x - total_w / 2.0;
 
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             pos2(start_x, rect.center().y),
             Align2::LEFT_CENTER,
@@ -163,11 +163,11 @@ pub(in crate::ui::hud) fn draw_spawn_panel(
         if compact {
             ui.add_space(8.0);
         }
-        crate::ui::theme::outlined_label(
+        sow_ui_kit::theme::outlined_label(
             ui,
             &sow_i18n::get(lang).hud.spawn_choose_location,
             egui::FontId::proportional(if compact { 16.0 } else { 20.0 }),
-            crate::ui::theme::palette::neon_gold_hover(),
+            sow_ui_kit::theme::palette::neon_gold_hover(),
         );
         ui.label(
             RichText::new(format!(
@@ -204,16 +204,16 @@ pub(in crate::ui::hud) fn draw_persistent_header(
 
         if !compact {
             let rate_color = if is_increasing {
-                crate::ui::theme::palette::neon_cyan_hover()
+                sow_ui_kit::theme::palette::neon_cyan_hover()
             } else {
-                crate::ui::theme::palette::danger()
+                sow_ui_kit::theme::palette::danger()
             };
             egui::Frame::NONE
-                .stroke(Stroke::new(crate::ui::theme::stroke::HAIRLINE, rate_color))
-                .corner_radius(crate::ui::theme::radius::sm())
+                .stroke(Stroke::new(sow_ui_kit::theme::stroke::HAIRLINE, rate_color))
+                .corner_radius(sow_ui_kit::theme::radius::sm())
                 .inner_margin(egui::Margin::symmetric(
-                    crate::ui::theme::margin::COZY,
-                    crate::ui::theme::margin::TIGHT,
+                    sow_ui_kit::theme::margin::COZY,
+                    sow_ui_kit::theme::margin::TIGHT,
                 ))
                 .show(ui, |ui| {
                     crate::widgets::outlined_emoji_label(
@@ -239,13 +239,13 @@ pub(in crate::ui::hud) fn draw_persistent_header(
 
         egui::Frame::NONE
             .stroke(Stroke::new(
-                crate::ui::theme::stroke::HAIRLINE,
-                crate::ui::theme::palette::neon_gold_hover(),
+                sow_ui_kit::theme::stroke::HAIRLINE,
+                sow_ui_kit::theme::palette::neon_gold_hover(),
             ))
-            .corner_radius(crate::ui::theme::radius::sm())
+            .corner_radius(sow_ui_kit::theme::radius::sm())
             .inner_margin(egui::Margin::symmetric(
-                crate::ui::theme::margin::COZY,
-                crate::ui::theme::margin::TIGHT,
+                sow_ui_kit::theme::margin::COZY,
+                sow_ui_kit::theme::margin::TIGHT,
             ))
             .show(ui, |ui| {
                 ui.add(crate::widgets::ResourceLabel::gold(state.gold).font(

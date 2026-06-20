@@ -14,7 +14,7 @@ serde_json.workspace = true
 bincode.workspace = true
 log = { workspace = true }
 env_logger = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util"] }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 redis = { workspace = true }

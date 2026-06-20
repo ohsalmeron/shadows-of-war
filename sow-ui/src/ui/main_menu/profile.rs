@@ -51,16 +51,16 @@ pub fn draw_user_profile_header(
     }
 
     let bg_color = if is_hovered {
-        crate::ui::theme::palette::button_hovered()
+        sow_ui_kit::theme::palette::button_hovered()
     } else {
-        crate::ui::theme::palette::button_inactive()
+        sow_ui_kit::theme::palette::button_inactive()
     };
 
     ui.painter().rect_filled(rect, 8.0, bg_color);
     ui.painter().rect_stroke(
         rect,
         8.0,
-        Stroke::new(1.0_f32, crate::ui::theme::palette::field_border()),
+        Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border()),
         egui::StrokeKind::Inside,
     );
 
@@ -91,9 +91,9 @@ pub fn draw_user_profile_header(
     }
 
     let btn_bg = if avatar_response.hovered() {
-        crate::ui::theme::palette::field_border()
+        sow_ui_kit::theme::palette::field_border()
     } else {
-        crate::ui::theme::palette::field_bg()
+        sow_ui_kit::theme::palette::field_bg()
     };
 
     ui.painter().rect_filled(avatar_rect, 6.0, btn_bg);
@@ -115,7 +115,7 @@ pub fn draw_user_profile_header(
     }
 
     let frame_color = if avatar_response.hovered() {
-        crate::ui::theme::palette::neon_cyan()
+        sow_ui_kit::theme::palette::neon_cyan()
     } else {
         leader_fill
     };
@@ -139,7 +139,7 @@ pub fn draw_user_profile_header(
         .circle_filled(dot_center, 4.0, Color32::from_rgb(34, 197, 94));
 
     // --- 2. Nickname component & Sign In button ---
-    let scale = crate::ui::theme::viewport_scale(ui.ctx());
+    let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
 
     // Defensive check to ensure nickname doesn't exceed 16 characters
     if state.player_name.chars().count() > 16 {
@@ -182,10 +182,10 @@ pub fn draw_user_profile_header(
         );
 
         let field_frame = egui::Frame::NONE
-            .fill(crate::ui::theme::palette::field_bg())
+            .fill(sow_ui_kit::theme::palette::field_bg())
             .stroke(Stroke::new(
                 1.0_f32,
-                crate::ui::theme::palette::field_border(),
+                sow_ui_kit::theme::palette::field_border(),
             ))
             .corner_radius(egui::CornerRadius::same(6))
             .inner_margin(egui::Margin::symmetric(8, 4));

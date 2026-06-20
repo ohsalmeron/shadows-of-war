@@ -13,7 +13,7 @@ bincode = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 

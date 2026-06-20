@@ -1,10 +1,12 @@
 pub mod app;
 pub mod ui;
-pub mod ui_font;
 pub mod utils;
 pub mod widgets;
 
 pub use app::ClientApp;
+pub use sow_ui_kit::hud::HudIcon;
+pub use sow_ui_kit::{self, ClientPhase};
+pub use ui::main_menu::LobbyNotice;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiAction {
@@ -24,6 +26,7 @@ pub enum UiAction {
     ToggleCredits,
     TogglePrivacy,
     ToggleTerms,
+    #[cfg(any(feature = "dev", debug_assertions))]
     ToggleDevSidebar,
     CopyInviteLink(u64),
     StartPrivateLobby(u64),
@@ -31,7 +34,6 @@ pub enum UiAction {
         keep_account_id: String,
     },
     PortalShowAuthPrompt,
-    // Create Game / Join Browser
     OpenCreateGame,
     CreateGame {
         config: Box<sow_core::game_config::GameConfig>,
@@ -41,6 +43,13 @@ pub enum UiAction {
     OpenJoinBrowser,
     CloseOverlay,
     JoinWithCode,
-    /// Join a password-protected lobby — password already stored in state.join_password_input.
     JoinWithPassword(u64),
+    KickPlayer {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
+    BanPlayer {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
 }

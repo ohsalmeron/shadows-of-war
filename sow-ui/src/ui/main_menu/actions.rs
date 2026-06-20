@@ -12,11 +12,11 @@ pub fn draw_right_column(
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let scale = crate::ui::theme::viewport_scale(ui.ctx());
+    let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
     let primary_text = (if compact { 24.0 } else { 28.0 }) * scale;
     let secondary_text = primary_text - 4.0;
     let settings_text = (if compact { 16.0 } else { 18.0 }) * scale;
-    let rail_btn_fill = crate::ui::theme::palette::button_inactive();
+    let rail_btn_fill = sow_ui_kit::theme::palette::button_inactive();
     let settings_h = action_min_h * 0.75;
     let w = ui.available_width();
 

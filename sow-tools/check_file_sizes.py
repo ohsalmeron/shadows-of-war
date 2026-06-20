@@ -9,31 +9,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAX_LINES = 600
 
+# Static data tables and deferred UI modules (see README "Source file size guard").
 CRATES: dict[str, set[Path]] = {
     "sow-client": set(),
+    "sow-client-world": set(),
     "sow-core": {
-        ROOT / "sow-core" / "src" / "player" / "colors.rs",
         ROOT / "sow-core" / "src" / "intent" / "nation" / "tests.rs",
-        ROOT / "sow-core" / "src" / "intent" / "mod.rs",
-        ROOT / "sow-core" / "src" / "engine.rs",
-        ROOT / "sow-core" / "src" / "tribes.rs",
-        ROOT / "sow-core" / "src" / "execution" / "combat.rs",
-        ROOT / "sow-core" / "src" / "pathfinding.rs",
+    },
+    "sow-data": {
+        ROOT / "sow-data" / "src" / "colors" / "premium_colors.rs",
+        ROOT / "sow-data" / "src" / "tribes" / "names.rs",
+        ROOT / "sow-data" / "src" / "emoji" / "manifest.rs",
     },
     "sow-ui": {
-        ROOT / "sow-ui" / "src" / "ui" / "main_menu" / "mod.rs",
         ROOT / "sow-ui" / "src" / "ui" / "hud" / "tabs" / "controls.rs",
+        ROOT / "sow-ui" / "src" / "ui" / "main_menu" / "queue_overlay.rs",
     },
+    "sow-ui-kit": set(),
+    "sow-ui-game": set(),
+    "sow-assets": set(),
+    "sow-assets-ui": set(),
     "sow-audio": set(),
-    "sow-map": {
-        ROOT / "sow-map" / "src" / "osm_coast.rs",
-    },
-    "sow-render": {
-        ROOT / "sow-render" / "src" / "map_renderer.rs",
-    },
-    "sow-dist": {
-        ROOT / "sow-dist" / "src" / "infra.rs",
-    },
+    "sow-map": set(),
+    "sow-render": set(),
+    "sow-dist": set(),
 }
 
 

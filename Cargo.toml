@@ -2,12 +2,18 @@
 members = [
     "sow-audio",
     "sow-core",
+    "sow-data",
+    "sow-assets",
+    "sow-assets-ui",
     "sow-render",
     "sow-net",
     "sow-client",
+    "sow-client-world",
     "sow-server",
     "sow-database",
     "sow-ui",
+    "sow-ui-kit",
+    "sow-ui-game",
     "sow-tools",
     "sow-relay",
     "sow-i18n",
@@ -52,7 +58,7 @@ console_error_panic_hook = "0.1.7"
 console_log = "1.0"
 web-sys = { version = "0.3.69", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage"] }
 js-sys = "0.3.69"
-tokio = { version = "1.52.3", features = ["full"] }
+tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
 tokio-tungstenite = { version = "0.20.1", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 redis = "0.27"
@@ -87,6 +93,24 @@ path = "sow-audio"
 
 [workspace.dependencies.sow-core]
 path = "sow-core"
+
+[workspace.dependencies.sow-data]
+path = "sow-data"
+
+[workspace.dependencies.sow-assets]
+path = "sow-assets"
+
+[workspace.dependencies.sow-assets-ui]
+path = "sow-assets-ui"
+
+[workspace.dependencies.sow-ui-kit]
+path = "sow-ui-kit"
+
+[workspace.dependencies.sow-ui-game]
+path = "sow-ui-game"
+
+[workspace.dependencies.sow-client-world]
+path = "sow-client-world"
 
 [workspace.dependencies.sow-net]
 path = "sow-net"

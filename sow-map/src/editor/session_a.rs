@@ -21,7 +21,7 @@ impl MapEditorSession {
         egui_ctx: Context,
         client_app: ClientApp,
     ) -> Self {
-        sow_ui::ui::theme::apply_theme(&egui_ctx);
+        sow_ui_kit::theme::apply_theme(&egui_ctx);
         let width = 400;
         let height = 300;
         let size = (width * height) as usize;

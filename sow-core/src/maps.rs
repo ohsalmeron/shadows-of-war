@@ -165,7 +165,7 @@ pub fn load_map_from_payload(bytes: &[u8]) -> Result<MapFile, crate::map_file::M
 #[inline]
 pub fn bundled_map_br(key: &str) -> Option<&'static [u8]> {
     match map_key(key).as_str() {
-        "world" => Some(crate::repo_asset_bytes!("maps/world/map.bin.br")),
+        "world" => Some(sow_assets::WORLD_MAP_BYTES),
         _ => None,
     }
 }

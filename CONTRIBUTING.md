@@ -49,6 +49,20 @@ Inbound contributions = outbound under AGPL-3.0-or-later. No separate CLA is req
 
 Be respectful and constructive. We want a welcoming community for everyone.
 
-## Questions
+## Faster debug builds
 
-Open an issue on GitHub for bugs, feature requests, or questions about contributing.
+For UI-only work, you can speed up clean debug compiles by lowering dependency optimization in a local `.cargo/config.toml` (not committed):
+
+```toml
+[profile.dev.package."*"]
+opt-level = 1
+```
+
+The workspace default uses `opt-level = 3` for dependencies so debug runs stay smooth; lowering it trades runtime speed for compile time.
+
+Native dev tools (FPS overlay, dev sidebar, map shader sliders) require `--features dev`:
+
+```bash
+cargo run -p sow-client --features dev
+```
+

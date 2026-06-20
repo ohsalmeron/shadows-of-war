@@ -1,7 +1,7 @@
-use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Color32, RichText, Slider, Stroke};
 pub use sow_i18n::Language;
+use sow_ui_kit::theme::palette;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GraphicsQuality {
@@ -51,7 +51,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
     let mut action = None;
     let strings = &sow_i18n::get(state.language).settings;
 
-    let res = crate::ui::theme::draw_standard_modal(
+    let res = sow_ui_kit::theme::draw_standard_modal(
         root_ui.ctx(),
         &mut open,
         "settings",

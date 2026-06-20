@@ -150,6 +150,16 @@ pub enum ClientMessage {
         lobby_id: u64,
         player_id: u16,
     },
+    /// Host removes a player from a Custom lobby — the player can rejoin afterwards.
+    Kick {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
+    /// Host removes a player from a Custom lobby and blocks them from rejoining it.
+    Ban {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
     Ping {
         client_time: f64,
     },
@@ -292,6 +302,9 @@ pub struct LobbyPlayerSyncState {
     pub download_progress: u8,
     #[serde(default)]
     pub leader: crate::player::Leader,
+    /// Per-lobby player id — lets the host target kick/ban actions at a roster entry.
+    #[serde(default)]
+    pub player_id: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

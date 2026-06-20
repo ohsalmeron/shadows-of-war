@@ -7,6 +7,8 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 sow-core = { workspace = true }
+sow-data = { workspace = true }
+sow-assets = { workspace = true }
 bytemuck = { workspace = true }
 log = { workspace = true }
 image = { workspace = true, features = ["png"] }

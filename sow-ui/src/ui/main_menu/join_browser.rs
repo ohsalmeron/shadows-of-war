@@ -5,17 +5,17 @@ use egui::{Color32, CornerRadius, Frame, Margin, RichText, ScrollArea, Stroke};
 
 fn filter_pill(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
     let (bg, text_col) = if active {
-        (crate::ui::theme::palette::neon_cyan(), Color32::BLACK)
+        (sow_ui_kit::theme::palette::neon_cyan(), Color32::BLACK)
     } else {
         (
-            crate::ui::theme::palette::button_inactive(),
-            crate::ui::theme::palette::text_muted(),
+            sow_ui_kit::theme::palette::button_inactive(),
+            sow_ui_kit::theme::palette::text_muted(),
         )
     };
     let stroke_col = if active {
-        crate::ui::theme::palette::neon_cyan()
+        sow_ui_kit::theme::palette::neon_cyan()
     } else {
-        crate::ui::theme::palette::field_border()
+        sow_ui_kit::theme::palette::field_border()
     };
     let btn = egui::Button::new(RichText::new(label).size(13.0).color(text_col).strong())
         .fill(bg)
@@ -31,14 +31,14 @@ fn section_header(ui: &mut egui::Ui, label: &str) {
             RichText::new(label)
                 .size(12.0)
                 .strong()
-                .color(crate::ui::theme::palette::text_muted()),
+                .color(sow_ui_kit::theme::palette::text_muted()),
         );
         let available = ui.available_width();
         if available > 10.0 {
             ui.add_space(8.0);
             ui.scope(|ui| {
                 ui.visuals_mut().widgets.noninteractive.bg_stroke =
-                    Stroke::new(1.0_f32, crate::ui::theme::palette::field_border());
+                    Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border());
                 ui.separator();
             });
         }
@@ -54,11 +54,11 @@ pub fn draw(
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
+    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
 
     // ── Top panel: title + mode filter pills ──────────────────────────────
     egui::Panel::top("join_browser_header")
-        .frame(crate::ui::theme::screen_panel_frame())
+        .frame(sow_ui_kit::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
             if compact {
                 ui.vertical(|ui| {
@@ -77,7 +77,7 @@ pub fn draw(
 
     // ── Bottom panel: private code entry + back ───────────────────────────
     egui::Panel::bottom("join_browser_footer")
-        .frame(crate::ui::theme::screen_panel_frame())
+        .frame(sow_ui_kit::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
             if compact {
                 ui.vertical(|ui| {
@@ -150,11 +150,11 @@ pub fn draw(
                         let center_y = ui.available_height() * 0.35;
                         ui.add_space(center_y);
                         ui.vertical_centered(|ui| {
-                            crate::ui::theme::outlined_label(
+                            sow_ui_kit::theme::outlined_label(
                                 ui,
                                 &strings.no_public_games,
                                 egui::FontId::proportional(16.0),
-                                crate::ui::theme::palette::text_muted(),
+                                sow_ui_kit::theme::palette::text_muted(),
                             );
                         });
                         return;
@@ -217,10 +217,10 @@ fn draw_private_join_row(
     ui.horizontal(|ui| {
         // Code input
         let field_frame = Frame::NONE
-            .fill(crate::ui::theme::palette::field_bg())
+            .fill(sow_ui_kit::theme::palette::field_bg())
             .stroke(Stroke::new(
                 1.0_f32,
-                crate::ui::theme::palette::field_border(),
+                sow_ui_kit::theme::palette::field_border(),
             ))
             .corner_radius(CornerRadius::same(6))
             .inner_margin(Margin::symmetric(8, 4));
@@ -284,8 +284,8 @@ fn draw_lobby_row(
         let host_text = format!("HOST: {}", lobby.host_name.to_uppercase());
         let host_galley = painter.layout_no_wrap(
             host_text.clone(),
-            crate::ui::theme::font_regular(11.0),
-            crate::ui::theme::palette::text_muted(),
+            sow_ui_kit::theme::font_regular(11.0),
+            sow_ui_kit::theme::palette::text_muted(),
         );
         let host_w = host_galley.size().x + 10.0;
         let host_h = host_galley.size().y + 4.0;
@@ -297,7 +297,7 @@ fn draw_lobby_row(
         painter.galley(
             egui::pos2(host_rect.min.x + 5.0, host_rect.min.y + 2.0),
             host_galley,
-            crate::ui::theme::palette::text_muted(),
+            sow_ui_kit::theme::palette::text_muted(),
         );
     }
 
@@ -318,7 +318,7 @@ fn draw_lobby_row(
             ui.label(
                 RichText::new(&strings.loading_thumbnail)
                     .size(11.0)
-                    .color(crate::ui::theme::palette::text_muted()),
+                    .color(sow_ui_kit::theme::palette::text_muted()),
             );
         });
     }
@@ -345,7 +345,7 @@ fn draw_password_modal(
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(root_ui.ctx(), |ui| {
             ui.painter()
-                .rect_filled(screen_rect, 0.0, crate::ui::theme::palette::backdrop());
+                .rect_filled(screen_rect, 0.0, sow_ui_kit::theme::palette::backdrop());
         });
 
     let mut close = false;
@@ -357,37 +357,37 @@ fn draw_password_modal(
         .fixed_size(egui::vec2(modal_w, 180.0))
         .frame(
             Frame::new()
-                .fill(crate::ui::theme::palette::surface())
+                .fill(sow_ui_kit::theme::palette::surface())
                 .stroke(Stroke::new(
                     1.5_f32,
-                    crate::ui::theme::palette::neon_cyan_hover(),
+                    sow_ui_kit::theme::palette::neon_cyan_hover(),
                 ))
                 .corner_radius(CornerRadius::same(16))
                 .inner_margin(24.0)
                 .shadow(egui::Shadow {
                     blur: 32,
                     spread: 0,
-                    color: crate::ui::theme::palette::neon_cyan().linear_multiply(0.2),
+                    color: sow_ui_kit::theme::palette::neon_cyan().linear_multiply(0.2),
                     offset: [0, 8],
                 }),
         )
         .show(root_ui.ctx(), |ui| {
             ui.set_width(modal_w - 48.0);
             ui.vertical_centered(|ui| {
-                crate::ui::theme::outlined_label(
+                sow_ui_kit::theme::outlined_label(
                     ui,
                     &strings.password_label,
                     egui::FontId::proportional(18.0),
-                    crate::ui::theme::palette::neon_cyan(),
+                    sow_ui_kit::theme::palette::neon_cyan(),
                 );
                 ui.add_space(12.0);
 
                 // Password field
                 let field_frame = Frame::NONE
-                    .fill(crate::ui::theme::palette::field_bg())
+                    .fill(sow_ui_kit::theme::palette::field_bg())
                     .stroke(Stroke::new(
                         1.0_f32,
-                        crate::ui::theme::palette::field_border(),
+                        sow_ui_kit::theme::palette::field_border(),
                     ))
                     .corner_radius(CornerRadius::same(6))
                     .inner_margin(Margin::symmetric(8, 6));

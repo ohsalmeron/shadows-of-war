@@ -1,7 +1,7 @@
-use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::{Color32, RichText};
 use sow_i18n::LegalDocument;
+use sow_ui_kit::theme::palette;
 
 pub fn draw(
     root_ui: &mut egui::Ui,
@@ -12,10 +12,10 @@ pub fn draw(
     reduced_motion: bool,
 ) -> Option<UiAction> {
     let mut open = is_open;
-    let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
+    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
     let mut action = None;
 
-    let res = crate::ui::theme::draw_standard_modal(
+    let res = sow_ui_kit::theme::draw_standard_modal(
         root_ui.ctx(),
         &mut open,
         modal_key,
@@ -26,7 +26,7 @@ pub fn draw(
             ui.add(
                 egui::Label::new(
                     RichText::new(&doc.updated)
-                        .font(crate::ui::theme::font_regular(if compact {
+                        .font(sow_ui_kit::theme::font_regular(if compact {
                             12.0
                         } else {
                             13.0
@@ -40,12 +40,12 @@ pub fn draw(
             let body_size = if compact { 13.0 } else { 14.0 };
             let body = |text: &str| {
                 RichText::new(text)
-                    .font(crate::ui::theme::font_regular(body_size))
+                    .font(sow_ui_kit::theme::font_regular(body_size))
                     .color(palette::text_muted())
             };
             let link = |text: &str| {
                 RichText::new(text)
-                    .font(crate::ui::theme::font_regular(body_size))
+                    .font(sow_ui_kit::theme::font_regular(body_size))
                     .color(palette::neon_cyan())
             };
             let heading_size = if compact { 15.0 } else { 16.0 };
@@ -54,7 +54,7 @@ pub fn draw(
                 ui.add(
                     egui::Label::new(
                         RichText::new(&section.heading)
-                            .font(crate::ui::theme::font_regular(heading_size))
+                            .font(sow_ui_kit::theme::font_regular(heading_size))
                             .color(Color32::WHITE),
                     )
                     .wrap(),

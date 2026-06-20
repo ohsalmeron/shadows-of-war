@@ -6,12 +6,17 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 sow-core = { workspace = true }
+sow-data = { workspace = true }
+sow-ui-kit = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 sow-i18n = { workspace = true }
+sow-assets = { workspace = true }
+sow-assets-ui = { workspace = true }
 
 [features]
 default = []
+dev = []
 map-editor = ["sow-i18n/map-editor"]

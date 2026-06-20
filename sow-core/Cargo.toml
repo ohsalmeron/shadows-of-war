@@ -16,7 +16,7 @@ bitfield = { workspace = true }
 wyrand = { workspace = true }
 log = { workspace = true }
 bytemuck = { workspace = true }
-egui = { workspace = true }
 libm = { workspace = true }
 brotli = { workspace = true }
-image = { workspace = true }
+sow-data = { workspace = true }
+sow-assets = { workspace = true }

@@ -107,6 +107,15 @@ pub struct MainMenuStrings {
     pub link_conflict_keep_guest: String,
     pub link_conflict_keep_platform: String,
     pub sign_in: String,
+    // Host moderation + lobby removal notices
+    pub kick_btn: String,
+    pub ban_btn: String,
+    pub notice_host_left_title: String,
+    pub notice_host_left_body: String,
+    pub notice_kicked_title: String,
+    pub notice_kicked_body: String,
+    pub notice_banned_title: String,
+    pub notice_banned_body: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

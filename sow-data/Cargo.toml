@@ -1,0 +1,9 @@
+[package]
+name = "sow-data"
+version = "0.1.0"
+edition = "2021"
+description = "Shadows of War — static game data (names, colors, leaders, emoji manifest)"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+serde = { workspace = true }

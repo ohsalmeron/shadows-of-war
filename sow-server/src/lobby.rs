@@ -47,6 +47,15 @@ pub struct ServerLobby {
     pub host_player_id: Option<u16>,
     pub password: Option<String>,
     pub host_name: String,
+    /// Identities (account id, or `name:<name>` fallback) banned from this lobby.
+    pub banned: std::collections::HashSet<String>,
+}
+
+/// Stable identity for ban tracking: prefer the account id, fall back to name.
+fn ban_identity(database_account_id: &Option<String>, name: &str) -> String {
+    database_account_id
+        .clone()
+        .unwrap_or_else(|| format!("name:{name}"))
 }
 
 impl ServerLobby {
@@ -119,6 +128,7 @@ fn spawn_waiting_lobby(
         host_player_id: None,
         password,
         host_name,
+        banned: std::collections::HashSet::new(),
     });
 }
 
@@ -385,6 +395,17 @@ pub fn join_player(
         );
         return Err("Lobby is not accepting joins".to_string());
     }
+    if lobby
+        .banned
+        .contains(&ban_identity(&database_account_id, &name))
+    {
+        log::warn!(
+            "[JOIN] {} is banned from lobby {} — rejected",
+            name,
+            lobby_id
+        );
+        return Err("BANNED".to_string());
+    }
     if let Some(ref lobby_pw) = lobby.password.clone() {
         if password.as_deref() != Some(lobby_pw.as_str()) {
             log::warn!("[JOIN] {} gave wrong password for lobby {}", name, lobby_id);
@@ -447,6 +468,83 @@ pub fn leave_player(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
             // Lobbies in ReadyForRelay don't care, they are about to be dropped.
         }
     }
+}
+
+/// Serialize a `LobbyClosed` envelope for a lobby/reason, or `None` on failure.
+fn lobby_closed_json(lobby_id: u64, reason: &str) -> Option<Vec<u8>> {
+    let msg = sow_core::protocol::ServerLobbyClosedMessage {
+        lobby_id,
+        reason: reason.to_string(),
+        rematch_lobby_id: None,
+    };
+    match bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            log::error!("[LOBBY] Failed to serialize LobbyClosed for {lobby_id}: {e}");
+            None
+        }
+    }
+}
+
+/// Push a `LobbyClosed` to every member — used when the host abandons the lobby.
+pub fn notify_lobby_closed(lobby: &ServerLobby, reason: &str) {
+    if let Some(json) = lobby_closed_json(lobby.id, reason) {
+        for p in &lobby.players {
+            let _ = p.tx.try_send(json.clone());
+        }
+    }
+}
+
+/// True when `player_id` leaving should drop the whole Custom lobby: they are the
+/// host and the match has not yet been handed off to the relay (poka-yoke — never
+/// strand the remaining members behind a vanished host).
+pub fn is_host_teardown(games: &[ServerLobby], lobby_id: u64, player_id: u16) -> bool {
+    games.iter().any(|g| {
+        g.id == lobby_id
+            && g.kind == LobbyKind::Custom
+            && g.host_player_id == Some(player_id)
+            && g.phase != LobbyPhase::ReadyForRelay
+    })
+}
+
+/// Host-initiated removal of a single player from a Custom lobby. When `ban` is set
+/// the player's identity is recorded so they cannot rejoin this lobby. The target is
+/// notified with a `LobbyClosed` (reason `KICKED`/`BANNED`) and the roster re-synced.
+pub fn kick_player(
+    games: &mut [ServerLobby],
+    lobby_id: u64,
+    requester_id: u16,
+    target_id: u16,
+    ban: bool,
+) {
+    let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) else {
+        return;
+    };
+    if lobby.kind != LobbyKind::Custom || lobby.host_player_id != Some(requester_id) {
+        log::warn!(
+            "[KICK] Player {requester_id} is not host of Custom lobby {lobby_id} — rejected"
+        );
+        return;
+    }
+    if target_id == requester_id {
+        log::warn!("[KICK] Host {requester_id} tried to kick themselves from {lobby_id} — ignored");
+        return;
+    }
+    let Some(target) = lobby.players.iter().find(|p| p.player_id == target_id) else {
+        return;
+    };
+    if ban {
+        let identity = ban_identity(&target.database_account_id, &target.name);
+        lobby.banned.insert(identity);
+    }
+    let reason = if ban { "BANNED" } else { "KICKED" };
+    if let Some(json) = lobby_closed_json(lobby_id, reason) {
+        let _ = target.tx.try_send(json);
+    }
+    lobby.players.retain(|p| p.player_id != target_id);
+    lobby.ready_players.remove(&target_id);
+    log::info!("[KICK] Host {requester_id} {reason} player {target_id} from lobby {lobby_id}");
+    sync_host_lobby_to_members(lobby);
 }
 
 fn start_match(lobby: &mut ServerLobby) {
@@ -578,6 +676,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                             is_ready: lobby.ready_players.contains(&p.player_id),
                             download_progress: p.download_progress,
                             leader: p.leader,
+                            player_id: p.player_id,
                         })
                         .collect();
 
@@ -700,6 +799,7 @@ pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
                 is_ready: g.ready_players.contains(&p.player_id),
                 download_progress: p.download_progress,
                 leader: p.leader,
+                player_id: p.player_id,
             })
             .collect(),
         has_password: g.password.is_some(),
@@ -724,6 +824,7 @@ pub fn sync_host_lobby_to_members(lobby: &ServerLobby) {
             is_ready: lobby.ready_players.contains(&p.player_id),
             download_progress: p.download_progress,
             leader: p.leader,
+            player_id: p.player_id,
         })
         .collect();
     let time_remaining = if matches!(lobby.phase, LobbyPhase::CountingDown) {

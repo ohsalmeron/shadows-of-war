@@ -7,7 +7,7 @@ pub fn draw_map_editor(
     lang: sow_i18n::Language,
 ) -> MapEditorAction {
     let strings = &sow_i18n::get(lang).map_editor;
-    let compact = crate::ui::theme::compact_viewport(ctx);
+    let compact = sow_ui_kit::theme::compact_viewport(ctx);
     let busy = state.is_busy();
     let mut action = MapEditorAction::None;
     state.map_canvas_rect = None;
@@ -16,19 +16,19 @@ pub fn draw_map_editor(
         state.osm_selection_screen = None;
     }
 
-    let top_frame = crate::ui::theme::map_editor_glass_frame(
-        crate::ui::theme::MapEditorGlassPanel::Top,
+    let top_frame = sow_ui_kit::theme::map_editor_glass_frame(
+        sow_ui_kit::theme::MapEditorGlassPanel::Top,
         compact,
     );
-    let side_frame = crate::ui::theme::map_editor_glass_frame(
-        crate::ui::theme::MapEditorGlassPanel::Side,
+    let side_frame = sow_ui_kit::theme::map_editor_glass_frame(
+        sow_ui_kit::theme::MapEditorGlassPanel::Side,
         compact,
     );
 
     egui::Panel::top("editor_menu")
         .frame(top_frame)
         .show_inside(ui, |ui| {
-            let rail_fill = crate::ui::theme::palette::button_inactive();
+            let rail_fill = sow_ui_kit::theme::palette::button_inactive();
 
             // Row 1: title + exit
             ui.horizontal(|ui| {
@@ -66,7 +66,7 @@ pub fn draw_map_editor(
                 ui.label(
                     RichText::new(strings.label_map_slug_hint.replace("{}", &slug))
                         .size(11.0)
-                        .color(crate::ui::theme::palette::text_muted()),
+                        .color(sow_ui_kit::theme::palette::text_muted()),
                 );
 
                 ui.separator();
@@ -148,7 +148,7 @@ pub fn draw_map_editor(
                         .text_size(TOOLBAR_TEXT);
                     if !has_selection {
                         generate_btn =
-                            generate_btn.custom_fill(crate::ui::theme::palette::button_inactive());
+                            generate_btn.custom_fill(sow_ui_kit::theme::palette::button_inactive());
                     }
                     let generate_resp = ui.add_enabled(has_selection && !busy, generate_btn);
                     if !has_selection {
@@ -168,7 +168,7 @@ pub fn draw_map_editor(
                             .replacen("{}", &state.height.to_string(), 1),
                     )
                     .size(13.0)
-                    .color(crate::ui::theme::palette::text_muted()),
+                    .color(sow_ui_kit::theme::palette::text_muted()),
                 );
             });
 
@@ -178,13 +178,13 @@ pub fn draw_map_editor(
                     ui.label(
                         RichText::new(msg)
                             .size(13.0)
-                            .color(crate::ui::theme::palette::text_muted()),
+                            .color(sow_ui_kit::theme::palette::text_muted()),
                     );
                 }
                 ui.add(
                     egui::ProgressBar::new(0.0)
                         .animate(true)
-                        .fill(crate::ui::theme::palette::neon_cyan()),
+                        .fill(sow_ui_kit::theme::palette::neon_cyan()),
                 );
             }
         });
@@ -262,7 +262,7 @@ pub fn draw_map_editor(
                         ui,
                         &strings.btn_undo,
                         ThemeButtonStyle::Tertiary,
-                        Some(crate::ui::theme::palette::button_inactive()),
+                        Some(sow_ui_kit::theme::palette::button_inactive()),
                     )
                     .on_hover_text(&strings.tooltip_undo);
                     if undo_resp.clicked() {
@@ -350,7 +350,7 @@ pub fn draw_map_editor(
                     ui.add_space(4.0);
                     ui.small(
                         RichText::new(&strings.hint_shortcuts)
-                            .color(crate::ui::theme::palette::text_muted()),
+                            .color(sow_ui_kit::theme::palette::text_muted()),
                     );
                 }
             }
@@ -443,7 +443,7 @@ pub fn draw_map_editor(
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
-            .frame(crate::ui::theme::standard_panel_frame(compact))
+            .frame(sow_ui_kit::theme::standard_panel_frame(compact))
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {

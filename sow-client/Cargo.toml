@@ -9,45 +9,17 @@ license = "AGPL-3.0-or-later"
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
+[features]
+default = []
+dev = ["sow-client-world/dev"]
+
 [[bin]]
 name = "client"
 path = "src/main.rs"
 
-
 [dependencies]
-sow-audio = { workspace = true }
-sow-core = { workspace = true }
-sow-render = { workspace = true }
-blade-graphics = { workspace = true }
-
-log = { workspace = true }
+sow-client-world = { workspace = true }
 winit = { workspace = true }
-sow-ui = { workspace = true }
-sow-i18n = { workspace = true }
-egui = { workspace = true }
-blade-egui = { workspace = true }
-bincode.workspace = true
-serde = { workspace = true }
-serde_json = { workspace = true }
-sow-net = { workspace = true }
-brotli = { workspace = true }
-ehttp = { workspace = true, features = ["streaming"] }
-crossbeam-channel = { workspace = true }
-web-time = { workspace = true }
-image = { workspace = true }
-url = { workspace = true }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-futures = { workspace = true }
-wasm-bindgen = { workspace = true }
-getrandom = { workspace = true, features = ["js"] }
-console_error_panic_hook = { workspace = true }
-console_log = { workspace = true }
-web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "HtmlAnchorElement", "HtmlCanvasElement", "Navigator", "CssStyleDeclaration", "Node", "VisibilityState", "Location", "BinaryType", "Worker", "MessageEvent", "Storage", "MediaQueryList", "Blob", "Url", "BlobPropertyBag", "VisualViewport", "Event"] }
-js-sys = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-getrandom = { workspace = true }
-open = { workspace = true }
 env_logger = { workspace = true }
-tokio = { workspace = true }

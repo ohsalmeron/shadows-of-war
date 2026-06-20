@@ -1,0 +1,17 @@
+[package]
+name = "sow-ui-kit"
+version = "0.1.0"
+edition = "2021"
+description = "Shadows of War — shared egui theme, widgets, and formatting helpers"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+sow-data = { workspace = true }
+sow-assets = { workspace = true }
+sow-assets-ui = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+
+[features]
+default = []
+map-editor = []

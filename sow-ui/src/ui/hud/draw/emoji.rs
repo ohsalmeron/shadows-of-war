@@ -81,7 +81,7 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
 
     area.show(ui.ctx(), |ui| {
         let frame_res = egui::Frame::window(&ui.ctx().global_style())
-            .fill(crate::ui::theme::palette::surface().linear_multiply(emoji_progress))
+            .fill(sow_ui_kit::theme::palette::surface().linear_multiply(emoji_progress))
             .stroke(egui::Stroke::new(1.8_f32 * anim_scale, border_glow))
             .shadow(egui::Shadow {
                 blur: if compact { 12 } else { 16 },
@@ -139,10 +139,10 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
                                 };
 
                                 let bg_color = if is_hovered {
-                                    crate::ui::theme::palette::button_hovered()
+                                    sow_ui_kit::theme::palette::button_hovered()
                                         .linear_multiply((0.6 + 0.3 * hover_t) * emoji_progress)
                                 } else {
-                                    crate::ui::theme::palette::field_bg()
+                                    sow_ui_kit::theme::palette::field_bg()
                                         .linear_multiply(0.4 * emoji_progress)
                                 };
                                 let stroke_color = border_glow.linear_multiply(0.3 + 0.7 * hover_t);
@@ -207,10 +207,10 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
                                 ui.spacing_mut().item_spacing.x = 6.0 * anim_scale;
 
                                 let text_color = if state.pin_emoji {
-                                    crate::ui::theme::palette::neon_gold()
+                                    sow_ui_kit::theme::palette::neon_gold()
                                         .linear_multiply(emoji_progress)
                                 } else {
-                                    crate::ui::theme::palette::text_muted()
+                                    sow_ui_kit::theme::palette::text_muted()
                                         .linear_multiply(emoji_progress)
                                 };
 
@@ -242,17 +242,17 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
                                 }
 
                                 let bg_color = if state.pin_emoji {
-                                    crate::ui::theme::palette::neon_gold().linear_multiply(0.2)
+                                    sow_ui_kit::theme::palette::neon_gold().linear_multiply(0.2)
                                 } else {
-                                    crate::ui::theme::palette::field_bg()
+                                    sow_ui_kit::theme::palette::field_bg()
                                 };
 
                                 let stroke_color = if state.pin_emoji {
-                                    crate::ui::theme::palette::neon_gold()
+                                    sow_ui_kit::theme::palette::neon_gold()
                                 } else if is_hovered {
-                                    crate::ui::theme::palette::neon_cyan()
+                                    sow_ui_kit::theme::palette::neon_cyan()
                                 } else {
-                                    crate::ui::theme::palette::field_border()
+                                    sow_ui_kit::theme::palette::field_border()
                                 };
 
                                 ui.painter().rect(
@@ -269,7 +269,7 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
                                         egui::Align2::CENTER_CENTER,
                                         "✓",
                                         egui::FontId::proportional(22.0),
-                                        crate::ui::theme::palette::neon_gold(),
+                                        sow_ui_kit::theme::palette::neon_gold(),
                                     );
                                 }
                             });

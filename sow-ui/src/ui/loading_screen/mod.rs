@@ -146,11 +146,11 @@ pub fn draw(
 
     let visual_progress = state.visual_progress;
 
-    // Render
-    let screen_rect = root_ui.max_rect();
+    // Render — screen_rect, not max_rect/content_rect, so panels never leave a top strip.
+    let screen_rect = root_ui.ctx().content_rect();
     let screen_w = screen_rect.width();
     let screen_h = screen_rect.height();
-    let is_mobile = crate::ui::theme::compact_viewport(root_ui.ctx());
+    let is_mobile = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
     let alpha = (state.opacity * 255.0) as u8;
 
     let use_portrait = screen_w < screen_h;
@@ -274,7 +274,7 @@ pub fn draw(
         format!("{} {}%", sow_i18n::get(lang).loading_screen.loading, pct)
     };
 
-    crate::ui::theme::paint_premium_glow_text(
+    sow_ui_kit::theme::paint_premium_glow_text(
         root_ui.painter(),
         bar_rect.center(),
         egui::Align2::CENTER_CENTER,

@@ -30,11 +30,11 @@ pub(in crate::ui::hud) fn draw_map_controls(
             ui.set_width(rail_w);
             ui.set_max_width(rail_w);
 
-            crate::ui::theme::panel_frame(crate::ui::theme::PanelKind::MapControlsRail, compact)
+            sow_ui_kit::theme::panel_frame(sow_ui_kit::theme::PanelKind::MapControlsRail, compact)
                 .show(ui, |ui| {
                     ui.set_width(btn_w);
                     ui.set_max_width(btn_w);
-                    ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
+                    ui.spacing_mut().item_spacing.y = sow_ui_kit::theme::margin::TIGHT as f32;
                     ui.vertical(|ui| {
                         if ui
                             .add(crate::widgets::HudEmojiButton::new("➕").dim(btn_w))
@@ -100,7 +100,7 @@ pub(in crate::ui::hud) fn draw_map_controls(
                             if battle_unread > 0 {
                                 let badge_center =
                                     attacks_btn.rect.right_top() + egui::vec2(-2.0, 2.0);
-                                crate::ui::theme::paint_count_badge(
+                                sow_ui_kit::theme::paint_count_badge(
                                     ui.painter(),
                                     badge_center,
                                     battle_unread,

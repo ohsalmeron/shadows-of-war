@@ -27,7 +27,7 @@ pub fn draw(
 ) -> Option<UiAction> {
     static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
     REGISTER_ONCE.call_once(|| {
-        sow_core::register_game_assets(ui.ctx());
+        sow_assets_ui::register_game_assets(ui.ctx());
     });
 
     asset_loader.ensure_hud_icons_loaded(ui.ctx());
@@ -35,10 +35,10 @@ pub fn draw(
     let mut action = None;
 
     let rect = ui.ctx().content_rect();
-    let compact = crate::ui::theme::compact_viewport(ui.ctx());
-    let portrait_dock = crate::ui::theme::portrait_layout(ui.ctx());
-    let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
-    let anim_hover = crate::ui::theme::anim_duration_hover_from_ctx(ui.ctx());
+    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
+    let portrait_dock = sow_ui_kit::theme::portrait_layout(ui.ctx());
+    let anim = sow_ui_kit::theme::anim_duration_from_ctx(ui.ctx());
+    let anim_hover = sow_ui_kit::theme::anim_duration_hover_from_ctx(ui.ctx());
 
     let panel_w = if portrait_dock {
         rect.width()
@@ -90,9 +90,9 @@ pub fn draw(
         )
     };
     let panel_radius = if portrait_dock {
-        crate::ui::theme::radius::dock_top()
+        sow_ui_kit::theme::radius::dock_top()
     } else {
-        crate::ui::theme::radius::lg()
+        sow_ui_kit::theme::radius::lg()
     };
 
     draw_bottom_panel(

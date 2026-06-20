@@ -109,7 +109,7 @@ impl AssetLoader {
             .thumbnails
             .contains_key(sow_core::maps::DEFAULT_MAP_KEY)
         {
-            let bytes = sow_core::repo_asset_bytes!("maps/world/thumbnail.webp");
+            let bytes = sow_assets::repo_asset_bytes!("maps/world/thumbnail.webp");
             if let Some(color_image) =
                 crate::ui::map_texture::color_image_from_map_thumbnail_bytes(bytes)
             {

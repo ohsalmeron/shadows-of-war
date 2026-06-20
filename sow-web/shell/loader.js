@@ -125,14 +125,33 @@
     }
 
     function stageSize() {
-        return { w: window.innerWidth, h: window.innerHeight };
+        const vv = window.visualViewport;
+        if (vv && vv.width > 0 && vv.height > 0) {
+            return {
+                w: vv.width,
+                h: vv.height,
+                top: vv.offsetTop,
+                left: vv.offsetLeft,
+            };
+        }
+        return {
+            w: window.innerWidth,
+            h: window.innerHeight,
+            top: 0,
+            left: 0,
+        };
     }
 
     function layout() {
         if (!root) return;
         const mode = layoutMode();
         const cfg = layoutConfig(mode);
-        const { w: screenW, h: screenH } = stageSize();
+        const { w: screenW, h: screenH, top, left } = stageSize();
+
+        root.style.top = top + 'px';
+        root.style.left = left + 'px';
+        root.style.width = screenW + 'px';
+        root.style.height = screenH + 'px';
         const barWidth = barWidthFor(mode, screenW);
         const barHeight = barWidth / BAR_ASPECT;
         const bottomPadding = Math.max(screenH * cfg.bottomRatio, cfg.bottomMinPx);
@@ -202,8 +221,6 @@
 
         root.innerHTML = `
             <img id="splash-bg" class="splash-bg" alt="" decoding="async" fetchpriority="high" src="${splashSrc()}">
-            <img id="splash-desktop" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('sow-splash-desktop.webp'))}" hidden>
-            <img id="splash-mobile" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('sow-splash-mobile.webp'))}" hidden>
             <div id="loader-bar-wrap" class="loader-bar-wrap">
                 <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('loader_empty.webp'))}">
                 <div id="loader-bar-fill" class="loader-bar-fill">
@@ -223,8 +240,6 @@
         }
         for (const [id, file] of [
             ['splash-bg', isMobile() ? 'sow-splash-mobile.webp' : 'sow-splash-desktop.webp'],
-            ['splash-desktop', 'sow-splash-desktop.webp'],
-            ['splash-mobile', 'sow-splash-mobile.webp'],
             ['loader-bar-empty', 'loader_empty.webp'],
             ['loader-bar-full', 'loader_full.webp'],
         ]) {
@@ -235,6 +250,10 @@
         layout();
         window.addEventListener('resize', layout);
         window.addEventListener('orientationchange', layout);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', layout);
+            window.visualViewport.addEventListener('scroll', layout);
+        }
         startProgress();
     }
 
@@ -242,6 +261,10 @@
         stopProgress();
         window.removeEventListener('resize', layout);
         window.removeEventListener('orientationchange', layout);
+        if (window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', layout);
+            window.visualViewport.removeEventListener('scroll', layout);
+        }
         if (root && root.parentNode) {
             root.parentNode.removeChild(root);
         }

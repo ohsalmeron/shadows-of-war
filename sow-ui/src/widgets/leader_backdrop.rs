@@ -9,7 +9,7 @@ use crate::widgets::avatar_picker::{
     draw_leader_picker_overlay_gradient, leader_background_cover_uv,
 };
 use egui::{Color32, Rect, Ui};
-use sow_core::player::Leader;
+use sow_data::Leader;
 use web_time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

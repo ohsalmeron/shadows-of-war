@@ -1,7 +1,7 @@
 pub fn draw_leader_picker_modal(
     ctx: &egui::Context,
-    selected_leader: &mut sow_core::player::Leader,
-    selected_civilization: &mut sow_core::player::Civilization,
+    selected_leader: &mut sow_data::Leader,
+    selected_civilization: &mut sow_data::Civilization,
     asset_loader: &mut crate::ui::asset_loader::AssetLoader,
     leader_backdrop: &mut crate::widgets::leader_backdrop::LeaderBackdropTransition,
     lang: sow_i18n::Language,
@@ -60,18 +60,18 @@ pub fn draw_leader_picker_modal(
             );
 
             let reign_dates = match *selected_leader {
-                sow_core::player::Leader::Caesar => "Reigned 49 – 44 BC",
-                sow_core::player::Leader::Cleopatra => "Reigned 51 – 30 BC",
-                sow_core::player::Leader::Ragnar => "Reigned 800 – 845 AD",
-                sow_core::player::Leader::SunTzu => "Reigned 544 – 496 BC",
-                sow_core::player::Leader::Alexander => "Reigned 336 – 323 BC",
-                sow_core::player::Leader::GenghisKhan => "Reigned 1206 – 1227 AD",
-                sow_core::player::Leader::RichardTheLionheart => "Reigned 1189 – 1199 AD",
-                sow_core::player::Leader::Vercingetorix => "Reigned 82 – 46 BC",
-                sow_core::player::Leader::Boudica => "Reigned 60 – 61 AD",
-                sow_core::player::Leader::LadySixSky => "Reigned 612 – 693 AD",
-                sow_core::player::Leader::Leonidas => "Reigned 489 – 480 BC",
-                sow_core::player::Leader::Napoleon => "Reigned 1804 – 1814 AD",
+                sow_data::Leader::Caesar => "Reigned 49 – 44 BC",
+                sow_data::Leader::Cleopatra => "Reigned 51 – 30 BC",
+                sow_data::Leader::Ragnar => "Reigned 800 – 845 AD",
+                sow_data::Leader::SunTzu => "Reigned 544 – 496 BC",
+                sow_data::Leader::Alexander => "Reigned 336 – 323 BC",
+                sow_data::Leader::GenghisKhan => "Reigned 1206 – 1227 AD",
+                sow_data::Leader::RichardTheLionheart => "Reigned 1189 – 1199 AD",
+                sow_data::Leader::Vercingetorix => "Reigned 82 – 46 BC",
+                sow_data::Leader::Boudica => "Reigned 60 – 61 AD",
+                sow_data::Leader::LadySixSky => "Reigned 612 – 693 AD",
+                sow_data::Leader::Leonidas => "Reigned 489 – 480 BC",
+                sow_data::Leader::Napoleon => "Reigned 1804 – 1814 AD",
             };
 
             let avatar_size = metrics.avatar_size;

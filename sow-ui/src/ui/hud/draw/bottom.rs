@@ -33,31 +33,31 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
 
             let border_color =
                 if state.selected_building_kind.is_some() || state.selected_nuke_kind.is_some() {
-                    crate::ui::theme::palette::neon_cyan()
+                    sow_ui_kit::theme::palette::neon_cyan()
                 } else {
-                    crate::ui::theme::palette::field_border().linear_multiply(0.4)
+                    sow_ui_kit::theme::palette::field_border().linear_multiply(0.4)
                 };
 
             let content_margin = if portrait_dock || compact {
                 egui::Margin {
-                    left: crate::ui::theme::margin::COZY,
-                    right: crate::ui::theme::margin::COZY,
-                    top: crate::ui::theme::margin::COZY,
-                    bottom: crate::ui::theme::margin::TIGHT,
+                    left: sow_ui_kit::theme::margin::COZY,
+                    right: sow_ui_kit::theme::margin::COZY,
+                    top: sow_ui_kit::theme::margin::COZY,
+                    bottom: sow_ui_kit::theme::margin::TIGHT,
                 }
             } else {
                 egui::Margin {
-                    left: crate::ui::theme::margin::REGULAR,
-                    right: crate::ui::theme::margin::REGULAR,
-                    top: crate::ui::theme::margin::REGULAR,
-                    bottom: crate::ui::theme::margin::TIGHT,
+                    left: sow_ui_kit::theme::margin::REGULAR,
+                    right: sow_ui_kit::theme::margin::REGULAR,
+                    top: sow_ui_kit::theme::margin::REGULAR,
+                    bottom: sow_ui_kit::theme::margin::TIGHT,
                 }
             };
 
             egui::Frame::NONE
-                .fill(crate::ui::theme::palette::field_bg())
+                .fill(sow_ui_kit::theme::palette::field_bg())
                 .stroke(egui::Stroke::new(
-                    crate::ui::theme::stroke::HAIRLINE,
+                    sow_ui_kit::theme::stroke::HAIRLINE,
                     border_color,
                 ))
                 .corner_radius(panel_radius)
@@ -68,7 +68,8 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.set_width(panel_w);
-                            ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::COZY as f32;
+                            ui.spacing_mut().item_spacing.y =
+                                sow_ui_kit::theme::margin::COZY as f32;
 
                             if log_tabs_enabled {
                                 ui.push_id("tab_strip", |ui| {

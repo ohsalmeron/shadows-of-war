@@ -10,8 +10,8 @@ pub(in crate::ui::hud) fn draw_mobile_selection_bar(
     lang: Language,
 ) {
     if let Some(tile_info) = &state.selected_tile {
-        use crate::ui::theme::palette;
         use egui::RichText;
+        use sow_ui_kit::theme::palette;
         let strings = &sow_i18n::get(lang).hud;
 
         if tile_info.is_spawning {

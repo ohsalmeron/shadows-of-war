@@ -21,7 +21,7 @@ pub(in crate::ui::hud) fn draw_sync_overlay(ctx: &Context, state: &HudState, lan
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     if sync.is_starting {
-                        crate::ui::theme::outlined_label(
+                        sow_ui_kit::theme::outlined_label(
                             ui,
                             &strings.overlay_all_ready,
                             egui::FontId::proportional(24.0),
@@ -33,7 +33,7 @@ pub(in crate::ui::hud) fn draw_sync_overlay(ctx: &Context, state: &HudState, lan
                                 .color(Color32::LIGHT_GRAY),
                         );
                     } else {
-                        crate::ui::theme::outlined_label(
+                        sow_ui_kit::theme::outlined_label(
                             ui,
                             &strings.overlay_waiting_players,
                             egui::FontId::proportional(24.0),

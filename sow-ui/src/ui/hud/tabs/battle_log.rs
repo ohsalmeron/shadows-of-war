@@ -95,25 +95,25 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
         .stick_to_bottom(true)
         .show(ui, |ui| {
             ui.set_width(width);
-            ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
+            ui.spacing_mut().item_spacing.y = sow_ui_kit::theme::margin::TIGHT as f32;
 
             for (kind, troops, label, attack_id, fleet_id, retreating) in rows {
                 let (icon, accent) = match kind {
-                    DispatchKind::Incoming => ("⚔", crate::ui::theme::palette::danger()),
-                    DispatchKind::Outgoing => ("🛡", crate::ui::theme::palette::neon_cyan()),
-                    DispatchKind::Navy => ("⛴", crate::ui::theme::palette::neon_cyan()),
+                    DispatchKind::Incoming => ("⚔", sow_ui_kit::theme::palette::danger()),
+                    DispatchKind::Outgoing => ("🛡", sow_ui_kit::theme::palette::neon_cyan()),
+                    DispatchKind::Navy => ("⛴", sow_ui_kit::theme::palette::neon_cyan()),
                 };
 
                 egui::Frame::NONE
-                    .fill(crate::ui::theme::palette::surface_transparent())
+                    .fill(sow_ui_kit::theme::palette::surface_transparent())
                     .stroke(Stroke::new(
-                        crate::ui::theme::stroke::EMPHASIS,
+                        sow_ui_kit::theme::stroke::EMPHASIS,
                         accent.linear_multiply(0.55),
                     ))
-                    .corner_radius(crate::ui::theme::radius::sm())
+                    .corner_radius(sow_ui_kit::theme::radius::sm())
                     .inner_margin(egui::Margin::symmetric(
-                        crate::ui::theme::margin::COZY,
-                        crate::ui::theme::margin::TIGHT,
+                        sow_ui_kit::theme::margin::COZY,
+                        sow_ui_kit::theme::margin::TIGHT,
                     ))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -131,7 +131,7 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
                                 ui.label(
                                     RichText::new(crate::utils::format_number(troops))
                                         .size(10.0)
-                                        .color(crate::ui::theme::palette::text_muted()),
+                                        .color(sow_ui_kit::theme::palette::text_muted()),
                                 );
                             });
                             ui.with_layout(
@@ -151,8 +151,8 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
                                                         .style(crate::widgets::ThemeButtonStyle::Danger)
                                                         .custom_fill(accent.linear_multiply(0.25))
                                                         .stroke(Stroke::new(
-                                                            crate::ui::theme::stroke::HAIRLINE,
-                                                            crate::ui::theme::palette::danger_border(),
+                                                            sow_ui_kit::theme::stroke::HAIRLINE,
+                                                            sow_ui_kit::theme::palette::danger_border(),
                                                         ))
                                                         .min_size(vec2(28.0, 28.0))
                                                         .text_size(10.0);
@@ -180,7 +180,7 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
                                                 if let Some(aid) = attack_id {
                                                     let cancel_btn = crate::widgets::ThemeButton::new("X")
                                                         .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                                        .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                        .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                         .min_size(vec2(28.0, 28.0))
                                                         .text_size(10.0);
                                                     if ui.add(cancel_btn).clicked()
@@ -197,7 +197,7 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
                                                 if let Some(fid) = fleet_id {
                                                     let cancel_btn = crate::widgets::ThemeButton::new("X")
                                                         .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                                                        .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                        .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                         .min_size(vec2(28.0, 28.0))
                                                         .text_size(10.0);
                                                     if ui.add(cancel_btn).clicked()

@@ -48,11 +48,11 @@ fn draw_lobby_list(
         } else {
             &strings.waiting_for_lobby
         };
-        crate::ui::theme::outlined_label(
+        sow_ui_kit::theme::outlined_label(
             ui,
             label,
             egui::FontId::proportional(16.0),
-            crate::ui::theme::palette::text_muted(),
+            sow_ui_kit::theme::palette::text_muted(),
         );
         return;
     }
@@ -81,7 +81,7 @@ fn draw_lobby_list(
                 ui.label(
                     egui::RichText::new(&strings.thumbnail_load_failed)
                         .size(11.0)
-                        .color(crate::ui::theme::palette::text_muted()),
+                        .color(sow_ui_kit::theme::palette::text_muted()),
                 );
             } else if asset_loader.thumbnail_in_flight(&lobby.map_name) {
                 ui.horizontal(|ui| {
@@ -89,7 +89,7 @@ fn draw_lobby_list(
                     ui.label(
                         egui::RichText::new(&strings.loading_thumbnail)
                             .size(11.0)
-                            .color(crate::ui::theme::palette::text_muted()),
+                            .color(sow_ui_kit::theme::palette::text_muted()),
                     );
                 });
             }
@@ -124,7 +124,7 @@ pub fn draw_left_column(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let side = if compact && !crate::ui::theme::portrait_layout(ui.ctx()) {
+    let side = if compact && !sow_ui_kit::theme::portrait_layout(ui.ctx()) {
         crate::ui::map_texture::thumbnail_square_side_bounded(
             ui.available_width(),
             max_height,

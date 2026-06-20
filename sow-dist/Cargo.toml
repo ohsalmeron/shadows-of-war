@@ -21,7 +21,7 @@ sha2 = "0.10"
 walkdir = "2"
 wasm-bindgen-cli-support = { workspace = true }
 axum = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
 tower-http = { workspace = true }
 libc = "0.2"
 wasm-opt = { workspace = true }

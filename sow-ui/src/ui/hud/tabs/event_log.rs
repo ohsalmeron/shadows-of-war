@@ -48,13 +48,13 @@ pub(in crate::ui::hud) fn draw_event_log_tab(
         ui.label(
             RichText::new(&strings.event_log_title)
                 .size(10.0)
-                .color(crate::ui::theme::palette::text_muted())
+                .color(sow_ui_kit::theme::palette::text_muted())
                 .strong(),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let clear_btn = crate::widgets::ThemeButton::new(&strings.event_log_clear)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                .custom_fill(crate::ui::theme::palette::button_inactive())
+                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                 .text_size(10.0);
             if ui.add(clear_btn).clicked() {
                 state.event_log.clear();
@@ -89,7 +89,7 @@ pub(in crate::ui::hud) fn draw_event_log_tab(
         .stick_to_bottom(true)
         .show(ui, |ui| {
             ui.set_width(width);
-            ui.spacing_mut().item_spacing.y = crate::ui::theme::margin::TIGHT as f32;
+            ui.spacing_mut().item_spacing.y = sow_ui_kit::theme::margin::TIGHT as f32;
 
             for entry in &state.event_log {
                 let age_secs = now.duration_since(entry.spawned_at).as_secs();
@@ -106,13 +106,13 @@ pub(in crate::ui::hud) fn draw_event_log_tab(
                         (180.0 * alpha) as u8,
                     ))
                     .stroke(Stroke::new(
-                        crate::ui::theme::stroke::HAIRLINE,
+                        sow_ui_kit::theme::stroke::HAIRLINE,
                         entry.color.linear_multiply(0.5 * alpha),
                     ))
-                    .corner_radius(crate::ui::theme::radius::sm())
+                    .corner_radius(sow_ui_kit::theme::radius::sm())
                     .inner_margin(egui::Margin::symmetric(
-                        crate::ui::theme::margin::COZY,
-                        crate::ui::theme::margin::TIGHT,
+                        sow_ui_kit::theme::margin::COZY,
+                        sow_ui_kit::theme::margin::TIGHT,
                     ))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -136,7 +136,7 @@ pub(in crate::ui::hud) fn draw_event_log_tab(
                                 ui.label(
                                     RichText::new(format_relative_time(entry.spawned_at, lang))
                                         .size(9.0)
-                                        .color(crate::ui::theme::palette::text_muted()),
+                                        .color(sow_ui_kit::theme::palette::text_muted()),
                                 );
                             });
                         });

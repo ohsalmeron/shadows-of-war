@@ -50,7 +50,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                 ui.vertical(|ui| {
                     let frame_res = egui::Frame::menu(&ui.ctx().global_style())
                         .fill(egui::Color32::from_black_alpha(150))
-                        .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan().linear_multiply(inbox_progress)))
+                        .stroke(egui::Stroke::new(1.5_f32, sow_ui_kit::theme::palette::neon_cyan().linear_multiply(inbox_progress)))
                         .corner_radius(12)
                         .inner_margin(egui::Margin::symmetric(10, 8))
                         .show(ui, |ui| {
@@ -59,11 +59,11 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                 ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
 
                                 // Title "ALLIANCES"
-                                crate::ui::theme::outlined_label(
+                                sow_ui_kit::theme::outlined_label(
                                     ui,
                                     &sow_i18n::get(lang).hud.inbox_title,
                                     egui::FontId::proportional(12.0),
-                                    crate::ui::theme::palette::neon_cyan().linear_multiply(inbox_progress),
+                                    sow_ui_kit::theme::palette::neon_cyan().linear_multiply(inbox_progress),
                                 );
                                 ui.add_space(4.0);
 
@@ -75,7 +75,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.reject_all)
                                                 .min_size(egui::vec2(w, 24.0))
                                                 .text_size(10.0)
-                                                .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                         ).clicked() {
                                             for &req in &requests {
@@ -87,7 +87,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.accept_all)
                                                 .min_size(egui::vec2(w, 24.0))
                                                 .text_size(10.0)
-                                                .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                         ).clicked() {
                                             for &req in &requests {
@@ -101,7 +101,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
 
                                 // Request cards
                                 if requests.is_empty() && resource_requests.is_empty() {
-                                    crate::ui::theme::outlined_label(
+                                    sow_ui_kit::theme::outlined_label(
                                         ui,
                                         &sow_i18n::get(lang).hud.inbox_empty,
                                         egui::FontId::proportional(11.0),
@@ -141,8 +141,8 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                         }
 
                                         egui::Frame::NONE
-                                            .fill(crate::ui::theme::palette::field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
-                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::palette::field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
+                                            .fill(sow_ui_kit::theme::palette::field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
+                                            .stroke(egui::Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
                                             .corner_radius(6)
                                             .inner_margin(egui::Margin::symmetric(8, 6))
                                             .show(ui, |ui| {
@@ -190,7 +190,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: requester.id });
@@ -200,7 +200,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::RejectAlliance { target_player: requester.id });
@@ -243,8 +243,8 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                         }
 
                                         egui::Frame::NONE
-                                            .fill(crate::ui::theme::palette::field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
-                                            .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::palette::field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
+                                            .fill(sow_ui_kit::theme::palette::field_bg().linear_multiply(0.5 * inbox_progress * card_progress))
+                                            .stroke(egui::Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border().linear_multiply(0.4 * inbox_progress * card_progress)))
                                             .corner_radius(6)
                                             .inner_margin(egui::Margin::symmetric(8, 6))
                                             .show(ui, |ui| {
@@ -295,7 +295,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_accept)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(74, 222, 128).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::AcceptResourceRequest { target_player: requester.id });
@@ -305,7 +305,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                                             crate::widgets::ThemeButton::new(&sow_i18n::get(lang).hud.btn_reject)
                                                                 .min_size(egui::vec2(bw, 24.0))
                                                                 .text_size(11.0)
-                                                                .custom_fill(crate::ui::theme::palette::button_inactive())
+                                                                .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                                                                 .custom_text_color(Color32::from_rgb(239, 68, 68).linear_multiply(inbox_progress))
                                                         ).clicked() {
                                                             cancel_intents.push(sow_core::protocol::GameplayIntent::RejectResourceRequest { target_player: requester.id });

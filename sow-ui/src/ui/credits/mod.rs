@@ -1,7 +1,7 @@
-use crate::ui::theme::palette;
 use crate::UiAction;
 use egui::RichText;
 use sow_i18n::Language;
+use sow_ui_kit::theme::palette;
 
 fn version_tag() -> String {
     format!("v{}", include_str!("../../../../.version").trim())
@@ -35,12 +35,12 @@ pub fn draw(
     reduced_motion: bool,
 ) -> Option<UiAction> {
     let mut open = is_open;
-    let compact = crate::ui::theme::compact_viewport(root_ui.ctx());
+    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
     let strings = &sow_i18n::get(lang).credits;
     let settings_strings = &sow_i18n::get(lang).settings;
     let mut action = None;
 
-    let res = crate::ui::theme::draw_standard_modal(
+    let res = sow_ui_kit::theme::draw_standard_modal(
         root_ui.ctx(),
         &mut open,
         "credits",

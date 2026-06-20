@@ -120,10 +120,10 @@ pub(in crate::ui::hud) fn draw_betrayal_ally_card(
     let avatar_size = if compact { 52.0 } else { 64.0 };
 
     egui::Frame::new()
-        .fill(crate::ui::theme::palette::field_bg().linear_multiply(alpha))
+        .fill(sow_ui_kit::theme::palette::field_bg().linear_multiply(alpha))
         .stroke(Stroke::new(
             1.0_f32,
-            crate::ui::theme::palette::field_border().linear_multiply(alpha),
+            sow_ui_kit::theme::palette::field_border().linear_multiply(alpha),
         ))
         .corner_radius(8)
         .inner_margin(if compact {
@@ -145,7 +145,7 @@ pub(in crate::ui::hud) fn draw_betrayal_ally_card(
                 ui.label(
                     RichText::new(subtitle)
                         .size(if compact { 12.0 } else { 13.0 })
-                        .color(crate::ui::theme::palette::neon_gold().linear_multiply(alpha)),
+                        .color(sow_ui_kit::theme::palette::neon_gold().linear_multiply(alpha)),
                 );
             });
         });
@@ -163,7 +163,7 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
     }
 
     let is_active = state.show_betrayal_warning.is_some();
-    let anim_dur = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let anim_dur = sow_ui_kit::theme::anim_duration_from_ctx(ctx);
     let anim = crate::ui::animation::panel_in_out_anim(
         ctx,
         egui::Id::new("betrayal_panel_animation"),
@@ -211,12 +211,12 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
         vec2(0.0, if compact { y_offset } else { -20.0 + y_offset }),
     );
 
-    let border_color = crate::ui::theme::palette::danger().linear_multiply(alpha);
+    let border_color = sow_ui_kit::theme::palette::danger().linear_multiply(alpha);
 
     window
         .frame(
             egui::Frame::window(&ctx.global_style())
-                .fill(crate::ui::theme::palette::surface().linear_multiply(alpha))
+                .fill(sow_ui_kit::theme::palette::surface().linear_multiply(alpha))
                 .stroke(egui::Stroke::new(2.0f32 * anim.scale, border_color))
                 .inner_margin(if compact { 16.0 } else { 24.0 })
                 .corner_radius(12),
@@ -225,7 +225,7 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
             ui.vertical_centered(|ui| {
                 let ally_name = get_player_display_name(&state.players, ally_id, "Ally");
 
-                crate::ui::theme::outlined_label(
+                sow_ui_kit::theme::outlined_label(
                     ui,
                     &strings.betrayal_title,
                     egui::FontId::proportional(if compact { 22.0 } else { 28.0 }),
@@ -259,7 +259,7 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
                     RichText::new("Are you sure?")
                         .size(if compact { 15.0 } else { 18.0 })
                         .strong()
-                        .color(crate::ui::theme::palette::neon_gold().linear_multiply(alpha)),
+                        .color(sow_ui_kit::theme::palette::neon_gold().linear_multiply(alpha)),
                 );
 
                 ui.add_space(if compact { 32.0 } else { 24.0 });
@@ -287,7 +287,7 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
                             crate::widgets::ThemeButton::new(&strings.betrayal_keep)
                                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                                 .custom_fill(
-                                    crate::ui::theme::palette::button_inactive()
+                                    sow_ui_kit::theme::palette::button_inactive()
                                         .linear_multiply(alpha),
                                 )
                                 .custom_text_color(Color32::WHITE.linear_multiply(alpha))
@@ -304,7 +304,7 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
                             crate::widgets::ThemeButton::new(&strings.betrayal_yes)
                                 .style(crate::widgets::ThemeButtonStyle::Danger)
                                 .custom_fill(
-                                    crate::ui::theme::palette::danger().linear_multiply(alpha),
+                                    sow_ui_kit::theme::palette::danger().linear_multiply(alpha),
                                 )
                                 .custom_text_color(Color32::WHITE.linear_multiply(alpha))
                                 .min_size(vec2(right_btn_w, btn_h))

@@ -1,9 +1,9 @@
 fn paint_chip(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
-    let accent = crate::ui::theme::palette::neon_cyan();
+    let accent = sow_ui_kit::theme::palette::neon_cyan();
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::click());
     let hovered = response.hovered();
-    let visuals = crate::ui::theme::interact_card(selected, true, hovered, accent);
+    let visuals = sow_ui_kit::theme::interact_card(selected, true, hovered, accent);
 
     if ui.is_rect_visible(rect) {
         ui.painter().rect(
@@ -13,7 +13,7 @@ fn paint_chip(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
             visuals.stroke,
             egui::StrokeKind::Inside,
         );
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             rect.left_center() + Vec2::new(10.0, 0.0),
             Align2::LEFT_CENTER,
@@ -22,7 +22,7 @@ fn paint_chip(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
             if selected {
                 accent
             } else {
-                crate::ui::theme::palette::text_normal()
+                sow_ui_kit::theme::palette::text_normal()
             },
             Color32::BLACK,
         );
@@ -75,7 +75,7 @@ fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView, state: &mut MapEdit
         painter.rect_stroke(
             sel,
             0.0,
-            Stroke::new(2.0_f32, crate::ui::theme::palette::neon_cyan()),
+            Stroke::new(2.0_f32, sow_ui_kit::theme::palette::neon_cyan()),
             egui::StrokeKind::Outside,
         );
         painter.rect_filled(sel, 0.0, Color32::from_rgba_unmultiplied(6, 182, 212, 40));
@@ -87,7 +87,7 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
         return;
     }
     let painter = ui.painter();
-    let accent = crate::ui::theme::palette::neon_cyan();
+    let accent = sow_ui_kit::theme::palette::neon_cyan();
 
     for spawn in &state.spawns {
         let center = tile_center_screen(viewport, spawn.x as f32 + 0.5, spawn.y as f32 + 0.5);
@@ -108,7 +108,7 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
             egui::FontId::proportional((radius * 1.2).clamp(12.0, 22.0)),
             Color32::WHITE,
         );
-        crate::ui::theme::paint_premium_glow_text(
+        sow_ui_kit::theme::paint_premium_glow_text(
             painter,
             center + Vec2::new(0.0, radius + 6.0),
             Align2::CENTER_TOP,
@@ -156,7 +156,7 @@ fn draw_confirm_dialog(
         .open(&mut still_open)
         .resizable(false)
         .collapsible(false)
-        .frame(crate::ui::theme::standard_panel_frame(compact))
+        .frame(sow_ui_kit::theme::standard_panel_frame(compact))
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
             ui.label(RichText::new(body).size(14.0));
@@ -202,7 +202,7 @@ fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
     }
 
     let is_active = state.toast_message.is_some();
-    let anim = crate::ui::theme::anim_duration_from_ctx(ctx);
+    let anim = sow_ui_kit::theme::anim_duration_from_ctx(ctx);
     let progress = ctx.animate_bool_with_time(egui::Id::new("map_editor_toast"), is_active, anim);
 
     if progress <= 0.01 && !is_active {
@@ -221,9 +221,9 @@ fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
 
     let alpha = progress;
     let accent = if state.toast_is_error {
-        crate::ui::theme::palette::danger()
+        sow_ui_kit::theme::palette::danger()
     } else {
-        crate::ui::theme::palette::neon_cyan()
+        sow_ui_kit::theme::palette::neon_cyan()
     };
     let bg_color = Color32::from_rgba_unmultiplied(15, 23, 42, (180.0 * alpha) as u8);
     let border_color = accent.linear_multiply(alpha);

@@ -15,6 +15,8 @@ editor = [
     "generator",
     "dep:sow-render",
     "dep:sow-ui",
+    "dep:sow-ui-kit",
+    "dep:sow-assets-ui",
     "sow-ui/map-editor",
     "sow-i18n/map-editor",
     "dep:blade-graphics",
@@ -44,6 +46,8 @@ web-time = { workspace = true }
 
 sow-render = { workspace = true, optional = true }
 sow-ui = { workspace = true, optional = true }
+sow-ui-kit = { workspace = true, optional = true }
+sow-assets-ui = { workspace = true, optional = true }
 blade-graphics = { workspace = true, optional = true }
 blade-egui = { workspace = true, optional = true }
 blade-macros = { workspace = true, optional = true }

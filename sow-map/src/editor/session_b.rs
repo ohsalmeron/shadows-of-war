@@ -58,7 +58,7 @@ impl MapEditorSession {
 
         static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
         REGISTER_ONCE.call_once(|| {
-            sow_core::register_game_assets(&self.egui_ctx);
+            sow_assets_ui::register_game_assets(&self.egui_ctx);
         });
 
         self.editor_ui.width = self.width;
@@ -81,7 +81,7 @@ impl MapEditorSession {
         let mut ui_action = sow_ui::ui::map_editor::MapEditorAction::None;
         let viewport = self.map_editor_viewport();
         let egui_ctx = self.egui_ctx.clone();
-        sow_ui::ui::theme::publish_reduced_motion(
+        sow_ui_kit::theme::publish_reduced_motion(
             &egui_ctx,
             self.client_app.settings_state.reduced_motion,
         );

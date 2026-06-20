@@ -48,7 +48,7 @@ enum Commands {
 struct PackEmojiAtlasArgs {
     #[arg(long, default_value = "assets/static/emoji/atlas.webp")]
     out_atlas: PathBuf,
-    #[arg(long, default_value = "sow-core/src/emoji_manifest.rs")]
+    #[arg(long, default_value = "sow-data/src/emoji/manifest.rs")]
     out_manifest: PathBuf,
 }
 

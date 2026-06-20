@@ -2,13 +2,7 @@ use crate::{
     ui::{asset_loader, hud, loading_screen, main_menu},
     UiAction,
 };
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ClientPhase {
-    Splash,
-    MainMenu,
-    Playing,
-}
+pub use sow_ui_kit::ClientPhase;
 
 pub struct ClientApp {
     pub phase: ClientPhase,
@@ -97,7 +91,7 @@ impl ClientApp {
         ui: &mut egui::Ui,
         cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     ) -> Option<UiAction> {
-        crate::ui::theme::publish_reduced_motion(ui.ctx(), self.settings_state.reduced_motion);
+        sow_ui_kit::theme::publish_reduced_motion(ui.ctx(), self.settings_state.reduced_motion);
 
         let mut action = match self.phase {
             ClientPhase::MainMenu => {

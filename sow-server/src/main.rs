@@ -3,8 +3,8 @@ mod map_catalog;
 
 use futures_util::{SinkExt, StreamExt};
 use lobby::{
-    build_lobby_broadcast, force_start, join_player, leave_player, master_tick,
-    sync_host_lobby_to_members, ServerLobby,
+    build_lobby_broadcast, force_start, is_host_teardown, join_player, kick_player, leave_player,
+    master_tick, notify_lobby_closed, sync_host_lobby_to_members, ServerLobby,
 };
 use redis::Commands;
 use sow_core::protocol::{
@@ -63,6 +63,12 @@ enum ServerEvent {
     ForceStart {
         lobby_id: u64,
         player_id: u16,
+    },
+    Kick {
+        lobby_id: u64,
+        requester_id: u16,
+        target_id: u16,
+        ban: bool,
     },
 }
 
@@ -336,10 +342,21 @@ async fn main() {
                         }
 
                         ServerEvent::Leave { lobby_id, player_id } => {
-                            leave_player(&mut games, lobby_id, player_id);
-                            if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
-                                sync_host_lobby_to_members(lobby);
+                            if is_host_teardown(&games, lobby_id, player_id) {
+                                if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
+                                    notify_lobby_closed(lobby, "HOST_LEFT");
+                                }
+                                games.retain(|g| g.id != lobby_id);
+                                log::info!("[LOBBY] Host {} left Custom lobby {} — lobby dropped, members returned to menu", player_id, lobby_id);
+                            } else {
+                                leave_player(&mut games, lobby_id, player_id);
+                                if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
+                                    sync_host_lobby_to_members(lobby);
+                                }
                             }
+                        }
+                        ServerEvent::Kick { lobby_id, requester_id, target_id, ban } => {
+                            kick_player(&mut games, lobby_id, requester_id, target_id, ban);
                         }
                         ServerEvent::Ready { lobby_id, player_id } => {
                             if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
@@ -502,6 +519,30 @@ async fn main() {
                                                         let _ = ev_tx.send(ServerEvent::ForceStart {
                                                             lobby_id: l_id,
                                                             player_id: p_id,
+                                                        }).await;
+                                                    }
+                                                }
+                                            }
+                                            sow_core::protocol::ClientMessage::Kick { lobby_id, target_player_id } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    if lobby_id == l_id {
+                                                        let _ = ev_tx.send(ServerEvent::Kick {
+                                                            lobby_id: l_id,
+                                                            requester_id: p_id,
+                                                            target_id: target_player_id,
+                                                            ban: false,
+                                                        }).await;
+                                                    }
+                                                }
+                                            }
+                                            sow_core::protocol::ClientMessage::Ban { lobby_id, target_player_id } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    if lobby_id == l_id {
+                                                        let _ = ev_tx.send(ServerEvent::Kick {
+                                                            lobby_id: l_id,
+                                                            requester_id: p_id,
+                                                            target_id: target_player_id,
+                                                            ban: true,
                                                         }).await;
                                                     }
                                                 }

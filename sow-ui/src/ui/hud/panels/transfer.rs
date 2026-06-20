@@ -29,7 +29,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
 ) {
     let strings = &sow_i18n::get(lang).hud;
     let is_active = state.show_ask_panel.is_some();
-    let anim = crate::ui::theme::anim_duration_from_ctx(ui.ctx());
+    let anim = sow_ui_kit::theme::anim_duration_from_ctx(ui.ctx());
     let progress =
         ui.ctx()
             .animate_bool_with_time(egui::Id::new("transfer_panel_animation"), is_active, anim);
@@ -69,7 +69,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
             state.gold,
             state.troops,
             "Your Balance",
-            crate::ui::theme::palette::neon_cyan(),
+            sow_ui_kit::theme::palette::neon_cyan(),
         )
     } else {
         let ally_gold = target_player.map(|p| p.gold).unwrap_or(0.0);
@@ -78,7 +78,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
             ally_gold,
             ally_troops,
             "Ally Balance",
-            crate::ui::theme::palette::neon_gold(),
+            sow_ui_kit::theme::palette::neon_gold(),
         )
     };
 
@@ -127,8 +127,8 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
         .show(ui.ctx(), |ui| {
             ui.set_width(modal_w);
 
-            let frame = crate::ui::theme::standard_panel_frame(false)
-                .fill(crate::ui::theme::palette::surface().linear_multiply(alpha));
+            let frame = sow_ui_kit::theme::standard_panel_frame(false)
+                .fill(sow_ui_kit::theme::palette::surface().linear_multiply(alpha));
 
             let frame_res = frame.show(ui, |ui| {
                 ui.vertical(|ui| {
@@ -136,7 +136,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
 
                     // Title
                     ui.vertical_centered(|ui| {
-                        crate::ui::theme::outlined_label(
+                        sow_ui_kit::theme::outlined_label(
                             ui,
                             &strings.transfer_title,
                             egui::FontId::proportional(20.0),
@@ -148,7 +148,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                             ui,
                             &with_text,
                             egui::FontId::proportional(14.0),
-                            crate::ui::theme::palette::text_muted().linear_multiply(alpha),
+                            sow_ui_kit::theme::palette::text_muted().linear_multiply(alpha),
                         );
                     });
 
@@ -168,14 +168,14 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                                 crate::widgets::ThemeButtonStyle::Tertiary
                             })
                             .custom_fill(if is_send {
-                                crate::ui::theme::palette::neon_cyan().linear_multiply(0.4)
+                                sow_ui_kit::theme::palette::neon_cyan().linear_multiply(0.4)
                             } else {
-                                crate::ui::theme::palette::button_inactive()
+                                sow_ui_kit::theme::palette::button_inactive()
                             })
                             .stroke(egui::Stroke::new(
                                 1.5_f32,
                                 if is_send {
-                                    crate::ui::theme::palette::neon_cyan()
+                                    sow_ui_kit::theme::palette::neon_cyan()
                                 } else {
                                     Color32::TRANSPARENT
                                 },
@@ -199,14 +199,14 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                                 crate::widgets::ThemeButtonStyle::Tertiary
                             })
                             .custom_fill(if is_req {
-                                crate::ui::theme::palette::neon_gold().linear_multiply(0.4)
+                                sow_ui_kit::theme::palette::neon_gold().linear_multiply(0.4)
                             } else {
-                                crate::ui::theme::palette::button_inactive()
+                                sow_ui_kit::theme::palette::button_inactive()
                             })
                             .stroke(egui::Stroke::new(
                                 1.5_f32,
                                 if is_req {
-                                    crate::ui::theme::palette::neon_gold()
+                                    sow_ui_kit::theme::palette::neon_gold()
                                 } else {
                                     Color32::TRANSPARENT
                                 },
@@ -241,7 +241,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                                             RichText::new(crate::utils::format_number(
                                                 state.ask_gold,
                                             ))
-                                            .color(crate::ui::theme::palette::neon_gold())
+                                            .color(sow_ui_kit::theme::palette::neon_gold())
                                             .strong()
                                             .size(15.0),
                                         );
@@ -256,7 +256,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                                 ui.label(
                                     RichText::new(balance_label)
                                         .size(11.0)
-                                        .color(crate::ui::theme::palette::text_muted()),
+                                        .color(sow_ui_kit::theme::palette::text_muted()),
                                 );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -318,7 +318,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                                             RichText::new(crate::utils::format_number(
                                                 state.ask_troops,
                                             ))
-                                            .color(crate::ui::theme::palette::neon_cyan())
+                                            .color(sow_ui_kit::theme::palette::neon_cyan())
                                             .strong()
                                             .size(15.0),
                                         );
@@ -333,7 +333,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                                 ui.label(
                                     RichText::new(balance_label)
                                         .size(11.0)
-                                        .color(crate::ui::theme::palette::text_muted()),
+                                        .color(sow_ui_kit::theme::palette::text_muted()),
                                 );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -382,7 +382,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                         ui.label(
                             RichText::new(&strings.transfer_confirm_body)
                                 .size(12.0)
-                                .color(crate::ui::theme::palette::danger()),
+                                .color(sow_ui_kit::theme::palette::danger()),
                         );
                         ui.add_space(8.0);
                     }
@@ -395,7 +395,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
 
                         let cancel_btn = crate::widgets::ThemeButton::new(&strings.transfer_cancel)
                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                            .custom_fill(crate::ui::theme::palette::button_inactive())
+                            .custom_fill(sow_ui_kit::theme::palette::button_inactive())
                             .min_size(vec2(btn_w, 36.0))
                             .text_size(14.0);
 
@@ -422,7 +422,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                             .custom_fill(if is_valid {
                                 accent_color
                             } else {
-                                crate::ui::theme::palette::button_inactive()
+                                sow_ui_kit::theme::palette::button_inactive()
                             })
                             .min_size(vec2(btn_w, 36.0))
                             .text_size(14.0);
