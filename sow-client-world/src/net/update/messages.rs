@@ -128,10 +128,16 @@ impl SowApp {
                                             lobby.num_players = sync_msg.players.len() as u32;
                                             lobby.players = sync_msg.players.clone();
                                         } else {
+                                            let kind =
+                                                if self.ui.app.main_menu_state.in_private_match {
+                                                    sow_core::protocol::LobbyKind::Custom
+                                                } else {
+                                                    sow_core::protocol::LobbyKind::Matchmaking
+                                                };
                                             self.ui.app.main_menu_state.lobbies.push(
                                                 sow_core::protocol::LobbyInfo {
                                                     id,
-                                                    kind: sow_core::protocol::LobbyKind::Custom,
+                                                    kind,
                                                     num_players: sync_msg.players.len() as u32,
                                                     max_players: 8,
                                                     is_counting_down: sync_msg.time_remaining > 0.0
@@ -316,6 +322,7 @@ impl SowApp {
                             self.sim.my_player_id = Some(ack.player_id);
                             self.ui.app.main_menu_state.my_player_id = Some(ack.player_id);
                             self.ui.app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
+                            self.ui.app.main_menu_state.is_waiting = true;
                             self.ui.app.main_menu_state.show_join_browser = false;
                             self.ui.app.main_menu_state.in_private_match = ack.is_private;
                             seed_joined_lobby_entry(&mut self.ui.app.main_menu_state, &ack);

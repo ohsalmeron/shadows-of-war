@@ -10,7 +10,7 @@ pub fn draw_leader_picker_modal(
     reset_picker_scroll_if_resized(ctx);
 
     egui::Area::new(egui::Id::new("leader_picker_backdrop"))
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Background)
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(ctx, |ui| {
             let screen_rect = ctx.content_rect();

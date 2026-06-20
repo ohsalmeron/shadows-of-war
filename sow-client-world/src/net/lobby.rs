@@ -7,12 +7,25 @@ pub(crate) fn seed_joined_lobby_entry(
     state: &mut MainMenuState,
     ack: &sow_core::protocol::ServerJoinAckMessage,
 ) {
+    // Prefer the server-authoritative snapshot (real mode, slots, bots, host, teams) so
+    // private lobbies — which are never broadcast — show truthful info, not placeholders.
+    if let Some(info) = &ack.lobby_info {
+        if let Some(existing) = state.lobbies.iter_mut().find(|l| l.id == ack.lobby_id) {
+            *existing = info.clone();
+        } else {
+            state.lobbies.push(info.clone());
+        }
+        return;
+    }
+
+    // Legacy fallback (older server without lobby_info): seed just our own entry.
     let me = sow_core::protocol::LobbyPlayerSyncState {
         name: state.player_name.clone(),
         is_ready: false,
         download_progress: 0,
         leader: state.selected_leader,
         player_id: ack.player_id,
+        team: None,
     };
     if let Some(lobby) = state.lobbies.iter_mut().find(|l| l.id == ack.lobby_id) {
         lobby.map_name = ack.map_name.clone();
@@ -21,11 +34,14 @@ pub(crate) fn seed_joined_lobby_entry(
         }
         lobby.num_players = lobby.players.len() as u32;
     } else {
-        // Self-seeded entry for a joined lobby not yet in the broadcast.
-        // Always Custom — Matchmaking lobbies are always present in the broadcast before join.
+        let kind = if ack.is_private {
+            sow_core::protocol::LobbyKind::Custom
+        } else {
+            sow_core::protocol::LobbyKind::Matchmaking
+        };
         state.lobbies.push(sow_core::protocol::LobbyInfo {
             id: ack.lobby_id,
-            kind: sow_core::protocol::LobbyKind::Custom,
+            kind,
             num_players: 1,
             max_players: 8,
             is_counting_down: false,

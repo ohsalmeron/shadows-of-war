@@ -61,8 +61,8 @@
             position: absolute;
             bottom: 8px;
             right: 8px;
-            color: rgba(55, 255, 0, 0.65);
-            font-size: 8px;
+            color: rgba(55, 255, 0, 0.2);
+            font-size: 4px;
             pointer-events: none;
             z-index: 9999;
         }
@@ -137,11 +137,10 @@
             color: #fff;
             text-shadow:
                 0 2px 0 #000,
-                0 4px 0 #000,
-                -1.0px -1.0px 0 #000,
-                1.0px -1.0px 0 #000,
-                -1.0px 1.0px 0 #000,
-                1.0px 1.0px 0 #000;
+                -1px -1px 0 #000,
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000;
             white-space: nowrap;
             pointer-events: none;
         }

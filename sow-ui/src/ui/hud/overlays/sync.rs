@@ -8,7 +8,7 @@ pub(in crate::ui::hud) fn draw_sync_overlay(ctx: &Context, state: &HudState, lan
         let strings = &sow_i18n::get(lang).hud;
         let screen_rect = ctx.content_rect();
         ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Foreground,
+            egui::Order::Middle,
             egui::Id::new("sync_overlay"),
         ))
         .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
@@ -71,7 +71,8 @@ pub(in crate::ui::hud) fn draw_sync_overlay(ctx: &Context, state: &HudState, lan
                             for p in &sync.players {
                                 ui.horizontal(|ui| {
                                     if p.is_ready {
-                                        ui.label(RichText::new("✔").color(Color32::GREEN));
+                                        let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), egui::Sense::empty());
+                                        crate::widgets::try_paint_emoji(ui.painter(), "✔", rect, Color32::GREEN);
                                     } else {
                                         ui.add(
                                             egui::Spinner::new()

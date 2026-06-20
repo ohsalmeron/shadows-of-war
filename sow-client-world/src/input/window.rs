@@ -55,6 +55,37 @@ impl SowApp {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
+
+                if !self.ui.egui_ctx.egui_wants_keyboard_input()
+                    && self.ui.app.phase == ClientPhase::Playing
+                {
+                    if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
+                        match code {
+                            winit::keyboard::KeyCode::KeyW | winit::keyboard::KeyCode::ArrowUp => {
+                                self.input.key_pan_up = pressed;
+                            }
+                            winit::keyboard::KeyCode::KeyS
+                            | winit::keyboard::KeyCode::ArrowDown => {
+                                self.input.key_pan_down = pressed;
+                            }
+                            winit::keyboard::KeyCode::KeyA
+                            | winit::keyboard::KeyCode::ArrowLeft => {
+                                self.input.key_pan_left = pressed;
+                            }
+                            winit::keyboard::KeyCode::KeyD
+                            | winit::keyboard::KeyCode::ArrowRight => {
+                                self.input.key_pan_right = pressed;
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    self.input.key_pan_up = false;
+                    self.input.key_pan_down = false;
+                    self.input.key_pan_left = false;
+                    self.input.key_pan_right = false;
+                }
+
                 if pressed
                     && !self.ui.egui_ctx.egui_wants_keyboard_input()
                     && self.ui.app.phase == ClientPhase::Playing

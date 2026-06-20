@@ -75,7 +75,10 @@ impl ClientApp {
                 prev_resource_requests: Vec::new(),
                 transfer_confirm_pending: false,
                 chat_disabled: false,
+                show_exit_confirm: false,
+                is_tutorial: false,
             },
+
             splash_state: loading_screen::SplashState::default(),
             asset_loader: asset_loader::AssetLoader::new(),
             is_settings_open: false,

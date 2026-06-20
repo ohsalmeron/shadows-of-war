@@ -38,6 +38,11 @@ fn draw_lobby_list(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
 
+    if state.is_waiting || state.joined_lobby_id.is_some() || state.pending_join_lobby_id.is_some()
+    {
+        return;
+    }
+
     let has_matchmaking = state
         .lobbies
         .iter()

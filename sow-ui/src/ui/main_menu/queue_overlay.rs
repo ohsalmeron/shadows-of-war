@@ -1,12 +1,6 @@
 use super::MainMenuState;
 use crate::UiAction;
-use egui::{Align, Color32, Context, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LobbyBodyLayout {
-    FullScreen,
-    ModalStack,
-}
+use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
 
 /// Snapshot of who may moderate the roster — lets `draw_ready_room` render the
 /// host's Kick/Ban controls without holding a borrow on `MainMenuState`.
@@ -176,66 +170,54 @@ fn draw_lobby_body(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
     compact: bool,
-    layout: LobbyBodyLayout,
     middle_h: f32,
     host: HostControls,
     action: &mut Option<UiAction>,
 ) {
-    match layout {
-        LobbyBodyLayout::ModalStack => {
-            ui.vertical(|ui| {
-                draw_map_briefing(ui, lobby, asset_loader, true, lang);
-                ui.add_space(8.0);
-                draw_ready_room(ui, lobby, asset_loader, lang, host, action);
-            });
-        }
-        LobbyBodyLayout::FullScreen => {
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), middle_h),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    if compact {
-                        ui.vertical(|ui| {
-                            draw_map_briefing(ui, lobby, asset_loader, true, lang);
-                            ui.add_space(8.0);
-                            let ready_room_h = ui.available_height();
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(ui.available_width(), ready_room_h),
-                                egui::Layout::top_down(egui::Align::Min),
-                                |ui| {
-                                    draw_ready_room(ui, lobby, asset_loader, lang, host, action);
-                                },
-                            );
-                        });
-                    } else {
-                        ui.horizontal_top(|ui| {
-                            let total_w = ui.available_width();
-                            let col_w = (total_w - 20.0) * 0.5_f32;
-                            let col_h = ui.available_height();
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), middle_h),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            if compact {
+                // ponytail: single scroll area bounds all middle content to middle_h;
+                // footer buttons always stay anchored below.
+                egui::ScrollArea::vertical()
+                    .id_salt("lobby_body_compact")
+                    .max_height(middle_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        draw_map_briefing(ui, lobby, asset_loader, true, lang);
+                        ui.add_space(8.0);
+                        draw_ready_room(ui, lobby, asset_loader, lang, host, action);
+                    });
+            } else {
+                ui.horizontal_top(|ui| {
+                    let total_w = ui.available_width();
+                    let col_w = (total_w - 20.0) * 0.5_f32;
+                    let col_h = ui.available_height();
 
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(col_w, col_h),
-                                egui::Layout::top_down(egui::Align::Min),
-                                |ui| {
-                                    draw_map_briefing(ui, lobby, asset_loader, false, lang);
-                                },
-                            );
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(col_w, col_h),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            draw_map_briefing(ui, lobby, asset_loader, false, lang);
+                        },
+                    );
 
-                            ui.add_space(20.0);
+                    ui.add_space(20.0);
 
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(col_w, col_h),
-                                egui::Layout::top_down(egui::Align::Min),
-                                |ui| {
-                                    draw_ready_room(ui, lobby, asset_loader, lang, host, action);
-                                },
-                            );
-                        });
-                    }
-                },
-            );
-        }
-    }
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(col_w, col_h),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            draw_ready_room(ui, lobby, asset_loader, lang, host, action);
+                        },
+                    );
+                });
+            }
+        },
+    );
 }
 
 fn draw_lobby_footer(
@@ -298,7 +280,6 @@ pub fn draw_queue_overlay(
                     asset_loader,
                     lang,
                     compact,
-                    LobbyBodyLayout::FullScreen,
                     middle_h,
                     HostControls::from_state(state, lobby.id),
                     action,
@@ -313,100 +294,6 @@ pub fn draw_queue_overlay(
             draw_lobby_footer(ui, state, lobby_info, action_min_h, action, lang, compact);
         });
     });
-}
-
-pub fn draw_lobby_embed_modal(
-    ctx: &Context,
-    state: &MainMenuState,
-    action: &mut Option<UiAction>,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_i18n::Language,
-    reduced_motion: bool,
-) {
-    let compact = sow_ui_kit::theme::compact_viewport(ctx);
-    let lobby_info = resolve_lobby_info(state);
-    let (show_invite, show_start) = lobby_action_flags(state, lobby_info);
-    let action_min_h = (if compact { 44.0 } else { 48.0 }) * sow_ui_kit::theme::viewport_scale(ctx);
-    let section_gap = 8.0 * sow_ui_kit::theme::viewport_scale(ctx);
-
-    let progress = ctx.animate_bool_with_time(
-        egui::Id::new("lobby_embed_modal_animation_progress"),
-        true,
-        sow_ui_kit::theme::anim_duration(reduced_motion),
-    );
-    if progress <= 0.01 {
-        return;
-    }
-
-    let screen_rect = ctx.input(|i| i.content_rect());
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("lobby_embed_modal_scrim"),
-    ))
-    .rect_filled(
-        screen_rect,
-        0.0,
-        Color32::from_black_alpha((150.0 * progress) as u8),
-    );
-
-    let modal_w = (screen_rect.width() - 24.0).clamp(280.0, 520.0);
-    let modal_h = (screen_rect.height() - 24.0).clamp(260.0, 520.0);
-    let footer_h = lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
-    let header_h = if compact { 56.0 } else { 72.0 };
-    let y_offset = if progress >= 1.0 {
-        0.0
-    } else {
-        -80.0 * (1.0 - progress)
-    };
-
-    egui::Window::new("lobby_embed_modal")
-        .title_bar(false)
-        .collapsible(false)
-        .resizable(false)
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
-        .fixed_size(egui::vec2(modal_w, modal_h))
-        .frame(sow_ui_kit::theme::standard_panel_frame(compact))
-        .show(ctx, |ui| {
-            if let Some(lobby) = lobby_info {
-                draw_lobby_header(ui, state, lobby, section_gap, lang, compact);
-            } else {
-                ui.vertical_centered(|ui| {
-                    ui.add(egui::Spinner::new().size(36.0));
-                    ui.add_space(8.0);
-                    let strings = &sow_i18n::get(lang).main_menu;
-                    sow_ui_kit::theme::outlined_label(
-                        ui,
-                        &strings.establishing_tactical_comm,
-                        egui::FontId::proportional(16.0),
-                        sow_ui_kit::theme::palette::text_muted(),
-                    );
-                });
-                ui.add_space(section_gap);
-            }
-
-            let scroll_h = (modal_h - header_h - footer_h - 24.0).max(80.0);
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .max_height(scroll_h)
-                .show(ui, |ui| {
-                    if let Some(lobby) = lobby_info {
-                        draw_lobby_body(
-                            ui,
-                            lobby,
-                            asset_loader,
-                            lang,
-                            compact,
-                            LobbyBodyLayout::ModalStack,
-                            scroll_h,
-                            HostControls::from_state(state, lobby.id),
-                            action,
-                        );
-                    }
-                });
-
-            draw_lobby_footer(ui, state, lobby_info, action_min_h, action, lang, compact);
-        });
 }
 
 fn draw_map_briefing(
@@ -441,12 +328,23 @@ fn draw_map_briefing(
                 ui.add_space(4.0);
 
                 let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-                let aspect = 1.77_f32;
+                // Respect the map's real aspect ratio (from the loaded thumbnail) instead
+                // of forcing a fixed 16:9 crop; fall back to a neutral ratio until loaded.
+                let aspect = thumbnail
+                    .map(|t| {
+                        let s = t.size_vec2();
+                        if s.y > 0.0 {
+                            (s.x / s.y).clamp(0.5, 3.0)
+                        } else {
+                            1.6
+                        }
+                    })
+                    .unwrap_or(1.6);
                 let preview_w = ui.available_width();
                 let max_img_h = if is_mobile {
-                    150.0f32
+                    180.0f32
                 } else {
-                    (ui.available_height() - 190.0).max(80.0)
+                    (ui.available_height() - 210.0).max(120.0)
                 };
                 let preview_h = (preview_w / aspect).min(max_img_h);
 
@@ -470,7 +368,7 @@ fn draw_map_briefing(
                         ui.painter(),
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        &strings.holographic_scanning,
+                        &strings.loading_thumbnail,
                         egui::FontId::proportional(14.0),
                         sow_ui_kit::theme::palette::text_muted(),
                         Color32::BLACK,
@@ -530,64 +428,40 @@ fn draw_map_briefing(
                 ui.separator();
                 ui.add_space(4.0);
 
-                if is_mobile {
+                // Server-truth only: every row below comes straight from `LobbyInfo`.
+                let mut draw_detail = |key: &str, val: String| {
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new(&strings.channel)
-                                .size(11.0)
+                            RichText::new(key)
+                                .size(12.0)
                                 .color(sow_ui_kit::theme::palette::text_muted()),
                         );
-                        ui.label(
-                            RichText::new(format!("#{:06X}", lobby.id % 0xFFFFFF))
-                                .size(11.0)
-                                .strong()
-                                .color(Color32::WHITE),
-                        );
-                        ui.add_space(12.0);
-                        ui.label(
-                            RichText::new(&strings.slots)
-                                .size(11.0)
-                                .color(sow_ui_kit::theme::palette::text_muted()),
-                        );
-                        ui.label(
-                            RichText::new(format!("{}", lobby.max_players))
-                                .size(11.0)
-                                .strong()
-                                .color(Color32::WHITE),
-                        );
-                    });
-                } else {
-                    let mut draw_detail = |key: &str, val: &str| {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(key)
-                                    .size(12.0)
-                                    .color(sow_ui_kit::theme::palette::text_muted()),
-                            );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
-                                        RichText::new(val)
-                                            .size(12.0)
-                                            .strong()
-                                            .color(Color32::WHITE),
-                                    );
-                                },
-                            );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(RichText::new(val).size(12.0).strong().color(Color32::WHITE));
                         });
-                        ui.add_space(2.0);
-                    };
+                    });
+                    ui.add_space(2.0);
+                };
 
+                if !lobby.host_name.is_empty() {
+                    draw_detail(&strings.host_label, lobby.host_name.clone());
+                }
+                draw_detail(
+                    &strings.players_label,
+                    format!("{}/{}", lobby.num_players, lobby.max_players),
+                );
+                if lobby.bot_count > 0 {
+                    draw_detail(&strings.bots_label, lobby.bot_count.to_string());
                     draw_detail(
-                        &strings.lobby_channel_label,
-                        &format!("#{:06X}", lobby.id % 0xFFFFFF),
+                        &strings.bot_difficulty,
+                        format!("{:?}", lobby.bot_difficulty),
                     );
-                    draw_detail(
-                        &strings.max_sector_slots,
-                        &format!("{} PARTICIPANTS", lobby.max_players),
-                    );
-                    draw_detail(&strings.deployment_engine, &strings.deployment_engine_val);
+                }
+                if lobby.nation_count > 0 {
+                    draw_detail(&strings.nations_count, lobby.nation_count.to_string());
+                }
+                if lobby.has_password {
+                    draw_detail(&strings.password_label, "🔒".to_string());
                 }
             });
         });
@@ -602,6 +476,18 @@ fn draw_ready_room(
     action: &mut Option<UiAction>,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
+    let is_teams = lobby.game_mode == "Teams";
+
+    // Which roster entry's action menu is open (ephemeral UI state in egui memory).
+    let menu_id = egui::Id::new("lobby_roster_action_menu");
+    let menu_open: Option<u16> = ui
+        .ctx()
+        .data(|d| d.get_temp::<Option<u16>>(menu_id))
+        .flatten();
+    let mut new_menu_open = menu_open;
+    let mut name_click: Option<u16> = None;
+    let mut click_elsewhere = false;
+
     Frame::NONE
         .fill(sow_ui_kit::theme::palette::field_bg())
         .stroke(Stroke::new(
@@ -638,7 +524,11 @@ fn draw_ready_room(
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(0.0, 8.0);
                         for p in &lobby.players {
-                            Frame::NONE
+                            // Host can act on everyone but itself.
+                            let can_moderate =
+                                host.is_host && Some(p.player_id) != host.my_player_id;
+
+                            let row = Frame::NONE
                                 .fill(sow_ui_kit::theme::palette::surface_transparent())
                                 .stroke(Stroke::new(
                                     1.0_f32,
@@ -663,104 +553,182 @@ fn draw_ready_room(
 
                                         ui.add_space(8.0);
 
-                                        ui.label(
-                                            RichText::new(&p.name)
-                                                .size(16.0)
-                                                .strong()
-                                                .color(Color32::WHITE),
+                                        // BroodWar-style: click the nameplate to open the
+                                        // host action menu (kick / move team / ban).
+                                        let sense = if can_moderate {
+                                            egui::Sense::click()
+                                        } else {
+                                            egui::Sense::hover()
+                                        };
+                                        let mut name_resp = ui.add(
+                                            egui::Label::new(
+                                                RichText::new(&p.name)
+                                                    .size(16.0)
+                                                    .strong()
+                                                    .color(Color32::WHITE),
+                                            )
+                                            .sense(sense),
                                         );
+                                        if can_moderate {
+                                            name_resp = name_resp
+                                                .on_hover_cursor(egui::CursorIcon::PointingHand);
+                                            if name_resp.clicked() {
+                                                name_click = Some(p.player_id);
+                                            }
+                                        }
 
                                         ui.with_layout(
                                             egui::Layout::right_to_left(egui::Align::Center),
                                             |ui| {
-                                                // Host moderation: kick (rejoinable) / ban
-                                                // (blocked) every roster entry but itself.
-                                                if host.is_host
-                                                    && Some(p.player_id) != host.my_player_id
-                                                {
-                                                    let ban_btn = crate::widgets::ThemeButton::new(
-                                                        &strings.ban_btn,
-                                                    )
-                                                    .style(crate::widgets::ThemeButtonStyle::Danger)
-                                                    .text_size(11.0)
-                                                    .min_size(egui::vec2(0.0, 24.0));
-                                                    if ui.add(ban_btn).clicked() {
-                                                        *action = Some(UiAction::BanPlayer {
-                                                            lobby_id: host.lobby_id,
-                                                            target_player_id: p.player_id,
-                                                        });
-                                                    }
-                                                    ui.add_space(4.0);
-                                                    let kick_btn = crate::widgets::ThemeButton::new(
-                                                        &strings.kick_btn,
-                                                    )
-                                                    .style(
-                                                        crate::widgets::ThemeButtonStyle::Secondary,
-                                                    )
-                                                    .text_size(11.0)
-                                                    .min_size(egui::vec2(0.0, 24.0));
-                                                    if ui.add(kick_btn).clicked() {
-                                                        *action = Some(UiAction::KickPlayer {
-                                                            lobby_id: host.lobby_id,
-                                                            target_player_id: p.player_id,
-                                                        });
-                                                    }
-                                                    ui.add_space(8.0);
-                                                }
                                                 let map_ready =
                                                     p.download_progress == 100 || p.is_ready;
                                                 if map_ready {
-                                                    Frame::NONE
-                                                        .fill(Color32::from_rgba_unmultiplied(
-                                                            74, 222, 128, 30,
-                                                        ))
-                                                        .stroke(Stroke::new(
-                                                            1.0_f32,
-                                                            Color32::from_rgb(74, 222, 128),
-                                                        ))
-                                                        .corner_radius(CornerRadius::same(4))
-                                                        .inner_margin(Margin::symmetric(8, 4))
-                                                        .show(ui, |ui| {
-                                                            ui.label(
-                                                                RichText::new(&strings.ready)
-                                                                    .size(11.0)
-                                                                    .strong()
-                                                                    .color(Color32::from_rgb(
-                                                                        74, 222, 128,
-                                                                    )),
-                                                            );
-                                                        });
+                                                    status_badge(
+                                                        ui,
+                                                        &strings.ready,
+                                                        Color32::from_rgb(74, 222, 128),
+                                                    );
                                                 } else {
-                                                    Frame::NONE
-                                                        .fill(Color32::from_rgba_unmultiplied(
-                                                            250, 204, 21, 30,
-                                                        ))
-                                                        .stroke(Stroke::new(
-                                                            1.0_f32,
-                                                            Color32::from_rgb(250, 204, 21),
-                                                        ))
-                                                        .corner_radius(CornerRadius::same(4))
-                                                        .inner_margin(Margin::symmetric(8, 4))
-                                                        .show(ui, |ui| {
-                                                            ui.label(
-                                                                RichText::new(format!(
-                                                                    "SYNCING {}%",
-                                                                    p.download_progress
-                                                                ))
-                                                                .size(11.0)
-                                                                .strong()
-                                                                .color(Color32::from_rgb(
-                                                                    250, 204, 21,
-                                                                )),
-                                                            );
-                                                        });
+                                                    status_badge(
+                                                        ui,
+                                                        &format!("SYNCING {}%", p.download_progress),
+                                                        Color32::from_rgb(250, 204, 21),
+                                                    );
+                                                }
+                                                if is_teams {
+                                                    if let Some((label, col)) = team_chip(p.team) {
+                                                        ui.add_space(6.0);
+                                                        status_badge(ui, label, col);
+                                                    }
                                                 }
                                             },
                                         );
-                                    });
+
+                                        name_resp.rect
+                                    })
+                                    .inner
                                 });
+
+                            // Floating action menu anchored under the nameplate. Drawn as a
+                            // foreground Area so it escapes the roster scroll clip.
+                            if menu_open == Some(p.player_id) && can_moderate {
+                                let area = egui::Area::new(egui::Id::new((
+                                    "lobby_roster_menu",
+                                    p.player_id,
+                                )))
+                                .order(egui::Order::Foreground)
+                                .fixed_pos(row.inner.left_bottom() + egui::vec2(0.0, 4.0))
+                                .show(ui.ctx(), |ui| {
+                                    egui::Frame::menu(&ui.ctx().global_style())
+                                        .fill(Color32::from_black_alpha(235))
+                                        .stroke(Stroke::new(
+                                            1.5_f32,
+                                            sow_ui_kit::theme::palette::neon_cyan(),
+                                        ))
+                                        .corner_radius(8)
+                                        .inner_margin(Margin::symmetric(6, 6))
+                                        .show(ui, |ui| {
+                                            ui.set_min_width(140.0);
+                                            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                                            let bw = 132.0_f32;
+                                            if ui
+                                                .add(
+                                                    crate::widgets::ThemeButton::new(
+                                                        &strings.kick_btn,
+                                                    )
+                                                    .style(crate::widgets::ThemeButtonStyle::Secondary)
+                                                    .text_size(12.0)
+                                                    .min_size(egui::vec2(bw, 28.0)),
+                                                )
+                                                .clicked()
+                                            {
+                                                *action = Some(UiAction::KickPlayer {
+                                                    lobby_id: host.lobby_id,
+                                                    target_player_id: p.player_id,
+                                                });
+                                                new_menu_open = None;
+                                            }
+                                            if is_teams
+                                                && ui
+                                                    .add(
+                                                        crate::widgets::ThemeButton::new(
+                                                            &strings.move_team_btn,
+                                                        )
+                                                        .style(
+                                                            crate::widgets::ThemeButtonStyle::Secondary,
+                                                        )
+                                                        .text_size(12.0)
+                                                        .min_size(egui::vec2(bw, 28.0)),
+                                                    )
+                                                    .clicked()
+                                            {
+                                                *action = Some(UiAction::MovePlayerTeam {
+                                                    lobby_id: host.lobby_id,
+                                                    target_player_id: p.player_id,
+                                                });
+                                                new_menu_open = None;
+                                            }
+                                            if ui
+                                                .add(
+                                                    crate::widgets::ThemeButton::new(
+                                                        &strings.ban_btn,
+                                                    )
+                                                    .style(crate::widgets::ThemeButtonStyle::Danger)
+                                                    .text_size(12.0)
+                                                    .min_size(egui::vec2(bw, 28.0)),
+                                                )
+                                                .clicked()
+                                            {
+                                                *action = Some(UiAction::BanPlayer {
+                                                    lobby_id: host.lobby_id,
+                                                    target_player_id: p.player_id,
+                                                });
+                                                new_menu_open = None;
+                                            }
+                                        });
+                                });
+                                if area.response.clicked_elsewhere() {
+                                    click_elsewhere = true;
+                                }
+                            }
                         }
                     });
             });
         });
+
+    // Resolve the open menu after the loop so a fresh nameplate click always wins over
+    // the outside-click dismissal of whichever menu was previously open.
+    if let Some(pid) = name_click {
+        new_menu_open = if menu_open == Some(pid) {
+            None
+        } else {
+            Some(pid)
+        };
+    } else if click_elsewhere {
+        new_menu_open = None;
+    }
+    if new_menu_open != menu_open {
+        ui.ctx().data_mut(|d| d.insert_temp(menu_id, new_menu_open));
+    }
+}
+
+/// Small pill badge (ready / syncing / team) tinted with `color`.
+fn status_badge(ui: &mut Ui, label: &str, color: Color32) {
+    Frame::NONE
+        .fill(color.linear_multiply(0.12))
+        .stroke(Stroke::new(1.0_f32, color))
+        .corner_radius(CornerRadius::same(4))
+        .inner_margin(Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.label(RichText::new(label).size(11.0).strong().color(color));
+        });
+}
+
+/// Label + color for a player's lobby team chip, or `None` if unassigned.
+fn team_chip(team: Option<sow_core::protocol::Team>) -> Option<(&'static str, Color32)> {
+    match team {
+        Some(sow_core::protocol::Team::Red) => Some(("RED", Color32::from_rgb(239, 68, 68))),
+        Some(sow_core::protocol::Team::Blue) => Some(("BLUE", Color32::from_rgb(59, 130, 246))),
+        None => None,
+    }
 }

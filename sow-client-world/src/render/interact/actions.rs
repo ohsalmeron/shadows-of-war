@@ -206,16 +206,26 @@ impl SowApp {
                     );
                 }
                 UiAction::CopyInviteLink(lobby_id) => {
-                    if let Some(link) =
+                    let link =
                         crate::store_portals::invite_link(lobby_id, &crate::get_build_version())
-                    {
-                        self.ui.egui_ctx.copy_text(link);
-                        // Approximate time using instant since we don't have a direct timer in this context
-                        // or we can just use the ui input time.
-                        self.ui.app.main_menu_state.invite_copied_at =
-                            Some(self.ui.egui_ctx.input(|i| i.time));
-                        log::info!("Copied invite link to clipboard.");
-                    }
+                            .unwrap_or_else(|| {
+                                let mut fallback =
+                                    format!("https://play.shadowsofwar.io/?lobbyId={}", lobby_id);
+                                #[cfg(target_arch = "wasm32")]
+                                if let Some(w) = web_sys::window() {
+                                    if let Ok(href) = w.location().href() {
+                                        if let Ok(mut url) = url::Url::parse(&href) {
+                                            url.set_query(Some(&format!("lobbyId={}", lobby_id)));
+                                            fallback = url.to_string();
+                                        }
+                                    }
+                                }
+                                fallback
+                            });
+                    self.ui.egui_ctx.copy_text(link);
+                    self.ui.app.main_menu_state.invite_copied_at =
+                        Some(self.ui.egui_ctx.input(|i| i.time));
+                    log::info!("Copied invite link to clipboard.");
                 }
                 UiAction::StartPrivateLobby(lobby_id) => {
                     if let (Some(c), Some(player_id)) =
@@ -250,6 +260,20 @@ impl SowApp {
                 } => {
                     if let Some(c) = self.net.client.as_ref() {
                         let msg = sow_core::protocol::ClientMessage::Ban {
+                            lobby_id,
+                            target_player_id,
+                        };
+                        if let Ok(json) = bincode::serialize(&msg) {
+                            c.send(json);
+                        }
+                    }
+                }
+                UiAction::MovePlayerTeam {
+                    lobby_id,
+                    target_player_id,
+                } => {
+                    if let Some(c) = self.net.client.as_ref() {
+                        let msg = sow_core::protocol::ClientMessage::SetPlayerTeam {
                             lobby_id,
                             target_player_id,
                         };

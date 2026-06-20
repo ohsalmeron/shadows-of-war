@@ -110,6 +110,10 @@ pub struct MainMenuStrings {
     // Host moderation + lobby removal notices
     pub kick_btn: String,
     pub ban_btn: String,
+    pub move_team_btn: String,
+    pub host_label: String,
+    pub players_label: String,
+    pub bots_label: String,
     pub notice_host_left_title: String,
     pub notice_host_left_body: String,
     pub notice_kicked_title: String,
@@ -241,6 +245,10 @@ pub struct HudStrings {
     pub transfer_confirm_title: String,
     pub transfer_confirm_body: String,
     pub transfer_confirm_yes: String,
+    pub confirm_exit_title: String,
+    pub confirm_exit_body: String,
+    pub confirm_exit_yes: String,
+    pub confirm_exit_no: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

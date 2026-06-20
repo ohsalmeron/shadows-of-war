@@ -356,6 +356,23 @@ pub fn draw(
     let outer_pad = 16.0;
     let strings = &sow_i18n::get(lang).main_menu;
 
+    // Draw the full-bleed backdrop first so that all panels (including the footer)
+    // are drawn on top of it.
+    if !state.show_leader_picker && !(state.show_join_browser && !state.is_waiting) {
+        let backdrop_rect = root_ui.ctx().content_rect();
+        let use_portrait = backdrop_rect.width() < backdrop_rect.height();
+        crate::widgets::draw_leader_hero_backdrop(
+            root_ui,
+            backdrop_rect,
+            state.selected_leader,
+            use_portrait,
+            asset_loader,
+            &mut state.leader_backdrop,
+            &strings.loading_leader_portrait,
+            false,
+        );
+    }
+
     egui::Panel::bottom("main_menu_footer_panel")
         .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 8)))
         .show_inside(root_ui, |ui| {
@@ -372,43 +389,24 @@ pub fn draw(
                     .inner_margin(outer_pad),
             )
             .show_inside(root_ui, |ui| {
-                // Full-bleed backdrop: CentralPanel inner_margin must not leave an
-                // unpainted strip at the top (visible through the web loader fade).
-                let backdrop_rect = ui.ctx().content_rect();
-                if !state.show_leader_picker {
-                    let use_portrait = backdrop_rect.width() < backdrop_rect.height();
-                    crate::widgets::draw_leader_hero_backdrop(
-                        ui,
-                        backdrop_rect,
-                        state.selected_leader,
-                        use_portrait,
-                        asset_loader,
-                        &mut state.leader_backdrop,
-                        &strings.loading_leader_portrait,
-                        false,
-                    );
-                }
-
                 if state.is_waiting {
-                    if sow_ui_kit::theme::lobby_modal_embed(ui.ctx()) {
-                        // Hero backdrop only; lobby content in root-level modal.
-                    } else {
-                        let (section_gap, action_min_h, _, _) = layout::menu_layout_chrome(
-                            ui.ctx(),
-                            ui.available_height(),
-                            ui.available_width(),
-                            compact,
-                        );
-                        queue_overlay::draw_queue_overlay(
-                            ui,
-                            state,
-                            section_gap,
-                            action_min_h,
-                            &mut action,
-                            asset_loader,
-                            lang,
-                        );
-                    }
+                    // Always fullscreen — the lobby waiting room fills the viewport at
+                    // every resolution (no cramped centered modal).
+                    let (section_gap, action_min_h, _, _) = layout::menu_layout_chrome(
+                        ui.ctx(),
+                        ui.available_height(),
+                        ui.available_width(),
+                        compact,
+                    );
+                    queue_overlay::draw_queue_overlay(
+                        ui,
+                        state,
+                        section_gap,
+                        action_min_h,
+                        &mut action,
+                        asset_loader,
+                        lang,
+                    );
                 } else {
                     let panel_w = sow_ui_kit::theme::menu_rail_panel_width(
                         ui.available_width(),
@@ -450,17 +448,6 @@ pub fn draw(
                     );
                 }
             });
-    }
-
-    if state.is_waiting && sow_ui_kit::theme::lobby_modal_embed(root_ui.ctx()) {
-        queue_overlay::draw_lobby_embed_modal(
-            root_ui.ctx(),
-            state,
-            &mut action,
-            asset_loader,
-            lang,
-            reduced_motion,
-        );
     }
 
     if state.show_create_game {

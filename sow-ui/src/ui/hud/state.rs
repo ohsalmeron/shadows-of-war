@@ -100,6 +100,8 @@ pub struct HudState {
     pub prev_resource_requests: Vec<u16>,
     pub transfer_confirm_pending: bool,
     pub chat_disabled: bool,
+    pub show_exit_confirm: bool,
+    pub is_tutorial: bool,
 }
 
 impl HudState {

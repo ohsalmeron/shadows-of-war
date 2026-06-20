@@ -278,21 +278,66 @@ fn js_bool_field(obj: &wasm_bindgen::JsValue, key: &str) -> Option<bool> {
 }
 
 pub fn take_pending_invite_lobby() -> Option<u64> {
-    take_window_u64("SOW_PENDING_INVITE_LOBBY_ID")
+    #[cfg(target_arch = "wasm32")]
+    {
+        let res = take_window_u64("SOW_PENDING_INVITE_LOBBY_ID");
+        match res {
+            Some(id) => {
+                let _ = web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+                    "store_portals: take_pending_invite_lobby -> {}",
+                    id
+                )));
+                call_window_hook("SOW_portalClearPendingInvite");
+                Some(id)
+            }
+            None => {
+                let _ = web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(
+                    "store_portals: take_pending_invite_lobby -> None",
+                ));
+                None
+            }
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
 }
 
 pub fn take_host_private_pending() -> bool {
-    let pending = take_window_bool("SOW_HOST_PRIVATE_PENDING");
-    if pending {
-        call_window_hook("SOW_portalClearHostPrivatePending");
+    #[cfg(target_arch = "wasm32")]
+    {
+        let pending = take_window_bool("SOW_HOST_PRIVATE_PENDING");
+        let _ = web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+            "store_portals: take_host_private_pending -> {}",
+            pending
+        )));
+        if pending {
+            call_window_hook("SOW_portalClearHostPrivatePending");
+        }
+        pending
     }
-    pending
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
 }
 
 pub fn poll_pending_invite_lobby() -> Option<u64> {
-    let id = take_window_u64("SOW_PENDING_INVITE_LOBBY_ID")?;
-    call_window_hook("SOW_portalClearPendingInvite");
-    Some(id)
+    #[cfg(target_arch = "wasm32")]
+    {
+        let id = take_window_u64("SOW_PENDING_INVITE_LOBBY_ID")?;
+        let _ = web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+            "store_portals: poll_pending_invite_lobby -> {}",
+            id
+        )));
+        call_window_hook("SOW_portalClearPendingInvite");
+        Some(id)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
 }
 
 pub fn update_room(lobby_id: u64, joinable: bool, build_version: &str) {

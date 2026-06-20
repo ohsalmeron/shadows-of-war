@@ -68,3 +68,9 @@ build_port_gold = "Ingreso de oro: +{}/s"
 transfer_confirm_title = "Transferencia grande"
 transfer_confirm_body = "Estás enviando más de la mitad de tus recursos. ¿Continuar?"
 transfer_confirm_yes = "SÍ, ENVIAR"
+
+confirm_exit_title = "¿SALIR DE LA PARTIDA?"
+confirm_exit_body = "¿Estás seguro de que quieres volver al menú principal? Perderás todo el progreso actual."
+confirm_exit_yes = "SALIR DE LA PARTIDA"
+confirm_exit_no = "CANCELAR"
+

@@ -13,6 +13,22 @@ impl SowApp {
         self.time.last_frame_time = frame_now;
         self.ui.raw_input.predicted_dt = dt.min(0.1);
 
+        // Keyboard map panning (WASD and Arrows)
+        if self.ui.app.phase == ClientPhase::Playing
+            && !self.ui.egui_ctx.egui_wants_keyboard_input()
+        {
+            let dx = self.input.key_pan_left as i32 as f32 - self.input.key_pan_right as i32 as f32;
+            let dy = self.input.key_pan_up as i32 as f32 - self.input.key_pan_down as i32 as f32;
+            if dx != 0.0 || dy != 0.0 {
+                let pan = 1000.0 * dt;
+                self.input.camera_x += dx * pan;
+                self.input.camera_y += dy * pan;
+                if let Some(win) = self.gfx.window.as_ref() {
+                    win.request_redraw();
+                }
+            }
+        }
+
         // Smooth Zoom Lerp
         let diff = self.input.target_zoom - self.input.camera_zoom;
         if diff.abs() > 0.0001 {
@@ -87,6 +103,7 @@ impl SowApp {
                 ctx,
                 crate::store_portals::is_lobby_modal_embed(),
             );
+            self.ui.app.hud_state.is_tutorial = self.ui.tutorial_active;
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {
@@ -513,8 +530,7 @@ impl SowApp {
 
     pub(crate) fn render_placement_cancel_button(&mut self, ctx: &egui::Context) {
         let has_building = self.ui.app.hud_state.selected_building_kind.is_some();
-        let has_nuke = self.ui.app.hud_state.selected_nuke_kind.is_some();
-        if !has_building && !has_nuke {
+        if !has_building && self.ui.app.hud_state.selected_nuke_kind.is_none() {
             return;
         }
 
@@ -549,15 +565,15 @@ impl SowApp {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
 
-                        let text = if has_building {
-                            let kind = self.ui.app.hud_state.selected_building_kind.unwrap();
+                        let text = if let Some(kind) = self.ui.app.hud_state.selected_building_kind
+                        {
                             let emoji = match kind {
                                 sow_core::game::BuildingKind::City => "🏛️",
                                 sow_core::game::BuildingKind::Bunker => "🛡️",
                                 sow_core::game::BuildingKind::Factory => "🏭",
-                                sow_core::game::BuildingKind::Port => "⚓",
+                                _ => "⚓",
                             };
-                            format!("Placing {}... ", emoji)
+                            format!("Placing {emoji}... ")
                         } else {
                             "Placing Nuke... ".to_string()
                         };

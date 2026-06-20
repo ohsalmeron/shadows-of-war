@@ -1,7 +1,7 @@
 use crate::UiAction;
 use sow_i18n::Language;
 
-use super::overlays::{betrayal, error_info, sync};
+use super::overlays::{betrayal, error_info, exit, sync};
 use super::panels::transfer;
 use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudState};
 use crate::ui::asset_loader::AssetLoader;
@@ -121,6 +121,10 @@ pub fn draw(
     betrayal::draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang, asset_loader);
     error_info::draw_error_overlay(ui.ctx(), state, lang);
     error_info::draw_info_overlay(ui.ctx(), state, lang);
+
+    if let Some(act) = exit::draw_exit_confirm_overlay(ui.ctx(), state, lang) {
+        action = Some(act);
+    }
 
     action
 }

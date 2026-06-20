@@ -95,7 +95,7 @@ pub(crate) fn draw_link_conflict_modal(
     };
 
     egui::Area::new(egui::Id::new("link_conflict_backdrop"))
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Background)
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(root_ui.ctx(), |ui| {
             ui.painter()
@@ -107,7 +107,7 @@ pub(crate) fn draw_link_conflict_modal(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, if compact { 360.0 } else { 320.0 }))
+        .fixed_size(egui::vec2(modal_w, (if compact { 360.0_f32 } else { 320.0_f32 }).min(screen_rect.height() - 32.0).max(200.0)))
         .frame(
             Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())
@@ -240,7 +240,7 @@ pub(crate) fn draw_lobby_notice(
     let mut dismissed = false;
 
     egui::Area::new(egui::Id::new("lobby_notice_backdrop"))
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Background)
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(root_ui.ctx(), |ui| {
             let screen_rect = ui.ctx().content_rect();
@@ -260,7 +260,7 @@ pub(crate) fn draw_lobby_notice(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, 220.0))
+        .fixed_size(egui::vec2(modal_w, 220.0_f32.min(screen_rect.height() - 32.0).max(150.0)))
         .frame(
             egui::Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())
@@ -317,7 +317,7 @@ pub(crate) fn draw_connection_error_modal(
     let mut retry = false;
 
     egui::Area::new(egui::Id::new("error_modal_backdrop"))
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Background)
         .fixed_pos(egui::pos2(0.0, 0.0))
         .show(root_ui.ctx(), |ui| {
             let screen_rect = ui.ctx().content_rect();
@@ -338,7 +338,7 @@ pub(crate) fn draw_connection_error_modal(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, 280.0))
+        .fixed_size(egui::vec2(modal_w, 280.0_f32.min(screen_rect.height() - 32.0).max(200.0)))
         .frame(
             egui::Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())
@@ -362,7 +362,7 @@ pub(crate) fn draw_connection_error_modal(
 
                 sow_ui_kit::theme::outlined_label(
                     ui,
-                    "⚠️",
+                    "⚠",
                     egui::FontId::proportional(36.0),
                     sow_ui_kit::theme::palette::danger(),
                 );

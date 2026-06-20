@@ -2,7 +2,7 @@
 //! broadcasts only joinable lobbies, Active GC when no humans remain.
 
 use sow_core::game_config::GameConfig;
-use sow_core::protocol::{LobbyInfo, LobbyKind};
+use sow_core::protocol::{LobbyInfo, LobbyKind, Team};
 use tokio::sync::mpsc;
 
 pub const LOBBY_COUNTDOWN_SECS: f32 = 15.0;
@@ -25,6 +25,8 @@ pub struct PlayerConnection {
     pub civilization: sow_core::player::Civilization,
     pub leader: sow_core::player::Leader,
     pub database_account_id: Option<String>,
+    /// Lobby-stage team (Teams mode only; `None` in FFA). Carried into the match start.
+    pub team: Option<Team>,
 }
 
 pub struct ServerLobby {
@@ -413,6 +415,34 @@ pub fn join_player(
         }
     }
     let max = lobby.config.max_players as usize;
+
+    // Check if player is already in the lobby (reconnection/duplicate join)
+    if let Some(existing_idx) = lobby.players.iter().position(|p| {
+        if let (Some(ref a), Some(ref b)) = (&p.database_account_id, &database_account_id) {
+            a == b
+        } else {
+            p.name == name
+        }
+    }) {
+        log::info!(
+            "Player {} already in lobby {}, updating connection (reconnect)",
+            name,
+            lobby_id
+        );
+        let p = &mut lobby.players[existing_idx];
+        p.tx = client_tx;
+        p.clan_tag = clan_tag;
+        p.civilization = civilization;
+        p.leader = leader;
+        let pid = p.player_id;
+        return Ok((
+            lobby_id,
+            pid,
+            lobby.config.map_name.clone(),
+            lobby.is_private,
+        ));
+    }
+
     if lobby.players.len() >= max {
         log::warn!(
             "[JOIN] {} tried to join lobby {} but it is full ({}/{})",
@@ -434,6 +464,23 @@ pub fn join_player(
         .unwrap_or(0)
         .saturating_add(1);
 
+    // Teams mode: drop the joiner into whichever team is smaller (Red on a tie).
+    let team = if lobby.game_mode == "Teams" {
+        let reds = lobby
+            .players
+            .iter()
+            .filter(|p| p.team == Some(Team::Red))
+            .count();
+        let blues = lobby
+            .players
+            .iter()
+            .filter(|p| p.team == Some(Team::Blue))
+            .count();
+        Some(if blues < reds { Team::Blue } else { Team::Red })
+    } else {
+        None
+    };
+
     lobby.players.push(PlayerConnection {
         name,
         clan_tag,
@@ -443,6 +490,7 @@ pub fn join_player(
         civilization,
         leader,
         database_account_id,
+        team,
     });
 
     if is_new_host {
@@ -544,6 +592,40 @@ pub fn kick_player(
     lobby.players.retain(|p| p.player_id != target_id);
     lobby.ready_players.remove(&target_id);
     log::info!("[KICK] Host {requester_id} {reason} player {target_id} from lobby {lobby_id}");
+    sync_host_lobby_to_members(lobby);
+}
+
+/// Host toggles a player's team (Red↔Blue) in a Teams Custom lobby, then re-syncs
+/// the roster so everyone sees the new assignment.
+pub fn set_player_team(
+    games: &mut [ServerLobby],
+    lobby_id: u64,
+    requester_id: u16,
+    target_id: u16,
+) {
+    let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) else {
+        return;
+    };
+    if lobby.kind != LobbyKind::Custom || lobby.host_player_id != Some(requester_id) {
+        log::warn!(
+            "[TEAM] Player {requester_id} is not host of Custom lobby {lobby_id} — rejected"
+        );
+        return;
+    }
+    if lobby.game_mode != "Teams" {
+        log::warn!("[TEAM] Lobby {lobby_id} is not a Teams lobby — ignored");
+        return;
+    }
+    if let Some(target) = lobby.players.iter_mut().find(|p| p.player_id == target_id) {
+        target.team = match target.team {
+            Some(Team::Red) => Some(Team::Blue),
+            _ => Some(Team::Red),
+        };
+        log::info!(
+            "[TEAM] Host {requester_id} moved player {target_id} to {:?} in lobby {lobby_id}",
+            target.team
+        );
+    }
     sync_host_lobby_to_members(lobby);
 }
 
@@ -677,6 +759,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                             download_progress: p.download_progress,
                             leader: p.leader,
                             player_id: p.player_id,
+                            team: p.team,
                         })
                         .collect();
 
@@ -800,6 +883,7 @@ pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
                 download_progress: p.download_progress,
                 leader: p.leader,
                 player_id: p.player_id,
+                team: p.team,
             })
             .collect(),
         has_password: g.password.is_some(),
@@ -825,6 +909,7 @@ pub fn sync_host_lobby_to_members(lobby: &ServerLobby) {
             download_progress: p.download_progress,
             leader: p.leader,
             player_id: p.player_id,
+            team: p.team,
         })
         .collect();
     let time_remaining = if matches!(lobby.phase, LobbyPhase::CountingDown) {

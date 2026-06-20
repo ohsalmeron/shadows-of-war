@@ -68,3 +68,9 @@ build_port_gold = "Gold Income: +{}/s"
 transfer_confirm_title = "Large transfer"
 transfer_confirm_body = "You are sending more than half your resources. Continue?"
 transfer_confirm_yes = "YES, SEND"
+
+confirm_exit_title = "LEAVE GAME?"
+confirm_exit_body = "Are you sure you want to return to the main menu? You will lose all current progress."
+confirm_exit_yes = "LEAVE GAME"
+confirm_exit_no = "CANCEL"
+

@@ -254,6 +254,10 @@ impl SowApp {
                 ime_cursor_rect_px,
                 has_snapped_camera_to_spawn,
                 selected_warships: Vec::new(),
+                key_pan_up: false,
+                key_pan_down: false,
+                key_pan_left: false,
+                key_pan_right: false,
             },
             ui: UiState {
                 app,

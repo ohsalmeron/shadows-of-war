@@ -4,7 +4,8 @@ mod map_catalog;
 use futures_util::{SinkExt, StreamExt};
 use lobby::{
     build_lobby_broadcast, force_start, is_host_teardown, join_player, kick_player, leave_player,
-    master_tick, notify_lobby_closed, sync_host_lobby_to_members, ServerLobby,
+    lobby_to_info, master_tick, notify_lobby_closed, set_player_team, sync_host_lobby_to_members,
+    ServerLobby,
 };
 use redis::Commands;
 use sow_core::protocol::{
@@ -69,6 +70,11 @@ enum ServerEvent {
         requester_id: u16,
         target_id: u16,
         ban: bool,
+    },
+    SetTeam {
+        lobby_id: u64,
+        requester_id: u16,
+        target_id: u16,
     },
 }
 
@@ -255,11 +261,18 @@ async fn main() {
                             let mut player_infos = Vec::new();
                             for (i, p) in lobby.players.iter().enumerate() {
                                 let (team, color) = if lobby.game_mode == "Teams" {
-                                    if i % 2 == 0 {
-                                        (Some(sow_core::protocol::Team::Red), [1.0, 0.2, 0.2])
+                                    // Honor the lobby-stage assignment the host set; fall back to
+                                    // alternating by join index if a player was never assigned.
+                                    let team = p.team.unwrap_or(if i % 2 == 0 {
+                                        sow_core::protocol::Team::Red
                                     } else {
-                                        (Some(sow_core::protocol::Team::Blue), [0.2, 0.5, 1.0])
-                                    }
+                                        sow_core::protocol::Team::Blue
+                                    });
+                                    let color = match team {
+                                        sow_core::protocol::Team::Red => [1.0, 0.2, 0.2],
+                                        sow_core::protocol::Team::Blue => [0.2, 0.5, 1.0],
+                                    };
+                                    (Some(team), color)
                                 } else {
                                     (None, p.leader.filler_rgb())
                                 };
@@ -321,7 +334,8 @@ async fn main() {
                             log::info!("Player {} (clan: {}) joining with version: {}", name, clan_tag, build_version);
                             match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id, host_config, password) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
-                                    let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private };
+                                    let lobby_info = games.iter().find(|g| g.id == lobby_id).map(lobby_to_info);
+                                    let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private, lobby_info };
                                     match bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)) {
                                         Ok(json) => { let _ = client_tx.try_send(json); }
                                         Err(e) => { log::error!("[JOIN] Failed to serialize JoinAck for player {} in lobby {}: {}", player_id, lobby_id, e); }
@@ -357,6 +371,9 @@ async fn main() {
                         }
                         ServerEvent::Kick { lobby_id, requester_id, target_id, ban } => {
                             kick_player(&mut games, lobby_id, requester_id, target_id, ban);
+                        }
+                        ServerEvent::SetTeam { lobby_id, requester_id, target_id } => {
+                            set_player_team(&mut games, lobby_id, requester_id, target_id);
                         }
                         ServerEvent::Ready { lobby_id, player_id } => {
                             if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
@@ -543,6 +560,17 @@ async fn main() {
                                                             requester_id: p_id,
                                                             target_id: target_player_id,
                                                             ban: true,
+                                                        }).await;
+                                                    }
+                                                }
+                                            }
+                                            sow_core::protocol::ClientMessage::SetPlayerTeam { lobby_id, target_player_id } => {
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
+                                                    if lobby_id == l_id {
+                                                        let _ = ev_tx.send(ServerEvent::SetTeam {
+                                                            lobby_id: l_id,
+                                                            requester_id: p_id,
+                                                            target_id: target_player_id,
                                                         }).await;
                                                     }
                                                 }

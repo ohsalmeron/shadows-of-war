@@ -160,6 +160,11 @@ pub enum ClientMessage {
         lobby_id: u64,
         target_player_id: u16,
     },
+    /// Host toggles a player's team (Red↔Blue) in a Teams Custom lobby.
+    SetPlayerTeam {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
     Ping {
         client_time: f64,
     },
@@ -240,6 +245,10 @@ pub struct ServerJoinAckMessage {
     pub player_id: u16,
     pub map_name: String,
     pub is_private: bool,
+    /// Full server-authoritative lobby snapshot, so private lobbies (never broadcast)
+    /// can be seeded with real config (mode, slots, bots, host) instead of placeholders.
+    #[serde(default)]
+    pub lobby_info: Option<LobbyInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -305,6 +314,9 @@ pub struct LobbyPlayerSyncState {
     /// Per-lobby player id — lets the host target kick/ban actions at a roster entry.
     #[serde(default)]
     pub player_id: u16,
+    /// Lobby-stage team assignment (Teams mode only; `None` in FFA).
+    #[serde(default)]
+    pub team: Option<Team>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

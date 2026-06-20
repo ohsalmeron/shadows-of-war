@@ -111,6 +111,10 @@ pub struct InputState {
     pub ime_cursor_rect_px: Option<egui::Rect>,
     pub has_snapped_camera_to_spawn: bool,
     pub selected_warships: Vec<u64>,
+    pub key_pan_up: bool,
+    pub key_pan_down: bool,
+    pub key_pan_left: bool,
+    pub key_pan_right: bool,
 }
 
 #[derive(Clone, Debug)]

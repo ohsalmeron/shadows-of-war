@@ -52,4 +52,9 @@ pub enum UiAction {
         lobby_id: u64,
         target_player_id: u16,
     },
+    /// Host toggles a player's team (Red↔Blue) in a Teams lobby.
+    MovePlayerTeam {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
 }

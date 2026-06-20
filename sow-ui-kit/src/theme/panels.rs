@@ -226,7 +226,10 @@ pub fn draw_standard_modal<R>(
         .resizable(false)
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
-        .fixed_size(egui::vec2(panel_w, if compact { 460.0 } else { 420.0 }))
+        .fixed_size(egui::vec2(panel_w, {
+            let screen_h = ctx.input(|i| i.content_rect()).height();
+            (if compact { 460.0_f32 } else { 420.0_f32 }).min(screen_h - 32.0).max(280.0)
+        }))
         .frame(standard_panel_frame(compact))
         .show(ctx, |ui| {
             ui.horizontal(|ui| {

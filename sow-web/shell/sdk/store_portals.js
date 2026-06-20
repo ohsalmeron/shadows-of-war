@@ -140,6 +140,16 @@
 
   function queueInviteLobbyId(lobbyId) {
     if (lobbyId !== null && lobbyId !== undefined) {
+      try {
+        var existing = window.SOW_PENDING_INVITE_LOBBY_ID;
+        if (existing !== null && existing !== undefined && Number(existing) === Number(lobbyId)) {
+          console.warn('store_portals: skipping duplicate pending invite', lobbyId);
+          return;
+        }
+      } catch (e) {
+        console.warn('store_portals: error reading existing pending invite', e);
+      }
+      console.log('store_portals: queueing pending invite', lobbyId);
       window.SOW_PENDING_INVITE_LOBBY_ID = lobbyId;
     }
   }
@@ -299,10 +309,12 @@
   };
 
   window.SOW_portalClearHostPrivatePending = function () {
+    console.log('store_portals: clearing host private pending');
     window.SOW_HOST_PRIVATE_PENDING = false;
   };
 
   window.SOW_portalClearPendingInvite = function () {
+    console.log('store_portals: clearing pending invite');
     window.SOW_PENDING_INVITE_LOBBY_ID = null;
   };
 

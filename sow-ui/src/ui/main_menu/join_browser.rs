@@ -354,7 +354,7 @@ fn draw_password_modal(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, 180.0))
+        .fixed_size(egui::vec2(modal_w, 180.0_f32.min(screen_rect.height() - 32.0).max(150.0)))
         .frame(
             Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())

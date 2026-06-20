@@ -100,7 +100,11 @@ pub(in crate::ui::hud) fn draw_top_icons(
                         .on_hover_text(&sow_i18n::get(lang).hud.hover_exit)
                         .clicked()
                     {
-                        *action = Some(UiAction::LeaveLobby);
+                        if state.is_tutorial {
+                            *action = Some(UiAction::LeaveLobby);
+                        } else {
+                            state.show_exit_confirm = true;
+                        }
                     }
 
                     let top_icons_rect = ui.min_rect();
