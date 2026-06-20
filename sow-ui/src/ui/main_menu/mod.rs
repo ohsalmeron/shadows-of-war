@@ -193,23 +193,49 @@ fn menu_footer_height(section_gap: f32, action_min_h: f32, scale: f32) -> f32 {
         + 6.0 * scale
 }
 
-fn menu_layout_chrome(ctx: &egui::Context, panel_h: f32, compact: bool) -> (f32, f32, f32) {
+fn menu_layout_chrome(
+    ctx: &egui::Context,
+    panel_h: f32,
+    available_w: f32,
+    compact: bool,
+) -> (f32, f32, f32, f32) {
     let scale = crate::ui::theme::viewport_scale(ctx);
-    let mut section_gap = (if compact { 12.0 } else { 16.0 }) * scale;
-    let mut action_min_h = (if compact { 64.0 } else { 72.0 }) * scale;
+    let portrait = crate::ui::theme::portrait_layout(ctx);
+    let mut section_gap = (if portrait {
+        8.0
+    } else if compact {
+        12.0
+    } else {
+        16.0
+    }) * scale;
+    let mut action_min_h = (if portrait {
+        54.0
+    } else if compact {
+        64.0
+    } else {
+        72.0
+    }) * scale;
     let mut profile_height = 56.0 * scale;
+    if portrait {
+        profile_height *= 0.85;
+    }
+
+    let mut lobby_h = crate::ui::map_texture::thumbnail_square_side(available_w, compact);
+    if portrait {
+        lobby_h = (lobby_h * 0.55).clamp(110.0, 160.0);
+    }
 
     let footer_h = menu_footer_height(section_gap, action_min_h, scale);
     let header_h = profile_height + section_gap;
-    let min_lobby = 32.0;
-    let needed = header_h + section_gap + footer_h + section_gap + min_lobby;
+    let needed = header_h + section_gap + footer_h + section_gap + lobby_h;
     let shrink = crate::ui::theme::fit_scale(needed, panel_h);
     if shrink < 1.0 {
         section_gap *= shrink;
         action_min_h *= shrink;
         profile_height *= shrink;
+        lobby_h *= shrink;
     }
-    (section_gap, action_min_h, profile_height)
+    (section_gap, action_min_h, profile_height, lobby_h)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -233,12 +259,12 @@ fn draw_menu_right_panel_contents(
     action_min_h: f32,
     compact: bool,
     profile_height: f32,
+    lobby_height: f32,
     panel_inner_h: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let scale = crate::ui::theme::viewport_scale(ui.ctx());
     let portrait = !compact || crate::ui::theme::portrait_layout(ui.ctx());
     let landscape_compact = compact && !portrait;
     let panel_w = ui.available_width();
@@ -299,16 +325,13 @@ fn draw_menu_right_panel_contents(
                 );
             });
         } else {
-            let footer_h = menu_footer_height(section_gap, action_min_h, scale);
-            let max_lobby_h = (panel_inner_h - header_h - section_gap - footer_h).max(0.0);
-
             browser::draw_left_column(
                 ui,
                 state,
                 section_gap,
                 action_min_h,
                 compact,
-                max_lobby_h,
+                lobby_height,
                 action,
                 asset_loader,
                 lang,
@@ -329,6 +352,7 @@ fn draw_menu_right_panel(
     action_min_h: f32,
     compact: bool,
     profile_height: f32,
+    lobby_height: f32,
     panel_outer_h: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
@@ -348,6 +372,7 @@ fn draw_menu_right_panel(
                     action_min_h,
                     compact,
                     profile_height,
+                    lobby_height,
                     panel_outer_h,
                     action,
                     asset_loader,
@@ -355,6 +380,8 @@ fn draw_menu_right_panel(
                 );
             } else {
                 crate::ui::theme::menu_right_panel_frame(false).show(ui, |ui| {
+                    let h = ui.available_height();
+                    ui.set_min_height(h);
                     draw_menu_right_panel_contents(
                         ui,
                         state,
@@ -362,7 +389,8 @@ fn draw_menu_right_panel(
                         action_min_h,
                         compact,
                         profile_height,
-                        ui.available_height(),
+                        lobby_height,
+                        h,
                         action,
                         asset_loader,
                         lang,
@@ -742,7 +770,7 @@ pub fn draw(
             draw_terms_privacy_footer(ui, lang, &mut action);
         });
 
-    if state.show_join_browser {
+    if state.show_join_browser && !state.is_waiting {
         join_browser::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
         CentralPanel::default()
@@ -768,48 +796,77 @@ pub fn draw(
                 }
 
                 if state.is_waiting {
-                    let (section_gap, action_min_h, _) =
-                        menu_layout_chrome(ui.ctx(), ui.available_height(), compact);
-                    queue_overlay::draw_queue_overlay(
-                        ui,
-                        state,
-                        section_gap,
-                        action_min_h,
-                        &mut action,
-                        asset_loader,
-                        lang,
-                    );
-                    return;
-                }
-
-                let content_h = ui.available_height();
-                let (section_gap, action_min_h, profile_height) =
-                    menu_layout_chrome(ui.ctx(), content_h, compact);
-                let panel_w = crate::ui::theme::menu_rail_panel_width(
-                    ui.available_width(),
-                    compact,
-                    ui.ctx(),
-                );
-
-                ui.allocate_ui_with_layout(
-                    egui::vec2(panel_w, content_h),
-                    Layout::top_down(Align::Min),
-                    |ui| {
-                        draw_menu_right_panel(
+                    if crate::ui::theme::lobby_modal_embed(ui.ctx()) {
+                        // Hero backdrop only; lobby content in root-level modal.
+                    } else {
+                        let (section_gap, action_min_h, _, _) = menu_layout_chrome(
+                            ui.ctx(),
+                            ui.available_height(),
+                            ui.available_width(),
+                            compact,
+                        );
+                        queue_overlay::draw_queue_overlay(
                             ui,
                             state,
                             section_gap,
                             action_min_h,
-                            compact,
-                            profile_height,
-                            content_h,
                             &mut action,
                             asset_loader,
                             lang,
                         );
-                    },
-                );
+                    }
+                } else {
+                    let panel_w = crate::ui::theme::menu_rail_panel_width(
+                        ui.available_width(),
+                        compact,
+                        ui.ctx(),
+                    );
+                    let inner_w = if compact {
+                        panel_w
+                    } else {
+                        (panel_w - 40.0).max(0.0)
+                    };
+                    let content_h = ui.available_height();
+                    let effective_h = if compact {
+                        content_h
+                    } else {
+                        (content_h - 40.0).max(0.0)
+                    };
+                    let (section_gap, action_min_h, profile_height, lobby_height) =
+                        menu_layout_chrome(ui.ctx(), effective_h, inner_w, compact);
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(panel_w, content_h),
+                        Layout::top_down(Align::Min),
+                        |ui| {
+                            draw_menu_right_panel(
+                                ui,
+                                state,
+                                section_gap,
+                                action_min_h,
+                                compact,
+                                profile_height,
+                                lobby_height,
+                                content_h,
+                                &mut action,
+                                asset_loader,
+                                lang,
+                            );
+                        },
+                    );
+                }
             });
+    }
+
+    if state.is_waiting && crate::ui::theme::lobby_modal_embed(root_ui.ctx()) {
+        queue_overlay::draw_lobby_embed_modal(
+            root_ui.ctx(),
+            state,
+            &mut action,
+            asset_loader,
+            lang,
+            reduced_motion,
+        );
     }
 
     if state.show_create_game {

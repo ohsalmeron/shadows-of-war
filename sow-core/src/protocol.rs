@@ -183,6 +183,17 @@ pub enum ServerMessage {
     VersionUpdate { version: String },
 }
 
+/// Classifies a lobby so every code path can branch on it explicitly instead of
+/// inferring kind from implicit flag combinations.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LobbyKind {
+    /// Server-spawned rolling queue — auto-countdown, auto-start, main menu.
+    #[default]
+    Matchmaking,
+    /// Player-created lobby — host decides when to start, shown in the Game Browser.
+    Custom,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LobbyInfo {
     pub id: u64,
@@ -203,6 +214,8 @@ pub struct LobbyInfo {
     pub nation_count: u32,
     #[serde(default)]
     pub bot_difficulty: crate::game_config::BotDifficulty,
+    #[serde(default)]
+    pub kind: LobbyKind,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

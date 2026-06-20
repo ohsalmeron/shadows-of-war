@@ -4,7 +4,7 @@ mod map_catalog;
 use futures_util::{SinkExt, StreamExt};
 use lobby::{
     build_lobby_broadcast, force_start, join_player, leave_player, master_tick,
-    sync_private_lobby_to_members, ServerLobby,
+    sync_host_lobby_to_members, ServerLobby,
 };
 use redis::Commands;
 use sow_core::protocol::{
@@ -183,12 +183,31 @@ async fn main() {
                                 "tick_rate_ms": lobby.config.tick_rate_ms,
                             });
 
-                            let log_file = std::fs::File::create(format!("relay_{}.log", relay_port)).unwrap();
+                            let log_path = format!("relay_{}.log", relay_port);
+                            let log_file = match std::fs::File::create(&log_path) {
+                                Ok(f) => f,
+                                Err(e) => {
+                                    log::error!("[RELAY] Cannot create log file {}: {}", log_path, e);
+                                    let mut rcon = redis_clone.lock().unwrap();
+                                    let _: () = rcon.srem(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                                    continue;
+                                }
+                            };
+                            let log_file2 = match log_file.try_clone() {
+                                Ok(f) => f,
+                                Err(e) => {
+                                    log::error!("[RELAY] Cannot clone log file handle: {}", e);
+                                    let mut rcon = redis_clone.lock().unwrap();
+                                    let _: () = rcon.srem(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                                    continue;
+                                }
+                            };
+                            log::info!("[RELAY] Spawning relay for lobby {} on port {}", lobby.id, relay_port);
                             let mut cmd = tokio::process::Command::new(relay_bin());
                             cmd.arg("--port").arg(relay_port.to_string())
                                .arg("--lobby-json").arg(relay_config.to_string())
                                .stdin(std::process::Stdio::null())
-                               .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
+                               .stdout(std::process::Stdio::from(log_file2))
                                .stderr(std::process::Stdio::from(log_file));
 
                             match cmd.spawn() {
@@ -217,15 +236,13 @@ async fn main() {
                     }
 
                     let lobbies_info = build_lobby_broadcast(&games);
+                    log::debug!("[BROADCAST] {} lobbies in broadcast", lobbies_info.len());
 
-                    let mut broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
-                    // Hard cap to 1 lobby for the UI
-                    if broadcast_msg.lobbies.len() > 1 {
-                        broadcast_msg.lobbies.truncate(1);
+                    let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                    match bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
+                        Ok(json) => { let _ = global_tx_clone.send(json); }
+                        Err(e) => { log::error!("[BROADCAST] Failed to serialize LobbiesBroadcast: {}", e); }
                     }
-
-                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)).unwrap();
-                    let _ = global_tx_clone.send(json);
 
                     for lobby in ready_lobbies {
                         if let Some(relay_port) = lobby.relay_port {
@@ -265,22 +282,26 @@ async fn main() {
                                 relay_port: Some(relay_port),
                             };
 
+                            log::info!("[RELAY] Handing off lobby {} to relay port {}", lobby.id, relay_port);
                             for p in &lobby.players {
                                 let mut player_start = start_msg.clone();
                                 player_start.my_player_id = Some(p.player_id);
-                                let json = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(player_start))).unwrap();
-                                let _ = p.tx.try_send(json);
+                                match bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(player_start))) {
+                                    Ok(json) => { let _ = p.tx.try_send(json); }
+                                    Err(e) => { log::error!("[RELAY] Failed to serialize Start for player {} in lobby {}: {}", p.player_id, lobby.id, e); }
+                                }
                             }
                         } else {
-                            log::error!("Failed to handoff relay for lobby {}: no relay_port assigned", lobby.id);
+                            log::error!("[RELAY] Lobby {} has no relay_port — cannot hand off. Sending LobbyClosed.", lobby.id);
                             let msg = sow_core::protocol::ServerLobbyClosedMessage {
                                 lobby_id: lobby.id,
                                 reason: "Server failed to allocate relay".to_string(),
                                 rematch_lobby_id: None,
                             };
-                            let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).unwrap();
-                            for p in &lobby.players {
-                                let _ = p.tx.try_send(json.clone());
+                            if let Ok(json) = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)) {
+                                for p in &lobby.players {
+                                    let _ = p.tx.try_send(json.clone());
+                                }
                             }
                         }
                     }
@@ -295,16 +316,21 @@ async fn main() {
                             match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id, host_config, password) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private };
-                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)).unwrap();
-                                    let _ = client_tx.try_send(json);
+                                    match bincode::serialize(&sow_core::protocol::ServerMessage::JoinAck(ack)) {
+                                        Ok(json) => { let _ = client_tx.try_send(json); }
+                                        Err(e) => { log::error!("[JOIN] Failed to serialize JoinAck for player {} in lobby {}: {}", player_id, lobby_id, e); }
+                                    }
                                     if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
-                                        sync_private_lobby_to_members(lobby);
+                                        sync_host_lobby_to_members(lobby);
                                     }
                                 }
                                 Err(reason) => {
+                                    log::warn!("[JOIN] Join rejected: {}", reason);
                                     let fail = ServerJoinFailedMessage { reason };
-                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinFailed(fail)).unwrap();
-                                    let _ = client_tx.try_send(json);
+                                    match bincode::serialize(&sow_core::protocol::ServerMessage::JoinFailed(fail)) {
+                                        Ok(json) => { let _ = client_tx.try_send(json); }
+                                        Err(e) => { log::error!("[JOIN] Failed to serialize JoinFailed: {}", e); }
+                                    }
                                 }
                             }
                         }
@@ -312,24 +338,31 @@ async fn main() {
                         ServerEvent::Leave { lobby_id, player_id } => {
                             leave_player(&mut games, lobby_id, player_id);
                             if let Some(lobby) = games.iter().find(|g| g.id == lobby_id) {
-                                sync_private_lobby_to_members(lobby);
+                                sync_host_lobby_to_members(lobby);
                             }
                         }
                         ServerEvent::Ready { lobby_id, player_id } => {
                             if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
                                 lobby.ready_players.insert(player_id);
-                                sync_private_lobby_to_members(lobby);
+                                sync_host_lobby_to_members(lobby);
+                            } else {
+                                log::warn!("[READY] Player {} sent Ready for unknown lobby {}", player_id, lobby_id);
                             }
                         }
                         ServerEvent::MapDownloadProgress { lobby_id, player_id, progress } => {
                             if let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) {
                                 if let Some(p) = lobby.players.iter_mut().find(|p| p.player_id == player_id) {
                                     p.download_progress = progress;
+                                } else {
+                                    log::warn!("[PROGRESS] Player {} not found in lobby {} for download progress update", player_id, lobby_id);
                                 }
-                                sync_private_lobby_to_members(lobby);
+                                sync_host_lobby_to_members(lobby);
+                            } else {
+                                log::warn!("[PROGRESS] Lobby {} not found for player {} progress update", lobby_id, player_id);
                             }
                         }
                         ServerEvent::ForceStart { lobby_id, player_id } => {
+                            log::info!("[EVENT] ForceStart received lobby={} player={}", lobby_id, player_id);
                             force_start(&mut games, lobby_id, player_id);
                         }
                     }

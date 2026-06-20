@@ -2,7 +2,7 @@
 //! broadcasts only joinable lobbies, Active GC when no humans remain.
 
 use sow_core::game_config::GameConfig;
-use sow_core::protocol::LobbyInfo;
+use sow_core::protocol::{LobbyInfo, LobbyKind};
 use tokio::sync::mpsc;
 
 pub const LOBBY_COUNTDOWN_SECS: f32 = 15.0;
@@ -29,6 +29,8 @@ pub struct PlayerConnection {
 
 pub struct ServerLobby {
     pub id: u64,
+    /// Matchmaking = server-spawned auto-queue; Custom = player-created, host-started.
+    pub kind: LobbyKind,
     pub is_private: bool,
     pub phase: LobbyPhase,
     /// Remaining seconds while CountingDown.
@@ -41,7 +43,7 @@ pub struct ServerLobby {
     pub config: GameConfig,
     pub game_mode: String,
     pub relay_port: Option<u16>,
-    /// Player who created this private lobby; only they can ForceStart it.
+    /// Only set for Custom lobbies — the player_id of whoever created the lobby.
     pub host_player_id: Option<u16>,
     pub password: Option<String>,
     pub host_name: String,
@@ -53,10 +55,12 @@ impl ServerLobby {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_waiting_lobby(
     games: &mut Vec<ServerLobby>,
     next_id: &mut u64,
     game_mode: &str,
+    kind: LobbyKind,
     is_private: bool,
     config_override: Option<GameConfig>,
     password: Option<String>,
@@ -83,15 +87,25 @@ fn spawn_waiting_lobby(
             c.map_width = entry.width;
             c.map_height = entry.height;
         } else {
-            log::error!("No maps in catalog; using default config map_name");
+            log::error!("spawn_waiting_lobby: no maps in catalog for lobby {}", id);
         }
         c
     };
 
     config.game_mode = game_mode.to_string();
 
+    log::info!(
+        "[LOBBY] Spawned lobby {} kind={:?} mode={} map={} private={}",
+        id,
+        kind,
+        game_mode,
+        config.map_name,
+        is_private
+    );
+
     games.push(ServerLobby {
         id,
+        kind,
         is_private,
         phase: LobbyPhase::Waiting,
         countdown_secs: 0.0,
@@ -111,41 +125,80 @@ fn spawn_waiting_lobby(
 fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     if games
         .iter()
-        .filter(|g| g.joinable() && !g.is_private && g.game_mode == "FFA")
+        .filter(|g| g.joinable() && g.kind == LobbyKind::Matchmaking && g.game_mode == "FFA")
         .count()
         < 1
     {
-        spawn_waiting_lobby(games, next_id, "FFA", false, None, None, String::new());
+        spawn_waiting_lobby(
+            games,
+            next_id,
+            "FFA",
+            LobbyKind::Matchmaking,
+            false,
+            None,
+            None,
+            String::new(),
+        );
     }
     if games
         .iter()
-        .filter(|g| g.joinable() && !g.is_private && g.game_mode == "Teams")
+        .filter(|g| g.joinable() && g.kind == LobbyKind::Matchmaking && g.game_mode == "Teams")
         .count()
         < 1
     {
-        spawn_waiting_lobby(games, next_id, "Teams", false, None, None, String::new());
+        spawn_waiting_lobby(
+            games,
+            next_id,
+            "Teams",
+            LobbyKind::Matchmaking,
+            false,
+            None,
+            None,
+            String::new(),
+        );
     }
 }
 
 fn promote_countdown(games: &mut [ServerLobby]) {
-    let has_counting = games
-        .iter()
-        .any(|g| matches!(g.phase, LobbyPhase::CountingDown));
-    if has_counting {
-        return;
+    // Custom lobbies are NEVER auto-promoted — they start only when the host calls force_start().
+    // Both passes below are strictly Matchmaking-only.
+
+    // Pass 1: any non-empty Matchmaking waiting lobby starts immediately, unblocked.
+    for g in games.iter_mut() {
+        if matches!(g.phase, LobbyPhase::Waiting)
+            && g.kind == LobbyKind::Matchmaking
+            && !g.players.is_empty()
+        {
+            g.phase = LobbyPhase::CountingDown;
+            g.countdown_secs = LOBBY_COUNTDOWN_SECS;
+            log::info!("[LOBBY] {} Matchmaking→CountingDown (has players)", g.id);
+        }
     }
 
-    // Auto-promote headless queues as before; skip host-created lobbies (they start via ForceStart).
-    let target = games.iter_mut().find(|g| {
-        matches!(g.phase, LobbyPhase::Waiting)
-            && g.host_player_id.is_none()
-            && (!g.is_private || g.players.len() >= 2)
-    });
-
-    if let Some(lobby) = target {
-        lobby.phase = LobbyPhase::CountingDown;
-        lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
-        log::info!("Lobby {} promoted to CountingDown", lobby.id);
+    // Pass 2: keep one empty beacon counting per game mode so clients see a live timer.
+    // Per-mode check prevents Teams from stealing the FFA beacon slot after a cycle.
+    for mode in &["FFA", "Teams"] {
+        let has_beacon = games.iter().any(|g| {
+            matches!(g.phase, LobbyPhase::CountingDown)
+                && g.kind == LobbyKind::Matchmaking
+                && g.players.is_empty()
+                && g.game_mode == *mode
+        });
+        if !has_beacon {
+            if let Some(lobby) = games.iter_mut().find(|g| {
+                matches!(g.phase, LobbyPhase::Waiting)
+                    && g.kind == LobbyKind::Matchmaking
+                    && g.game_mode == *mode
+            }) {
+                lobby.phase = LobbyPhase::CountingDown;
+                lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
+                log::info!(
+                    "[LOBBY] {} Matchmaking→CountingDown ({} beacon)",
+                    lobby.id,
+                    mode
+                );
+            }
+        }
     }
 }
 
@@ -155,7 +208,7 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
         .iter()
         .filter(|g| {
             g.joinable()
-                && !g.is_private
+                && g.kind == LobbyKind::Matchmaking
                 && g.game_mode == game_mode
                 && matches!(g.phase, LobbyPhase::CountingDown)
         })
@@ -169,7 +222,7 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
         .iter()
         .filter(|g| {
             g.joinable()
-                && !g.is_private
+                && g.kind == LobbyKind::Matchmaking
                 && g.game_mode == game_mode
                 && matches!(g.phase, LobbyPhase::Waiting)
         })
@@ -210,16 +263,26 @@ pub fn join_player(
     let mut is_new_host = false;
     let lobby_id = if host_private {
         if target_lobby_id.is_some() {
+            log::warn!(
+                "[JOIN] {} tried to host private room with a target_lobby_id set — rejected",
+                name
+            );
             return Err("Cannot host private room with a target lobby".to_string());
         }
         let game_mode = host_config
             .as_ref()
             .map(|c| c.game_mode.clone())
             .unwrap_or_else(|| "FFA".to_string());
+        log::info!(
+            "[JOIN] {} creating private Custom lobby mode={}",
+            name,
+            game_mode
+        );
         spawn_waiting_lobby(
             games,
             next_id,
             &game_mode,
+            LobbyKind::Custom,
             true,
             host_config.map(|c| *c),
             password.clone(),
@@ -228,13 +291,19 @@ pub fn join_player(
         is_new_host = true;
         games.last().unwrap().id
     } else if host_config.is_some() && target_lobby_id.is_none() {
-        // Host-created public lobby
+        // Host-created public Custom lobby
         let config = host_config.unwrap();
         let game_mode = config.game_mode.clone();
+        log::info!(
+            "[JOIN] {} creating public Custom lobby mode={}",
+            name,
+            game_mode
+        );
         spawn_waiting_lobby(
             games,
             next_id,
             &game_mode,
+            LobbyKind::Custom,
             false,
             Some(*config),
             password.clone(),
@@ -248,12 +317,26 @@ pub fn join_player(
             None => {
                 if req >= 100000000 {
                     // Rematch room doesn't exist yet, we must be the first to arrive! Create it.
-                    log::info!("Creating rematch private lobby {}", req);
-                    spawn_waiting_lobby(games, next_id, "FFA", true, None, None, String::new());
+                    log::info!("[JOIN] Creating rematch Custom lobby id={}", req);
+                    spawn_waiting_lobby(
+                        games,
+                        next_id,
+                        "FFA",
+                        LobbyKind::Custom,
+                        true,
+                        None,
+                        None,
+                        String::new(),
+                    );
                     let new_lobby = games.last_mut().unwrap();
                     new_lobby.id = req; // Override the ID to match the rematch ID
                     req
                 } else {
+                    log::warn!(
+                        "[JOIN] {} target lobby {} not found or not joinable",
+                        name,
+                        req
+                    );
                     return Err("Lobby not found or not joinable".to_string());
                 }
             }
@@ -262,27 +345,61 @@ pub fn join_player(
         match resolve_join_target(None, games) {
             Some(id) => id,
             None => {
-                spawn_waiting_lobby(games, next_id, "FFA", false, None, None, String::new());
+                log::info!(
+                    "[JOIN] No Matchmaking lobby available for {}, spawning one",
+                    name
+                );
+                spawn_waiting_lobby(
+                    games,
+                    next_id,
+                    "FFA",
+                    LobbyKind::Matchmaking,
+                    false,
+                    None,
+                    None,
+                    String::new(),
+                );
                 games.last().unwrap().id
             }
         }
     };
 
-    let lobby = games
-        .iter_mut()
-        .find(|g| g.id == lobby_id)
-        .expect("lobby must exist");
+    let lobby = match games.iter_mut().find(|g| g.id == lobby_id) {
+        Some(l) => l,
+        None => {
+            log::error!(
+                "[JOIN] Lobby {} disappeared between selection and join for player {}",
+                lobby_id,
+                name
+            );
+            return Err("Lobby not found".to_string());
+        }
+    };
 
     if !lobby.joinable() {
+        log::warn!(
+            "[JOIN] {} tried to join lobby {} which is no longer joinable (phase={:?})",
+            name,
+            lobby_id,
+            lobby.phase
+        );
         return Err("Lobby is not accepting joins".to_string());
     }
     if let Some(ref lobby_pw) = lobby.password.clone() {
         if password.as_deref() != Some(lobby_pw.as_str()) {
+            log::warn!("[JOIN] {} gave wrong password for lobby {}", name, lobby_id);
             return Err("Wrong password".to_string());
         }
     }
     let max = lobby.config.max_players as usize;
     if lobby.players.len() >= max {
+        log::warn!(
+            "[JOIN] {} tried to join lobby {} but it is full ({}/{})",
+            name,
+            lobby_id,
+            lobby.players.len(),
+            max
+        );
         return Err("Lobby is full".to_string());
     }
 
@@ -363,12 +480,36 @@ fn start_match(lobby: &mut ServerLobby) {
 
 pub fn force_start(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
     let Some(lobby) = games.iter_mut().find(|g| g.id == lobby_id) else {
+        log::warn!(
+            "[FORCE_START] Lobby {} not found (player_id={})",
+            lobby_id,
+            player_id
+        );
         return;
     };
+    if lobby.kind != LobbyKind::Custom {
+        log::warn!(
+            "[FORCE_START] Player {} tried to force-start Matchmaking lobby {} — ignored",
+            player_id,
+            lobby_id
+        );
+        return;
+    }
     if lobby.host_player_id != Some(player_id) {
+        log::warn!(
+            "[FORCE_START] Player {} is not host of lobby {} (host={:?}) — rejected",
+            player_id,
+            lobby_id,
+            lobby.host_player_id
+        );
         return;
     }
     if lobby.players.is_empty() {
+        log::warn!(
+            "[FORCE_START] Host {} tried to start empty lobby {} — ignored",
+            player_id,
+            lobby_id
+        );
         return;
     }
     match lobby.phase {
@@ -376,20 +517,27 @@ pub fn force_start(games: &mut [ServerLobby], lobby_id: u64, player_id: u16) {
             lobby.phase = LobbyPhase::CountingDown;
             lobby.countdown_secs = 3.0;
             log::info!(
-                "Lobby {} force-started by host player {}",
+                "[FORCE_START] Lobby {} started by host {} ({} players)",
                 lobby_id,
-                player_id
+                player_id,
+                lobby.players.len()
             );
         }
         LobbyPhase::CountingDown if lobby.countdown_secs > 3.0 => {
             lobby.countdown_secs = 3.0;
             log::info!(
-                "Lobby {} countdown snapped to 3s by host player {}",
+                "[FORCE_START] Lobby {} countdown snapped to 3s by host {}",
                 lobby_id,
                 player_id
             );
         }
-        _ => {}
+        other => {
+            log::info!(
+                "[FORCE_START] Lobby {} already in phase {:?}, no-op",
+                lobby_id,
+                other
+            );
+        }
     }
 }
 
@@ -398,7 +546,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
     promote_countdown(games);
 
     for lobby in games.iter() {
-        sync_private_lobby_to_members(lobby);
+        sync_host_lobby_to_members(lobby);
     }
 
     let mut i = 0;
@@ -448,11 +596,23 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                         players,
                         is_starting,
                     };
-                    let sync_json =
-                        bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg))
-                            .unwrap();
-                    for p in &lobby.players {
-                        let _ = p.tx.try_send(sync_json.clone());
+                    match bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(
+                        sync_msg,
+                    )) {
+                        Ok(sync_json) => {
+                            for p in &lobby.players {
+                                if let Err(e) = p.tx.try_send(sync_json.clone()) {
+                                    log::debug!("[LOADING] SyncState send failed for player {} in lobby {}: {}", p.player_id, lobby.id, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "[LOADING] Failed to serialize SyncState for lobby {}: {}",
+                                lobby.id,
+                                e
+                            );
+                        }
                     }
 
                     if lobby.countdown_secs <= 0.0 {
@@ -466,18 +626,23 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                 reason: "Sync timeout. Requeueing...".to_string(),
                                 rematch_lobby_id: None,
                             };
-                            let closed_json = bincode::serialize(
+                            if let Ok(closed_json) = bincode::serialize(
                                 &sow_core::protocol::ServerMessage::LobbyClosed(closed_msg),
-                            )
-                            .unwrap();
-                            lobby.players.retain(|p| {
-                                if lobby.ready_players.contains(&p.player_id) {
-                                    true
-                                } else {
-                                    let _ = p.tx.try_send(closed_json.clone());
-                                    false
-                                }
-                            });
+                            ) {
+                                lobby.players.retain(|p| {
+                                    if lobby.ready_players.contains(&p.player_id) {
+                                        true
+                                    } else {
+                                        let _ = p.tx.try_send(closed_json.clone());
+                                        false
+                                    }
+                                });
+                            } else {
+                                log::error!("[LOADING] Failed to serialize LobbyClosed for lobby {} — dropping all slow clients", lobby.id);
+                                lobby
+                                    .players
+                                    .retain(|p| lobby.ready_players.contains(&p.player_id));
+                            }
                         } else {
                             log::info!(
                                 "Lobby {} all clients ready, starting active match!",
@@ -516,6 +681,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
 pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
     LobbyInfo {
         id: g.id,
+        kind: g.kind,
         num_players: g.players.len() as u32,
         max_players: g.config.max_players,
         is_counting_down: matches!(g.phase, LobbyPhase::CountingDown),
@@ -544,9 +710,10 @@ pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
     }
 }
 
-/// Host-created lobbies (private or public) are synced to members so all players see the roster.
-pub fn sync_private_lobby_to_members(lobby: &ServerLobby) {
-    if lobby.host_player_id.is_none() || !lobby.joinable() {
+/// Custom lobbies (host-created, public or private) push roster/timer updates to all members.
+/// Called every tick so the host sees joiners and players see the countdown once the host starts.
+pub fn sync_host_lobby_to_members(lobby: &ServerLobby) {
+    if lobby.kind != LobbyKind::Custom || !lobby.joinable() {
         return;
     }
     let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby
@@ -569,17 +736,42 @@ pub fn sync_private_lobby_to_members(lobby: &ServerLobby) {
         players,
         is_starting: false,
     };
-    let sync_json =
-        bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg)).unwrap();
-    for p in &lobby.players {
-        let _ = p.tx.try_send(sync_json.clone());
+    match bincode::serialize(&sow_core::protocol::ServerMessage::SyncState(sync_msg)) {
+        Ok(sync_json) => {
+            for p in &lobby.players {
+                if let Err(e) = p.tx.try_send(sync_json.clone()) {
+                    log::debug!(
+                        "[SYNC] Failed to send SyncState to player {} in lobby {}: {}",
+                        p.player_id,
+                        lobby.id,
+                        e
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            log::error!(
+                "[SYNC] Failed to serialize SyncState for lobby {}: {}",
+                lobby.id,
+                e
+            );
+        }
     }
 }
 
 pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
+    // Matchmaking lobbies → always broadcast (main menu quick-join).
+    // Custom public lobbies → broadcast (Game Browser).
+    // Custom private lobbies → NEVER broadcast (code/invite only).
     let mut infos: Vec<LobbyInfo> = games
         .iter()
-        .filter(|g| g.joinable() && !g.is_private)
+        .filter(|g| {
+            g.joinable()
+                && match g.kind {
+                    LobbyKind::Matchmaking => true,
+                    LobbyKind::Custom => !g.is_private,
+                }
+        })
         .map(lobby_to_info)
         .collect();
     infos.sort_by_key(|l| l.id);

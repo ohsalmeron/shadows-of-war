@@ -77,36 +77,6 @@ pub fn draw(
             let config = &mut state.single_player_config;
             let item_gap = 10.0;
 
-            // Leader card
-            setting_card(ui, "ACTIVE LEADER & CIVILIZATION", |ui| {
-                let leader = config.player_leader;
-                let civ = config.player_civilization;
-                ui.horizontal(|ui| {
-                    let (icon_rect, _) =
-                        ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::hover());
-                    if !crate::widgets::try_paint_emoji(
-                        ui.painter(),
-                        leader.menu_emoji(),
-                        icon_rect,
-                        egui::Color32::WHITE,
-                    ) {
-                        ui.label(RichText::new(leader.menu_emoji()).size(18.0));
-                    }
-                    ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new(format!("{} ({})", leader.name(), civ.name())).strong(),
-                        );
-                        ui.label(
-                            RichText::new(leader.perk_description())
-                                .small()
-                                .color(crate::ui::theme::palette::neon_cyan()),
-                        );
-                    });
-                });
-            });
-
-            ui.add_space(item_gap);
-
             // Map preview
             let map_name = config.map_name.clone();
             asset_loader.request_thumbnail(&map_name);

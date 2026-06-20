@@ -161,41 +161,45 @@ pub fn draw_user_profile_header(
             });
         });
     } else {
-        let field_h = 32.0 * scale;
-        let field_rect = egui::Rect::from_min_max(
-            egui::pos2(
-                avatar_rect.max.x + 12.0 * scale,
-                rect.min.y + (rect.height() - field_h) / 2.0,
-            ),
-            egui::pos2(
-                rect.max.x - 8.0 * scale,
-                rect.min.y + (rect.height() + field_h) / 2.0,
-            ),
+        let gap = 8.0 * scale;
+        let row_top = avatar_rect.min.y;
+        let row_h = avatar_rect.height();
+
+        let btn_text_size = 11.0 * scale;
+        let btn_font = egui::FontId::proportional(btn_text_size);
+        let btn_galley =
+            ui.painter()
+                .layout_no_wrap(strings.sign_in.clone(), btn_font, Color32::WHITE);
+        let btn_w = btn_galley.size().x + 16.0 * scale;
+
+        let btn_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.max.x - 8.0 * scale - btn_w, row_top),
+            egui::pos2(rect.max.x - 8.0 * scale, row_top + row_h),
+        );
+        let nickname_rect = egui::Rect::from_min_max(
+            egui::pos2(avatar_rect.max.x + 12.0 * scale, row_top),
+            egui::pos2(btn_rect.min.x - gap, row_top + row_h),
         );
 
-        ui.scope_builder(egui::UiBuilder::new().max_rect(field_rect), |ui| {
-            // ponytail: simplified absolute positioning and manual painter rects using a standard egui::Frame layout
-            let field_frame = egui::Frame::NONE
-                .fill(crate::ui::theme::palette::field_bg())
-                .stroke(Stroke::new(
-                    1.0_f32,
-                    crate::ui::theme::palette::field_border(),
-                ))
-                .corner_radius(egui::CornerRadius::same(6))
-                .inner_margin(egui::Margin::symmetric(8, 4));
+        let field_frame = egui::Frame::NONE
+            .fill(crate::ui::theme::palette::field_bg())
+            .stroke(Stroke::new(
+                1.0_f32,
+                crate::ui::theme::palette::field_border(),
+            ))
+            .corner_radius(egui::CornerRadius::same(6))
+            .inner_margin(egui::Margin::symmetric(8, 4));
 
+        ui.scope_builder(egui::UiBuilder::new().max_rect(nickname_rect), |ui| {
             field_frame.show(ui, |ui| {
-                ui.set_width(ui.available_width());
+                ui.set_width(nickname_rect.width());
+                ui.set_height(row_h);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    let btn_w = 64.0 * scale;
-                    let spacing = ui.spacing().item_spacing.x;
-                    let text_edit_w = (ui.available_width() - btn_w - spacing).max(20.0);
-
                     let output_name = egui::TextEdit::singleline(&mut state.player_name)
                         .id(egui::Id::new("main_menu_nickname"))
                         .hint_text(&strings.nickname_hint)
                         .char_limit(16)
-                        .desired_width(text_edit_w)
+                        .desired_width(nickname_rect.width() - 16.0 * scale)
                         .frame(egui::Frame::NONE)
                         .font(egui::FontId::proportional(16.0))
                         .text_color(Color32::WHITE)
@@ -214,15 +218,19 @@ pub fn draw_user_profile_header(
                             edit_state.store(ui.ctx(), output_name.response.id);
                         }
                     }
-
-                    let sign_in_btn = crate::widgets::ThemeButton::new(&strings.sign_in)
-                        .style(crate::widgets::ThemeButtonStyle::Secondary)
-                        .min_size(egui::vec2(btn_w, 24.0 * scale))
-                        .text_size(10.0 * scale);
-                    if ui.add(sign_in_btn).clicked() {
-                        *action = Some(crate::UiAction::PortalShowAuthPrompt);
-                    }
                 });
+            });
+        });
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                let sign_in_btn = crate::widgets::ThemeButton::new(&strings.sign_in)
+                    .style(crate::widgets::ThemeButtonStyle::Secondary)
+                    .min_size(egui::vec2(btn_w, row_h))
+                    .text_size(btn_text_size);
+                if ui.add(sign_in_btn).clicked() {
+                    *action = Some(crate::UiAction::PortalShowAuthPrompt);
+                }
             });
         });
     }

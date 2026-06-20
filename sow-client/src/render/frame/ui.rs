@@ -81,6 +81,10 @@ impl SowApp {
             }
 
             self.render_dev_panels(ctx);
+            sow_ui::ui::theme::publish_lobby_modal_embed(
+                ctx,
+                crate::store_portals::is_lobby_modal_embed(),
+            );
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {
@@ -281,41 +285,132 @@ impl SowApp {
             return;
         };
 
-        let Some(player) = snap.players.iter().find(|p| p.id == hovered_owner) else {
-            return;
-        };
-
-        // Count their buildings
-        let mut city_count = 0;
-        let mut bunker_count = 0;
-        let mut factory_count = 0;
-        let mut port_count = 0;
-        for b in &snap.buildings {
-            if b.owner_id == hovered_owner {
-                match b.kind {
-                    sow_core::game::BuildingKind::City => city_count += 1,
-                    sow_core::game::BuildingKind::Bunker => bunker_count += 1,
-                    sow_core::game::BuildingKind::Factory => factory_count += 1,
-                    sow_core::game::BuildingKind::Port => port_count += 1,
-                }
-            }
+        // ponytail: cached in Arc with pre-formatted labels to avoid any allocations/formatting in the render loop
+        #[derive(Debug)]
+        struct CachedHover {
+            owner_id: u16,
+            tick: u64,
+            flag_emoji: String,
+            name: String,
+            player_color: egui::Color32,
+            type_label: String,
+            leader_civ_label: String,
+            troops_label: String,
+            gold_label: String,
+            tiles_label: String,
+            city_label: Option<String>,
+            bunker_label: Option<String>,
+            factory_label: Option<String>,
+            port_label: Option<String>,
         }
 
-        // Render the top panel
-        let player_color = egui::Color32::from_rgb(
-            (player.color[0] * 255.0) as u8,
-            (player.color[1] * 255.0) as u8,
-            (player.color[2] * 255.0) as u8,
-        );
+        let cached = ctx.data(|d| {
+            d.get_temp::<std::sync::Arc<CachedHover>>(egui::Id::new("player_hover_cache"))
+        });
+
+        let info = if let Some(c) =
+            cached.filter(|c| c.owner_id == hovered_owner && c.tick == snap.tick)
+        {
+            c
+        } else {
+            let Some(player) = snap.players.iter().find(|p| p.id == hovered_owner) else {
+                return;
+            };
+
+            // Count their buildings
+            let mut city_count = 0;
+            let mut bunker_count = 0;
+            let mut factory_count = 0;
+            let mut port_count = 0;
+            for b in &snap.buildings {
+                if b.owner_id == hovered_owner {
+                    match b.kind {
+                        sow_core::game::BuildingKind::City => city_count += 1,
+                        sow_core::game::BuildingKind::Bunker => bunker_count += 1,
+                        sow_core::game::BuildingKind::Factory => factory_count += 1,
+                        sow_core::game::BuildingKind::Port => port_count += 1,
+                    }
+                }
+            }
+
+            let type_str = match player.player_type {
+                sow_core::player::PlayerType::Human => "Human",
+                sow_core::player::PlayerType::Bot => "AI Bot",
+                sow_core::player::PlayerType::Nation => "AI Nation",
+            };
+
+            let player_color = egui::Color32::from_rgb(
+                (player.color[0] * 255.0) as u8,
+                (player.color[1] * 255.0) as u8,
+                (player.color[2] * 255.0) as u8,
+            );
+
+            let flag_emoji = player.active_emoji.as_deref().unwrap_or("🏳️").to_string();
+            let type_label = format!("({})", type_str);
+            let leader_civ_label = format!(
+                "Leader: {} | Civilization: {}",
+                player.leader.name(),
+                player.civilization.name()
+            );
+            let troops_label = format!("🛡️ {:.0}/{:.0}", player.troops, player.max_troops);
+            let gold_label = format!("🪙 {:.0}", player.gold);
+            let tiles_label = format!("🏳️ {} tiles", player.tile_count);
+            let city_label = if city_count > 0 {
+                Some(format!("🏛️ x{}", city_count))
+            } else {
+                None
+            };
+            let bunker_label = if bunker_count > 0 {
+                Some(format!("🛡️ x{}", bunker_count))
+            } else {
+                None
+            };
+            let factory_label = if factory_count > 0 {
+                Some(format!("🏭 x{}", factory_count))
+            } else {
+                None
+            };
+            let port_label = if port_count > 0 {
+                Some(format!("⚓ x{}", port_count))
+            } else {
+                None
+            };
+
+            let new_c = std::sync::Arc::new(CachedHover {
+                owner_id: hovered_owner,
+                tick: snap.tick,
+                flag_emoji,
+                name: player.name.clone(),
+                player_color,
+                type_label,
+                leader_civ_label,
+                troops_label,
+                gold_label,
+                tiles_label,
+                city_label,
+                bunker_label,
+                factory_label,
+                port_label,
+            });
+
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("player_hover_cache"), new_c.clone()));
+            new_c
+        };
+
+        let safe_area_top = ctx.input(|i| i.safe_area_insets().0.top);
 
         egui::Window::new("Player Hover Info")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 48.0))
+            .order(egui::Order::Foreground)
+            .anchor(
+                egui::Align2::CENTER_TOP,
+                egui::vec2(0.0, 12.0 + safe_area_top),
+            )
             .frame(
                 egui::Frame::window(&ctx.global_style())
-                    .fill(sow_ui::ui::theme::palette::surface())
+                    .fill(egui::Color32::from_black_alpha(150))
                     .stroke(egui::Stroke::new(
                         1.0_f32,
                         sow_ui::ui::theme::palette::field_border(),
@@ -331,47 +426,37 @@ impl SowApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // Avatar/Emoji representation or Spirit Animal if any
-                    let flag_emoji = player.active_emoji.as_deref().unwrap_or("🏳️");
                     let (icon_rect, _) =
                         ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::hover());
                     if !sow_ui::widgets::try_paint_emoji(
                         ui.painter(),
-                        flag_emoji,
+                        &info.flag_emoji,
                         icon_rect,
                         egui::Color32::WHITE,
                     ) {
-                        ui.label(egui::RichText::new(flag_emoji).size(24.0));
+                        ui.label(egui::RichText::new(&info.flag_emoji).size(24.0));
                     }
 
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(
-                                egui::RichText::new(&player.name)
+                                egui::RichText::new(&info.name)
                                     .size(16.0)
                                     .strong()
-                                    .color(player_color),
+                                    .color(info.player_color),
                             );
 
-                            let type_str = match player.player_type {
-                                sow_core::player::PlayerType::Human => "Human",
-                                sow_core::player::PlayerType::Bot => "AI Bot",
-                                sow_core::player::PlayerType::Nation => "AI Nation",
-                            };
                             ui.label(
-                                egui::RichText::new(format!("({})", type_str))
+                                egui::RichText::new(&info.type_label)
                                     .size(11.0)
                                     .color(egui::Color32::from_gray(140)),
                             );
                         });
 
                         ui.label(
-                            egui::RichText::new(format!(
-                                "Leader: {} | Civilization: {}",
-                                player.leader.name(),
-                                player.civilization.name()
-                            ))
-                            .size(12.0)
-                            .color(egui::Color32::from_gray(180)),
+                            egui::RichText::new(&info.leader_civ_label)
+                                .size(12.0)
+                                .color(egui::Color32::from_gray(180)),
                         );
                     });
 
@@ -382,63 +467,63 @@ impl SowApp {
                         ui.horizontal(|ui| {
                             sow_ui::widgets::emoji_label(
                                 ui,
-                                &format!("🛡️ {:.0}/{:.0}", player.troops, player.max_troops),
+                                &info.troops_label,
                                 egui::FontId::proportional(13.0),
                                 egui::Color32::from_rgb(34, 211, 238),
                             );
                             ui.add_space(8.0);
                             sow_ui::widgets::emoji_label(
                                 ui,
-                                &format!("🪙 {:.0}", player.gold),
+                                &info.gold_label,
                                 egui::FontId::proportional(13.0),
                                 egui::Color32::from_rgb(250, 204, 21),
                             );
                             ui.add_space(8.0);
                             sow_ui::widgets::emoji_label(
                                 ui,
-                                &format!("🏳️ {} tiles", player.tile_count),
+                                &info.tiles_label,
                                 egui::FontId::proportional(13.0),
                                 egui::Color32::from_gray(210),
                             );
                         });
 
                         ui.horizontal(|ui| {
-                            if city_count > 0 {
+                            if let Some(ref l) = info.city_label {
                                 sow_ui::widgets::emoji_label(
                                     ui,
-                                    &format!("🏛️ x{}", city_count),
+                                    l,
                                     egui::FontId::proportional(12.0),
                                     egui::Color32::from_gray(210),
                                 );
                             }
-                            if bunker_count > 0 {
+                            if let Some(ref l) = info.bunker_label {
                                 sow_ui::widgets::emoji_label(
                                     ui,
-                                    &format!("🛡️ x{}", bunker_count),
+                                    l,
                                     egui::FontId::proportional(12.0),
                                     egui::Color32::from_gray(210),
                                 );
                             }
-                            if factory_count > 0 {
+                            if let Some(ref l) = info.factory_label {
                                 sow_ui::widgets::emoji_label(
                                     ui,
-                                    &format!("🏭 x{}", factory_count),
+                                    l,
                                     egui::FontId::proportional(12.0),
                                     egui::Color32::from_gray(210),
                                 );
                             }
-                            if port_count > 0 {
+                            if let Some(ref l) = info.port_label {
                                 sow_ui::widgets::emoji_label(
                                     ui,
-                                    &format!("⚓ x{}", port_count),
+                                    l,
                                     egui::FontId::proportional(12.0),
                                     egui::Color32::from_gray(210),
                                 );
                             }
-                            if city_count == 0
-                                && bunker_count == 0
-                                && factory_count == 0
-                                && port_count == 0
+                            if info.city_label.is_none()
+                                && info.bunker_label.is_none()
+                                && info.factory_label.is_none()
+                                && info.port_label.is_none()
                             {
                                 ui.label(
                                     egui::RichText::new("No structures placed")

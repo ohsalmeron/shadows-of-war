@@ -1,6 +1,17 @@
 use super::MainMenuState;
 use crate::UiAction;
-use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
+use egui::{Align, Color32, Context, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LobbyBodyLayout {
+    FullScreen,
+    ModalStack,
+}
+
+fn resolve_lobby_info(state: &MainMenuState) -> Option<&sow_core::protocol::LobbyInfo> {
+    let lobby_id = state.joined_lobby_id.or(state.pending_join_lobby_id)?;
+    state.lobbies.iter().find(|l| l.id == lobby_id)
+}
 
 fn lobby_bottom_action_height(
     compact: bool,
@@ -16,6 +27,15 @@ fn lobby_bottom_action_height(
     }
 }
 
+fn lobby_action_flags(
+    state: &MainMenuState,
+    lobby_info: Option<&sow_core::protocol::LobbyInfo>,
+) -> (bool, bool) {
+    let show_invite = state.in_private_match && lobby_info.is_some();
+    let show_start = state.in_private_match && state.is_lobby_host && lobby_info.is_some();
+    (show_invite, show_start)
+}
+
 fn draw_lobby_bottom_actions(
     ui: &mut Ui,
     state: &MainMenuState,
@@ -25,18 +45,19 @@ fn draw_lobby_bottom_actions(
     lang: sow_i18n::Language,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
+    if state.is_lobby_host {
+        if let Some(lobby) = lobby_info {
+            let start_btn = crate::widgets::ThemeButton::new(&strings.start_game)
+                .style(crate::widgets::ThemeButtonStyle::Primary)
+                .min_size(egui::vec2(200.0, action_min_h));
+            if ui.add(start_btn).clicked() {
+                *action = Some(UiAction::StartPrivateLobby(lobby.id));
+            }
+            ui.add_space(8.0);
+        }
+    }
     if state.in_private_match {
         if let Some(lobby) = lobby_info {
-            if state.is_lobby_host {
-                let start_btn = crate::widgets::ThemeButton::new(&strings.start_game)
-                    .style(crate::widgets::ThemeButtonStyle::Primary)
-                    .min_size(egui::vec2(200.0, action_min_h));
-                if ui.add(start_btn).clicked() {
-                    *action = Some(UiAction::StartPrivateLobby(lobby.id));
-                }
-                ui.add_space(8.0);
-            }
-
             let now = ui.input(|i| i.time);
             let is_copied = if let Some(t) = state.invite_copied_at {
                 now - t < 2.0
@@ -66,6 +87,158 @@ fn draw_lobby_bottom_actions(
     }
 }
 
+fn draw_lobby_header(
+    ui: &mut Ui,
+    state: &MainMenuState,
+    lobby: &sow_core::protocol::LobbyInfo,
+    section_gap: f32,
+    lang: sow_i18n::Language,
+    compact: bool,
+) {
+    let strings = &sow_i18n::get(lang).main_menu;
+    ui.vertical_centered(|ui| {
+        crate::ui::theme::outlined_label(
+            ui,
+            &strings.matchmaking_established,
+            egui::FontId::proportional(if compact { 20.0 } else { 28.0 }),
+            Color32::WHITE,
+        );
+
+        let timer_text = if lobby.is_counting_down {
+            format!("STARTING IN: {:.1}S", lobby.timer_secs)
+        } else if state.wait_timer_secs > 0.0 {
+            format!("STARTING IN: {:.1}S", state.wait_timer_secs)
+        } else {
+            strings.awaiting_combat_criteria.to_string()
+        };
+
+        let timer_color = if lobby.is_counting_down || state.wait_timer_secs > 0.0 {
+            Color32::from_rgb(255, 210, 120)
+        } else {
+            crate::ui::theme::palette::text_muted()
+        };
+
+        ui.add_space(2.0);
+        crate::ui::theme::outlined_label(
+            ui,
+            &timer_text,
+            egui::FontId::proportional(if compact { 14.0 } else { 18.0 }),
+            timer_color,
+        );
+    });
+    ui.add_space(section_gap);
+}
+
+fn draw_lobby_connecting(ui: &mut Ui, middle_h: f32, lang: sow_i18n::Language) {
+    let strings = &sow_i18n::get(lang).main_menu;
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), middle_h),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(middle_h * 0.35);
+                ui.add(egui::Spinner::new().size(36.0));
+                ui.add_space(16.0);
+                crate::ui::theme::outlined_label(
+                    ui,
+                    &strings.establishing_tactical_comm,
+                    egui::FontId::proportional(18.0),
+                    crate::ui::theme::palette::text_muted(),
+                );
+            });
+        },
+    );
+}
+
+fn draw_lobby_body(
+    ui: &mut Ui,
+    lobby: &sow_core::protocol::LobbyInfo,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_i18n::Language,
+    compact: bool,
+    layout: LobbyBodyLayout,
+    middle_h: f32,
+) {
+    match layout {
+        LobbyBodyLayout::ModalStack => {
+            ui.vertical(|ui| {
+                draw_map_briefing(ui, lobby, asset_loader, true, lang);
+                ui.add_space(8.0);
+                draw_ready_room(ui, lobby, asset_loader, lang);
+            });
+        }
+        LobbyBodyLayout::FullScreen => {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), middle_h),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    if compact {
+                        ui.vertical(|ui| {
+                            draw_map_briefing(ui, lobby, asset_loader, true, lang);
+                            ui.add_space(8.0);
+                            let ready_room_h = ui.available_height();
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(ui.available_width(), ready_room_h),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    draw_ready_room(ui, lobby, asset_loader, lang);
+                                },
+                            );
+                        });
+                    } else {
+                        ui.horizontal_top(|ui| {
+                            let total_w = ui.available_width();
+                            let col_w = (total_w - 20.0) * 0.5_f32;
+                            let col_h = ui.available_height();
+
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(col_w, col_h),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    draw_map_briefing(ui, lobby, asset_loader, false, lang);
+                                },
+                            );
+
+                            ui.add_space(20.0);
+
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(col_w, col_h),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    draw_ready_room(ui, lobby, asset_loader, lang);
+                                },
+                            );
+                        });
+                    }
+                },
+            );
+        }
+    }
+}
+
+fn draw_lobby_footer(
+    ui: &mut Ui,
+    state: &MainMenuState,
+    lobby_info: Option<&sow_core::protocol::LobbyInfo>,
+    action_min_h: f32,
+    action: &mut Option<UiAction>,
+    lang: sow_i18n::Language,
+    compact: bool,
+) {
+    ui.add_space(8.0);
+    if compact {
+        ui.vertical_centered(|ui| {
+            draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
+        });
+    } else {
+        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 12.0;
+            draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
+        });
+    }
+    ui.add_space(16.0);
+}
+
 pub fn draw_queue_overlay(
     ui: &mut Ui,
     state: &MainMenuState,
@@ -75,21 +248,10 @@ pub fn draw_queue_overlay(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let strings = &sow_i18n::get(lang).main_menu;
     let compact = crate::ui::theme::compact_viewport(ui.ctx());
+    let lobby_info = resolve_lobby_info(state);
+    let (show_invite, show_start) = lobby_action_flags(state, lobby_info);
 
-    // Get lobby information
-    let mut lobby_info = None;
-    if let Some(lobby_id) = state.joined_lobby_id.or(state.pending_join_lobby_id) {
-        if let Some(lobby) = state.lobbies.iter().find(|l| l.id == lobby_id) {
-            lobby_info = Some(lobby);
-        }
-    }
-
-    let show_invite = state.in_private_match && lobby_info.is_some();
-    let show_start = state.in_private_match && state.is_lobby_host && lobby_info.is_some();
-
-    // 1. Premium standard panel matching main menu
     let panel_frame = crate::ui::theme::standard_panel_frame(compact);
     let parent_available = ui.available_size();
     let pad = if compact { 32.0 } else { 50.0 };
@@ -103,130 +265,122 @@ pub fn draw_queue_overlay(
         }
         ui.vertical(|ui| {
             if let Some(lobby) = lobby_info {
-                // Header (Status / Title / Timer)
-                ui.vertical_centered(|ui| {
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &strings.matchmaking_established,
-                        egui::FontId::proportional(if compact { 20.0 } else { 28.0 }),
-                        Color32::WHITE,
-                    );
+                draw_lobby_header(ui, state, lobby, section_gap, lang, compact);
 
-                    let timer_text = if lobby.is_counting_down {
-                        format!("STARTING IN: {:.1}S", lobby.timer_secs)
-                    } else if state.wait_timer_secs > 0.0 {
-                        format!("STARTING IN: {:.1}S", state.wait_timer_secs)
-                    } else {
-                        strings.awaiting_combat_criteria.to_string()
-                    };
-
-                    let timer_color = if lobby.is_counting_down || state.wait_timer_secs > 0.0 {
-                        Color32::from_rgb(255, 210, 120)
-                    } else {
-                        crate::ui::theme::palette::text_muted()
-                    };
-
-                    ui.add_space(2.0);
-                    crate::ui::theme::outlined_label(
-                        ui,
-                        &timer_text,
-                        egui::FontId::proportional(if compact { 14.0 } else { 18.0 }),
-                        timer_color,
-                    );
-                });
-
-                ui.add_space(section_gap);
-
-                // 2. Middle Flex Content Area
                 let button_h =
                     lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
                 let middle_h = ui.available_height() - button_h;
-
-                ui.allocate_ui_with_layout(
-                    egui::vec2(ui.available_width(), middle_h),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        if compact {
-                            ui.vertical(|ui| {
-                                // Draw map briefing (fixed height)
-                                draw_map_briefing(ui, lobby, asset_loader, true, lang);
-                                ui.add_space(8.0);
-                                // Draw ready room player list (takes remaining height)
-                                let ready_room_h = ui.available_height();
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(ui.available_width(), ready_room_h),
-                                    egui::Layout::top_down(egui::Align::Min),
-                                    |ui| {
-                                        draw_ready_room(ui, lobby, asset_loader, lang);
-                                    },
-                                );
-                            });
-                        } else {
-                            ui.horizontal_top(|ui| {
-                                let total_w = ui.available_width();
-                                let col_w = (total_w - 20.0) * 0.5_f32;
-                                let col_h = ui.available_height();
-
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(col_w, col_h),
-                                    egui::Layout::top_down(egui::Align::Min),
-                                    |ui| {
-                                        draw_map_briefing(ui, lobby, asset_loader, false, lang);
-                                    },
-                                );
-
-                                ui.add_space(20.0);
-
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(col_w, col_h),
-                                    egui::Layout::top_down(egui::Align::Min),
-                                    |ui| {
-                                        draw_ready_room(ui, lobby, asset_loader, lang);
-                                    },
-                                );
-                            });
-                        }
-                    },
+                draw_lobby_body(
+                    ui,
+                    lobby,
+                    asset_loader,
+                    lang,
+                    compact,
+                    LobbyBodyLayout::FullScreen,
+                    middle_h,
                 );
             } else {
-                // Connecting/Syncing state
                 let button_h =
                     lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
                 let middle_h = ui.available_height() - button_h;
-                ui.allocate_ui_with_layout(
-                    egui::vec2(ui.available_width(), middle_h),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(middle_h * 0.35);
-                            ui.add(egui::Spinner::new().size(36.0));
-                            ui.add_space(16.0);
-                            crate::ui::theme::outlined_label(
-                                ui,
-                                &strings.establishing_tactical_comm,
-                                egui::FontId::proportional(18.0),
-                                crate::ui::theme::palette::text_muted(),
-                            );
-                        });
-                    },
-                );
+                draw_lobby_connecting(ui, middle_h, lang);
             }
 
-            // 3. Bottom Button Area
-            ui.add_space(8.0);
-            if compact {
-                ui.vertical_centered(|ui| {
-                    draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
-                });
-            } else {
-                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                    ui.spacing_mut().item_spacing.x = 12.0;
-                    draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
-                });
-            }
-            ui.add_space(16.0);
+            draw_lobby_footer(ui, state, lobby_info, action_min_h, action, lang, compact);
         });
     });
+}
+
+pub fn draw_lobby_embed_modal(
+    ctx: &Context,
+    state: &MainMenuState,
+    action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_i18n::Language,
+    reduced_motion: bool,
+) {
+    let compact = crate::ui::theme::compact_viewport(ctx);
+    let lobby_info = resolve_lobby_info(state);
+    let (show_invite, show_start) = lobby_action_flags(state, lobby_info);
+    let action_min_h = (if compact { 44.0 } else { 48.0 }) * crate::ui::theme::viewport_scale(ctx);
+    let section_gap = 8.0 * crate::ui::theme::viewport_scale(ctx);
+
+    let progress = ctx.animate_bool_with_time(
+        egui::Id::new("lobby_embed_modal_animation_progress"),
+        true,
+        crate::ui::theme::anim_duration(reduced_motion),
+    );
+    if progress <= 0.01 {
+        return;
+    }
+
+    let screen_rect = ctx.input(|i| i.content_rect());
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("lobby_embed_modal_scrim"),
+    ))
+    .rect_filled(
+        screen_rect,
+        0.0,
+        Color32::from_black_alpha((150.0 * progress) as u8),
+    );
+
+    let modal_w = (screen_rect.width() - 24.0).clamp(280.0, 520.0);
+    let modal_h = (screen_rect.height() - 24.0).clamp(260.0, 520.0);
+    let footer_h = lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
+    let header_h = if compact { 56.0 } else { 72.0 };
+    let y_offset = if progress >= 1.0 {
+        0.0
+    } else {
+        -80.0 * (1.0 - progress)
+    };
+
+    egui::Window::new("lobby_embed_modal")
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
+        .fixed_size(egui::vec2(modal_w, modal_h))
+        .frame(crate::ui::theme::standard_panel_frame(compact))
+        .show(ctx, |ui| {
+            if let Some(lobby) = lobby_info {
+                draw_lobby_header(ui, state, lobby, section_gap, lang, compact);
+            } else {
+                ui.vertical_centered(|ui| {
+                    ui.add(egui::Spinner::new().size(36.0));
+                    ui.add_space(8.0);
+                    let strings = &sow_i18n::get(lang).main_menu;
+                    crate::ui::theme::outlined_label(
+                        ui,
+                        &strings.establishing_tactical_comm,
+                        egui::FontId::proportional(16.0),
+                        crate::ui::theme::palette::text_muted(),
+                    );
+                });
+                ui.add_space(section_gap);
+            }
+
+            let scroll_h = (modal_h - header_h - footer_h - 24.0).max(80.0);
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .max_height(scroll_h)
+                .show(ui, |ui| {
+                    if let Some(lobby) = lobby_info {
+                        draw_lobby_body(
+                            ui,
+                            lobby,
+                            asset_loader,
+                            lang,
+                            compact,
+                            LobbyBodyLayout::ModalStack,
+                            scroll_h,
+                        );
+                    }
+                });
+
+            draw_lobby_footer(ui, state, lobby_info, action_min_h, action, lang, compact);
+        });
 }
 
 fn draw_map_briefing(
@@ -252,7 +406,6 @@ fn draw_map_briefing(
             }
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.vertical(|ui| {
-                // Header
                 ui.label(
                     RichText::new(&strings.tactical_briefing)
                         .size(14.0)
@@ -261,7 +414,6 @@ fn draw_map_briefing(
                 );
                 ui.add_space(4.0);
 
-                // Map Preview Visual
                 let thumbnail = asset_loader.thumbnail(&lobby.map_name);
                 let aspect = 1.77_f32;
                 let preview_w = ui.available_width();
@@ -299,7 +451,6 @@ fn draw_map_briefing(
                     );
                 }
 
-                // Cyber glowing map border
                 ui.painter().rect_stroke(
                     rect,
                     8.0,
@@ -309,7 +460,6 @@ fn draw_map_briefing(
 
                 ui.add_space(6.0);
 
-                // Map details
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(
@@ -320,7 +470,6 @@ fn draw_map_briefing(
                         );
                         ui.add_space(2.0);
 
-                        // Mode indicator
                         let (mode_label, mode_color) = if lobby.game_mode == "FFA" {
                             (
                                 &strings.free_for_all,
@@ -355,7 +504,6 @@ fn draw_map_briefing(
                 ui.separator();
                 ui.add_space(4.0);
 
-                // Telemetry Details
                 if is_mobile {
                     ui.horizontal(|ui| {
                         ui.label(
@@ -436,10 +584,8 @@ fn draw_ready_room(
         .inner_margin(16.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_height(ui.available_height());
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.vertical(|ui| {
-                // Header
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(&strings.ready_room)
@@ -458,8 +604,7 @@ fn draw_ready_room(
                 });
                 ui.add_space(12.0);
 
-                // Player List Scrollable
-                let remaining_h = ui.available_height() - 8.0;
+                let remaining_h = ui.available_height().max(120.0);
                 egui::ScrollArea::vertical()
                     .max_height(remaining_h)
                     .show(ui, |ui| {
@@ -476,7 +621,6 @@ fn draw_ready_room(
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
                                     ui.horizontal(|ui| {
-                                        // 1. Chosen Leader Avatar
                                         let avatar_tex = asset_loader
                                             .avatars
                                             .get(&p.leader)
@@ -491,7 +635,6 @@ fn draw_ready_room(
 
                                         ui.add_space(8.0);
 
-                                        // 2. Player Name
                                         ui.label(
                                             RichText::new(&p.name)
                                                 .size(16.0)
@@ -499,7 +642,6 @@ fn draw_ready_room(
                                                 .color(Color32::WHITE),
                                         );
 
-                                        // 3. Ready Badge
                                         ui.with_layout(
                                             egui::Layout::right_to_left(egui::Align::Center),
                                             |ui| {

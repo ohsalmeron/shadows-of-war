@@ -22,6 +22,7 @@ CRATES: dict[str, set[Path]] = {
     },
     "sow-ui": {
         ROOT / "sow-ui" / "src" / "ui" / "main_menu" / "mod.rs",
+        ROOT / "sow-ui" / "src" / "ui" / "hud" / "tabs" / "controls.rs",
     },
     "sow-audio": set(),
     "sow-map": {

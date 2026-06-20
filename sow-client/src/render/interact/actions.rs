@@ -31,6 +31,9 @@ impl SowApp {
                     spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
                 }
                 UiAction::JoinLobby(id) => {
+                    if self.ui.app.main_menu_state.is_waiting {
+                        return;
+                    }
                     let join_msg = self.make_join_message(Some(id), false, None, None);
                     self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
                     if let Ok(json) = bincode::serialize(&join_msg) {
@@ -38,6 +41,7 @@ impl SowApp {
                             c.send(json);
                         }
                     }
+                    self.ui.app.main_menu_state.show_join_browser = false;
                     self.ui.app.main_menu_state.is_waiting = true;
                 }
                 UiAction::HostPrivateLobby => {

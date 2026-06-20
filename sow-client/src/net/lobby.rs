@@ -20,8 +20,11 @@ pub(crate) fn seed_joined_lobby_entry(
         }
         lobby.num_players = lobby.players.len() as u32;
     } else {
+        // Self-seeded entry for a joined lobby not yet in the broadcast.
+        // Always Custom — Matchmaking lobbies are always present in the broadcast before join.
         state.lobbies.push(sow_core::protocol::LobbyInfo {
             id: ack.lobby_id,
+            kind: sow_core::protocol::LobbyKind::Custom,
             num_players: 1,
             max_players: 8,
             is_counting_down: false,

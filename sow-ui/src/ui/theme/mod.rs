@@ -52,6 +52,9 @@ pub fn fit_scale(needed: f32, available: f32) -> f32 {
 #[inline]
 pub fn menu_rail_panel_width(available_w: f32, compact: bool, ctx: &Context) -> f32 {
     let s = viewport_scale(ctx);
+    if portrait_layout(ctx) {
+        return available_w.min(480.0 * s);
+    }
     if compact {
         return available_w.min(360.0 * s);
     }
@@ -93,6 +96,23 @@ pub fn anim_duration_hover_from_ctx(ctx: &Context) -> f32 {
 #[inline]
 pub fn publish_reduced_motion(ctx: &Context, reduced_motion: bool) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("sow_reduced_motion"), reduced_motion));
+}
+
+/// Publish portal-embed lobby modal preference for this frame (set by sow-client).
+#[inline]
+pub fn publish_lobby_modal_embed(ctx: &Context, lobby_modal_embed: bool) {
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("sow_lobby_modal_embed"), lobby_modal_embed);
+    });
+}
+
+/// True when waiting lobby should render as a scroll modal (CrazyGames / marketing iframe).
+#[inline]
+pub fn lobby_modal_embed(ctx: &Context) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("sow_lobby_modal_embed"))
+            .unwrap_or(false)
+    })
 }
 
 /// Transparent modal close control (settings, credits).

@@ -172,6 +172,19 @@ pub fn is_portal_embed() -> bool {
     }
 }
 
+/// Waiting lobby uses a scroll modal on short iframe hosts (CrazyGames + marketing embed).
+pub fn is_lobby_modal_embed() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        read_runtime_bool("crazygames").unwrap_or(false)
+            || read_runtime_bool("site_embed").unwrap_or(false)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
 pub fn should_fetch_cloud_profile() -> bool {
     if !is_portal_embed() {
         return true;

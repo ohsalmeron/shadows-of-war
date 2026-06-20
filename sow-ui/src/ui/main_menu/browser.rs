@@ -3,6 +3,30 @@ use crate::widgets::LobbyCard;
 use crate::UiAction;
 use egui::Ui;
 
+fn find_primary_lobby<'a>(
+    lobbies: &[&'a sow_core::protocol::LobbyInfo],
+) -> Option<&'a sow_core::protocol::LobbyInfo> {
+    let mut counting: Vec<_> = lobbies
+        .iter()
+        .filter(|l| l.is_counting_down)
+        .copied()
+        .collect();
+    if !counting.is_empty() {
+        counting.sort_by_key(|l| l.id);
+        return Some(counting[0]);
+    }
+    let mut waiting: Vec<_> = lobbies
+        .iter()
+        .filter(|l| !l.is_counting_down)
+        .copied()
+        .collect();
+    if !waiting.is_empty() {
+        waiting.sort_by_key(|l| l.id);
+        return Some(waiting[0]);
+    }
+    None
+}
+
 #[allow(clippy::too_many_arguments)]
 fn draw_lobby_list(
     ui: &mut Ui,
@@ -14,7 +38,11 @@ fn draw_lobby_list(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
 
-    if state.lobbies.is_empty() {
+    let has_matchmaking = state
+        .lobbies
+        .iter()
+        .any(|l| l.kind == sow_core::protocol::LobbyKind::Matchmaking);
+    if !has_matchmaking {
         let label = if state.is_connected {
             &strings.no_lobbies_yet
         } else {
@@ -29,15 +57,16 @@ fn draw_lobby_list(
         return;
     }
 
+    // Main menu shows ONLY Matchmaking queues — Custom lobbies live in the Game Browser.
     let ffa_lobbies: Vec<_> = state
         .lobbies
         .iter()
-        .filter(|l| l.game_mode == "FFA")
+        .filter(|l| l.game_mode == "FFA" && l.kind == sow_core::protocol::LobbyKind::Matchmaking)
         .collect();
     let team_lobbies: Vec<_> = state
         .lobbies
         .iter()
-        .filter(|l| l.game_mode == "Teams")
+        .filter(|l| l.game_mode == "Teams" && l.kind == sow_core::protocol::LobbyKind::Matchmaking)
         .collect();
 
     let mut draw_lobby = |ui: &mut Ui, lobby: &sow_core::protocol::LobbyInfo| {
@@ -68,17 +97,18 @@ fn draw_lobby_list(
         ui.add_space(8.0);
     };
 
-    if !ffa_lobbies.is_empty() {
-        for lobby in ffa_lobbies {
-            draw_lobby(ui, lobby);
-        }
+    let ffa_lobby = find_primary_lobby(&ffa_lobbies);
+    let team_lobby = find_primary_lobby(&team_lobbies);
+
+    if let Some(lobby) = ffa_lobby {
+        draw_lobby(ui, lobby);
     }
 
-    if !team_lobbies.is_empty() {
-        ui.add_space(8.0);
-        for lobby in team_lobbies {
-            draw_lobby(ui, lobby);
+    if let Some(lobby) = team_lobby {
+        if ffa_lobby.is_some() {
+            ui.add_space(8.0);
         }
+        draw_lobby(ui, lobby);
     }
 }
 
@@ -94,11 +124,15 @@ pub fn draw_left_column(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let side = crate::ui::map_texture::thumbnail_square_side_bounded(
-        ui.available_width(),
-        max_height,
-        compact,
-    );
+    let side = if compact && !crate::ui::theme::portrait_layout(ui.ctx()) {
+        crate::ui::map_texture::thumbnail_square_side_bounded(
+            ui.available_width(),
+            max_height,
+            compact,
+        )
+    } else {
+        max_height
+    };
 
     if max_height > 0.0 {
         egui::ScrollArea::vertical()

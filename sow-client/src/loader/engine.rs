@@ -169,7 +169,11 @@ impl SowApp {
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
                     let leader = self.ui.app.main_menu_state.selected_leader;
-                    let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+                    // Portrait art is keyed by orientation (`width < height`), the
+                    // same test the backdrop uses to pick + decode the texture.
+                    // compact_viewport's extra size thresholds would key boot
+                    // focus differently and strand the decode (wide-short embeds).
+                    let mobile = sow_ui::ui::theme::portrait_layout(&self.ui.egui_ctx);
 
                     splash_show_loading(&mut self.ui.app.splash_state);
 

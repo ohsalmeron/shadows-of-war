@@ -49,7 +49,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                 ui.set_max_width(300.0);
                 ui.vertical(|ui| {
                     let frame_res = egui::Frame::menu(&ui.ctx().global_style())
-                        .fill(crate::ui::theme::palette::surface())
+                        .fill(egui::Color32::from_black_alpha(150))
                         .stroke(egui::Stroke::new(1.5_f32, crate::ui::theme::palette::neon_cyan().linear_multiply(inbox_progress)))
                         .corner_radius(12)
                         .inner_margin(egui::Margin::symmetric(10, 8))

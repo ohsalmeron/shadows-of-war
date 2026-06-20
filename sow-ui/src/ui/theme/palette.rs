@@ -37,7 +37,7 @@ pub fn neon_gold_hover() -> Color32 {
 
 #[inline]
 pub fn button_inactive() -> Color32 {
-    Color32::from_rgba_unmultiplied(22, 22, 24, 120)
+    Color32::from_rgba_unmultiplied(40, 40, 45, 100)
 }
 #[inline]
 pub fn button_hovered() -> Color32 {

@@ -62,7 +62,7 @@ impl SowApp {
             egui::Id::new("dev_stats"),
         ));
         let font = sow_ui::ui::theme::font_regular(text_size);
-        let color = egui::Color32::from_gray(165);
+        let color = egui::Color32::from_gray(195);
         let galley = painter.layout_no_wrap(stats, font, color);
         let size = galley.size();
         let pos = egui::pos2(rect.max.x - inset - size.x, rect.max.y - inset - size.y);

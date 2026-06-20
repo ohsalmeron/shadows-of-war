@@ -4,6 +4,7 @@ use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use wasm_bindgen_cli_support::Bindgen;
 use wasm_opt::{Feature, OptimizationOptions, Pass};
@@ -95,6 +96,9 @@ pub fn optimize_wasm(paths: &Paths, wasm_path: &Path) -> Result<()> {
             e.error
         )
     })?;
+    // NamedTempFile is created 0600; persist() keeps those perms. Fix so nginx can read it.
+    fs::set_permissions(wasm_path, fs::Permissions::from_mode(0o644))
+        .with_context(|| format!("chmod 0644 {}", wasm_path.display()))?;
     require_nonempty_file(wasm_path, "wasm-opt output")?;
 
     fs::copy(wasm_path, &cache_path)

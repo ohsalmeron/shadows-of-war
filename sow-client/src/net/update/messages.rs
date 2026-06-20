@@ -131,6 +131,7 @@ impl SowApp {
                                             self.ui.app.main_menu_state.lobbies.push(
                                                 sow_core::protocol::LobbyInfo {
                                                     id,
+                                                    kind: sow_core::protocol::LobbyKind::Custom,
                                                     num_players: sync_msg.players.len() as u32,
                                                     max_players: 8,
                                                     is_counting_down: sync_msg.time_remaining > 0.0
@@ -262,15 +263,16 @@ impl SowApp {
                             }
                         }
                         ServerMessage::JoinFailed(fail) => {
-                            log::warn!("Join failed: {}", fail.reason);
+                            log::warn!("[JOIN] Failed: {}", fail.reason);
                             crate::store_portals::left_room();
                             if fail.reason == "VERSION_MISMATCH" {
-                                log::info!("Version mismatch — prompting user to update...");
+                                log::info!("[JOIN] Version mismatch — prompting user to update...");
                                 self.ui.update_available = true;
                             }
                             self.ui.app.main_menu_state.is_waiting = false;
                             self.ui.app.main_menu_state.pending_join_lobby_id = None;
                             self.ui.app.main_menu_state.joined_lobby_id = None;
+                            self.ui.app.main_menu_state.error_message = Some(fail.reason.clone());
                         }
                         ServerMessage::JoinAck(ack) => {
                             log::info!(
@@ -282,6 +284,7 @@ impl SowApp {
                             self.sim.my_lobby_id = Some(ack.lobby_id);
                             self.sim.my_player_id = Some(ack.player_id);
                             self.ui.app.main_menu_state.joined_lobby_id = Some(ack.lobby_id);
+                            self.ui.app.main_menu_state.show_join_browser = false;
                             self.ui.app.main_menu_state.in_private_match = ack.is_private;
                             seed_joined_lobby_entry(&mut self.ui.app.main_menu_state, &ack);
                             self.sync_portal_room(true);

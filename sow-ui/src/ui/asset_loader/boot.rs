@@ -100,7 +100,8 @@ impl AssetLoader {
     }
 
     pub fn boot_leader_ready(&self, leader: Leader, mobile: bool) -> bool {
-        self.leader_portrait_ready(leader, mobile)
+        let key = LeaderPortraitKey { leader, mobile };
+        self.leader_portrait_ready(leader, mobile) || self.leader_retry_state.contains_key(&key)
     }
 
     pub fn ensure_ui_assets_loaded(&mut self, ctx: &egui::Context) {

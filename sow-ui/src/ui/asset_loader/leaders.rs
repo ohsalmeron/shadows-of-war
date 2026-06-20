@@ -191,6 +191,12 @@ impl AssetLoader {
         self.leaders_in_flight.remove(&key);
         self.leader_retry_state.remove(&key);
         if self.leader_portrait_focus != Some(key) {
+            log::warn!(
+                "Leader portrait bytes discarded: received {:?} mobile={} but focus={:?}",
+                leader,
+                mobile,
+                self.leader_portrait_focus
+            );
             return;
         }
         self.leader_decode_pending.push_back((key, bytes));

@@ -210,7 +210,10 @@ impl SowApp {
             || (self.ui.app.phase == ClientPhase::Splash
                 && self.ui.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::Boot)
         {
-            let mobile = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+            // Same orientation test as the backdrop's set_leader_portrait_focus
+            // (`width < height`); compact_viewport would compute a different key
+            // on wide-but-short windows and the decode would never match.
+            let mobile = sow_ui::ui::theme::portrait_layout(&self.ui.egui_ctx);
             let selected = self.ui.app.main_menu_state.selected_leader;
             let focus = sow_ui::ui::asset_loader::LeaderPortraitKey {
                 leader: selected,
@@ -387,11 +390,15 @@ impl SowApp {
             AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT,
         };
 
-        let compact = sow_ui::ui::theme::compact_viewport(&self.ui.egui_ctx);
+        // Must match the orientation test used when the backdrop sets focus
+        // (draw_leader_hero_backdrop: `width < height`). compact_viewport adds
+        // width<768/height<600 thresholds that disagree on wide-but-short
+        // windows (e.g. CrazyGames iframe embeds), stranding fetched bytes.
+        let portrait = sow_ui::ui::theme::portrait_layout(&self.ui.egui_ctx);
         let priority_leader = self.ui.app.main_menu_state.selected_leader;
         let priority = LeaderPortraitKey {
             leader: priority_leader,
-            mobile: compact,
+            mobile: portrait,
         };
 
         while self.ui.app.asset_loader.leaders_in_flight.len() < MAX_LEADER_FETCHES_IN_FLIGHT {
@@ -406,7 +413,7 @@ impl SowApp {
 
             let filename = AssetLoader::leader_portrait_filename(key);
             let url = self.asset_config.leader_portrait_url(&filename);
-            log::debug!(
+            log::info!(
                 "Fetching leader portrait {:?} mobile={} url={}",
                 key.leader,
                 key.mobile,

@@ -120,11 +120,13 @@ pub fn draw(
 
             let filter = state.join_mode_filter;
             // Clone lobbies first to avoid borrowing state immutably and mutably at the same time inside the closure.
+            // Game Browser shows ONLY Custom lobbies — Matchmaking queues live in the main menu.
             let lobbies = state.lobbies.clone();
             let ffa_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
                 .iter()
                 .filter(|l| {
-                    matches!(filter, GameModeFilter::All | GameModeFilter::Ffa)
+                    l.kind == sow_core::protocol::LobbyKind::Custom
+                        && matches!(filter, GameModeFilter::All | GameModeFilter::Ffa)
                         && l.game_mode == "FFA"
                 })
                 .cloned()
@@ -132,7 +134,8 @@ pub fn draw(
             let team_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
                 .iter()
                 .filter(|l| {
-                    matches!(filter, GameModeFilter::All | GameModeFilter::Teams)
+                    l.kind == sow_core::protocol::LobbyKind::Custom
+                        && matches!(filter, GameModeFilter::All | GameModeFilter::Teams)
                         && l.game_mode == "Teams"
                 })
                 .cloned()
