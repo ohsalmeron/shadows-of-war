@@ -73,6 +73,9 @@ impl SowEngine {
             if is_standard_bot {
                 max_tr /= 1.5;
             }
+            if let Some(cap) = self.state.players[idx].max_troops_cap {
+                max_tr = max_tr.min(cap);
+            }
             self.state.players[idx].max_troops = max_tr;
 
             let troop_ps = troop_income_per_second(tiles_owned, agg, leader, &config);
@@ -99,7 +102,12 @@ impl SowEngine {
         }
 
         let mut tribes_needing_city = Vec::new();
-        for player in self.state.players.iter().filter(|p| p.alive) {
+        for player in self
+            .state
+            .players
+            .iter()
+            .filter(|p| p.alive && self.state.config.buildings_enabled)
+        {
             let has_city = aggs
                 .get(player.id as usize)
                 .is_some_and(|a| a.city_levels > 0);
@@ -113,6 +121,7 @@ impl SowEngine {
             if player.player_type == crate::player::PlayerType::Bot
                 && needs_city
                 && player.tile_count >= 150
+                && (self.state.tick + player.id as u64) % 30 == 0
             {
                 tribes_needing_city.push((
                     player.id,

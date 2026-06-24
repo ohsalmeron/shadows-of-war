@@ -84,6 +84,7 @@ pub struct SimState {
     pub last_synced_cost_tick: Option<u64>,
     pub tile_upgrades: Vec<u32>,
     pub config: sow_core::game_config::GameConfig,
+    pub paused: bool,
 }
 
 pub struct InputState {
@@ -177,6 +178,15 @@ pub struct UiState {
     /// True while the portal intro or manual offline tutorial overlay is active.
     pub tutorial_active: bool,
     pub tutorial_step: crate::hud::tutorial::TutorialStep,
+    pub tutorial_step_idx: usize,
+    pub tutorial_baseline_tiles: u32,
+    pub tutorial_baseline_set: bool,
+    pub tutorial_objectives_open: bool,
+    pub tutorial_modal_dismissed: bool,
+    pub tutorial_obj_done_at: std::collections::HashMap<usize, f64>,
+    pub tutorial_last_kills: u32,
+    pub tutorial_met_tribes: std::collections::HashSet<u16>,
+    pub tutorial_pending_intro: Option<String>,
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
     pub leaderboard_rankings: Vec<sow_ui_game::LeaderboardRanking>,

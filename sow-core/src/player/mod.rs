@@ -40,6 +40,8 @@ pub struct Player {
     pub troops: f64,
     pub max_troops: f64,
     #[serde(default)]
+    pub max_troops_cap: Option<f64>,
+    #[serde(default)]
     pub nameplate_x: f32,
     #[serde(default)]
     pub nameplate_y: f32,
@@ -114,6 +116,7 @@ impl Player {
             color,
             troops: config.starting_troops,
             max_troops: config.max_troops_base,
+            max_troops_cap: None,
             gold: config.starting_gold,
             has_spawned: false,
             sum_x: 0,
@@ -180,6 +183,7 @@ impl Player {
             color,
             troops: starting_troops,
             max_troops: config.max_troops_base,
+            max_troops_cap: None,
             gold: starting_gold,
             has_spawned: false,
             sum_x: 0,
@@ -231,6 +235,7 @@ impl Player {
             color: final_color,
             troops: config.starting_troops,
             max_troops: config.max_troops_base,
+            max_troops_cap: None,
             gold: config.starting_gold,
             has_spawned: false,
             sum_x: 0,

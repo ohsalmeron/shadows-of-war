@@ -216,6 +216,20 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed.wrapping_add(player_id as u64));
         let config = self.state.config.clone();
 
+        // Campaign: place the human at a fixed homeland tile (auto-spawn, no picker).
+        if let Some((tx, ty)) = config.player_spawn {
+            if let Some((sx, sy)) = self.nearest_free_land(tx, ty) {
+                let mut player = Player::new_human(player_id, name, color, &config);
+                player.team = team;
+                player.civilization = civilization;
+                player.leader = leader;
+                self.state.spawn_player(player, sx, sy);
+                log::info!("spawn_human: scripted at ({},{})", sx, sy);
+                return;
+            }
+            log::warn!("spawn_human: no land near scripted spawn ({},{})", tx, ty);
+        }
+
         if !config.random_spawn {
             let mut player = Player::new_human(player_id, name, color, &config);
             player.team = team;
@@ -309,6 +323,76 @@ impl SowEngine {
             }
         }
 
+        None
+    }
+
+    pub fn spawn_scripted(&mut self) {
+        use crate::player::Player;
+        let spawns = self.state.config.scripted_spawns.clone();
+        if spawns.is_empty() {
+            return;
+        }
+        let config = self.state.config.clone();
+        let mut placed = 0;
+        for (i, s) in spawns.iter().enumerate() {
+            let bot_id = 104 + i as u16;
+            let Some((sx, sy)) = self.nearest_free_land(s.x, s.y) else {
+                log::warn!("spawn_scripted: no land near '{}' ({},{})", s.name, s.x, s.y);
+                continue;
+            };
+            let mut player = if s.is_nation {
+                Player::new_nation(bot_id, s.name.clone(), s.color, &config)
+            } else {
+                Player::new_bot(bot_id, s.name.clone(), s.color, &config)
+            };
+            player.team = s.team;
+            player.leader = s.leader;
+            player.civilization = s.civilization;
+            if let Some(t) = s.troops {
+                player.troops = t;
+            }
+            if let Some(c) = s.troop_cap {
+                player.max_troops = c;
+                player.max_troops_cap = Some(c);
+                player.troops = player.troops.min(c);
+            }
+            self.state.spawn_player(player, sx, sy);
+            placed += 1;
+            log::info!(
+                "spawn_scripted: [{}] '{}' team={:?} at ({},{})",
+                bot_id,
+                s.name,
+                s.team,
+                sx,
+                sy
+            );
+        }
+        log::info!("spawn_scripted: placed {}/{}", placed, spawns.len());
+    }
+
+    fn nearest_free_land(&self, tx: u32, ty: u32) -> Option<(u32, u32)> {
+        let map = &self.state.map;
+        let free = |x: i32, y: i32| -> bool {
+            map.is_valid_coord(x, y)
+                && map.owner_id(x as u32, y as u32) == 0
+                && map.terrain[map.ref_id(x as u32, y as u32)].is_land()
+        };
+        let (cx, cy) = (tx as i32, ty as i32);
+        if free(cx, cy) {
+            return Some((tx, ty));
+        }
+        for r in 1..=120i32 {
+            for dx in -r..=r {
+                for dy in -r..=r {
+                    if dx.abs() != r && dy.abs() != r {
+                        continue;
+                    }
+                    if free(cx + dx, cy + dy) {
+                        return Some(((cx + dx) as u32, (cy + dy) as u32));
+                    }
+                }
+            }
+        }
         None
     }
 }

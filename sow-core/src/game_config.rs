@@ -52,6 +52,26 @@ pub enum BotDifficulty {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ScriptedSpawn {
+    pub name: String,
+    pub x: u32,
+    pub y: u32,
+    pub color: [f32; 3],
+    pub team: Option<crate::protocol::Team>,
+    pub leader: crate::player::Leader,
+    pub civilization: crate::player::Civilization,
+    pub is_nation: bool,
+    #[serde(default)]
+    pub troops: Option<f64>,
+    #[serde(default)]
+    pub troop_cap: Option<f64>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GameConfig {
     // ==========================================
     // Lobby & Match Setup
@@ -192,6 +212,15 @@ pub struct GameConfig {
     pub player_civilization: crate::player::Civilization,
     #[serde(default)]
     pub player_leader: crate::player::Leader,
+
+    #[serde(default)]
+    pub scripted_spawns: Vec<ScriptedSpawn>,
+    #[serde(default)]
+    pub player_spawn: Option<(u32, u32)>,
+    #[serde(default)]
+    pub player_team: Option<crate::protocol::Team>,
+    #[serde(default = "default_true")]
+    pub buildings_enabled: bool,
 }
 
 impl GameConfig {
@@ -267,6 +296,11 @@ impl Default for GameConfig {
 
             player_civilization: crate::player::Civilization::Rome,
             player_leader: crate::player::Leader::Caesar,
+
+            scripted_spawns: Vec::new(),
+            player_spawn: None,
+            player_team: None,
+            buildings_enabled: true,
         }
     }
 }

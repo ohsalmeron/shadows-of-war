@@ -58,18 +58,31 @@ impl SowApp {
 
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn start_portal_intro_match(&mut self) {
-        let tutorial_seed = web_time::SystemTime::now()
+        let seed = web_time::SystemTime::now()
             .duration_since(web_time::SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-
+        self.ui.app.main_menu_state.selected_leader = sow_core::player::Leader::Boudica;
+        self.ui.app.main_menu_state.selected_civilization = sow_core::player::Civilization::Iceni;
+        let factions = crate::campaign::boudica::factions();
+        crate::campaign::log_plan(
+            "Boudica's Rebellion",
+            crate::campaign::boudica::PLAYER_SPAWN,
+            &factions,
+        );
         let config = GameConfig {
-            map_name: sow_core::maps::DEFAULT_MAP_KEY.to_string(),
-            bot_count: 2,
-            nation_count: 1,
-            seed: tutorial_seed,
-            player_leader: self.ui.app.main_menu_state.selected_leader,
-            player_civilization: self.ui.app.main_menu_state.selected_civilization,
+            map_name: "boudica".to_string(),
+            bot_count: 0,
+            nation_count: 0,
+            seed,
+            random_spawn: true,
+            player_leader: sow_core::player::Leader::Boudica,
+            player_civilization: sow_core::player::Civilization::Iceni,
+            scripted_spawns: crate::campaign::to_scripted(&factions),
+            player_spawn: Some(crate::campaign::boudica::PLAYER_SPAWN),
+            player_team: Some(crate::campaign::PLAYER_TEAM),
+            starting_troops: 1000.0,
+            buildings_enabled: false,
             ..Default::default()
         };
         self.start_offline_match(config, true);
@@ -79,12 +92,23 @@ impl SowApp {
         self.net.is_offline = true;
         self.sim.offline_tick_timer = 0.0;
         self.sim.offline_last_update = web_time::Instant::now();
+        self.sim.paused = false;
         self.net.client = None;
         self.begin_enter_game_loader();
         self.sim.my_player_id = Some(1);
         self.sim.my_lobby_id = Some(0);
         self.ui.tutorial_active = tutorial;
         self.ui.tutorial_step = TutorialStep::Welcome;
+        self.ui.tutorial_step_idx = 0;
+        self.ui.tutorial_baseline_tiles = 0;
+        self.ui.tutorial_baseline_set = false;
+        self.ui.tutorial_objectives_open = true;
+        self.ui.tutorial_last_kills = 0;
+        self.ui.tutorial_met_tribes.clear();
+        self.ui.tutorial_pending_intro = None;
+        if tutorial {
+            log::info!("tutorial: chapter 1 started (map={})", config.map_name);
+        }
 
         let map_id = sow_ui::ui::asset_loader::AssetLoader::map_key(&config.map_name);
         self.ui.app.main_menu_state.downloading_map_name = Some(map_id.clone());
@@ -131,7 +155,7 @@ impl SowApp {
                 },
                 color: self.ui.app.main_menu_state.selected_leader.filler_rgb(),
                 player_type: sow_core::player::PlayerType::Human,
-                team: None,
+                team: config.player_team,
                 spawn_x: 0,
                 spawn_y: 0,
                 civilization: self.ui.app.main_menu_state.selected_civilization,

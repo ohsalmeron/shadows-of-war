@@ -137,6 +137,11 @@ impl SowApp {
                 self.sim.offline_last_update = now;
                 self.sim.offline_tick_timer += dt;
 
+                // Pause: stop advancing the sim (nobody moves) but keep rendering.
+                if self.sim.paused {
+                    self.sim.offline_tick_timer = 0.0;
+                }
+
                 let mut ticks_this_frame = 0u32;
                 while self.sim.offline_tick_timer >= tick_secs
                     && ticks_this_frame < MAX_OFFLINE_TICKS_PER_FRAME

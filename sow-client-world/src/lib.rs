@@ -26,6 +26,7 @@ fn get_build_version() -> String {
 
 mod asset_config;
 mod config;
+mod guest_id;
 
 pub use asset_config::AssetConfig;
 
@@ -163,7 +164,7 @@ pub enum EngineInitEvent {
 
 pub mod app;
 pub mod asset;
-mod guest_id;
+pub mod campaign;
 pub mod hud;
 #[cfg(target_arch = "wasm32")]
 mod ime;

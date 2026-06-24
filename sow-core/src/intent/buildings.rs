@@ -15,6 +15,9 @@ impl SowEngine {
         if self.state.phase != GamePhase::Playing {
             return;
         }
+        if !self.state.config.buildings_enabled {
+            return;
+        }
         let Some(player) = self.state.player(player_id) else {
             return;
         };

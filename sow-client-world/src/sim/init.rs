@@ -43,6 +43,8 @@ impl SowApp {
             }
         }
 
+        // Campaign roster first (fixed identities/tiles), then any random fill.
+        new_engine.spawn_scripted();
         new_engine.spawn_ai(
             new_engine.state.config.nation_count,
             new_engine.state.config.bot_count,
