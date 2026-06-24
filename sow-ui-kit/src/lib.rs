@@ -1,4 +1,3 @@
-pub mod hud;
 pub mod theme;
 pub mod utils;
 pub mod widgets;

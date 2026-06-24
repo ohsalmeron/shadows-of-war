@@ -339,7 +339,7 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
     compact: bool,
     dispatch_total: usize,
     event_unread: usize,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    _asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) -> Option<egui::Rect> {
     let dispatch_unread = if state.bottom_tab != BottomHudTab::BattleLog {
         dispatch_total.saturating_sub(state.battle_log_seen_count)
@@ -364,7 +364,11 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
             let selected = state.bottom_tab == tab;
             let resp = sow_ui_kit::theme::draw_tab(
                 ui,
-                sow_ui_kit::theme::TabContent::Icon(asset_loader.hud_icon(tab.hud_icon())),
+                match tab {
+                    BottomHudTab::Controls => sow_ui_kit::theme::TabContent::Text("🛠️"),
+                    BottomHudTab::BattleLog => sow_ui_kit::theme::TabContent::Text("📜"),
+                    BottomHudTab::EventLog => sow_ui_kit::theme::TabContent::Text("📋"),
+                },
                 selected,
                 tab_accent(tab),
                 badge,

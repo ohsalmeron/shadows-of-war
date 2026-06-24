@@ -6,4 +6,3 @@ pub mod tabs;
 
 pub use draw::draw;
 pub use state::{BottomHudTab, EventLogEntry, HudState, SelectedTileInfo};
-pub mod icons;

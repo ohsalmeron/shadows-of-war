@@ -26,7 +26,7 @@ impl Default for SettingsState {
         Self {
             graphics_quality: GraphicsQuality::High,
             music_volume: 0.8,
-            sfx_volume: 0.8,
+            sfx_volume: 0.5,
             mute_all: false,
             language: Language::English,
             applied_hint_until: None,
@@ -110,17 +110,6 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     ui.add_enabled_ui(!state.mute_all, |ui| {
                         if ui
                             .add(Slider::new(&mut state.music_volume, 0.0..=1.0).show_value(true))
-                            .changed()
-                        {
-                            touch_applied(state);
-                        }
-                    });
-                    ui.end_row();
-
-                    ui.label(RichText::new(&strings.sfx_volume).color(palette::text_muted()));
-                    ui.add_enabled_ui(!state.mute_all, |ui| {
-                        if ui
-                            .add(Slider::new(&mut state.sfx_volume, 0.0..=1.0).show_value(true))
                             .changed()
                         {
                             touch_applied(state);

@@ -118,6 +118,11 @@ pub fn play_defeat_sound() {
     native::play_defeat_sound();
 }
 
+pub fn set_master_volume(volume: f32) {
+    #[cfg(not(target_arch = "wasm32"))]
+    native::set_master_volume(volume);
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(not(target_arch = "wasm32"))]
 mod native;

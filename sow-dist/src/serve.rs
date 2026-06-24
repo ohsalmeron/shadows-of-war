@@ -1,7 +1,63 @@
 use crate::paths::Paths;
 use anyhow::{bail, Result};
-use axum::Router;
+use axum::{
+    body::Bytes,
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::post,
+    Router,
+};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use tower_http::services::ServeDir;
+
+#[derive(Clone)]
+struct EditorState {
+    root: PathBuf,
+}
+
+/// POST /__save?file=boudica.json — write the request body into `assets/campaign/<file>`.
+/// Filename is restricted to a bare `*.json` (no path separators / traversal).
+async fn save_campaign(
+    State(st): State<EditorState>,
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> impl IntoResponse {
+    let file = q.get("file").cloned().unwrap_or_default();
+    if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..")
+        || !file.ends_with(".json")
+    {
+        return (StatusCode::BAD_REQUEST, "bad file name").into_response();
+    }
+    let dir = st.root.join("assets/campaign");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("mkdir: {e}")).into_response();
+    }
+    let path = dir.join(&file);
+    match std::fs::write(&path, &body) {
+        Ok(_) => {
+            println!("  ✎ saved {}", path.display());
+            (StatusCode::OK, format!("saved {file}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("write: {e}")).into_response(),
+    }
+}
+
+/// POST /__launch — run the native client with the current data (cargo run --bin client).
+/// Detached so the editor keeps serving; for a data-only change there's no recompile.
+async fn launch_game(State(st): State<EditorState>) -> impl IntoResponse {
+    println!("  ▶ launching game (cargo run --bin client)…");
+    match std::process::Command::new("cargo")
+        .args(["run", "--bin", "client", "--"])
+        .current_dir(&st.root)
+        .env("VERBOSE", "1")
+        .spawn()
+    {
+        Ok(_) => (StatusCode::OK, "launched").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")).into_response(),
+    }
+}
 
 fn kill_port_holders(port: u16) {
     let port_str = port.to_string();
@@ -31,16 +87,21 @@ pub fn serve_campaign_editor(paths: &Paths, port: u16) -> Result<()> {
     kill_port_holders(port);
     let bind = format!("127.0.0.1:{port}");
     let url = format!("http://{bind}/tools/campaign-editor/");
-    println!("\n  ┌─ Campaign roster editor ─────────────────────────────");
+    println!("\n  ┌─ Campaign editor ────────────────────────────────────");
     println!("  │  open:  {url}");
-    println!("  │  drag tribes → Download boudica.json → assets/campaign/");
-    println!("  │  then relaunch the game (no recompile). Ctrl-C to stop.");
+    println!("  │  Export writes assets/campaign/ directly; tick “launch”");
+    println!("  │  to run the game on export. Ctrl-C to stop.");
     println!("  └──────────────────────────────────────────────────────\n");
 
     let root = paths.root.clone();
+    let state = EditorState { root: root.clone() };
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
-        let app = Router::new().fallback_service(ServeDir::new(&root));
+        let app = Router::new()
+            .route("/__save", post(save_campaign))
+            .route("/__launch", post(launch_game))
+            .with_state(state)
+            .fallback_service(ServeDir::new(&root));
         match tokio::net::TcpListener::bind(&bind).await {
             Ok(listener) => axum::serve(listener, app)
                 .await

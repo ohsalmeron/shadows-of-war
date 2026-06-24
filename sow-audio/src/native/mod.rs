@@ -11,5 +11,5 @@ pub use building::{
 };
 pub use combat::{play_combat_sound, play_deploy_sound};
 pub use death::play_death_sound;
-pub use engine::play_spatial;
+pub use engine::{play_spatial, set_master_volume};
 pub use music::{play_defeat_sound, play_victory_sound, set_music_context};

@@ -71,12 +71,11 @@
     <div class="group">
       <h2>Export</h2>
       <div class="btns">
-        <button class="primary" id="exportBtn">⤓ boudica.triggers.json</button>
-        <button class="ghost" id="copyBtn">Copy</button>
+        <button class="primary" id="exportBtn">Export</button>
         <button class="ghost" id="reloadBtn">Reload</button>
       </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="launchChk" style="width:auto"> Launch game after export</label>
       <input type="file" id="fileIn" accept=".json" style="margin-top:8px;width:100%;font-size:11px" />
-      <div class="hint">Drop into <code>assets/campaign/</code>, relaunch (no recompile).</div>
     </div>
     <div class="group" style="flex:0 0 auto"><h2>Triggers</h2></div>
     <div class="list" id="list"></div>
@@ -304,12 +303,19 @@ function decompile(j) {
 
 // ---- export / load ----
 function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.style.opacity=1; clearTimeout(t._t); t._t=setTimeout(()=>t.style.opacity=0,2200); }
-document.getElementById("exportBtn").onclick = () => {
-  const blob=new Blob([serialize()],{type:"application/json"}); const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob); a.download="boudica.triggers.json"; a.click();
-  toast("Downloaded → drop into assets/campaign/");
+document.getElementById("exportBtn").onclick = async () => {
+  try {
+    const res = await fetch("/__save?file=boudica.triggers.json", {method:"POST", body:serialize()});
+    if(!res.ok) throw new Error(await res.text());
+    if (document.getElementById("launchChk").checked) {
+      toast("Exported ✓ — launching game…");
+      const r2 = await fetch("/__launch", {method:"POST"});
+      if(!r2.ok) toast("Saved, but launch failed: "+await r2.text());
+    } else {
+      toast("Exported → assets/campaign/boudica.triggers.json");
+    }
+  } catch(e){ toast("Export failed (run via `sow m`): "+e.message); }
 };
-document.getElementById("copyBtn").onclick = async () => { await navigator.clipboard.writeText(serialize()); toast("Copied JSON"); };
 document.getElementById("reloadBtn").onclick = () => boot();
 document.getElementById("fileIn").onchange = e => { const f=e.target.files[0]; if(!f) return; const fr=new FileReader(); fr.onload=()=>{ try{ loadGraph(JSON.parse(fr.result)); toast("Loaded "+f.name);}catch(err){toast("Bad JSON: "+err.message);} }; fr.readAsText(f); };
 

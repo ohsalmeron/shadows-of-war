@@ -7,7 +7,7 @@
 <style>
   :root { --bg:#14171c; --panel:#1d222b; --line:#2c333f; --text:#e6e9ee; --muted:#8b94a3; --accent:#e06b1f; }
   * { box-sizing:border-box; }
-  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
+  html,body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
   #app { display:flex; height:100%; }
   #stage { flex:1; position:relative; overflow:hidden; background:#0c0e12; }
   canvas { position:absolute; top:0; left:0; image-rendering:pixelated; }
@@ -35,6 +35,9 @@
   .item .rl { color:var(--muted); font-size:10px; }
   .warn { color:#f1b0b4; }
   #hud { position:absolute; left:10px; bottom:10px; background:rgba(10,12,16,.82); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12px; pointer-events:none; }
+  #zoomctl { position:absolute; right:12px; bottom:12px; display:flex; flex-direction:column; gap:6px; }
+  #zoomctl button { width:34px; height:34px; font-size:16px; line-height:1; border-radius:8px; border:1px solid var(--line); background:rgba(29,34,43,.92); color:var(--text); cursor:pointer; }
+  #zoomctl button:hover { background:#2c3743; }
   #toast { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); background:#222a35; border:1px solid var(--line); border-radius:8px; padding:8px 14px; opacity:0; transition:opacity .25s; }
   .hint { color:var(--muted); font-size:11px; margin-top:6px; }
   .swrap { position:relative; }
@@ -45,6 +48,7 @@
   <div id="stage">
     <canvas id="cv"></canvas>
     <div id="hud">load…</div>
+    <div id="zoomctl"><button id="zin" title="Zoom in">＋</button><button id="zout" title="Zoom out">－</button><button id="zfit" title="Fit to view">⤢</button></div>
     <div id="toast"></div>
   </div>
   <div id="side">
@@ -75,13 +79,12 @@
     <div class="group">
       <h2>Export</h2>
       <div class="btns">
-        <button class="primary" id="exportBtn">⤓ Download boudica.json</button>
-        <button id="copyBtn">Copy</button>
+        <button class="primary" id="exportBtn">Export</button>
         <button id="reloadBtn">Reload</button>
       </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;text-transform:none;letter-spacing:0"><input type="checkbox" id="launchChk" style="width:auto"> Launch game after export</label>
       <label>Load a different roster</label>
       <input type="file" id="fileIn" accept=".json" />
-      <div class="hint">Drop the download into <code>assets/campaign/boudica.json</code>, relaunch the game (no recompile).</div>
     </div>
 
     <div class="list" id="list"></div>
@@ -163,11 +166,20 @@ function buildMapImage() {
 }
 
 // ---- view fit ----
-function fitView() {
-  const sw = cv.width, sh = cv.height;
-  scale = Math.min(sw/MAPW, sh/MAPH);
-  ox = (sw - MAPW*scale)/2;
-  oy = (sh - MAPH*scale)/2;
+function computeMinScale(){ return Math.min(cv.width/MAPW, cv.height/MAPH); }
+function fitView() { minScale = computeMinScale(); maxScale = Math.max(12, minScale*10); scale = minScale; clampView(); }
+// Keep the map from drifting fully off-screen (centered when it fits within the view).
+function clampView(){
+  const w = MAPW*scale, h = MAPH*scale, m = 60;
+  ox = (w <= cv.width)  ? (cv.width  - w)/2 : Math.min(m, Math.max(cv.width  - w - m, ox));
+  oy = (h <= cv.height) ? (cv.height - h)/2 : Math.min(m, Math.max(cv.height - h - m, oy));
+}
+// Zoom toward a screen point, keeping the world point under it fixed (OpenFront's pattern).
+function zoomAt(sx, sy, factor){
+  const [wx,wy] = s2m(sx,sy);
+  scale = Math.max(minScale, Math.min(maxScale, scale*factor));
+  ox = sx - wx*scale; oy = sy - wy*scale;
+  clampView(); draw();
 }
 const m2s = (mx,my) => [mx*scale+ox, my*scale+oy];
 const s2m = (sx,sy) => [(sx-ox)/scale, (sy-oy)/scale];
@@ -193,21 +205,26 @@ function draw() {
     const [sx,sy] = m2s(f.x,f.y);
     const role = ROLES[f.role] || ROLES.neutral;
     const water = !isLand(f.x,f.y);
-    ctx.beginPath(); ctx.arc(sx,sy,6,0,7);
+    const hov = (i===hovered);
+    const r = hov ? 7.5 : 6;
+    if (hov && i!==sel) { ctx.beginPath(); ctx.arc(sx,sy,r+5,0,7); ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=2; ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(sx,sy,r,0,7);
     ctx.fillStyle = role.color; ctx.fill();
     ctx.lineWidth = (i===sel)?3:1.5;
     ctx.strokeStyle = water ? "#ff4d4d" : (i===sel ? "#fff" : "rgba(0,0,0,.5)");
     ctx.stroke();
-    if (water) { ctx.beginPath(); ctx.arc(sx,sy,10,0,7); ctx.strokeStyle="#ff4d4d"; ctx.lineWidth=1.5; ctx.stroke(); }
-    if (showLabels) {
-      ctx.font = "11px system-ui"; ctx.textAlign="center";
-      ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillText(f.name, sx+1, sy-9);
-      ctx.fillStyle="#fff"; ctx.fillText(f.name, sx, sy-10);
+    if (water) { ctx.beginPath(); ctx.arc(sx,sy,r+4,0,7); ctx.strokeStyle="#ff4d4d"; ctx.lineWidth=1.5; ctx.stroke(); }
+    if (showLabels || hov) {
+      ctx.font = (hov?"bold ":"")+"11px system-ui"; ctx.textAlign="center";
+      ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillText(f.name, sx+1, sy-r-3);
+      ctx.fillStyle="#fff"; ctx.fillText(f.name, sx, sy-r-4);
     }
   });
 
   // player spawn (star-ish)
   const [sx,sy] = m2s(px,py);
+  const phov = (hovered===-2);
+  if (phov && sel!==-2) { ctx.beginPath(); ctx.arc(sx,sy,13,0,7); ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=2; ctx.stroke(); }
   ctx.beginPath(); ctx.arc(sx,sy,8,0,7);
   ctx.fillStyle = PLAYER_COLOR; ctx.fill();
   ctx.lineWidth = (sel===-2)?3:2; ctx.strokeStyle = (sel===-2)?"#fff":"#1a1206"; ctx.stroke();
@@ -231,25 +248,37 @@ let dragging = false;
 cv.addEventListener("mousedown", e => {
   const r = cv.getBoundingClientRect();
   const sx = e.clientX-r.left, sy = e.clientY-r.top;
-  sel = pick(sx,sy);
-  dragging = (sel !== -1);
-  renderSide(); draw();
+  const hit = pick(sx,sy);
+  if (hit === -1) { panning = true; panStart = {mx:e.clientX, my:e.clientY, ox, oy}; cv.style.cursor="grabbing"; return; }
+  sel = hit; dragging = true; renderSide(); draw();
 });
 cv.addEventListener("mousemove", e => {
   const r = cv.getBoundingClientRect();
   const sx = e.clientX-r.left, sy = e.clientY-r.top;
+  if (panning) { ox = panStart.ox + (e.clientX-panStart.mx); oy = panStart.oy + (e.clientY-panStart.my); clampView(); draw(); return; }
   const [mx,my] = s2m(sx,sy);
   const cx = Math.round(mx), cy = Math.round(my);
-  hud.textContent = `x ${cx}  y ${cy}  ·  ${isLand(cx,cy)?"land":"WATER"}`;
+  hud.textContent = `x ${cx}  y ${cy}  ·  ${isLand(cx,cy)?"land":"WATER"}  ·  ${Math.round(scale/minScale*100)}%`;
   hud.className = isLand(cx,cy) ? "" : "warn";
   if (dragging && sel !== -1) {
     const nx = Math.max(0,Math.min(MAPW-1,cx)), ny = Math.max(0,Math.min(MAPH-1,cy));
     if (sel === -2) roster.player_spawn = [nx,ny];
     else { roster.factions[sel].x = nx; roster.factions[sel].y = ny; }
     renderSide(); draw();
+  } else {
+    const h = pick(sx,sy);
+    cv.style.cursor = (h !== -1) ? "pointer" : "grab";
+    if (h !== hovered) { hovered = h; draw(); }
   }
 });
-window.addEventListener("mouseup", () => dragging=false);
+window.addEventListener("mouseup", () => { dragging=false; if (panning){ panning=false; cv.style.cursor="grab"; } });
+cv.addEventListener("mouseleave", () => { if (hovered!==-1){ hovered=-1; draw(); } });
+// wheel = zoom toward the cursor (the only scroll on the page)
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  zoomAt(e.clientX-r.left, e.clientY-r.top, Math.exp(-e.deltaY*0.0015));
+}, {passive:false});
 
 // ---- side panel ----
 function renderSide() {
@@ -330,12 +359,20 @@ function serialize() {
   };
   return JSON.stringify(out, null, 2) + "\n";
 }
-document.getElementById("exportBtn").onclick = () => {
-  const blob = new Blob([serialize()], {type:"application/json"});
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "boudica.json"; a.click();
-  toast("Downloaded boudica.json → drop into assets/campaign/");
-};
-document.getElementById("copyBtn").onclick = async () => { await navigator.clipboard.writeText(serialize()); toast("Copied JSON"); };
+async function exportRoster(){
+  try {
+    const res = await fetch("/__save?file=boudica.json", {method:"POST", body:serialize()});
+    if(!res.ok) throw new Error(await res.text());
+    if (document.getElementById("launchChk").checked) {
+      toast("Exported ✓ — launching game…");
+      const r2 = await fetch("/__launch", {method:"POST"});
+      if(!r2.ok) toast("Saved, but launch failed: "+await r2.text());
+    } else {
+      toast("Exported → assets/campaign/boudica.json");
+    }
+  } catch(e){ toast("Export failed (run via `sow m`): "+e.message); }
+}
+document.getElementById("exportBtn").onclick = exportRoster;
 document.getElementById("reloadBtn").onclick = () => loadRoster();
 document.getElementById("fileIn").onchange = e => {
   const file = e.target.files[0]; if (!file) return;
@@ -349,8 +386,11 @@ function normalize(j){
 }
 
 // ---- boot ----
-function resize(){ cv.width = cv.parentElement.clientWidth; cv.height = cv.parentElement.clientHeight; fitView(); draw(); }
+function resize(){ cv.width = cv.parentElement.clientWidth; cv.height = cv.parentElement.clientHeight; minScale = computeMinScale(); maxScale = Math.max(12, minScale*10); scale = Math.max(scale, minScale); clampView(); draw(); }
 window.addEventListener("resize", resize);
+document.getElementById("zin").onclick  = () => zoomAt(cv.width/2, cv.height/2, 1.3);
+document.getElementById("zout").onclick = () => zoomAt(cv.width/2, cv.height/2, 1/1.3);
+document.getElementById("zfit").onclick = () => { fitView(); draw(); };
 
 async function loadMap(){
   const res = await fetch("./boudica.bin");
@@ -372,7 +412,7 @@ async function loadRoster(){
   resize();
   try { await loadMap(); } catch(e){ hud.textContent="map load failed: "+e.message; hud.className="warn"; }
   await loadRoster();
-  resize();
+  fitView(); draw();
 })();
 </script>
 </body>

@@ -4,7 +4,6 @@ pub mod utils;
 pub mod widgets;
 
 pub use app::ClientApp;
-pub use sow_ui_kit::hud::HudIcon;
 pub use sow_ui_kit::{self, ClientPhase};
 pub use ui::main_menu::LobbyNotice;
 

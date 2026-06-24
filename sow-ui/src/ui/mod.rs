@@ -11,5 +11,3 @@ pub mod map_texture;
 pub mod settings;
 
 pub use sow_ui_kit::theme;
-
-pub use hud::icons::HudIcon;

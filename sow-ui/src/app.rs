@@ -124,7 +124,6 @@ impl ClientApp {
                 None
             }
             ClientPhase::Playing => {
-                self.asset_loader.ensure_hud_icons_loaded(ui.ctx());
                 hud::draw(
                     ui,
                     &mut self.hud_state,

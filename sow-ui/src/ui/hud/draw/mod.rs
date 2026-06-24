@@ -30,8 +30,6 @@ pub fn draw(
         sow_assets_ui::register_game_assets(ui.ctx());
     });
 
-    asset_loader.ensure_hud_icons_loaded(ui.ctx());
-
     let mut action = None;
 
     let rect = ui.ctx().content_rect();

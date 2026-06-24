@@ -254,14 +254,14 @@ pub fn draw_terms_privacy_footer(
     };
 
     let draw_discord_link = |ui: &mut egui::Ui| {
-        let text = egui::RichText::new("💬 Discord")
+        let text = egui::RichText::new("Discord")
             .font(sow_ui_kit::theme::font_regular(size))
             .color(link_color);
         ui.hyperlink_to(text, "https://discord.gg/eauHRf7zP");
     };
 
     let draw_github_link = |ui: &mut egui::Ui| {
-        let text = egui::RichText::new("🐙 GitHub")
+        let text = egui::RichText::new("GitHub")
             .font(sow_ui_kit::theme::font_regular(size))
             .color(link_color);
         ui.hyperlink_to(text, "https://github.com/ohsalmeron/shadows-of-war");

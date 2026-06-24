@@ -12,6 +12,13 @@ pub(super) const SAMPLE_RATE: u32 = 22050;
 pub(super) const OPEN_BACKOFF: Duration = Duration::from_secs(2);
 pub(super) const MAX_VOICES: u8 = 3; // ponytail: reduced to 3 for stability and less clutter
 
+pub(super) static MASTER_VOLUME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(500); // ponytail: 50% default volume (halfway headroom up to 2x)
+
+pub fn set_master_volume(volume: f32) {
+    let vol_u32 = (volume * 1000.0).clamp(0.0, 1000.0) as u32;
+    MASTER_VOLUME.store(vol_u32, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub(super) static LAST_BUNKER_SOUND_MS: AtomicU64 = AtomicU64::new(0);
 pub(super) static LAST_COMBAT_SOUND_MS: AtomicU64 = AtomicU64::new(0);
 
@@ -342,7 +349,8 @@ pub(super) fn play_panned_source(
     let Some(stream) = state.stream.as_ref() else {
         return;
     };
-    let gain = priority_gain(priority, active);
+    let master = MASTER_VOLUME.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+    let gain = priority_gain(priority, active) * master;
     let panned = PannedSource {
         inner: source,
         left_gain: left * gain,
@@ -457,10 +465,11 @@ where
     S: Source<Item = f32> + Send + 'static,
 {
     let duration = source_duration(&source);
+    let master = MASTER_VOLUME.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
     let _ = get_audio_channel().send(PlayCommand {
         source: BoxedSource(Box::new(source)),
-        left: 1.0,
-        right: 1.0,
+        left: master,
+        right: master,
         priority: SoundPriority::Foreground,
         duration,
     });

@@ -59,7 +59,6 @@ pub struct AssetLoader {
     pub leader_mobile_images: HashMap<sow_core::player::Leader, TextureHandle>,
     pub splash_desktop: Option<TextureHandle>,
     pub splash_mobile: Option<TextureHandle>,
-    pub hud_icons: HashMap<crate::ui::hud::icons::HudIcon, TextureHandle>,
     /// Queued leader portrait fetches (wasm32); drained by sow-client network layer.
     pub leaders_fetch_pending: Vec<LeaderPortraitKey>,
     pub leaders_in_flight: HashSet<LeaderPortraitKey>,
@@ -141,7 +140,6 @@ impl UiSplashTexture {
 
 mod avatars;
 mod boot;
-mod hud_icons;
 mod leaders;
 mod maps;
 mod retry;
@@ -170,7 +168,6 @@ impl AssetLoader {
             leader_mobile_images: HashMap::new(),
             splash_desktop: None,
             splash_mobile: None,
-            hud_icons: HashMap::new(),
             leaders_fetch_pending: Vec::new(),
             leaders_in_flight: HashSet::new(),
             boot_ui_fetch_pending: Vec::new(),
