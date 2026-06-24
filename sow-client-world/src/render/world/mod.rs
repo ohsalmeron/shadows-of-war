@@ -20,6 +20,10 @@ pub(crate) struct VisPlayer<'a> {
     pub nameplate_size: f32,
 }
 
+/// Below this `zoom_scaled` value, buildings and railways hard-return — no collection,
+/// no draws, no rail graph rebuild. Single source of truth for the world-layer cull floor.
+pub(crate) const BUILDINGS_HIDE_FLOOR: f32 = 1.0;
+
 pub(crate) struct RenderContext<'a> {
     pub painter: &'a egui::Painter,
     pub wall_secs: f64,

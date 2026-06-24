@@ -89,7 +89,7 @@ pub(super) fn paint_building_overlays(
     }
 
     // Level badge (no white plate background, no frame, larger text in black)
-    if b.active_level != 1 && b.active_level != 0 && zoom_scaled >= 0.6 {
+    if b.active_level != 1 && b.active_level != 0 && zoom_scaled >= super::super::BUILDINGS_HIDE_FLOOR {
         let text_val = get_level_str(b.active_level);
         let font_size = (zoom_scaled * 0.65 * final_scale).clamp(8.0, 18.0).round();
         let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
@@ -130,18 +130,15 @@ pub(super) fn paint_building_overlays(
         }
 
         let border_color = egui::Color32::from_rgb(250, 204, 21); // Amber / Gold
-        let elapsed = time.start_time.elapsed().as_secs_f32();
-        let bobbing = (elapsed * 3.0).sin() * 1.5;
 
         let plate = BuildingUpgradePlate {
             anchor: center,
             base_size,
-            bobbing,
             border_color,
             lines,
         };
 
-        paint_building_upgrade_plate(painter, plate, input.camera_zoom, sf);
+        paint_building_upgrade_plate(painter, plate, input.camera_zoom, final_scale, sf);
     }
 
     // Render floating stats tooltip on hover

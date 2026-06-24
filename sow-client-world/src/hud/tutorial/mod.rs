@@ -7,6 +7,16 @@
 //! `mod.rs` is the orchestrator: it reads the live snapshot, advances the step pointer,
 //! drives the speaker dialog, and feeds the panel + pointer. Adding a chapter is mostly
 //! data in [`steps`]; adding a mechanic is one `Trigger` variant + its arm.
+//!
+//! ## Isolation contract (the poka-yoke)
+//! This module and [`crate::campaign`] are the **only** files tutorial work may touch. They talk to
+//! the engine in exactly two ways — produce a `GameConfig` at match start (data IN) and read
+//! snapshots at render (data OUT) — and never add a branch to a sim / income / render hot loop.
+//! Tutorial-ness is *derived* from the running match at one chokepoint (`loader/engine.rs`), and the
+//! render gate ([`tutorial_renders`]) also requires `is_offline`, so nothing here can execute during
+//! a normal solo or multiplayer match. Keep it that way: if a chapter needs a new rule, add a
+//! `GameConfig` knob — do not reach into the engine. That is what keeps a bad day on the tutorial
+//! from ever becoming a bad day on gameplay.
 
 mod objectives;
 mod pointer;
@@ -28,9 +38,18 @@ pub enum TutorialStep {
     Complete,
 }
 
+/// The render gate as a pure predicate, so the isolation invariant is unit-testable: the tutorial
+/// shows **only** when this match was started as a tutorial *and* it is offline. Online matches fail
+/// the second condition structurally, so a stale `tutorial_active` can never paint over multiplayer.
+pub(crate) const fn tutorial_renders(active: bool, is_offline: bool) -> bool {
+    active && is_offline
+}
+
 impl SowApp {
     pub(crate) fn render_tutorial_ui(&mut self, ctx: &egui::Context) {
-        if !self.ui.tutorial_active {
+        // Backstop gate: a tutorial is inherently an offline scripted match, so even if the active
+        // flag somehow leaked, an online game can never render it. Both conditions must hold.
+        if !tutorial_renders(self.ui.tutorial_active, self.net.is_offline) {
             return;
         }
 
@@ -234,9 +253,12 @@ impl SowApp {
             }
         }
 
-        // The opening dialog freezes the world (nobody moves) so the player can read it; the
-        // moment they dismiss it, play resumes. Only the very first step pauses.
-        self.sim.paused = idx == 0 && !self.ui.tutorial_modal_dismissed;
+        // Dialogs freeze the world: while ANY speaker dialog is up — the opening brief, a step's
+        // objective modal, or a first-contact intro — nobody moves, so the player reads without the
+        // neighbors pressing in. Both states are resolved above this line, so the frame they dismiss
+        // the last dialog play resumes; queued intros each pause in turn until all are cleared.
+        self.sim.paused =
+            self.ui.tutorial_pending_intro.is_some() || !self.ui.tutorial_modal_dismissed;
     }
 
     /// Returns a tribe whose first-contact intro should fire now — i.e. our territory has just
@@ -330,5 +352,19 @@ impl SowApp {
             p.emoji_timer = ticks;
             p.emoji_pinned = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tutorial_renders;
+
+    /// Poka-yoke: tutorial UI renders only for an offline tutorial match. A leaked/stale active flag
+    /// can never paint over a live multiplayer game, because online ⇒ `is_offline == false`.
+    #[test]
+    fn tutorial_never_renders_in_multiplayer() {
+        assert!(tutorial_renders(true, true)); // offline tutorial → shows
+        assert!(!tutorial_renders(true, false)); // online + stale flag → NEVER
+        assert!(!tutorial_renders(false, true)); // offline skirmish → hidden
     }
 }

@@ -202,9 +202,13 @@ pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> 
         }
         serde_json::from_str(&json).ok()
     }
+    // Native has no portal/CG storage, so the profile lives in a local file (same data dir as the
+    // guest id). This is what lets the first-run tutorial gate flip on native: once a match is
+    // recorded the file holds `matches_played > 0`, so `is_first_game()` is false next launch.
     #[cfg(not(target_arch = "wasm32"))]
     {
-        None
+        let json = std::fs::read_to_string(native_progress_path()).ok()?;
+        serde_json::from_str(&json).ok()
     }
 }
 
@@ -212,7 +216,22 @@ pub fn save_portal_progress(progress: &crate::player_progress::PlayerProgress) {
     let Ok(json) = serde_json::to_string(progress) else {
         return;
     };
+    #[cfg(target_arch = "wasm32")]
     call_window_hook_str("SOW_portalSaveProgress", &json);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = native_progress_path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Native location of the locally-persisted player profile (parity with the web portal/CG save).
+#[cfg(not(target_arch = "wasm32"))]
+fn native_progress_path() -> std::path::PathBuf {
+    crate::paths::native_data_dir().join(crate::player_progress::STORAGE_KEY)
 }
 
 /// Read platform identity set by the portal SDK during init.

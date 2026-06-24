@@ -71,6 +71,16 @@ pub fn resolve_building_placement_tile(
     let mut found_any_land = false;
     let mut found_any_far_enough = false;
 
+    let max_check_dist = pokayoke_dist + 6;
+    let relevant_buildings: Vec<&sow_core::protocol::BuildingSnapshot> = buildings
+        .iter()
+        .filter(|b| {
+            let bx = (b.tile_idx % map_w) as i32;
+            let by = (b.tile_idx / map_w) as i32;
+            (bx - click_x).abs() <= max_check_dist && (by - click_y).abs() <= max_check_dist
+        })
+        .collect();
+
     let mut valid_land_tiles = Vec::new();
     for dy in -pokayoke_dist..=pokayoke_dist {
         for dx in -pokayoke_dist..=pokayoke_dist {
@@ -100,7 +110,7 @@ pub fn resolve_building_placement_tile(
             for rule in kind.spacing_rules() {
                 let min_d = rule.min_distance;
                 let min_d_sq = min_d * min_d;
-                for b in buildings {
+                for b in &relevant_buildings {
                     if b.kind == rule.target_kind {
                         let bx = (b.tile_idx % map_w) as i32;
                         let by = (b.tile_idx / map_w) as i32;

@@ -221,6 +221,15 @@ pub struct GameConfig {
     pub player_team: Option<crate::protocol::Team>,
     #[serde(default = "default_true")]
     pub buildings_enabled: bool,
+
+    /// **Tutorial firewall flag.** `true` only for the scripted campaign/tutorial. The engine
+    /// ignores it — it exists so the *client* can derive its tutorial UI from the match it is
+    /// actually running, instead of a sticky session flag that leaks across matches. Defaults
+    /// **closed** (`false`): any match that does not explicitly opt in — every solo skirmish and
+    /// every server-sent multiplayer config — is non-tutorial. Read at exactly one place, the
+    /// match-init chokepoint in `sow-client-world/src/loader/engine.rs`.
+    #[serde(default)]
+    pub tutorial: bool,
 }
 
 impl GameConfig {
@@ -252,13 +261,13 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.5,
+            global_speed_multiplier: 0.20,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 3.0,
-            attack_cost_neutral: 0.5,
-            terrain_multiplier_highland: 1.25,
-            terrain_multiplier_mountain: 2.0,
+            attack_cost_neutral: 1.0,
+            terrain_multiplier_highland: 1.5,
+            terrain_multiplier_mountain: 2.5,
 
             max_tiles_per_tick: 4096.0,
             max_tiles_per_tick_reference_troops: 25000.0,
@@ -301,7 +310,22 @@ impl Default for GameConfig {
             player_spawn: None,
             player_team: None,
             buildings_enabled: true,
+            tutorial: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Poka-yoke: the tutorial firewall defaults **closed**. Every match that does not explicitly
+    /// opt in — solo skirmishes and all server-sent multiplayer configs — is non-tutorial, so the
+    /// tutorial UI can never derive itself onto a normal game. Flip this default and the build goes
+    /// red, on purpose.
+    #[test]
+    fn tutorial_firewall_defaults_closed() {
+        assert!(!GameConfig::default().tutorial);
     }
 }
 

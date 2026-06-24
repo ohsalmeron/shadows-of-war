@@ -226,6 +226,7 @@ pub struct UiState {
     pub bunker_last_sound_time: std::collections::HashMap<u64, web_time::Instant>,
     pub mover_scene: crate::render::world::movers::MoverScene,
     pub click_markers: Vec<ClickMarker>,
+    pub last_build_confirm_time: Option<web_time::Instant>,
 }
 
 impl UiState {

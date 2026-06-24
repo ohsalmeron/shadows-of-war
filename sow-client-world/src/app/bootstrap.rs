@@ -314,6 +314,7 @@ impl SowApp {
                 bunker_last_sound_time: std::collections::HashMap::new(),
                 mover_scene: crate::render::world::movers::MoverScene::new(),
                 click_markers: Vec::new(),
+                last_build_confirm_time: None,
             },
             time: TimeState {
                 interp,
@@ -357,7 +358,9 @@ impl SowApp {
             #[cfg(target_arch = "wasm32")]
             boot_ready_since: None,
         };
-        #[cfg(target_arch = "wasm32")]
+        // Load the locally-persisted profile up front (web: portal/CG value; native: local file).
+        // Synchronous, so the first-run tutorial gate in the boot route sees the real record before
+        // deciding. The async cloud fetch below may still merge richer history in afterwards.
         if let Some(portal) = crate::store_portals::load_portal_progress() {
             sow_app.progress = portal;
         }

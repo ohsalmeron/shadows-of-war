@@ -22,9 +22,7 @@ pub(super) fn collect_rendered_buildings(
     zoom_scaled: f32,
     far_zoom_threshold: f32,
 ) -> Vec<RenderedBuilding> {
-    let cell_size = if zoom_scaled < 0.6 {
-        128.0 // LOD 3: Major sector-level grouping
-    } else if zoom_scaled < 1.2 {
+    let cell_size = if zoom_scaled < 1.2 {
         64.0 // LOD 2: Intermediate grid grouping
     } else if zoom_scaled < far_zoom_threshold {
         24.0 // LOD 1: Close clustering
@@ -50,10 +48,6 @@ pub(super) fn collect_rendered_buildings(
         > = std::collections::HashMap::with_capacity(building_count / 4);
 
         for b in &snap.buildings {
-            if zoom_scaled < 0.6 && b.kind != sow_core::game::BuildingKind::City {
-                continue;
-            }
-
             let (bx, by) = tile_to_world(b.tile_idx, map_w);
             let tile_x = (b.tile_idx % map_w) as f32;
             let tile_y = (b.tile_idx / map_w) as f32;
@@ -61,9 +55,7 @@ pub(super) fn collect_rendered_buildings(
             let grid_x = (tile_x / cell_size) as i32;
             let grid_y = (tile_y / cell_size) as i32;
 
-            let (kind_key, level_key) = if zoom_scaled < 0.6 {
-                (None, None)
-            } else if zoom_scaled < 1.2 {
+            let (kind_key, level_key) = if zoom_scaled < 1.2 {
                 (Some(b.kind), None)
             } else {
                 (Some(b.kind), Some(b.level))

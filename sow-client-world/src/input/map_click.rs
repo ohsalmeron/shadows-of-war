@@ -202,6 +202,7 @@ impl SowApp {
                     let intent =
                         sow_core::protocol::GameplayIntent::BuildStructure { kind, target_tile };
                     self.send_intent(intent);
+                    self.ui.last_build_confirm_time = Some(web_time::Instant::now());
                 }
             }
         } else {

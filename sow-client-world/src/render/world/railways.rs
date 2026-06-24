@@ -459,7 +459,7 @@ pub(crate) fn render(
     ctx: &RenderContext,
 ) {
     let zoom_scaled = ctx.zoom_scaled;
-    if zoom_scaled < 0.4 {
+    if zoom_scaled < super::BUILDINGS_HIDE_FLOOR {
         return;
     }
 
@@ -497,7 +497,7 @@ pub(crate) fn render(
     let sw = input.screen_w / sf;
     let sh = input.screen_h / sf;
 
-    let alpha_t = ((zoom_scaled - 0.4) / 0.4).clamp(0.0, 1.0);
+    let alpha_t = ((zoom_scaled - super::BUILDINGS_HIDE_FLOOR) / 0.4).clamp(0.0, 1.0);
     let base_alpha = (alpha_t * 100.0) as u8;
     let rail_color = egui::Color32::from_rgba_unmultiplied(90, 80, 70, base_alpha);
     let rail_stroke = egui::Stroke::new(2.5_f32, rail_color);

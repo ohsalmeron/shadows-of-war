@@ -226,9 +226,22 @@ impl SowApp {
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         {
-                            self.ui.app.splash_state.done = true;
-                            if self.ui.app.splash_state.target_phase.is_none() {
-                                self.ui.app.splash_state.target_phase = Some(ClientPhase::MainMenu);
+                            // First-run gate, mirroring the web boot route (minus the portal-embed
+                            // requirement): a brand-new player with no recorded match gets the
+                            // scripted intro once; everyone else lands on the menu. The profile is
+                            // loaded synchronously from the local file at boot, so no DB-settle wait
+                            // is needed. Once a match is recorded (`matches_played > 0`, persisted via
+                            // `save_local_progress`), `is_first_game()` is false and this never fires
+                            // again. `start_portal_intro_match` flips the splash job, so it runs once.
+                            if self.progress.is_first_game() {
+                                log::info!("native boot: first-time player -> intro tutorial");
+                                self.start_portal_intro_match();
+                            } else {
+                                self.ui.app.splash_state.done = true;
+                                if self.ui.app.splash_state.target_phase.is_none() {
+                                    self.ui.app.splash_state.target_phase =
+                                        Some(ClientPhase::MainMenu);
+                                }
                             }
                         }
                     }
@@ -305,6 +318,14 @@ impl SowApp {
                             map_bytes: map_bytes.clone(),
                             players: start_msg.players.clone(),
                         });
+
+                        // POKA-YOKE — the single match-init chokepoint that EVERY match (offline,
+                        // tutorial, multiplayer) funnels through. The tutorial UI is *derived* here
+                        // from THIS match's config, never retained across matches: a normal skirmish
+                        // and any server-sent multiplayer config have `tutorial == false`, so the
+                        // tutorial can't leak onto them. This is the ONLY writer of `tutorial_active`
+                        // after startup; the render gate additionally requires `is_offline`.
+                        self.ui.tutorial_active = start_msg.config.tutorial;
 
                         for turn in &start_msg.missed_turns {
                             self.dispatch_sim_command(SimCommand::Turn(turn.clone()));

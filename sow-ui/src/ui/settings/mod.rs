@@ -18,6 +18,7 @@ pub struct SettingsState {
     pub language: Language,
     pub applied_hint_until: Option<web_time::Instant>,
     pub reduced_motion: bool,
+    pub show_fps_ping: bool,
 }
 
 impl Default for SettingsState {
@@ -30,6 +31,7 @@ impl Default for SettingsState {
             language: Language::English,
             applied_hint_until: None,
             reduced_motion: false,
+            show_fps_ping: false,
         }
     }
 }
@@ -163,6 +165,16 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     if ui
                         .checkbox(&mut state.reduced_motion, "")
                         .on_hover_text(&strings.reduced_motion_help)
+                        .changed()
+                    {
+                        touch_applied(state);
+                    }
+                    ui.end_row();
+
+                    ui.label(RichText::new(&strings.show_fps_ping).color(palette::text_muted()));
+                    if ui
+                        .checkbox(&mut state.show_fps_ping, "")
+                        .on_hover_text(&strings.show_fps_ping_help)
                         .changed()
                     {
                         touch_applied(state);

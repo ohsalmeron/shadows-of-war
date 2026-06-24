@@ -56,7 +56,8 @@ impl SowApp {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
+    /// Launch the scripted first-run intro (Boudica campaign) as an offline match. Used by both the
+    /// web portal boot route and the native first-run gate; body is platform-agnostic.
     pub(crate) fn start_portal_intro_match(&mut self) {
         let seed = web_time::SystemTime::now()
             .duration_since(web_time::SystemTime::UNIX_EPOCH)
@@ -97,7 +98,11 @@ impl SowApp {
         self.begin_enter_game_loader();
         self.sim.my_player_id = Some(1);
         self.sim.my_lobby_id = Some(0);
-        self.ui.tutorial_active = tutorial;
+        // Ride the tutorial signal IN the match config — `tutorial_active` is no longer set here.
+        // It is derived once, for every match, at the engine-init chokepoint (loader/engine.rs), so
+        // a forgetful path can't leave it stale. (These field resets stay: they pre-clear the run
+        // state for an offline tutorial; a normal match never reads them.)
+        config.tutorial = tutorial;
         self.ui.tutorial_step = TutorialStep::Welcome;
         self.ui.tutorial_step_idx = 0;
         self.ui.tutorial_baseline_tiles = 0;

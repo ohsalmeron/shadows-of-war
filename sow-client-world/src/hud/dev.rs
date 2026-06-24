@@ -69,4 +69,34 @@ impl SowApp {
         let pos = egui::pos2(rect.max.x - inset - size.x, rect.max.y - inset - size.y);
         painter.galley(pos, galley, color);
     }
+
+    pub(crate) fn render_stats_overlay(&mut self, ctx: &egui::Context) {
+        if !self.ui.app.settings_state.show_fps_ping {
+            return;
+        }
+
+        let rect = ctx.content_rect();
+        let compact = rect.width() < 768.0 || rect.width() < rect.height() * 1.25;
+        let text_size = if compact { 10.0 } else { 11.0 };
+        let inset = if compact { 8.0 } else { 12.0 };
+
+        let mut stats = String::new();
+        if let Some(ping) = self.net.current_ping_ms {
+            stats.push_str(&format!("{ping}ms · {} fps", self.time.current_fps));
+        } else {
+            stats.push_str(&format!("{} fps", self.time.current_fps));
+        }
+        stats.push_str(&format!(" · {:.2}x", self.input.camera_zoom));
+
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("stats_overlay"),
+        ));
+        let font = sow_ui_kit::theme::font_regular(text_size);
+        let color = egui::Color32::from_gray(195);
+        let galley = painter.layout_no_wrap(stats, font, color);
+        let size = galley.size();
+        let pos = egui::pos2(rect.max.x - inset - size.x, rect.max.y - inset - size.y);
+        painter.galley(pos, galley, color);
+    }
 }

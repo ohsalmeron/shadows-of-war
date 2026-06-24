@@ -117,6 +117,20 @@ pub(super) fn paint_building_placement_preview(
 
             let base_size = get_building_icon_size(zoom_scaled) * final_scale;
 
+            let bounce_scale = if let Some(last_time) = ui.last_build_confirm_time {
+                let elapsed = last_time.elapsed().as_secs_f32();
+                if elapsed < 0.4 {
+                    ui.egui_ctx.request_repaint();
+                    let t = elapsed / 0.4;
+                    let scale_offset = (t * std::f32::consts::PI * 2.5).sin() * (1.0 - t) * 0.35;
+                    1.0 + scale_offset
+                } else {
+                    1.0
+                }
+            } else {
+                1.0
+            };
+
             if is_stack {
                 // 1. Upgrade hover highlight: glow only, no duplicate sprite
                 let glow_color = if has_gold {
@@ -131,8 +145,6 @@ pub(super) fn paint_building_placement_preview(
                 if let Some(sb) = stack_target {
                     let current_lvl = sb.active_level();
                     let target_lvl = sb.level;
-                    let elapsed = time.start_time.elapsed().as_secs_f32();
-                    let bobbing = (elapsed * 3.0).sin() * 1.5;
 
                     let border_color = if has_gold {
                         egui::Color32::from_rgb(250, 204, 21) // Gold
@@ -140,18 +152,16 @@ pub(super) fn paint_building_placement_preview(
                         egui::Color32::from_rgb(239, 68, 68) // Red
                     };
 
-                    let main_color = egui::Color32::from_rgb(254, 240, 138); // soft gold
-
                     let mut lines = vec![BuildingUpgradePlateLine {
                         text: upgrade_level_label(current_lvl),
-                        color: main_color,
+                        color: egui::Color32::WHITE, // Clear white text
                         scale: 1.0,
                     }];
 
                     if target_lvl > current_lvl {
                         lines.push(BuildingUpgradePlateLine {
                             text: format!("(+{} queued)", target_lvl - current_lvl),
-                            color: main_color,
+                            color: egui::Color32::from_rgb(34, 211, 238), // Soft premium cyan for queue status
                             scale: 0.85,
                         });
                     }
@@ -159,12 +169,17 @@ pub(super) fn paint_building_placement_preview(
                     let plate = BuildingUpgradePlate {
                         anchor: preview_center,
                         base_size,
-                        bobbing,
                         border_color,
                         lines,
                     };
 
-                    paint_building_upgrade_plate(painter, plate, input.camera_zoom, sf);
+                    paint_building_upgrade_plate(
+                        painter,
+                        plate,
+                        input.camera_zoom,
+                        final_scale * bounce_scale,
+                        sf,
+                    );
                 }
             } else {
                 // New placement: ghost emoji and range circle
@@ -199,13 +214,13 @@ pub(super) fn paint_building_placement_preview(
             let (amount_text, text_color) = if has_gold {
                 let leftover = ui.app.hud_state.gold - cost;
                 (
-                    format!("+{}", sow_ui_kit::utils::format_number(leftover)),
+                    sow_ui::utils::format_number(leftover),
                     egui::Color32::from_rgb(74, 222, 128), // Green
                 )
             } else {
                 let deficit = cost - ui.app.hud_state.gold;
                 (
-                    format!("-{}", sow_ui_kit::utils::format_number(deficit)),
+                    format!("-{}", sow_ui::utils::format_number(deficit)),
                     egui::Color32::from_rgb(248, 113, 113), // Red
                 )
             };
@@ -217,7 +232,7 @@ pub(super) fn paint_building_placement_preview(
                 &amount_text,
                 text_color,
                 zoom_scaled,
-                final_scale,
+                final_scale * bounce_scale,
             );
         }
     }

@@ -25,6 +25,10 @@ pub(crate) fn render(
         default_config = sow_core::game_config::GameConfig::default();
         &default_config
     };
+    if ctx.zoom_scaled < super::super::BUILDINGS_HIDE_FLOOR {
+        return;
+    }
+
     let edge_cache_stale = sim
         .current_snapshot
         .as_ref()
@@ -41,21 +45,13 @@ pub(crate) fn render(
             .unwrap_or(1.0)
     });
     let far_zoom_threshold = ClientVisualConfig::default().far_zoom_lod_threshold;
-    let zoom_factor = ((zoom_scaled - 0.6) / 9.4).clamp(0.0, 1.0);
+    let zoom_factor = ((zoom_scaled - super::super::BUILDINGS_HIDE_FLOOR) / 9.0).clamp(0.0, 1.0);
     let min_lod_scale = 0.5; // Scale when fully zoomed out
     let max_lod_scale = 1.0; // Scale when fully zoomed in
     let lod_scale = min_lod_scale + (max_lod_scale - min_lod_scale) * zoom_factor;
-    let mut final_scale = building_scale * lod_scale;
-    if zoom_scaled < 0.6 {
-        final_scale *= 0.35; // scale down LOD 3 so it doesn't get too big
-    }
+    let final_scale = building_scale * lod_scale;
 
     if let Some(snap) = &sim.current_snapshot {
-        // S2: Restore zoom LOD gate — at zoom < 0.25, buildings are sub-pixel, skip entirely
-        if zoom_scaled < 0.25 {
-            return;
-        }
-
         let mx = input.last_mouse_x as f32;
         let my = input.last_mouse_y as f32;
         let world_x = (mx - input.camera_x) / input.camera_zoom;
@@ -92,37 +88,6 @@ pub(crate) fn render(
             }
 
             let center = egui::pos2(screen_x, screen_y);
-
-            // LOD 3: Draw "City Lights" Heatmap Nodes
-            if zoom_scaled < 0.6 {
-                let player_color = if b.owner_id != 0 {
-                    player_colors
-                        .get(b.owner_id as usize)
-                        .copied()
-                        .unwrap_or(egui::Color32::WHITE)
-                } else {
-                    egui::Color32::WHITE
-                };
-
-                let dot_radius = if b.count > 1 {
-                    (0.5 + (b.count as f32).sqrt().min(3.0)) * final_scale
-                } else {
-                    0.5 * final_scale
-                };
-
-                let glow_alpha = (b.active_level as f32 / 10.0).clamp(0.2, 1.0) * 150.0;
-                let color_glow = egui::Color32::from_rgba_unmultiplied(
-                    player_color.r(),
-                    player_color.g(),
-                    player_color.b(),
-                    glow_alpha as u8,
-                );
-                let color_core = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 200);
-
-                painter.circle_filled(center, dot_radius * 2.0, color_glow);
-                painter.circle_filled(center, dot_radius * 0.8, color_core);
-                continue;
-            }
 
             let base_size = if b.count > 1 {
                 28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)

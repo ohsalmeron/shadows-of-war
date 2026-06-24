@@ -88,6 +88,7 @@ impl SowApp {
             }
 
             self.calculate_fps_and_ping();
+            self.render_stats_overlay(ctx);
 
             if self.ui.app.phase == ClientPhase::Playing {
                 self.handle_map_interactions(ctx);
