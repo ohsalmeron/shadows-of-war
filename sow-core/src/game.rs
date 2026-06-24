@@ -274,46 +274,24 @@ impl GameState {
     }
 
     pub fn place_spawn(&mut self, pid: u16, cx: u32, cy: u32) {
-        use std::collections::VecDeque;
-
         let r = config::SPAWN_RADIUS as i32;
-        let mut target_count = 0;
         for dy in -r..=r {
             for dx in -r..=r {
-                if dx * dx + dy * dy <= r * r {
-                    target_count += 1;
+                if dx * dx + dy * dy > r * r {
+                    continue;
+                }
+                let nx = cx as i32 + dx;
+                let ny = cy as i32 + dy;
+                if self.map.is_valid_coord(nx, ny) {
+                    let (ux, uy) = (nx as u32, ny as u32);
+                    if self.map.owner_id(ux, uy) == 0
+                        && self.map.terrain[self.map.ref_id(ux, uy)].is_land()
+                    {
+                        self.set_tile_owner(ux, uy, pid);
+                    }
                 }
             }
         }
-
-        let map_size = (self.map.width * self.map.height) as usize;
-        let mut visited = vec![false; map_size];
-        let mut queue = VecDeque::new();
-
-        let start_idx = self.map.ref_id(cx, cy);
-        visited[start_idx] = true;
-        queue.push_back((cx, cy));
-
-        let mut owned_count = 0;
-
-        while let Some((x, y)) = queue.pop_front() {
-            if self.map.owner_id(x, y) == 0 && self.map.terrain[self.map.ref_id(x, y)].is_land() {
-                self.set_tile_owner(x, y, pid);
-                owned_count += 1;
-                if owned_count >= target_count {
-                    break;
-                }
-            }
-
-            self.map.for_each_neighbor(x, y, |nx, ny| {
-                let n_idx = self.map.ref_id(nx, ny);
-                if !visited[n_idx] {
-                    visited[n_idx] = true;
-                    queue.push_back((nx, ny));
-                }
-            });
-        }
-
         if let Some(p) = self.player_mut(pid) {
             p.has_spawned = true;
         }

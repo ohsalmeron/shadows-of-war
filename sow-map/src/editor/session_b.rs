@@ -26,8 +26,12 @@ impl MapEditorSession {
             territory_opacity: 1.0,
             fallout_slots: [[0.0; 4]; 8],
             nobuild_slots: [[0.0; 4]; 32],
-            sub_voxel_scale: 1.0,
             blend_mode: 0.0,
+            effect_heartbeat: 1.0,
+            effect_war_fog: 1.0,
+            effect_fallout: 1.0,
+            effect_golden_hour: 1.0,
+            effect_holo_grid: 1.0,
             _pad3: 0.0,
             _pad4: 0.0,
         }

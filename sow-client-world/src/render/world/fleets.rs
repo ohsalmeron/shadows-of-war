@@ -55,7 +55,7 @@ pub(crate) fn render(
                 );
             }
 
-            if fleet.retreating && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2) {
+            if fleet.retreating && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2) && crate::app::vfx_on(painter.ctx(), |f| f.fleet_blink) {
                 let center = rect.center();
                 painter.line_segment(
                     [

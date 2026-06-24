@@ -12,6 +12,11 @@ pub(crate) fn render_death_nameplates(
         return;
     }
 
+    if !crate::app::vfx_on(&ui.egui_ctx, |f| f.death_nameplates) {
+        ui.death_nameplates.clear();
+        return;
+    }
+
     // Always request repaint if we have active death animations running to keep high FPS
     ui.egui_ctx.request_repaint();
 

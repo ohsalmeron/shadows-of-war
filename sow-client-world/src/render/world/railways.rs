@@ -459,6 +459,9 @@ pub(crate) fn render(
     ctx: &RenderContext,
 ) {
     let zoom_scaled = ctx.zoom_scaled;
+    if !crate::app::vfx_on(ctx.painter.ctx(), |f| f.railways) {
+        return;
+    }
     if zoom_scaled < super::BUILDINGS_HIDE_FLOOR {
         return;
     }

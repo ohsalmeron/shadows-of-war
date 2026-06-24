@@ -55,6 +55,27 @@ pub(crate) fn render(
         let is_me = player.id == my_id;
         let is_human = player.player_type == sow_core::player::PlayerType::Human;
 
+        // Tutorial only — TEMPORARY player-nameplate simplification. In the tutorial the local
+        // player's nameplate is JUST the avatar, centered on the territory anchor so it nests inside
+        // the centered tutorial pointer ring: no star / name / troops / status. Gated on
+        // `tutorial_active`, which is false in every normal solo/MP match (tutorial isolation
+        // contract + single-derive gate), so the standard gameplay nameplate path below is never
+        // touched. To retire this, delete the whole block — never weaken the gate.
+        if ui.tutorial_active && is_me {
+            crate::hud::avatar::draw_player_avatar(
+                painter,
+                center,
+                20.0_f32,
+                player.id,
+                &player.name,
+                player.player_type,
+                player.color,
+                &player.leader,
+                &ui.app.asset_loader,
+            );
+            continue;
+        }
+
         let map_area = (sim.map_w * sim.map_h).max(1) as f32;
         let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
         let is_massive_on_screen =

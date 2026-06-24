@@ -7,7 +7,7 @@ pub(super) fn paint_building_overlays(
     ui: &mut crate::app::UiState,
     _sim: &crate::app::SimState,
     input: &crate::app::InputState,
-    time: &crate::app::TimeState,
+    _time: &crate::app::TimeState,
     painter: &egui::Painter,
     snap: &sow_core::protocol::SimSnapshot,
     config: &sow_core::game_config::GameConfig,
@@ -20,7 +20,7 @@ pub(super) fn paint_building_overlays(
     hovered_tile_idx: Option<u32>,
     player_colors: &[egui::Color32],
 ) {
-    if b.under_construction && b.ticks_until_complete > 0 {
+    if b.under_construction && b.ticks_until_complete > 0 && zoom_scaled >= 1.5 && crate::app::vfx_on(painter.ctx(), |f| f.upgrade_plate) {
         let active_l = b.active_level;
         let target_l = b.target_level;
 
@@ -107,7 +107,7 @@ pub(super) fn paint_building_overlays(
     }
 
     // Render premium golden glassmorphic floating egui badge above upgrading building
-    if b.under_construction && b.ticks_until_complete > 0 && b.active_level > 0 && b.count == 1 {
+    if b.under_construction && b.ticks_until_complete > 0 && b.active_level > 0 && b.count == 1 && zoom_scaled >= 1.5 {
         let active_l = b.active_level;
         let target_l = b.target_level;
         let queued_count = (target_l as i32 - active_l as i32).max(0) as u32;
@@ -142,7 +142,7 @@ pub(super) fn paint_building_overlays(
     }
 
     // Render floating stats tooltip on hover
-    if b.active_level > 0 && b.count == 1 {
+    if b.active_level > 0 && b.count == 1 && zoom_scaled >= 1.5 {
         let is_hovered =
             if let Some(snap_b) = snap.buildings.iter().find(|sb| sb.id == b.id.unwrap_or(0)) {
                 hovered_tile_idx == Some(snap_b.tile_idx)

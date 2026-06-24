@@ -1,0 +1,33 @@
+{
+  "_comment": "Boudica tutorial roster. Edit with tools/campaign-editor/ (visual) or by hand. The game loads this at runtime (native) and falls back to the hardcoded roster in sow-client-world/src/campaign/boudica.rs if this file is missing/invalid. Map is boudica (896x504, x=east, y=south). role = kin | independent | vassal | boss | big_boss | neutral.",
+  "map": "boudica",
+  "player_spawn": [696, 45],
+  "factions": [
+    { "name": "Cassi",          "x": 696, "y": 63,  "role": "independent" },
+    { "name": "Ancalites",      "x": 720, "y": 75,  "role": "independent" },
+    { "name": "Bibroci",        "x": 660, "y": 90,  "role": "independent" },
+    { "name": "Segontiaci",     "x": 712, "y": 120, "role": "independent" },
+    { "name": "Venta Icenorum", "x": 640, "y": 110, "role": "kin" },
+    { "name": "Snettisham",     "x": 615, "y": 50,  "role": "kin" },
+    { "name": "Thetford",       "x": 590, "y": 130, "role": "kin" },
+    { "name": "Stonea",         "x": 540, "y": 110, "role": "kin" },
+    { "name": "Trinovantes",    "x": 600, "y": 200, "role": "kin" },
+    { "name": "Catuvellauni",   "x": 490, "y": 235, "role": "vassal" },
+    { "name": "Atrebates",      "x": 444, "y": 370, "role": "vassal" },
+    { "name": "Cantiaci",       "x": 655, "y": 345, "role": "vassal" },
+    { "name": "Camulodunum",    "x": 646, "y": 230, "role": "boss" },
+    { "name": "Londinium",      "x": 576, "y": 300, "role": "boss" },
+    { "name": "Verulamium",     "x": 536, "y": 270, "role": "boss" },
+    { "name": "Rome",           "x": 470, "y": 300, "role": "big_boss" },
+    { "name": "Corieltauvi",    "x": 515, "y": 115, "role": "neutral" },
+    { "name": "Cornovii",       "x": 330, "y": 155, "role": "neutral" },
+    { "name": "Dobunni",        "x": 360, "y": 255, "role": "neutral" },
+    { "name": "Durotriges",     "x": 345, "y": 400, "role": "neutral" },
+    { "name": "Dumnonii",       "x": 163, "y": 433, "role": "neutral" },
+    { "name": "Silures",        "x": 235, "y": 245, "role": "neutral" },
+    { "name": "Demetae",        "x": 110, "y": 205, "role": "neutral" },
+    { "name": "Ordovices",      "x": 198, "y": 119, "role": "neutral" },
+    { "name": "Deceangli",      "x": 255, "y": 85,  "role": "neutral" },
+    { "name": "Morini",         "x": 835, "y": 465, "role": "neutral" }
+  ]
+}

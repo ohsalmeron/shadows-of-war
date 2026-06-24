@@ -137,7 +137,7 @@ pub(crate) fn render(
                 }
 
                 // Render Automated City Districts (Port, Silo, Foundry)
-                if b.kind == sow_core::game::BuildingKind::City && b.count == 1 {
+                if b.kind == sow_core::game::BuildingKind::City && b.count == 1 && zoom_scaled >= 1.5 {
                     if let (Some(b_id), Some(mods)) = (b.id, b.modules) {
                         let district_size = base_size * 0.75;
                         let neighbors_offsets = [

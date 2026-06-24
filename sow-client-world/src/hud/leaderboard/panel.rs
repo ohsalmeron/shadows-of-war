@@ -478,9 +478,6 @@ impl SowApp {
             let mut blend_mode = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || 0.0f32)
             });
-            let mut sub_voxel_scale = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_sub_voxel_scale"), || 1.0f32)
-            });
             let mut bscale = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 0.75f32)
             });
@@ -508,10 +505,8 @@ impl SowApp {
                     ui.selectable_value(&mut blend_mode, 0.0f32, "Normal Mix");
                     ui.selectable_value(&mut blend_mode, 1.0f32, "Multiply");
                     ui.selectable_value(&mut blend_mode, 2.0f32, "Overlay");
-                    ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
+                     ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
                 });
-
-            ui.add(egui::Slider::new(&mut sub_voxel_scale, 1.0..=8.0).text("Sub-Voxel Scale"));
 
             ui.separator();
             ui.label(
@@ -537,13 +532,82 @@ impl SowApp {
                 d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter)
             });
 
+            let mut vfx_flags = ctx.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_vfx_flags"), crate::app::DevVfxFlags::default)
+            });
+
+            ui.separator();
+            ui.collapsing(RichText::new("VFX Toggles (Benchmark)").strong().color(Color32::WHITE), |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("All On").clicked() {
+                        vfx_flags = crate::app::DevVfxFlags::default();
+                    }
+                    if ui.button("All Off").clicked() {
+                        vfx_flags = crate::app::DevVfxFlags {
+                            conquer: false,
+                            border_breathe: false,
+                            energy_flow: false,
+                            heartbeat: false,
+                            war_fog: false,
+                            fallout: false,
+                            ambient_grade: false,
+                            holo_grid: false,
+                            tower: false,
+                            tower_range: false,
+                            attack_lines: false,
+                            attack_badges: false,
+                            click_markers: false,
+                            nuke_preview: false,
+                            floating_notices: false,
+                            death_nameplates: false,
+                            status_emojis: false,
+                            upgrade_plate: false,
+                            placement_preview: false,
+                            mover_trails: false,
+                            railways: false,
+                            fleet_blink: false,
+                        };
+                    }
+                });
+
+                ui.small("GPU Effects");
+                ui.checkbox(&mut vfx_flags.conquer, "Conquer shockwave");
+                ui.checkbox(&mut vfx_flags.border_breathe, "Border breathe");
+                ui.checkbox(&mut vfx_flags.energy_flow, "Contested shimmer");
+                ui.checkbox(&mut vfx_flags.heartbeat, "Territory heartbeat");
+                ui.checkbox(&mut vfx_flags.war_fog, "War fog / Frontier");
+                ui.checkbox(&mut vfx_flags.fallout, "Nuclear fallout");
+                ui.checkbox(&mut vfx_flags.ambient_grade, "Ambient grading");
+                ui.checkbox(&mut vfx_flags.holo_grid, "Holographic grid");
+
+                ui.separator();
+                ui.small("Tower & Combat VFX");
+                ui.checkbox(&mut vfx_flags.tower, "Bunker laser");
+                ui.checkbox(&mut vfx_flags.tower_range, "Bunker range circle");
+                ui.checkbox(&mut vfx_flags.attack_lines, "Attack threat lines");
+                ui.checkbox(&mut vfx_flags.attack_badges, "Attack troop badges");
+
+                ui.separator();
+                ui.small("World & UI VFX");
+                ui.checkbox(&mut vfx_flags.click_markers, "Click markers");
+                ui.checkbox(&mut vfx_flags.nuke_preview, "Nuke preview");
+                ui.checkbox(&mut vfx_flags.floating_notices, "Floating notices");
+                ui.checkbox(&mut vfx_flags.death_nameplates, "Death nameplates");
+                ui.checkbox(&mut vfx_flags.status_emojis, "Status emojis");
+                ui.checkbox(&mut vfx_flags.upgrade_plate, "Upgrade plate");
+                ui.checkbox(&mut vfx_flags.placement_preview, "Placement preview");
+                ui.checkbox(&mut vfx_flags.mover_trails, "Mover trails");
+                ui.checkbox(&mut vfx_flags.railways, "Railways");
+                ui.checkbox(&mut vfx_flags.fleet_blink, "Fleet retreat cross");
+            });
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_vfx_flags"), vfx_flags));
+
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_territory_opacity"), opacity));
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_blend_mode"), blend_mode));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_sub_voxel_scale"), sub_voxel_scale));
             ctx.data_mut(|d| {
                 d.insert_temp(egui::Id::new("dev_conquest_duration"), conquest_duration)
             });

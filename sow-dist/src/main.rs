@@ -77,6 +77,12 @@ enum Command {
     /// Pack emoji atlas and manifest from scanned Rust sources.
     #[command(name = "emoji", visible_aliases = ["e"])]
     Emoji,
+    /// Launch the campaign roster editor — drag tribes on the map, no recompile.
+    #[command(name = "map", visible_aliases = ["m", "editor"])]
+    Map {
+        #[arg(short, long, default_value_t = 8777)]
+        port: u16,
+    },
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -114,6 +120,7 @@ fn main() -> Result<()> {
         } => cmd_local(&paths, opts.version, port, build_only),
         Command::Native => cmd_native(&paths),
         Command::Emoji => cmd_emoji(&paths),
+        Command::Map { port } => serve::serve_campaign_editor(&paths, port),
     }
 }
 

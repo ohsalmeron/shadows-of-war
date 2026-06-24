@@ -21,12 +21,15 @@ pub const PLAYER_SPAWN: (u32, u32) = (696, 45);
 /// The episode roster — who stands where, on whose side, and at what strength (via `Role`).
 pub fn factions() -> Vec<Faction> {
     vec![
-        // — First blood: Caesar's 54 BC kneelers (gray, start 500 then grow). Staggered
-        //   distances (d≈20/43/58/84) + spread directions so you meet them one at a time —
-        independent("Cassi", 693, 65),       // d≈20, due S — immediate first contact
-        independent("Bibroci", 668, 78),     // d≈43, SW
-        independent("Ancalites", 715, 100),  // d≈58, SE
-        independent("Segontiaci", 673, 126), // d≈84, far SW
+        // — First blood: Caesar's 54 BC kneelers (gray, start 500 then grow). Pulled CLOSER and
+        //   fanned across the southern arc with even ~20-tile radial gaps (r≈18/38/58/78) on
+        //   distinct bearings (S / SE / SW / SSE), so you reach them one at a time, not all at once.
+        //   All sit inside the land the old roster already proved solid; the engine snaps any near-
+        //   miss to the nearest free land. Ordered nearest→farthest = the intended kill order.
+        independent("Cassi", 696, 63),       // r≈18, due S  — immediate first contact
+        independent("Ancalites", 720, 75),   // r≈38, SE
+        independent("Bibroci", 660, 90),     // r≈58, SW
+        independent("Segontiaci", 712, 120), // r≈78, SSE     — last kneeler
         // — Kin: Boudica's side (Red), spread out; Trinovantes far south in Essex —
         kin("Venta Icenorum", 640, 110), // the Iceni capital
         kin("Snettisham", 615, 50),      // Iceni gold-hoard sanctuary (the Wash)
@@ -60,6 +63,33 @@ pub fn factions() -> Vec<Faction> {
 /// Engine-ready roster for `GameConfig.scripted_spawns`.
 pub fn scripted_spawns() -> Vec<ScriptedSpawn> {
     super::to_scripted(&factions())
+}
+
+/// The episode roster + player spawn the tutorial should actually use. On native it prefers a JSON
+/// override — `$SOW_CAMPAIGN_ROSTER`, else `assets/campaign/boudica.json` — so positions, names and
+/// roles can be retuned with `tools/campaign-editor` and seen by relaunching, **no recompile**. Any
+/// problem falls back to the hardcoded roster below; web always uses the hardcoded one.
+pub fn roster() -> (Vec<super::Faction>, (u32, u32)) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let env_path = std::env::var("SOW_CAMPAIGN_ROSTER").ok();
+        let candidates = env_path
+            .as_deref()
+            .into_iter()
+            .chain(["assets/campaign/boudica.json"]);
+        for path in candidates {
+            if let Some(loaded) = super::load_roster_json(path) {
+                log::info!(
+                    "campaign: roster loaded from '{}' ({} factions, spawn {:?})",
+                    path,
+                    loaded.0.len(),
+                    loaded.1
+                );
+                return loaded;
+            }
+        }
+    }
+    (factions(), PLAYER_SPAWN)
 }
 
 #[cfg(test)]

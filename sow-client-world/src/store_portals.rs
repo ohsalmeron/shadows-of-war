@@ -114,11 +114,6 @@ fn call_window_hook_str_ret_string(_name: &str, _arg: &str) -> Option<String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn take_window_u64(_name: &str) -> Option<u64> {
-    None
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn take_window_bool(_name: &str) -> bool {
     false
 }
@@ -202,13 +197,12 @@ pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> 
         }
         serde_json::from_str(&json).ok()
     }
-    // Native has no portal/CG storage, so the profile lives in a local file (same data dir as the
-    // guest id). This is what lets the first-run tutorial gate flip on native: once a match is
-    // recorded the file holds `matches_played > 0`, so `is_first_game()` is false next launch.
+    // Native deliberately persists nothing yet: there's no cross-session login outside CrazyGames,
+    // so there's no trustworthy place to store "has this player done the tutorial?". Until native
+    // logins exist, native keeps no profile (and the boot route always shows the intro).
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let json = std::fs::read_to_string(native_progress_path()).ok()?;
-        serde_json::from_str(&json).ok()
+        None
     }
 }
 
@@ -216,22 +210,8 @@ pub fn save_portal_progress(progress: &crate::player_progress::PlayerProgress) {
     let Ok(json) = serde_json::to_string(progress) else {
         return;
     };
-    #[cfg(target_arch = "wasm32")]
+    // No-op on native (see `load_portal_progress`): nothing is saved until native logins land.
     call_window_hook_str("SOW_portalSaveProgress", &json);
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let path = native_progress_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(path, json);
-    }
-}
-
-/// Native location of the locally-persisted player profile (parity with the web portal/CG save).
-#[cfg(not(target_arch = "wasm32"))]
-fn native_progress_path() -> std::path::PathBuf {
-    crate::paths::native_data_dir().join(crate::player_progress::STORAGE_KEY)
 }
 
 /// Read platform identity set by the portal SDK during init.

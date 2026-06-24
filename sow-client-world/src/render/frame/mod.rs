@@ -177,10 +177,14 @@ impl SowApp {
                     let mut shore_darkness = 1.0f32;
                     let mut territory_opacity = 1.0f32;
                     let mut blend_mode = 0.0f32;
-                    let mut sub_voxel_scale = 1.0f32;
                     let mut conquest_duration = 2.5f32;
+                    let mut vfx_flags = crate::app::DevVfxFlags::default();
 
                     self.ui.egui_ctx.data_mut(|d| {
+                        vfx_flags = *d.get_temp_mut_or_insert_with(
+                            egui::Id::new("dev_vfx_flags"),
+                            crate::app::DevVfxFlags::default,
+                        );
                         border_thickness = *d
                             .get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.5f32);
                         border_darkness = *d
@@ -201,10 +205,6 @@ impl SowApp {
                             .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
                                 0.0f32
                             });
-                        sub_voxel_scale = *d.get_temp_mut_or_insert_with(
-                            egui::Id::new("dev_sub_voxel_scale"),
-                            || 1.0f32,
-                        );
                         conquest_duration = *d.get_temp_mut_or_insert_with(
                             egui::Id::new("dev_conquest_duration"),
                             || 2.5f32,
@@ -369,17 +369,21 @@ impl SowApp {
                         shore_thickness,
                         shore_darkness,
                         threat_slots,
-                        effect_shockwave: 1.0,
-                        effect_breathe: 1.0,
-                        effect_energy_flow: 1.0,
+                        effect_shockwave: if vfx_flags.conquer { 1.0 } else { 0.0 },
+                        effect_breathe: if vfx_flags.border_breathe { 1.0 } else { 0.0 },
+                        effect_energy_flow: if vfx_flags.energy_flow { 1.0 } else { 0.0 },
                         my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
                         hover_hex,
                         hover_building_kind,
                         territory_opacity,
                         fallout_slots,
                         nobuild_slots,
-                        sub_voxel_scale,
                         blend_mode,
+                        effect_heartbeat: if vfx_flags.heartbeat { 1.0 } else { 0.0 },
+                        effect_war_fog: if vfx_flags.war_fog { 1.0 } else { 0.0 },
+                        effect_fallout: if vfx_flags.fallout { 1.0 } else { 0.0 },
+                        effect_golden_hour: if vfx_flags.ambient_grade { 1.0 } else { 0.0 },
+                        effect_holo_grid: if vfx_flags.holo_grid { 1.0 } else { 0.0 },
                         _pad3: 0.0,
                         _pad4: 0.0,
                     };
@@ -395,52 +399,54 @@ impl SowApp {
                     map_drawn = true;
 
                     // ── GPU-instanced movers (boats, nukes, SAM) ─────────────
-                    if self.gfx.mover_renderer.is_none() {
-                        let surface_format = s.info().format;
-                        self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                            &render_ctx.context,
-                            surface_format,
-                        ));
-                        if let Some(ref mr_mover) = self.gfx.mover_renderer {
-                            mr_mover
-                                .upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                    if vfx_flags.mover_trails {
+                        if self.gfx.mover_renderer.is_none() {
+                            let surface_format = s.info().format;
+                            self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                                &render_ctx.context,
+                                surface_format,
+                            ));
+                            if let Some(ref mr_mover) = self.gfx.mover_renderer {
+                                mr_mover
+                                    .upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                            }
                         }
-                    }
-                    if let (Some(ref mut mover_r), Some(ref snap)) =
-                        (&mut self.gfx.mover_renderer, &self.sim.current_snapshot)
-                    {
-                        let now = web_time::Instant::now();
-                        let alpha = crate::render::world::movers::interp_alpha(&self.time, now);
-                        let pack = crate::render::world::movers::MoverPackParams {
-                            camera_x: self.input.camera_x,
-                            camera_y: self.input.camera_y,
-                            camera_zoom: self.input.camera_zoom,
-                            screen_w: self.input.screen_w,
-                            screen_h: self.input.screen_h,
-                            alpha,
-                            selected_warships: &self.input.selected_warships,
-                        };
-                        crate::render::world::movers::update_and_pack(
-                            &mut self.ui.mover_scene,
-                            snap,
-                            self.sim.map_w,
-                            mover_r,
-                            pack,
-                        );
-                        let mover_globals = sow_render::MoverGlobals {
-                            camera_pos: [self.input.camera_x, self.input.camera_y],
-                            zoom: self.input.camera_zoom,
-                            sprite_count: 0,
-                            screen_size: [self.input.screen_w, self.input.screen_h],
-                            trail_count: 0,
-                            _pad: 0.0,
-                        };
-                        mover_r.draw(
-                            &mut render_ctx.command_encoder,
-                            frame.texture_view(),
-                            mover_globals,
-                            &render_ctx.context,
-                        );
+                        if let (Some(ref mut mover_r), Some(ref snap)) =
+                            (&mut self.gfx.mover_renderer, &self.sim.current_snapshot)
+                        {
+                            let now = web_time::Instant::now();
+                            let alpha = crate::render::world::movers::interp_alpha(&self.time, now);
+                            let pack = crate::render::world::movers::MoverPackParams {
+                                camera_x: self.input.camera_x,
+                                camera_y: self.input.camera_y,
+                                camera_zoom: self.input.camera_zoom,
+                                screen_w: self.input.screen_w,
+                                screen_h: self.input.screen_h,
+                                alpha,
+                                selected_warships: &self.input.selected_warships,
+                            };
+                            crate::render::world::movers::update_and_pack(
+                                &mut self.ui.mover_scene,
+                                snap,
+                                self.sim.map_w,
+                                mover_r,
+                                pack,
+                            );
+                            let mover_globals = sow_render::MoverGlobals {
+                                camera_pos: [self.input.camera_x, self.input.camera_y],
+                                zoom: self.input.camera_zoom,
+                                sprite_count: 0,
+                                screen_size: [self.input.screen_w, self.input.screen_h],
+                                trail_count: 0,
+                                _pad: 0.0,
+                            };
+                            mover_r.draw(
+                                &mut render_ctx.command_encoder,
+                                frame.texture_view(),
+                                mover_globals,
+                                &render_ctx.context,
+                            );
+                        }
                     }
                 }
             }

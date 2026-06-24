@@ -8,7 +8,7 @@ pub(super) fn paint_building_placement_preview(
     ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
-    time: &crate::app::TimeState,
+    _time: &crate::app::TimeState,
     gfx: &crate::app::GraphicsState,
     painter: &egui::Painter,
     snap: &sow_core::protocol::SimSnapshot,
@@ -18,6 +18,9 @@ pub(super) fn paint_building_placement_preview(
     sf: f32,
     config: &sow_core::game_config::GameConfig,
 ) {
+    if !crate::app::vfx_on(painter.ctx(), |f| f.placement_preview) {
+        return;
+    }
     if let Some(kind) = ui.app.hud_state.selected_building_kind {
         if let Some(hovered_t) = hovered_tile_idx {
             let h_col = (hovered_t as i32) % sim.map_w as i32;

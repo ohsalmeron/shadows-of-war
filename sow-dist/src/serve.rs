@@ -23,6 +23,70 @@ fn kill_port_holders(port: u16) {
     }
 }
 
+/// Serve the repo root so the standalone campaign roster editor can read the boudica terrain
+/// (`tools/campaign-editor/boudica.bin`) and the live roster (`assets/campaign/boudica.json`).
+/// Decodes the map from the local game cache on first run. `./sow m`.
+pub fn serve_campaign_editor(paths: &Paths, port: u16) -> Result<()> {
+    ensure_editor_map(paths);
+    kill_port_holders(port);
+    let bind = format!("127.0.0.1:{port}");
+    let url = format!("http://{bind}/tools/campaign-editor/");
+    println!("\n  ┌─ Campaign roster editor ─────────────────────────────");
+    println!("  │  open:  {url}");
+    println!("  │  drag tribes → Download boudica.json → assets/campaign/");
+    println!("  │  then relaunch the game (no recompile). Ctrl-C to stop.");
+    println!("  └──────────────────────────────────────────────────────\n");
+
+    let root = paths.root.clone();
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        let app = Router::new().fallback_service(ServeDir::new(&root));
+        match tokio::net::TcpListener::bind(&bind).await {
+            Ok(listener) => axum::serve(listener, app)
+                .await
+                .map_err(|e| anyhow::anyhow!("Server error: {e}")),
+            Err(e) => anyhow::bail!(
+                "Failed to bind to {bind}. Is the port already in use?\nDetailed error: {e}"
+            ),
+        }
+    })?;
+    Ok(())
+}
+
+/// Decode the cached boudica map (brotli) into the editor dir if not already there. The `.bin` is
+/// gitignored CDN map data; the editor needs the raw terrain to draw land/water under the tribes.
+fn ensure_editor_map(paths: &Paths) {
+    let dst = paths.root.join("tools/campaign-editor/boudica.bin");
+    if dst.is_file() {
+        return;
+    }
+    let data_dir = std::env::var("SOW_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".local/share/shadows-of-war")
+        });
+    let src = data_dir.join("maps/boudica.bin.br");
+    let Ok(compressed) = std::fs::read(&src) else {
+        println!(
+            "  note: no cached map at {} — play the boudica tutorial once so it caches, then re-run `./sow m`.",
+            src.display()
+        );
+        return;
+    };
+    use std::io::Read;
+    let mut out = Vec::new();
+    if brotli::Decompressor::new(&compressed[..], 4096)
+        .read_to_end(&mut out)
+        .is_ok()
+    {
+        let _ = dst.parent().map(std::fs::create_dir_all);
+        if std::fs::write(&dst, &out).is_ok() {
+            println!("  decoded map → {}", dst.display());
+        }
+    }
+}
+
 pub fn serve_site_dev(paths: &Paths, port: u16) -> Result<()> {
     let www = &paths.dist_site_dev_www;
     if !www.join("index.html").is_file() {

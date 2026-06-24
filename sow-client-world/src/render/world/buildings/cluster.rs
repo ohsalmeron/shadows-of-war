@@ -22,7 +22,9 @@ pub(super) fn collect_rendered_buildings(
     zoom_scaled: f32,
     far_zoom_threshold: f32,
 ) -> Vec<RenderedBuilding> {
-    let cell_size = if zoom_scaled < 1.2 {
+    let cell_size = if zoom_scaled < 1.5 {
+        128.0 // LOD 3: Aggressive far-zoom grouping
+    } else if zoom_scaled < 2.5 {
         64.0 // LOD 2: Intermediate grid grouping
     } else if zoom_scaled < far_zoom_threshold {
         24.0 // LOD 1: Close clustering
@@ -55,7 +57,7 @@ pub(super) fn collect_rendered_buildings(
             let grid_x = (tile_x / cell_size) as i32;
             let grid_y = (tile_y / cell_size) as i32;
 
-            let (kind_key, level_key) = if zoom_scaled < 1.2 {
+            let (kind_key, level_key) = if zoom_scaled < 2.5 {
                 (Some(b.kind), None)
             } else {
                 (Some(b.kind), Some(b.level))

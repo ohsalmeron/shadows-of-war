@@ -21,6 +21,9 @@ pub(crate) fn draw_floating_status_emoji(
     flash_alpha: f32,
 ) -> f32 {
     let anim_id = egui::Id::new((anim_id_str, player_id));
+    if !crate::app::vfx_on(painter.ctx(), |f| f.status_emojis) {
+        return 0.0;
+    }
     let anim = painter.ctx().animate_bool_with_time(anim_id, active, 0.25);
     if anim <= 0.01 {
         return 0.0;

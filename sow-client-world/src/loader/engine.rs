@@ -226,23 +226,14 @@ impl SowApp {
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         {
-                            // First-run gate, mirroring the web boot route (minus the portal-embed
-                            // requirement): a brand-new player with no recorded match gets the
-                            // scripted intro once; everyone else lands on the menu. The profile is
-                            // loaded synchronously from the local file at boot, so no DB-settle wait
-                            // is needed. Once a match is recorded (`matches_played > 0`, persisted via
-                            // `save_local_progress`), `is_first_game()` is false and this never fires
-                            // again. `start_portal_intro_match` flips the splash job, so it runs once.
-                            if self.progress.is_first_game() {
-                                log::info!("native boot: first-time player -> intro tutorial");
-                                self.start_portal_intro_match();
-                            } else {
-                                self.ui.app.splash_state.done = true;
-                                if self.ui.app.splash_state.target_phase.is_none() {
-                                    self.ui.app.splash_state.target_phase =
-                                        Some(ClientPhase::MainMenu);
-                                }
-                            }
+                            // Native has no cross-session login/persistence yet (only CrazyGames on
+                            // web does), so there's no trustworthy "has this player done the tutorial?"
+                            // record. Until native logins exist, the intro is ALWAYS enabled: every
+                            // boot starts the scripted tutorial. (`start_portal_intro_match` flips the
+                            // splash job, so it fires once per launch; exit-to-menu still works.) When
+                            // native logins land, gate this on `self.progress.is_first_game()` like web.
+                            log::info!("native boot: intro tutorial (always enabled on native)");
+                            self.start_portal_intro_match();
                         }
                     }
                 }

@@ -2,18 +2,6 @@ use crate::engine::SowEngine;
 
 impl SowEngine {
     pub fn build_snapshot(&mut self) -> crate::protocol::SimSnapshot {
-        for p in &mut self.state.players {
-            if p.alive && p.tile_count > 0 {
-                // Desynchronize calculation using player ID as a phase offset
-                let should_recalculate = self.state.tick < 3
-                    || (p.id as usize + self.state.tick as usize).is_multiple_of(15)
-                    || p.nameplate_dirty;
-                if should_recalculate {
-                    p.calculate_nameplate(&self.state.map);
-                }
-            }
-        }
-
         let dirty_tiles: Vec<crate::protocol::DirtyTile> = self
             .state
             .map
@@ -69,9 +57,6 @@ impl SowEngine {
                     tile_count: p.tile_count,
                     centroid_x: cx,
                     centroid_y: cy,
-                    nameplate_x: p.nameplate_x,
-                    nameplate_y: p.nameplate_y,
-                    nameplate_size: p.nameplate_size,
                     player_type: p.player_type,
                     color: p.color,
                     team: p.team,

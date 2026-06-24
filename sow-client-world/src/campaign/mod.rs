@@ -60,41 +60,70 @@ impl Role {
             Role::Independent | Role::Neutral => (None, false),
         }
     }
+    /// Civilization implied by the role (kin = Iceni, Rome's cities/empire = Rome, rest Gallic).
+    fn civ(self) -> Civilization {
+        match self {
+            Role::Kin => Civilization::Iceni,
+            Role::Boss | Role::BigBoss => Civilization::Rome,
+            _ => Civilization::Gallic,
+        }
+    }
+    /// Parse a role name from a data file (the JSON roster authored by tools/campaign-editor).
+    fn from_name(s: &str) -> Option<Role> {
+        Some(match s {
+            "kin" => Role::Kin,
+            "independent" => Role::Independent,
+            "vassal" => Role::Vassal,
+            "boss" => Role::Boss,
+            "big_boss" => Role::BigBoss,
+            "neutral" => Role::Neutral,
+            _ => return None,
+        })
+    }
 }
 
-/// One placed faction in an episode roster.
+/// One placed faction in an episode roster. `name` is owned so rosters can come from a data file
+/// (the JSON authored by tools/campaign-editor), not only from `&'static` literals.
 pub struct Faction {
-    pub name: &'static str,
+    pub name: String,
     pub x: u32,
     pub y: u32,
     pub role: Role,
     pub civ: Civilization,
 }
 
+impl Faction {
+    /// Build a faction; civ is implied by role so it stays consistent between the hardcoded
+    /// roster and the JSON loader.
+    fn new(name: impl Into<String>, x: u32, y: u32, role: Role) -> Faction {
+        Faction { name: name.into(), x, y, role, civ: role.civ() }
+    }
+}
+
 // Roster builders — keep episode files a readable table; civ is implied by role.
 /// Boudica's kin/ally (Red, passive).
-pub fn kin(name: &'static str, x: u32, y: u32) -> Faction {
-    Faction { name, x, y, role: Role::Kin, civ: Civilization::Iceni }
+pub fn kin(name: impl Into<String>, x: u32, y: u32) -> Faction {
+    Faction::new(name, x, y, Role::Kin)
 }
 /// A lone clan — gray, neutral, weak (500): the first-blood targets.
-pub fn independent(name: &'static str, x: u32, y: u32) -> Faction {
-    Faction { name, x, y, role: Role::Independent, civ: Civilization::Gallic }
+pub fn independent(name: impl Into<String>, x: u32, y: u32) -> Faction {
+    Faction::new(name, x, y, Role::Independent)
 }
 /// Rome's client tribe — Blue, passive (1 000).
-pub fn vassal(name: &'static str, x: u32, y: u32) -> Faction {
-    Faction { name, x, y, role: Role::Vassal, civ: Civilization::Gallic }
+pub fn vassal(name: impl Into<String>, x: u32, y: u32) -> Faction {
+    Faction::new(name, x, y, Role::Vassal)
 }
 /// A Roman city boss — Blue, expanding nation (2 500).
-pub fn boss(name: &'static str, x: u32, y: u32) -> Faction {
-    Faction { name, x, y, role: Role::Boss, civ: Civilization::Rome }
+pub fn boss(name: impl Into<String>, x: u32, y: u32) -> Faction {
+    Faction::new(name, x, y, Role::Boss)
 }
 /// Rome itself — Blue, expanding nation (5 000): the big boss.
-pub fn big_boss(name: &'static str, x: u32, y: u32) -> Faction {
-    Faction { name, x, y, role: Role::BigBoss, civ: Civilization::Rome }
+pub fn big_boss(name: impl Into<String>, x: u32, y: u32) -> Faction {
+    Faction::new(name, x, y, Role::BigBoss)
 }
 /// An unaligned bystander (own color, no team).
-pub fn neutral(name: &'static str, x: u32, y: u32) -> Faction {
-    Faction { name, x, y, role: Role::Neutral, civ: Civilization::Gallic }
+pub fn neutral(name: impl Into<String>, x: u32, y: u32) -> Faction {
+    Faction::new(name, x, y, Role::Neutral)
 }
 
 /// Boudica's territory color — kin share it so the rebellion reads as one bloc.
@@ -123,7 +152,7 @@ pub fn log_plan(episode: &str, player_spawn: (u32, u32), factions: &[Faction]) {
         let v: Vec<&str> = factions
             .iter()
             .filter(|f| roles.contains(&f.role))
-            .map(|f| f.name)
+            .map(|f| f.name.as_str())
             .collect();
         if v.is_empty() {
             "(none)".into()
@@ -168,7 +197,7 @@ pub fn to_scripted(factions: &[Faction]) -> Vec<ScriptedSpawn> {
                 _ => Leader::default(),
             };
             ScriptedSpawn {
-                name: f.name.to_string(),
+                name: f.name.clone(),
                 x: f.x,
                 y: f.y,
                 color,
@@ -181,4 +210,43 @@ pub fn to_scripted(factions: &[Faction]) -> Vec<ScriptedSpawn> {
             }
         })
         .collect()
+}
+
+// ---- Data-driven rosters (authored visually by tools/campaign-editor) ----
+
+/// One faction in a JSON roster file. Names/positions/roles only; everything else (team, color,
+/// troops, civ) is derived from `role`, exactly like the hardcoded builders — so the JSON stays a
+/// thin authoring surface and can't drift the balance model.
+#[derive(serde::Deserialize)]
+struct RosterEntry {
+    name: String,
+    x: u32,
+    y: u32,
+    role: String,
+}
+
+#[derive(serde::Deserialize)]
+struct RosterFile {
+    #[serde(default)]
+    player_spawn: Option<(u32, u32)>,
+    #[serde(default)]
+    factions: Vec<RosterEntry>,
+}
+
+/// Load an episode roster from a JSON file (native authoring loop). Returns `None` on any
+/// problem — missing file, bad JSON, unknown role, empty list — so the caller cleanly falls back
+/// to the hardcoded roster. Pure data-in: this never panics and is never wired into a hot loop.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_roster_json(path: &str) -> Option<(Vec<Faction>, (u32, u32))> {
+    let txt = std::fs::read_to_string(path).ok()?;
+    let rf: RosterFile = serde_json::from_str(&txt).ok()?;
+    let factions: Vec<Faction> = rf
+        .factions
+        .iter()
+        .filter_map(|e| Role::from_name(&e.role).map(|role| Faction::new(e.name.clone(), e.x, e.y, role)))
+        .collect();
+    if factions.is_empty() {
+        return None;
+    }
+    Some((factions, rf.player_spawn.unwrap_or((696, 45))))
 }

@@ -119,7 +119,7 @@ impl SowApp {
             if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
                 target_player_type = target.player_type;
                 player_color = crate::hud::nameplate::ensure_readable_nameplate_color(target.color);
-                target_nameplate_size = target.nameplate_size;
+                target_nameplate_size = (target.tile_count as f32).sqrt().clamp(0.2, 24.0);
             }
 
             // Prefer smoothed label positions and sizes if available

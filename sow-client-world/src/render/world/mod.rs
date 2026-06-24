@@ -81,10 +81,8 @@ impl SowApp {
                     continue;
                 }
 
-                let (avg_col, avg_row) = (player.nameplate_x, player.nameplate_y);
-
-                let target_cx = avg_col + 0.5;
-                let target_cy = avg_row + 0.5;
+                let target_cx = player.centroid_x + 0.5;
+                let target_cy = player.centroid_y + 0.5;
 
                 // Early frustum cull on target position — skip interpolation for off-screen players
                 let target_screen_x =
@@ -147,11 +145,7 @@ impl SowApp {
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
 
-                let target_size = if player.nameplate_size > 0.1 {
-                    player.nameplate_size
-                } else {
-                    0.0
-                };
+                let target_size = (player.tile_count as f32).sqrt().clamp(0.2, 24.0);
 
                 let size_entry = self.ui.label_sizes.entry(player.id).or_insert(target_size);
 
@@ -215,12 +209,7 @@ impl SowApp {
             });
 
             let zoom_scaled = self.input.camera_zoom / sf;
-
-            // Clean up expired upgrade animations once per frame
             let now = web_time::Instant::now();
-            self.ui
-                .active_upgrades
-                .retain(|anim| now.duration_since(anim.start_time) < anim.duration);
 
             // Rebuild player colors only when the player list size changes
             let player_count = snap.players.len();
@@ -336,7 +325,8 @@ impl SowApp {
                 let screen_x = (self.input.camera_x + notice.world_x * self.input.camera_zoom) / sf;
                 let screen_y = (self.input.camera_y + current_wy * self.input.camera_zoom) / sf;
 
-                if screen_x >= -150.0
+                if crate::app::vfx_on(painter.ctx(), |f| f.floating_notices)
+                    && screen_x >= -150.0
                     && screen_x <= self.input.screen_w + 150.0
                     && screen_y >= -150.0
                     && screen_y <= self.input.screen_h + 150.0

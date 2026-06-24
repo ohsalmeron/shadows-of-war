@@ -25,7 +25,7 @@ pub(super) fn paint_bunker_effects(
         return;
     }
 
-    if b.kind == sow_core::game::BuildingKind::Bunker && b.active_level > 0 {
+    if b.kind == sow_core::game::BuildingKind::Bunker && b.active_level > 0 && crate::app::vfx_on(painter.ctx(), |f| f.tower) {
         let radius_world = config.bunker_range as f32;
         let elapsed = time.start_time.elapsed().as_secs_f32();
         let laser_opts = bunker_laser_vfx_opts(painter.ctx());
@@ -144,6 +144,7 @@ pub(super) fn paint_bunker_effects(
     if b.kind == sow_core::game::BuildingKind::Bunker
         && b.active_level > 0
         && painter.ctx().input(|i| i.modifiers.alt)
+        && crate::app::vfx_on(painter.ctx(), |f| f.tower_range)
     {
         let radius_world = config.bunker_range as f32;
         let elapsed = time.start_time.elapsed().as_secs_f32();

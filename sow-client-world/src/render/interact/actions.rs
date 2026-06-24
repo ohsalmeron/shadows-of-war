@@ -209,17 +209,17 @@ impl SowApp {
                     let link =
                         crate::store_portals::invite_link(lobby_id, &crate::get_build_version())
                             .unwrap_or_else(|| {
-                                let mut fallback =
+                                let fallback =
                                     format!("https://play.shadowsofwar.io/?lobbyId={}", lobby_id);
                                 #[cfg(target_arch = "wasm32")]
-                                if let Some(w) = web_sys::window() {
-                                    if let Ok(href) = w.location().href() {
-                                        if let Ok(mut url) = url::Url::parse(&href) {
-                                            url.set_query(Some(&format!("lobbyId={}", lobby_id)));
-                                            fallback = url.to_string();
-                                        }
-                                    }
-                                }
+                                let fallback = web_sys::window()
+                                    .and_then(|w| w.location().href().ok())
+                                    .and_then(|href| {
+                                        let mut url = url::Url::parse(&href).ok()?;
+                                        url.set_query(Some(&format!("lobbyId={}", lobby_id)));
+                                        Some(url.to_string())
+                                    })
+                                    .unwrap_or(fallback);
                                 fallback
                             });
                     self.ui.egui_ctx.copy_text(link);

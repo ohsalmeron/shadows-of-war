@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use sow_data::leader_for_civilization;
 
 mod colors;
-mod nameplate;
 
 pub use colors::{bot_territory_color, human_shader_territory_rgb, premium_color};
 pub use sow_data::{Civilization, Leader, NamedColor, PREMIUM_COLORS};
@@ -41,14 +40,6 @@ pub struct Player {
     pub max_troops: f64,
     #[serde(default)]
     pub max_troops_cap: Option<f64>,
-    #[serde(default)]
-    pub nameplate_x: f32,
-    #[serde(default)]
-    pub nameplate_y: f32,
-    #[serde(default)]
-    pub nameplate_size: f32,
-    #[serde(default)]
-    pub nameplate_dirty: bool,
     #[serde(default = "default_player_gold")]
     pub gold: f64,
     pub color: [f32; 3],
@@ -122,10 +113,6 @@ impl Player {
             sum_x: 0,
             sum_y: 0,
             tile_count: 0,
-            nameplate_x: 0.0,
-            nameplate_y: 0.0,
-            nameplate_size: 0.0,
-            nameplate_dirty: true,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -167,7 +154,7 @@ impl Player {
         };
         let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
         let leader = leader_for_civilization(civ);
-        let starting_troops = config.starting_troops;
+        let starting_troops = config.starting_troops * 0.5; // ponytail: tribes get half
         let starting_gold = if iq >= 130 {
             config.starting_gold
         } else if iq >= 100 {
@@ -189,10 +176,6 @@ impl Player {
             sum_x: 0,
             sum_y: 0,
             tile_count: 0,
-            nameplate_x: 0.0,
-            nameplate_y: 0.0,
-            nameplate_size: 0.0,
-            nameplate_dirty: true,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -241,10 +224,6 @@ impl Player {
             sum_x: 0,
             sum_y: 0,
             tile_count: 0,
-            nameplate_x: 0.0,
-            nameplate_y: 0.0,
-            nameplate_size: 0.0,
-            nameplate_dirty: true,
             border_tiles: DenseBitSet::new(),
             bot_rng: WyRand::new(id as u64),
             factories: 0,
@@ -279,12 +258,10 @@ impl Player {
     #[inline]
     pub fn border_insert(&mut self, idx: u32) {
         self.border_tiles.insert(idx);
-        self.nameplate_dirty = true;
     }
     #[inline]
     pub fn border_remove(&mut self, idx: u32) {
         self.border_tiles.remove(idx);
-        self.nameplate_dirty = true;
     }
 }
 

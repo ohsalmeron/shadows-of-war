@@ -65,12 +65,10 @@ impl SowApp {
             .as_millis() as u64;
         self.ui.app.main_menu_state.selected_leader = sow_core::player::Leader::Boudica;
         self.ui.app.main_menu_state.selected_civilization = sow_core::player::Civilization::Iceni;
-        let factions = crate::campaign::boudica::factions();
-        crate::campaign::log_plan(
-            "Boudica's Rebellion",
-            crate::campaign::boudica::PLAYER_SPAWN,
-            &factions,
-        );
+        // Roster + spawn come from the data-driven loader: a JSON override on native (authored by
+        // tools/campaign-editor) or the hardcoded roster. Editing positions never needs a recompile.
+        let (factions, player_spawn) = crate::campaign::boudica::roster();
+        crate::campaign::log_plan("Boudica's Rebellion", player_spawn, &factions);
         let config = GameConfig {
             map_name: "boudica".to_string(),
             bot_count: 0,
@@ -80,7 +78,7 @@ impl SowApp {
             player_leader: sow_core::player::Leader::Boudica,
             player_civilization: sow_core::player::Civilization::Iceni,
             scripted_spawns: crate::campaign::to_scripted(&factions),
-            player_spawn: Some(crate::campaign::boudica::PLAYER_SPAWN),
+            player_spawn: Some(player_spawn),
             player_team: Some(crate::campaign::PLAYER_TEAM),
             starting_troops: 1000.0,
             buildings_enabled: false,

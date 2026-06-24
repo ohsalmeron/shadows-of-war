@@ -24,7 +24,7 @@ pub(crate) fn render(
     if let Some(snap) = &sim.current_snapshot {
         let map_w = sim.map_w;
 
-        if ctx.zoom_scaled >= 0.6 {
+        if ctx.zoom_scaled >= 0.6 && crate::app::vfx_on(painter.ctx(), |f| f.attack_lines) {
             for attack in &snap.attacks {
                 if attack.target_owner == 0 {
                     continue;
@@ -127,84 +127,86 @@ pub(crate) fn render(
             }
 
             // --- Render Attack Troop Count Badges at the frontier centroids ---
-            let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
-                egui::Order::Middle,
-                egui::Id::new("attack_badges"),
-            ));
+            if crate::app::vfx_on(painter.ctx(), |f| f.attack_badges) {
+                let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new("attack_badges"),
+                ));
 
-            for attack in &snap.attacks {
-                if attack.troops <= 0.0 {
-                    continue;
+                for attack in &snap.attacks {
+                    if attack.troops <= 0.0 {
+                        continue;
+                    }
+
+                    let my_id = sim.my_player_id.unwrap_or(0);
+                    let is_outgoing = attack.owner_id == my_id && my_id != 0;
+                    let is_incoming = attack.target_owner == my_id && my_id != 0;
+
+                    // Only show labels for outgoing or incoming attacks involving the player
+                    if !is_outgoing && !is_incoming {
+                        continue;
+                    }
+
+                    let cx = attack.front_cx;
+                    let cy = attack.front_cy;
+                    if cx == 0.0 && cy == 0.0 {
+                        continue;
+                    }
+
+                    // Convert centroid column/row to world coordinates
+                    let wx = cx + 0.5;
+                    let wy = cy + 0.5;
+
+                    // Convert to screen coordinates
+                    let screen_x = (input.camera_x + wx * input.camera_zoom) / sf;
+                    let screen_y = (input.camera_y + wy * input.camera_zoom) / sf;
+
+                    // Frustum cull
+                    if screen_x < -80.0
+                        || screen_x > input.screen_w / sf + 80.0
+                        || screen_y < -40.0
+                        || screen_y > input.screen_h / sf + 40.0
+                    {
+                        continue;
+                    }
+
+                    let troops_val = attack.troops;
+                    let entry = ui
+                        .attack_troop_labels
+                        .entry(attack.id)
+                        .or_insert_with(|| (troops_val, sow_ui_kit::utils::format_number(troops_val)));
+                    if (entry.0 - troops_val).abs() > 0.0001 {
+                        *entry = (troops_val, sow_ui_kit::utils::format_number(troops_val));
+                    }
+                    let troops_str = &entry.1;
+                    let color = if is_incoming {
+                        egui::Color32::from_rgb(255, 90, 90) // Red for incoming
+                    } else {
+                        sow_ui_kit::theme::accent_solo_cyan_hover() // Cyan for outgoing
+                    };
+
+                    let font_id = egui::FontId::proportional(13.0);
+                    let galley =
+                        middle_painter.layout_no_wrap(troops_str.to_owned(), font_id.clone(), color);
+                    let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
+                    let anchor = egui::pos2(
+                        screen_x - row_w / 2.0,
+                        screen_y - galley.rect.height() / 2.0,
+                    );
+                    crate::hud::nameplate::paint_glow_troops_row(
+                        &middle_painter,
+                        anchor,
+                        galley,
+                        &font_id,
+                        color,
+                        None,
+                    );
                 }
-
-                let my_id = sim.my_player_id.unwrap_or(0);
-                let is_outgoing = attack.owner_id == my_id && my_id != 0;
-                let is_incoming = attack.target_owner == my_id && my_id != 0;
-
-                // Only show labels for outgoing or incoming attacks involving the player
-                if !is_outgoing && !is_incoming {
-                    continue;
-                }
-
-                let cx = attack.front_cx;
-                let cy = attack.front_cy;
-                if cx == 0.0 && cy == 0.0 {
-                    continue;
-                }
-
-                // Convert centroid column/row to world coordinates
-                let wx = cx + 0.5;
-                let wy = cy + 0.5;
-
-                // Convert to screen coordinates
-                let screen_x = (input.camera_x + wx * input.camera_zoom) / sf;
-                let screen_y = (input.camera_y + wy * input.camera_zoom) / sf;
-
-                // Frustum cull
-                if screen_x < -80.0
-                    || screen_x > input.screen_w / sf + 80.0
-                    || screen_y < -40.0
-                    || screen_y > input.screen_h / sf + 40.0
-                {
-                    continue;
-                }
-
-                let troops_val = attack.troops;
-                let entry = ui
-                    .attack_troop_labels
-                    .entry(attack.id)
-                    .or_insert_with(|| (troops_val, sow_ui_kit::utils::format_number(troops_val)));
-                if (entry.0 - troops_val).abs() > 0.0001 {
-                    *entry = (troops_val, sow_ui_kit::utils::format_number(troops_val));
-                }
-                let troops_str = &entry.1;
-                let color = if is_incoming {
-                    egui::Color32::from_rgb(255, 90, 90) // Red for incoming
-                } else {
-                    sow_ui_kit::theme::accent_solo_cyan_hover() // Cyan for outgoing
-                };
-
-                let font_id = egui::FontId::proportional(13.0);
-                let galley =
-                    middle_painter.layout_no_wrap(troops_str.to_owned(), font_id.clone(), color);
-                let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
-                let anchor = egui::pos2(
-                    screen_x - row_w / 2.0,
-                    screen_y - galley.rect.height() / 2.0,
-                );
-                crate::hud::nameplate::paint_glow_troops_row(
-                    &middle_painter,
-                    anchor,
-                    galley,
-                    &font_id,
-                    color,
-                    None,
-                );
             }
         }
 
         // ── Nuke Placement Preview (visible at all zoom levels) ─────────
-        if ui.app.hud_state.selected_nuke_kind.is_some() {
+        if crate::app::vfx_on(painter.ctx(), |f| f.nuke_preview) && ui.app.hud_state.selected_nuke_kind.is_some() {
             // Resolve hovered tile from mouse (same hex math as buildings.rs)
             let mx = input.last_mouse_x as f32;
             let my = input.last_mouse_y as f32;

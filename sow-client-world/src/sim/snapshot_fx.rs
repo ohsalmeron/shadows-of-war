@@ -5,21 +5,12 @@ impl SowApp {
     pub(crate) fn apply_snapshot_fx(&mut self, snap: &mut SimSnapshot, my_id: u16) {
         if let Some(mut existing) = self.sim.current_snapshot.take() {
             // Detect building level upgrades and completions
-            let now = web_time::Instant::now();
             for b_new in &snap.buildings {
                 if let Some(b_old) = existing.buildings.iter().find(|b| b.id == b_new.id) {
                     if b_new.level > b_old.level
                         || (b_old.under_construction && !b_new.under_construction)
                     {
-                        self.ui
-                            .active_upgrades
-                            .push(crate::app::ActiveUpgradeAnimation {
-                                tile_idx: b_new.tile_idx,
-                                start_time: now,
-                                duration: web_time::Duration::from_millis(2000),
-                                kind: b_new.kind,
-                                level: b_new.level,
-                            });
+                        // ponytail: active_upgrades animations removed as they were dead code
                     }
                     // ponytail: only play building completion sound for the local player
                     if b_old.under_construction

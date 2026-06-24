@@ -264,7 +264,7 @@ impl Default for GameConfig {
             global_speed_multiplier: 0.20,
 
             // Combat & Expansion Mechanics
-            attack_cost_enemy: 3.0,
+            attack_cost_enemy: 2.0,
             attack_cost_neutral: 1.0,
             terrain_multiplier_highland: 1.5,
             terrain_multiplier_mountain: 2.5,
@@ -282,14 +282,14 @@ impl Default for GameConfig {
             max_troops_base: 10.0,
             max_troops_scale: 350.0,
             territory_gold_amount: 1.0,
-            territory_gold_tiles: 4,
+            territory_gold_tiles: 8,
             territory_troop_amount: 1.0,
-            territory_troop_tiles: 8,
+            territory_troop_tiles: 16,
 
             // Buildings (stacking)
             city_max_troops: 5000.0,
             city_gold_income: 4.0,
-            city_troop_income: 50.0,
+            city_troop_income: 25.0,
             bunker_range: 14.0,
             bunker_priority: 120.0,
             bunker_strength: 4.0,

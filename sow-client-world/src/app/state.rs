@@ -127,15 +127,6 @@ pub struct FalloutZone {
 }
 
 #[derive(Clone, Debug)]
-pub struct ActiveUpgradeAnimation {
-    pub tile_idx: u32,
-    pub start_time: web_time::Instant,
-    pub duration: web_time::Duration,
-    pub kind: sow_core::game::BuildingKind,
-    pub level: u8,
-}
-
-#[derive(Clone, Debug)]
 pub struct FloatingNotice {
     pub text: String,
     pub world_x: f32,
@@ -202,7 +193,6 @@ pub struct UiState {
     pub is_spectating: bool,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, TrackedProjectile>,
-    pub active_upgrades: Vec<ActiveUpgradeAnimation>,
     pub nameplate_galleys: std::collections::HashMap<u16, CachedNameplate>,
     pub nameplate_troops_last_update: std::collections::HashMap<u16, web_time::Instant>,
     pub cached_player_colors: Vec<egui::Color32>,
@@ -318,4 +308,67 @@ pub struct SowApp {
     pub boot_route_waiting: bool,
     #[cfg(target_arch = "wasm32")]
     pub boot_ready_since: Option<web_time::Instant>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DevVfxFlags {
+    pub conquer: bool,
+    pub border_breathe: bool,
+    pub energy_flow: bool,
+    pub heartbeat: bool,
+    pub war_fog: bool,
+    pub fallout: bool,
+    pub ambient_grade: bool,
+    pub holo_grid: bool,
+    pub tower: bool,
+    pub tower_range: bool,
+    pub attack_lines: bool,
+    pub attack_badges: bool,
+    pub click_markers: bool,
+    pub nuke_preview: bool,
+    pub floating_notices: bool,
+    pub death_nameplates: bool,
+    pub status_emojis: bool,
+    pub upgrade_plate: bool,
+    pub placement_preview: bool,
+    pub mover_trails: bool,
+    pub railways: bool,
+    pub fleet_blink: bool,
+}
+
+impl Default for DevVfxFlags {
+    fn default() -> Self {
+        Self {
+            conquer: true,
+            border_breathe: true,
+            energy_flow: true,
+            heartbeat: true,
+            war_fog: true,
+            fallout: true,
+            ambient_grade: true,
+            holo_grid: true,
+            tower: true,
+            tower_range: true,
+            attack_lines: true,
+            attack_badges: true,
+            click_markers: true,
+            nuke_preview: true,
+            floating_notices: true,
+            death_nameplates: true,
+            status_emojis: true,
+            upgrade_plate: true,
+            placement_preview: true,
+            mover_trails: true,
+            railways: true,
+            fleet_blink: true,
+        }
+    }
+}
+
+pub fn vfx_on(ctx: &egui::Context, f: fn(&DevVfxFlags) -> bool) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<DevVfxFlags>(egui::Id::new("dev_vfx_flags"))
+            .map(|flags| f(&flags))
+            .unwrap_or(true)
+    })
 }

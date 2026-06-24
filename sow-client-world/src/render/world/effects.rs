@@ -14,6 +14,10 @@ pub(crate) fn render(
 
     let current_time = web_time::Instant::now();
 
+    if !crate::app::vfx_on(ctx.painter.ctx(), |f| f.click_markers) {
+        return;
+    }
+
     let marker_painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
         egui::Order::Middle,
         egui::Id::new("click_markers"),

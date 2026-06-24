@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SOW — Campaign Roster Editor</title>
+<style>
+  :root { --bg:#14171c; --panel:#1d222b; --line:#2c333f; --text:#e6e9ee; --muted:#8b94a3; --accent:#e06b1f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
+  #app { display:flex; height:100%; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0c0e12; }
+  canvas { position:absolute; top:0; left:0; image-rendering:pixelated; }
+  #side { width:300px; background:var(--panel); border-left:1px solid var(--line); display:flex; flex-direction:column; }
+  header { padding:12px 14px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:14px; letter-spacing:.4px; }
+  header .sub { color:var(--muted); font-size:11px; margin-top:3px; }
+  .group { padding:12px 14px; border-bottom:1px solid var(--line); }
+  .group h2 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); }
+  label { display:block; font-size:11px; color:var(--muted); margin:8px 0 3px; }
+  input, select { width:100%; background:#11151b; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  button { background:#2a3340; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; cursor:pointer; }
+  button:hover { background:#33404f; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#1a1206; font-weight:600; }
+  button.danger { background:#3a2326; border-color:#5a2f33; color:#f1b0b4; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  .list { overflow:auto; flex:1; }
+  .item { padding:6px 14px; border-bottom:1px solid #232a34; cursor:pointer; display:flex; align-items:center; gap:8px; }
+  .item:hover { background:#222a35; }
+  .item.sel { background:#2b3645; }
+  .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; border:1px solid rgba(0,0,0,.4); }
+  .item .nm { flex:1; }
+  .item .rl { color:var(--muted); font-size:10px; }
+  .warn { color:#f1b0b4; }
+  #hud { position:absolute; left:10px; bottom:10px; background:rgba(10,12,16,.82); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12px; pointer-events:none; }
+  #toast { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); background:#222a35; border:1px solid var(--line); border-radius:8px; padding:8px 14px; opacity:0; transition:opacity .25s; }
+  .hint { color:var(--muted); font-size:11px; margin-top:6px; }
+  .swrap { position:relative; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hud">load…</div>
+    <div id="toast"></div>
+  </div>
+  <div id="side">
+    <header>
+      <h1>Campaign Roster Editor</h1>
+      <div class="sub">boudica · 896×504 · drag tribes to move</div>
+    </header>
+
+    <div class="group">
+      <h2>Selected</h2>
+      <div id="seleditor"><div class="hint">Click a tribe on the map or in the list.</div></div>
+    </div>
+
+    <div class="group">
+      <h2>Map</h2>
+      <div class="btns">
+        <button id="addBtn">+ Add tribe</button>
+        <button id="spawnBtn">Set player spawn</button>
+      </div>
+      <label>Show</label>
+      <div class="row">
+        <label style="margin:0"><input type="checkbox" id="labelsChk" checked style="width:auto"> labels</label>
+        <label style="margin:0"><input type="checkbox" id="ringsChk" checked style="width:auto"> reach rings</label>
+      </div>
+      <div class="hint" id="waterhint"></div>
+    </div>
+
+    <div class="group">
+      <h2>Export</h2>
+      <div class="btns">
+        <button class="primary" id="exportBtn">⤓ Download boudica.json</button>
+        <button id="copyBtn">Copy</button>
+        <button id="reloadBtn">Reload</button>
+      </div>
+      <label>Load a different roster</label>
+      <input type="file" id="fileIn" accept=".json" />
+      <div class="hint">Drop the download into <code>assets/campaign/boudica.json</code>, relaunch the game (no recompile).</div>
+    </div>
+
+    <div class="list" id="list"></div>
+  </div>
+</div>
+
+<script>
+// ---- role model (mirrors sow-client-world/src/campaign/mod.rs Role) ----
+const ROLES = {
+  kin:         { color:"#e06b1f", team:"Red",  troops:500,  label:"Kin (ally)" },
+  independent: { color:"#9aa0ac", team:"—",    troops:500,  label:"Independent" },
+  vassal:      { color:"#3372f2", team:"Blue", troops:1000, label:"Vassal" },
+  boss:        { color:"#2f5fe0", team:"Blue", troops:2500, label:"City (boss)" },
+  big_boss:    { color:"#1d3fb0", team:"Blue", troops:5000, label:"Rome (big boss)" },
+  neutral:     { color:"#4ca572", team:"—",    troops:500,  label:"Neutral" },
+};
+const PLAYER_COLOR = "#f0902a";
+
+const MAPW = 896, MAPH = 504;
+let terrain = null;            // Uint8Array length MAPW*MAPH, bit7 = land
+let roster = { map:"boudica", player_spawn:[696,45], factions:[] };
+let sel = -1;                  // index into factions, or -2 = player spawn
+let scale = 1, ox = 0, oy = 0; // view transform (map->screen): sx = mx*scale+ox
+
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const hud = document.getElementById("hud");
+let mapImage = null;           // offscreen ImageData rendered once
+
+function isLand(mx, my) {
+  mx = Math.floor(mx); my = Math.floor(my);
+  if (mx < 0 || my < 0 || mx >= MAPW || my >= MAPH || !terrain) return false;
+  return (terrain[my*MAPW + mx] & 0x80) !== 0;
+}
+
+// ---- parse the SOWM map.bin (LE header + 1 byte/tile) ----
+function parseMap(buf) {
+  const dv = new DataView(buf);
+  const magic = String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3));
+  if (magic !== "SOWM") throw new Error("bad map magic " + magic);
+  let off = 4;
+  const ver = dv.getUint16(off,true); off += 2;
+  off += 2; // reserved
+  const w = dv.getUint32(off,true); off += 4;
+  const h = dv.getUint32(off,true); off += 4;
+  off += 4; // num_land_tiles
+  const rdStr = () => { const n = dv.getUint16(off,true); off += 2 + n; };
+  rdStr(); // display_name
+  const spawnCount = dv.getUint16(off,true); off += 2;
+  for (let i=0;i<spawnCount;i++){ rdStr(); rdStr(); off += 8; } // name, flag, x, y
+  const t = new Uint8Array(buf, off, w*h);
+  return { w, h, terrain: t };
+}
+
+function buildMapImage() {
+  const img = ctx.createImageData(MAPW, MAPH);
+  const d = img.data;
+  for (let i=0;i<MAPW*MAPH;i++){
+    const b = terrain[i];
+    const land = (b & 0x80) !== 0;
+    let r,g,bl;
+    if (!land) { r=44; g=92; bl=140; }                 // water
+    else {
+      // shade land a touch by the low bits so coastline/highland reads
+      const e = b & 0x7f;
+      if (e >= 0x18) { r=150; g=132; bl=96; }           // highland/mountain → tan
+      else if (e >= 0x0c) { r=120; g=140; bl=86; }      // hills
+      else { r=104; g=142; bl=90; }                     // plains → green
+    }
+    const o=i*4; d[o]=r; d[o+1]=g; d[o+2]=bl; d[o+3]=255;
+  }
+  // stash into an offscreen canvas for fast scaled blits
+  const oc = document.createElement("canvas"); oc.width=MAPW; oc.height=MAPH;
+  oc.getContext("2d").putImageData(img,0,0);
+  mapImage = oc;
+}
+
+// ---- view fit ----
+function fitView() {
+  const sw = cv.width, sh = cv.height;
+  scale = Math.min(sw/MAPW, sh/MAPH);
+  ox = (sw - MAPW*scale)/2;
+  oy = (sh - MAPH*scale)/2;
+}
+const m2s = (mx,my) => [mx*scale+ox, my*scale+oy];
+const s2m = (sx,sy) => [(sx-ox)/scale, (sy-oy)/scale];
+
+// ---- draw ----
+function draw() {
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if (mapImage) ctx.drawImage(mapImage, ox, oy, MAPW*scale, MAPH*scale);
+
+  const showLabels = document.getElementById("labelsChk").checked;
+  const showRings  = document.getElementById("ringsChk").checked;
+  const [px,py] = roster.player_spawn;
+
+  // reach rings from player spawn (visualize contact radius)
+  if (showRings) {
+    const [psx,psy] = m2s(px,py);
+    ctx.strokeStyle = "rgba(240,144,42,.35)";
+    for (const rr of [20,40,60,80,120]) { ctx.beginPath(); ctx.arc(psx,psy,rr*scale,0,7); ctx.stroke(); }
+  }
+
+  // factions
+  roster.factions.forEach((f,i) => {
+    const [sx,sy] = m2s(f.x,f.y);
+    const role = ROLES[f.role] || ROLES.neutral;
+    const water = !isLand(f.x,f.y);
+    ctx.beginPath(); ctx.arc(sx,sy,6,0,7);
+    ctx.fillStyle = role.color; ctx.fill();
+    ctx.lineWidth = (i===sel)?3:1.5;
+    ctx.strokeStyle = water ? "#ff4d4d" : (i===sel ? "#fff" : "rgba(0,0,0,.5)");
+    ctx.stroke();
+    if (water) { ctx.beginPath(); ctx.arc(sx,sy,10,0,7); ctx.strokeStyle="#ff4d4d"; ctx.lineWidth=1.5; ctx.stroke(); }
+    if (showLabels) {
+      ctx.font = "11px system-ui"; ctx.textAlign="center";
+      ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillText(f.name, sx+1, sy-9);
+      ctx.fillStyle="#fff"; ctx.fillText(f.name, sx, sy-10);
+    }
+  });
+
+  // player spawn (star-ish)
+  const [sx,sy] = m2s(px,py);
+  ctx.beginPath(); ctx.arc(sx,sy,8,0,7);
+  ctx.fillStyle = PLAYER_COLOR; ctx.fill();
+  ctx.lineWidth = (sel===-2)?3:2; ctx.strokeStyle = (sel===-2)?"#fff":"#1a1206"; ctx.stroke();
+  ctx.fillStyle="#1a1206"; ctx.font="bold 10px system-ui"; ctx.textAlign="center"; ctx.fillText("★",sx,sy+3.5);
+}
+
+// ---- hit testing ----
+function pick(sx,sy) {
+  // player spawn first if close
+  const [psx,psy] = m2s(roster.player_spawn[0],roster.player_spawn[1]);
+  if (Math.hypot(sx-psx,sy-psy) <= 10) return -2;
+  for (let i=roster.factions.length-1;i>=0;i--){
+    const [fx,fy] = m2s(roster.factions[i].x,roster.factions[i].y);
+    if (Math.hypot(sx-fx,sy-fy) <= 8) return i;
+  }
+  return -1;
+}
+
+// ---- interaction ----
+let dragging = false;
+cv.addEventListener("mousedown", e => {
+  const r = cv.getBoundingClientRect();
+  const sx = e.clientX-r.left, sy = e.clientY-r.top;
+  sel = pick(sx,sy);
+  dragging = (sel !== -1);
+  renderSide(); draw();
+});
+cv.addEventListener("mousemove", e => {
+  const r = cv.getBoundingClientRect();
+  const sx = e.clientX-r.left, sy = e.clientY-r.top;
+  const [mx,my] = s2m(sx,sy);
+  const cx = Math.round(mx), cy = Math.round(my);
+  hud.textContent = `x ${cx}  y ${cy}  ·  ${isLand(cx,cy)?"land":"WATER"}`;
+  hud.className = isLand(cx,cy) ? "" : "warn";
+  if (dragging && sel !== -1) {
+    const nx = Math.max(0,Math.min(MAPW-1,cx)), ny = Math.max(0,Math.min(MAPH-1,cy));
+    if (sel === -2) roster.player_spawn = [nx,ny];
+    else { roster.factions[sel].x = nx; roster.factions[sel].y = ny; }
+    renderSide(); draw();
+  }
+});
+window.addEventListener("mouseup", () => dragging=false);
+
+// ---- side panel ----
+function renderSide() {
+  const host = document.getElementById("seleditor");
+  if (sel === -2) {
+    host.innerHTML = `<label>Player spawn</label>
+      <div class="row"><input id="psx" type="number" value="${roster.player_spawn[0]}"><input id="psy" type="number" value="${roster.player_spawn[1]}"></div>
+      <div class="hint">${isLand(...roster.player_spawn)?"on land ✓":"⚠ in water"}</div>`;
+    document.getElementById("psx").oninput = e => { roster.player_spawn[0]=+e.target.value|0; draw(); };
+    document.getElementById("psy").oninput = e => { roster.player_spawn[1]=+e.target.value|0; draw(); };
+  } else if (sel >= 0) {
+    const f = roster.factions[sel];
+    const opts = Object.keys(ROLES).map(k=>`<option value="${k}" ${k===f.role?"selected":""}>${ROLES[k].label}</option>`).join("");
+    const role = ROLES[f.role]||ROLES.neutral;
+    const dr = Math.round(Math.hypot(f.x-roster.player_spawn[0], f.y-roster.player_spawn[1]));
+    host.innerHTML = `<label>Name</label><input id="fn" value="${f.name.replace(/"/g,'&quot;')}">
+      <label>Role</label><select id="fr">${opts}</select>
+      <label>Position (x, y)</label><div class="row"><input id="fx" type="number" value="${f.x}"><input id="fy" type="number" value="${f.y}"></div>
+      <div class="hint">team ${role.team} · ${role.troops} troops · r≈${dr} from spawn · ${isLand(f.x,f.y)?"land ✓":'<span class="warn">⚠ in water</span>'}</div>
+      <div class="btns" style="margin-top:10px"><button class="danger" id="del">Delete</button></div>`;
+    document.getElementById("fn").oninput = e => { f.name=e.target.value; renderList(); draw(); };
+    document.getElementById("fr").onchange = e => { f.role=e.target.value; renderList(); renderSide(); draw(); };
+    document.getElementById("fx").oninput = e => { f.x=+e.target.value|0; renderSide(); draw(); };
+    document.getElementById("fy").oninput = e => { f.y=+e.target.value|0; renderSide(); draw(); };
+    document.getElementById("del").onclick = () => { roster.factions.splice(sel,1); sel=-1; renderAll(); };
+  } else {
+    host.innerHTML = `<div class="hint">Click a tribe on the map or in the list.</div>`;
+  }
+}
+
+function renderList() {
+  const grouped = {};
+  roster.factions.forEach((f,i)=>{ (grouped[f.role]=grouped[f.role]||[]).push(i); });
+  let html = "";
+  for (const k of Object.keys(ROLES)) {
+    const ids = grouped[k]; if (!ids) continue;
+    for (const i of ids) {
+      const f = roster.factions[i];
+      const water = !isLand(f.x,f.y);
+      html += `<div class="item ${i===sel?'sel':''}" data-i="${i}">
+        <span class="dot" style="background:${ROLES[k].color}"></span>
+        <span class="nm">${f.name}${water?' <span class="warn">⚠</span>':''}</span>
+        <span class="rl">${k}</span></div>`;
+    }
+  }
+  const list = document.getElementById("list");
+  list.innerHTML = html;
+  list.querySelectorAll(".item").forEach(el => el.onclick = () => { sel=+el.dataset.i; renderSide(); renderList(); draw(); });
+  const inWater = roster.factions.filter(f=>!isLand(f.x,f.y)).map(f=>f.name);
+  document.getElementById("waterhint").innerHTML = inWater.length
+    ? `<span class="warn">⚠ ${inWater.length} in water:</span> ${inWater.join(", ")}` : "All on land ✓";
+}
+
+function renderAll() { renderSide(); renderList(); draw(); }
+
+// ---- toolbar ----
+document.getElementById("addBtn").onclick = () => {
+  const [px,py] = roster.player_spawn;
+  roster.factions.push({ name:"NewTribe", x:Math.min(MAPW-1,px+30), y:Math.min(MAPH-1,py+30), role:"independent" });
+  sel = roster.factions.length-1; renderAll();
+};
+document.getElementById("spawnBtn").onclick = () => { sel=-2; renderSide(); draw(); toast("Drag the ★ to move player spawn"); };
+document.getElementById("labelsChk").onchange = draw;
+document.getElementById("ringsChk").onchange = draw;
+
+function serialize() {
+  const out = {
+    _comment: roster._comment || "Boudica tutorial roster — edited via tools/campaign-editor.",
+    map: roster.map || "boudica",
+    player_spawn: roster.player_spawn.map(n=>Math.round(n)),
+    factions: roster.factions.map(f=>({ name:f.name, x:Math.round(f.x), y:Math.round(f.y), role:f.role })),
+  };
+  return JSON.stringify(out, null, 2) + "\n";
+}
+document.getElementById("exportBtn").onclick = () => {
+  const blob = new Blob([serialize()], {type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "boudica.json"; a.click();
+  toast("Downloaded boudica.json → drop into assets/campaign/");
+};
+document.getElementById("copyBtn").onclick = async () => { await navigator.clipboard.writeText(serialize()); toast("Copied JSON"); };
+document.getElementById("reloadBtn").onclick = () => loadRoster();
+document.getElementById("fileIn").onchange = e => {
+  const file = e.target.files[0]; if (!file) return;
+  const fr = new FileReader(); fr.onload = () => { try { roster = normalize(JSON.parse(fr.result)); sel=-1; renderAll(); toast("Loaded "+file.name); } catch(err){ toast("Bad JSON: "+err.message); } }; fr.readAsText(file);
+};
+
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.style.opacity=1; clearTimeout(t._t); t._t=setTimeout(()=>t.style.opacity=0,2200); }
+
+function normalize(j){
+  return { _comment:j._comment, map:j.map||"boudica", player_spawn:j.player_spawn||[696,45], factions:(j.factions||[]).map(f=>({name:f.name,x:f.x|0,y:f.y|0,role:f.role||"neutral"})) };
+}
+
+// ---- boot ----
+function resize(){ cv.width = cv.parentElement.clientWidth; cv.height = cv.parentElement.clientHeight; fitView(); draw(); }
+window.addEventListener("resize", resize);
+
+async function loadMap(){
+  const res = await fetch("./boudica.bin");
+  if(!res.ok) throw new Error("boudica.bin "+res.status);
+  const buf = await res.arrayBuffer();
+  const m = parseMap(buf);
+  if (m.w!==MAPW || m.h!==MAPH) console.warn("map dims", m.w, m.h, "expected", MAPW, MAPH);
+  terrain = m.terrain; buildMapImage();
+}
+async function loadRoster(){
+  try {
+    const res = await fetch("/assets/campaign/boudica.json", {cache:"no-store"});
+    if(res.ok){ roster = normalize(await res.json()); }
+  } catch(e){ console.warn("roster fetch failed, using default", e); }
+  sel=-1; renderAll();
+}
+
+(async function(){
+  resize();
+  try { await loadMap(); } catch(e){ hud.textContent="map load failed: "+e.message; hud.className="warn"; }
+  await loadRoster();
+  resize();
+})();
+</script>
+</body>
+</html>
