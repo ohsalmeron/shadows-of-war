@@ -50,7 +50,7 @@
   <div id="side">
     <header>
       <h1>Campaign Roster Editor</h1>
-      <div class="sub">boudica · 896×504 · drag tribes to move</div>
+      <div class="sub">boudica · 896×504 · drag tribes · <a href="logic.html" style="color:var(--accent);text-decoration:none">⚙ Logic →</a></div>
     </header>
 
     <div class="group">
@@ -99,12 +99,16 @@ const ROLES = {
   neutral:     { color:"#4ca572", team:"—",    troops:500,  label:"Neutral" },
 };
 const PLAYER_COLOR = "#f0902a";
+// Bot IQ tiers grounded in the engine (sow-core player/diplomacy/intent): default 100; AI smarts
+// unlock at 100 and 130; bots roll 130–180; the lowest value the codebase exercises is 85.
+function iqTier(iq){ return iq>=130 ? "sharp (≥130)" : iq>=100 ? "standard" : "dull"; }
 
 const MAPW = 896, MAPH = 504;
 let terrain = null;            // Uint8Array length MAPW*MAPH, bit7 = land
 let roster = { map:"boudica", player_spawn:[696,45], factions:[] };
 let sel = -1;                  // index into factions, or -2 = player spawn
-let scale = 1, ox = 0, oy = 0; // view transform (map->screen): sx = mx*scale+ox
+let scale = 1, ox = 0, oy = 0, minScale = 1, maxScale = 12; // view: sx = mx*scale+ox
+let hovered = -1, panning = false, panStart = null;
 
 const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
 const hud = document.getElementById("hud");
@@ -261,15 +265,21 @@ function renderSide() {
     const opts = Object.keys(ROLES).map(k=>`<option value="${k}" ${k===f.role?"selected":""}>${ROLES[k].label}</option>`).join("");
     const role = ROLES[f.role]||ROLES.neutral;
     const dr = Math.round(Math.hypot(f.x-roster.player_spawn[0], f.y-roster.player_spawn[1]));
+    const iq = f.iq ?? 100;
     host.innerHTML = `<label>Name</label><input id="fn" value="${f.name.replace(/"/g,'&quot;')}">
       <label>Role</label><select id="fr">${opts}</select>
       <label>Position (x, y)</label><div class="row"><input id="fx" type="number" value="${f.x}"><input id="fy" type="number" value="${f.y}"></div>
+      <label>Bot IQ — <span id="iqtier">${iqTier(iq)}</span></label>
+      <div class="row"><input id="fiq" type="range" min="85" max="180" step="5" value="${iq}" style="flex:3"><input id="fiqn" type="number" min="85" max="180" value="${iq}" style="flex:1;min-width:56px"></div>
       <div class="hint">team ${role.team} · ${role.troops} troops · r≈${dr} from spawn · ${isLand(f.x,f.y)?"land ✓":'<span class="warn">⚠ in water</span>'}</div>
       <div class="btns" style="margin-top:10px"><button class="danger" id="del">Delete</button></div>`;
     document.getElementById("fn").oninput = e => { f.name=e.target.value; renderList(); draw(); };
     document.getElementById("fr").onchange = e => { f.role=e.target.value; renderList(); renderSide(); draw(); };
     document.getElementById("fx").oninput = e => { f.x=+e.target.value|0; renderSide(); draw(); };
     document.getElementById("fy").oninput = e => { f.y=+e.target.value|0; renderSide(); draw(); };
+    const setIq = v => { v=Math.max(85,Math.min(180,v|0)); f.iq=v; document.getElementById("fiq").value=v; document.getElementById("fiqn").value=v; document.getElementById("iqtier").textContent=iqTier(v); };
+    document.getElementById("fiq").oninput = e => setIq(+e.target.value);
+    document.getElementById("fiqn").oninput = e => setIq(+e.target.value);
     document.getElementById("del").onclick = () => { roster.factions.splice(sel,1); sel=-1; renderAll(); };
   } else {
     host.innerHTML = `<div class="hint">Click a tribe on the map or in the list.</div>`;
@@ -316,7 +326,7 @@ function serialize() {
     _comment: roster._comment || "Boudica tutorial roster — edited via tools/campaign-editor.",
     map: roster.map || "boudica",
     player_spawn: roster.player_spawn.map(n=>Math.round(n)),
-    factions: roster.factions.map(f=>({ name:f.name, x:Math.round(f.x), y:Math.round(f.y), role:f.role })),
+    factions: roster.factions.map(f=>({ name:f.name, x:Math.round(f.x), y:Math.round(f.y), role:f.role, iq:f.iq??100 })),
   };
   return JSON.stringify(out, null, 2) + "\n";
 }
@@ -335,7 +345,7 @@ document.getElementById("fileIn").onchange = e => {
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.style.opacity=1; clearTimeout(t._t); t._t=setTimeout(()=>t.style.opacity=0,2200); }
 
 function normalize(j){
-  return { _comment:j._comment, map:j.map||"boudica", player_spawn:j.player_spawn||[696,45], factions:(j.factions||[]).map(f=>({name:f.name,x:f.x|0,y:f.y|0,role:f.role||"neutral"})) };
+  return { _comment:j._comment, map:j.map||"boudica", player_spawn:j.player_spawn||[696,45], factions:(j.factions||[]).map(f=>({name:f.name,x:f.x|0,y:f.y|0,role:f.role||"neutral",iq:(f.iq==null?100:f.iq|0)})) };
 }
 
 // ---- boot ----

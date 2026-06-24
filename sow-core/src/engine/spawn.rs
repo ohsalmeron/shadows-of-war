@@ -356,6 +356,9 @@ impl SowEngine {
                 player.max_troops_cap = Some(c);
                 player.troops = player.troops.min(c);
             }
+            if let Some(iq) = s.iq {
+                player.iq = iq;
+            }
             self.state.spawn_player(player, sx, sy);
             placed += 1;
             log::info!(

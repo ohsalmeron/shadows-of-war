@@ -437,6 +437,14 @@ pub fn play_combat_sound(
     seed: u32,
     spatial: SpatialSoundParams,
 ) {
+    // ponytail: global rate limiting to prune combat spam
+    let now = super::engine::now_ms();
+    let last = super::engine::LAST_COMBAT_SOUND_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if now.saturating_sub(last) < 120 {
+        return;
+    }
+    super::engine::LAST_COMBAT_SOUND_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+
     let SpatialSoundParams { wx, wy, .. } = spatial;
     let source = {
         let mut session = music_session().lock().unwrap_or_else(|e| e.into_inner());

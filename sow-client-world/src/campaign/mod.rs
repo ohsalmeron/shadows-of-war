@@ -90,13 +90,15 @@ pub struct Faction {
     pub y: u32,
     pub role: Role,
     pub civ: Civilization,
+    /// Bot intelligence override; `None` = engine default. Only the JSON loader sets it.
+    pub iq: Option<u32>,
 }
 
 impl Faction {
     /// Build a faction; civ is implied by role so it stays consistent between the hardcoded
     /// roster and the JSON loader.
     fn new(name: impl Into<String>, x: u32, y: u32, role: Role) -> Faction {
-        Faction { name: name.into(), x, y, role, civ: role.civ() }
+        Faction { name: name.into(), x, y, role, civ: role.civ(), iq: None }
     }
 }
 
@@ -207,6 +209,7 @@ pub fn to_scripted(factions: &[Faction]) -> Vec<ScriptedSpawn> {
                 is_nation,
                 troops: f.role.troops(),
                 troop_cap: f.role.troop_cap(),
+                iq: f.iq,
             }
         })
         .collect()
@@ -223,6 +226,8 @@ struct RosterEntry {
     x: u32,
     y: u32,
     role: String,
+    #[serde(default)]
+    iq: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -243,7 +248,13 @@ pub fn load_roster_json(path: &str) -> Option<(Vec<Faction>, (u32, u32))> {
     let factions: Vec<Faction> = rf
         .factions
         .iter()
-        .filter_map(|e| Role::from_name(&e.role).map(|role| Faction::new(e.name.clone(), e.x, e.y, role)))
+        .filter_map(|e| {
+            Role::from_name(&e.role).map(|role| {
+                let mut f = Faction::new(e.name.clone(), e.x, e.y, role);
+                f.iq = e.iq;
+                f
+            })
+        })
         .collect();
     if factions.is_empty() {
         return None;

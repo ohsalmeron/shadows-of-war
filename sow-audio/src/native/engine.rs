@@ -1,4 +1,5 @@
 use std::num::NonZero;
+use std::sync::atomic::AtomicU64;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -9,7 +10,17 @@ use super::tone::{note_envelope, warm_at};
 
 pub(super) const SAMPLE_RATE: u32 = 22050;
 pub(super) const OPEN_BACKOFF: Duration = Duration::from_secs(2);
-pub(super) const MAX_VOICES: u8 = 6;
+pub(super) const MAX_VOICES: u8 = 3; // ponytail: reduced to 3 for stability and less clutter
+
+pub(super) static LAST_BUNKER_SOUND_MS: AtomicU64 = AtomicU64::new(0);
+pub(super) static LAST_COMBAT_SOUND_MS: AtomicU64 = AtomicU64::new(0);
+
+pub(super) fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SoundPriority {
     Background,

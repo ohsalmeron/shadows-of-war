@@ -345,13 +345,11 @@ struct BunkerDefenseSource {
 }
 
 impl BunkerDefenseSource {
-    fn new(seed: u32) -> Self {
+    fn new(start_freq: f32, end_freq: f32, seed: u32) -> Self {
         let mut rng = SimpleRng::new(seed);
-        let duration = rng.range(0.15, 0.22);
-        let start_freq = rng.range(350.0, 480.0);
-        let end_freq = rng.range(120.0, 200.0);
+        let duration = rng.range(0.12, 0.18); // shorter, cleaner sweeps
         let decay_rate = rng.range(8.0, 12.0);
-        let amplitude = rng.range(0.20, 0.25);
+        let amplitude = rng.range(0.14, 0.18); // slightly lower volume for elegance
 
         Self {
             sample_idx: 0,
@@ -434,8 +432,23 @@ pub fn play_nuke_impact_sound(level: u8, spatial: SpatialSoundParams) {
 }
 
 pub fn play_bunker_defense_sound(seed: u32, spatial: SpatialSoundParams) {
+    // ponytail: global rate limiting and pentatonic octave-sweeps to eliminate sound spam and 8-bit aesthetic
+    let now = super::engine::now_ms();
+    let last = super::engine::LAST_BUNKER_SOUND_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if now.saturating_sub(last) < 150 {
+        return;
+    }
+    super::engine::LAST_BUNKER_SOUND_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+
+    let SpatialSoundParams { wx, wy, .. } = spatial;
+    let session = super::music::music_session().lock().unwrap_or_else(|e| e.into_inner());
+    let mut rng = SimpleRng::new(seed ^ super::music::tile_hash(wx, wy));
+    let base_degree = super::music::pick_base_degree(&session, wx, wy, &mut rng);
+    let start_freq = super::music::freq_at(session.root_octave + 1, base_degree);
+    let end_freq = super::music::freq_at(session.root_octave, base_degree);
+
     queue_spatial(
-        BunkerDefenseSource::new(seed),
+        BunkerDefenseSource::new(start_freq, end_freq, seed),
         spatial,
         SoundPriority::Normal,
     );

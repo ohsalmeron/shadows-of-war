@@ -65,6 +65,10 @@ pub struct ScriptedSpawn {
     pub troops: Option<f64>,
     #[serde(default)]
     pub troop_cap: Option<f64>,
+    /// Bot intelligence override (`Player.iq`). `None` = engine default. AI tiers unlock at 100 and
+    /// 130; bots normally roll 130–180. Lets a scripted clan be deliberately dull or sharp.
+    #[serde(default)]
+    pub iq: Option<u32>,
 }
 
 fn default_true() -> bool {
@@ -261,7 +265,7 @@ impl Default for GameConfig {
 
             // Core Simulation Pacing
             tick_rate_ms: 100.0, // Server clock ticks every 100ms (10 ticks per second)
-            global_speed_multiplier: 0.20,
+            global_speed_multiplier: 1.00,
 
             // Combat & Expansion Mechanics
             attack_cost_enemy: 2.0,

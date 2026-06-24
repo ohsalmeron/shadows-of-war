@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SOW — Campaign Logic (nodes)</title>
+<style>
+  :root { --bg:#14171c; --panel:#1d222b; --line:#2c333f; --text:#e6e9ee; --muted:#8b94a3; --accent:#e06b1f;
+          --event:#3aa564; --cond:#caa23a; --action:#3372f2; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif; overflow:hidden; }
+  #app { display:flex; height:100%; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0c0e12 radial-gradient(circle at 20px 20px, #181c23 1px, transparent 1px); background-size:24px 24px; }
+  #nodes { position:absolute; inset:0; transform-origin:0 0; }
+  svg#wires { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  svg#wires path { pointer-events:stroke; }
+  .node { position:absolute; width:210px; background:var(--panel); border:1px solid var(--line); border-radius:9px; box-shadow:0 6px 18px rgba(0,0,0,.4); user-select:none; }
+  .node.sel { border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.25),0 6px 18px rgba(0,0,0,.5); }
+  .node .hd { padding:7px 10px; border-radius:8px 8px 0 0; font-weight:600; font-size:12px; cursor:grab; display:flex; justify-content:space-between; align-items:center; }
+  .node.event .hd { background:rgba(58,165,100,.22); border-bottom:1px solid var(--event); }
+  .node.condition .hd { background:rgba(202,162,58,.20); border-bottom:1px solid var(--cond); }
+  .node.action .hd { background:rgba(51,114,242,.20); border-bottom:1px solid var(--action); }
+  .node .hd .x { color:var(--muted); cursor:pointer; padding:0 2px; }
+  .node .hd .x:hover { color:#f1b0b4; }
+  .node .bd { padding:8px 10px; display:flex; flex-direction:column; gap:6px; }
+  .node label { font-size:10px; color:var(--muted); margin:0 0 1px; display:block; text-transform:uppercase; letter-spacing:.4px; }
+  .node input, .node select, .node textarea { width:100%; background:#11151b; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:4px 6px; font:inherit; font-size:12px; }
+  .node textarea { resize:vertical; min-height:38px; }
+  .pin { position:absolute; width:14px; height:14px; border-radius:50%; background:#11151b; border:2px solid var(--muted); top:9px; cursor:crosshair; z-index:2; }
+  .pin:hover { border-color:#fff; background:#2a3340; }
+  .pin.in { left:-8px; } .pin.out { right:-8px; }
+  .node.event .pin.out { border-color:var(--event); } .node.condition .pin { border-color:var(--cond); } .node.action .pin { border-color:var(--action); }
+  #side { width:250px; background:var(--panel); border-left:1px solid var(--line); display:flex; flex-direction:column; }
+  header { padding:12px 14px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:14px; } header .sub { color:var(--muted); font-size:11px; margin-top:3px; }
+  header a { color:var(--accent); text-decoration:none; }
+  .group { padding:10px 14px; border-bottom:1px solid var(--line); }
+  .group h2 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); }
+  .pal { display:flex; flex-wrap:wrap; gap:6px; }
+  .pal button { font-size:11px; padding:5px 8px; border-radius:6px; border:1px solid var(--line); background:#222a35; color:var(--text); cursor:pointer; }
+  .pal button:hover { background:#2c3743; }
+  .pal .ev { border-left:3px solid var(--event); } .pal .co { border-left:3px solid var(--cond); } .pal .ac { border-left:3px solid var(--action); }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  button.primary { background:var(--accent); border:1px solid var(--accent); color:#1a1206; font-weight:600; border-radius:6px; padding:7px 10px; cursor:pointer; }
+  button.ghost { background:#2a3340; border:1px solid var(--line); color:var(--text); border-radius:6px; padding:7px 10px; cursor:pointer; }
+  .hint { color:var(--muted); font-size:11px; margin-top:6px; }
+  #hud { position:absolute; left:10px; bottom:10px; background:rgba(10,12,16,.82); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:11px; color:var(--muted); pointer-events:none; }
+  #toast { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); background:#222a35; border:1px solid var(--line); border-radius:8px; padding:8px 14px; opacity:0; transition:opacity .25s; }
+  .list { overflow:auto; flex:1; padding:6px 0; }
+  .trow { padding:5px 14px; font-size:12px; color:var(--muted); border-bottom:1px solid #232a34; }
+  .trow b { color:var(--text); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <svg id="wires"></svg>
+    <div id="nodes"></div>
+    <div id="hud">drag header to move · drag a pin to wire · scroll-drag empty space to pan</div>
+    <div id="toast"></div>
+  </div>
+  <div id="side">
+    <header>
+      <h1>Campaign Logic</h1>
+      <div class="sub">ECA triggers · <a href="index.html">← Map</a></div>
+    </header>
+    <div class="group">
+      <h2>Add node</h2>
+      <div class="pal" id="pal"></div>
+    </div>
+    <div class="group">
+      <h2>Export</h2>
+      <div class="btns">
+        <button class="primary" id="exportBtn">⤓ boudica.triggers.json</button>
+        <button class="ghost" id="copyBtn">Copy</button>
+        <button class="ghost" id="reloadBtn">Reload</button>
+      </div>
+      <input type="file" id="fileIn" accept=".json" style="margin-top:8px;width:100%;font-size:11px" />
+      <div class="hint">Drop into <code>assets/campaign/</code>, relaunch (no recompile).</div>
+    </div>
+    <div class="group" style="flex:0 0 auto"><h2>Triggers</h2></div>
+    <div class="list" id="list"></div>
+  </div>
+</div>
+
+<script>
+// ---- node vocabulary (grounded in the real tutorial systems: steps.rs Trigger, dialogs, emotes) ----
+// cat: event|condition|action · params: {key,label,type,opts?}
+const DEFS = {
+  // EVENTS (when) — no input pin
+  on_start:         { cat:"event", title:"On chapter start", params:[] },
+  on_tiles_gained:  { cat:"event", title:"On tiles gained",  params:[{k:"n",l:"tiles",t:"num",d:256}] },
+  on_tribes_eaten:  { cat:"event", title:"On tribes eaten",  params:[{k:"n",l:"count",t:"num",d:1}] },
+  on_first_contact: { cat:"event", title:"On first contact", params:[{k:"faction",l:"faction",t:"faction"}] },
+  // CONDITIONS (if)
+  troops_at_least:  { cat:"condition", title:"Troops ≥",      params:[{k:"faction",l:"faction",t:"faction"},{k:"n",l:"troops",t:"num",d:1000}] },
+  faction_alive:    { cat:"condition", title:"Faction alive", params:[{k:"faction",l:"faction",t:"faction"}] },
+  // ACTIONS (then)
+  show_dialog:      { cat:"action", title:"Show dialog",      params:[{k:"speaker",l:"speaker",t:"faction"},{k:"title",l:"title",t:"text"},{k:"body",l:"body",t:"area"}] },
+  set_objective:    { cat:"action", title:"Set objective",   params:[{k:"title",l:"title",t:"text"},{k:"body",l:"body",t:"area"}] },
+  emote:            { cat:"action", title:"Emote",            params:[{k:"faction",l:"faction",t:"faction"},{k:"emoji",l:"emoji",t:"text",d:"🎉"}] },
+  pause:            { cat:"action", title:"Pause world",      params:[] },
+  resume:           { cat:"action", title:"Resume world",     params:[] },
+  set_flag:         { cat:"action", title:"Set flag",         params:[{k:"name",l:"flag",t:"text"}] },
+};
+const hasIn  = k => DEFS[k].cat !== "event";
+const hasOut = () => true;
+
+const S = { nodes:[], wires:[], pan:{x:40,y:40}, nextId:1, sel:null, factions:["player"] };
+
+const stage = document.getElementById("stage");
+const nodesEl = document.getElementById("nodes");
+const wiresEl = document.getElementById("wires");
+const hud = document.getElementById("hud");
+
+// ---- palette ----
+const pal = document.getElementById("pal");
+for (const [k,def] of Object.entries(DEFS)) {
+  const b = document.createElement("button");
+  b.className = def.cat==="event"?"ev":def.cat==="condition"?"co":"ac";
+  b.textContent = def.title;
+  b.onclick = () => addNode(k, -S.pan.x + stage.clientWidth/2 - 105, -S.pan.y + stage.clientHeight/2 - 40);
+  pal.appendChild(b);
+}
+
+// ---- model ops ----
+function addNode(kind, x, y) {
+  const params = {};
+  for (const p of DEFS[kind].params) params[p.k] = p.d ?? (p.t==="num"?0:p.t==="faction"?(S.factions[0]||""):"");
+  const n = { id:S.nextId++, kind, x:Math.round(x), y:Math.round(y), params };
+  S.nodes.push(n); S.sel = n.id; render(); return n;
+}
+function delNode(id) {
+  S.nodes = S.nodes.filter(n=>n.id!==id);
+  S.wires = S.wires.filter(w=>w.from!==id && w.to!==id);
+  if (S.sel===id) S.sel=null;
+  render();
+}
+const node = id => S.nodes.find(n=>n.id===id);
+
+// ---- render nodes ----
+function render() {
+  nodesEl.style.transform = `translate(${S.pan.x}px,${S.pan.y}px)`;
+  nodesEl.innerHTML = "";
+  for (const n of S.nodes) nodesEl.appendChild(card(n));
+  redrawWires();
+  renderList();
+}
+function factionOpts(sel) {
+  return S.factions.map(f=>`<option ${f===sel?"selected":""}>${f}</option>`).join("");
+}
+function card(n) {
+  const def = DEFS[n.kind];
+  const el = document.createElement("div");
+  el.className = `node ${def.cat}${S.sel===n.id?" sel":""}`;
+  el.dataset.id = n.id;
+  el.style.left = n.x+"px"; el.style.top = n.y+"px";
+  let body = "";
+  for (const p of def.params) {
+    const v = n.params[p.k] ?? "";
+    const id = `p_${n.id}_${p.k}`;
+    if (p.t==="faction") body += `<div><label>${p.l}</label><select data-p="${p.k}">${factionOpts(v)}</select></div>`;
+    else if (p.t==="area") body += `<div><label>${p.l}</label><textarea data-p="${p.k}">${String(v).replace(/</g,"&lt;")}</textarea></div>`;
+    else if (p.t==="num") body += `<div><label>${p.l}</label><input data-p="${p.k}" type="number" value="${v}"></div>`;
+    else body += `<div><label>${p.l}</label><input data-p="${p.k}" value="${String(v).replace(/"/g,"&quot;")}"></div>`;
+  }
+  el.innerHTML =
+    `${hasIn(n.kind)?'<div class="pin in" data-pin="in"></div>':""}` +
+    `<div class="pin out" data-pin="out"></div>` +
+    `<div class="hd">${def.title}<span class="x" data-x>✕</span></div>` +
+    `<div class="bd">${body || '<div class="hint" style="margin:0">no params</div>'}</div>`;
+  // header drag = move; click = select
+  const hd = el.querySelector(".hd");
+  hd.addEventListener("mousedown", e => {
+    if (e.target.hasAttribute("data-x")) return;
+    S.sel = n.id; render();
+    const sx=e.clientX, sy=e.clientY, ox=n.x, oy=n.y;
+    const mv = ev => { n.x=Math.round(ox+ev.clientX-sx); n.y=Math.round(oy+ev.clientY-sy); el.style.left=n.x+"px"; el.style.top=n.y+"px"; redrawWires(); };
+    const up = () => { window.removeEventListener("mousemove",mv); window.removeEventListener("mouseup",up); };
+    window.addEventListener("mousemove",mv); window.addEventListener("mouseup",up); e.preventDefault();
+  });
+  el.querySelector("[data-x]").onclick = () => delNode(n.id);
+  // param edits
+  el.querySelectorAll("[data-p]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const p = inp.dataset.p;
+      n.params[p] = inp.type==="number" ? (+inp.value) : inp.value;
+      renderList();
+    });
+  });
+  // pin wiring
+  el.querySelectorAll(".pin").forEach(pin => {
+    pin.addEventListener("mousedown", e => { e.stopPropagation(); e.preventDefault(); startLink(n.id, pin.dataset.pin); });
+  });
+  return el;
+}
+
+// ---- wires ----
+function pinCenter(id, which) {
+  const el = document.querySelector(`.node[data-id="${id}"] .pin.${which}`);
+  if (!el) return null;
+  const cr = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
+  return { x:r.left+r.width/2-cr.left, y:r.top+r.height/2-cr.top };
+}
+function bezier(a, b) {
+  const dx = Math.max(40, Math.abs(b.x-a.x)/2);
+  return `M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}`;
+}
+let tempWire = null;
+function redrawWires() {
+  let svg = "";
+  for (let i=0;i<S.wires.length;i++) {
+    const w = S.wires[i];
+    const a = pinCenter(w.from,"out"), b = pinCenter(w.to,"in");
+    if (a&&b) svg += `<path d="${bezier(a,b)}" fill="none" stroke="#5b6675" stroke-width="2.5" data-w="${i}"/>`;
+  }
+  if (tempWire) svg += `<path d="${bezier(tempWire.a,tempWire.b)}" fill="none" stroke="#e06b1f" stroke-width="2.5" stroke-dasharray="5 4"/>`;
+  wiresEl.innerHTML = svg;
+  wiresEl.querySelectorAll("[data-w]").forEach(p => p.onclick = () => { S.wires.splice(+p.dataset.w,1); redrawWires(); renderList(); });
+}
+function startLink(fromId, which) {
+  // only start from an output pin (exec flows out→in)
+  if (which!=="out") return;
+  const move = e => {
+    const cr = stage.getBoundingClientRect();
+    tempWire = { a: pinCenter(fromId,"out"), b: { x:e.clientX-cr.left, y:e.clientY-cr.top } };
+    redrawWires();
+  };
+  const up = e => {
+    window.removeEventListener("mousemove",move); window.removeEventListener("mouseup",up);
+    tempWire = null;
+    const tgt = e.target.closest(".node");
+    if (tgt) {
+      const toId = +tgt.dataset.id;
+      if (toId!==fromId && hasIn(node(toId).kind) && !S.wires.some(w=>w.from===fromId&&w.to===toId)) {
+        S.wires.push({ from:fromId, to:toId });
+      }
+    }
+    redrawWires(); renderList();
+  };
+  window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
+}
+
+// ---- pan (drag empty canvas) ----
+stage.addEventListener("mousedown", e => {
+  if (e.target!==stage && e.target!==wiresEl && e.target!==nodesEl) return;
+  S.sel=null; render();
+  const sx=e.clientX, sy=e.clientY, ox=S.pan.x, oy=S.pan.y;
+  const mv = ev => { S.pan.x=ox+ev.clientX-sx; S.pan.y=oy+ev.clientY-sy; nodesEl.style.transform=`translate(${S.pan.x}px,${S.pan.y}px)`; redrawWires(); };
+  const up = () => { window.removeEventListener("mousemove",mv); window.removeEventListener("mouseup",up); };
+  window.addEventListener("mousemove",mv); window.addEventListener("mouseup",up);
+});
+window.addEventListener("keydown", e => { if ((e.key==="Delete"||e.key==="Backspace") && S.sel!=null && document.activeElement.tagName==="BODY") delNode(S.sel); });
+window.addEventListener("resize", redrawWires);
+
+// ---- compile graph -> triggers (ECA) ----
+function downstream(id) { // ordered exec chain from a node, following out->in wires
+  const out = []; const seen = new Set();
+  const walk = nid => { for (const w of S.wires.filter(w=>w.from===nid)) { if (!seen.has(w.to)) { seen.add(w.to); out.push(w.to); walk(w.to); } } };
+  walk(id); return out;
+}
+function nodeToObj(n) { return { kind:n.kind, ...n.params }; }
+function triggerName(ev) {
+  const f = ev.faction ? " "+ev.faction : ev.n!=null ? " "+ev.n : "";
+  return DEFS[ev.kind].title + f;
+}
+function compile() {
+  const triggers = [];
+  for (const ev of S.nodes.filter(n=>DEFS[n.kind].cat==="event")) {
+    const chain = downstream(ev.id).map(node);
+    const event = nodeToObj(ev);
+    triggers.push({
+      name: triggerName(event),
+      event,
+      conditions: chain.filter(n=>DEFS[n.kind].cat==="condition").map(nodeToObj),
+      actions:    chain.filter(n=>DEFS[n.kind].cat==="action").map(nodeToObj),
+    });
+  }
+  return triggers;
+}
+function serialize() {
+  const out = {
+    _comment: "Boudica campaign triggers (ECA). Authored via tools/campaign-editor/logic.html. The game reads `triggers`; `_editor` is the node layout for re-editing and is ignored by the game.",
+    chapter: "boudica-1",
+    triggers: compile(),
+    _editor: { pan:S.pan, nodes:S.nodes, wires:S.wires },
+  };
+  return JSON.stringify(out, null, 2) + "\n";
+}
+
+// ---- decompile triggers -> node layout (when a file has no _editor) ----
+function decompile(j) {
+  S.nodes=[]; S.wires=[]; S.nextId=1;
+  let col = 0;
+  for (const t of (j.triggers||[])) {
+    let y = 30, x = 40 + col*270; let prev = null;
+    const place = (kind, params) => { const n={id:S.nextId++,kind,x,y,params:params||{}}; S.nodes.push(n); if(prev!=null) S.wires.push({from:prev,to:n.id}); prev=n.id; y+=140; return n.id; };
+    const ev = {...t.event}; const evk = ev.kind; delete ev.kind; place(evk, ev);
+    for (const c of (t.conditions||[])) { const k=c.kind; const p={...c}; delete p.kind; place(k,p); }
+    for (const a of (t.actions||[]))   { const k=a.kind; const p={...a}; delete p.kind; place(k,p); }
+    col++;
+  }
+}
+
+// ---- export / load ----
+function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.style.opacity=1; clearTimeout(t._t); t._t=setTimeout(()=>t.style.opacity=0,2200); }
+document.getElementById("exportBtn").onclick = () => {
+  const blob=new Blob([serialize()],{type:"application/json"}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="boudica.triggers.json"; a.click();
+  toast("Downloaded → drop into assets/campaign/");
+};
+document.getElementById("copyBtn").onclick = async () => { await navigator.clipboard.writeText(serialize()); toast("Copied JSON"); };
+document.getElementById("reloadBtn").onclick = () => boot();
+document.getElementById("fileIn").onchange = e => { const f=e.target.files[0]; if(!f) return; const fr=new FileReader(); fr.onload=()=>{ try{ loadGraph(JSON.parse(fr.result)); toast("Loaded "+f.name);}catch(err){toast("Bad JSON: "+err.message);} }; fr.readAsText(f); };
+
+function renderList() {
+  const t = compile();
+  document.getElementById("list").innerHTML = t.length
+    ? t.map(x=>`<div class="trow"><b>${x.name}</b> — ${x.conditions.length} cond, ${x.actions.length} act</div>`).join("")
+    : `<div class="trow">No event nodes yet. Add one from the palette.</div>`;
+}
+
+function loadGraph(j) {
+  if (j && j._editor && Array.isArray(j._editor.nodes)) {
+    S.nodes = j._editor.nodes; S.wires = j._editor.wires||[]; S.pan = j._editor.pan||{x:40,y:40};
+    S.nextId = (S.nodes.reduce((m,n)=>Math.max(m,n.id),0)||0)+1;
+  } else {
+    decompile(j||{}); S.pan={x:40,y:40};
+  }
+  S.sel=null; render();
+}
+
+async function boot() {
+  // factions for dropdowns come from the live roster (shared with the map editor)
+  try { const r=await fetch("/assets/campaign/boudica.json",{cache:"no-store"});
+    if(r.ok){ const j=await r.json(); S.factions=["player",...(j.factions||[]).map(f=>f.name)]; } } catch(e){}
+  let loaded=false;
+  try { const r=await fetch("/assets/campaign/boudica.triggers.json",{cache:"no-store"});
+    if(r.ok){ loadGraph(await r.json()); loaded=true; } } catch(e){}
+  if(!loaded) { S.nodes=[]; S.wires=[]; render(); }
+}
+boot();
+</script>
+</body>
+</html>
