@@ -566,6 +566,9 @@ impl SowApp {
                             mover_trails: false,
                             railways: false,
                             fleet_blink: false,
+                            bot_avatars: false,
+                            nameplate_names: false,
+                            nameplate_troops: false,
                         };
                     }
                 });
@@ -599,6 +602,12 @@ impl SowApp {
                 ui.checkbox(&mut vfx_flags.mover_trails, "Mover trails");
                 ui.checkbox(&mut vfx_flags.railways, "Railways");
                 ui.checkbox(&mut vfx_flags.fleet_blink, "Fleet retreat cross");
+
+                ui.separator();
+                ui.small("Nameplate Benchmark");
+                ui.checkbox(&mut vfx_flags.bot_avatars, "Bot avatars");
+                ui.checkbox(&mut vfx_flags.nameplate_names, "Nameplate names");
+                ui.checkbox(&mut vfx_flags.nameplate_troops, "Nameplate troops");
             });
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_vfx_flags"), vfx_flags));
 

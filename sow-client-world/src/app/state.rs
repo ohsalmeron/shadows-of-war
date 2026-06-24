@@ -206,7 +206,9 @@ pub struct UiState {
     pub cached_hovered_building_id: Option<u64>,
     pub cached_hovered_building_level: u8,
     pub cached_hovered_building_tooltip: String,
-    pub attack_troop_labels: std::collections::HashMap<u64, (f64, String)>,
+    pub attack_troop_labels: std::collections::HashMap<u64, (f64, String, std::sync::Arc<egui::Galley>)>,
+    pub cached_galleys: std::collections::HashMap<(String, u32), std::sync::Arc<egui::Galley>>,
+    pub cached_prepared_names: std::collections::HashMap<(String, u32), sow_ui_kit::widgets::PreparedName>,
     pub edge_mask_cache: Vec<u8>,
     pub rail_state: crate::render::world::railways::RailState,
     /// Client-side nuke silo cooldown tracking: building id → tick when ready.
@@ -223,6 +225,9 @@ impl UiState {
     pub fn invalidate_egui_dependent_caches(&mut self) {
         self.nameplate_galleys.clear();
         self.nameplate_troops_last_update.clear();
+        self.cached_galleys.clear();
+        self.cached_prepared_names.clear();
+        self.attack_troop_labels.clear();
     }
 }
 
@@ -334,6 +339,9 @@ pub struct DevVfxFlags {
     pub mover_trails: bool,
     pub railways: bool,
     pub fleet_blink: bool,
+    pub bot_avatars: bool,
+    pub nameplate_names: bool,
+    pub nameplate_troops: bool,
 }
 
 impl Default for DevVfxFlags {
@@ -361,6 +369,9 @@ impl Default for DevVfxFlags {
             mover_trails: true,
             railways: true,
             fleet_blink: true,
+            bot_avatars: true,
+            nameplate_names: true,
+            nameplate_troops: true,
         }
     }
 }

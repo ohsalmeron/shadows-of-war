@@ -171,23 +171,27 @@ pub(crate) fn render(
                     }
 
                     let troops_val = attack.troops;
+                    let font_id = egui::FontId::proportional(13.0);
                     let entry = ui
                         .attack_troop_labels
                         .entry(attack.id)
-                        .or_insert_with(|| (troops_val, sow_ui_kit::utils::format_number(troops_val)));
+                        .or_insert_with(|| {
+                            let s = sow_ui_kit::utils::format_number(troops_val);
+                            let g = middle_painter.layout_no_wrap(s.clone(), font_id.clone(), egui::Color32::WHITE);
+                            (troops_val, s, g)
+                        });
                     if (entry.0 - troops_val).abs() > 0.0001 {
-                        *entry = (troops_val, sow_ui_kit::utils::format_number(troops_val));
+                        let s = sow_ui_kit::utils::format_number(troops_val);
+                        let g = middle_painter.layout_no_wrap(s.clone(), font_id.clone(), egui::Color32::WHITE);
+                        *entry = (troops_val, s, g);
                     }
-                    let troops_str = &entry.1;
+                    let galley = entry.2.clone();
                     let color = if is_incoming {
                         egui::Color32::from_rgb(255, 90, 90) // Red for incoming
                     } else {
                         sow_ui_kit::theme::accent_solo_cyan_hover() // Cyan for outgoing
                     };
 
-                    let font_id = egui::FontId::proportional(13.0);
-                    let galley =
-                        middle_painter.layout_no_wrap(troops_str.to_owned(), font_id.clone(), color);
                     let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
                     let anchor = egui::pos2(
                         screen_x - row_w / 2.0,

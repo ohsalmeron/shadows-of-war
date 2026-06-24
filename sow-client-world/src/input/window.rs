@@ -94,60 +94,64 @@ impl SowApp {
                     if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) =
                         event.physical_key
                     {
-                        if let Some((col, row)) =
-                            self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y)
-                        {
-                            let idx = (row * self.sim.map_w as i32 + col) as usize;
+                        if !self.ui.egui_ctx.egui_wants_pointer_input() {
+                            if let Some((col, row)) =
+                                self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y)
+                            {
+                                let idx = (row * self.sim.map_w as i32 + col) as usize;
 
-                            let troops = Some(
-                                self.ui.app.hud_state.troops
-                                    * (self.ui.app.hud_state.attack_ratio as f64),
-                            );
-                            let intent = sow_core::protocol::GameplayIntent::LaunchFleet {
-                                target_tile: idx as u32,
-                                troops,
-                            };
+                                let owner = self
+                                    .gfx
+                                    .map_renderer
+                                    .as_ref()
+                                    .map(|mr| mr.owners[idx])
+                                    .unwrap_or(0);
+                                let my_id = self.sim.my_player_id.unwrap_or(0);
 
-                            let owner = self
-                                .gfx
-                                .map_renderer
-                                .as_ref()
-                                .map(|mr| mr.owners[idx])
-                                .unwrap_or(0);
-                            let my_id = self.sim.my_player_id.unwrap_or(0);
-                            let is_betrayer = self
-                                .sim
-                                .current_snapshot
-                                .as_ref()
-                                .and_then(|s| s.players.iter().find(|p| p.id == owner))
-                                .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
-                                .unwrap_or(false);
-                            let is_allied = self
-                                .sim
-                                .current_snapshot
-                                .as_ref()
-                                .and_then(|s| s.players.iter().find(|p| p.id == my_id))
-                                .map(|p| p.alliances.contains(&owner) && !is_betrayer)
-                                .unwrap_or(false);
+                                let owner_snapshot = self
+                                    .sim
+                                    .current_snapshot
+                                    .as_ref()
+                                    .and_then(|s| s.players.iter().find(|p| p.id == owner));
+                                let my_snapshot = self
+                                    .sim
+                                    .current_snapshot
+                                    .as_ref()
+                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id));
 
-                            if owner != 0 && owner != my_id && is_allied {
-                                let lang = self.ui.app.settings_state.language;
-                                self.ui.app.hud_state.show_error =
-                                    Some(sow_i18n::get(lang).hud.err_break_alliance_boat.clone());
-                                let mx = self.input.last_mouse_x;
-                                let my = self.input.last_mouse_y;
-                                self.open_context_menu_at(mx, my);
-                            } else {
-                                if let Some(c) = self.net.client.as_ref() {
-                                    if let Ok(json) = bincode::serialize(
-                                        &sow_core::protocol::ClientMessage::Gameplay {
-                                            intent: intent.clone(),
-                                        },
-                                    ) {
-                                        c.send(json);
+                                let is_teammate = if let Some(owner) = owner_snapshot {
+                                    if let Some(my_snap) = my_snapshot {
+                                        my_snap.team.is_some() && my_snap.team == owner.team
+                                    } else {
+                                        false
                                     }
                                 } else {
-                                    self.sim.offline_intents.push(intent);
+                                    false
+                                };
+
+                                let is_betrayer = owner_snapshot
+                                    .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                                    .unwrap_or(false);
+                                let is_allied = my_snapshot
+                                    .map(|p| p.alliances.contains(&owner) && !is_betrayer)
+                                    .unwrap_or(false);
+
+                                if owner != 0 && owner != my_id && is_allied {
+                                    let lang = self.ui.app.settings_state.language;
+                                    self.ui.app.hud_state.show_error =
+                                        Some(sow_i18n::get(lang).hud.err_break_alliance_boat.clone());
+                                    let mx = self.input.last_mouse_x;
+                                    let my = self.input.last_mouse_y;
+                                    self.open_context_menu_at(mx, my);
+                                } else if !is_teammate && owner != my_id {
+                                    let troops = Some(
+                                        self.ui.app.hud_state.troops
+                                            * (self.ui.app.hud_state.attack_ratio as f64),
+                                    );
+                                    self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet {
+                                        target_tile: idx as u32,
+                                        troops,
+                                    });
                                 }
                             }
                         }

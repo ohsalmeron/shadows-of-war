@@ -55,7 +55,7 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
             };
 
             egui::Frame::NONE
-                .fill(sow_ui_kit::theme::palette::field_bg())
+                .fill(sow_ui_kit::theme::palette::surface())
                 .stroke(egui::Stroke::new(
                     sow_ui_kit::theme::stroke::HAIRLINE,
                     border_color,

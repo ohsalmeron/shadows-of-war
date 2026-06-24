@@ -306,6 +306,8 @@ impl SowApp {
                 cached_hovered_building_level: 0,
                 cached_hovered_building_tooltip: String::new(),
                 attack_troop_labels: std::collections::HashMap::new(),
+                cached_galleys: std::collections::HashMap::new(),
+                cached_prepared_names: std::collections::HashMap::new(),
                 edge_mask_cache: Vec::new(),
                 rail_state: crate::render::world::railways::RailState::new(),
                 silo_cooldowns: std::collections::HashMap::new(),

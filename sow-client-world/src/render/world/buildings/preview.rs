@@ -177,6 +177,7 @@ pub(super) fn paint_building_placement_preview(
                     };
 
                     paint_building_upgrade_plate(
+                        ui,
                         painter,
                         plate,
                         input.camera_zoom,

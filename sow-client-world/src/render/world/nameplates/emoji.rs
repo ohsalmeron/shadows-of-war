@@ -16,7 +16,7 @@ pub(crate) fn draw_floating_status_emoji(
     active: bool,
     anim_id_str: &'static str,
     emoji: &str,
-    layer_id_str: &'static str,
+    _layer_id_str: &'static str,
     color_glow: Option<egui::Color32>,
     flash_alpha: f32,
 ) -> f32 {
@@ -48,16 +48,11 @@ pub(crate) fn draw_floating_status_emoji(
     let req_rect =
         egui::Rect::from_center_size(egui::pos2(center.x, req_y), egui::vec2(size, size));
 
-    let icon_painter = painter.ctx().layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new((layer_id_str, player_id)),
-    ));
-
     if is_me {
         if let Some(glow_color) = color_glow {
             let glow_r = size * 0.8;
             let glow_a = anim * flash_alpha * 0.35;
-            icon_painter.circle_filled(
+            painter.circle_filled(
                 req_rect.center(),
                 glow_r * 1.4,
                 egui::Color32::from_rgba_unmultiplied(
@@ -67,7 +62,7 @@ pub(crate) fn draw_floating_status_emoji(
                     (glow_a * 120.0) as u8,
                 ),
             );
-            icon_painter.circle_filled(
+            painter.circle_filled(
                 req_rect.center(),
                 glow_r,
                 egui::Color32::from_rgba_unmultiplied(
@@ -81,8 +76,8 @@ pub(crate) fn draw_floating_status_emoji(
     }
 
     let tint = egui::Color32::WHITE.linear_multiply(anim * flash_alpha);
-    if !sow_ui_kit::widgets::try_paint_emoji(&icon_painter, emoji, req_rect, tint) {
-        icon_painter.text(
+    if !sow_ui_kit::widgets::try_paint_emoji(painter, emoji, req_rect, tint) {
+        painter.text(
             req_rect.center(),
             egui::Align2::CENTER_CENTER,
             emoji,
@@ -147,21 +142,17 @@ pub(crate) fn draw_express_emoji(
         let emoji_y = (center.y - base_y_offset - final_emoji_size / 2.0).round();
 
         if final_emoji_size > 1.0 {
-            let emoji_painter = painter.ctx().layer_painter(egui::LayerId::new(
-                egui::Order::Middle,
-                egui::Id::new(("floating_express_emoji", player_id)),
-            ));
             let emoji_rect = egui::Rect::from_center_size(
                 egui::pos2(center.x, emoji_y),
                 egui::vec2(final_emoji_size, final_emoji_size),
             );
             if !sow_ui_kit::widgets::try_paint_emoji(
-                &emoji_painter,
+                painter,
                 emoji_str,
                 emoji_rect,
                 egui::Color32::WHITE,
             ) {
-                let emoji_galley = emoji_painter.layout_no_wrap(
+                let emoji_galley = painter.layout_no_wrap(
                     emoji_str.clone(),
                     egui::FontId::proportional(final_emoji_size),
                     egui::Color32::WHITE,
@@ -170,7 +161,7 @@ pub(crate) fn draw_express_emoji(
                     center.x - emoji_galley.size().x / 2.0,
                     emoji_y - emoji_galley.size().y / 2.0,
                 );
-                emoji_painter.galley(emoji_pos, emoji_galley, egui::Color32::WHITE);
+                painter.galley(emoji_pos, emoji_galley, egui::Color32::WHITE);
             }
         }
     }

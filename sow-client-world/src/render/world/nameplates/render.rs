@@ -46,6 +46,10 @@ pub(crate) fn render(
     let my_id = sim.my_player_id.unwrap_or(0);
     let my_player = snap.players.iter().find(|p| p.id == my_id);
 
+    let show_bot_avatars = crate::app::vfx_on(painter.ctx(), |f| f.bot_avatars);
+    let show_names = crate::app::vfx_on(painter.ctx(), |f| f.nameplate_names);
+    let show_troops = crate::app::vfx_on(painter.ctx(), |f| f.nameplate_troops);
+
     for vp in visible_players {
         let player = vp.player;
         let center = vp.center;
@@ -149,7 +153,11 @@ pub(crate) fn render(
 
             // QUANTIZATION: Round the font sizes to nearest whole numbers to prevent glyph atlas invalidations!
             let font_size = scaled_size.round().max(7.0);
-            let avatar_size = (font_size * 2.2).round().max(4.0);
+            let is_bot = player.player_type == sow_core::player::PlayerType::Bot;
+            let mut avatar_size = (font_size * 2.2).round().max(4.0);
+            if is_bot && !show_bot_avatars {
+                avatar_size = 0.0;
+            }
             let star_size = (avatar_size * 0.72).round().max(4.0);
 
             // Check alliance status with the player
@@ -307,14 +315,25 @@ pub(crate) fn render(
                 }
             };
 
-            let right_w = name_size.x.max(crate::hud::nameplate::troops_row_width(
-                &troops_galley,
-                &troops_font_id,
-            ));
-            let item_spacing_y = (font_size * 0.111).round();
-            let right_h = name_size.y + item_spacing_y + troops_galley.rect.height();
+            let name_w = if show_names { name_size.x } else { 0.0 };
+            let name_h = if show_names { name_size.y } else { 0.0 };
 
-            let spacing_x = (font_size * 0.333).round();
+            let troops_w = if show_troops {
+                crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id)
+            } else {
+                0.0
+            };
+            let troops_h = if show_troops {
+                troops_galley.rect.height()
+            } else {
+                0.0
+            };
+
+            let right_w = name_w.max(troops_w);
+            let item_spacing_y = if show_names && show_troops { (font_size * 0.111).round() } else { 0.0 };
+            let right_h = name_h + item_spacing_y + troops_h;
+
+            let spacing_x = if avatar_size > 0.0 { (font_size * 0.333).round() } else { 0.0 };
             let mut total_w = avatar_size + spacing_x + right_w;
             if is_me {
                 total_w += star_size + spacing_x;
@@ -439,46 +458,52 @@ pub(crate) fn render(
             }
 
             // 1. Circular avatar with decorative frame
-            let avatar_center = egui::pos2(cur_x + avatar_size / 2.0, row12_y + total_h / 2.0);
-            let avatar_r = avatar_size / 2.0;
-            crate::hud::avatar::draw_player_avatar(
-                painter,
-                avatar_center,
-                avatar_r,
-                player.id,
-                &player.name,
-                player.player_type,
-                player.color,
-                &player.leader,
-                &ui.app.asset_loader,
-            );
-            cur_x += avatar_size + spacing_x;
+            if avatar_size > 0.0 {
+                let avatar_center = egui::pos2(cur_x + avatar_size / 2.0, row12_y + total_h / 2.0);
+                let avatar_r = avatar_size / 2.0;
+                crate::hud::avatar::draw_player_avatar(
+                    painter,
+                    avatar_center,
+                    avatar_r,
+                    player.id,
+                    &player.name,
+                    player.player_type,
+                    player.color,
+                    &player.leader,
+                    &ui.app.asset_loader,
+                );
+                cur_x += avatar_size + spacing_x;
+            }
 
             // 2. Nickname and Troops centered in right block
             let right_y = row12_y + (total_h - right_h) / 2.0;
 
-            let name_x = cur_x + (right_w - name_size.x) / 2.0;
-            let name_text_h = name_size.y;
-            sow_ui_kit::widgets::paint_prepared_name_with_glow(
-                painter,
-                egui::pos2(name_x, right_y),
-                egui::Align2::LEFT_TOP,
-                &prepared_name,
-                vibrant_color,
-                sow_ui_kit::theme::NAMEPLATE,
-                Some(name_text_h),
-            );
+            if show_names {
+                let name_x = cur_x + (right_w - name_w) / 2.0;
+                let name_text_h = name_size.y;
+                sow_ui_kit::widgets::paint_prepared_name_with_glow(
+                    painter,
+                    egui::pos2(name_x, right_y),
+                    egui::Align2::LEFT_TOP,
+                    &prepared_name,
+                    vibrant_color,
+                    sow_ui_kit::theme::NAMEPLATE,
+                    Some(name_text_h),
+                );
+            }
 
-            let troops_w = crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id);
-            let troops_x = cur_x + (right_w - troops_w) / 2.0;
-            crate::hud::nameplate::paint_glow_troops_row(
-                painter,
-                egui::pos2(troops_x, right_y + name_size.y + item_spacing_y),
-                troops_galley,
-                &troops_font_id,
-                vibrant_color,
-                Some(name_text_h),
-            );
+            if show_troops {
+                let troops_row_y = if show_names { right_y + name_size.y + item_spacing_y } else { right_y };
+                let troops_x = cur_x + (right_w - troops_w) / 2.0;
+                crate::hud::nameplate::paint_glow_troops_row(
+                    painter,
+                    egui::pos2(troops_x, troops_row_y),
+                    troops_galley,
+                    &troops_font_id,
+                    vibrant_color,
+                    Some(name_size.y),
+                );
+            }
             continue;
         } else {
             painter.circle_filled(center, dot_r, pc);

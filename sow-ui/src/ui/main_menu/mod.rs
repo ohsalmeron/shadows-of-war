@@ -253,6 +253,20 @@ pub fn draw_terms_privacy_footer(
         }
     };
 
+    let draw_discord_link = |ui: &mut egui::Ui| {
+        let text = egui::RichText::new("💬 Discord")
+            .font(sow_ui_kit::theme::font_regular(size))
+            .color(link_color);
+        ui.hyperlink_to(text, "https://discord.gg/eauHRf7zP");
+    };
+
+    let draw_github_link = |ui: &mut egui::Ui| {
+        let text = egui::RichText::new("🐙 GitHub")
+            .font(sow_ui_kit::theme::font_regular(size))
+            .color(link_color);
+        ui.hyperlink_to(text, "https://github.com/ohsalmeron/shadows-of-war");
+    };
+
     if narrow {
         ui.with_layout(
             egui::Layout::top_down(egui::Align::Center).with_cross_align(egui::Align::Center),
@@ -290,6 +304,18 @@ pub fn draw_terms_privacy_footer(
                             .font(sow_ui_kit::theme::font_regular(size))
                             .color(text_color),
                     );
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_discord_link(ui);
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_github_link(ui);
                 });
             },
         );
@@ -340,6 +366,22 @@ pub fn draw_terms_privacy_footer(
                     .font(sow_ui_kit::theme::font_regular(size))
                     .color(text_color),
             );
+
+            ui.label(
+                egui::RichText::new("·")
+                    .font(sow_ui_kit::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            draw_discord_link(ui);
+
+            ui.label(
+                egui::RichText::new("·")
+                    .font(sow_ui_kit::theme::font_regular(size))
+                    .color(text_color),
+            );
+
+            draw_github_link(ui);
         },
     );
 }
@@ -374,7 +416,11 @@ pub fn draw(
     }
 
     egui::Panel::bottom("main_menu_footer_panel")
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 8)))
+        .frame(
+            egui::Frame::NONE
+                .fill(sow_ui_kit::theme::palette::surface())
+                .inner_margin(egui::Margin::symmetric(16, 8)),
+        )
         .show_inside(root_ui, |ui| {
             draw_terms_privacy_footer(ui, lang, &mut action);
         });

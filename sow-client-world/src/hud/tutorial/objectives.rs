@@ -26,14 +26,15 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
     let green = egui::Color32::from_rgb(74, 222, 128);
     let muted = egui::Color32::from_gray(150);
     let white = egui::Color32::WHITE;
-    let panel_w = 232.0_f32;
+    let compact = ctx.content_rect().width() < 768.0;
+    let panel_w = if compact { 160.0_f32 } else { 190.0_f32 };
 
     let mut toggle = false;
     egui::Area::new(egui::Id::new("tutorial_objectives"))
         .order(egui::Order::Foreground)
-        .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, 70.0))
+        .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, if compact { 56.0 } else { 70.0 }))
         .show(ctx, |ui| {
-            sow_ui::ui::theme::standard_panel_frame(false).show(ui, |ui| {
+            sow_ui_kit::theme::hud_panel_frame().show(ui, |ui| {
                 ui.set_width(panel_w);
 
                 // Header: scroll icon + title + caret. The whole row toggles the panel.
@@ -49,11 +50,11 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                             .color(white),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            egui::RichText::new(if open { "▾" } else { "▸" })
-                                .size(13.0)
-                                .color(muted),
+                        let (r, _) = ui.allocate_exact_size(
+                            egui::Vec2::splat(12.0),
+                            egui::Sense::hover(),
                         );
+                        try_paint_emoji(ui.painter(), if open { "➖" } else { "➕" }, r, muted);
                     });
                 });
                 let resp = ui.interact(
@@ -72,7 +73,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                             ObjState::Done => green,
                             ObjState::Active => gold,
                         };
-                        ui.add_space(6.0);
+                        ui.add_space(4.0);
                         // Fade + slide-right as a completed row is cleaned up.
                         ui.scope(|ui| {
                             ui.set_opacity(row.fade);
@@ -81,7 +82,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 ui.add_space(slide);
                                 ui.label(
                                     egui::RichText::new(row.label)
-                                        .size(12.0)
+                                        .size(11.5)
                                         .strong()
                                         .color(accent),
                                 );
@@ -90,7 +91,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
                                             let (r, _) = ui.allocate_exact_size(
-                                                egui::Vec2::splat(14.0),
+                                                egui::Vec2::splat(12.0),
                                                 egui::Sense::hover(),
                                             );
                                             try_paint_emoji(ui.painter(), "✅", r, green);
@@ -98,7 +99,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                     );
                                 }
                             });
-                            ui.add_space(2.0);
+                            ui.add_space(1.0);
                             ui.horizontal(|ui| {
                                 ui.add_space(slide);
                                 let frac = if row.target > 0 {
@@ -106,7 +107,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 } else {
                                     0.0
                                 };
-                                let bar_h = 14.0_f32;
+                                let bar_h = 12.0_f32;
                                 let (rect, _) = ui.allocate_exact_size(
                                     egui::vec2(ui.available_width(), bar_h),
                                     egui::Sense::hover(),
@@ -114,7 +115,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 let painter = ui.painter();
                                 painter.rect_filled(
                                     rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(3),
                                     egui::Color32::from_black_alpha(120),
                                 );
                                 let fill_w = rect.width() * frac;
@@ -124,7 +125,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                             rect.min,
                                             egui::vec2(fill_w, bar_h),
                                         ),
-                                        egui::CornerRadius::same(4),
+                                        egui::CornerRadius::same(3),
                                         accent.gamma_multiply(0.85),
                                     );
                                 }
@@ -132,7 +133,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                     rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     format!("{} / {}", row.current, row.target),
-                                    egui::FontId::proportional(11.0),
+                                    egui::FontId::proportional(10.0),
                                     white,
                                 );
                             });

@@ -109,13 +109,16 @@ impl SowApp {
                 if dist > 50.0 {
                     pos.0 = target_cx;
                     pos.1 = target_cy;
-                } else if dist > 0.1 {
-                    pos.0 += dx * smooth_factor;
-                    pos.1 += dy * smooth_factor;
-                    self.ui.egui_ctx.request_repaint();
                 } else {
-                    pos.0 = target_cx;
-                    pos.1 = target_cy;
+                    let screen_dist = dist * self.input.camera_zoom / sf;
+                    if screen_dist > 0.5 && dist > 0.05 {
+                        pos.0 += dx * smooth_factor;
+                        pos.1 += dy * smooth_factor;
+                        self.ui.egui_ctx.request_repaint();
+                    } else {
+                        pos.0 = target_cx;
+                        pos.1 = target_cy;
+                    }
                 }
 
                 let screen_x = (pos.0 * self.input.camera_zoom + self.input.camera_x) / sf;
@@ -150,7 +153,7 @@ impl SowApp {
                 let size_entry = self.ui.label_sizes.entry(player.id).or_insert(target_size);
 
                 let ds = target_size - *size_entry;
-                if ds.abs() > 0.01 {
+                if ds.abs() > 0.2 {
                     let rate = if ds > 0.0 {
                         visual_config.nameplate_size_grow_rate
                     } else {
@@ -312,8 +315,10 @@ impl SowApp {
             let visual_config = ClientVisualConfig::default();
 
             // Render floating notices (Gold rewards) on top
-            self.ui.floating_notices.retain(|notice| {
+            if !self.ui.floating_notices.is_empty() {
                 painter.ctx().request_repaint();
+            }
+            self.ui.floating_notices.retain(|notice| {
                 let elapsed = now.duration_since(notice.start_time).as_secs_f32();
                 let duration = notice.duration.as_secs_f32();
                 if elapsed >= duration {

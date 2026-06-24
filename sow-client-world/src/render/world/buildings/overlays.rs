@@ -95,7 +95,10 @@ pub(super) fn paint_building_overlays(
         let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
 
         let font_id = egui::FontId::proportional(font_size);
-        let galley = painter.layout_no_wrap(text_val.to_owned(), font_id, egui::Color32::WHITE);
+        let key = (text_val.to_string(), font_size as u32);
+        let galley = ui.cached_galleys.entry(key).or_insert_with(|| {
+            painter.layout_no_wrap(text_val.to_owned(), font_id, egui::Color32::WHITE)
+        }).clone();
         let pos = bg_center - galley.rect.size() / 2.0;
 
         crate::hud::nameplate::paint_glow_nameplate_galley(
@@ -138,7 +141,7 @@ pub(super) fn paint_building_overlays(
             lines,
         };
 
-        paint_building_upgrade_plate(painter, plate, input.camera_zoom, final_scale, sf);
+        paint_building_upgrade_plate(ui, painter, plate, input.camera_zoom, final_scale, sf);
     }
 
     // Render floating stats tooltip on hover
@@ -193,11 +196,14 @@ pub(super) fn paint_building_overlays(
             if !tooltip_text.is_empty() {
                 let font_size = (9.0_f32 * input.camera_zoom / sf).clamp(9.0, 12.0).round();
                 let font_id = egui::FontId::proportional(font_size);
-                let galley = painter.layout_no_wrap(
-                    tooltip_text.clone(),
-                    font_id.clone(),
-                    egui::Color32::WHITE,
-                );
+                let key = (tooltip_text.clone(), font_size as u32);
+                let galley = ui.cached_galleys.entry(key).or_insert_with(|| {
+                    painter.layout_no_wrap(
+                        tooltip_text.clone(),
+                        font_id.clone(),
+                        egui::Color32::WHITE,
+                    )
+                }).clone();
 
                 let padding_x = 8.0_f32;
                 let padding_y = 5.0_f32;
@@ -235,11 +241,9 @@ pub(super) fn paint_building_overlays(
                     egui::StrokeKind::Inside,
                 );
 
-                painter.text(
-                    egui::pos2(center.x, tooltip_y),
-                    egui::Align2::CENTER_CENTER,
-                    tooltip_text,
-                    font_id,
+                painter.galley(
+                    egui::pos2(center.x, tooltip_y) - galley.rect.size() / 2.0,
+                    galley,
                     egui::Color32::WHITE,
                 );
             }

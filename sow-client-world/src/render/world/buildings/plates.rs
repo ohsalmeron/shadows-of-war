@@ -16,6 +16,7 @@ pub(crate) struct BuildingUpgradePlate {
 }
 
 pub(crate) fn paint_building_upgrade_plate(
+    ui: &mut crate::app::UiState,
     painter: &egui::Painter,
     plate: BuildingUpgradePlate,
     camera_zoom: f32,
@@ -39,7 +40,10 @@ pub(crate) fn paint_building_upgrade_plate(
     for (i, line) in plate.lines.iter().enumerate() {
         let line_font_size = (font_size * line.scale).round();
         let font_id = egui::FontId::proportional(line_font_size);
-        let prepared = sow_ui::widgets::prepare_name(painter, &line.text, &font_id);
+        let key = (line.text.clone(), line_font_size as u32);
+        let prepared = ui.cached_prepared_names.entry(key).or_insert_with(|| {
+            sow_ui::widgets::prepare_name(painter, &line.text, &font_id)
+        }).clone();
         text_w = text_w.max(prepared.size.x);
         if i > 0 {
             text_h += line_gap;

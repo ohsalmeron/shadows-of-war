@@ -72,15 +72,23 @@ a { color: #7ec8e3; }
 .site-footer-nav {
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 1.25rem;
     margin-bottom: 0.75rem;
 }
 .site-footer-nav a {
     color: #bdbdc8;
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
 }
 .site-footer-nav a:hover {
     color: #fff;
+}
+.footer-svg-icon {
+    width: 18px;
+    height: 18px;
+    display: block;
 }
 .play-btn {
     display: inline-block;
