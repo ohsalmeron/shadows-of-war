@@ -146,8 +146,9 @@ pub fn draw(
 
     let visual_progress = state.visual_progress;
 
-    // Render — screen_rect, not max_rect/content_rect, so panels never leave a top strip.
-    let screen_rect = root_ui.ctx().content_rect();
+    // ponytail: bleed 1px past top to cover any sub-pixel gap
+    let mut screen_rect = root_ui.max_rect();
+    screen_rect.min.y -= 1.0;
     let screen_w = screen_rect.width();
     let screen_h = screen_rect.height();
     let is_mobile = sow_ui_kit::theme::compact_viewport(root_ui.ctx());

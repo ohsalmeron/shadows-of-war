@@ -70,13 +70,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let screenTexSize = 1.0 / fwidth(in.uv);
     let screenPxRange = max(0.5 * dot(unitRange, screenTexSize), 1.0);
     
-    let screenPxDist_c = screenPxRange * (sd_c - 0.5);
+    let thickness = 1.8; // Bold dilation in screen pixels
+    let screenPxDist_c = screenPxRange * (sd_c - 0.5) + thickness;
     let fillAlpha = clamp(screenPxDist_c + 0.5, 0.0, 1.0);
 
     // 2. Downward offset glyph sample (Drop Shadow)
     let msd_s = textureSample(font_atlas, font_sampler, in.uv - uv_dy * in.outline_width_px).rgb;
     let sd_s = median(msd_s.r, msd_s.g, msd_s.b);
-    let screenPxDist_s = screenPxRange * (sd_s - 0.5);
+    let screenPxDist_s = screenPxRange * (sd_s - 0.5) + thickness;
     let shadowAlpha = clamp(screenPxDist_s + 0.5, 0.0, 1.0);
 
     // Composite shadow and fill
