@@ -42,6 +42,8 @@ pub struct GraphicsState {
     pub render_ctx: Option<sow_render::RenderContext>,
     pub map_renderer: Option<sow_render::MapRenderer>,
     pub mover_renderer: Option<sow_render::MoverRenderer>,
+    pub text_renderer: Option<sow_render::TextRenderer>,
+    pub structure_renderer: Option<sow_render::StructureRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
@@ -136,7 +138,7 @@ pub struct FloatingNotice {
     pub color: egui::Color32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DeathNameplateAnimation {
     pub name: String,
     pub color: egui::Color32,
@@ -149,6 +151,25 @@ pub struct DeathNameplateAnimation {
     pub player_id: u16,
     pub nameplate_size: f32,
     pub by_nuke: bool,
+    pub prepared_name: Option<sow_ui_kit::widgets::PreparedName>,
+}
+
+impl std::fmt::Debug for DeathNameplateAnimation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeathNameplateAnimation")
+            .field("name", &self.name)
+            .field("color", &self.color)
+            .field("world_x", &self.world_x)
+            .field("world_y", &self.world_y)
+            .field("start_time", &self.start_time)
+            .field("duration", &self.duration)
+            .field("seed", &self.seed)
+            .field("player_type", &self.player_type)
+            .field("player_id", &self.player_id)
+            .field("nameplate_size", &self.nameplate_size)
+            .field("by_nuke", &self.by_nuke)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]

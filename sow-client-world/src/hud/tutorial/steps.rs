@@ -15,13 +15,23 @@ pub(super) enum Trigger {
     TilesGained(u32),
     /// Eliminate N players ("eat N tribes") — uses the human's cumulative kill count.
     TribesEaten(u32),
+    /// Defeat a SPECIFIC faction (eliminated = present in the snapshot but no longer alive). The
+    /// name must match a faction in the roster (`assets/campaign/boudica.json`); a test enforces it.
+    DefeatedPlayer(&'static str),
 }
 
-/// Current/target progress for a step's objective, given live tile-gain and kill counts.
-pub(super) fn objective_progress(advance: Trigger, gained: u32, kills: u32) -> (u32, u32) {
+/// Current/target progress for a step's objective. `is_defeated(name)` reports whether a named
+/// faction has been eliminated (built from the live snapshot by the runner).
+pub(super) fn objective_progress(
+    advance: Trigger,
+    gained: u32,
+    kills: u32,
+    is_defeated: &dyn Fn(&str) -> bool,
+) -> (u32, u32) {
     match advance {
         Trigger::TilesGained(t) => (gained.min(t), t),
         Trigger::TribesEaten(t) => (kills.min(t), t),
+        Trigger::DefeatedPlayer(name) => (u32::from(is_defeated(name)), 1),
     }
 }
 
@@ -50,13 +60,66 @@ pub(super) const CHAPTER_1: &[Step] = &[
         advance: Trigger::TilesGained(1024),
     },
     Step {
-        title: "First Blood — the Cassi",
-        body: "The Cassi knelt to Caesar a hundred years past and still lick Roman boots. They are weak. Drag your warriors into them and blood your spears.",
+        title: "First Blood",
+        body: "The Romans built outposts and farms on our land. Drag your warriors into them and blood your spears.",
         advance: Trigger::TribesEaten(1),
     },
     Step {
-        title: "Bring the Kneelers to Heel",
-        body: "Bibroci, Ancalites, Segontiaci — every clan that bowed to Rome. Each is stronger than the last. Unite the east under one banner: devour all four.",
+        title: "Unite the East",
+        body: "Veterans, outposts, and kneeling nobles. Unite the east under one banner: devour all four.",
         advance: Trigger::TribesEaten(4),
     },
+    Step {
+        title: "The First Fire",
+        body: "Camulodunum stands to our south. Burn it.",
+        advance: Trigger::DefeatedPlayer("Camulodunum"),
+    },
+    Step {
+        title: "The Second Fire",
+        body: "Londinium, the heart of their trade. Burn it.",
+        advance: Trigger::DefeatedPlayer("Londinium"),
+    },
+    Step {
+        title: "The Third Fire",
+        body: "Verulamium along Watling Street. Leave nothing but ash.",
+        advance: Trigger::DefeatedPlayer("Verulamium"),
+    },
+    Step {
+        title: "Ambush the Ninth",
+        body: "Legio IX Hispana marches from the north. Cut them down.",
+        advance: Trigger::DefeatedPlayer("Legio IX Hispana"),
+    },
+    // Terminal step: reaching it pops the Final Battle modal (Continue / Stay and fight) in `mod.rs`.
+    // Its trigger never gates progression (it's last), but targeting Paulinus keeps the objective row
+    // honest if the player stays and actually beats him.
+    Step {
+        title: "The Final Battle",
+        body: "Congratulations, tutorial complete! Suetonius Paulinus returns from Wales with the XIV and XX Legions. This is where the history books say we fall. Will you stay and fight?",
+        advance: Trigger::DefeatedPlayer("Legio XIV Gemina"),
+    },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Poka-yoke: every faction a `DefeatedPlayer` objective targets must exist in the roster
+    /// (`assets/campaign/boudica.json`). Rename/remove a boss in the editor and this fails the build
+    /// instead of letting the campaign get stuck on an objective that can never complete.
+    #[test]
+    fn objective_targets_exist_in_roster() {
+        let (factions, _) = crate::campaign::boudica::roster();
+        let names: std::collections::HashSet<&str> =
+            factions.iter().map(|f| f.name.as_str()).collect();
+        for step in CHAPTER_1 {
+            if let Trigger::DefeatedPlayer(target) = step.advance {
+                assert!(
+                    names.contains(target),
+                    "objective '{}' targets '{}', which is not in the roster",
+                    step.title,
+                    target
+                );
+            }
+        }
+    }
+}

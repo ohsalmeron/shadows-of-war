@@ -1,33 +1,703 @@
 {
-  "_comment": "Boudica tutorial roster. Edit with tools/campaign-editor/ (visual) or by hand. The game loads this at runtime (native) and falls back to the hardcoded roster in sow-client-world/src/campaign/boudica.rs if this file is missing/invalid. Map is boudica (896x504, x=east, y=south). role = kin | independent | vassal | boss | big_boss | neutral.",
+  "_comment": "Boudica tutorial roster — edited via tools/campaign-editor. role = kin | independent | vassal | boss | big_boss | neutral.",
   "map": "boudica",
-  "player_spawn": [696, 45],
+  "player_spawn": [
+    720,
+    180
+  ],
   "factions": [
-    { "name": "Cassi",          "x": 696, "y": 63,  "role": "independent" },
-    { "name": "Ancalites",      "x": 720, "y": 75,  "role": "independent" },
-    { "name": "Bibroci",        "x": 660, "y": 90,  "role": "independent" },
-    { "name": "Segontiaci",     "x": 712, "y": 120, "role": "independent" },
-    { "name": "Venta Icenorum", "x": 640, "y": 110, "role": "kin" },
-    { "name": "Snettisham",     "x": 615, "y": 50,  "role": "kin" },
-    { "name": "Thetford",       "x": 590, "y": 130, "role": "kin" },
-    { "name": "Stonea",         "x": 540, "y": 110, "role": "kin" },
-    { "name": "Trinovantes",    "x": 600, "y": 200, "role": "kin" },
-    { "name": "Catuvellauni",   "x": 490, "y": 235, "role": "vassal" },
-    { "name": "Atrebates",      "x": 444, "y": 370, "role": "vassal" },
-    { "name": "Cantiaci",       "x": 655, "y": 345, "role": "vassal" },
-    { "name": "Camulodunum",    "x": 646, "y": 230, "role": "boss" },
-    { "name": "Londinium",      "x": 576, "y": 300, "role": "boss" },
-    { "name": "Verulamium",     "x": 536, "y": 270, "role": "boss" },
-    { "name": "Rome",           "x": 470, "y": 300, "role": "big_boss" },
-    { "name": "Corieltauvi",    "x": 515, "y": 115, "role": "neutral" },
-    { "name": "Cornovii",       "x": 330, "y": 155, "role": "neutral" },
-    { "name": "Dobunni",        "x": 360, "y": 255, "role": "neutral" },
-    { "name": "Durotriges",     "x": 345, "y": 400, "role": "neutral" },
-    { "name": "Dumnonii",       "x": 163, "y": 433, "role": "neutral" },
-    { "name": "Silures",        "x": 235, "y": 245, "role": "neutral" },
-    { "name": "Demetae",        "x": 110, "y": 205, "role": "neutral" },
-    { "name": "Ordovices",      "x": 198, "y": 119, "role": "neutral" },
-    { "name": "Deceangli",      "x": 255, "y": 85,  "role": "neutral" },
-    { "name": "Morini",         "x": 835, "y": 465, "role": "neutral" }
+    {
+      "name": "Venta Icenorum",
+      "x": 719,
+      "y": 179,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Snettisham",
+      "x": 680,
+      "y": 140,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Thetford",
+      "x": 690,
+      "y": 190,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Stonea",
+      "x": 660,
+      "y": 170,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Trinovantes",
+      "x": 700,
+      "y": 250,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Trinovantian Farms",
+      "x": 680,
+      "y": 260,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Iceni Coast",
+      "x": 750,
+      "y": 150,
+      "role": "kin",
+      "iq": 100
+    },
+    {
+      "name": "Colonia Veterans",
+      "x": 720,
+      "y": 220,
+      "role": "independent",
+      "iq": 100
+    },
+    {
+      "name": "Roman Outpost",
+      "x": 730,
+      "y": 250,
+      "role": "independent",
+      "iq": 100
+    },
+    {
+      "name": "Pro-Roman Nobles",
+      "x": 690,
+      "y": 220,
+      "role": "independent",
+      "iq": 100
+    },
+    {
+      "name": "Tax Collectors",
+      "x": 670,
+      "y": 240,
+      "role": "independent",
+      "iq": 100
+    },
+    {
+      "name": "Camulodunum",
+      "x": 730,
+      "y": 280,
+      "role": "boss",
+      "iq": 100
+    },
+    {
+      "name": "Londinium",
+      "x": 620,
+      "y": 320,
+      "role": "boss",
+      "iq": 100
+    },
+    {
+      "name": "Verulamium",
+      "x": 580,
+      "y": 280,
+      "role": "boss",
+      "iq": 100
+    },
+    {
+      "name": "Legio IX Hispana",
+      "x": 580,
+      "y": 150,
+      "role": "big_boss",
+      "iq": 100
+    },
+    {
+      "name": "Legio XIV Gemina",
+      "x": 200,
+      "y": 130,
+      "role": "big_boss",
+      "iq": 100
+    },
+    {
+      "name": "Legio XX Valeria",
+      "x": 210,
+      "y": 140,
+      "role": "big_boss",
+      "iq": 100
+    },
+    {
+      "name": "Legio II Augusta",
+      "x": 280,
+      "y": 440,
+      "role": "big_boss",
+      "iq": 100
+    },
+    {
+      "name": "Catuvellauni",
+      "x": 560,
+      "y": 260,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Catuvellauni North",
+      "x": 560,
+      "y": 240,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Cantiaci",
+      "x": 700,
+      "y": 380,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Durovernum",
+      "x": 720,
+      "y": 390,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Regnenses",
+      "x": 600,
+      "y": 400,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Noviomagus",
+      "x": 580,
+      "y": 410,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Atrebates",
+      "x": 500,
+      "y": 380,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Calleva",
+      "x": 520,
+      "y": 370,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Lindum",
+      "x": 560,
+      "y": 140,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Deva",
+      "x": 349,
+      "y": 129,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Viroconium",
+      "x": 380,
+      "y": 180,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Isca Dumnoniorum",
+      "x": 260,
+      "y": 430,
+      "role": "vassal",
+      "iq": 100
+    },
+    {
+      "name": "Brigantes 1",
+      "x": 391,
+      "y": 56,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Brigantes 2",
+      "x": 407,
+      "y": 41,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Brigantes 3",
+      "x": 411,
+      "y": 70,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Brigantes 4",
+      "x": 382,
+      "y": 59,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Brigantes 5",
+      "x": 386,
+      "y": 51,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Brigantes 6",
+      "x": 412,
+      "y": 43,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Parisi 1",
+      "x": 520,
+      "y": 73,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Parisi 2",
+      "x": 529,
+      "y": 88,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Parisi 3",
+      "x": 532,
+      "y": 64,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Corieltauvi 1",
+      "x": 501,
+      "y": 193,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Corieltauvi 2",
+      "x": 515,
+      "y": 174,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Corieltauvi 3",
+      "x": 522,
+      "y": 168,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Corieltauvi 4",
+      "x": 504,
+      "y": 196,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Cornovii 1",
+      "x": 413,
+      "y": 176,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Cornovii 2",
+      "x": 399,
+      "y": 161,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Cornovii 3",
+      "x": 384,
+      "y": 180,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Cornovii 4",
+      "x": 415,
+      "y": 171,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dobunni 1",
+      "x": 435,
+      "y": 285,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dobunni 2",
+      "x": 409,
+      "y": 290,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dobunni 3",
+      "x": 400,
+      "y": 263,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dobunni 4",
+      "x": 423,
+      "y": 288,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dobunni 5",
+      "x": 420,
+      "y": 280,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Durotriges 1",
+      "x": 362,
+      "y": 439,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Durotriges 2",
+      "x": 343,
+      "y": 421,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Durotriges 3",
+      "x": 342,
+      "y": 403,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Durotriges 4",
+      "x": 338,
+      "y": 401,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dumnonii 1",
+      "x": 166,
+      "y": 451,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dumnonii 2",
+      "x": 136,
+      "y": 459,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dumnonii 3",
+      "x": 152,
+      "y": 452,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dumnonii 4",
+      "x": 163,
+      "y": 436,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Dumnonii 5",
+      "x": 138,
+      "y": 448,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Silures 1",
+      "x": 293,
+      "y": 299,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Silures 2",
+      "x": 260,
+      "y": 278,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Silures 3",
+      "x": 297,
+      "y": 299,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Silures 4",
+      "x": 271,
+      "y": 269,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Silures 5",
+      "x": 275,
+      "y": 264,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Demetae 1",
+      "x": 157,
+      "y": 276,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Demetae 2",
+      "x": 144,
+      "y": 297,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Demetae 3",
+      "x": 137,
+      "y": 299,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Demetae 4",
+      "x": 134,
+      "y": 270,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Ordovices 1",
+      "x": 245,
+      "y": 195,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Ordovices 2",
+      "x": 256,
+      "y": 160,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Ordovices 3",
+      "x": 260,
+      "y": 189,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Ordovices 4",
+      "x": 241,
+      "y": 184,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Ordovices 5",
+      "x": 256,
+      "y": 173,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Deceangli 1",
+      "x": 304,
+      "y": 135,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Deceangli 2",
+      "x": 304,
+      "y": 113,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Deceangli 3",
+      "x": 312,
+      "y": 140,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Caledonii 1",
+      "x": 305,
+      "y": 46,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Caledonii 2",
+      "x": 286,
+      "y": 29,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Caledonii 3",
+      "x": 299,
+      "y": 25,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Caledonii 4",
+      "x": 289,
+      "y": 28,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Votadini 1",
+      "x": 467,
+      "y": 22,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Votadini 2",
+      "x": 441,
+      "y": 28,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Votadini 3",
+      "x": 444,
+      "y": 20,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Votadini 4",
+      "x": 460,
+      "y": 14,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Gaulish Traders 1",
+      "x": 758,
+      "y": 434,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Gaulish Traders 2",
+      "x": 836,
+      "y": 469,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Gaulish Traders 3",
+      "x": 836,
+      "y": 469,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Irish Raiders 1",
+      "x": 85,
+      "y": 179,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Irish Raiders 2",
+      "x": 83,
+      "y": 183,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Irish Raiders 3",
+      "x": 71,
+      "y": 186,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Picts 1",
+      "x": 341,
+      "y": 4,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Picts 2",
+      "x": 336,
+      "y": 3,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Picts 3",
+      "x": 367,
+      "y": 31,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Picts 4",
+      "x": 353,
+      "y": 37,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Belgae 1",
+      "x": 458,
+      "y": 386,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Belgae 2",
+      "x": 459,
+      "y": 415,
+      "role": "neutral",
+      "iq": 100
+    },
+    {
+      "name": "Belgae 3",
+      "x": 442,
+      "y": 389,
+      "role": "neutral",
+      "iq": 100
+    }
   ]
 }

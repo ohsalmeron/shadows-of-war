@@ -238,12 +238,15 @@ impl SowApp {
             // Take the player colors out temporarily to break the shared borrow without allocating
             let player_colors = std::mem::take(&mut self.ui.cached_player_colors);
 
-            let terrain = self
-                .gfx
-                .map_renderer
-                .as_ref()
-                .map(|mr| mr.terrain.as_slice())
-                .unwrap_or(&[]);
+            let terrain: &[u8] = unsafe {
+                let mr_ptr = self
+                    .gfx
+                    .map_renderer
+                    .as_ref()
+                    .map(|mr| mr.terrain.as_slice() as *const [u8])
+                    .unwrap_or(&[] as *const [u8]);
+                &*mr_ptr
+            };
 
             let ctx_struct = RenderContext {
                 painter: &painter,
@@ -278,7 +281,7 @@ impl SowApp {
                 &self.sim,
                 &self.input,
                 &self.time,
-                &self.gfx,
+                &mut self.gfx,
                 &ctx_struct,
             );
             effects::render(
@@ -302,7 +305,7 @@ impl SowApp {
                 &self.sim,
                 &self.input,
                 &self.time,
-                &self.gfx,
+                &mut self.gfx,
                 &ctx_struct,
             );
 

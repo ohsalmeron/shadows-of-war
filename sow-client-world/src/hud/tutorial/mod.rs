@@ -83,6 +83,22 @@ impl SowApp {
             0
         };
 
+        // Eliminated faction names (present in the snapshot but no longer alive) — drives the
+        // `DefeatedPlayer` objectives. Owned set, so no snapshot borrow is held across the loops.
+        let defeated: std::collections::HashSet<String> = self
+            .sim
+            .current_snapshot
+            .as_ref()
+            .map(|s| {
+                s.players
+                    .iter()
+                    .filter(|p| !p.alive)
+                    .map(|p| p.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let is_defeated = |name: &str| defeated.contains(name);
+
         // Reactive emotes: each new conquest makes the nearby world react — allies cheer, Rome
         // rages, independents recoil. (`me` is a Copy tuple, so no borrow is held here.)
         if my_kills > self.ui.tutorial_last_kills {
@@ -95,7 +111,7 @@ impl SowApp {
         // until more objectives are appended. (Camera follows progress; nothing blocks play.)
         let mut idx = self.ui.tutorial_step_idx.min(steps.len() - 1);
         while idx + 1 < steps.len() {
-            let (cur, tgt) = objective_progress(steps[idx].advance, gained, my_kills);
+            let (cur, tgt) = objective_progress(steps[idx].advance, gained, my_kills, &is_defeated);
             if cur < tgt {
                 break;
             }
@@ -127,7 +143,7 @@ impl SowApp {
         let mut want_repaint = false;
         let mut rows: Vec<ObjRow> = Vec::new();
         for (i, s) in steps.iter().take(idx + 1).enumerate() {
-            let (current, target) = objective_progress(s.advance, gained, my_kills);
+            let (current, target) = objective_progress(s.advance, gained, my_kills, &is_defeated);
             if i < idx {
                 // Completed: hold, then fade out, then drop.
                 let done_at = self.ui.tutorial_obj_done_at.get(&i).copied().unwrap_or(now);
@@ -232,22 +248,45 @@ impl SowApp {
         } else if !self.ui.tutorial_modal_dismissed {
             // The objective modal. ANY click closes it (tapping the map to grow dismisses too).
             // Skip the very frame the step changed to avoid a flash.
+            let is_last_step = idx == steps.len() - 1;
+
+            let buttons = if is_last_step {
+                vec![
+                    DialogButton::new("Continue", ThemeButtonStyle::Secondary),
+                    DialogButton::new("Stay and fight", ThemeButtonStyle::Primary),
+                ]
+            } else {
+                vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)]
+            };
+
             let dialog = SpeakerDialog {
                 visual: Some(SpeakerVisual::Avatar(ADVISOR)),
                 name: Some("Boudica"),
                 title: step.title,
                 body: step.body,
-                buttons: vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
+                buttons,
             };
             let clicked = sow_ui::widgets::draw_speaker_dialog(
                 ctx,
                 "tutorial_dialog",
                 &dialog,
                 &self.ui.app.asset_loader,
-                true, // whole panel closes it
+                !is_last_step, // whole panel closes it only if not last step
             );
-            let clicked_anywhere = ctx.input(|i| i.pointer.any_click());
-            if clicked.is_some() || (clicked_anywhere && !step_changed) {
+            let clicked_anywhere = !is_last_step && ctx.input(|i| i.pointer.any_click());
+            if let Some(btn_idx) = clicked {
+                if is_last_step {
+                    if btn_idx == 0 {
+                        // Continue -> exit to main menu
+                        self.begin_exit_to_main_menu(true);
+                    } else {
+                        // Stay and fight
+                        self.ui.tutorial_modal_dismissed = true;
+                    }
+                } else {
+                    self.ui.tutorial_modal_dismissed = true;
+                }
+            } else if clicked_anywhere && !step_changed {
                 self.ui.tutorial_modal_dismissed = true;
                 log::info!("tutorial: modal closed on step {} '{}'", idx, step.title);
             }

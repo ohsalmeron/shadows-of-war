@@ -102,31 +102,9 @@ impl Faction {
     }
 }
 
-// Roster builders — keep episode files a readable table; civ is implied by role.
-/// Boudica's kin/ally (Red, passive).
-pub fn kin(name: impl Into<String>, x: u32, y: u32) -> Faction {
-    Faction::new(name, x, y, Role::Kin)
-}
-/// A lone clan — gray, neutral, weak (500): the first-blood targets.
-pub fn independent(name: impl Into<String>, x: u32, y: u32) -> Faction {
-    Faction::new(name, x, y, Role::Independent)
-}
-/// Rome's client tribe — Blue, passive (1 000).
-pub fn vassal(name: impl Into<String>, x: u32, y: u32) -> Faction {
-    Faction::new(name, x, y, Role::Vassal)
-}
-/// A Roman city boss — Blue, expanding nation (2 500).
-pub fn boss(name: impl Into<String>, x: u32, y: u32) -> Faction {
-    Faction::new(name, x, y, Role::Boss)
-}
-/// Rome itself — Blue, expanding nation (5 000): the big boss.
-pub fn big_boss(name: impl Into<String>, x: u32, y: u32) -> Faction {
-    Faction::new(name, x, y, Role::BigBoss)
-}
-/// An unaligned bystander (own color, no team).
-pub fn neutral(name: impl Into<String>, x: u32, y: u32) -> Faction {
-    Faction::new(name, x, y, Role::Neutral)
-}
+// Rosters are authored only as JSON (assets/campaign/*.json) and built via `parse_roster` →
+// `Faction::new`; there are deliberately no hand-rolled `kin()/boss()/…` builders, so there is one
+// and only one way to define a faction. `Faction::new` stays private to this module.
 
 /// Boudica's territory color — kin share it so the rebellion reads as one bloc.
 /// (Mirrors `Leader::Boudica.filler_rgb()`.)
@@ -238,13 +216,11 @@ struct RosterFile {
     factions: Vec<RosterEntry>,
 }
 
-/// Load an episode roster from a JSON file (native authoring loop). Returns `None` on any
-/// problem — missing file, bad JSON, unknown role, empty list — so the caller cleanly falls back
-/// to the hardcoded roster. Pure data-in: this never panics and is never wired into a hot loop.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn load_roster_json(path: &str) -> Option<(Vec<Faction>, (u32, u32))> {
-    let txt = std::fs::read_to_string(path).ok()?;
-    let rf: RosterFile = serde_json::from_str(&txt).ok()?;
+/// Parse an episode roster from JSON text. `None` on any problem (bad JSON, unknown role, empty
+/// list). This is the **single** roster code path — shared by the runtime file override and the
+/// embedded committed default — so there is exactly one format and no second way to define a roster.
+pub fn parse_roster(text: &str) -> Option<(Vec<Faction>, (u32, u32))> {
+    let rf: RosterFile = serde_json::from_str(text).ok()?;
     let factions: Vec<Faction> = rf
         .factions
         .iter()
@@ -260,4 +236,10 @@ pub fn load_roster_json(path: &str) -> Option<(Vec<Faction>, (u32, u32))> {
         return None;
     }
     Some((factions, rf.player_spawn.unwrap_or((696, 45))))
+}
+
+/// Load a roster from a JSON file on disk (native authoring loop). Thin wrapper over `parse_roster`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_roster_json(path: &str) -> Option<(Vec<Faction>, (u32, u32))> {
+    parse_roster(&std::fs::read_to_string(path).ok()?)
 }

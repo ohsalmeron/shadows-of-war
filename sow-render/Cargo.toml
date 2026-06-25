@@ -12,6 +12,8 @@ sow-assets = { workspace = true }
 bytemuck = { workspace = true }
 log = { workspace = true }
 image = { workspace = true, features = ["png"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 blade-graphics = { workspace = true }
 blade-macros = { workspace = true }

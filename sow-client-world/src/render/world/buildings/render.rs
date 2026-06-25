@@ -15,7 +15,7 @@ pub(crate) fn render(
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     time: &crate::app::TimeState,
-    gfx: &crate::app::GraphicsState,
+    gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
     let default_config;
@@ -73,6 +73,58 @@ pub(crate) fn render(
                 .then_with(|| a.count.cmp(&b.count))
         });
 
+        let mut gpu_rendered = false;
+        if let Some(ref mut sr) = gfx.structure_renderer {
+            gpu_rendered = true;
+            for b in &rendered_buildings {
+                let size_world = if b.count > 1 { 0.45f32 } else { 0.35f32 };
+                let shape_type = match b.kind {
+                    sow_core::game::BuildingKind::City => 0.0f32,
+                    sow_core::game::BuildingKind::Bunker => 1.0f32,
+                    sow_core::game::BuildingKind::Factory => 2.0f32,
+                    sow_core::game::BuildingKind::Port => 3.0f32,
+                };
+                
+                let player_color = if b.owner_id != 0 {
+                    player_colors
+                        .get(b.owner_id as usize)
+                        .copied()
+                        .unwrap_or(egui::Color32::WHITE)
+                } else {
+                    egui::Color32::WHITE
+                };
+
+                let tint = if b.owner_id != 0 {
+                    let mut color = player_color;
+                    if b.under_construction {
+                        color = color.gamma_multiply(0.5);
+                    }
+                    color
+                } else {
+                    if b.under_construction {
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128)
+                    } else {
+                        egui::Color32::WHITE
+                    }
+                };
+                let tint_arr = tint.to_array().map(|v| v as f32 / 255.0);
+                let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
+
+                let emoji = building_kind_emoji(b.kind);
+                let icon_uv = sow_render::emoji_uv(emoji);
+
+                sr.push_structure(sow_render::StructureInstanceGpu {
+                    world_pos: [b.bx, b.by],
+                    size: size_world,
+                    shape_type,
+                    color: tint_arr,
+                    outline_color: outline_color_arr,
+                    icon_uv,
+                    opacity: 1.0,
+                });
+            }
+        }
+
         for b in rendered_buildings {
             let screen_x = (input.camera_x + b.bx * input.camera_zoom) / sf;
             let screen_y = (input.camera_y + b.by * input.camera_zoom) / sf;
@@ -98,9 +150,7 @@ pub(crate) fn render(
 
             // Icon sprite rendering
 
-            let show_building = true;
-
-            if show_building {
+            if !gpu_rendered {
                 let player_color = if b.owner_id != 0 {
                     player_colors
                         .get(b.owner_id as usize)
@@ -235,6 +285,7 @@ pub(crate) fn render(
                 sim,
                 input,
                 time,
+                gfx,
                 &painter,
                 snap,
                 config,

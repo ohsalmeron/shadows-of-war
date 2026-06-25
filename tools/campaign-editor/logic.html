@@ -46,6 +46,12 @@
   .hint { color:var(--muted); font-size:11px; margin-top:6px; }
   #hud { position:absolute; left:10px; bottom:10px; background:rgba(10,12,16,.82); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:11px; color:var(--muted); pointer-events:none; }
   #toast { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); background:#222a35; border:1px solid var(--line); border-radius:8px; padding:8px 14px; opacity:0; transition:opacity .25s; }
+  #zoomctl { position:absolute; left:10px; top:10px; display:flex; align-items:center; gap:4px; background:rgba(10,12,16,.82); border:1px solid var(--line); border-radius:8px; padding:4px 6px; }
+  #zoomctl button { width:24px; height:24px; border:1px solid var(--line); background:#222a35; color:var(--text); border-radius:5px; cursor:pointer; font-size:14px; line-height:1; }
+  #zoomctl button:hover { background:#2c3743; }
+  #zoomctl #zlabel { min-width:42px; text-align:center; color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+  #stage.panning { cursor:grabbing; }
+  .node .hd:active { cursor:grabbing; }
   .list { overflow:auto; flex:1; padding:6px 0; }
   .trow { padding:5px 14px; font-size:12px; color:var(--muted); border-bottom:1px solid #232a34; }
   .trow b { color:var(--text); }
@@ -56,8 +62,14 @@
   <div id="stage">
     <svg id="wires"></svg>
     <div id="nodes"></div>
-    <div id="hud">drag header to move · drag a pin to wire · scroll-drag empty space to pan</div>
+    <div id="hud">drag header to move · drag a pin to wire · drag empty space to pan · scroll to zoom</div>
     <div id="toast"></div>
+    <div id="zoomctl">
+      <button data-z="out" title="Zoom out (−)">−</button>
+      <span id="zlabel">100%</span>
+      <button data-z="in" title="Zoom in (+)">+</button>
+      <button data-z="reset" title="Reset view (0)">⤢</button>
+    </div>
   </div>
   <div id="side">
     <header>
@@ -105,12 +117,36 @@ const DEFS = {
 const hasIn  = k => DEFS[k].cat !== "event";
 const hasOut = () => true;
 
-const S = { nodes:[], wires:[], pan:{x:40,y:40}, nextId:1, sel:null, factions:["player"] };
+const S = { nodes:[], wires:[], pan:{x:40,y:40}, zoom:1, nextId:1, sel:null, factions:["player"] };
 
 const stage = document.getElementById("stage");
 const nodesEl = document.getElementById("nodes");
 const wiresEl = document.getElementById("wires");
 const hud = document.getElementById("hud");
+const zlabel = document.getElementById("zlabel");
+
+// ---- view transform (pan + zoom) ----
+const ZMIN = 0.3, ZMAX = 2.5;
+function applyTransform() {
+  nodesEl.style.transform = `translate(${S.pan.x}px,${S.pan.y}px) scale(${S.zoom})`;
+  if (zlabel) zlabel.textContent = Math.round(S.zoom*100)+"%";
+}
+// keep the content point under (cx,cy) fixed while changing zoom -> cursor-anchored zoom
+function zoomAround(cx, cy, z1) {
+  z1 = Math.min(ZMAX, Math.max(ZMIN, z1));
+  if (z1===S.zoom) return;
+  const r = z1/S.zoom;
+  S.pan.x = cx - (cx-S.pan.x)*r;
+  S.pan.y = cy - (cy-S.pan.y)*r;
+  S.zoom = z1;
+  applyTransform(); redrawWires();
+}
+function resetView() { S.pan={x:40,y:40}; S.zoom=1; applyTransform(); redrawWires(); }
+// lightweight selection toggle — no full DOM rebuild, so in-flight drags keep their element
+function selectNode(id) {
+  S.sel = id;
+  nodesEl.querySelectorAll(".node").forEach(c => c.classList.toggle("sel", +c.dataset.id===id));
+}
 
 // ---- palette ----
 const pal = document.getElementById("pal");
@@ -118,7 +154,7 @@ for (const [k,def] of Object.entries(DEFS)) {
   const b = document.createElement("button");
   b.className = def.cat==="event"?"ev":def.cat==="condition"?"co":"ac";
   b.textContent = def.title;
-  b.onclick = () => addNode(k, -S.pan.x + stage.clientWidth/2 - 105, -S.pan.y + stage.clientHeight/2 - 40);
+  b.onclick = () => addNode(k, (stage.clientWidth/2 - S.pan.x)/S.zoom - 105, (stage.clientHeight/2 - S.pan.y)/S.zoom - 40);
   pal.appendChild(b);
 }
 
@@ -139,7 +175,7 @@ const node = id => S.nodes.find(n=>n.id===id);
 
 // ---- render nodes ----
 function render() {
-  nodesEl.style.transform = `translate(${S.pan.x}px,${S.pan.y}px)`;
+  applyTransform();
   nodesEl.innerHTML = "";
   for (const n of S.nodes) nodesEl.appendChild(card(n));
   redrawWires();
@@ -172,11 +208,16 @@ function card(n) {
   const hd = el.querySelector(".hd");
   hd.addEventListener("mousedown", e => {
     if (e.target.hasAttribute("data-x")) return;
-    S.sel = n.id; render();
+    e.preventDefault();
+    selectNode(n.id); // keep `el` attached so the drag moves the live card in real time
     const sx=e.clientX, sy=e.clientY, ox=n.x, oy=n.y;
-    const mv = ev => { n.x=Math.round(ox+ev.clientX-sx); n.y=Math.round(oy+ev.clientY-sy); el.style.left=n.x+"px"; el.style.top=n.y+"px"; redrawWires(); };
+    const mv = ev => {
+      // divide screen delta by zoom so the node tracks the cursor 1:1 at any zoom level
+      n.x=Math.round(ox+(ev.clientX-sx)/S.zoom); n.y=Math.round(oy+(ev.clientY-sy)/S.zoom);
+      el.style.left=n.x+"px"; el.style.top=n.y+"px"; redrawWires();
+    };
     const up = () => { window.removeEventListener("mousemove",mv); window.removeEventListener("mouseup",up); };
-    window.addEventListener("mousemove",mv); window.addEventListener("mouseup",up); e.preventDefault();
+    window.addEventListener("mousemove",mv); window.addEventListener("mouseup",up);
   });
   el.querySelector("[data-x]").onclick = () => delNode(n.id);
   // param edits
@@ -206,7 +247,10 @@ function bezier(a, b) {
   return `M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}`;
 }
 let tempWire = null;
-function redrawWires() {
+let wireRaf = 0;
+function redrawWires() { if (!wireRaf) wireRaf = requestAnimationFrame(drawWires); } // coalesce per-frame
+function drawWires() {
+  wireRaf = 0;
   let svg = "";
   for (let i=0;i<S.wires.length;i++) {
     const w = S.wires[i];
@@ -243,13 +287,32 @@ function startLink(fromId, which) {
 // ---- pan (drag empty canvas) ----
 stage.addEventListener("mousedown", e => {
   if (e.target!==stage && e.target!==wiresEl && e.target!==nodesEl) return;
-  S.sel=null; render();
+  selectNode(null);
+  stage.classList.add("panning");
   const sx=e.clientX, sy=e.clientY, ox=S.pan.x, oy=S.pan.y;
-  const mv = ev => { S.pan.x=ox+ev.clientX-sx; S.pan.y=oy+ev.clientY-sy; nodesEl.style.transform=`translate(${S.pan.x}px,${S.pan.y}px)`; redrawWires(); };
-  const up = () => { window.removeEventListener("mousemove",mv); window.removeEventListener("mouseup",up); };
+  const mv = ev => { S.pan.x=ox+ev.clientX-sx; S.pan.y=oy+ev.clientY-sy; applyTransform(); redrawWires(); };
+  const up = () => { stage.classList.remove("panning"); window.removeEventListener("mousemove",mv); window.removeEventListener("mouseup",up); };
   window.addEventListener("mousemove",mv); window.addEventListener("mouseup",up);
 });
+// ---- zoom (scroll to zoom toward cursor, like the map) ----
+stage.addEventListener("wheel", e => {
+  e.preventDefault();
+  const cr = stage.getBoundingClientRect();
+  zoomAround(e.clientX-cr.left, e.clientY-cr.top, S.zoom*Math.exp(-e.deltaY*0.0015));
+}, { passive:false });
+document.querySelectorAll("#zoomctl [data-z]").forEach(b => b.onclick = () => {
+  const cx=stage.clientWidth/2, cy=stage.clientHeight/2;
+  if (b.dataset.z==="in") zoomAround(cx,cy,S.zoom*1.2);
+  else if (b.dataset.z==="out") zoomAround(cx,cy,S.zoom/1.2);
+  else resetView();
+});
 window.addEventListener("keydown", e => { if ((e.key==="Delete"||e.key==="Backspace") && S.sel!=null && document.activeElement.tagName==="BODY") delNode(S.sel); });
+window.addEventListener("keydown", e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (e.key==="0") resetView();
+  else if (e.key==="+"||e.key==="=") zoomAround(stage.clientWidth/2, stage.clientHeight/2, S.zoom*1.2);
+  else if (e.key==="-"||e.key==="_") zoomAround(stage.clientWidth/2, stage.clientHeight/2, S.zoom/1.2);
+});
 window.addEventListener("resize", redrawWires);
 
 // ---- compile graph -> triggers (ECA) ----
@@ -282,7 +345,7 @@ function serialize() {
     _comment: "Boudica campaign triggers (ECA). Authored via tools/campaign-editor/logic.html. The game reads `triggers`; `_editor` is the node layout for re-editing and is ignored by the game.",
     chapter: "boudica-1",
     triggers: compile(),
-    _editor: { pan:S.pan, nodes:S.nodes, wires:S.wires },
+    _editor: { pan:S.pan, zoom:S.zoom, nodes:S.nodes, wires:S.wires },
   };
   return JSON.stringify(out, null, 2) + "\n";
 }
@@ -328,10 +391,10 @@ function renderList() {
 
 function loadGraph(j) {
   if (j && j._editor && Array.isArray(j._editor.nodes)) {
-    S.nodes = j._editor.nodes; S.wires = j._editor.wires||[]; S.pan = j._editor.pan||{x:40,y:40};
+    S.nodes = j._editor.nodes; S.wires = j._editor.wires||[]; S.pan = j._editor.pan||{x:40,y:40}; S.zoom = j._editor.zoom||1;
     S.nextId = (S.nodes.reduce((m,n)=>Math.max(m,n.id),0)||0)+1;
   } else {
-    decompile(j||{}); S.pan={x:40,y:40};
+    decompile(j||{}); S.pan={x:40,y:40}; S.zoom=1;
   }
   S.sel=null; render();
 }

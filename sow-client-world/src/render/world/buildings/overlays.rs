@@ -5,9 +5,10 @@ use crate::render::world::utils::get_level_str;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_building_overlays(
     ui: &mut crate::app::UiState,
-    _sim: &crate::app::SimState,
+    sim: &crate::app::SimState,
     input: &crate::app::InputState,
     _time: &crate::app::TimeState,
+    _gfx: &mut crate::app::GraphicsState,
     painter: &egui::Painter,
     snap: &sow_core::protocol::SimSnapshot,
     config: &sow_core::game_config::GameConfig,
@@ -20,7 +21,9 @@ pub(super) fn paint_building_overlays(
     hovered_tile_idx: Option<u32>,
     player_colors: &[egui::Color32],
 ) {
-    if b.under_construction && b.ticks_until_complete > 0 && zoom_scaled >= 1.5 && crate::app::vfx_on(painter.ctx(), |f| f.upgrade_plate) {
+    let is_my_building = sim.my_player_id.map_or(false, |my_id| b.owner_id == my_id);
+
+    if is_my_building && b.under_construction && b.ticks_until_complete > 0 && zoom_scaled >= 1.5 && crate::app::vfx_on(painter.ctx(), |f| f.upgrade_plate) {
         let active_l = b.active_level;
         let target_l = b.target_level;
 
@@ -110,7 +113,7 @@ pub(super) fn paint_building_overlays(
     }
 
     // Render premium golden glassmorphic floating egui badge above upgrading building
-    if b.under_construction && b.ticks_until_complete > 0 && b.active_level > 0 && b.count == 1 && zoom_scaled >= 1.5 {
+    if is_my_building && b.under_construction && b.ticks_until_complete > 0 && b.active_level > 0 && b.count == 1 && zoom_scaled >= 1.5 {
         let active_l = b.active_level;
         let target_l = b.target_level;
         let queued_count = (target_l as i32 - active_l as i32).max(0) as u32;

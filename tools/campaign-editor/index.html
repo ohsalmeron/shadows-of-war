@@ -246,6 +246,7 @@ function pick(sx,sy) {
 // ---- interaction ----
 let dragging = false;
 cv.addEventListener("mousedown", e => {
+  if (e.button !== 0) return; // left button only; right-click adds a tribe (contextmenu)
   const r = cv.getBoundingClientRect();
   const sx = e.clientX-r.left, sy = e.clientY-r.top;
   const hit = pick(sx,sy);
@@ -309,7 +310,7 @@ function renderSide() {
     const setIq = v => { v=Math.max(85,Math.min(180,v|0)); f.iq=v; document.getElementById("fiq").value=v; document.getElementById("fiqn").value=v; document.getElementById("iqtier").textContent=iqTier(v); };
     document.getElementById("fiq").oninput = e => setIq(+e.target.value);
     document.getElementById("fiqn").oninput = e => setIq(+e.target.value);
-    document.getElementById("del").onclick = () => { roster.factions.splice(sel,1); sel=-1; renderAll(); };
+    document.getElementById("del").onclick = deleteSelected;
   } else {
     host.innerHTML = `<div class="hint">Click a tribe on the map or in the list.</div>`;
   }
@@ -341,11 +342,33 @@ function renderList() {
 function renderAll() { renderSide(); renderList(); draw(); }
 
 // ---- toolbar ----
-document.getElementById("addBtn").onclick = () => {
-  const [px,py] = roster.player_spawn;
-  roster.factions.push({ name:"NewTribe", x:Math.min(MAPW-1,px+30), y:Math.min(MAPH-1,py+30), role:"independent" });
+function addTribeAt(mx, my) {
+  const x = Math.max(0, Math.min(MAPW-1, Math.round(mx)));
+  const y = Math.max(0, Math.min(MAPH-1, Math.round(my)));
+  roster.factions.push({ name:"NewTribe", x, y, role:"independent", iq:100 });
   sel = roster.factions.length-1; renderAll();
-};
+}
+function deleteSelected() {
+  if (sel >= 0) { const nm = roster.factions[sel].name; roster.factions.splice(sel,1); sel=-1; renderAll(); toast("Deleted "+nm); }
+  else if (sel === -2) { toast("Boudica's spawn can't be deleted — she's the main character"); }
+}
+// Hotkeys: Del/Suppr removes the selected tribe (not the player spawn); Esc deselects.
+// Ignored while typing in a field so text editing still works.
+window.addEventListener("keydown", e => {
+  const t = document.activeElement;
+  if (t && (t.tagName==="INPUT" || t.tagName==="TEXTAREA" || t.tagName==="SELECT")) return;
+  if (e.key === "Delete" || e.key === "Backspace") { if (sel !== -1) { e.preventDefault(); deleteSelected(); } }
+  else if (e.key === "Escape") { sel = -1; renderSide(); draw(); }
+});
+document.getElementById("addBtn").onclick = () => { const [px,py] = roster.player_spawn; addTribeAt(px+30, py+30); };
+// Right-click the map = drop a new tribe right there (same as + Add tribe, placed at the cursor).
+cv.addEventListener("contextmenu", e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  const [mx,my] = s2m(e.clientX-r.left, e.clientY-r.top);
+  addTribeAt(mx, my);
+  toast("Tribe added — edit name/role on the right");
+});
 document.getElementById("spawnBtn").onclick = () => { sel=-2; renderSide(); draw(); toast("Drag the ★ to move player spawn"); };
 document.getElementById("labelsChk").onchange = draw;
 document.getElementById("ringsChk").onchange = draw;

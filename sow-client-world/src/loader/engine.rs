@@ -22,6 +22,12 @@ impl SowApp {
             if let Some(mut mover) = self.gfx.mover_renderer.take() {
                 mover.destroy(render_ctx);
             }
+            if let Some(mut text) = self.gfx.text_renderer.take() {
+                text.destroy(render_ctx);
+            }
+            if let Some(mut structure) = self.gfx.structure_renderer.take() {
+                structure.destroy(render_ctx);
+            }
             render_ctx.reset_command_encoder();
         }
     }
@@ -328,28 +334,42 @@ impl SowApp {
                             if let Some(sp) = self.gfx.prev_sync_point.take() {
                                 let _ = render_ctx.context.wait_for(&sp, !0);
                             }
-                            if let Some(mut mr) = self.gfx.map_renderer.take() {
-                                mr.destroy(render_ctx);
-                            }
-                            if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                                mover.destroy(render_ctx);
-                            }
-                            if let Some(ref s) = self.gfx.surface {
-                                let format = s.info().format;
-                                self.gfx.map_renderer =
-                                    Some(sow_render::map_renderer::MapRenderer::new(
-                                        &render_ctx.context,
-                                        self.sim.map_w,
-                                        self.sim.map_h,
-                                        format,
-                                        &map_bytes,
-                                    ));
-                                self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
-                                    &render_ctx.context,
-                                    format,
-                                ));
-                                self.gfx.needs_first_upload = true;
-                            }
+                             if let Some(mut mr) = self.gfx.map_renderer.take() {
+                                 mr.destroy(render_ctx);
+                             }
+                             if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                                 mover.destroy(render_ctx);
+                             }
+                             if let Some(mut text) = self.gfx.text_renderer.take() {
+                                 text.destroy(render_ctx);
+                             }
+                             if let Some(mut structure) = self.gfx.structure_renderer.take() {
+                                 structure.destroy(render_ctx);
+                             }
+                             if let Some(ref s) = self.gfx.surface {
+                                 let format = s.info().format;
+                                 self.gfx.map_renderer =
+                                     Some(sow_render::map_renderer::MapRenderer::new(
+                                         &render_ctx.context,
+                                         self.sim.map_w,
+                                         self.sim.map_h,
+                                         format,
+                                         &map_bytes,
+                                     ));
+                                 self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                                     &render_ctx.context,
+                                     format,
+                                 ));
+                                 self.gfx.text_renderer = Some(sow_render::TextRenderer::new(
+                                     &render_ctx.context,
+                                     format,
+                                 ));
+                                 self.gfx.structure_renderer = Some(sow_render::StructureRenderer::new(
+                                     &render_ctx.context,
+                                     format,
+                                 ));
+                                 self.gfx.needs_first_upload = true;
+                             }
                         }
 
                         // Move to step 2: Texture uploading happens automatically next frame

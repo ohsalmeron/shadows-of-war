@@ -7,7 +7,7 @@ pub(crate) fn render(
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     time: &crate::app::TimeState,
-    gfx: &crate::app::GraphicsState,
+    gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
     let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
@@ -478,31 +478,74 @@ pub(crate) fn render(
             // 2. Nickname and Troops centered in right block
             let right_y = row12_y + (total_h - right_h) / 2.0;
 
-            if show_names {
-                let name_x = cur_x + (right_w - name_w) / 2.0;
-                let name_text_h = name_size.y;
-                sow_ui_kit::widgets::paint_prepared_name_with_glow(
-                    painter,
-                    egui::pos2(name_x, right_y),
-                    egui::Align2::LEFT_TOP,
-                    &prepared_name,
-                    vibrant_color,
-                    sow_ui_kit::theme::NAMEPLATE,
-                    Some(name_text_h),
-                );
+            let name_h = name_size.y;
+            let troops_h = troops_galley.rect.height();
+
+            let mut gpu_text_rendered = false;
+            if let Some(ref mut tr) = gfx.text_renderer {
+                gpu_text_rendered = true;
+                let color_arr = vibrant_color.to_array().map(|v| v as f32 / 255.0);
+                let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
+
+                if show_names {
+                    let name_center_x = (cur_x + right_w / 2.0 - 1.0) * sf;
+                    let name_baseline_y = (right_y + name_h * 0.85) * sf;
+                    tr.push_string(
+                        &display_name,
+                        [name_center_x, name_baseline_y],
+                        font_size * 1.25 * sf,
+                        color_arr,
+                        outline_color_arr,
+                        2.0 * sf,
+                        0.0,
+                        0.5,
+                    );
+                }
+
+                if show_troops {
+                    let troops_row_y = if show_names { right_y + name_h + item_spacing_y } else { right_y };
+                    let troops_center_x = (cur_x + right_w / 2.0 - 1.0) * sf;
+                    let troops_baseline_y = (troops_row_y + troops_h * 0.85) * sf;
+                    tr.push_string(
+                        &troops_str,
+                        [troops_center_x, troops_baseline_y],
+                        troops_font_size * 1.25 * sf,
+                        color_arr,
+                        outline_color_arr,
+                        2.0 * sf,
+                        0.0,
+                        0.5,
+                    );
+                }
             }
 
-            if show_troops {
-                let troops_row_y = if show_names { right_y + name_size.y + item_spacing_y } else { right_y };
-                let troops_x = cur_x + (right_w - troops_w) / 2.0;
-                crate::hud::nameplate::paint_glow_troops_row(
-                    painter,
-                    egui::pos2(troops_x, troops_row_y),
-                    troops_galley,
-                    &troops_font_id,
-                    vibrant_color,
-                    Some(name_size.y),
-                );
+            if !gpu_text_rendered {
+                if show_names {
+                    let name_x = cur_x + (right_w - name_w) / 2.0;
+                    let name_text_h = name_size.y;
+                    sow_ui_kit::widgets::paint_prepared_name_with_glow(
+                        painter,
+                        egui::pos2(name_x, right_y),
+                        egui::Align2::LEFT_TOP,
+                        &prepared_name,
+                        vibrant_color,
+                        sow_ui_kit::theme::NAMEPLATE,
+                        Some(name_text_h),
+                    );
+                }
+
+                if show_troops {
+                    let troops_row_y = if show_names { right_y + name_size.y + item_spacing_y } else { right_y };
+                    let troops_x = cur_x + (right_w - troops_w) / 2.0;
+                    crate::hud::nameplate::paint_glow_troops_row(
+                        painter,
+                        egui::pos2(troops_x, troops_row_y),
+                        troops_galley,
+                        &troops_font_id,
+                        vibrant_color,
+                        Some(name_size.y),
+                    );
+                }
             }
             continue;
         } else {

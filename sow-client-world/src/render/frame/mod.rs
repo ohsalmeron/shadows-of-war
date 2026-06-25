@@ -86,6 +86,14 @@ impl SowApp {
                 if self.gfx.needs_first_upload {
                     render_ctx.command_encoder.init_texture(mr.terrain_texture);
                     render_ctx.command_encoder.init_texture(mr.owner_texture);
+                    if let Some(ref tr) = self.gfx.text_renderer {
+                        render_ctx.command_encoder.init_texture(tr.font_atlas_tex.texture);
+                        tr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                    }
+                    if let Some(ref sr) = self.gfx.structure_renderer {
+                        render_ctx.command_encoder.init_texture(sr.texture);
+                        sr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                    }
                     self.gfx.needs_first_upload = false;
                     mr.upload_terrain(&mut render_ctx.command_encoder);
                 }
@@ -397,6 +405,22 @@ impl SowApp {
                         colors_struct,
                     );
                     map_drawn = true;
+
+                    if self.gfx.text_renderer.is_none() {
+                        let surface_format = s.info().format;
+                        let tr = sow_render::TextRenderer::new(&render_ctx.context, surface_format);
+                        render_ctx.command_encoder.init_texture(tr.font_atlas_tex.texture);
+                        tr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                        self.gfx.text_renderer = Some(tr);
+                    }
+
+                    if self.gfx.structure_renderer.is_none() {
+                        let surface_format = s.info().format;
+                        let sr = sow_render::StructureRenderer::new(&render_ctx.context, surface_format);
+                        render_ctx.command_encoder.init_texture(sr.texture);
+                        sr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                        self.gfx.structure_renderer = Some(sr);
+                    }
 
                     // ── GPU-instanced movers (boats, nukes, SAM) ─────────────
                     if vfx_flags.mover_trails {

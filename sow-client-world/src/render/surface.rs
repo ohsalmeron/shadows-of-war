@@ -62,6 +62,16 @@ impl SowApp {
                         }
                         self.gfx.mover_renderer =
                             Some(sow_render::MoverRenderer::new(&render_ctx.context, format));
+                        if let Some(mut old_text) = self.gfx.text_renderer.take() {
+                            old_text.destroy(&render_ctx);
+                        }
+                        self.gfx.text_renderer =
+                            Some(sow_render::TextRenderer::new(&render_ctx.context, format));
+                        if let Some(mut old_structure) = self.gfx.structure_renderer.take() {
+                            old_structure.destroy(&render_ctx);
+                        }
+                        self.gfx.structure_renderer =
+                            Some(sow_render::StructureRenderer::new(&render_ctx.context, format));
                         if let Some(mut old_gp) = self.gfx.gui_painter.take() {
                             old_gp.destroy(&render_ctx.context);
                         }

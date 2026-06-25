@@ -154,12 +154,13 @@ impl SowApp {
                     world_x: anim_wx,
                     world_y: anim_wy,
                     start_time: now_instant,
-                    duration: web_time::Duration::from_millis(1200),
+                    duration: web_time::Duration::from_millis(600),
                     seed,
                     player_type: target_player_type,
                     player_id,
                     nameplate_size: anim_size,
                     by_nuke,
+                    prepared_name: None,
                 });
         }
 

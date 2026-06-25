@@ -19,6 +19,7 @@ pub fn deploy_infra(
         if !confirm_destroy {
             bail!("Refusing to destroy/recreate VPS without --confirm-destroy (or use --bootstrap-only)");
         }
+        // TODO: don't destroy — keep old VMs for forensics/analytics/backup
         gcp::delete_instance(project, &cfg.gcp_zone, &cfg.gcp_instance)?;
         if let (Some(name), Some(zone)) = (&cfg.test_instance, &cfg.test_zone) {
             gcp::delete_instance(project, zone, name)?;
