@@ -484,29 +484,29 @@ impl SowApp {
             let mut conquest_duration = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || 2.5f32)
             });
-            ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
 
-            ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
-            ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
-            ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
-            ui.add(egui::Slider::new(&mut conquest_duration, 0.1..=10.0).text("Conquest Duration"));
-            ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Territory Opacity"));
+            ui.collapsing(RichText::new("🗺️ Map & Borders").strong().color(Color32::WHITE), |ui| {
+                ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
+                ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
+                ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
+                ui.add(egui::Slider::new(&mut conquest_duration, 0.1..=10.0).text("Conquest Duration"));
+                ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Territory Opacity"));
 
-            egui::ComboBox::from_label("Map Blend Mode")
-                .selected_text(match blend_mode as i32 {
-                    0 => "Normal Mix",
-                    1 => "Multiply",
-                    2 => "Overlay",
-                    3 => "All Albedo",
-                    _ => "Overlay",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut blend_mode, 0.0f32, "Normal Mix");
-                    ui.selectable_value(&mut blend_mode, 1.0f32, "Multiply");
-                    ui.selectable_value(&mut blend_mode, 2.0f32, "Overlay");
-                     ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
-                });
+                egui::ComboBox::from_label("Map Blend Mode")
+                    .selected_text(match blend_mode as i32 {
+                        0 => "Normal Mix",
+                        1 => "Multiply",
+                        2 => "Overlay",
+                        3 => "All Albedo",
+                        _ => "Overlay",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut blend_mode, 0.0f32, "Normal Mix");
+                        ui.selectable_value(&mut blend_mode, 1.0f32, "Multiply");
+                        ui.selectable_value(&mut blend_mode, 2.0f32, "Overlay");
+                        ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
+                    });
+            });
 
             ui.separator();
             ui.collapsing(RichText::new("🔤 Font Settings (SDF)").strong().color(Color32::WHITE), |ui| {
@@ -560,27 +560,48 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.label(
-                RichText::new("Bunker Laser VFX")
-                    .strong()
-                    .color(Color32::WHITE),
-            );
-            let mut laser_target = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
+            ui.collapsing(RichText::new("🏛️ Building Emoji").strong().color(Color32::WHITE), |ui| {
+                let mut emoji_outline = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_outline_thickness"), || 1.0f32)
+                });
+                let mut emoji_shadow = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_shadow_y"), || 2.0f32)
+                });
+
+                ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
+                ui.add(egui::Slider::new(&mut emoji_outline, 0.0..=5.0).text("Outline Thickness"));
+                ui.add(egui::Slider::new(&mut emoji_shadow, 0.0..=10.0).text("Shadow Y"));
+
+                if ui.button("Reset to Default").clicked() {
+                    bscale = 0.75;
+                    emoji_outline = 1.0;
+                    emoji_shadow = 2.0;
+                }
+
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_emoji_outline_thickness"), emoji_outline));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_emoji_shadow_y"), emoji_shadow));
             });
-            let mut laser_arc = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_arc"), || true)
-            });
-            let mut laser_scatter = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_scatter"), || false)
-            });
-            ui.checkbox(&mut laser_target, "Target seeking");
-            ui.checkbox(&mut laser_arc, "Plasma arc");
-            ui.checkbox(&mut laser_scatter, "Volley scatter");
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_target"), laser_target));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_arc"), laser_arc));
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter)
+
+            ui.separator();
+            ui.collapsing(RichText::new("🔫 Bunker Laser VFX").strong().color(Color32::WHITE), |ui| {
+                let mut laser_target = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
+                });
+                let mut laser_arc = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_arc"), || true)
+                });
+                let mut laser_scatter = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_scatter"), || false)
+                });
+                ui.checkbox(&mut laser_target, "Target seeking");
+                ui.checkbox(&mut laser_arc, "Plasma arc");
+                ui.checkbox(&mut laser_scatter, "Volley scatter");
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_target"), laser_target));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_arc"), laser_arc));
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter)
+                });
             });
 
             let mut vfx_flags = ctx.data_mut(|d| {

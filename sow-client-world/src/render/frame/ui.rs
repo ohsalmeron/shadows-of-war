@@ -80,9 +80,6 @@ impl SowApp {
         if let Some(ref mut tr) = self.gfx.text_renderer {
             tr.begin_frame();
         }
-        if let Some(ref mut sr) = self.gfx.structure_renderer {
-            sr.begin_frame();
-        }
         let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {
             let insets = ctx.input(|i| i.safe_area_insets());
             self.ui.app.hud_state.safe_area_top = insets.0.top;
@@ -147,28 +144,6 @@ impl SowApp {
         let Some(mut render_ctx) = self.gfx.render_ctx.take() else {
             return;
         };
-
-        if let Some(ref mut sr) = self.gfx.structure_renderer {
-            // Read the same calibrated dev-tools values that nameplates use.
-            let outline_px = egui_ctx
-                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")))
-                .unwrap_or(1.0)
-                * sf;
-            let shadow_px = egui_ctx
-                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")))
-                .unwrap_or(1.5)
-                * sf;
-            sr.draw(
-                &mut render_ctx.command_encoder,
-                frame.texture_view(),
-                [self.input.camera_x, self.input.camera_y],
-                self.input.camera_zoom,
-                [self.input.screen_w, self.input.screen_h],
-                outline_px,
-                shadow_px,
-                &render_ctx.context,
-            );
-        }
 
         if let Some(ref mut tr) = self.gfx.text_renderer {
             tr.draw(

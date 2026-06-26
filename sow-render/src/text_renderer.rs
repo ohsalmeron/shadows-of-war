@@ -4,6 +4,19 @@ use crate::context::RenderContext;
 use blade_graphics as gpu;
 use bytemuck::{Pod, Zeroable};
 
+/// Look up an emoji's UV rect in the color emoji atlas (832×768). Returns `None` if the
+/// emoji isn't packed in the atlas, so callers can fall back.
+pub fn emoji_uv_opt(emoji: &str) -> Option<[f32; 4]> {
+    sow_data::emoji::lookup(emoji).map(|r| {
+        [
+            r.x as f32 / 832.0,
+            r.y as f32 / 768.0,
+            (r.x + r.w) as f32 / 832.0,
+            (r.y + r.h) as f32 / 768.0,
+        ]
+    })
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MsdfChar {
     pub id: u32,
@@ -133,6 +146,7 @@ pub struct TextInstanceGpu {
     pub outline_thickness: f32,
     pub underlay_offset_y: f32,
     pub underlay_softness: f32,
+    pub is_emoji: f32,
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -140,6 +154,8 @@ struct TextShaderData {
     globals: TextGlobals,
     font_atlas: gpu::TextureView,
     font_sampler: gpu::Sampler,
+    emoji_atlas: gpu::TextureView,
+    emoji_sampler: gpu::Sampler,
 }
 
 pub struct FontAtlasTexture {
@@ -151,17 +167,16 @@ pub struct FontAtlasTexture {
 }
 
 impl FontAtlasTexture {
-    pub fn new(context: &gpu::Context) -> Self {
-        let png_bytes = include_bytes!("../../assets/static/fonts/msdf-atlas.png");
+    pub fn from_bytes(context: &gpu::Context, png_bytes: &[u8], name: &str, format: gpu::TextureFormat) -> Self {
         let img = image::load_from_memory(png_bytes)
-            .expect("Failed to load MSDF atlas PNG")
+            .expect("Failed to load atlas PNG")
             .to_rgba8();
         let (width, height) = img.dimensions();
         let bytes_per_row = width * 4;
         let total = (bytes_per_row * height) as usize;
 
         let buffer = context.create_buffer(gpu::BufferDesc {
-            name: "font_atlas_upload_buffer",
+            name: &format!("{}_upload_buffer", name),
             size: total as u64,
             memory: gpu::Memory::Upload,
         });
@@ -171,13 +186,9 @@ impl FontAtlasTexture {
         context.sync_buffer(buffer, 0, buffer.size());
 
         let texture = context.create_texture(gpu::TextureDesc {
-            name: "font_atlas_texture",
-            format: gpu::TextureFormat::Rgba8Unorm,
-            size: gpu::Extent {
-                width,
-                height,
-                depth: 1,
-            },
+            name: &format!("{}_texture", name),
+            format,
+            size: gpu::Extent { width, height, depth: 1 },
             dimension: gpu::TextureDimension::D2,
             array_layer_count: 1,
             mip_level_count: 1,
@@ -189,20 +200,20 @@ impl FontAtlasTexture {
         let view = context.create_texture_view(
             texture,
             gpu::TextureViewDesc {
-                name: "font_atlas_view",
-                format: gpu::TextureFormat::Rgba8Unorm,
+                name: &format!("{}_view", name),
+                format,
                 dimension: gpu::ViewDimension::D2,
                 subresources: &gpu::TextureSubresources::default(),
             },
         );
 
-        Self {
-            texture,
-            view,
-            buffer,
-            width,
-            height,
-        }
+        Self { texture, view, buffer, width, height }
+    }
+
+    pub fn new(context: &gpu::Context) -> Self {
+        let png_bytes = include_bytes!("../../assets/static/fonts/msdf-atlas.png");
+        // ponytail: font atlas contains signed distance values (linear data), emoji atlas contains sRGB colors
+        Self::from_bytes(context, png_bytes, "font_atlas", gpu::TextureFormat::Rgba8Unorm)
     }
 
     pub fn upload(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context) {
@@ -229,9 +240,11 @@ pub const MAX_TEXT_GLYPHS: usize = 32_768;
 pub struct TextRenderer {
     pub font_atlas_desc: FontAtlas,
     pub font_atlas_tex: FontAtlasTexture,
+    emoji_atlas_tex: FontAtlasTexture,
     pipeline: gpu::RenderPipeline,
     buffer: gpu::Buffer,
     sampler: gpu::Sampler,
+    emoji_sampler: gpu::Sampler,
     pub upload_instances: Vec<TextInstanceGpu>,
 }
 
@@ -239,6 +252,12 @@ impl TextRenderer {
     pub fn new(context: &gpu::Context, surface_format: gpu::TextureFormat) -> Self {
         let font_atlas_desc = FontAtlas::load_static();
         let font_atlas_tex = FontAtlasTexture::new(context);
+        let emoji_atlas_tex = FontAtlasTexture::from_bytes(
+            context,
+            sow_assets::EMOJI_ATLAS_BYTES,
+            "emoji_atlas",
+            gpu::TextureFormat::Rgba8UnormSrgb, // ponytail: hardware sRGB decode
+        );
 
         let shader_source = include_str!("shaders/text_glow.wgsl");
         let shader = context.create_shader(gpu::ShaderDesc {
@@ -293,18 +312,28 @@ impl TextRenderer {
             ..Default::default()
         });
 
+        let emoji_sampler = context.create_sampler(gpu::SamplerDesc {
+            name: "emoji_atlas_sampler",
+            mag_filter: gpu::FilterMode::Linear,
+            min_filter: gpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             font_atlas_desc,
             font_atlas_tex,
+            emoji_atlas_tex,
             pipeline,
             buffer,
             sampler,
+            emoji_sampler,
             upload_instances: Vec::with_capacity(4096),
         }
     }
 
     pub fn upload_atlas(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context) {
         self.font_atlas_tex.upload(encoder, context);
+        self.emoji_atlas_tex.upload(encoder, context);
     }
 
     pub fn begin_frame(&mut self) {
@@ -312,6 +341,13 @@ impl TextRenderer {
     }
 
     pub fn push_glyph(&mut self, inst: TextInstanceGpu) {
+        if self.upload_instances.len() < MAX_TEXT_GLYPHS {
+            self.upload_instances.push(inst);
+        }
+    }
+
+    /// Internal: push a glyph or emoji instance, respecting buffer limits.
+    fn push_inst(&mut self, inst: TextInstanceGpu) {
         if self.upload_instances.len() < MAX_TEXT_GLYPHS {
             self.upload_instances.push(inst);
         }
@@ -336,10 +372,20 @@ impl TextRenderer {
         let base_size = 48.0;
         let scale = font_size / base_size;
         let mut x_advance = 0.0f32;
-        let mut glyphs_to_draw = Vec::new();
-        let mut prev_char = None;
+        let mut glyphs: Vec<(MsdfChar, f32)> = Vec::new();
+        // Buffer emojis alongside glyphs so the alignment offset is correct for both.
+        struct EmojiSlot {
+            uv: [f32; 4],
+            size: f32, // square
+            advance: f32,
+        }
+        let mut emojis: Vec<EmojiSlot> = Vec::new();
+        let mut prev_char = Option::<char>::None;
 
-        for ch in text.chars() {
+        let ci: Vec<(usize, char)> = text.char_indices().collect();
+        let mut i = 0;
+        while i < ci.len() {
+            let (_, ch) = ci[i];
             if let Some(glyph) = self.font_atlas_desc.char_map.get(&ch).cloned() {
                 let kern = prev_char
                     .and_then(|p| self.font_atlas_desc.kerning_map.get(&(p, ch)))
@@ -349,41 +395,109 @@ impl TextRenderer {
                 let char_x = x_advance + x_offset;
                 x_advance += (glyph.xadvance as f32 + kern) * scale * char_spacing;
                 prev_char = Some(ch);
-                glyphs_to_draw.push((glyph, char_x));
+                glyphs.push((glyph, char_x));
+                i += 1;
+                continue;
             }
+            let candidate = if i + 1 < ci.len() && ci[i + 1].1 == '\u{fe0f}' {
+                &text[ci[i].0..ci[i + 1].0 + ci[i + 1].1.len_utf8()]
+            } else {
+                &text[ci[i].0..ci[i].0 + ch.len_utf8()]
+            };
+            let stripped = candidate.strip_suffix('\u{fe0f}').unwrap_or(candidate);
+            if let Some(uv) = emoji_uv_opt(stripped) {
+                let emoji_size = font_size * 1.4;
+                let advance = x_advance;
+                x_advance += emoji_size * char_spacing;
+                prev_char = None;
+                emojis.push(EmojiSlot { uv, size: emoji_size, advance });
+                i += if candidate.len() > ch.len_utf8() { 2 } else { 1 };
+                continue;
+            }
+            prev_char = None;
+            i += 1;
         }
 
         let align_offset = x_advance * align_x;
         let aw = self.font_atlas_tex.width as f32;
         let ah = self.font_atlas_tex.height as f32;
-
         let base = self.font_atlas_desc.atlas.common.base as f32;
-        for (glyph, char_x) in glyphs_to_draw {
+
+        for (glyph, char_x) in &glyphs {
             let gw = glyph.width as f32 * scale;
             let gh = glyph.height as f32 * scale;
             let y_off = glyph.yoffset as f32 * scale;
             let gx = pos[0] + char_x - align_offset;
             let gy = pos[1] - base * scale + y_off;
-
-            let uv_rect = [
-                glyph.x as f32 / aw,
-                glyph.y as f32 / ah,
-                (glyph.x + glyph.width) as f32 / aw,
-                (glyph.y + glyph.height) as f32 / ah,
-            ];
-
-            self.push_glyph(TextInstanceGpu {
+            self.push_inst(TextInstanceGpu {
                 screen_pos: [gx, gy],
                 size: [gw, gh],
-                uv_rect,
+                uv_rect: [
+                    glyph.x as f32 / aw,
+                    glyph.y as f32 / ah,
+                    (glyph.x + glyph.width) as f32 / aw,
+                    (glyph.y + glyph.height) as f32 / ah,
+                ],
                 color,
                 outline_color,
                 face_dilate: settings.face_dilate,
                 outline_thickness: settings.outline_thickness,
                 underlay_offset_y: settings.underlay_offset_y,
                 underlay_softness: settings.underlay_softness,
+                is_emoji: 0.0,
             });
         }
+        for em in &emojis {
+            let ex = pos[0] + em.advance - align_offset;
+            let ey = pos[1] - em.size;
+            self.push_inst(TextInstanceGpu {
+                screen_pos: [ex, ey],
+                size: [em.size, em.size],
+                uv_rect: em.uv,
+                color,
+                outline_color,
+                face_dilate: 0.0,
+                outline_thickness: settings.outline_thickness,
+                underlay_offset_y: settings.underlay_offset_y,
+                underlay_softness: 0.0,
+                is_emoji: 1.0,
+            });
+        }
+    }
+
+    /// Push a screen-space emoji with alpha-dilated outline + drop shadow.
+    /// `screen_pos` is the center in physical pixels, `half_size` the half-extent.
+    /// Returns `false` if the emoji isn't in the atlas.
+    pub fn push_emoji(
+        &mut self,
+        emoji: &str,
+        screen_pos: [f32; 2],
+        half_size: f32,
+        tint: [f32; 4],
+        outline_color: [f32; 4],
+        outline_thickness: f32,
+        shadow_offset_y: f32,
+    ) -> bool {
+        let Some(emoji_uv) = emoji_uv_opt(emoji) else {
+            return false;
+        };
+        // Expand quad 25% so outline taps have room outside the sprite.
+        let expand = 1.25;
+        let expanded = half_size * expand;
+        let top_left = [screen_pos[0] - expanded, screen_pos[1] - expanded];
+        self.push_inst(TextInstanceGpu {
+            screen_pos: top_left,
+            size: [expanded * 2.0; 2],
+            uv_rect: emoji_uv,
+            color: tint,
+            outline_color,
+            face_dilate: 0.0,
+            outline_thickness,
+            underlay_offset_y: shadow_offset_y,
+            underlay_softness: 0.0,
+            is_emoji: 1.0,
+        });
+        true
     }
 
     fn write_buffers(&self, context: &gpu::Context) {
@@ -432,6 +546,8 @@ impl TextRenderer {
             globals,
             font_atlas: self.font_atlas_tex.view,
             font_sampler: self.sampler,
+            emoji_atlas: self.emoji_atlas_tex.view,
+            emoji_sampler: self.emoji_sampler,
         };
 
         let mut rc = pass.with(&self.pipeline);
@@ -444,8 +560,12 @@ impl TextRenderer {
         render_ctx.context.destroy_render_pipeline(&mut self.pipeline);
         render_ctx.context.destroy_buffer(self.buffer);
         render_ctx.context.destroy_sampler(self.sampler);
+        render_ctx.context.destroy_sampler(self.emoji_sampler);
         render_ctx.context.destroy_texture_view(self.font_atlas_tex.view);
         render_ctx.context.destroy_texture(self.font_atlas_tex.texture);
         render_ctx.context.destroy_buffer(self.font_atlas_tex.buffer);
+        render_ctx.context.destroy_texture_view(self.emoji_atlas_tex.view);
+        render_ctx.context.destroy_texture(self.emoji_atlas_tex.texture);
+        render_ctx.context.destroy_buffer(self.emoji_atlas_tex.buffer);
     }
 }

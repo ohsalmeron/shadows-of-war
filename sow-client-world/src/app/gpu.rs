@@ -55,9 +55,6 @@ impl SowApp {
             if let Some(mut text) = self.gfx.text_renderer.take() {
                 text.destroy(render_ctx);
             }
-            if let Some(mut structure) = self.gfx.structure_renderer.take() {
-                structure.destroy(render_ctx);
-            }
             render_ctx.context.destroy_surface(&mut s);
         }
     }
@@ -143,9 +140,6 @@ impl Drop for SowApp {
         }
         if let Some(mut text) = self.gfx.text_renderer.take() {
             text.destroy(render_ctx);
-        }
-        if let Some(mut structure) = self.gfx.structure_renderer.take() {
-            structure.destroy(render_ctx);
         }
         if let Some(mut gui) = self.gfx.gui_painter.take() {
             gui.destroy(&render_ctx.context);

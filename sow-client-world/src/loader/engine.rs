@@ -25,9 +25,6 @@ impl SowApp {
             if let Some(mut text) = self.gfx.text_renderer.take() {
                 text.destroy(render_ctx);
             }
-            if let Some(mut structure) = self.gfx.structure_renderer.take() {
-                structure.destroy(render_ctx);
-            }
             render_ctx.reset_command_encoder();
         }
     }
@@ -343,9 +340,6 @@ impl SowApp {
                              if let Some(mut text) = self.gfx.text_renderer.take() {
                                  text.destroy(render_ctx);
                              }
-                             if let Some(mut structure) = self.gfx.structure_renderer.take() {
-                                 structure.destroy(render_ctx);
-                             }
                              if let Some(ref s) = self.gfx.surface {
                                  let format = s.info().format;
                                  self.gfx.map_renderer =
@@ -361,10 +355,6 @@ impl SowApp {
                                      format,
                                  ));
                                  self.gfx.text_renderer = Some(sow_render::TextRenderer::new(
-                                     &render_ctx.context,
-                                     format,
-                                 ));
-                                 self.gfx.structure_renderer = Some(sow_render::StructureRenderer::new(
                                      &render_ctx.context,
                                      format,
                                  ));

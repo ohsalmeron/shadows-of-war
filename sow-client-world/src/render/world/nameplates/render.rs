@@ -419,13 +419,15 @@ pub(crate) fn render(
                     egui::pos2(center.x, content_min.y + disc_rect_size / 2.0),
                     egui::vec2(disc_rect_size, disc_rect_size),
                 );
-                let disc_gpu = gfx.structure_renderer.as_mut().map_or(false, |sr| {
-                    sr.push_emoji(
+                let disc_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
+                    tr.push_emoji(
                         "🔌",
                         [row0_rect.center().x * sf, row0_rect.center().y * sf],
                         row0_rect.height() * 0.5 * sf,
                         [1.0, 1.0, 1.0, 1.0],
                         [0.0, 0.0, 0.0, 1.0],
+                        1.0 * sf,
+                        1.5 * sf,
                     )
                 });
                 if !disc_gpu {
@@ -451,13 +453,15 @@ pub(crate) fn render(
                     egui::pos2(cur_x + star_size / 2.0, row12_y + total_h / 2.0),
                     egui::vec2(star_size, star_size),
                 );
-                let star_gpu = gfx.structure_renderer.as_mut().map_or(false, |sr| {
-                    sr.push_emoji(
+                let star_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
+                    tr.push_emoji(
                         "⭐",
                         [star_rect.center().x * sf, star_rect.center().y * sf],
                         star_rect.height() * 0.5 * sf,
                         [1.0, 1.0, 1.0, 1.0],
                         [0.0, 0.0, 0.0, 1.0],
+                        1.0 * sf,
+                        1.5 * sf,
                     )
                 });
                 if !star_gpu
@@ -542,16 +546,30 @@ pub(crate) fn render(
 
                 if show_troops {
                     let troops_row_y = if show_names { right_y + name_h + item_spacing_y } else { right_y };
-                    let troops_center_x = (cur_x + right_w / 2.0 - 1.0 + name_offset_x) * sf;
+                    let icon_size = troops_font_size * 1.15;
+                    let icon_half = icon_size * 0.5;
+                    let troops_left_x = cur_x + (right_w - troops_w) / 2.0;
+                    // Sword emoji
+                    tr.push_emoji(
+                        "⚔",
+                        [(troops_left_x + icon_half) * sf, (troops_row_y + icon_half) * sf],
+                        icon_half * sf,
+                        color_arr,
+                        outline_color_arr,
+                        outline_thickness,
+                        shadow_y,
+                    );
+                    // Number text left-aligned after sword
+                    let text_left = (troops_left_x + icon_size + 3.0) * sf;
                     let troops_baseline_y = (troops_row_y + troops_h * 0.85) * sf;
                     tr.push_string(
                         &troops_str,
-                        [troops_center_x, troops_baseline_y],
+                        [text_left, troops_baseline_y],
                         troops_font_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
                         settings,
-                        0.5,
+                        0.0,
                         char_spacing,
                     );
                 }

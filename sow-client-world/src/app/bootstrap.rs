@@ -40,7 +40,6 @@ impl SowApp {
         let map_renderer: Option<MapRenderer> = None;
         let mover_renderer: Option<sow_render::MoverRenderer> = None;
         let text_renderer: Option<sow_render::TextRenderer> = None;
-        let structure_renderer: Option<sow_render::StructureRenderer> = None;
         let gui_painter: Option<GuiPainter> = None;
         let window: Option<Box<dyn winit::window::Window>> = None;
 
@@ -195,7 +194,6 @@ impl SowApp {
                 map_renderer,
                 mover_renderer,
                 text_renderer,
-                structure_renderer,
                 gui_painter,
                 prev_sync_point,
                 needs_first_upload,

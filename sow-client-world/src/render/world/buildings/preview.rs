@@ -9,7 +9,7 @@ pub(super) fn paint_building_placement_preview(
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     _time: &crate::app::TimeState,
-    gfx: &crate::app::GraphicsState,
+    gfx: &mut crate::app::GraphicsState,
     painter: &egui::Painter,
     snap: &sow_core::protocol::SimSnapshot,
     hovered_tile_idx: Option<u32>,
@@ -211,7 +211,7 @@ pub(super) fn paint_building_placement_preview(
                     );
                 }
 
-                paint_new_build_ghost(painter, kind, preview_center, base_size);
+                paint_new_build_ghost(gfx, painter, kind, preview_center, base_size, sf);
             }
 
             // 3. Gold surplus/deficit indicator below

@@ -74,27 +74,36 @@ pub(crate) fn render(
         });
 
         let mut gpu_rendered = false;
-        if let Some(ref mut sr) = gfx.structure_renderer {
+        if let Some(ref mut tr) = gfx.text_renderer {
             gpu_rendered = true;
+            // Emoji outline/shadow use the dedicated building emoji dev-tools values.
+            let outline_px = painter
+                .ctx()
+                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_outline_thickness")).unwrap_or(1.0))
+                * sf;
+            let shadow_px = painter
+                .ctx()
+                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_shadow_y")).unwrap_or(2.0))
+                * sf;
             for b in &rendered_buildings {
-                // Render the building as a full emoji + alpha outline (matching the
-                // build-mode preview / egui look), instead of an emoji clipped inside a
-                // procedural shape. Size it on screen to the same `base_size` the egui
-                // path uses, converted from screen pixels to world units.
+                // Render the building as a full emoji + alpha outline, sized to `base_size`
+                // (same as the egui path), positioned in screen space like all other text.
                 let base_size = if b.count > 1 {
                     28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)
                 } else {
                     get_building_icon_size(zoom_scaled)
                 } * final_scale;
-                let half_size_world = base_size * sf / (2.0 * input.camera_zoom);
-                let opacity = if b.under_construction { 0.5f32 } else { 1.0f32 };
-
-                sr.push_world_emoji(
+                let screen_x = input.camera_x + b.bx * input.camera_zoom;
+                let screen_y = input.camera_y + b.by * input.camera_zoom;
+                let a = if b.under_construction { 0.5f32 } else { 1.0f32 };
+                tr.push_emoji(
                     building_kind_emoji(b.kind),
-                    [b.bx, b.by],
-                    half_size_world,
-                    opacity,
-                    [0.0, 0.0, 0.0, 1.0],
+                    [screen_x, screen_y],
+                    base_size * sf / 2.0,
+                    [1.0, 1.0, 1.0, a],
+                    [0.0, 0.0, 0.0, a],
+                    outline_px,
+                    shadow_px,
                 );
             }
         }

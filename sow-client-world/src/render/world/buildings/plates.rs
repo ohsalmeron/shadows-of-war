@@ -131,13 +131,40 @@ pub(crate) fn building_kind_emoji(kind: sow_core::game::BuildingKind) -> &'stati
 }
 
 pub(crate) fn paint_new_build_ghost(
+    gfx: &mut crate::app::GraphicsState,
     painter: &egui::Painter,
     kind: sow_core::game::BuildingKind,
     center: egui::Pos2,
     base_size: f32,
+    sf: f32,
 ) {
-    let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
     let emoji = building_kind_emoji(kind);
+    if let Some(ref mut tr) = gfx.text_renderer {
+        let phys_x = center.x * sf;
+        let phys_y = center.y * sf;
+        let half = base_size * sf * 0.5;
+        let outline_px = painter
+            .ctx()
+            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_outline_thickness")).unwrap_or(1.0))
+            * sf;
+        let shadow_px = painter
+            .ctx()
+            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_shadow_y")).unwrap_or(2.0))
+            * sf;
+        if tr.push_emoji(
+            emoji,
+            [phys_x, phys_y],
+            half,
+            [1.0, 1.0, 1.0, 0.75], // ghost: 75% opacity
+            [0.0, 0.0, 0.0, 0.75],
+            outline_px,
+            shadow_px,
+        ) {
+            return;
+        }
+    }
+    // egui fallback (no text_renderer or emoji not in atlas)
+    let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
     if !sow_ui_kit::widgets::try_paint_emoji(painter, emoji, rect, egui::Color32::WHITE) {
         painter.text(
             rect.center(),

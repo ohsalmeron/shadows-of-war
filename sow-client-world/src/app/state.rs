@@ -43,7 +43,6 @@ pub struct GraphicsState {
     pub map_renderer: Option<sow_render::MapRenderer>,
     pub mover_renderer: Option<sow_render::MoverRenderer>,
     pub text_renderer: Option<sow_render::TextRenderer>,
-    pub structure_renderer: Option<sow_render::StructureRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
