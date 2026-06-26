@@ -419,12 +419,23 @@ pub(crate) fn render(
                     egui::pos2(center.x, content_min.y + disc_rect_size / 2.0),
                     egui::vec2(disc_rect_size, disc_rect_size),
                 );
-                sow_ui_kit::widgets::try_paint_emoji(
-                    painter,
-                    "🔌",
-                    row0_rect,
-                    egui::Color32::WHITE,
-                );
+                let disc_gpu = gfx.structure_renderer.as_mut().map_or(false, |sr| {
+                    sr.push_emoji(
+                        "🔌",
+                        [row0_rect.center().x * sf, row0_rect.center().y * sf],
+                        row0_rect.height() * 0.5 * sf,
+                        [1.0, 1.0, 1.0, 1.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    )
+                });
+                if !disc_gpu {
+                    sow_ui_kit::widgets::try_paint_emoji(
+                        painter,
+                        "🔌",
+                        row0_rect,
+                        egui::Color32::WHITE,
+                    );
+                }
             } else if let Some(dg) = disc_galley {
                 let row0_pos = egui::pos2(center.x - dg.rect.width() / 2.0, content_min.y);
                 painter.galley(row0_pos, dg, egui::Color32::WHITE);
@@ -440,12 +451,23 @@ pub(crate) fn render(
                     egui::pos2(cur_x + star_size / 2.0, row12_y + total_h / 2.0),
                     egui::vec2(star_size, star_size),
                 );
-                if !sow_ui_kit::widgets::try_paint_emoji(
-                    painter,
-                    "⭐",
-                    star_rect,
-                    egui::Color32::WHITE,
-                ) {
+                let star_gpu = gfx.structure_renderer.as_mut().map_or(false, |sr| {
+                    sr.push_emoji(
+                        "⭐",
+                        [star_rect.center().x * sf, star_rect.center().y * sf],
+                        star_rect.height() * 0.5 * sf,
+                        [1.0, 1.0, 1.0, 1.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    )
+                });
+                if !star_gpu
+                    && !sow_ui_kit::widgets::try_paint_emoji(
+                        painter,
+                        "⭐",
+                        star_rect,
+                        egui::Color32::WHITE,
+                    )
+                {
                     painter.text(
                         star_rect.center(),
                         egui::Align2::CENTER_CENTER,

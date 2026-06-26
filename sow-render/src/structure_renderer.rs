@@ -11,7 +11,11 @@ pub struct StructureGlobals {
     pub zoom: f32,
     pub _pad1: f32,
     pub screen_size: [f32; 2],
-    pub _pad: [f32; 2],
+    /// Bare-emoji outline thickness in physical pixels (shares the text's calibrated
+    /// `dev_font_outline_thickness` value).
+    pub outline_px: f32,
+    /// Bare-emoji drop-shadow offset in physical pixels (shares `dev_font_shadow_y`).
+    pub shadow_px: f32,
 }
 
 #[repr(C)]
@@ -186,6 +190,62 @@ impl StructureRenderer {
         }
     }
 
+    /// Push a **screen-space** bare emoji (no shape) with an alpha-dilated outline +
+    /// drop shadow, batched into the same instanced draw as buildings. `screen_pos` is
+    /// the center in physical pixels and `half_size` the half-extent in pixels. Returns
+    /// `false` (pushing nothing) if the emoji isn't in the atlas, so callers can fall
+    /// back to the egui path.
+    pub fn push_emoji(
+        &mut self,
+        emoji: &str,
+        screen_pos: [f32; 2],
+        half_size: f32,
+        tint: [f32; 4],
+        outline_color: [f32; 4],
+    ) -> bool {
+        let Some(icon_uv) = emoji_uv_opt(emoji) else {
+            return false;
+        };
+        self.push_structure(StructureInstanceGpu {
+            world_pos: screen_pos,
+            size: half_size,
+            shape_type: 4.0, // screen-space bare emoji
+            color: tint,
+            outline_color,
+            icon_uv,
+            opacity: 1.0,
+        });
+        true
+    }
+
+    /// Push a **world-space** bare emoji (no shape) with an alpha-dilated outline + drop
+    /// shadow — used for map markers like buildings. `world_pos` is in world units and
+    /// `half_size` is the half-extent in world units (the camera transform is applied in
+    /// the shader). `opacity` dims the whole marker (e.g. under construction). Returns
+    /// `false` if the emoji isn't in the atlas.
+    pub fn push_world_emoji(
+        &mut self,
+        emoji: &str,
+        world_pos: [f32; 2],
+        half_size: f32,
+        opacity: f32,
+        outline_color: [f32; 4],
+    ) -> bool {
+        let Some(icon_uv) = emoji_uv_opt(emoji) else {
+            return false;
+        };
+        self.push_structure(StructureInstanceGpu {
+            world_pos,
+            size: half_size,
+            shape_type: 5.0, // world-space bare emoji
+            color: [1.0, 1.0, 1.0, 1.0],
+            outline_color,
+            icon_uv,
+            opacity,
+        });
+        true
+    }
+
     fn write_buffers(&self, context: &gpu::Context) {
         if !self.upload_instances.is_empty() {
             let bytes = bytemuck::cast_slice(&self.upload_instances);
@@ -204,6 +264,8 @@ impl StructureRenderer {
         camera_pos: [f32; 2],
         zoom: f32,
         screen_size: [f32; 2],
+        outline_px: f32,
+        shadow_px: f32,
         context: &gpu::Context,
     ) {
         let instance_count = self.upload_instances.len() as u32;
@@ -230,7 +292,8 @@ impl StructureRenderer {
             zoom,
             _pad1: 0.0,
             screen_size,
-            _pad: [0.0; 2],
+            outline_px,
+            shadow_px,
         };
 
         let shader_data = StructureShaderData {
@@ -255,14 +318,17 @@ impl StructureRenderer {
     }
 }
 
+pub fn emoji_uv_opt(emoji: &str) -> Option<[f32; 4]> {
+    sow_data::emoji::lookup(emoji).map(|r| {
+        [
+            r.x as f32 / 832.0,
+            r.y as f32 / 768.0,
+            (r.x + r.w) as f32 / 832.0,
+            (r.y + r.h) as f32 / 768.0,
+        ]
+    })
+}
+
 pub fn emoji_uv(emoji: &str) -> [f32; 4] {
-    if let Some(r) = sow_data::emoji::lookup(emoji) {
-        let u0 = r.x as f32 / 832.0;
-        let v0 = r.y as f32 / 768.0;
-        let u1 = (r.x + r.w) as f32 / 832.0;
-        let v1 = (r.y + r.h) as f32 / 768.0;
-        [u0, v0, u1, v1]
-    } else {
-        [0.0, 0.0, 1.0, 1.0]
-    }
+    emoji_uv_opt(emoji).unwrap_or([0.0, 0.0, 1.0, 1.0])
 }

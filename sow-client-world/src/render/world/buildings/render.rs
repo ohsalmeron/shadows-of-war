@@ -77,51 +77,25 @@ pub(crate) fn render(
         if let Some(ref mut sr) = gfx.structure_renderer {
             gpu_rendered = true;
             for b in &rendered_buildings {
-                let size_world = if b.count > 1 { 0.45f32 } else { 0.35f32 };
-                let shape_type = match b.kind {
-                    sow_core::game::BuildingKind::City => 0.0f32,
-                    sow_core::game::BuildingKind::Bunker => 1.0f32,
-                    sow_core::game::BuildingKind::Factory => 2.0f32,
-                    sow_core::game::BuildingKind::Port => 3.0f32,
-                };
-                
-                let player_color = if b.owner_id != 0 {
-                    player_colors
-                        .get(b.owner_id as usize)
-                        .copied()
-                        .unwrap_or(egui::Color32::WHITE)
+                // Render the building as a full emoji + alpha outline (matching the
+                // build-mode preview / egui look), instead of an emoji clipped inside a
+                // procedural shape. Size it on screen to the same `base_size` the egui
+                // path uses, converted from screen pixels to world units.
+                let base_size = if b.count > 1 {
+                    28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)
                 } else {
-                    egui::Color32::WHITE
-                };
+                    get_building_icon_size(zoom_scaled)
+                } * final_scale;
+                let half_size_world = base_size * sf / (2.0 * input.camera_zoom);
+                let opacity = if b.under_construction { 0.5f32 } else { 1.0f32 };
 
-                let tint = if b.owner_id != 0 {
-                    let mut color = player_color;
-                    if b.under_construction {
-                        color = color.gamma_multiply(0.5);
-                    }
-                    color
-                } else {
-                    if b.under_construction {
-                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128)
-                    } else {
-                        egui::Color32::WHITE
-                    }
-                };
-                let tint_arr = tint.to_array().map(|v| v as f32 / 255.0);
-                let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
-
-                let emoji = building_kind_emoji(b.kind);
-                let icon_uv = sow_render::emoji_uv(emoji);
-
-                sr.push_structure(sow_render::StructureInstanceGpu {
-                    world_pos: [b.bx, b.by],
-                    size: size_world,
-                    shape_type,
-                    color: tint_arr,
-                    outline_color: outline_color_arr,
-                    icon_uv,
-                    opacity: 1.0,
-                });
+                sr.push_world_emoji(
+                    building_kind_emoji(b.kind),
+                    [b.bx, b.by],
+                    half_size_world,
+                    opacity,
+                    [0.0, 0.0, 0.0, 1.0],
+                );
             }
         }
 

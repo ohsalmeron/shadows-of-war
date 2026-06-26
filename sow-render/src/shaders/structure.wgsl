@@ -1,8 +1,12 @@
 struct StructureGlobals {
     camera_pos: vec2<f32>,
     zoom: f32,
+    _pad1: f32,
     screen_size: vec2<f32>,
-    _pad: vec2<f32>,
+    /// Outline thickness in physical pixels (from dev-tools calibrated value).
+    outline_px: f32,
+    /// Drop-shadow offset in physical pixels (from dev-tools calibrated value).
+    shadow_px: f32,
 }
 
 struct StructureInstance {
@@ -41,16 +45,25 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: StructureInstance) -> VertexOut
         vec2(-1.0, 1.0),
     );
     let local = corners[vi];
-    
-    // Position quad in world space, then transform to clip space
-    let size_world = inst.size;
-    let world = inst.world_pos + local * size_world;
-    let screen = world * globals.zoom + globals.camera_pos;
+
+    // Bare-emoji quads (shape_type >= 4): expand 25% so the outline taps have room.
+    // The FS insets the emoji UV by the same 1.25 factor.
+    var size = select(inst.size, inst.size * 1.25, inst.shape_type >= 3.5);
+
+    var screen: vec2<f32>;
+    if (inst.shape_type > 3.5 && inst.shape_type < 4.5) {
+        // Screen-space bare emoji (HUD/nameplate): already in physical pixels.
+        screen = inst.world_pos + local * size;
+    } else {
+        // World-space (shapes 0-3, world emoji 5): camera transform.
+        let world = inst.world_pos + local * size;
+        screen = world * globals.zoom + globals.camera_pos;
+    }
     let ndc = vec2<f32>(
         screen.x / globals.screen_size.x * 2.0 - 1.0,
         1.0 - screen.y / globals.screen_size.y * 2.0,
     );
-    
+
     out.clip_position = vec4<f32>(ndc, 0.0, 1.0);
     out.local_pos = local;
     out.shape_type = inst.shape_type;
@@ -76,7 +89,52 @@ fn sdPolygon(p: vec2<f32>, r: f32, n: f32, rot: f32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let p = in.local_pos;
-    
+
+    // Bare emoji with alpha-dilated outline. The quad is 1.25× the sprite size;
+    // inset the UV by the same factor so the emoji maps to the inner 80% and the
+    // outer ring is breathing room for the outline taps.
+    if (in.shape_type >= 3.5) {
+        let uv_local = (p * 1.25) * 0.5 + 0.5;
+        let uv = mix(in.icon_uv.xy, in.icon_uv.zw, uv_local);
+        let span = in.icon_uv.zw - in.icon_uv.xy;
+        let lo = in.icon_uv.xy;
+        let hi = in.icon_uv.zw;
+
+        // Outline width: derive from the calibrated outline_px converted to UV space
+        // via fwidth so it tracks zoom correctly. Fallback: 7% of the cell span.
+        let fw = fwidth(uv);
+        let ow_screen = globals.outline_px;
+        // Convert screen-px outline to UV delta: fw is UV-per-pixel.
+        let ow = max(fw * ow_screen, span * 0.04);
+        // Shadow offset: shadow_px downward in screen space → upward UV offset.
+        let so = max(fw.y * globals.shadow_px, span.y * 0.06);
+
+        let center = textureSample(icon_atlas, icon_sampler, clamp(uv, lo, hi));
+
+        // Outline ring: max alpha over 8 offset taps (alpha dilation).
+        var ring = textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>( ow.x, 0.0), lo, hi)).a;
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>(-ow.x, 0.0), lo, hi)).a);
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>(0.0,  ow.y), lo, hi)).a);
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>(0.0, -ow.y), lo, hi)).a);
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>( ow.x,  ow.y), lo, hi)).a);
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>( ow.x, -ow.y), lo, hi)).a);
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>(-ow.x,  ow.y), lo, hi)).a);
+        ring = max(ring, textureSample(icon_atlas, icon_sampler, clamp(uv + vec2<f32>(-ow.x, -ow.y), lo, hi)).a);
+
+        // Drop shadow: sample upward in the atlas (reads below the emoji on screen).
+        let shadow_a = textureSample(icon_atlas, icon_sampler, clamp(uv - vec2<f32>(0.0, so), lo, hi)).a;
+
+        let fill_a = center.a * in.color.a;
+        let dark_a = max(ring, shadow_a) * in.outline_color.a;
+        let out_a = max(fill_a, dark_a) * in.opacity;
+        if (out_a <= 0.001) {
+            discard;
+        }
+        let fill_ratio = fill_a / max(out_a, 0.0001);
+        let rgb = mix(in.outline_color.rgb, center.rgb, fill_ratio);
+        return vec4<f32>(rgb, out_a);
+    }
+
     // Evaluate procedural SDF shape
     var d = 0.0;
     let r = 0.85; // base radius inside the unit quad [-1, 1]
