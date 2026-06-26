@@ -8,7 +8,7 @@ pub(super) fn paint_building_overlays(
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     _time: &crate::app::TimeState,
-    _gfx: &mut crate::app::GraphicsState,
+    gfx: &mut crate::app::GraphicsState,
     painter: &egui::Painter,
     snap: &sow_core::protocol::SimSnapshot,
     config: &sow_core::game_config::GameConfig,
@@ -21,7 +21,7 @@ pub(super) fn paint_building_overlays(
     hovered_tile_idx: Option<u32>,
     player_colors: &[egui::Color32],
 ) {
-    let is_my_building = sim.my_player_id.map_or(false, |my_id| b.owner_id == my_id);
+    let is_my_building = sim.my_player_id == Some(b.owner_id);
 
     if is_my_building && b.under_construction && b.ticks_until_complete > 0 && zoom_scaled >= 1.5 && crate::app::vfx_on(painter.ctx(), |f| f.upgrade_plate) {
         let active_l = b.active_level;
@@ -97,19 +97,55 @@ pub(super) fn paint_building_overlays(
         let font_size = (zoom_scaled * 0.65 * final_scale).clamp(8.0, 18.0).round();
         let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
 
-        let font_id = egui::FontId::proportional(font_size);
-        let key = (text_val.to_string(), font_size as u32);
-        let galley = ui.cached_galleys.entry(key).or_insert_with(|| {
-            painter.layout_no_wrap(text_val.to_owned(), font_id, egui::Color32::WHITE)
-        }).clone();
-        let pos = bg_center - galley.rect.size() / 2.0;
+        let mut gpu_text_rendered = false;
+        if let Some(ref mut tr) = gfx.text_renderer {
+            gpu_text_rendered = true;
+            let color_arr = [1.0f32, 1.0, 1.0, 1.0];
+            let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
+            let baseline_y = (bg_center.y + font_size * 0.25) * sf;
 
-        crate::hud::nameplate::paint_glow_nameplate_galley(
-            painter,
-            pos,
-            galley,
-            egui::Color32::WHITE,
-        );
+            let ctx_ref = painter.ctx();
+            let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
+            let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
+            let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
+            let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
+            let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
+            let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+
+            let settings = sow_render::TmpFontSettings {
+                face_dilate,
+                outline_thickness,
+                underlay_offset_y: shadow_y,
+                underlay_softness,
+            };
+
+            tr.push_string(
+                text_val,
+                [bg_center.x * sf, baseline_y],
+                font_size * font_size_scale * sf,
+                color_arr,
+                outline_color_arr,
+                settings,
+                0.5,
+                char_spacing,
+            );
+        }
+
+        if !gpu_text_rendered {
+            let font_id = egui::FontId::proportional(font_size);
+            let key = (text_val.to_string(), font_size as u32);
+            let galley = ui.cached_galleys.entry(key).or_insert_with(|| {
+                painter.layout_no_wrap(text_val.to_owned(), font_id, egui::Color32::WHITE)
+            }).clone();
+            let pos = bg_center - galley.rect.size() / 2.0;
+
+            crate::hud::nameplate::paint_glow_nameplate_galley(
+                painter,
+                pos,
+                galley,
+                egui::Color32::WHITE,
+            );
+        }
     }
 
     // Render premium golden glassmorphic floating egui badge above upgrading building

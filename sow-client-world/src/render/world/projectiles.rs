@@ -15,7 +15,7 @@ pub(crate) fn render(
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     time: &crate::app::TimeState,
-    _gfx: &crate::app::GraphicsState,
+    gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
     let painter = ctx.painter;
@@ -116,13 +116,47 @@ pub(crate) fn render(
                     && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2)
                 {
                     let center = start_pos.lerp(end_pos, 0.5);
-                    painter.text(
-                        center,
-                        egui::Align2::CENTER_CENTER,
-                        "[X]",
-                        egui::FontId::proportional(20.0),
-                        egui::Color32::RED,
-                    );
+                    let mut gpu_rendered = false;
+                    if let Some(ref mut tr) = gfx.text_renderer {
+                        gpu_rendered = true;
+                        let color_arr = [1.0f32, 0.235, 0.235, 1.0];
+                        let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
+
+                        let ctx_ref = ctx.painter.ctx();
+                        let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
+                        let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
+                        let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
+                        let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
+                        let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
+                        let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+
+                        let settings = sow_render::TmpFontSettings {
+                            face_dilate,
+                            outline_thickness,
+                            underlay_offset_y: shadow_y,
+                            underlay_softness,
+                        };
+
+                        tr.push_string(
+                            "[X]",
+                            [center.x * sf, (center.y + 5.0) * sf],
+                            20.0 * font_size_scale * sf,
+                            color_arr,
+                            outline_color_arr,
+                            settings,
+                            0.5,
+                            char_spacing,
+                        );
+                    }
+                    if !gpu_rendered {
+                        painter.text(
+                            center,
+                            egui::Align2::CENTER_CENTER,
+                            "[X]",
+                            egui::FontId::proportional(20.0),
+                            egui::Color32::RED,
+                        );
+                    }
                 }
             }
 
@@ -192,19 +226,53 @@ pub(crate) fn render(
                         sow_ui_kit::theme::accent_solo_cyan_hover() // Cyan for outgoing
                     };
 
-                    let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
-                    let anchor = egui::pos2(
-                        screen_x - row_w / 2.0,
-                        screen_y - galley.rect.height() / 2.0,
-                    );
-                    crate::hud::nameplate::paint_glow_troops_row(
-                        &middle_painter,
-                        anchor,
-                        galley,
-                        &font_id,
-                        color,
-                        None,
-                    );
+                    let mut gpu_rendered = false;
+                    if let Some(ref mut tr) = gfx.text_renderer {
+                        gpu_rendered = true;
+                        let color_arr = color.to_array().map(|v| v as f32 / 255.0);
+                        let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
+
+                        let ctx_ref = ctx.painter.ctx();
+                        let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
+                        let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
+                        let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
+                        let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
+                        let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
+                        let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+
+                        let settings = sow_render::TmpFontSettings {
+                            face_dilate,
+                            outline_thickness,
+                            underlay_offset_y: shadow_y,
+                            underlay_softness,
+                        };
+
+                        tr.push_string(
+                            &entry.1,
+                            [screen_x * sf, (screen_y + 4.0) * sf],
+                            13.0 * font_size_scale * sf,
+                            color_arr,
+                            outline_color_arr,
+                            settings,
+                            0.5,
+                            char_spacing,
+                        );
+                    }
+                    if !gpu_rendered {
+                        let row_w = crate::hud::nameplate::troops_row_width(&galley, &font_id);
+                        let anchor = egui::pos2(
+                            screen_x - row_w / 2.0,
+                            screen_y - galley.rect.height() / 2.0,
+                        );
+                        crate::hud::nameplate::paint_glow_troops_row(
+                            &middle_painter,
+                            anchor,
+                            galley,
+                            &font_id,
+                            color,
+                            None,
+                        );
+                    }
                 }
             }
         }

@@ -509,6 +509,57 @@ impl SowApp {
                 });
 
             ui.separator();
+            ui.collapsing(RichText::new("🔤 Font Settings (SDF)").strong().color(Color32::WHITE), |ui| {
+                let mut face_dilate = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_face_dilate"), || -0.6f32)
+                });
+                let mut outline_thickness = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_outline_thickness"), || 1.0f32)
+                });
+                let mut shadow_y = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_shadow_y"), || 1.5f32)
+                });
+                let mut underlay_softness = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_underlay_softness"), || 0.0f32)
+                });
+                let mut char_spacing = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_char_spacing"), || 0.95f32)
+                });
+                let mut font_size_scale = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_size_scale"), || 1.67f32)
+                });
+                let mut name_offset_x = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_offset_x"), || 16.0f32)
+                });
+
+                ui.add(egui::Slider::new(&mut font_size_scale, 0.5..=2.5).text("Font Size"));
+                ui.add(egui::Slider::new(&mut face_dilate, -1.0..=2.0).text("Face Dilate"));
+                ui.add(egui::Slider::new(&mut outline_thickness, 0.0..=3.0).text("Outline Thickness"));
+                ui.add(egui::Slider::new(&mut shadow_y, 0.0..=5.0).text("Shadow Y"));
+                ui.add(egui::Slider::new(&mut underlay_softness, 0.0..=2.0).text("Shadow Softness"));
+                ui.add(egui::Slider::new(&mut char_spacing, 0.8..=1.8).text("Char Spacing"));
+                ui.add(egui::Slider::new(&mut name_offset_x, -16.0..=16.0).text("Name Offset X (avatar gap)"));
+
+                if ui.button("Reset to Default").clicked() {
+                    face_dilate = -0.6;
+                    outline_thickness = 1.0;
+                    shadow_y = 1.5;
+                    underlay_softness = 0.0;
+                    char_spacing = 0.95;
+                    font_size_scale = 1.67;
+                    name_offset_x = 16.0;
+                }
+
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_face_dilate"), face_dilate));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_outline_thickness"), outline_thickness));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_shadow_y"), shadow_y));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_underlay_softness"), underlay_softness));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_char_spacing"), char_spacing));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_size_scale"), font_size_scale));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_offset_x"), name_offset_x));
+            });
+
+            ui.separator();
             ui.label(
                 RichText::new("Bunker Laser VFX")
                     .strong()

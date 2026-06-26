@@ -102,6 +102,25 @@ pub struct TextGlobals {
     pub _pad: [f32; 2],
 }
 
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+pub struct TmpFontSettings {
+    pub face_dilate: f32,
+    pub outline_thickness: f32,
+    pub underlay_offset_y: f32,
+    pub underlay_softness: f32,
+}
+
+impl Default for TmpFontSettings {
+    fn default() -> Self {
+        Self {
+            face_dilate: 0.0,
+            outline_thickness: 0.8,
+            underlay_offset_y: 1.5,
+            underlay_softness: 0.0,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, blade_macros::Vertex)]
 pub struct TextInstanceGpu {
@@ -110,8 +129,10 @@ pub struct TextInstanceGpu {
     pub uv_rect: [f32; 4],
     pub color: [f32; 4],
     pub outline_color: [f32; 4],
-    pub outline_width_px: f32,
-    pub glow_width_px: f32,
+    pub face_dilate: f32,
+    pub outline_thickness: f32,
+    pub underlay_offset_y: f32,
+    pub underlay_softness: f32,
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -304,9 +325,9 @@ impl TextRenderer {
         font_size: f32,
         color: [f32; 4],
         outline_color: [f32; 4],
-        outline_width_px: f32,
-        glow_width_px: f32,
+        settings: TmpFontSettings,
         align_x: f32,
+        char_spacing: f32,
     ) {
         if text.is_empty() {
             return;
@@ -326,7 +347,7 @@ impl TextRenderer {
                     .unwrap_or(0) as f32;
                 let x_offset = (glyph.xoffset as f32 + kern) * scale;
                 let char_x = x_advance + x_offset;
-                x_advance += (glyph.xadvance as f32 + kern) * scale;
+                x_advance += (glyph.xadvance as f32 + kern) * scale * char_spacing;
                 prev_char = Some(ch);
                 glyphs_to_draw.push((glyph, char_x));
             }
@@ -336,12 +357,13 @@ impl TextRenderer {
         let aw = self.font_atlas_tex.width as f32;
         let ah = self.font_atlas_tex.height as f32;
 
+        let base = self.font_atlas_desc.atlas.common.base as f32;
         for (glyph, char_x) in glyphs_to_draw {
             let gw = glyph.width as f32 * scale;
             let gh = glyph.height as f32 * scale;
             let y_off = glyph.yoffset as f32 * scale;
             let gx = pos[0] + char_x - align_offset;
-            let gy = pos[1] + y_off;
+            let gy = pos[1] - base * scale + y_off;
 
             let uv_rect = [
                 glyph.x as f32 / aw,
@@ -356,8 +378,10 @@ impl TextRenderer {
                 uv_rect,
                 color,
                 outline_color,
-                outline_width_px,
-                glow_width_px,
+                face_dilate: settings.face_dilate,
+                outline_thickness: settings.outline_thickness,
+                underlay_offset_y: settings.underlay_offset_y,
+                underlay_softness: settings.underlay_softness,
             });
         }
     }

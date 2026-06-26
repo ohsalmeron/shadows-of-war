@@ -3942,6 +3942,7 @@ dependencies = [
 name = "sow-tools"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "bincode",
  "brotli",
  "clap",

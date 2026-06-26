@@ -25,6 +25,10 @@ path = "src/bin/migrate_maps.rs"
 name = "write-play-catalog"
 path = "src/bin/write_play_catalog.rs"
 
+[[bin]]
+name = "generate-font-atlas"
+path = "src/bin/generate_font_atlas.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 sow-map = { workspace = true, features = ["generator", "osm"] }
@@ -41,3 +45,4 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 rand = { workspace = true }
 brotli = { workspace = true }
+ab_glyph = "0.2"

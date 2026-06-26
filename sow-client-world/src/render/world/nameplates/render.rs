@@ -487,34 +487,50 @@ pub(crate) fn render(
                 let color_arr = vibrant_color.to_array().map(|v| v as f32 / 255.0);
                 let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
 
+                let ctx_ref = painter.ctx();
+                let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
+                let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
+                let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
+                let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
+                let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
+                let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+                let name_offset_x = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_offset_x")).unwrap_or(16.0f32));
+
+                let settings = sow_render::TmpFontSettings {
+                    face_dilate,
+                    outline_thickness,
+                    underlay_offset_y: shadow_y,
+                    underlay_softness,
+                };
+
                 if show_names {
-                    let name_center_x = (cur_x + right_w / 2.0 - 1.0) * sf;
+                    let name_center_x = (cur_x + right_w / 2.0 - 1.0 + name_offset_x) * sf;
                     let name_baseline_y = (right_y + name_h * 0.85) * sf;
                     tr.push_string(
                         &display_name,
                         [name_center_x, name_baseline_y],
-                        font_size * 1.25 * sf,
+                        font_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
-                        2.0 * sf,
-                        0.0,
+                        settings,
                         0.5,
+                        char_spacing,
                     );
                 }
 
                 if show_troops {
                     let troops_row_y = if show_names { right_y + name_h + item_spacing_y } else { right_y };
-                    let troops_center_x = (cur_x + right_w / 2.0 - 1.0) * sf;
+                    let troops_center_x = (cur_x + right_w / 2.0 - 1.0 + name_offset_x) * sf;
                     let troops_baseline_y = (troops_row_y + troops_h * 0.85) * sf;
                     tr.push_string(
                         &troops_str,
                         [troops_center_x, troops_baseline_y],
-                        troops_font_size * 1.25 * sf,
+                        troops_font_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
-                        2.0 * sf,
-                        0.0,
+                        settings,
                         0.5,
+                        char_spacing,
                     );
                 }
             }
