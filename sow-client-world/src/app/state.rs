@@ -364,6 +364,7 @@ pub struct DevVfxFlags {
     pub bot_avatars: bool,
     pub nameplate_names: bool,
     pub nameplate_troops: bool,
+    pub world_buildings: bool,
 }
 
 impl Default for DevVfxFlags {
@@ -394,6 +395,7 @@ impl Default for DevVfxFlags {
             bot_avatars: true,
             nameplate_names: true,
             nameplate_troops: true,
+            world_buildings: true,
         }
     }
 }

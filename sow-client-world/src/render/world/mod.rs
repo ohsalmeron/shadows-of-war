@@ -309,7 +309,9 @@ impl SowApp {
                 &ctx_struct,
             );
 
-            nameplates::render_death_nameplates(&mut self.ui, &self.input, &mut self.gfx, sf, now);
+            if crate::app::vfx_on(painter.ctx(), |f| f.death_nameplates) {
+                nameplates::render_death_nameplates(&mut self.ui, &self.input, &mut self.gfx, sf, now);
+            }
 
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
                 egui::Order::Middle,
@@ -369,6 +371,7 @@ impl SowApp {
                         let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
                         let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
                         let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+                        let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
 
                         let settings = crate::render::gpu::TmpFontSettings {
                             face_dilate,
@@ -386,6 +389,7 @@ impl SowApp {
                             settings,
                             0.5,
                             char_spacing,
+                            emoji_scale,
                         );
                     }
 

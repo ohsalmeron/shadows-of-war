@@ -33,7 +33,11 @@ pub fn compile(paths: &Paths, dev: bool) -> Result<()> {
         "cargo",
         &args,
         Some(&paths.root),
-        &[("RUSTFLAGS", "-C target-feature=+bulk-memory")],
+        // Keep bulk-memory DISABLED for the wasm32 build: enabling it makes rustc emit
+        // passive data segments + memory.init that break instantiation in the target
+        // Firefox/WebGL runtime (works on native, dies on web — even the main menu).
+        // Long-standing known-good value; wasm-opt still handles BulkMemory downstream.
+        &[("RUSTFLAGS", "-C target-feature=-bulk-memory")],
     )?;
     let wasm = paths.wasm_release_input();
     if !wasm.is_file() {

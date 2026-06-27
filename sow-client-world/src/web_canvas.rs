@@ -78,6 +78,29 @@ pub fn physical_viewport_size() -> (u32, u32) {
 /// Safe-area insets from CSS custom properties (`--sow-sa*` in the shell template).
 #[cfg(target_arch = "wasm32")]
 pub fn read_safe_area_insets() -> egui::SafeAreaInsets {
+    use std::cell::Cell;
+    // `get_computed_style` in `compute_safe_area_insets` forces a synchronous style/layout
+    // flush — a Firefox reflow killer — and this runs in the per-frame `apply_to_egui` path.
+    // Insets only change when the viewport changes, so cache by logical size and recompute
+    // only then. dde7d6f's per-frame web path never touched this; the per-frame call was
+    // introduced by the winit-0.31-beta DPI workaround.
+    thread_local! {
+        static CACHE: Cell<Option<((u32, u32), egui::SafeAreaInsets)>> = Cell::new(None);
+    }
+    let (w, h) = visible_logical_size();
+    let key = (w as u32, h as u32);
+    if let Some((k, insets)) = CACHE.with(|c| c.get()) {
+        if k == key {
+            return insets;
+        }
+    }
+    let insets = compute_safe_area_insets();
+    CACHE.with(|c| c.set(Some((key, insets))));
+    insets
+}
+
+#[cfg(target_arch = "wasm32")]
+fn compute_safe_area_insets() -> egui::SafeAreaInsets {
     use egui::epaint::MarginF32;
     let Some(window) = web_sys::window() else {
         return egui::SafeAreaInsets(MarginF32::ZERO);

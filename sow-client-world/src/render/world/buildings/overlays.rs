@@ -111,6 +111,7 @@ pub(super) fn paint_building_overlays(
             let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
             let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
             let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+            let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
 
             let settings = crate::render::gpu::TmpFontSettings {
                 face_dilate,
@@ -128,6 +129,7 @@ pub(super) fn paint_building_overlays(
                 settings,
                 0.5,
                 char_spacing,
+                emoji_scale,
             );
         }
 

@@ -18,6 +18,10 @@ pub(crate) fn render(
     gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
+    if !crate::app::vfx_on(ctx.painter.ctx(), |f| f.world_buildings) {
+        return;
+    }
+
     let default_config;
     let config = if let Some(e) = sim.engine.as_ref() {
         &e.state.config

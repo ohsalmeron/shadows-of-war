@@ -84,8 +84,11 @@ pub fn sync_wasm_window(app: &SowApp, win: &dyn winit::window::Window) {
     let expected_w = (w * sf) as u32;
     let expected_h = (h * sf) as u32;
 
-    if app.gfx.configured_physical.width != expected_w
-        || app.gfx.configured_physical.height != expected_h
+    // ±1px tolerance: physical = logical × dpr can land on a fractional value, so an exact
+    // compare flip-flops every frame on fractional-DPI displays and churns
+    // request_surface_size. Restores dde7d6f's known-good `abs_diff > 1` guard.
+    if app.gfx.configured_physical.width.abs_diff(expected_w) > 1
+        || app.gfx.configured_physical.height.abs_diff(expected_h) > 1
     {
         let _ = win.request_surface_size(winit::dpi::LogicalSize::new(w, h).into());
     }

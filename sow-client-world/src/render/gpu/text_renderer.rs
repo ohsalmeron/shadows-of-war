@@ -364,6 +364,7 @@ impl TextRenderer {
         settings: TmpFontSettings,
         align_x: f32,
         char_spacing: f32,
+        emoji_scale: f32,
     ) {
         if text.is_empty() {
             return;
@@ -434,7 +435,7 @@ impl TextRenderer {
                 candidate
             };
             if let Some(uv) = emoji_uv_opt(stripped) {
-                let emoji_size = font_size * 1.4;
+                let emoji_size = font_size * emoji_scale;
                 let advance = x_advance;
                 x_advance += emoji_size * char_spacing;
                 prev_char = None;
