@@ -29,7 +29,7 @@ impl MoverSpriteId {
     }
 }
 
-const EMOJI_ATLAS_BYTES: &[u8] = sow_ui_kit::repo_asset_bytes!("emoji/atlas.webp");
+const EMOJI_ATLAS_BYTES: &[u8] = crate::EMOJI_ATLAS_BYTES;
 
 pub struct SpriteAtlas {
     pub texture: gpu::Texture,
@@ -143,7 +143,7 @@ impl SpriteAtlas {
         );
     }
 
-    pub fn destroy(&mut self, render_ctx: &crate::render::gpu::context::RenderContext) {
+    pub fn destroy(&mut self, render_ctx: &crate::context::RenderContext) {
         render_ctx.context.destroy_texture_view(self.view);
         render_ctx.context.destroy_texture(self.texture);
         render_ctx.context.destroy_buffer(self.buffer);

@@ -5,11 +5,10 @@ members = [
     "sow-data",
     "sow-net",
     "sow-client",
-    "sow-client-world",
+    "sow-render",
     "sow-server",
     "sow-database",
     "sow-ui",
-    "sow-ui-kit",
     "sow-tools",
     "sow-relay",
     "sow-i18n",
@@ -93,14 +92,13 @@ path = "sow-core"
 [workspace.dependencies.sow-data]
 path = "sow-data"
 
-[workspace.dependencies.sow-ui-kit]
-path = "sow-ui-kit"
-
-[workspace.dependencies.sow-client-world]
-path = "sow-client-world"
+[workspace.dependencies.sow-render]
+path = "sow-render"
 
 [workspace.dependencies.sow-net]
 path = "sow-net"
+
+
 
 [profile.dev]
 opt-level = 1

@@ -1,5 +1,5 @@
-use crate::render::gpu::context::RenderContext;
-use crate::render::gpu::sprite_atlas::SpriteAtlas;
+use crate::context::RenderContext;
+use crate::sprite_atlas::SpriteAtlas;
 use blade_graphics as gpu;
 use bytemuck::{Pod, Zeroable};
 
@@ -70,7 +70,7 @@ impl MoverRenderer {
     pub fn new(context: &gpu::Context, surface_format: gpu::TextureFormat) -> Self {
         let atlas = SpriteAtlas::new(context);
 
-        let sprite_source = include_str!("../shaders/mover_sprites.wgsl");
+        let sprite_source = include_str!("shaders/mover_sprites.wgsl");
         let sprite_shader = context.create_shader(gpu::ShaderDesc {
             source: sprite_source,
             naga_module: None,
@@ -80,7 +80,7 @@ impl MoverRenderer {
             sprite_shader.get_struct_size("MoverGlobals") as usize,
         );
 
-        let trail_source = include_str!("../shaders/mover_trails.wgsl");
+        let trail_source = include_str!("shaders/mover_trails.wgsl");
         let trail_shader = context.create_shader(gpu::ShaderDesc {
             source: trail_source,
             naga_module: None,

@@ -1,4 +1,4 @@
-pub use sow_ui_kit::widgets::*;
+pub use crate::kit::widgets::*;
 
 pub mod avatar_picker;
 pub mod dialog;

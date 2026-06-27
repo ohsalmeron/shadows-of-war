@@ -3,4 +3,4 @@ pub mod world;
 
 mod frame;
 mod surface;
-pub mod gpu;
+pub use sow_render as gpu;

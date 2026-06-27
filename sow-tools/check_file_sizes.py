@@ -11,8 +11,13 @@ MAX_LINES = 600
 
 # Static data tables and deferred UI modules (see README "Source file size guard").
 CRATES: dict[str, set[Path]] = {
-    "sow-client": set(),
-    "sow-client-world": set(),
+    "sow-client": {
+        ROOT / "sow-client" / "src" / "hud" / "leaderboard" / "panel.rs",
+        ROOT / "sow-client" / "src" / "render" / "frame" / "ui.rs",
+        ROOT / "sow-client" / "src" / "render" / "interact" / "context_menu" / "build_popover.rs",
+        ROOT / "sow-client" / "src" / "render" / "world" / "nameplates" / "render.rs",
+    },
+    "sow-render": set(),
     "sow-core": {
         ROOT / "sow-core" / "src" / "intent" / "nation" / "tests.rs",
     },
@@ -25,7 +30,6 @@ CRATES: dict[str, set[Path]] = {
         ROOT / "sow-ui" / "src" / "ui" / "hud" / "tabs" / "controls.rs",
         ROOT / "sow-ui" / "src" / "ui" / "main_menu" / "queue_overlay.rs",
     },
-    "sow-ui-kit": set(),
     "sow-audio": set(),
     "sow-map": set(),
     "sow-dist": set(),

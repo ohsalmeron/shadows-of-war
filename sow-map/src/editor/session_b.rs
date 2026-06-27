@@ -323,7 +323,7 @@ impl MapEditorSession {
                         player_colors[1] = [0.1, 0.6, 0.9, 1.0];
 
                         let globals = terrain_globals.expect("terrain_globals set in brush mode");
-                        let colors_struct = sow_client_world::render::gpu::PlayerColors {
+                        let colors_struct = sow_render::PlayerColors {
                             colors: player_colors,
                         };
 

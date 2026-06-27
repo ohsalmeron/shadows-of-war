@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use crate::render::gpu::context::RenderContext;
+use crate::context::RenderContext;
 use blade_graphics as gpu;
 use bytemuck::{Pod, Zeroable};
 
@@ -83,7 +83,7 @@ pub struct FontAtlas {
 
 impl FontAtlas {
     pub fn load_static() -> Self {
-        let json_str = include_str!("../../../../assets/static/fonts/msdf-atlas.json");
+        let json_str = include_str!("../../assets/static/fonts/msdf-atlas.json");
         let atlas: MsdfAtlas = serde_json::from_str(json_str).expect("Failed to parse MSDF atlas JSON");
         let mut char_map = HashMap::new();
         for c in &atlas.chars {
@@ -211,7 +211,7 @@ impl FontAtlasTexture {
     }
 
     pub fn new(context: &gpu::Context) -> Self {
-        let png_bytes = include_bytes!("../../../../assets/static/fonts/msdf-atlas.png");
+        let png_bytes = include_bytes!("../../assets/static/fonts/msdf-atlas.png");
         // ponytail: font atlas contains signed distance values (linear data), emoji atlas contains sRGB colors
         Self::from_bytes(context, png_bytes, "font_atlas", gpu::TextureFormat::Rgba8Unorm)
     }
@@ -254,12 +254,12 @@ impl TextRenderer {
         let font_atlas_tex = FontAtlasTexture::new(context);
         let emoji_atlas_tex = FontAtlasTexture::from_bytes(
             context,
-            sow_ui_kit::EMOJI_ATLAS_BYTES,
+            crate::EMOJI_ATLAS_BYTES,
             "emoji_atlas",
             gpu::TextureFormat::Rgba8UnormSrgb, // ponytail: hardware sRGB decode
         );
 
-        let shader_source = include_str!("../shaders/text_glow.wgsl");
+        let shader_source = include_str!("shaders/text_glow.wgsl");
         let shader = context.create_shader(gpu::ShaderDesc {
             source: shader_source,
             naga_module: None,

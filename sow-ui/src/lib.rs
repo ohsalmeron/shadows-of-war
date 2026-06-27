@@ -2,9 +2,16 @@ pub mod app;
 pub mod ui;
 pub mod utils;
 pub mod widgets;
+extern crate self as sow_ui_kit;
+
+pub mod kit;
+pub use kit::{
+    theme, assets, ui_font, ClientPhase,
+    atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets, texture_options,
+    EMOJI_ATLAS_BYTES,
+};
 
 pub use app::ClientApp;
-pub use sow_ui_kit::{self, ClientPhase};
 pub use ui::main_menu::LobbyNotice;
 
 #[derive(Debug, Clone, PartialEq)]

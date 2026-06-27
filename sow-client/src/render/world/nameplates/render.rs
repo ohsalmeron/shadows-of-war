@@ -600,7 +600,7 @@ pub(crate) fn render(
                     crate::hud::nameplate::paint_glow_troops_row(
                         painter,
                         egui::pos2(troops_x, troops_row_y),
-                        troops_galley,
+                        troops_galley.clone(),
                         &troops_font_id,
                         vibrant_color,
                         Some(name_size.y),

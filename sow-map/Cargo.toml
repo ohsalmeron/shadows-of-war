@@ -13,9 +13,8 @@ path = "src/lib.rs"
 default = ["editor", "generator", "osm"]
 editor = [
     "generator",
-    "dep:sow-client-world",
+    "dep:sow-render",
     "dep:sow-ui",
-    "dep:sow-ui-kit",
     "sow-ui/map-editor",
     "sow-i18n/map-editor",
     "dep:blade-graphics",
@@ -43,9 +42,8 @@ bincode.workspace = true
 crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
 
-sow-client-world = { workspace = true, optional = true }
+sow-render = { workspace = true, optional = true }
 sow-ui = { workspace = true, optional = true }
-sow-ui-kit = { workspace = true, optional = true }
 blade-graphics = { workspace = true, optional = true }
 blade-egui = { workspace = true, optional = true }
 blade-macros = { workspace = true, optional = true }

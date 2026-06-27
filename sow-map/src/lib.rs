@@ -1,6 +1,8 @@
 #![warn(dead_code, unused_variables, unused_imports)]
 
 #[cfg(feature = "editor")]
+extern crate sow_ui as sow_ui_kit;
+#[cfg(feature = "editor")]
 pub mod editor;
 
 #[cfg(feature = "generator")]

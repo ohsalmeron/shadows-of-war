@@ -3699,15 +3699,6 @@ dependencies = [
 name = "sow-client"
 version = "0.1.0"
 dependencies = [
- "env_logger",
- "sow-client-world",
- "winit",
-]
-
-[[package]]
-name = "sow-client-world"
-version = "0.1.0"
-dependencies = [
  "bincode",
  "blade-egui",
  "blade-graphics",
@@ -3733,8 +3724,8 @@ dependencies = [
  "sow-data",
  "sow-i18n",
  "sow-net",
+ "sow-render",
  "sow-ui",
- "sow-ui-kit",
  "tokio",
  "url",
  "wasm-bindgen",
@@ -3830,11 +3821,10 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sow-client-world",
  "sow-core",
  "sow-i18n",
+ "sow-render",
  "sow-ui",
- "sow-ui-kit",
  "tokio",
  "web-time",
  "winit",
@@ -3877,6 +3867,23 @@ dependencies = [
  "sow-net",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "sow-render"
+version = "0.1.0"
+dependencies = [
+ "blade-graphics",
+ "blade-macros",
+ "bytemuck",
+ "image",
+ "log",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "sow-core",
+ "sow-data",
+ "web-time",
 ]
 
 [[package]]
@@ -3933,18 +3940,7 @@ dependencies = [
  "sow-core",
  "sow-data",
  "sow-i18n",
- "sow-ui-kit",
  "web-time",
-]
-
-[[package]]
-name = "sow-ui-kit"
-version = "0.1.0"
-dependencies = [
- "egui",
- "image",
- "log",
- "sow-data",
 ]
 
 [[package]]

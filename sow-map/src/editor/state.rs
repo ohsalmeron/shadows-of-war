@@ -1,7 +1,7 @@
 use blade_egui::GuiPainter;
 use blade_graphics as gpu;
 use egui::Context;
-use sow_client_world::render::gpu::{MapRenderer, RenderContext};
+use sow_render::{MapRenderer, RenderContext};
 use sow_ui::ClientApp;
 #[cfg(feature = "osm")]
 use std::collections::HashMap;

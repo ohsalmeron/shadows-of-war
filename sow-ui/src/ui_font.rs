@@ -1,1 +1,1 @@
-pub use sow_ui_kit::ui_font::*;
+pub use crate::kit::ui_font::*;
