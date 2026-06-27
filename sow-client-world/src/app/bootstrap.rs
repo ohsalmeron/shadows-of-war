@@ -5,7 +5,7 @@ use blade_graphics as gpu;
 use egui::{Context, RawInput, Rect};
 use sow_core::protocol::SimSnapshot;
 use sow_net::client::SowClient;
-use sow_render::{MapRenderer, RenderContext};
+use crate::render::gpu::{MapRenderer, RenderContext};
 use sow_ui::ClientApp;
 use std::collections::HashMap;
 use web_time::{Duration, Instant};
@@ -38,8 +38,8 @@ impl SowApp {
         let render_ctx: Option<RenderContext> = None;
         let surface: Option<gpu::Surface> = None;
         let map_renderer: Option<MapRenderer> = None;
-        let mover_renderer: Option<sow_render::MoverRenderer> = None;
-        let text_renderer: Option<sow_render::TextRenderer> = None;
+        let mover_renderer: Option<crate::render::gpu::MoverRenderer> = None;
+        let text_renderer: Option<crate::render::gpu::TextRenderer> = None;
         let gui_painter: Option<GuiPainter> = None;
         let window: Option<Box<dyn winit::window::Window>> = None;
 
@@ -284,7 +284,7 @@ impl SowApp {
                 leaderboard_timer: 0.0,
                 leaderboard_rankings: Vec::new(),
                 leaderboard_display: std::collections::HashMap::new(),
-                leaderboard_visible_limit: sow_ui_game::INITIAL_VISIBLE_LIMIT,
+                leaderboard_visible_limit: sow_ui::ui::hud::leaderboard::INITIAL_VISIBLE_LIMIT,
                 leaderboard_paged_through_limit: 0,
                 leaderboard_search: String::new(),
                 leaderboard_team_rankings: Vec::new(),
@@ -308,6 +308,7 @@ impl SowApp {
                 cached_hovered_building_level: 0,
                 cached_hovered_building_tooltip: String::new(),
                 attack_troop_labels: std::collections::HashMap::new(),
+                attack_troop_labels_last_update: std::collections::HashMap::new(),
                 cached_galleys: std::collections::HashMap::new(),
                 cached_prepared_names: std::collections::HashMap::new(),
                 edge_mask_cache: Vec::new(),

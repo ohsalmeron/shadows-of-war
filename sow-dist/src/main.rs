@@ -171,7 +171,7 @@ fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
 fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     println!("==> local wasm v{version}");
-    wasm::compile(paths)?;
+    wasm::compile(paths, true)?; // local QA: dev tools available via Settings → Dev Tools
     let cfg = config::local_config();
     package::build_or_skip(
         paths,

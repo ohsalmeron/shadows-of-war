@@ -522,7 +522,7 @@ pub(crate) fn render(
                 let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
                 let name_offset_x = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_offset_x")).unwrap_or(16.0f32));
 
-                let settings = sow_render::TmpFontSettings {
+                let settings = crate::render::gpu::TmpFontSettings {
                     face_dilate,
                     outline_thickness,
                     underlay_offset_y: shadow_y,
@@ -562,8 +562,9 @@ pub(crate) fn render(
                     // Number text left-aligned after sword
                     let text_left = (troops_left_x + icon_size + 3.0) * sf;
                     let troops_baseline_y = (troops_row_y + troops_h * 0.85) * sf;
+                    let display_troops_str = &ui.nameplate_galleys.get(&player.id).unwrap().troops_str;
                     tr.push_string(
-                        &troops_str,
+                        display_troops_str,
                         [text_left, troops_baseline_y],
                         troops_font_size * font_size_scale * sf,
                         color_arr,

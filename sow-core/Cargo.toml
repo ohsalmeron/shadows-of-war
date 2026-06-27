@@ -19,4 +19,3 @@ bytemuck = { workspace = true }
 libm = { workspace = true }
 brotli = { workspace = true }
 sow-data = { workspace = true }
-sow-assets = { workspace = true }

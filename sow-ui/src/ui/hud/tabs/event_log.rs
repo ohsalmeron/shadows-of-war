@@ -71,7 +71,7 @@ pub(in crate::ui::hud) fn draw_event_log_tab(
                 egui::vec2(28.0, 28.0),
             );
             if !crate::widgets::try_paint_emoji(ui.painter(), "📋", icon_rect, Color32::GRAY) {
-                ui.label(RichText::new("📋").size(28.0).color(Color32::GRAY));
+                ui.label(RichText::new("📋").size(28.0).color(Color32::GRAY)); // emoji-ok: fallback when try_paint_emoji misses
             }
             ui.add_space(28.0);
             ui.label(

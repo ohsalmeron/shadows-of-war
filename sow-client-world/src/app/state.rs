@@ -39,10 +39,10 @@ pub struct CachedNameplate {
 pub struct GraphicsState {
     pub window: Option<Box<dyn winit::window::Window>>,
     pub surface: Option<blade_graphics::Surface>,
-    pub render_ctx: Option<sow_render::RenderContext>,
-    pub map_renderer: Option<sow_render::MapRenderer>,
-    pub mover_renderer: Option<sow_render::MoverRenderer>,
-    pub text_renderer: Option<sow_render::TextRenderer>,
+    pub render_ctx: Option<crate::render::gpu::RenderContext>,
+    pub map_renderer: Option<crate::render::gpu::MapRenderer>,
+    pub mover_renderer: Option<crate::render::gpu::MoverRenderer>,
+    pub text_renderer: Option<crate::render::gpu::TextRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
     pub needs_first_upload: bool,
@@ -200,12 +200,12 @@ pub struct UiState {
     pub tutorial_pending_intro: Option<String>,
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
-    pub leaderboard_rankings: Vec<sow_ui_game::LeaderboardRanking>,
-    pub leaderboard_display: std::collections::HashMap<u16, sow_ui_game::LeaderboardRowDisplay>,
+    pub leaderboard_rankings: Vec<sow_ui::ui::hud::leaderboard::LeaderboardRanking>,
+    pub leaderboard_display: std::collections::HashMap<u16, sow_ui::ui::hud::leaderboard::LeaderboardRowDisplay>,
     pub leaderboard_visible_limit: usize,
     pub leaderboard_paged_through_limit: usize,
     pub leaderboard_search: String,
-    pub leaderboard_team_rankings: Vec<sow_ui_game::TeamRanking>,
+    pub leaderboard_team_rankings: Vec<sow_ui::ui::hud::leaderboard::TeamRanking>,
     pub leaderboard_prev_search: String,
     pub leaderboard_was_open: bool,
     pub show_dev_sidebar: bool,
@@ -227,6 +227,7 @@ pub struct UiState {
     pub cached_hovered_building_level: u8,
     pub cached_hovered_building_tooltip: String,
     pub attack_troop_labels: std::collections::HashMap<u64, (f64, String, std::sync::Arc<egui::Galley>)>,
+    pub attack_troop_labels_last_update: std::collections::HashMap<u64, web_time::Instant>,
     pub cached_galleys: std::collections::HashMap<(String, u32), std::sync::Arc<egui::Galley>>,
     pub cached_prepared_names: std::collections::HashMap<(String, u32), sow_ui_kit::widgets::PreparedName>,
     pub edge_mask_cache: Vec<u8>,
@@ -248,6 +249,7 @@ impl UiState {
         self.cached_galleys.clear();
         self.cached_prepared_names.clear();
         self.attack_troop_labels.clear();
+        self.attack_troop_labels_last_update.clear();
     }
 }
 

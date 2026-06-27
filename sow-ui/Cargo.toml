@@ -13,8 +13,6 @@ log = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 sow-i18n = { workspace = true }
-sow-assets = { workspace = true }
-sow-assets-ui = { workspace = true }
 
 [features]
 default = []

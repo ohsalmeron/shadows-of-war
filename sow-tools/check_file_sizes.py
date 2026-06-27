@@ -26,12 +26,8 @@ CRATES: dict[str, set[Path]] = {
         ROOT / "sow-ui" / "src" / "ui" / "main_menu" / "queue_overlay.rs",
     },
     "sow-ui-kit": set(),
-    "sow-ui-game": set(),
-    "sow-assets": set(),
-    "sow-assets-ui": set(),
     "sow-audio": set(),
     "sow-map": set(),
-    "sow-render": set(),
     "sow-dist": set(),
 }
 

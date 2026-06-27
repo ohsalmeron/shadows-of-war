@@ -343,18 +343,18 @@ impl SowApp {
                              if let Some(ref s) = self.gfx.surface {
                                  let format = s.info().format;
                                  self.gfx.map_renderer =
-                                     Some(sow_render::map_renderer::MapRenderer::new(
+                                     Some(crate::render::gpu::map_renderer::MapRenderer::new(
                                          &render_ctx.context,
                                          self.sim.map_w,
                                          self.sim.map_h,
                                          format,
                                          &map_bytes,
                                      ));
-                                 self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                                 self.gfx.mover_renderer = Some(crate::render::gpu::MoverRenderer::new(
                                      &render_ctx.context,
                                      format,
                                  ));
-                                 self.gfx.text_renderer = Some(sow_render::TextRenderer::new(
+                                 self.gfx.text_renderer = Some(crate::render::gpu::TextRenderer::new(
                                      &render_ctx.context,
                                      format,
                                  ));

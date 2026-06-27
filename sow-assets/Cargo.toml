@@ -1,8 +1,0 @@
-[package]
-name = "sow-assets"
-version = "0.1.0"
-edition = "2021"
-description = "Shadows of War — compile-time embedded asset bytes and path constants"
-license = "AGPL-3.0-or-later"
-
-[dependencies]

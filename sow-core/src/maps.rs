@@ -96,6 +96,8 @@ pub fn map_within_pixel_budget(width: u32, height: u32) -> bool {
 /// Maps shipped inside the client WASM for offline single-player boot.
 pub const BUNDLED_MAP_KEYS: &[&str] = &[DEFAULT_MAP_KEY];
 
+pub static WORLD_MAP_BYTES: &[u8] = crate::repo_asset_bytes!("maps/world/map.bin.br");
+
 /// Normalize map folder / config name to catalog key (e.g. `"Europe"` → `"europe"`).
 #[inline]
 pub fn map_key(name: &str) -> String {
@@ -165,7 +167,7 @@ pub fn load_map_from_payload(bytes: &[u8]) -> Result<MapFile, crate::map_file::M
 #[inline]
 pub fn bundled_map_br(key: &str) -> Option<&'static [u8]> {
     match map_key(key).as_str() {
-        "world" => Some(sow_assets::WORLD_MAP_BYTES),
+        "world" => Some(WORLD_MAP_BYTES),
         _ => None,
     }
 }

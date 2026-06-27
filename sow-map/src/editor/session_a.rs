@@ -1,7 +1,7 @@
 use blade_egui::GuiPainter;
 use blade_graphics as gpu;
 use egui::Context;
-use sow_render::{MapGlobals, MapRenderer, RenderContext};
+use sow_client_world::render::gpu::{MapGlobals, MapRenderer, RenderContext};
 use sow_ui::ClientApp;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};

@@ -98,7 +98,7 @@ pub fn run_release(
         };
         // WASM and server both invoke cargo and share the package cache.
         // Run them sequentially to avoid "Blocking waiting for file lock" noise.
-        wasm::compile(paths)?;
+        wasm::compile(paths, false)?; // prod/deploy: never ship dev tooling
         let server = if target.server_unit().is_some() {
             Some(infra::build_server_if_needed(paths)?)
         } else {

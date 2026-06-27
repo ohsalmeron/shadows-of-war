@@ -309,7 +309,7 @@ impl SowApp {
                 &ctx_struct,
             );
 
-            nameplates::render_death_nameplates(&mut self.ui, &self.input, sf, now);
+            nameplates::render_death_nameplates(&mut self.ui, &self.input, &mut self.gfx, sf, now);
 
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
                 egui::Order::Middle,
@@ -356,21 +356,56 @@ impl SowApp {
                     } else {
                         1.0
                     };
-                    // Quantize to whole pixels for egui glyph atlas cache reuse
-                    let font_size = (visual_config.gold_reward_notice_font_size * bounce_scale)
-                        .round()
-                        .max(1.0);
+                    let mut gpu_rendered = false;
+                    if let Some(ref mut tr) = self.gfx.text_renderer {
+                        gpu_rendered = true;
+                        let color_arr = text_color.to_array().map(|v| v as f32 / 255.0);
+                        let outline_color_arr = [0.0f32, 0.0, 0.0, alpha as f32 / 255.0];
 
-                    let font_id = egui::FontId::proportional(font_size);
-                    sow_ui_kit::widgets::paint_emoji_text_at(
-                        &middle_painter,
-                        pos,
-                        egui::Align2::CENTER_CENTER,
-                        &notice.text,
-                        font_id,
-                        text_color,
-                        true,
-                    );
+                        let ctx_ref = painter.ctx();
+                        let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
+                        let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
+                        let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
+                        let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
+                        let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
+                        let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+
+                        let settings = crate::render::gpu::TmpFontSettings {
+                            face_dilate,
+                            outline_thickness,
+                            underlay_offset_y: shadow_y,
+                            underlay_softness,
+                        };
+
+                        tr.push_string(
+                            &notice.text,
+                            [screen_x * sf, screen_y * sf],
+                            visual_config.gold_reward_notice_font_size * bounce_scale * font_size_scale * sf,
+                            color_arr,
+                            outline_color_arr,
+                            settings,
+                            0.5,
+                            char_spacing,
+                        );
+                    }
+
+                    if !gpu_rendered {
+                        // Quantize to whole pixels for egui glyph atlas cache reuse
+                        let font_size = (visual_config.gold_reward_notice_font_size * bounce_scale)
+                            .round()
+                            .max(1.0);
+
+                        let font_id = egui::FontId::proportional(font_size);
+                        sow_ui_kit::widgets::paint_emoji_text_at(
+                            &middle_painter,
+                            pos,
+                            egui::Align2::CENTER_CENTER,
+                            &notice.text,
+                            font_id,
+                            text_color,
+                            true,
+                        );
+                    }
                 }
                 true
             });

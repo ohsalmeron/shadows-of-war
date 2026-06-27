@@ -1,6 +1,19 @@
 use egui::{Context, Rect, TextureHandle, TextureOptions};
 use sow_data::emoji::{lookup, ATLAS_HEIGHT, ATLAS_WIDTH};
 
+#[macro_export]
+macro_rules! repo_asset_bytes {
+    ($path:expr) => {
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../assets/static/",
+            $path
+        ))
+    };
+}
+
+pub static EMOJI_ATLAS_BYTES: &[u8] = repo_asset_bytes!("emoji/atlas.webp");
+
 const ATLAS_TEX_ID: &str = "sow_emoji_atlas";
 
 pub fn atlas_texture(ctx: &Context) -> Option<TextureHandle> {
@@ -8,7 +21,7 @@ pub fn atlas_texture(ctx: &Context) -> Option<TextureHandle> {
     if let Some(tex) = ctx.data(|d| d.get_temp::<TextureHandle>(id)) {
         return Some(tex);
     }
-    let rgba = image::load_from_memory(sow_assets::EMOJI_ATLAS_BYTES)
+    let rgba = image::load_from_memory(EMOJI_ATLAS_BYTES)
         .ok()?
         .to_rgba8();
     let size = [rgba.width() as _, rgba.height() as _];

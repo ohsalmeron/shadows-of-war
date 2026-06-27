@@ -11,22 +11,29 @@ use wasm_opt::{Feature, OptimizationOptions, Pass};
 
 const WASM_OPT_TAG: &str = "oz-v1";
 
-pub fn compile(paths: &Paths) -> Result<()> {
+pub fn compile(paths: &Paths, dev: bool) -> Result<()> {
     process::wait_for_cargo_unlock(&paths.cargo_target);
     println!("==> Compiling WASM (wasm-release)...");
+    let mut args = vec![
+        "build",
+        "--profile",
+        "wasm-release",
+        "-p",
+        "sow-client",
+        "--target",
+        "wasm32-unknown-unknown",
+    ];
+    if dev {
+        // Local QA builds compile in the dev sidebar / dev tooling; prod never does.
+        args.push("--features");
+        args.push("dev");
+        println!("==> (local) dev tools enabled");
+    }
     process::run_env(
         "cargo",
-        &[
-            "build",
-            "--profile",
-            "wasm-release",
-            "-p",
-            "sow-client",
-            "--target",
-            "wasm32-unknown-unknown",
-        ],
+        &args,
         Some(&paths.root),
-        &[("RUSTFLAGS", "-C target-feature=-bulk-memory")],
+        &[("RUSTFLAGS", "-C target-feature=+bulk-memory")],
     )?;
     let wasm = paths.wasm_release_input();
     if !wasm.is_file() {

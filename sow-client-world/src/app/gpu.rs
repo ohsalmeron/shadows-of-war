@@ -1,5 +1,5 @@
 use super::state::SowApp;
-use sow_render::RenderContext;
+use crate::render::gpu::RenderContext;
 
 impl SowApp {
     /// Initialize the shared Blade context once; returns false after a fatal error.

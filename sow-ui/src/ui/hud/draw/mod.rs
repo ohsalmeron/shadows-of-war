@@ -27,7 +27,7 @@ pub fn draw(
 ) -> Option<UiAction> {
     static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
     REGISTER_ONCE.call_once(|| {
-        sow_assets_ui::register_game_assets(ui.ctx());
+        sow_ui_kit::register_game_assets(ui.ctx());
     });
 
     let mut action = None;

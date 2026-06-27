@@ -48,7 +48,7 @@ impl SowApp {
                         if let Some(mut old_mr) = self.gfx.map_renderer.take() {
                             let old_terrain = old_mr.terrain.clone();
                             old_mr.destroy(&render_ctx);
-                            self.gfx.map_renderer = Some(sow_render::MapRenderer::new(
+                            self.gfx.map_renderer = Some(crate::render::gpu::MapRenderer::new(
                                 &render_ctx.context,
                                 self.sim.map_w,
                                 self.sim.map_h,
@@ -61,12 +61,12 @@ impl SowApp {
                             old_mover.destroy(&render_ctx);
                         }
                         self.gfx.mover_renderer =
-                            Some(sow_render::MoverRenderer::new(&render_ctx.context, format));
+                            Some(crate::render::gpu::MoverRenderer::new(&render_ctx.context, format));
                         if let Some(mut old_text) = self.gfx.text_renderer.take() {
                             old_text.destroy(&render_ctx);
                         }
                         self.gfx.text_renderer =
-                            Some(sow_render::TextRenderer::new(&render_ctx.context, format));
+                            Some(crate::render::gpu::TextRenderer::new(&render_ctx.context, format));
                         if let Some(mut old_gp) = self.gfx.gui_painter.take() {
                             old_gp.destroy(&render_ctx.context);
                         }
@@ -79,7 +79,7 @@ impl SowApp {
                         self.ui.egui_ctx = egui::Context::default();
                         sow_ui_kit::theme::apply_theme(&self.ui.egui_ctx);
                         self.ui.invalidate_egui_dependent_caches();
-                        sow_assets_ui::register_game_assets(&self.ui.egui_ctx);
+                        sow_ui_kit::register_game_assets(&self.ui.egui_ctx);
                         log::info!("Successfully created surface on retry.");
                     }
                     Err(e) => {

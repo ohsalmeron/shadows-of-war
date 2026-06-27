@@ -3,6 +3,7 @@ pub mod utils;
 pub mod widgets;
 
 pub mod ui_font;
+pub mod assets;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientPhase {
@@ -11,7 +12,7 @@ pub enum ClientPhase {
     Playing,
 }
 
-pub use sow_assets::repo_asset_bytes;
-pub use sow_assets_ui::{
+pub use assets::{
     atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets, texture_options,
+    EMOJI_ATLAS_BYTES,
 };

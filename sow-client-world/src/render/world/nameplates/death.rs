@@ -4,6 +4,7 @@ use super::render::seed_hash;
 pub(crate) fn render_death_nameplates(
     ui: &mut crate::app::UiState,
     input: &crate::app::InputState,
+    gfx: &mut crate::app::GraphicsState,
     sf: f32,
     now: web_time::Instant,
 ) {
@@ -96,20 +97,7 @@ pub(crate) fn render_death_nameplates(
             alpha,
         );
 
-        // --- 1. Draw Glow Name Centered ---
-        let name_x = center.x - name_size.x / 2.0;
-        let name_y = center.y - name_size.y / 2.0;
-
-        sow_ui_kit::widgets::paint_prepared_name(
-            painter,
-            egui::pos2(name_x, name_y),
-            egui::Align2::LEFT_TOP,
-            prepared,
-            vibrant_color,
-            true,
-        );
-
-        // --- 2. Draw Dove (Soul) Flying Upward Separately (Subtle) ---
+        // --- Dove/skull layout (shared between GPU and egui fallback) ---
         let avatar_size = (base_premium_size * 2.2 * ui_text_scale).round().max(2.0);
         let scale_var = 0.8 + seed_hash(anim.seed, 5) * 0.6;
         let bird_scale = scale_var * (1.0 - t * 0.2);
@@ -118,7 +106,6 @@ pub(crate) fn render_death_nameplates(
         let angle_offset = (seed_hash(anim.seed, 1) - 0.5) * 0.2;
         let flight_angle = -std::f32::consts::FRAC_PI_2 + angle_offset;
 
-        // Subtle, local flight distance above the nameplate (significantly reduced from 60.0 to 180.0 pixels)
         let base_dist = 15.0 + seed_hash(anim.seed, 2) * 15.0;
         let scale_factor = (input.camera_zoom / sf).clamp(0.2, 3.0);
         let fly_dist = base_dist * scale_factor * t;
@@ -130,24 +117,93 @@ pub(crate) fn render_death_nameplates(
         let bird_center_x = center.x + flight_x;
         let bird_center_y = start_bird_y + flight_y;
 
-        let dove_rect = egui::Rect::from_center_size(
-            egui::pos2(bird_center_x, bird_center_y),
-            egui::vec2(bird_size, bird_size),
-        );
-        let soul_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
-
         let emoji = if anim.by_nuke { "☢️" } else { "🕊️" };
-        if !sow_ui_kit::widgets::try_paint_emoji(painter, emoji, dove_rect, soul_color) {
-            let emoji_galley = painter.layout_no_wrap(
-                emoji.to_owned(),
-                egui::FontId::proportional(bird_size),
-                soul_color,
+
+        // --- GPU path: text + emoji via unified pipeline ---
+        let mut gpu_rendered = false;
+        if let Some(ref mut tr) = gfx.text_renderer {
+            gpu_rendered = true;
+            let color_arr = vibrant_color.to_array().map(|v| v as f32 / 255.0);
+            let outline_color_arr = [0.0f32, 0.0, 0.0, alpha as f32 / 255.0];
+
+            let ctx_ref = painter.ctx();
+            let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
+            let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
+            let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
+            let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
+            let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
+            let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
+
+            let settings = crate::render::gpu::TmpFontSettings {
+                face_dilate,
+                outline_thickness,
+                underlay_offset_y: shadow_y,
+                underlay_softness,
+            };
+
+            let display_name = if anim.player_type == sow_core::player::PlayerType::Bot {
+                if anim.name.is_empty() {
+                    format!("Tribe {}", anim.player_id.saturating_sub(199))
+                } else {
+                    anim.name.clone()
+                }
+            } else {
+                sow_core::player::display_name(anim.player_id, &anim.name, anim.player_type)
+            };
+
+            tr.push_string(
+                &display_name,
+                [center.x * sf, (center.y + name_size.y * 0.35) * sf],
+                base_premium_size * ui_text_scale * font_size_scale * sf,
+                color_arr,
+                outline_color_arr,
+                settings,
+                0.5,
+                char_spacing,
             );
-            let emoji_pos = egui::pos2(
-                dove_rect.center().x - emoji_galley.size().x / 2.0,
-                dove_rect.center().y - emoji_galley.size().y / 2.0,
+
+            tr.push_emoji(
+                emoji,
+                [bird_center_x * sf, bird_center_y * sf],
+                bird_size * 0.5 * sf,
+                [1.0, 1.0, 1.0, alpha as f32 / 255.0],
+                outline_color_arr,
+                outline_thickness,
+                shadow_y,
             );
-            painter.galley(emoji_pos, emoji_galley, soul_color);
+        }
+
+        if !gpu_rendered {
+            // --- 1. Draw Glow Name Centered ---
+            let name_x = center.x - name_size.x / 2.0;
+            let name_y = center.y - name_size.y / 2.0;
+            sow_ui_kit::widgets::paint_prepared_name(
+                painter,
+                egui::pos2(name_x, name_y),
+                egui::Align2::LEFT_TOP,
+                prepared,
+                vibrant_color,
+                true,
+            );
+
+            // --- 2. Draw Dove (Soul) Flying Upward Separately ---
+            let dove_rect = egui::Rect::from_center_size(
+                egui::pos2(bird_center_x, bird_center_y),
+                egui::vec2(bird_size, bird_size),
+            );
+            let soul_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
+            if !sow_ui_kit::widgets::try_paint_emoji(painter, emoji, dove_rect, soul_color) {
+                let emoji_galley = painter.layout_no_wrap(
+                    emoji.to_owned(),
+                    egui::FontId::proportional(bird_size),
+                    soul_color,
+                );
+                let emoji_pos = egui::pos2(
+                    dove_rect.center().x - emoji_galley.size().x / 2.0,
+                    dove_rect.center().y - emoji_galley.size().y / 2.0,
+                );
+                painter.galley(emoji_pos, emoji_galley, soul_color);
+            }
         }
 
         true

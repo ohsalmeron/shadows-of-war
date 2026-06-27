@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_thumbnail_decoding() {
-        let bytes = sow_assets::repo_asset_bytes!("maps/world/thumbnail.webp");
+        let bytes = sow_ui_kit::repo_asset_bytes!("maps/world/thumbnail.webp");
         assert!(image::load_from_memory(bytes).is_ok());
     }
 

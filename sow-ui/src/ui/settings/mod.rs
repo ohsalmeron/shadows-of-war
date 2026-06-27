@@ -197,6 +197,24 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     action = Some(UiAction::ToggleCredits);
                 }
             });
+
+            // Dev tools entry point — only compiled into dev/local-QA builds, never prod.
+            // On wasm the leaderboard's dev button is stripped, so this is the way back in.
+            #[cfg(any(feature = "dev", debug_assertions))]
+            {
+                ui.add_space(8.0);
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("Dev Tools").color(palette::neon_gold()))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE),
+                    )
+                    .on_hover_text("Toggle the developer sidebar")
+                    .clicked()
+                {
+                    action = Some(UiAction::ToggleDevSidebar);
+                }
+            }
         },
     );
 

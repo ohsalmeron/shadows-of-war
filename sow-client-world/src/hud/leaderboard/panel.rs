@@ -2,7 +2,7 @@ use super::rows::*;
 use crate::app::SowApp;
 use egui::{Align2, Color32, RichText, Stroke, Vec2};
 use sow_core::protocol::Team;
-use sow_ui_game::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking, INITIAL_VISIBLE_LIMIT};
+use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking, INITIAL_VISIBLE_LIMIT};
 use std::collections::HashSet;
 
 impl SowApp {
@@ -454,7 +454,7 @@ impl SowApp {
             ui.style_mut().spacing.item_spacing = Vec2::new(4.0, 4.0);
 
             ui.horizontal(|ui| {
-                ui.label(RichText::new("🛠 Dev Tools").strong().color(Color32::WHITE));
+                ui.label(RichText::new("🛠 Dev Tools").strong().color(Color32::WHITE)); // emoji-ok: dev-tools header (font fallback)
             });
             ui.add_space(2.0);
             ui.separator();
@@ -485,7 +485,7 @@ impl SowApp {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || 2.5f32)
             });
 
-            ui.collapsing(RichText::new("🗺️ Map & Borders").strong().color(Color32::WHITE), |ui| {
+            ui.collapsing(RichText::new("🗺️ Map & Borders").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
                 ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
                 ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
                 ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
@@ -509,7 +509,7 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.collapsing(RichText::new("🔤 Font Settings (SDF)").strong().color(Color32::WHITE), |ui| {
+            ui.collapsing(RichText::new("🔤 Font Settings (SDF)").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
                 let mut face_dilate = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_face_dilate"), || -0.6f32)
                 });
@@ -560,7 +560,7 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.collapsing(RichText::new("🏛️ Building Emoji").strong().color(Color32::WHITE), |ui| {
+            ui.collapsing(RichText::new("🏛️ Building Emoji").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
                 let mut emoji_outline = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_outline_thickness"), || 1.0f32)
                 });
@@ -584,7 +584,7 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.collapsing(RichText::new("🔫 Bunker Laser VFX").strong().color(Color32::WHITE), |ui| {
+            ui.collapsing(RichText::new("🔫 Bunker Laser VFX").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
                 let mut laser_target = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
                 });

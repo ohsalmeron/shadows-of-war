@@ -7,10 +7,9 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 sow-data = { workspace = true }
-sow-assets = { workspace = true }
-sow-assets-ui = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }
+image = { workspace = true }
 
 [features]
 default = []

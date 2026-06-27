@@ -130,7 +130,7 @@ pub(crate) fn render(
                         let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
                         let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
 
-                        let settings = sow_render::TmpFontSettings {
+                        let settings = crate::render::gpu::TmpFontSettings {
                             face_dilate,
                             outline_thickness,
                             underlay_offset_y: shadow_y,
@@ -206,18 +206,27 @@ pub(crate) fn render(
 
                     let troops_val = attack.troops;
                     let font_id = egui::FontId::proportional(13.0);
+                    let now = web_time::Instant::now();
+                    let rate_limited = ui
+                        .attack_troop_labels_last_update
+                        .get(&attack.id)
+                        .copied()
+                        .is_some_and(|last| now.duration_since(last).as_secs_f32() < 0.5);
+
                     let entry = ui
                         .attack_troop_labels
                         .entry(attack.id)
                         .or_insert_with(|| {
                             let s = sow_ui_kit::utils::format_number(troops_val);
                             let g = middle_painter.layout_no_wrap(s.clone(), font_id.clone(), egui::Color32::WHITE);
+                            ui.attack_troop_labels_last_update.insert(attack.id, now);
                             (troops_val, s, g)
                         });
-                    if (entry.0 - troops_val).abs() > 0.0001 {
+                    if !rate_limited && (entry.0 - troops_val).abs() > 0.0001 {
                         let s = sow_ui_kit::utils::format_number(troops_val);
                         let g = middle_painter.layout_no_wrap(s.clone(), font_id.clone(), egui::Color32::WHITE);
                         *entry = (troops_val, s, g);
+                        ui.attack_troop_labels_last_update.insert(attack.id, now);
                     }
                     let galley = entry.2.clone();
                     let color = if is_incoming {
@@ -240,21 +249,42 @@ pub(crate) fn render(
                         let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
                         let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
 
-                        let settings = sow_render::TmpFontSettings {
+                        let settings = crate::render::gpu::TmpFontSettings {
                             face_dilate,
                             outline_thickness,
                             underlay_offset_y: shadow_y,
                             underlay_softness,
                         };
 
+                        let font_size = 13.0;
+                        let icon_size = font_size * 1.15;
+                        let icon_half = icon_size * 0.5;
+                        let row_w = icon_size + 3.0 + galley.rect.width();
+                        let row_left_x = screen_x - row_w / 2.0;
+                        let troops_row_y = screen_y - galley.rect.height() / 2.0;
+
+                        // Sword emoji
+                        tr.push_emoji(
+                            "⚔",
+                            [(row_left_x + icon_half) * sf, (troops_row_y + icon_half) * sf],
+                            icon_half * sf,
+                            color_arr,
+                            outline_color_arr,
+                            outline_thickness,
+                            shadow_y,
+                        );
+
+                        // Number text left-aligned after sword
+                        let text_left = (row_left_x + icon_size + 3.0) * sf;
+                        let troops_baseline_y = (troops_row_y + galley.rect.height() * 0.85) * sf;
                         tr.push_string(
                             &entry.1,
-                            [screen_x * sf, (screen_y + 4.0) * sf],
-                            13.0 * font_size_scale * sf,
+                            [text_left, troops_baseline_y],
+                            font_size * font_size_scale * sf,
                             color_arr,
                             outline_color_arr,
                             settings,
-                            0.5,
+                            0.0,
                             char_spacing,
                         );
                     }

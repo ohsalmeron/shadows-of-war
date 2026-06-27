@@ -1,4 +1,4 @@
-use sow_render::MapRenderer;
+use sow_client_world::render::gpu::MapRenderer;
 
 use super::state::*;
 

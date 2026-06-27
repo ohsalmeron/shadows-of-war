@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use crate::context::RenderContext;
+use crate::render::gpu::context::RenderContext;
 use blade_graphics as gpu;
 use bytemuck::{Pod, Zeroable};
 
@@ -83,7 +83,7 @@ pub struct FontAtlas {
 
 impl FontAtlas {
     pub fn load_static() -> Self {
-        let json_str = include_str!("../../assets/static/fonts/msdf-atlas.json");
+        let json_str = include_str!("../../../../assets/static/fonts/msdf-atlas.json");
         let atlas: MsdfAtlas = serde_json::from_str(json_str).expect("Failed to parse MSDF atlas JSON");
         let mut char_map = HashMap::new();
         for c in &atlas.chars {
@@ -211,7 +211,7 @@ impl FontAtlasTexture {
     }
 
     pub fn new(context: &gpu::Context) -> Self {
-        let png_bytes = include_bytes!("../../assets/static/fonts/msdf-atlas.png");
+        let png_bytes = include_bytes!("../../../../assets/static/fonts/msdf-atlas.png");
         // ponytail: font atlas contains signed distance values (linear data), emoji atlas contains sRGB colors
         Self::from_bytes(context, png_bytes, "font_atlas", gpu::TextureFormat::Rgba8Unorm)
     }
@@ -254,12 +254,12 @@ impl TextRenderer {
         let font_atlas_tex = FontAtlasTexture::new(context);
         let emoji_atlas_tex = FontAtlasTexture::from_bytes(
             context,
-            sow_assets::EMOJI_ATLAS_BYTES,
+            sow_ui_kit::EMOJI_ATLAS_BYTES,
             "emoji_atlas",
             gpu::TextureFormat::Rgba8UnormSrgb, // ponytail: hardware sRGB decode
         );
 
-        let shader_source = include_str!("shaders/text_glow.wgsl");
+        let shader_source = include_str!("../shaders/text_glow.wgsl");
         let shader = context.create_shader(gpu::ShaderDesc {
             source: shader_source,
             naga_module: None,
@@ -369,99 +369,104 @@ impl TextRenderer {
             return;
         }
 
-        let base_size = 48.0;
-        let scale = font_size / base_size;
-        let mut x_advance = 0.0f32;
-        let mut glyphs: Vec<(MsdfChar, f32)> = Vec::new();
-        // Buffer emojis alongside glyphs so the alignment offset is correct for both.
-        struct EmojiSlot {
-            uv: [f32; 4],
-            size: f32, // square
-            advance: f32,
-        }
-        let mut emojis: Vec<EmojiSlot> = Vec::new();
-        let mut prev_char = Option::<char>::None;
+        let scale = font_size / 48.0;
+        let aw = self.font_atlas_tex.width as f32;
+        let ah = self.font_atlas_tex.height as f32;
+        let base = self.font_atlas_desc.atlas.common.base as f32;
 
-        let ci: Vec<(usize, char)> = text.char_indices().collect();
-        let mut i = 0;
-        while i < ci.len() {
-            let (_, ch) = ci[i];
-            if let Some(glyph) = self.font_atlas_desc.char_map.get(&ch).cloned() {
+        // Real zero-allocation layout: emit instances straight into the persistent
+        // `upload_instances` buffer (already capacity-reserved + cleared per frame),
+        // remember where this string started, then apply horizontal alignment as a
+        // single in-place shift. No per-call scratch Vec — see README "Zero-Allocation
+        // Hot Path". Replaces the mislabeled with_capacity(32)/(8) per-call heap allocs.
+        let start = self.upload_instances.len();
+        let mut x_advance = 0.0f32;
+        let mut prev_char = Option::<char>::None;
+        let mut chars = text.char_indices().peekable();
+
+        while let Some((byte_idx, ch)) = chars.next() {
+            if let Some(glyph) = self.font_atlas_desc.char_map.get(&ch) {
                 let kern = prev_char
                     .and_then(|p| self.font_atlas_desc.kerning_map.get(&(p, ch)))
                     .copied()
                     .unwrap_or(0) as f32;
-                let x_offset = (glyph.xoffset as f32 + kern) * scale;
-                let char_x = x_advance + x_offset;
+                let char_x = x_advance + (glyph.xoffset as f32 + kern) * scale;
                 x_advance += (glyph.xadvance as f32 + kern) * scale * char_spacing;
                 prev_char = Some(ch);
-                glyphs.push((glyph, char_x));
-                i += 1;
+                // Disjoint field borrow: `glyph` borrows `font_atlas_desc` while we
+                // push to `upload_instances` (a different field), so no intermediate
+                // buffer is needed to satisfy the borrow checker.
+                if self.upload_instances.len() < MAX_TEXT_GLYPHS {
+                    let gw = glyph.width as f32 * scale;
+                    let gh = glyph.height as f32 * scale;
+                    let y_off = glyph.yoffset as f32 * scale;
+                    self.upload_instances.push(TextInstanceGpu {
+                        screen_pos: [pos[0] + char_x, pos[1] - base * scale + y_off],
+                        size: [gw, gh],
+                        uv_rect: [
+                            glyph.x as f32 / aw,
+                            glyph.y as f32 / ah,
+                            (glyph.x + glyph.width) as f32 / aw,
+                            (glyph.y + glyph.height) as f32 / ah,
+                        ],
+                        color,
+                        outline_color,
+                        face_dilate: settings.face_dilate,
+                        outline_thickness: settings.outline_thickness,
+                        underlay_offset_y: settings.underlay_offset_y,
+                        underlay_softness: settings.underlay_softness,
+                        is_emoji: 0.0,
+                    });
+                }
                 continue;
             }
-            let candidate = if i + 1 < ci.len() && ci[i + 1].1 == '\u{fe0f}' {
-                &text[ci[i].0..ci[i + 1].0 + ci[i + 1].1.len_utf8()]
+            let has_selector = chars.peek().map_or(false, |&(_, next_ch)| next_ch == '\u{fe0f}');
+            let char_len = ch.len_utf8();
+            let total_len = if has_selector {
+                char_len + '\u{fe0f}'.len_utf8()
             } else {
-                &text[ci[i].0..ci[i].0 + ch.len_utf8()]
+                char_len
             };
-            let stripped = candidate.strip_suffix('\u{fe0f}').unwrap_or(candidate);
+            let candidate = &text[byte_idx..byte_idx + total_len];
+            let stripped = if has_selector {
+                &text[byte_idx..byte_idx + char_len]
+            } else {
+                candidate
+            };
             if let Some(uv) = emoji_uv_opt(stripped) {
                 let emoji_size = font_size * 1.4;
                 let advance = x_advance;
                 x_advance += emoji_size * char_spacing;
                 prev_char = None;
-                emojis.push(EmojiSlot { uv, size: emoji_size, advance });
-                i += if candidate.len() > ch.len_utf8() { 2 } else { 1 };
+                if self.upload_instances.len() < MAX_TEXT_GLYPHS {
+                    self.upload_instances.push(TextInstanceGpu {
+                        screen_pos: [pos[0] + advance, pos[1] - emoji_size],
+                        size: [emoji_size, emoji_size],
+                        uv_rect: uv,
+                        color,
+                        outline_color,
+                        face_dilate: 0.0,
+                        outline_thickness: settings.outline_thickness,
+                        underlay_offset_y: settings.underlay_offset_y,
+                        underlay_softness: 0.0,
+                        is_emoji: 1.0,
+                    });
+                }
+                if has_selector {
+                    chars.next();
+                }
                 continue;
             }
             prev_char = None;
-            i += 1;
         }
 
+        // Alignment is one cheap in-place pass over the instances we just emitted,
+        // replacing the old second buffer-building loop.
         let align_offset = x_advance * align_x;
-        let aw = self.font_atlas_tex.width as f32;
-        let ah = self.font_atlas_tex.height as f32;
-        let base = self.font_atlas_desc.atlas.common.base as f32;
-
-        for (glyph, char_x) in &glyphs {
-            let gw = glyph.width as f32 * scale;
-            let gh = glyph.height as f32 * scale;
-            let y_off = glyph.yoffset as f32 * scale;
-            let gx = pos[0] + char_x - align_offset;
-            let gy = pos[1] - base * scale + y_off;
-            self.push_inst(TextInstanceGpu {
-                screen_pos: [gx, gy],
-                size: [gw, gh],
-                uv_rect: [
-                    glyph.x as f32 / aw,
-                    glyph.y as f32 / ah,
-                    (glyph.x + glyph.width) as f32 / aw,
-                    (glyph.y + glyph.height) as f32 / ah,
-                ],
-                color,
-                outline_color,
-                face_dilate: settings.face_dilate,
-                outline_thickness: settings.outline_thickness,
-                underlay_offset_y: settings.underlay_offset_y,
-                underlay_softness: settings.underlay_softness,
-                is_emoji: 0.0,
-            });
-        }
-        for em in &emojis {
-            let ex = pos[0] + em.advance - align_offset;
-            let ey = pos[1] - em.size;
-            self.push_inst(TextInstanceGpu {
-                screen_pos: [ex, ey],
-                size: [em.size, em.size],
-                uv_rect: em.uv,
-                color,
-                outline_color,
-                face_dilate: 0.0,
-                outline_thickness: settings.outline_thickness,
-                underlay_offset_y: settings.underlay_offset_y,
-                underlay_softness: 0.0,
-                is_emoji: 1.0,
-            });
+        if align_offset != 0.0 {
+            for inst in &mut self.upload_instances[start..] {
+                inst.screen_pos[0] -= align_offset;
+            }
         }
     }
 
@@ -507,7 +512,8 @@ impl TextRenderer {
             unsafe {
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
             }
-            context.sync_buffer(self.buffer, 0, self.buffer.size());
+            // ponytail: only sync active slice to avoid massive WASM/WebGL overhead
+            context.sync_buffer(self.buffer, 0, bytes.len() as u64);
         }
     }
 

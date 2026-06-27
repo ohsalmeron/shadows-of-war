@@ -1,13 +1,13 @@
 use crate::app::SowApp;
 use blade_graphics as gpu;
-use sow_render::MapGlobals;
+use crate::render::gpu::MapGlobals;
 use sow_ui_kit::ClientPhase;
 
 mod ui;
 
 impl SowApp {
     pub fn render_frame(&mut self, _event_loop: &dyn winit::event_loop::ActiveEventLoop) {
-        sow_assets_ui::register_game_assets(&self.ui.egui_ctx);
+        sow_ui_kit::register_game_assets(&self.ui.egui_ctx);
 
         #[cfg(target_arch = "wasm32")]
         if let Some(win) = self.gfx.window.as_ref() {
@@ -391,7 +391,7 @@ impl SowApp {
                         _pad3: 0.0,
                         _pad4: 0.0,
                     };
-                    let colors_struct = sow_render::PlayerColors {
+                    let colors_struct = crate::render::gpu::PlayerColors {
                         colors: player_colors,
                     };
                     mr.draw(
@@ -404,7 +404,7 @@ impl SowApp {
 
                     if self.gfx.text_renderer.is_none() {
                         let surface_format = s.info().format;
-                        let tr = sow_render::TextRenderer::new(&render_ctx.context, surface_format);
+                        let tr = crate::render::gpu::TextRenderer::new(&render_ctx.context, surface_format);
                         render_ctx.command_encoder.init_texture(tr.font_atlas_tex.texture);
                         tr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
                         self.gfx.text_renderer = Some(tr);
@@ -414,7 +414,7 @@ impl SowApp {
                     if vfx_flags.mover_trails {
                         if self.gfx.mover_renderer.is_none() {
                             let surface_format = s.info().format;
-                            self.gfx.mover_renderer = Some(sow_render::MoverRenderer::new(
+                            self.gfx.mover_renderer = Some(crate::render::gpu::MoverRenderer::new(
                                 &render_ctx.context,
                                 surface_format,
                             ));
@@ -444,7 +444,7 @@ impl SowApp {
                                 mover_r,
                                 pack,
                             );
-                            let mover_globals = sow_render::MoverGlobals {
+                            let mover_globals = crate::render::gpu::MoverGlobals {
                                 camera_pos: [self.input.camera_x, self.input.camera_y],
                                 zoom: self.input.camera_zoom,
                                 sprite_count: 0,

@@ -3688,20 +3688,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sow-assets"
-version = "0.1.0"
-
-[[package]]
-name = "sow-assets-ui"
-version = "0.1.0"
-dependencies = [
- "egui",
- "image",
- "sow-assets",
- "sow-data",
-]
-
-[[package]]
 name = "sow-audio"
 version = "0.1.0"
 dependencies = [
@@ -3725,7 +3711,9 @@ dependencies = [
  "bincode",
  "blade-egui",
  "blade-graphics",
+ "blade-macros",
  "brotli",
+ "bytemuck",
  "console_error_panic_hook",
  "console_log",
  "crossbeam-channel",
@@ -3737,18 +3725,15 @@ dependencies = [
  "js-sys",
  "log",
  "open",
+ "raw-window-handle",
  "serde",
  "serde_json",
- "sow-assets",
- "sow-assets-ui",
  "sow-audio",
  "sow-core",
  "sow-data",
  "sow-i18n",
  "sow-net",
- "sow-render",
  "sow-ui",
- "sow-ui-game",
  "sow-ui-kit",
  "tokio",
  "url",
@@ -3769,7 +3754,6 @@ dependencies = [
  "libm",
  "log",
  "serde",
- "sow-assets",
  "sow-data",
  "wyrand",
 ]
@@ -3846,10 +3830,9 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sow-assets-ui",
+ "sow-client-world",
  "sow-core",
  "sow-i18n",
- "sow-render",
  "sow-ui",
  "sow-ui-kit",
  "tokio",
@@ -3894,26 +3877,6 @@ dependencies = [
  "sow-net",
  "tokio",
  "tokio-tungstenite",
-]
-
-[[package]]
-name = "sow-render"
-version = "0.1.0"
-dependencies = [
- "blade-graphics",
- "blade-macros",
- "bytemuck",
- "env_logger",
- "image",
- "log",
- "raw-window-handle",
- "serde",
- "serde_json",
- "sow-assets",
- "sow-core",
- "sow-data",
- "web-time",
- "winit",
 ]
 
 [[package]]
@@ -3967,22 +3930,6 @@ dependencies = [
  "egui",
  "image",
  "log",
- "sow-assets",
- "sow-assets-ui",
- "sow-core",
- "sow-data",
- "sow-i18n",
- "sow-ui-kit",
- "web-time",
-]
-
-[[package]]
-name = "sow-ui-game"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "egui",
- "log",
  "sow-core",
  "sow-data",
  "sow-i18n",
@@ -3995,9 +3942,8 @@ name = "sow-ui-kit"
 version = "0.1.0"
 dependencies = [
  "egui",
+ "image",
  "log",
- "sow-assets",
- "sow-assets-ui",
  "sow-data",
 ]
 

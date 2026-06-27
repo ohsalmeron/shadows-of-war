@@ -246,14 +246,11 @@ impl ApplicationHandler for SowApp {
         // Dynamically adjust winit control flow: Poll during active gameplay to ensure simulation
         // ticks and nameplate/ui transitions animate smoothly even when there are no user input events,
         // and Wait in other screens (like Main Menu) to preserve CPU and battery.
-        #[cfg(not(target_arch = "wasm32"))]
         let flow = if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
             winit::event_loop::ControlFlow::Poll
         } else {
             winit::event_loop::ControlFlow::Wait
         };
-        #[cfg(target_arch = "wasm32")]
-        let flow = winit::event_loop::ControlFlow::Wait;
 
         event_loop.set_control_flow(flow);
 

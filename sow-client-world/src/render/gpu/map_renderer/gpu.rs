@@ -1,7 +1,7 @@
 use super::cpu_prep::{
     compute_has_border, fill_terrain_buffer, get_neighbors, MapGlobals, PlayerColors,
 };
-use crate::context::RenderContext;
+use crate::render::gpu::context::RenderContext;
 use blade_graphics as gpu;
 use blade_macros::ShaderData;
 
@@ -154,7 +154,7 @@ impl MapRenderer {
         });
 
         // --- Shader & pipeline ---
-        let source = include_str!("../shaders/map.wgsl");
+        let source = include_str!("../../shaders/map.wgsl");
         let shader = context.create_shader(gpu::ShaderDesc {
             source,
             naga_module: None,

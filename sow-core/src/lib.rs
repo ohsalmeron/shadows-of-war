@@ -31,5 +31,14 @@ pub mod protocol;
 pub mod tribes;
 pub mod water_components;
 
-pub use sow_assets::repo_asset_bytes;
+#[macro_export]
+macro_rules! repo_asset_bytes {
+    ($path:expr) => {
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../assets/static/",
+            $path
+        ))
+    };
+}
 pub use sow_data::{leader_for_civilization, Civilization, Leader, NamedColor, PREMIUM_COLORS};

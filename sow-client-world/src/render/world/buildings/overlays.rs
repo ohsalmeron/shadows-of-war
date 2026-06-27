@@ -112,7 +112,7 @@ pub(super) fn paint_building_overlays(
             let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
             let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
 
-            let settings = sow_render::TmpFontSettings {
+            let settings = crate::render::gpu::TmpFontSettings {
                 face_dilate,
                 outline_thickness,
                 underlay_offset_y: shadow_y,

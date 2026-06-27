@@ -1,6 +1,6 @@
 use sow_core::game::{ProjectileKind, UnitType};
 use sow_core::protocol::{FleetSnapshot, PlayerSnapshot, ProjectileSnapshot, SimSnapshot};
-use sow_render::{MoverInstanceGpu, MoverSpriteId, TrailSegmentGpu};
+use crate::render::gpu::{MoverInstanceGpu, MoverSpriteId, TrailSegmentGpu};
 use std::collections::{HashMap, HashSet};
 use web_time::Instant;
 
@@ -336,7 +336,7 @@ impl MoverScene {
 
     fn push_trail_segments(
         &self,
-        renderer: &mut sow_render::MoverRenderer,
+        renderer: &mut crate::render::gpu::MoverRenderer,
         points: &[[f32; 2]],
         head: [f32; 2],
         width: f32,
@@ -386,7 +386,7 @@ impl MoverScene {
         in_viewport(sx, sy, min_sx, min_sy, max_sx, max_sy)
     }
 
-    pub fn pack_gpu(&self, params: &MoverPackParams<'_>, renderer: &mut sow_render::MoverRenderer) {
+    pub fn pack_gpu(&self, params: &MoverPackParams<'_>, renderer: &mut crate::render::gpu::MoverRenderer) {
         renderer.begin_frame();
         let alpha = params.alpha;
         let margin = screen_margin(params.camera_zoom);
@@ -539,7 +539,7 @@ pub fn update_and_pack(
     scene: &mut MoverScene,
     snap: &SimSnapshot,
     map_w: u32,
-    renderer: &mut sow_render::MoverRenderer,
+    renderer: &mut crate::render::gpu::MoverRenderer,
     params: MoverPackParams<'_>,
 ) {
     scene.on_snapshot(snap, map_w);

@@ -4,7 +4,7 @@ use crate::hud::nameplate::nameplate_matte_player_rgb;
 use egui::{Align, Align2, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
 use sow_core::player::PlayerType;
 use sow_core::protocol::{PlayerSnapshot, Team};
-use sow_ui_game::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking};
+use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking};
 
 pub(super) const REFRESH_INTERVAL_SECS: f32 = 2.0;
 pub(super) const SCROLL_LOAD_STEP: usize = 10;
