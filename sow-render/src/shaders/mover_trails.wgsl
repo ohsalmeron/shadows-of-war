@@ -61,3 +61,11 @@ fn vs_main(@builtin(vertex_index) vi: u32, seg: TrailSegment) -> TrailVertexOutp
 fn fs_main(in: TrailVertexOutput) -> @location(0) vec4<f32> {
     return in.color;
 }
+
+// WebGL canvas is a plain UNORM surface (no hardware linear->sRGB encode), so
+// encode here to match the native sRGB swapchain. Selected by surface format at
+// pipeline creation — same contract as map.wgsl. Alpha stays linear.
+@fragment
+fn fs_main_srgb(in: TrailVertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(pow(in.color.rgb, vec3<f32>(1.0 / 2.2)), in.color.a);
+}

@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use web_time::{Duration, Instant};
 
 /// Subset of [`sow_core::protocol::ProjectileSnapshot`] for detonation / launch detection.
@@ -25,15 +24,6 @@ impl TrackedProjectile {
     pub fn at_path_end(&self) -> bool {
         self.path_cursor + self.steps_per_tick as usize >= self.path_len
     }
-}
-
-/// Cached nameplate text layouts — rebuilt only when name, font, or troops change.
-pub struct CachedNameplate {
-    pub display_name: String,
-    pub troops_str: String,
-    pub font_id: egui::FontId,
-    pub prepared_name: sow_ui_kit::widgets::PreparedName,
-    pub troops_galley: Arc<egui::Galley>,
 }
 
 pub struct GraphicsState {
@@ -148,9 +138,7 @@ pub struct DeathNameplateAnimation {
     pub seed: u32,
     pub player_type: sow_core::player::PlayerType,
     pub player_id: u16,
-    pub nameplate_size: f32,
     pub by_nuke: bool,
-    pub prepared_name: Option<sow_ui_kit::widgets::PreparedName>,
 }
 
 impl std::fmt::Debug for DeathNameplateAnimation {
@@ -165,7 +153,6 @@ impl std::fmt::Debug for DeathNameplateAnimation {
             .field("seed", &self.seed)
             .field("player_type", &self.player_type)
             .field("player_id", &self.player_id)
-            .field("nameplate_size", &self.nameplate_size)
             .field("by_nuke", &self.by_nuke)
             .finish()
     }
@@ -213,8 +200,6 @@ pub struct UiState {
     pub is_spectating: bool,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, TrackedProjectile>,
-    pub nameplate_galleys: std::collections::HashMap<u16, CachedNameplate>,
-    pub nameplate_troops_last_update: std::collections::HashMap<u16, web_time::Instant>,
     pub cached_player_colors: Vec<egui::Color32>,
     pub cached_player_count: usize,
     pub star_svg_registered: bool,
@@ -240,16 +225,70 @@ pub struct UiState {
     pub mover_scene: crate::render::world::movers::MoverScene,
     pub click_markers: Vec<ClickMarker>,
     pub last_build_confirm_time: Option<web_time::Instant>,
+    /// Flash enemy borders red on attack click: (target_player_id, when).
+    pub attack_border_flash: Option<(u16, web_time::Instant)>,
+    /// Screen vignette alert state.
+    pub viewport_alert: Option<ViewportAlertState>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ViewportAlertKind {
+    UnderAttack,
+    AllianceRequest,
+    Betrayal,
+    ConquerPlayer,
+    Victory,
+    Defeat,
+}
+
+pub struct ViewportAlertState {
+    pub kind: ViewportAlertKind,
+    pub start_time: web_time::Instant,
+}
+
+/// Shared flash duration for all one-shot visual feedback (border flash + vignette).
+pub const FLASH_DURATION: f32 = 0.5;
+
+/// Ease-out quadratic: returns 1→0 over `FLASH_DURATION`, or `None` if expired.
+#[inline]
+pub fn easeout_flash(elapsed: f32) -> Option<f32> {
+    if elapsed >= FLASH_DURATION {
+        None
+    } else {
+        let t = 1.0 - elapsed / FLASH_DURATION;
+        Some(t * t)
+    }
 }
 
 impl UiState {
     pub fn invalidate_egui_dependent_caches(&mut self) {
-        self.nameplate_galleys.clear();
-        self.nameplate_troops_last_update.clear();
         self.cached_galleys.clear();
         self.cached_prepared_names.clear();
         self.attack_troop_labels.clear();
         self.attack_troop_labels_last_update.clear();
+    }
+
+    pub(crate) fn trigger_viewport_alert(&mut self, kind: ViewportAlertKind) {
+        let priority = |k: ViewportAlertKind| match k {
+            ViewportAlertKind::Victory | ViewportAlertKind::Defeat => 4,
+            ViewportAlertKind::Betrayal => 3,
+            ViewportAlertKind::ConquerPlayer => 2,
+            ViewportAlertKind::AllianceRequest => 1,
+            ViewportAlertKind::UnderAttack => 0,
+        };
+
+        let should_replace = if let Some(ref current) = self.viewport_alert {
+            priority(kind) >= priority(current.kind)
+        } else {
+            true
+        };
+
+        if should_replace {
+            self.viewport_alert = Some(ViewportAlertState {
+                kind,
+                start_time: web_time::Instant::now(),
+            });
+        }
     }
 }
 
@@ -267,6 +306,13 @@ impl InterpClock {
         let t = (elapsed / dur).clamp(0.0, 1.0);
         // Smoothstep — same feel as legacy fleet/nuke overlays.
         t * t * (3.0 - 2.0 * t)
+    }
+
+    #[inline]
+    pub fn linear_alpha(&self, now: Instant) -> f32 {
+        let elapsed = now.duration_since(self.last_applied_at).as_secs_f32();
+        let dur = self.tick_dur.as_secs_f32().max(0.001);
+        (elapsed / dur).clamp(0.0, 1.0)
     }
 
     pub fn stamp_applied(&mut self, now: Instant) {

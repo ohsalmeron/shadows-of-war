@@ -31,8 +31,17 @@ pub struct MapGlobals {
     pub effect_fallout: f32,
     pub effect_golden_hour: f32,
     pub effect_holo_grid: f32,
-    pub _pad3: f32,
-    pub _pad4: f32,
+    /// Player ID whose borders should flash red (0 = none).
+    pub attack_flash_target: f32,
+    /// Attack border flash progress: 1.0 → 0.0 ease-out.
+    pub attack_flash_t: f32,
+    /// Viewport alert vignette intensity: 0.0 → 1.0.
+    pub alert_intensity: f32,
+    pub _pad0: f32,
+    pub _pad1: f32,
+    pub _pad2: f32,
+    /// Viewport alert vignette color: [r, g, b, a].
+    pub alert_color: [f32; 4],
 }
 
 #[repr(C)]

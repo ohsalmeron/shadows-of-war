@@ -3,7 +3,53 @@ use sow_core::protocol::SimSnapshot;
 
 impl SowApp {
     pub(crate) fn apply_snapshot_fx(&mut self, snap: &mut SimSnapshot, my_id: u16) {
+        let mut being_attacked_triggered = false;
         if let Some(mut existing) = self.sim.current_snapshot.take() {
+            if my_id != 0 {
+                // 1. Detect incoming attacks (UnderAttack)
+                for attack in &snap.attacks {
+                    if attack.target_owner == my_id && attack.troops > 0.0 {
+                        let is_new_or_increased = if let Some(old_atk) = existing.attacks.iter().find(|a| a.id == attack.id) {
+                            attack.troops > old_atk.troops
+                        } else {
+                            true
+                        };
+                        if is_new_or_increased {
+                            being_attacked_triggered = true;
+                        }
+                    }
+                }
+
+                // 2. Detect new alliance requests targeting us
+                if let Some(my_info_new) = snap.players.iter().find(|p| p.id == my_id) {
+                    if let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id) {
+                        for req in &my_info_new.alliance_requests {
+                            if !my_info_old.alliance_requests.contains(req) {
+                                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::AllianceRequest);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Detect betrayals (ally breaks alliance and is marked traitor)
+                if let Some(my_info_new) = snap.players.iter().find(|p| p.id == my_id) {
+                    if let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id) {
+                        for ally_id in &my_info_old.alliances {
+                            if !my_info_new.alliances.contains(ally_id) {
+                                if let Some(other_player) = snap.players.iter().find(|p| p.id == *ally_id) {
+                                    if other_player.traitor || other_player.active_emoji.as_deref() == Some("🗡️") {
+                                        self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Betrayal);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if being_attacked_triggered {
+                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
+            }
+
             // Detect building level upgrades and completions
             for b_new in &snap.buildings {
                 if let Some(b_old) = existing.buildings.iter().find(|b| b.id == b_new.id) {
@@ -109,3 +155,4 @@ impl SowApp {
         }
     }
 }
+

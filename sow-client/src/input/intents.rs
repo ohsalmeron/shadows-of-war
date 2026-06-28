@@ -44,6 +44,10 @@ impl SowApp {
                 );
             }
             sow_core::protocol::GameplayIntent::Attack(attack) => {
+                // Flash enemy borders red
+                self.ui.attack_border_flash =
+                    Some((attack.target_owner, web_time::Instant::now()));
+
                 let world_x =
                     (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;
                 // Offset up by 60 screen pixels to keep the notice from being covered by a finger/mouse

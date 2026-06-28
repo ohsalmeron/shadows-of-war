@@ -362,6 +362,67 @@ impl SowApp {
                         });
                     }
 
+                    // ── Attack Border Flash ──
+                    let (attack_flash_target, attack_flash_t) = {
+                        if let Some((target_id, when)) = self.ui.attack_border_flash {
+                            let elapsed = current_time.duration_since(when).as_secs_f32();
+                            if let Some(t) = crate::app::easeout_flash(elapsed) {
+                                (target_id as f32, t)
+                            } else {
+                                self.ui.attack_border_flash = None;
+                                (0.0f32, 0.0f32)
+                            }
+                        } else {
+                            (0.0f32, 0.0f32)
+                        }
+                    };
+
+                    // ── Viewport Alert Vignette ──
+                    let currently_under_attack = if let Some(snap) = &self.sim.current_snapshot {
+                        let my_id = self.sim.my_player_id.unwrap_or(0);
+                        my_id != 0 && snap.attacks.iter().any(|a| a.target_owner == my_id && a.troops > 0.0)
+                    } else {
+                        false
+                    };
+
+                    if currently_under_attack {
+                        self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
+                    } else if let Some(ref current) = self.ui.viewport_alert {
+                        if current.kind == crate::app::ViewportAlertKind::UnderAttack {
+                            self.ui.viewport_alert = None;
+                        }
+                    }
+
+                    let (alert_color, alert_intensity) = if let Some(ref alert) = self.ui.viewport_alert {
+                        let kind = alert.kind;
+                        let elapsed = current_time.duration_since(alert.start_time).as_secs_f32();
+                        let persistent = kind == crate::app::ViewportAlertKind::UnderAttack
+                            || kind == crate::app::ViewportAlertKind::Victory
+                            || kind == crate::app::ViewportAlertKind::Defeat;
+
+                        let intensity = if persistent {
+                            (elapsed / crate::app::FLASH_DURATION).min(1.0)
+                        } else {
+                            crate::app::easeout_flash(elapsed).unwrap_or(0.0)
+                        };
+
+                        let color = match kind {
+                            crate::app::ViewportAlertKind::UnderAttack => [1.0, 0.05, 0.05, 0.28],
+                            crate::app::ViewportAlertKind::Victory => [0.1, 0.9, 0.25, 0.45],
+                            crate::app::ViewportAlertKind::Defeat => [0.25, 0.25, 0.3, 0.5],
+                            crate::app::ViewportAlertKind::ConquerPlayer => [0.95, 0.8, 0.0, 0.5],
+                            crate::app::ViewportAlertKind::AllianceRequest => [0.0, 0.8, 0.8, 0.4],
+                            crate::app::ViewportAlertKind::Betrayal => [0.6, 0.0, 0.8, 0.65],
+                        };
+                        (color, intensity)
+                    } else {
+                        ([0.0f32; 4], 0.0f32)
+                    };
+                    // Clear expired one-shot alerts
+                    if alert_intensity <= 0.0 {
+                        self.ui.viewport_alert = None;
+                    }
+
                     let globals = MapGlobals {
                         camera_pos: [self.input.camera_x, self.input.camera_y],
                         zoom: self.input.camera_zoom,
@@ -388,8 +449,13 @@ impl SowApp {
                         effect_fallout: if vfx_flags.fallout { 1.0 } else { 0.0 },
                         effect_golden_hour: if vfx_flags.ambient_grade { 1.0 } else { 0.0 },
                         effect_holo_grid: if vfx_flags.holo_grid { 1.0 } else { 0.0 },
-                        _pad3: 0.0,
-                        _pad4: 0.0,
+                        attack_flash_target,
+                        attack_flash_t,
+                        alert_intensity,
+                        _pad0: 0.0,
+                        _pad1: 0.0,
+                        _pad2: 0.0,
+                        alert_color,
                     };
                     let colors_struct = crate::render::gpu::PlayerColors {
                         colors: player_colors,
@@ -428,6 +494,7 @@ impl SowApp {
                         {
                             let now = web_time::Instant::now();
                             let alpha = crate::render::world::movers::interp_alpha(&self.time, now);
+                            let linear_alpha = self.time.interp.linear_alpha(now);
                             let pack = crate::render::world::movers::MoverPackParams {
                                 camera_x: self.input.camera_x,
                                 camera_y: self.input.camera_y,
@@ -435,6 +502,7 @@ impl SowApp {
                                 screen_w: self.input.screen_w,
                                 screen_h: self.input.screen_h,
                                 alpha,
+                                linear_alpha,
                                 selected_warships: &self.input.selected_warships,
                             };
                             crate::render::world::movers::update_and_pack(

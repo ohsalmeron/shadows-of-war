@@ -89,8 +89,7 @@ fn sample_emoji(uv: vec2<f32>, lo: vec2<f32>, hi: vec2<f32>) -> vec4<f32> {
     return textureSample(emoji_atlas, emoji_sampler, clamp(uv, lo, hi)) * inside_x * inside_y;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn shade_text(in: VertexOutput) -> vec4<f32> {
     if (in.is_emoji > 0.5) {
         let lo = in.uv_rect.xy;
         let hi = in.uv_rect.zw;
@@ -123,7 +122,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let dark_a = max(ring, shadow_a) * in.outline_color.a;
         let out_a = max(fill_a, dark_a);
         if (out_a <= 0.001) {
-            discard;
+            // Transparent (not `discard`): keeps this a plain helper so the
+            // Naga GLSL/WebGL path stays happy; equivalent under alpha blending.
+            return vec4<f32>(0.0);
         }
         let fill_ratio = fill_a / max(out_a, 0.0001);
         let rgb = mix(in.outline_color.rgb, center.rgb, fill_ratio);
@@ -158,4 +159,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let final_rgb = mix(in.outline_color.rgb, in.color.rgb, fill_ratio);
 
     return vec4<f32>(final_rgb, final_a);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return shade_text(in);
+}
+
+// WebGL canvas is a plain UNORM surface (no hardware linear->sRGB encode on
+// write), so we encode here to match the sRGB swapchain used natively. Picked
+// by surface format at pipeline creation — same contract as map.wgsl.
+@fragment
+fn fs_main_srgb(in: VertexOutput) -> @location(0) vec4<f32> {
+    let c = shade_text(in);
+    return vec4<f32>(pow(c.rgb, vec3<f32>(1.0 / 2.2)), c.a);
 }

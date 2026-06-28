@@ -21,6 +21,7 @@ pub(super) fn paint_building_overlays(
     hovered_tile_idx: Option<u32>,
     player_colors: &[egui::Color32],
 ) {
+    let visual_config = crate::config::ClientVisualConfig::default();
     let is_my_building = sim.my_player_id == Some(b.owner_id);
 
     if is_my_building && b.under_construction && b.ticks_until_complete > 0 && zoom_scaled >= 1.5 && crate::app::vfx_on(painter.ctx(), |f| f.upgrade_plate) {
@@ -111,7 +112,7 @@ pub(super) fn paint_building_overlays(
             let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
             let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
             let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-            let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
+            let emoji_scale = visual_config.emoji_scale;
 
             let settings = crate::render::gpu::TmpFontSettings {
                 face_dilate,

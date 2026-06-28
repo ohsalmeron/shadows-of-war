@@ -295,8 +295,6 @@ impl SowApp {
                 is_spectating: false,
                 fallout_zones: Vec::new(),
                 last_projectiles: std::collections::HashMap::new(),
-                nameplate_galleys: std::collections::HashMap::new(),
-                nameplate_troops_last_update: std::collections::HashMap::new(),
                 cached_player_colors: Vec::new(),
                 cached_player_count: 0,
                 star_svg_registered: false,
@@ -319,6 +317,8 @@ impl SowApp {
                 mover_scene: crate::render::world::movers::MoverScene::new(),
                 click_markers: Vec::new(),
                 last_build_confirm_time: None,
+                attack_border_flash: None,
+                viewport_alert: None,
             },
             time: TimeState {
                 interp,

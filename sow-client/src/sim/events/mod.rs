@@ -39,6 +39,9 @@ impl SowApp {
                         &assists,
                         by_nuke,
                     );
+                    if conqueror_id == my_id && my_id != 0 {
+                        self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::ConquerPlayer);
+                    }
                 }
                 sow_core::game::GameEvent::TileCaptured {
                     x,

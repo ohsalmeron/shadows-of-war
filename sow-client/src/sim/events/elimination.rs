@@ -114,15 +114,13 @@ impl SowApp {
             // Spawn death nameplate animation
             let mut target_player_type = sow_core::player::PlayerType::Bot;
             let mut player_color = egui::Color32::WHITE;
-            let mut target_nameplate_size = 0.0;
 
             if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
                 target_player_type = target.player_type;
                 player_color = crate::hud::nameplate::ensure_readable_nameplate_color(target.color);
-                target_nameplate_size = (target.tile_count as f32).sqrt().clamp(0.2, 24.0);
             }
 
-            // Prefer smoothed label positions and sizes if available
+            // Prefer smoothed label positions if available
             let anim_wx = self
                 .ui
                 .label_positions
@@ -135,13 +133,6 @@ impl SowApp {
                 .get(&player_id)
                 .map(|p| p.1)
                 .unwrap_or(wy);
-            let anim_size = self
-                .ui
-                .label_sizes
-                .get(&player_id)
-                .copied()
-                .unwrap_or(target_nameplate_size)
-                .max(0.2);
 
             let seed = (player_id as u32)
                 .wrapping_mul(2654435761)
@@ -158,9 +149,7 @@ impl SowApp {
                     seed,
                     player_type: target_player_type,
                     player_id,
-                    nameplate_size: anim_size,
                     by_nuke,
-                    prepared_name: None,
                 });
         }
 

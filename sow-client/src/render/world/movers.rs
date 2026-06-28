@@ -126,6 +126,7 @@ pub struct MoverPackParams<'a> {
     pub screen_w: f32,
     pub screen_h: f32,
     pub alpha: f32,
+    pub linear_alpha: f32,
     pub selected_warships: &'a [u64],
 }
 
@@ -282,9 +283,9 @@ impl MoverScene {
 
         let is_nuke = matches!(proj.kind, ProjectileKind::Nuke { .. });
         let key = proj.id | (1u64 << 63);
+        self.arc_paths.insert(key, proj.path.clone());
 
         let (trail_start, trail_len) = if is_nuke {
-            self.arc_paths.insert(key, proj.path.clone());
             (0, 0)
         } else {
             let trail_start = self.trail_points.len() as u32;
@@ -398,10 +399,34 @@ impl MoverScene {
 
         for (id, &idx) in &self.id_to_idx {
             let slot = &self.slots[idx as usize];
-            let wx = slot.prev_x + (slot.curr_x - slot.prev_x) * alpha;
-            let wy = slot.prev_y + (slot.curr_y - slot.prev_y) * alpha;
-            let progress = slot.path_progress_prev
-                + (slot.path_progress_curr - slot.path_progress_prev) * alpha;
+            
+            let (wx, wy, progress) = if slot.is_fleet {
+                let wx = slot.prev_x + (slot.curr_x - slot.prev_x) * alpha;
+                let wy = slot.prev_y + (slot.curr_y - slot.prev_y) * alpha;
+                let progress = slot.path_progress_prev
+                    + (slot.path_progress_curr - slot.path_progress_prev) * alpha;
+                (wx, wy, progress)
+            } else {
+                let progress = slot.path_progress_prev
+                    + (slot.path_progress_curr - slot.path_progress_prev) * params.linear_alpha;
+                if let Some(path) = self.arc_paths.get(id) {
+                    let path_len = path.len();
+                    if path_len > 0 {
+                        let idx_f = progress * (path_len - 1) as f32;
+                        let pos = path_world_at(path, self.map_w, idx_f);
+                        (pos.0, pos.1, progress)
+                    } else {
+                        let wx = slot.prev_x + (slot.curr_x - slot.prev_x) * params.linear_alpha;
+                        let wy = slot.prev_y + (slot.curr_y - slot.prev_y) * params.linear_alpha;
+                        (wx, wy, progress)
+                    }
+                } else {
+                    let wx = slot.prev_x + (slot.curr_x - slot.prev_x) * params.linear_alpha;
+                    let wy = slot.prev_y + (slot.curr_y - slot.prev_y) * params.linear_alpha;
+                    (wx, wy, progress)
+                }
+            };
+
             let height = if slot.is_fleet {
                 0.0
             } else {
@@ -426,17 +451,23 @@ impl MoverScene {
             };
 
             if slot.arc_trail {
-                if let Some(path) = self.arc_paths.get(id) {
-                    sample_nuke_arc(path, self.map_w, progress, &mut arc_scratch);
-                    if self.arc_visible(
-                        &arc_scratch,
-                        world_pos,
-                        params,
-                        min_sx,
-                        min_sy,
-                        max_sx,
-                        max_sy,
-                    ) {
+                // Fast O(1) nuke arc bounding box frustum culling
+                let min_x = slot.prev_x.min(slot.curr_x);
+                let max_x = slot.prev_x.max(slot.curr_x);
+                let min_y = slot.prev_y.min(slot.curr_y) - NUKE_ARC_PEAK * NUKE_ARC_LIFT;
+                let max_y = slot.prev_y.max(slot.curr_y);
+
+                let min_sx = params.camera_x + min_x * params.camera_zoom;
+                let max_sx = params.camera_x + max_x * params.camera_zoom;
+                let min_sy = params.camera_y + min_y * params.camera_zoom;
+                let max_sy = params.camera_y + max_y * params.camera_zoom;
+
+                let arc_visible = max_sx >= -margin && min_sx <= params.screen_w + margin
+                    && max_sy >= -margin && min_sy <= params.screen_h + margin;
+
+                if arc_visible {
+                    if let Some(path) = self.arc_paths.get(id) {
+                        sample_nuke_arc(path, self.map_w, progress, &mut arc_scratch);
                         self.push_trail_segments(
                             renderer,
                             &arc_scratch,

@@ -71,3 +71,13 @@ fn fs_main(in: SpriteVertexOutput) -> @location(0) vec4<f32> {
     let tex = textureSample(sprite_atlas, sprite_sampler, in.uv);
     return tex * in.color;
 }
+
+// WebGL canvas is a plain UNORM surface (no hardware linear->sRGB encode), so
+// encode here to match the native sRGB swapchain. Selected by surface format at
+// pipeline creation — same contract as map.wgsl. Alpha stays linear.
+@fragment
+fn fs_main_srgb(in: SpriteVertexOutput) -> @location(0) vec4<f32> {
+    let tex = textureSample(sprite_atlas, sprite_sampler, in.uv);
+    let c = tex * in.color;
+    return vec4<f32>(pow(c.rgb, vec3<f32>(1.0 / 2.2)), c.a);
+}

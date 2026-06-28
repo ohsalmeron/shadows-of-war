@@ -280,6 +280,15 @@ impl TextRenderer {
             alpha: gpu::BlendComponent::OVER,
         };
 
+        // Fragment entry contract: sRGB swapchains (native) use `fs_main`; plain
+        // UNORM (wasm WebGL canvas) uses `fs_main_srgb` to encode linear->sRGB
+        // manually, so text/emoji aren't darker than native. Same as map.wgsl.
+        let fragment_entry = if matches!(surface_format, gpu::TextureFormat::Rgba8Unorm) {
+            "fs_main_srgb"
+        } else {
+            "fs_main"
+        };
+
         let pipeline = context.create_render_pipeline(gpu::RenderPipelineDesc {
             name: "text_glow_pipeline",
             data_layouts: &[&text_layout],
@@ -290,7 +299,7 @@ impl TextRenderer {
             }],
             primitive: gpu::PrimitiveState::default(),
             depth_stencil: None,
-            fragment: Some(shader.at("fs_main")),
+            fragment: Some(shader.at(fragment_entry)),
             color_targets: &[gpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(blend),
@@ -469,6 +478,47 @@ impl TextRenderer {
                 inst.screen_pos[0] -= align_offset;
             }
         }
+    }
+
+    /// Measure the rendered width of `text` in the same units as `font_size`, using the exact
+    /// advance math `push_string` emits (glyph xadvance + kerning; emoji = `font_size * emoji_scale`;
+    /// everything scaled by `char_spacing`). Lets callers size text boxes from the real GPU layout
+    /// instead of an egui galley. Keep this loop in lockstep with `push_string`'s advance path.
+    pub fn measure_string(&self, text: &str, font_size: f32, char_spacing: f32, emoji_scale: f32) -> f32 {
+        if text.is_empty() {
+            return 0.0;
+        }
+        let scale = font_size / 48.0;
+        let mut x_advance = 0.0f32;
+        let mut prev_char = Option::<char>::None;
+        let mut chars = text.char_indices().peekable();
+
+        while let Some((byte_idx, ch)) = chars.next() {
+            if let Some(glyph) = self.font_atlas_desc.char_map.get(&ch) {
+                let kern = prev_char
+                    .and_then(|p| self.font_atlas_desc.kerning_map.get(&(p, ch)))
+                    .copied()
+                    .unwrap_or(0) as f32;
+                x_advance += (glyph.xadvance as f32 + kern) * scale * char_spacing;
+                prev_char = Some(ch);
+                continue;
+            }
+            let has_selector = chars.peek().map_or(false, |&(_, next_ch)| next_ch == '\u{fe0f}');
+            let char_len = ch.len_utf8();
+            let stripped = &text[byte_idx..byte_idx + char_len];
+            if emoji_uv_opt(stripped).is_some() {
+                let emoji_size = font_size * emoji_scale;
+                x_advance += emoji_size * char_spacing;
+                prev_char = None;
+                if has_selector {
+                    chars.next();
+                }
+                continue;
+            }
+            prev_char = None;
+        }
+
+        x_advance
     }
 
     /// Push a screen-space emoji with alpha-dilated outline + drop shadow.

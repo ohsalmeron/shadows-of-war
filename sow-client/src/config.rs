@@ -26,6 +26,9 @@ pub struct ClientVisualConfig {
     // Floating gold bounty text ("🪙 +N" on conquer).
     // Base font size in points; bounce scale still applies at runtime.
     pub gold_reward_notice_font_size: f32,
+
+    // Global scale multiplier for emojis relative to the text font size.
+    pub emoji_scale: f32,
 }
 
 impl Default for ClientVisualConfig {
@@ -44,6 +47,7 @@ impl Default for ClientVisualConfig {
             nameplate_size_grow_rate: 12.0,
             death_nameplate_font_size: 18.0,
             gold_reward_notice_font_size: 14.0,
+            emoji_scale: 0.75,
         }
     }
 }

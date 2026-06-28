@@ -112,14 +112,6 @@ pub fn paint_glow_name_label(
     );
 }
 
-pub fn layout_nameplate_troops_galley(
-    painter: &egui::Painter,
-    font_id: egui::FontId,
-    troops_str: &str,
-) -> Arc<egui::Galley> {
-    painter.layout_no_wrap(troops_str.to_owned(), font_id, NAMEPLATE_FILL)
-}
-
 pub fn troops_icon_size(font_id: &egui::FontId) -> f32 {
     font_id.size * 1.15
 }

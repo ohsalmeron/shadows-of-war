@@ -24,8 +24,13 @@ struct Globals {
     effect_fallout: f32,
     effect_golden_hour: f32,
     effect_holo_grid: f32,
-    _pad3: f32,
-    _pad4: f32,
+    attack_flash_target: f32,
+    attack_flash_t: f32,
+    alert_intensity: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
+    alert_color: vec4<f32>,
 }
 
 struct PlayerColors {
@@ -377,6 +382,11 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
                             border_albedo = mix(border_albedo, enemy_albedo * border_darkness, energy_t * 0.22);
                         }
                     }
+                    // ── Attack Border Flash (red flash on click) ──
+                    if globals.attack_flash_t > 0.0 && owner_id == u32(globals.attack_flash_target) {
+                        let red_glow = vec3<f32>(1.0, 0.15, 0.1);
+                        border_albedo = mix(border_albedo, red_glow, globals.attack_flash_t * 0.85);
+                    }
                 }
 
                 base_color = mix(base_color, border_albedo, border_t);
@@ -716,6 +726,15 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
             let line_alpha = line_intensity * 0.35;
             base_color = mix(base_color, overlay_color * 1.2, line_alpha);
         }
+    }
+
+    // ── Unified Viewport Alert Vignette ──
+    if globals.alert_intensity > 0.0 {
+        let edge_dist = min(min(in.uv.x, 1.0 - in.uv.x), min(in.uv.y, 1.0 - in.uv.y));
+        let vignette = 1.0 - smoothstep(0.0, 0.20, edge_dist);
+        let breathe = sin(globals.time * 4.5) * 0.15 + 0.85;
+        let intensity = globals.alert_intensity * vignette * breathe;
+        base_color = mix(base_color, globals.alert_color.rgb, intensity * globals.alert_color.a);
     }
 
     return base_color;

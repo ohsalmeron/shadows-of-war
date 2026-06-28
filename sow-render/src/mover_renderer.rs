@@ -103,6 +103,15 @@ impl MoverRenderer {
             alpha: gpu::BlendComponent::OVER,
         };
 
+        // Fragment entry contract: sRGB swapchains (native) use `fs_main`; plain
+        // UNORM (wasm WebGL canvas) uses `fs_main_srgb` to encode linear->sRGB
+        // manually, so emoji/trail colors match native. Same contract as map.wgsl.
+        let fragment_entry = if matches!(surface_format, gpu::TextureFormat::Rgba8Unorm) {
+            "fs_main_srgb"
+        } else {
+            "fs_main"
+        };
+
         let sprite_pipeline = context.create_render_pipeline(gpu::RenderPipelineDesc {
             name: "mover_sprite_pipeline",
             data_layouts: &[&sprite_layout],
@@ -113,7 +122,7 @@ impl MoverRenderer {
             }],
             primitive: gpu::PrimitiveState::default(),
             depth_stencil: None,
-            fragment: Some(sprite_shader.at("fs_main")),
+            fragment: Some(sprite_shader.at(fragment_entry)),
             color_targets: &[gpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(blend),
@@ -132,7 +141,7 @@ impl MoverRenderer {
             }],
             primitive: gpu::PrimitiveState::default(),
             depth_stencil: None,
-            fragment: Some(trail_shader.at("fs_main")),
+            fragment: Some(trail_shader.at(fragment_entry)),
             color_targets: &[gpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(blend),

@@ -101,8 +101,7 @@ impl SowApp {
                 self.render_placement_cancel_button(ctx);
             }
 
-            #[cfg(any(feature = "dev", debug_assertions))]
-            self.render_dev_panels(ctx);
+            self.render_attacks_panel(ctx, &mut local_cancel_intents);
             sow_ui_kit::theme::publish_lobby_modal_embed(
                 ctx,
                 crate::store_portals::is_lobby_modal_embed(),

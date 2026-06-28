@@ -41,6 +41,22 @@ impl SowApp {
             .and_then(|p| p.team);
         self.maybe_submit_online_stats(&snap);
         self.maybe_record_match_progress(snap.winner, snap.winning_team, my_team);
+
+        // Viewport Alerts: Victory / Defeat
+        if let Some(winner) = snap.winner {
+            if winner == my_id {
+                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Victory);
+            } else {
+                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Defeat);
+            }
+        } else if let Some(w_team) = snap.winning_team {
+            if Some(w_team) == my_team {
+                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Victory);
+            } else {
+                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Defeat);
+            }
+        }
+
         self.sim.current_snapshot = Some(snap);
         self.time.interp.stamp_applied(web_time::Instant::now());
     }
