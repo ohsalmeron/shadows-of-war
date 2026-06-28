@@ -109,3 +109,63 @@ pub fn draw_player_avatar(
         }
     }
 }
+
+/// Avatar atlas slot for a leader portrait (`None` → the shared fallback slot).
+pub fn avatar_slot(leader: Option<sow_core::player::Leader>) -> usize {
+    match leader {
+        Some(l) => sow_core::player::Leader::ALL
+            .iter()
+            .position(|x| *x == l)
+            .unwrap_or(0),
+        None => sow_core::player::Leader::ALL.len(),
+    }
+}
+
+/// GPU-pipeline avatar: fill/portrait + decorative frame rings (+ tribe-animal emoji for bots),
+/// all pushed through the text-emoji `TextRenderer` — no egui. `center`/`radius` are physical px.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_player_avatar_gpu(
+    tr: &mut crate::render::gpu::TextRenderer,
+    center: [f32; 2],
+    radius: f32,
+    player_id: u16,
+    player_name: &str,
+    player_type: sow_core::player::PlayerType,
+    player_color: [f32; 3],
+    leader: sow_core::player::Leader,
+) {
+    let vibrant = crate::hud::nameplate::ensure_readable_nameplate_color(player_color);
+    let vibrant_arr = vibrant.to_array().map(|v| v as f32 / 255.0);
+
+    // Fill / portrait, and pick the frame color.
+    let frame = match player_type {
+        sow_core::player::PlayerType::Human => {
+            let rgb = leader.filler_rgb();
+            let leader_arr = [rgb[0], rgb[1], rgb[2], 1.0];
+            match tr
+                .avatar_uv(avatar_slot(Some(leader)))
+                .or_else(|| tr.avatar_uv(avatar_slot(None)))
+            {
+                Some(uv) => tr.push_sprite(center, radius, uv, [1.0, 1.0, 1.0, 1.0]),
+                None => tr.push_disc(center, radius, leader_arr), // until the portrait arrives
+            }
+            leader_arr
+        }
+        _ => {
+            tr.push_disc(center, radius, vibrant_arr);
+            vibrant_arr
+        }
+    };
+
+    // Decorative frame rings (over the fill), matching the egui avatar.
+    let border = (radius * 0.12).max(1.0);
+    tr.push_ring(center, radius + border * 0.3, [0.0, 0.0, 0.0, 160.0 / 255.0], border);
+    tr.push_ring(center, radius, frame, border * 0.8);
+    tr.push_ring(center, radius - border * 0.15, [1.0, 1.0, 1.0, 80.0 / 255.0], border * 0.35);
+
+    // Bot tribe-animal emoji sits on top.
+    if player_type == sow_core::player::PlayerType::Bot {
+        let animal = sow_core::player::tribe_animal(player_id, player_name);
+        tr.push_emoji(animal, center, radius * 0.7, [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], 0.0, 0.0);
+    }
+}

@@ -300,21 +300,17 @@ impl SowApp {
                 &mut self.gfx,
                 &ctx_struct,
             );
-            if let Some(ref mut tr) = self.gfx.text_renderer {
-                nameplates::render(
-                    &mut self.ui,
-                    &self.sim,
-                    &self.input,
-                    &self.time,
-                    tr,
-                    &ctx_struct,
-                );
-            }
+            nameplates::render(
+                &mut self.ui,
+                &self.sim,
+                &self.input,
+                &self.time,
+                &mut self.gfx,
+                &ctx_struct,
+            );
 
             if crate::app::vfx_on(painter.ctx(), |f| f.death_nameplates) {
-                if let Some(ref mut tr) = self.gfx.text_renderer {
-                    nameplates::render_death_nameplates(&mut self.ui, &self.input, tr, sf, now);
-                }
+                nameplates::render_death_nameplates(&mut self.ui, &self.input, &mut self.gfx, sf, now);
             }
 
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
@@ -375,7 +371,12 @@ impl SowApp {
                         let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
                         let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
                         let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-                        let emoji_scale = visual_config.emoji_scale;
+                        let raw_emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
+                        let emoji_scale = if notice.text.contains('⚔') {
+                            raw_emoji_scale * 0.65
+                        } else {
+                            raw_emoji_scale
+                        };
 
                         let settings = crate::render::gpu::TmpFontSettings {
                             face_dilate,

@@ -134,6 +134,45 @@ impl Default for TmpFontSettings {
     }
 }
 
+/// Per-instance draw kind, selected in the fragment shader. One instanced pipeline draws
+/// MSDF text, color emoji, and procedural shapes (disc/ring) — no separate pipelines.
+pub const KIND_GLYPH: f32 = 0.0;
+pub const KIND_EMOJI: f32 = 1.0;
+pub const KIND_DISC: f32 = 2.0;
+pub const KIND_RING: f32 = 3.0;
+pub const KIND_SPRITE: f32 = 4.0;
+
+// Runtime avatar atlas: a fixed grid of leader-portrait cells, uploaded as they arrive
+// over the network. Sampled by KIND_SPRITE (circle-clipped) so avatars share the one pipeline.
+const AVATAR_CELL: u32 = 128;
+const AVATAR_COLS: u32 = 4;
+const AVATAR_ROWS: u32 = 4;
+pub const AVATAR_SLOT_COUNT: usize = (AVATAR_COLS * AVATAR_ROWS) as usize;
+
+/// UV rect of an avatar slot within the avatar atlas.
+pub fn avatar_slot_uv(slot: usize) -> [f32; 4] {
+    let i = slot as u32;
+    let col = i % AVATAR_COLS;
+    let row = i / AVATAR_COLS;
+    let aw = (AVATAR_COLS * AVATAR_CELL) as f32;
+    let ah = (AVATAR_ROWS * AVATAR_CELL) as f32;
+    let u0 = (col * AVATAR_CELL) as f32 / aw;
+    let v0 = (row * AVATAR_CELL) as f32 / ah;
+    [u0, v0, u0 + AVATAR_CELL as f32 / aw, v0 + AVATAR_CELL as f32 / ah]
+}
+
+/// Decode a network avatar (webp/png) and normalize to one `AVATAR_CELL`-sized RGBA cell.
+pub fn decode_avatar_cell(bytes: &[u8]) -> Option<Vec<u8>> {
+    let img = image::load_from_memory(bytes).ok()?;
+    let resized = image::imageops::resize(
+        &img.to_rgba8(),
+        AVATAR_CELL,
+        AVATAR_CELL,
+        image::imageops::FilterType::Triangle,
+    );
+    Some(resized.into_raw())
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, blade_macros::Vertex)]
 pub struct TextInstanceGpu {
@@ -146,7 +185,8 @@ pub struct TextInstanceGpu {
     pub outline_thickness: f32,
     pub underlay_offset_y: f32,
     pub underlay_softness: f32,
-    pub is_emoji: f32,
+    /// One of the `KIND_*` constants.
+    pub kind: f32,
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -156,6 +196,8 @@ struct TextShaderData {
     font_sampler: gpu::Sampler,
     emoji_atlas: gpu::TextureView,
     emoji_sampler: gpu::Sampler,
+    avatar_atlas: gpu::TextureView,
+    avatar_sampler: gpu::Sampler,
 }
 
 pub struct FontAtlasTexture {
@@ -216,6 +258,45 @@ impl FontAtlasTexture {
         Self::from_bytes(context, png_bytes, "font_atlas", gpu::TextureFormat::Rgba8Unorm)
     }
 
+    /// A transparent texture of `width`×`height`, written later via `upload` (used by the
+    /// runtime avatar atlas, whose cells fill in as portraits arrive).
+    pub fn blank(context: &gpu::Context, width: u32, height: u32, name: &str, format: gpu::TextureFormat) -> Self {
+        let total = (width * 4 * height) as usize;
+        let buffer = context.create_buffer(gpu::BufferDesc {
+            name: &format!("{}_upload_buffer", name),
+            size: total as u64,
+            memory: gpu::Memory::Upload,
+        });
+        let dst = buffer.data();
+        let slice = unsafe { std::slice::from_raw_parts_mut(dst, total) };
+        slice.fill(0);
+        context.sync_buffer(buffer, 0, buffer.size());
+
+        let texture = context.create_texture(gpu::TextureDesc {
+            name: &format!("{}_texture", name),
+            format,
+            size: gpu::Extent { width, height, depth: 1 },
+            dimension: gpu::TextureDimension::D2,
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: gpu::TextureUsage::COPY | gpu::TextureUsage::RESOURCE,
+            external: None,
+        });
+
+        let view = context.create_texture_view(
+            texture,
+            gpu::TextureViewDesc {
+                name: &format!("{}_view", name),
+                format,
+                dimension: gpu::ViewDimension::D2,
+                subresources: &gpu::TextureSubresources::default(),
+            },
+        );
+
+        Self { texture, view, buffer, width, height }
+    }
+
     pub fn upload(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context) {
         let bytes_per_row = self.width * 4;
         context.sync_buffer(self.buffer, 0, self.buffer.size());
@@ -241,10 +322,14 @@ pub struct TextRenderer {
     pub font_atlas_desc: FontAtlas,
     pub font_atlas_tex: FontAtlasTexture,
     emoji_atlas_tex: FontAtlasTexture,
+    avatar_atlas_tex: FontAtlasTexture,
+    avatar_loaded: [bool; AVATAR_SLOT_COUNT],
+    avatar_dirty: bool,
     pipeline: gpu::RenderPipeline,
     buffer: gpu::Buffer,
     sampler: gpu::Sampler,
     emoji_sampler: gpu::Sampler,
+    avatar_sampler: gpu::Sampler,
     pub upload_instances: Vec<TextInstanceGpu>,
 }
 
@@ -257,6 +342,13 @@ impl TextRenderer {
             crate::EMOJI_ATLAS_BYTES,
             "emoji_atlas",
             gpu::TextureFormat::Rgba8UnormSrgb, // ponytail: hardware sRGB decode
+        );
+        let avatar_atlas_tex = FontAtlasTexture::blank(
+            context,
+            AVATAR_COLS * AVATAR_CELL,
+            AVATAR_ROWS * AVATAR_CELL,
+            "avatar_atlas",
+            gpu::TextureFormat::Rgba8UnormSrgb, // portraits are sRGB color, like emoji
         );
 
         let shader_source = include_str!("shaders/text_glow.wgsl");
@@ -328,14 +420,25 @@ impl TextRenderer {
             ..Default::default()
         });
 
+        let avatar_sampler = context.create_sampler(gpu::SamplerDesc {
+            name: "avatar_atlas_sampler",
+            mag_filter: gpu::FilterMode::Linear,
+            min_filter: gpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             font_atlas_desc,
             font_atlas_tex,
             emoji_atlas_tex,
+            avatar_atlas_tex,
+            avatar_loaded: [false; AVATAR_SLOT_COUNT],
+            avatar_dirty: true, // force first (blank) upload so the texture is defined
             pipeline,
             buffer,
             sampler,
             emoji_sampler,
+            avatar_sampler,
             upload_instances: Vec::with_capacity(4096),
         }
     }
@@ -425,7 +528,7 @@ impl TextRenderer {
                         outline_thickness: settings.outline_thickness,
                         underlay_offset_y: settings.underlay_offset_y,
                         underlay_softness: settings.underlay_softness,
-                        is_emoji: 0.0,
+                        kind: KIND_GLYPH,
                     });
                 }
                 continue;
@@ -459,7 +562,7 @@ impl TextRenderer {
                         outline_thickness: settings.outline_thickness,
                         underlay_offset_y: settings.underlay_offset_y,
                         underlay_softness: 0.0,
-                        is_emoji: 1.0,
+                        kind: KIND_EMOJI,
                     });
                 }
                 if has_selector {
@@ -507,8 +610,7 @@ impl TextRenderer {
             let char_len = ch.len_utf8();
             let stripped = &text[byte_idx..byte_idx + char_len];
             if emoji_uv_opt(stripped).is_some() {
-                let emoji_size = font_size * emoji_scale;
-                x_advance += emoji_size * char_spacing;
+                x_advance += font_size * emoji_scale * char_spacing;
                 prev_char = None;
                 if has_selector {
                     chars.next();
@@ -551,9 +653,90 @@ impl TextRenderer {
             outline_thickness,
             underlay_offset_y: shadow_offset_y,
             underlay_softness: 0.0,
-            is_emoji: 1.0,
+            kind: KIND_EMOJI,
         });
         true
+    }
+
+    /// Push a filled, anti-aliased disc. `center`/`radius` are physical pixels.
+    pub fn push_disc(&mut self, center: [f32; 2], radius: f32, color: [f32; 4]) {
+        self.push_inst(TextInstanceGpu {
+            screen_pos: [center[0] - radius, center[1] - radius],
+            size: [radius * 2.0, radius * 2.0],
+            uv_rect: [0.0, 0.0, 1.0, 1.0],
+            color,
+            outline_color: [0.0; 4],
+            face_dilate: 0.0,
+            outline_thickness: 0.0,
+            underlay_offset_y: 0.0,
+            underlay_softness: 0.0,
+            kind: KIND_DISC,
+        });
+    }
+
+    /// Push an anti-aliased ring (stroke) drawn inward from `radius` (the outer edge).
+    /// `radius`/`thickness` are physical pixels.
+    pub fn push_ring(&mut self, center: [f32; 2], radius: f32, color: [f32; 4], thickness: f32) {
+        self.push_inst(TextInstanceGpu {
+            screen_pos: [center[0] - radius, center[1] - radius],
+            size: [radius * 2.0, radius * 2.0],
+            uv_rect: [0.0, 0.0, 1.0, 1.0],
+            color,
+            outline_color: [0.0; 4],
+            face_dilate: 0.0,
+            outline_thickness: thickness,
+            underlay_offset_y: 0.0,
+            underlay_softness: 0.0,
+            kind: KIND_RING,
+        });
+    }
+
+    /// Push a circle-clipped image sprite from the avatar atlas. `center`/`radius` are physical
+    /// pixels; `uv_rect` comes from [`avatar_uv`](Self::avatar_uv); `tint` multiplies the texels.
+    pub fn push_sprite(&mut self, center: [f32; 2], radius: f32, uv_rect: [f32; 4], tint: [f32; 4]) {
+        self.push_inst(TextInstanceGpu {
+            screen_pos: [center[0] - radius, center[1] - radius],
+            size: [radius * 2.0, radius * 2.0],
+            uv_rect,
+            color: tint,
+            outline_color: [0.0; 4],
+            face_dilate: 0.0,
+            outline_thickness: 0.0,
+            underlay_offset_y: 0.0,
+            underlay_softness: 0.0,
+            kind: KIND_SPRITE,
+        });
+    }
+
+    /// Write a decoded `AVATAR_CELL`×`AVATAR_CELL` RGBA portrait into an atlas slot. The atlas
+    /// re-uploads on the next `draw`. Ignores out-of-range slots or wrong-sized data.
+    pub fn upload_avatar(&mut self, slot: usize, rgba_cell: &[u8]) {
+        let cell = AVATAR_CELL as usize;
+        if slot >= AVATAR_SLOT_COUNT || rgba_cell.len() != cell * cell * 4 {
+            return;
+        }
+        let atlas_w = (AVATAR_COLS * AVATAR_CELL) as usize;
+        let x0 = (slot % AVATAR_COLS as usize) * cell;
+        let y0 = (slot / AVATAR_COLS as usize) * cell;
+        let dst_ptr = self.avatar_atlas_tex.buffer.data();
+        let total = atlas_w * (AVATAR_ROWS * AVATAR_CELL) as usize * 4;
+        let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, total) };
+        for y in 0..cell {
+            let s = y * cell * 4;
+            let d = ((y0 + y) * atlas_w + x0) * 4;
+            dst[d..d + cell * 4].copy_from_slice(&rgba_cell[s..s + cell * 4]);
+        }
+        self.avatar_loaded[slot] = true;
+        self.avatar_dirty = true;
+    }
+
+    /// UV rect for a loaded avatar slot, or `None` if that slot hasn't been uploaded yet.
+    pub fn avatar_uv(&self, slot: usize) -> Option<[f32; 4]> {
+        if slot < AVATAR_SLOT_COUNT && self.avatar_loaded[slot] {
+            Some(avatar_slot_uv(slot))
+        } else {
+            None
+        }
     }
 
     fn write_buffers(&self, context: &gpu::Context) {
@@ -582,6 +765,12 @@ impl TextRenderer {
 
         self.write_buffers(context);
 
+        // Flush any newly-arrived avatar portraits into the atlas before sampling them.
+        if self.avatar_dirty {
+            self.avatar_atlas_tex.upload(encoder, context);
+            self.avatar_dirty = false;
+        }
+
         let mut pass = encoder.render(
             "text_pass",
             gpu::RenderTargetSet {
@@ -605,6 +794,8 @@ impl TextRenderer {
             font_sampler: self.sampler,
             emoji_atlas: self.emoji_atlas_tex.view,
             emoji_sampler: self.emoji_sampler,
+            avatar_atlas: self.avatar_atlas_tex.view,
+            avatar_sampler: self.avatar_sampler,
         };
 
         let mut rc = pass.with(&self.pipeline);
@@ -618,11 +809,15 @@ impl TextRenderer {
         render_ctx.context.destroy_buffer(self.buffer);
         render_ctx.context.destroy_sampler(self.sampler);
         render_ctx.context.destroy_sampler(self.emoji_sampler);
+        render_ctx.context.destroy_sampler(self.avatar_sampler);
         render_ctx.context.destroy_texture_view(self.font_atlas_tex.view);
         render_ctx.context.destroy_texture(self.font_atlas_tex.texture);
         render_ctx.context.destroy_buffer(self.font_atlas_tex.buffer);
         render_ctx.context.destroy_texture_view(self.emoji_atlas_tex.view);
         render_ctx.context.destroy_texture(self.emoji_atlas_tex.texture);
         render_ctx.context.destroy_buffer(self.emoji_atlas_tex.buffer);
+        render_ctx.context.destroy_texture_view(self.avatar_atlas_tex.view);
+        render_ctx.context.destroy_texture(self.avatar_atlas_tex.texture);
+        render_ctx.context.destroy_buffer(self.avatar_atlas_tex.buffer);
     }
 }

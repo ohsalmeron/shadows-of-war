@@ -150,6 +150,7 @@ impl SowApp {
                     player_type: target_player_type,
                     player_id,
                     by_nuke,
+                    prepared_name: None,
                 });
         }
 

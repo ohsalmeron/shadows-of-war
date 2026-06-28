@@ -106,7 +106,6 @@ impl SowApp {
         self.ui.tutorial_baseline_tiles = 0;
         self.ui.tutorial_baseline_set = false;
         self.ui.tutorial_objectives_open = true;
-        self.ui.tutorial_modal_dismissed = false;
         self.ui.tutorial_last_kills = 0;
         self.ui.tutorial_met_tribes.clear();
         self.ui.tutorial_pending_intro = None;

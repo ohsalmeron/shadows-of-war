@@ -79,6 +79,10 @@ impl SowApp {
         let egui_ctx = self.ui.egui_ctx.clone();
         if let Some(ref mut tr) = self.gfx.text_renderer {
             tr.begin_frame();
+            // Upload any leader portraits that arrived since last frame into the avatar atlas.
+            for (slot, cell) in self.gfx.pending_avatar_cells.drain(..) {
+                tr.upload_avatar(slot, &cell);
+            }
         }
         let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {
             let insets = ctx.input(|i| i.safe_area_insets());

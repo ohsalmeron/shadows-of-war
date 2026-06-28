@@ -364,17 +364,23 @@ impl SowApp {
 
                     // ── Attack Border Flash ──
                     let (attack_flash_target, attack_flash_t) = {
-                        if let Some((target_id, when)) = self.ui.attack_border_flash {
-                            let elapsed = current_time.duration_since(when).as_secs_f32();
+                        let mut player_intensities: std::collections::HashMap<u16, f32> = std::collections::HashMap::new();
+                        self.ui.border_flashes.retain(|flash| {
+                            let elapsed = current_time.duration_since(flash.start_time).as_secs_f32();
                             if let Some(t) = crate::app::easeout_flash(elapsed) {
-                                (target_id as f32, t)
+                                let entry = player_intensities.entry(flash.player_id).or_insert(0.0);
+                                *entry += t * flash.max_intensity;
+                                true
                             } else {
-                                self.ui.attack_border_flash = None;
-                                (0.0f32, 0.0f32)
+                                false
                             }
-                        } else {
-                            (0.0f32, 0.0f32)
-                        }
+                        });
+
+                        player_intensities
+                            .into_iter()
+                            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                            .map(|(id, t)| (id as f32, t.min(1.5)))
+                            .unwrap_or((0.0, 0.0))
                     };
 
                     // ── Viewport Alert Vignette ──
@@ -407,7 +413,7 @@ impl SowApp {
                         };
 
                         let color = match kind {
-                            crate::app::ViewportAlertKind::UnderAttack => [1.0, 0.05, 0.05, 0.28],
+                            crate::app::ViewportAlertKind::UnderAttack => [1.0, 0.05, 0.05, 0.55],
                             crate::app::ViewportAlertKind::Victory => [0.1, 0.9, 0.25, 0.45],
                             crate::app::ViewportAlertKind::Defeat => [0.25, 0.25, 0.3, 0.5],
                             crate::app::ViewportAlertKind::ConquerPlayer => [0.95, 0.8, 0.0, 0.5],

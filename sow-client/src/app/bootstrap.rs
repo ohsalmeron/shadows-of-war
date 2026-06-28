@@ -196,6 +196,7 @@ impl SowApp {
                 text_renderer,
                 gui_painter,
                 prev_sync_point,
+                pending_avatar_cells: Vec::new(),
                 needs_first_upload,
                 configured_physical: winit::dpi::PhysicalSize::new(0, 0),
                 pending_session_cleanup: false,
@@ -317,7 +318,8 @@ impl SowApp {
                 mover_scene: crate::render::world::movers::MoverScene::new(),
                 click_markers: Vec::new(),
                 last_build_confirm_time: None,
-                attack_border_flash: None,
+                border_flashes: Vec::new(),
+                last_player_attack_flash_time: std::collections::HashMap::new(),
                 viewport_alert: None,
             },
             time: TimeState {

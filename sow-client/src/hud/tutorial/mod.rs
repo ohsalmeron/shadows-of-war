@@ -273,7 +273,7 @@ impl SowApp {
                 &self.ui.app.asset_loader,
                 !is_last_step, // whole panel closes it only if not last step
             );
-            let clicked_anywhere = !is_last_step && self.time.frame_count > 10 && ctx.input(|i| i.pointer.any_click());
+            let clicked_anywhere = !is_last_step && ctx.input(|i| i.pointer.any_click());
             if let Some(btn_idx) = clicked {
                 if is_last_step {
                     if btn_idx == 0 {

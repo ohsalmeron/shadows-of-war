@@ -46,6 +46,37 @@ impl SowApp {
                     }
                 }
             }
+            // Count unique attackers targeting us in the new snapshot
+            let unique_attackers = if my_id != 0 {
+                snap.attacks.iter()
+                    .filter(|a| a.target_owner == my_id && a.troops > 0.0)
+                    .map(|a| a.owner_id)
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+            } else {
+                0
+            };
+
+            if unique_attackers > 0 {
+                let now = web_time::Instant::now();
+                let should_flash = self.ui.last_player_attack_flash_time.get(&my_id).copied()
+                    .map(|last| now.duration_since(last).as_secs_f32() >= 1.0)
+                    .unwrap_or(true);
+
+                if should_flash || being_attacked_triggered {
+                    // Compose intensity: 1.0 base + 0.2 per attacker, clamped between 1.0 and 1.5
+                    let intensity = (1.0 + (unique_attackers as f32 - 1.0) * 0.2).clamp(1.0, 1.5);
+                    self.ui.border_flashes.push(crate::app::BorderFlashInstance {
+                        player_id: my_id,
+                        start_time: now,
+                        max_intensity: intensity,
+                    });
+                    self.ui.last_player_attack_flash_time.insert(my_id, now);
+                }
+            } else {
+                self.ui.last_player_attack_flash_time.remove(&my_id);
+            }
+
             if being_attacked_triggered {
                 self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
             }

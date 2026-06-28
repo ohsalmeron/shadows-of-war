@@ -731,7 +731,7 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
     // ── Unified Viewport Alert Vignette ──
     if globals.alert_intensity > 0.0 {
         let edge_dist = min(min(in.uv.x, 1.0 - in.uv.x), min(in.uv.y, 1.0 - in.uv.y));
-        let vignette = 1.0 - smoothstep(0.0, 0.20, edge_dist);
+        let vignette = 1.0 - smoothstep(0.0, 0.08, edge_dist);
         let breathe = sin(globals.time * 4.5) * 0.15 + 0.85;
         let intensity = globals.alert_intensity * vignette * breathe;
         base_color = mix(base_color, globals.alert_color.rgb, intensity * globals.alert_color.a);

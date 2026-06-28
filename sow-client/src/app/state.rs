@@ -35,6 +35,9 @@ pub struct GraphicsState {
     pub text_renderer: Option<crate::render::gpu::TextRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
+    /// Decoded leader-portrait cells `(atlas_slot, rgba)` awaiting upload into the GPU avatar
+    /// atlas. Queued at ingest (the text renderer may not exist yet); drained each frame.
+    pub pending_avatar_cells: Vec<(usize, Vec<u8>)>,
     pub needs_first_upload: bool,
     pub configured_physical: winit::dpi::PhysicalSize<u32>,
     /// Deferred teardown after instant exit (must not run mid-frame during UI actions).
@@ -139,6 +142,7 @@ pub struct DeathNameplateAnimation {
     pub player_type: sow_core::player::PlayerType,
     pub player_id: u16,
     pub by_nuke: bool,
+    pub prepared_name: Option<sow_ui_kit::widgets::PreparedName>,
 }
 
 impl std::fmt::Debug for DeathNameplateAnimation {
@@ -225,10 +229,17 @@ pub struct UiState {
     pub mover_scene: crate::render::world::movers::MoverScene,
     pub click_markers: Vec<ClickMarker>,
     pub last_build_confirm_time: Option<web_time::Instant>,
-    /// Flash enemy borders red on attack click: (target_player_id, when).
-    pub attack_border_flash: Option<(u16, web_time::Instant)>,
+    pub border_flashes: Vec<BorderFlashInstance>,
+    pub last_player_attack_flash_time: std::collections::HashMap<u16, web_time::Instant>,
     /// Screen vignette alert state.
     pub viewport_alert: Option<ViewportAlertState>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BorderFlashInstance {
+    pub player_id: u16,
+    pub start_time: web_time::Instant,
+    pub max_intensity: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -278,7 +289,14 @@ impl UiState {
         };
 
         let should_replace = if let Some(ref current) = self.viewport_alert {
-            priority(kind) >= priority(current.kind)
+            if current.kind == kind {
+                // Do not reset the timer for persistent alerts that are already active
+                kind != ViewportAlertKind::UnderAttack
+                    && kind != ViewportAlertKind::Victory
+                    && kind != ViewportAlertKind::Defeat
+            } else {
+                priority(kind) >= priority(current.kind)
+            }
         } else {
             true
         };

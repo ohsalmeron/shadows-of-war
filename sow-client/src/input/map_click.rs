@@ -38,6 +38,66 @@ impl SowApp {
         let my_id = self.sim.my_player_id.unwrap_or(0);
 
         if is_land && owner != my_id {
+            // Verify we actually share a border with the target owner
+            let mut shares_border = false;
+            if let Some(mr) = self.gfx.map_renderer.as_ref() {
+                let map_w = self.sim.map_w as i32;
+                let map_h = self.sim.map_h as i32;
+                let owners = &mr.owners;
+                let terrain = &mr.terrain;
+
+                'outer: for r in 0..map_h {
+                    for c in 0..map_w {
+                        let idx = (r * map_w + c) as usize;
+                        if owners[idx] == my_id {
+                            let neighbors = [
+                                (1, 0), (-1, 0), (0, -1), (0, 1),
+                                (1, -1), (-1, -1), (1, 1), (-1, 1)
+                            ];
+                            for &(dc, dr) in &neighbors {
+                                let nc = c + dc;
+                                let nr = r + dr;
+                                if nc >= 0 && nc < map_w && nr >= 0 && nr < map_h {
+                                    let n_idx = (nr * map_w + nc) as usize;
+                                    if owners[n_idx] == owner {
+                                        if (terrain[n_idx] & 0x80) != 0 {
+                                            shares_border = true;
+                                            break 'outer;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !shares_border {
+                let messages = [
+                    "Too far! 🌌",
+                    "Out of reach! 🏃‍♂️",
+                    "No border, no battle! ⚔️",
+                    "Teleportation not researched! 📡",
+                    "Build a path first! 🗺️",
+                ];
+                let click_seed = (x + y) as usize;
+                let msg = messages[click_seed % messages.len()];
+
+                let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let offset_mouse_y = y as f32 - 60.0;
+                let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
+
+                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                    text: msg.to_string(),
+                    world_x,
+                    world_y,
+                    start_time: web_time::Instant::now(),
+                    duration: web_time::Duration::from_millis(1500),
+                    color: egui::Color32::from_rgb(248, 113, 113), // soft red
+                });
+                return;
+            }
+
             let is_betrayer = self
                 .sim
                 .current_snapshot

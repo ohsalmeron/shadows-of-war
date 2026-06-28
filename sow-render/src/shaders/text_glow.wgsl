@@ -13,7 +13,7 @@ struct TextInstance {
     outline_thickness: f32,
     underlay_offset_y: f32,
     underlay_softness: f32,
-    is_emoji: f32,
+    kind: f32,
 }
 
 var<uniform> globals: TextGlobals;
@@ -21,6 +21,8 @@ var font_atlas: texture_2d<f32>;
 var font_sampler: sampler;
 var emoji_atlas: texture_2d<f32>;
 var emoji_sampler: sampler;
+var avatar_atlas: texture_2d<f32>;
+var avatar_sampler: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -32,7 +34,7 @@ struct VertexOutput {
     @location(5) underlay_offset_y: f32,
     @location(6) underlay_softness: f32,
     @location(7) uv_rect: vec4<f32>,
-    @location(8) is_emoji: f32,
+    @location(8) kind: f32,
 }
 
 @vertex
@@ -63,7 +65,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: TextInstance) -> VertexOutput {
     out.underlay_offset_y = inst.underlay_offset_y;
     out.underlay_softness = inst.underlay_softness;
     out.uv_rect = inst.uv_rect;
-    out.is_emoji = inst.is_emoji;
+    out.kind = inst.kind;
     return out;
 }
 
@@ -89,8 +91,48 @@ fn sample_emoji(uv: vec2<f32>, lo: vec2<f32>, hi: vec2<f32>) -> vec4<f32> {
     return textureSample(emoji_atlas, emoji_sampler, clamp(uv, lo, hi)) * inside_x * inside_y;
 }
 
+// Procedural shapes (KIND_DISC / KIND_RING). For shapes uv_rect is [0,0,1,1], so `in.uv`
+// is the local 0..1 quad coordinate. `outline_thickness` carries the ring width in pixels
+// (converted to uv via fwidth). `color` is the fill/stroke color.
+fn shade_shape(in: VertexOutput) -> vec4<f32> {
+    let p = in.uv - vec2<f32>(0.5, 0.5);
+    let dist = length(p);
+    let aa = max(fwidth(dist), 1e-5);
+
+    if (in.kind > 2.5) {
+        // Ring: outer edge at uv radius 0.5, drawn inward by `outline_thickness` px.
+        let tw = max(in.outline_thickness * fwidth(in.uv).x, aa);
+        let outer = 1.0 - smoothstep(0.5 - aa, 0.5, dist);
+        let inner = 1.0 - smoothstep(0.5 - tw - aa, 0.5 - tw, dist);
+        let a = clamp(outer - inner, 0.0, 1.0) * in.color.a;
+        return vec4<f32>(in.color.rgb, a);
+    }
+
+    // Disc: filled circle.
+    let a = (1.0 - smoothstep(0.5 - aa, 0.5, dist)) * in.color.a;
+    return vec4<f32>(in.color.rgb, a);
+}
+
+// Circle-clipped image sprite (KIND_SPRITE) sampled from the avatar atlas. `in.uv` is the
+// atlas uv; deriving local 0..1 from uv_rect gives the disc mask. `color` tints the texels.
+fn shade_sprite(in: VertexOutput) -> vec4<f32> {
+    let span = max(in.uv_rect.zw - in.uv_rect.xy, vec2<f32>(1e-6));
+    let local = (in.uv - in.uv_rect.xy) / span;
+    let d = length(local - vec2<f32>(0.5, 0.5));
+    let aa = max(fwidth(d), 1e-5);
+    let mask = 1.0 - smoothstep(0.5 - aa, 0.5, d);
+    let tex = textureSample(avatar_atlas, avatar_sampler, clamp(in.uv, in.uv_rect.xy, in.uv_rect.zw));
+    return vec4<f32>(tex.rgb * in.color.rgb, tex.a * mask * in.color.a);
+}
+
 fn shade_text(in: VertexOutput) -> vec4<f32> {
-    if (in.is_emoji > 0.5) {
+    if (in.kind > 3.5) {
+        return shade_sprite(in);
+    }
+    if (in.kind > 1.5) {
+        return shade_shape(in);
+    }
+    if (in.kind > 0.5) {
         let lo = in.uv_rect.xy;
         let hi = in.uv_rect.zw;
         let span = hi - lo;

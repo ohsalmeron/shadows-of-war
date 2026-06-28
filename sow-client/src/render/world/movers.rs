@@ -257,7 +257,7 @@ impl MoverScene {
 
     fn ingest_projectile(&mut self, proj: &ProjectileSnapshot, map_w: u32) {
         let cursor = proj.path_cursor.min(proj.path.len().saturating_sub(1));
-        let prev_idx = cursor.saturating_sub(1);
+        let prev_idx = cursor.saturating_sub(proj.steps_per_tick as usize);
         let (curr_x, curr_y) = tile_to_world(proj.path[cursor], map_w);
         let (prev_x, prev_y) = tile_to_world(proj.path[prev_idx], map_w);
 
