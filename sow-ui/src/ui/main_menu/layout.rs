@@ -46,7 +46,11 @@ pub(crate) fn menu_layout_chrome(
 
     let footer_h = menu_footer_height(section_gap, action_min_h, scale);
     let header_h = profile_height + section_gap;
-    let needed = header_h + section_gap + footer_h + section_gap + lobby_h;
+    let needed = if portrait {
+        header_h + section_gap + footer_h + section_gap + lobby_h
+    } else {
+        header_h + section_gap + footer_h.max(lobby_h)
+    };
     let shrink = sow_ui_kit::theme::fit_scale(needed, panel_h);
     if shrink < 1.0 {
         section_gap *= shrink;

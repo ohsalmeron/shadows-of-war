@@ -78,12 +78,6 @@ impl<'a> Widget for LobbyCard<'a> {
                 .rect_filled(rect, 12.0, sow_ui_kit::theme::palette::button_inactive());
         }
 
-        ui.painter().rect_stroke(
-            rect,
-            12.0,
-            Stroke::new(stroke_width, stroke_color),
-            egui::StrokeKind::Inside,
-        );
 
         let top_rect = rect.shrink(8.0);
         let mode_text = if self.lobby.game_mode == "FFA" {
@@ -197,6 +191,13 @@ impl<'a> Widget for LobbyCard<'a> {
                 sow_ui_kit::theme::palette::neon_cyan(),
             );
         }
+
+        ui.painter().rect_stroke(
+            rect,
+            12.0,
+            Stroke::new(stroke_width, stroke_color),
+            egui::StrokeKind::Inside,
+        );
 
         response
     }
