@@ -1,6 +1,6 @@
 //! Map thumbnail decode/draw for main-menu lobby previews.
 
-use egui::{Color32, Painter, TextureId};
+
 use image::RgbaImage;
 
 /// Force every pixel fully opaque — thumbnails are drawn as solid albedo, no alpha keying.
@@ -55,18 +55,22 @@ pub fn thumbnail_square_side_bounded(available_width: f32, max_height: f32, comp
 
 /// Map thumbnail with explicit UV (use [`cover_uv`] for center-cropped fit).
 pub fn draw_map_thumbnail_uv(
-    painter: &Painter,
-    texture: TextureId,
+    painter: &egui::Painter,
+    texture: egui::TextureId,
     rect: egui::Rect,
     uv: egui::Rect,
     brightness: f32,
+    corner_radius: egui::CornerRadius,
 ) {
     let tint = if brightness > 1.01 {
-        Color32::WHITE.gamma_multiply(brightness.clamp(1.0, 1.2))
+        egui::Color32::WHITE.gamma_multiply(brightness.clamp(1.0, 1.2))
     } else {
-        Color32::WHITE
+        egui::Color32::WHITE
     };
-    painter.image(texture, rect, uv, tint);
+    painter.add(
+        egui::epaint::RectShape::filled(rect, corner_radius, tint)
+            .with_texture(texture, uv),
+    );
 }
 
 #[cfg(test)]

@@ -170,10 +170,9 @@ pub fn draw_player_avatar_gpu(
         sow_core::player::PlayerType::Human => None,
     };
     if let Some(glyph) = glyph {
-        // ~75% of the circle (push_emoji draws across a 1.25×-expanded quad) + dark outline so the
-        // glyph reads against the player-color disc instead of filling it edge-to-edge.
-        let half = radius * 0.6;
-        let outline = (radius * 0.1).max(1.5);
-        tr.push_emoji(glyph, center, half, [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], outline, 0.0);
+        // ~75% of the circle (push_emoji quad = half * 2.5 diameter). No custom outline —
+        // the SDF outline per dev font settings applies globally if enabled.
+        let half = radius * 0.65;
+        tr.push_emoji(glyph, center, half, [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], 0.0, 0.0);
     }
 }

@@ -71,6 +71,7 @@ impl<'a> Widget for LobbyCard<'a> {
                 rect,
                 uv,
                 brightness,
+                egui::CornerRadius::same(12),
             );
         } else {
             ui.painter()

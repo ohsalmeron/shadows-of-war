@@ -411,6 +411,7 @@ fn draw_map_briefing(
                         rect,
                         uv,
                         1.0,
+                        egui::CornerRadius::same(8),
                     );
                 } else {
                     ui.painter()

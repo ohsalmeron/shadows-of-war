@@ -558,31 +558,19 @@ impl SowApp {
 
             ui.separator();
             ui.collapsing(RichText::new("🏛️ Building Emoji").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
-                let mut emoji_outline = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_outline_thickness"), || 1.0f32)
-                });
-                let mut emoji_shadow = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_shadow_y"), || 2.0f32)
-                });
                 let mut emoji_size = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_size_scale"), || 1.4f32)
                 });
 
                 ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
-                ui.add(egui::Slider::new(&mut emoji_outline, 0.0..=5.0).text("Outline Thickness"));
-                ui.add(egui::Slider::new(&mut emoji_shadow, 0.0..=10.0).text("Shadow Y"));
                 ui.add(egui::Slider::new(&mut emoji_size, 0.5..=3.0).text("Emoji Size"));
 
                 if ui.button("Reset to Default").clicked() {
                     bscale = 0.75;
-                    emoji_outline = 1.0;
-                    emoji_shadow = 2.0;
                     emoji_size = 1.4;
                 }
 
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_emoji_outline_thickness"), emoji_outline));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_emoji_shadow_y"), emoji_shadow));
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_emoji_size_scale"), emoji_size));
             });
 

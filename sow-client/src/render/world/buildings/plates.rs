@@ -145,11 +145,11 @@ pub(crate) fn paint_new_build_ghost(
         let half = base_size * sf * 0.5;
         let outline_px = painter
             .ctx()
-            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_outline_thickness")).unwrap_or(1.0))
+            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0))
             * sf;
         let shadow_px = painter
             .ctx()
-            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_shadow_y")).unwrap_or(2.0))
+            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5))
             * sf;
         if tr.push_emoji(
             emoji,

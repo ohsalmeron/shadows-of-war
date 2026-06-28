@@ -80,14 +80,14 @@ pub(crate) fn render(
         let mut gpu_rendered = false;
         if let Some(ref mut tr) = gfx.text_renderer {
             gpu_rendered = true;
-            // Emoji outline/shadow use the dedicated building emoji dev-tools values.
+            // SDF outline — font dev settings control all emoji outlines globally.
             let outline_px = painter
                 .ctx()
-                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_outline_thickness")).unwrap_or(1.0))
+                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0))
                 * sf;
             let shadow_px = painter
                 .ctx()
-                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_shadow_y")).unwrap_or(2.0))
+                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5))
                 * sf;
             for b in &rendered_buildings {
                 // Render the building as a full emoji + alpha outline, sized to `base_size`

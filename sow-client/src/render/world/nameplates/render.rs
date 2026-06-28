@@ -159,8 +159,6 @@ pub(crate) fn render(
             if is_bot && !show_bot_avatars {
                 avatar_size = 0.0;
             }
-            let star_size = (avatar_size * 0.72).round().max(4.0);
-
             // Check alliance status with the player
             let mut is_allied = false;
             let mut is_heart_flashing = false;
@@ -181,56 +179,13 @@ pub(crate) fn render(
                 }
             }
 
-            // Build status flags for the premium static emojis
             let is_disconnected = player.disconnected;
             let mut betrayal_flash = false;
-
-            if !is_disconnected {
-                let has_betrayal = player.traitor;
-                if has_betrayal {
-                    betrayal_flash = true;
-                }
+            if !is_disconnected && player.traitor {
+                betrayal_flash = true;
             }
 
-            let rgb = player.color;
-            let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(rgb);
-
-            let mut disc_galley = None;
-            let mut has_disc_emoji = false;
-            let mut disc_rect_size = 0.0;
-            if is_disconnected {
-                // QUANTIZATION: Round the disconnected size
-                let disc_size = (font_size * 0.95 * 3.0).round().max(2.0);
-                disc_rect_size = disc_size;
-
-                let test_rect = egui::Rect::from_min_size(
-                    egui::pos2(0.0, 0.0),
-                    egui::vec2(disc_size, disc_size),
-                );
-                if sow_ui_kit::widgets::try_paint_emoji(
-                    painter,
-                    "🔌",
-                    test_rect,
-                    egui::Color32::WHITE,
-                ) {
-                    has_disc_emoji = true;
-                } else {
-                    let disc_font_id = egui::FontId::proportional(disc_size);
-                    let mut job = egui::text::LayoutJob {
-                        break_on_newline: false,
-                        ..Default::default()
-                    };
-                    job.append(
-                        "🔌",
-                        0.0,
-                        egui::text::TextFormat::simple(
-                            disc_font_id,
-                            egui::Color32::from_rgb(239, 68, 68),
-                        ),
-                    );
-                    disc_galley = Some(painter.layout_job(job));
-                }
-            }
+            let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(player.color);
 
             let troops_str = sow_ui_kit::utils::format_number(player.troops);
             let font_id = egui::FontId::proportional(font_size);
@@ -244,7 +199,6 @@ pub(crate) fn render(
                 sow_core::player::display_name(player.id, &player.name, player.player_type)
             };
 
-            // QUANTIZATION: Round the troops font size
             let troops_font_size = (font_size * 1.30).round().max(2.0);
             let troops_font_id = egui::FontId::proportional(troops_font_size);
 
@@ -258,181 +212,92 @@ pub(crate) fn render(
 
             let name_w = if show_names { name_size.x } else { 0.0 };
             let name_h = if show_names { name_size.y } else { 0.0 };
-
             let troops_w = if show_troops {
                 crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id)
             } else {
                 0.0
             };
-            let troops_h = if show_troops {
-                troops_galley.rect.height()
-            } else {
-                0.0
-            };
-
+            let troops_h = if show_troops { troops_galley.rect.height() } else { 0.0 };
             let right_w = name_w.max(troops_w);
             let item_spacing_y = if show_names && show_troops { (font_size * 0.111).round() } else { 0.0 };
             let right_h = name_h + item_spacing_y + troops_h;
 
-            let spacing_x = if avatar_size > 0.0 { (font_size * 0.333).round() } else { 0.0 };
-            let mut total_w = avatar_size + spacing_x + right_w;
-            if is_me {
-                total_w += star_size + spacing_x;
-            }
-            let total_h = avatar_size.max(right_h);
+            // Vertical layout: avatar centered on top, text below.
+            let spacing_y = if avatar_size > 0.0 && right_h > 0.0 { (font_size * 0.333).round() } else { 0.0 };
+            let total_w = right_w.max(avatar_size);
+            let total_h = avatar_size + spacing_y + right_h;
 
-            let mut row0_h = 0.0;
-            if has_disc_emoji {
-                row0_h = disc_rect_size + (font_size * 0.222).round();
-            } else if let Some(ref dg) = disc_galley {
-                row0_h = dg.rect.height() + (font_size * 0.222).round();
-            }
-            let content_h = row0_h + total_h;
+            let content_top = center.y - total_h / 2.0;
+            let avatar_cy = content_top + avatar_size / 2.0;
 
-            let req_offset = draw_floating_status_emoji(
+            // Badge sizing / positioning beside avatar.
+            let badge_size = (font_size * 1.8).round();
+            let left_x = center.x - avatar_size / 2.0 - badge_size / 2.0 - 3.0;
+            let right_x = center.x + avatar_size / 2.0 + badge_size / 2.0 + 3.0;
+
+            // Status badges (left: request, right: allied / betrayal stacked).
+            draw_side_status_badge(
                 painter,
-                center,
+                egui::pos2(left_x, avatar_cy),
+                badge_size,
                 player.id,
                 is_me,
-                font_size,
-                content_h,
                 has_req,
                 "request_anim_progress",
                 "📨",
-                "floating_request_icon",
                 Some(egui::Color32::from_rgb(34, 211, 238)),
                 1.0,
             );
 
-            let flash_alpha = if is_heart_flashing {
-                heart_flash_alpha
-            } else {
-                1.0
-            };
-            let allied_offset = draw_floating_status_emoji(
-                painter,
-                center,
-                player.id,
-                is_me,
-                font_size,
-                content_h,
-                is_allied,
-                "allied_anim_progress",
-                "🤝",
-                "floating_handshake_icon",
-                Some(egui::Color32::from_rgb(255, 200, 60)),
-                flash_alpha,
-            );
+            let flash_alpha = if is_heart_flashing { heart_flash_alpha } else { 1.0 };
+            let mut right_slot_y = avatar_cy;
+            if is_allied {
+                draw_side_status_badge(
+                    painter,
+                    egui::pos2(right_x, right_slot_y),
+                    badge_size,
+                    player.id,
+                    is_me,
+                    true,
+                    "allied_anim_progress",
+                    "🤝",
+                    Some(egui::Color32::from_rgb(255, 200, 60)),
+                    flash_alpha,
+                );
+                right_slot_y -= badge_size + 2.0;
+            }
+            if betrayal_flash {
+                draw_side_status_badge(
+                    painter,
+                    egui::pos2(right_x, right_slot_y),
+                    badge_size,
+                    player.id,
+                    is_me,
+                    true,
+                    "betrayal_anim_progress",
+                    "🗡️",
+                    Some(egui::Color32::from_rgb(220, 38, 38)),
+                    1.0,
+                );
+                right_slot_y -= badge_size + 2.0;
+            }
 
-            let betrayal_offset = draw_floating_status_emoji(
+            // Express emoji
+            draw_side_express_emoji(
                 painter,
-                center,
-                player.id,
-                is_me,
-                font_size,
-                content_h,
-                betrayal_flash,
-                "betrayal_anim_progress",
-                "🗡️",
-                "floating_betray_icon",
-                Some(egui::Color32::from_rgb(220, 38, 38)),
-                1.0,
-            );
-
-            let max_float_offset = req_offset.max(allied_offset).max(betrayal_offset);
-
-            // Render express emoji
-            draw_express_emoji(
-                painter,
-                center,
+                egui::pos2(right_x + 2.0, right_slot_y - badge_size / 2.0),
+                badge_size,
                 player.id,
                 player.active_emoji.as_ref(),
-                font_size,
-                content_h,
-                max_float_offset,
             );
 
-            let content_min = egui::pos2(center.x - total_w / 2.0, center.y - content_h / 2.0);
-
-            // Row 0 Status indicators
-            if has_disc_emoji {
-                let row0_rect = egui::Rect::from_center_size(
-                    egui::pos2(center.x, content_min.y + disc_rect_size / 2.0),
-                    egui::vec2(disc_rect_size, disc_rect_size),
-                );
-                let disc_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
-                    tr.push_emoji(
-                        "🔌",
-                        [row0_rect.center().x * sf, row0_rect.center().y * sf],
-                        row0_rect.height() * 0.5 * sf,
-                        [1.0, 1.0, 1.0, 1.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                        1.0 * sf,
-                        1.5 * sf,
-                    )
-                });
-                if !disc_gpu {
-                    sow_ui_kit::widgets::try_paint_emoji(
-                        painter,
-                        "🔌",
-                        row0_rect,
-                        egui::Color32::WHITE,
-                    );
-                }
-            } else if let Some(dg) = disc_galley {
-                let row0_pos = egui::pos2(center.x - dg.rect.width() / 2.0, content_min.y);
-                painter.galley(row0_pos, dg, egui::Color32::WHITE);
-            }
-
-            // Row 1 & 2 layout
-            let row12_y = content_min.y + row0_h;
-            let mut cur_x = content_min.x;
-
-            // 0. Star (if me)
-            if is_me {
-                let star_rect = egui::Rect::from_center_size(
-                    egui::pos2(cur_x + star_size / 2.0, row12_y + total_h / 2.0),
-                    egui::vec2(star_size, star_size),
-                );
-                let star_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
-                    tr.push_emoji(
-                        "⭐",
-                        [star_rect.center().x * sf, star_rect.center().y * sf],
-                        star_rect.height() * 0.5 * sf,
-                        [1.0, 1.0, 1.0, 1.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                        1.0 * sf,
-                        1.5 * sf,
-                    )
-                });
-                if !star_gpu
-                    && !sow_ui_kit::widgets::try_paint_emoji(
-                        painter,
-                        "⭐",
-                        star_rect,
-                        egui::Color32::WHITE,
-                    )
-                {
-                    painter.text(
-                        star_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "⭐",
-                        egui::FontId::proportional(star_size * 0.7),
-                        egui::Color32::WHITE,
-                    );
-                }
-                cur_x += star_size + spacing_x;
-            }
-
-            // 1. Circular avatar with decorative frame — GPU pipeline (disc/portrait + rings + emoji).
+            // --- Avatar (centered on top) ---
             if avatar_size > 0.0 {
-                let avatar_cx = cur_x + avatar_size / 2.0;
-                let avatar_cy = row12_y + total_h / 2.0;
                 let avatar_r = avatar_size / 2.0;
                 if let Some(tr) = gfx.text_renderer.as_mut() {
                     crate::hud::avatar::draw_player_avatar_gpu(
                         tr,
-                        [avatar_cx * sf, avatar_cy * sf],
+                        [center.x * sf, avatar_cy * sf],
                         avatar_r * sf,
                         player.id,
                         &player.name,
@@ -441,14 +306,73 @@ pub(crate) fn render(
                         player.leader,
                     );
                 }
-                cur_x += avatar_size + spacing_x;
             }
 
-            // 2. Nickname and Troops centered in right block
-            let right_y = row12_y + (total_h - right_h) / 2.0;
+            // Star corner badge (top-right of avatar)
+            if is_me && avatar_size > 0.0 {
+                let star_sz = (avatar_size * 0.35).round().max(3.0);
+                let star_cx = center.x + avatar_size / 2.0 * 0.6;
+                let star_cy = avatar_cy - avatar_size / 2.0 * 0.6;
+                let star_rect = egui::Rect::from_center_size(
+                    egui::pos2(star_cx, star_cy),
+                    egui::vec2(star_sz, star_sz),
+                );
+                let star_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
+                    tr.push_emoji(
+                        "⭐",
+                        [star_rect.center().x * sf, star_rect.center().y * sf],
+                        star_rect.height() * 0.5 * sf,
+                        [1.0; 4],
+                        [0.0, 0.0, 0.0, 1.0],
+                        0.0,
+                        0.0,
+                    )
+                });
+                if !star_gpu && !sow_ui_kit::widgets::try_paint_emoji(painter, "⭐", star_rect, egui::Color32::WHITE) {
+                    painter.text(
+                        star_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "⭐",
+                        egui::FontId::proportional(star_sz * 0.7),
+                        egui::Color32::WHITE,
+                    );
+                }
+            }
 
-            let name_h = name_size.y;
-            let troops_h = troops_galley.rect.height();
+            // Disconnected corner badge (bottom-right of avatar)
+            if is_disconnected && avatar_size > 0.0 {
+                let disc_sz = (avatar_size * 0.4).round().max(3.0);
+                let disc_cx = center.x + avatar_size / 2.0 * 0.6;
+                let disc_cy = avatar_cy + avatar_size / 2.0 * 0.6;
+                let disc_rect = egui::Rect::from_center_size(
+                    egui::pos2(disc_cx, disc_cy),
+                    egui::vec2(disc_sz, disc_sz),
+                );
+                let disc_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
+                    tr.push_emoji(
+                        "🔌",
+                        [disc_rect.center().x * sf, disc_rect.center().y * sf],
+                        disc_rect.height() * 0.5 * sf,
+                        [1.0; 4],
+                        [0.0, 0.0, 0.0, 1.0],
+                        0.0,
+                        0.0,
+                    )
+                });
+                if !disc_gpu && !sow_ui_kit::widgets::try_paint_emoji(painter, "🔌", disc_rect, egui::Color32::WHITE) {
+                    let disc_font_id = egui::FontId::proportional(disc_sz);
+                    painter.text(
+                        disc_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "🔌",
+                        disc_font_id,
+                        egui::Color32::WHITE,
+                    );
+                }
+            }
+
+            // --- Name + Troops (centered below avatar) ---
+            let text_top = content_top + avatar_size + spacing_y;
 
             let mut gpu_text_rendered = false;
             if let Some(ref mut tr) = gfx.text_renderer {
@@ -463,7 +387,6 @@ pub(crate) fn render(
                 let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
                 let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
                 let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-                let name_offset_x = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_offset_x")).unwrap_or(16.0f32));
                 let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
 
                 let settings = crate::render::gpu::TmpFontSettings {
@@ -474,11 +397,9 @@ pub(crate) fn render(
                 };
 
                 if show_names {
-                    let name_center_x = (cur_x + right_w / 2.0 - 1.0 + name_offset_x) * sf;
-                    let name_baseline_y = (right_y + name_h * 0.85) * sf;
                     tr.push_string(
                         &display_name,
-                        [name_center_x, name_baseline_y],
+                        [center.x * sf, (text_top + name_h * 0.85) * sf],
                         font_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
@@ -490,11 +411,10 @@ pub(crate) fn render(
                 }
 
                 if show_troops {
-                    let troops_row_y = if show_names { right_y + name_h + item_spacing_y } else { right_y };
+                    let troops_row_y = if show_names { text_top + name_h + item_spacing_y } else { text_top };
                     let icon_size = troops_font_size * 1.15;
                     let icon_half = icon_size * 0.5;
-                    let troops_left_x = cur_x + (right_w - troops_w) / 2.0;
-                    // Sword emoji
+                    let troops_left_x = center.x - troops_w / 2.0;
                     tr.push_emoji(
                         "⚔",
                         [(troops_left_x + icon_half) * sf, (troops_row_y + icon_half) * sf],
@@ -504,13 +424,9 @@ pub(crate) fn render(
                         outline_thickness,
                         shadow_y,
                     );
-                    // Number text left-aligned after sword
-                    let text_left = (troops_left_x + icon_size + 3.0) * sf;
-                    let troops_baseline_y = (troops_row_y + troops_h * 0.85) * sf;
-                    let display_troops_str = &troops_str;
                     tr.push_string(
-                        display_troops_str,
-                        [text_left, troops_baseline_y],
+                        &troops_str,
+                        [(troops_left_x + icon_size + 3.0) * sf, (troops_row_y + troops_h * 0.85) * sf],
                         troops_font_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
@@ -524,29 +440,26 @@ pub(crate) fn render(
 
             if !gpu_text_rendered {
                 if show_names {
-                    let name_x = cur_x + (right_w - name_w) / 2.0;
-                    let name_text_h = name_size.y;
                     sow_ui_kit::widgets::paint_prepared_name_with_glow(
                         painter,
-                        egui::pos2(name_x, right_y),
+                        egui::pos2(center.x - name_w / 2.0, text_top),
                         egui::Align2::LEFT_TOP,
                         &prepared_name,
                         vibrant_color,
                         sow_ui_kit::theme::NAMEPLATE,
-                        Some(name_text_h),
+                        Some(name_h),
                     );
                 }
 
                 if show_troops {
-                    let troops_row_y = if show_names { right_y + name_size.y + item_spacing_y } else { right_y };
-                    let troops_x = cur_x + (right_w - troops_w) / 2.0;
+                    let troops_row_y = if show_names { text_top + name_h + item_spacing_y } else { text_top };
                     crate::hud::nameplate::paint_glow_troops_row(
                         painter,
-                        egui::pos2(troops_x, troops_row_y),
+                        egui::pos2(center.x - troops_w / 2.0, troops_row_y),
                         troops_galley.clone(),
                         &troops_font_id,
                         vibrant_color,
-                        Some(name_size.y),
+                        Some(name_h),
                     );
                 }
             }

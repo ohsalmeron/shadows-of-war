@@ -121,6 +121,7 @@ pub fn draw(
                     rect,
                     uv,
                     1.0,
+                    egui::CornerRadius::same(8),
                 );
             } else {
                 ui.painter()
