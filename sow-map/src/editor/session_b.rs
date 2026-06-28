@@ -32,8 +32,13 @@ impl MapEditorSession {
             effect_fallout: 1.0,
             effect_golden_hour: 1.0,
             effect_holo_grid: 1.0,
-            _pad3: 0.0,
-            _pad4: 0.0,
+            attack_flash_target: 0.0,
+            attack_flash_t: 0.0,
+            alert_intensity: 0.0,
+            _pad0: 0.0,
+            _pad1: 0.0,
+            _pad2: 0.0,
+            alert_color: [0.0; 4],
         }
     }
 

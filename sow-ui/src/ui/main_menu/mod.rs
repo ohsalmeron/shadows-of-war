@@ -463,7 +463,7 @@ pub fn draw(
                     let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
                     let section_gap = 12.0 * scale;
                     let action_min_h = 48.0 * scale;
-                    let profile_height = 56.0 * scale;
+                    let profile_height = 56.0;
 
                     profile::draw_user_profile_header(
                         ui,

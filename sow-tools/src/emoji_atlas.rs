@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const CELL_PX: u32 = 64;
-const TWEMOJI_BASE: &str = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
+const MOJI_BASE: &str = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
 
 pub struct PackEmojiAtlasArgs {
     pub repo_root: PathBuf,
@@ -23,13 +23,13 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
 
     for emoji in &required {
         if std::env::var("VERBOSE").is_ok() {
-            println!("Fetching Twemoji for emoji: {emoji}");
+            println!("Fetching moji for emoji: {emoji}");
         }
-        match fetch_twemoji(&client, emoji) {
+        match fetch_moji(&client, emoji) {
             Ok(img) => entries.push((emoji.to_string(), img)),
             Err(e) => {
                 // Silently skip CDN 404s (e.g. false positives from source scanning)
-                if !e.to_string().contains("twemoji CDN miss") {
+                if !e.to_string().contains("moji CDN miss") {
                     missing.push(format!("{emoji}: {e}"));
                 }
             }
@@ -137,14 +137,14 @@ fn scan_source_for_emojis(
     Ok(out)
 }
 
-fn fetch_twemoji(
+fn fetch_moji(
     client: &reqwest::blocking::Client,
     emoji: &str,
 ) -> Result<RgbaImage, Box<dyn std::error::Error + Send + Sync>> {
     let cache_dir = Path::new("assets/emoji/cache");
     fs::create_dir_all(cache_dir)?;
 
-    let filenames = twemoji_filenames(emoji);
+    let filenames = moji_filenames(emoji);
     if filenames.is_empty() {
         return Err("No filenames generated for emoji".into());
     }
@@ -163,7 +163,7 @@ fn fetch_twemoji(
 
     // Fallback to fetch and save to cache
     for name in &filenames {
-        let url = format!("{TWEMOJI_BASE}/{name}.png");
+        let url = format!("{MOJI_BASE}/{name}.png");
         if let Ok(resp) = client.get(&url).send() {
             if resp.status().is_success() {
                 let bytes = resp.bytes()?;
@@ -177,7 +177,7 @@ fn fetch_twemoji(
             }
         }
     }
-    Err("twemoji CDN miss".into())
+    Err("moji CDN miss".into())
 }
 
 fn downscale_cell(img: &RgbaImage) -> RgbaImage {
@@ -187,7 +187,7 @@ fn downscale_cell(img: &RgbaImage) -> RgbaImage {
     image::imageops::resize(img, CELL_PX, CELL_PX, FilterType::Lanczos3)
 }
 
-fn twemoji_filenames(emoji: &str) -> Vec<String> {
+fn moji_filenames(emoji: &str) -> Vec<String> {
     let cps: Vec<u32> = emoji.chars().map(|c| c as u32).collect();
     let mut names = Vec::new();
     if cps.len() == 1 {

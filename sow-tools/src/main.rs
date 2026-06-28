@@ -39,7 +39,7 @@ enum Commands {
     /// Generate a map from a source world-map PNG (land/water by pixel color).
     #[command(name = "image-map")]
     ImageMap(ImageMapArgs),
-    /// Pack pixel emoji atlas + generated manifest (PixelTwemojiMC + Twemoji fallback).
+    /// Pack pixel emoji atlas + generated manifest (pixel set + moji CDN fallback).
     #[command(name = "pack-emoji-atlas")]
     PackEmojiAtlas(PackEmojiAtlasArgs),
 }
