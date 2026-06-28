@@ -182,11 +182,18 @@ pub fn draw_standard_modal<R>(
 
     let mut result = None;
     let compact = compact_viewport(ctx);
+    let screen_rect = ctx.input(|i| i.content_rect());
+    let margin = 16.0;
+    
+    // Width: take full width on mobile/compact, or cap it on larger desktop screens
     let panel_w = if compact {
-        ctx.input(|i| i.content_rect()).width() - 32.0
+        screen_rect.width() - (margin * 2.0)
     } else {
-        520.0
+        (screen_rect.width() - (margin * 2.0)).min(600.0)
     };
+    
+    // Height: take full height (minus margin) to ensure maximum layout space under low height
+    let panel_h = screen_rect.height() - (margin * 2.0);
 
     let progress = ctx.animate_bool_with_time(
         egui::Id::new(format!("{modal_key}_animation_progress")),
@@ -198,7 +205,6 @@ pub fn draw_standard_modal<R>(
     }
 
     // Semi-transparent scrim backdrop overlay (increased transparency)
-    let screen_rect = ctx.input(|i| i.content_rect());
     ctx.layer_painter(egui::LayerId::new(
         egui::Order::Middle,
         egui::Id::new(format!("{modal_key}_scrim")),
@@ -226,10 +232,7 @@ pub fn draw_standard_modal<R>(
         .resizable(false)
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, y_offset))
-        .fixed_size(egui::vec2(panel_w, {
-            let screen_h = ctx.input(|i| i.content_rect()).height();
-            (if compact { 460.0_f32 } else { 420.0_f32 }).min(screen_h - 32.0).max(280.0)
-        }))
+        .fixed_size(egui::vec2(panel_w, panel_h))
         .frame(standard_panel_frame(compact))
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -251,8 +254,14 @@ pub fn draw_standard_modal<R>(
             ui.separator();
             ui.add_space(8.0);
 
+            // Compute remaining height for scroll area
+            // Footer: Centered exit close button is 40pt high. With padding/margins, it takes ~60pt.
+            let footer_h = 40.0 + 12.0; 
+            let available_scroll_h = (ui.available_height() - footer_h - 10.0).max(50.0);
+
             // Reusable scrollable viewport area
             egui::ScrollArea::vertical()
+                .max_height(available_scroll_h)
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     result = Some(content_ui(ui));

@@ -121,8 +121,8 @@ pub fn avatar_slot(leader: Option<sow_core::player::Leader>) -> usize {
     }
 }
 
-/// GPU-pipeline avatar: fill/portrait + decorative frame rings (+ tribe-animal emoji for bots),
-/// all pushed through the text-emoji `TextRenderer` — no egui. `center`/`radius` are physical px.
+/// GPU-pipeline avatar: fill/portrait + decorative frame rings + category emoji (tribe animal
+/// for bots, empire symbol for nations), all via the text-emoji `TextRenderer`. Physical px.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_player_avatar_gpu(
     tr: &mut crate::render::gpu::TextRenderer,
@@ -163,9 +163,13 @@ pub fn draw_player_avatar_gpu(
     tr.push_ring(center, radius, frame, border * 0.8);
     tr.push_ring(center, radius - border * 0.15, [1.0, 1.0, 1.0, 80.0 / 255.0], border * 0.35);
 
-    // Bot tribe-animal emoji sits on top.
-    if player_type == sow_core::player::PlayerType::Bot {
-        let animal = sow_core::player::tribe_animal(player_id, player_name);
-        tr.push_emoji(animal, center, radius * 0.7, [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], 0.0, 0.0);
+    // Category emoji sits on top: tribe animal for bots, empire symbol for nations.
+    let glyph = match player_type {
+        sow_core::player::PlayerType::Bot => Some(sow_core::player::tribe_animal(player_id, player_name)),
+        sow_core::player::PlayerType::Nation => Some(sow_core::player::empire_emoji(player_id, player_name)),
+        sow_core::player::PlayerType::Human => None,
+    };
+    if let Some(glyph) = glyph {
+        tr.push_emoji(glyph, center, radius * 0.7, [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], 0.0, 0.0);
     }
 }

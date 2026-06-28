@@ -333,59 +333,74 @@ impl SowApp {
                 if is_primary_action {
                     if pressed {
                         if !wants_pointer {
-                            self.input.dragging = true;
+                            if in_game && self.ui.app.hud_state.selected_building_kind.is_some() {
+                                // Do not drag map while drawing structures
+                            } else {
+                                self.input.dragging = true;
+                            }
                         }
-                        // Start hold-to-attack tracking
+                        // Start hold tracking
                         if !wants_pointer && in_game {
                             self.input.map_touch_start =
                                 Some((web_time::Instant::now(), position.x, position.y));
-                            self.try_begin_hold_attack(position.x, position.y, is_touch);
+                            if self.ui.app.hud_state.selected_building_kind.is_some() {
+                                self.handle_map_click(position.x, position.y);
+                                self.input.hold_build_active = true;
+                                self.input.hold_build_accum = 0.0;
+                            } else {
+                                self.try_begin_hold_attack(position.x, position.y, is_touch);
+                            }
                         }
                     } else {
                         self.input.dragging = false;
                         // On release: if it was a quick tap, handle click actions
                         if !wants_pointer && in_game {
-                            let was_quick = self
-                                .input
-                                .map_touch_start
-                                .map(|(t, _, _)| t.elapsed().as_millis() < 300)
-                                .unwrap_or(false);
-                            let no_drift = self
-                                .input
-                                .map_touch_start
-                                .map(|(_, sx, sy)| {
-                                    let dx = position.x - sx;
-                                    let dy = position.y - sy;
-                                    dx * dx + dy * dy <= 400.0
-                                })
-                                .unwrap_or(false);
-
-                            if was_quick && no_drift {
-                                let is_spawning = self
-                                    .sim
-                                    .current_snapshot
-                                    .as_ref()
-                                    .map(|s| {
-                                        matches!(
-                                            s.phase,
-                                            sow_core::game::GamePhase::Spawning { .. }
-                                        )
-                                    })
-                                    .unwrap_or(false);
-                                let (sx, sy) = self
+                            if self.input.hold_build_active {
+                                self.input.hold_build_active = false;
+                                self.input.hold_build_accum = 0.0;
+                            } else {
+                                let was_quick = self
                                     .input
                                     .map_touch_start
-                                    .map(|(_, x, y)| (x, y))
-                                    .unwrap_or((position.x, position.y));
-                                let is_building =
-                                    self.ui.app.hud_state.selected_building_kind.is_some();
-                                let is_nuke = self.ui.app.hud_state.selected_nuke_kind.is_some();
-                                if is_touch && !is_spawning && !is_building && !is_nuke {
-                                    // Tap on mobile → open context menu
-                                    self.open_context_menu_at(sx, sy);
-                                } else {
-                                    // Quick click on desktop or tap during spawn/build/nuke → one-shot action
-                                    self.handle_map_click(sx, sy);
+                                    .map(|(t, _, _)| t.elapsed().as_millis() < 300)
+                                    .unwrap_or(false);
+                                let no_drift = self
+                                    .input
+                                    .map_touch_start
+                                    .map(|(_, sx, sy)| {
+                                        let dx = position.x - sx;
+                                        let dy = position.y - sy;
+                                        dx * dx + dy * dy <= 400.0
+                                    })
+                                    .unwrap_or(false);
+
+                                if was_quick && no_drift {
+                                    let is_spawning = self
+                                        .sim
+                                        .current_snapshot
+                                        .as_ref()
+                                        .map(|s| {
+                                            matches!(
+                                                s.phase,
+                                                sow_core::game::GamePhase::Spawning { .. }
+                                            )
+                                        })
+                                        .unwrap_or(false);
+                                    let (sx, sy) = self
+                                        .input
+                                        .map_touch_start
+                                        .map(|(_, x, y)| (x, y))
+                                        .unwrap_or((position.x, position.y));
+                                    let is_building =
+                                        self.ui.app.hud_state.selected_building_kind.is_some();
+                                    let is_nuke = self.ui.app.hud_state.selected_nuke_kind.is_some();
+                                    if is_touch && !is_spawning && !is_building && !is_nuke {
+                                        // Tap on mobile → open context menu
+                                        self.open_context_menu_at(sx, sy);
+                                    } else {
+                                        // Quick click on desktop or tap during spawn/build/nuke → one-shot action
+                                        self.handle_map_click(sx, sy);
+                                    }
                                 }
                             }
                         }

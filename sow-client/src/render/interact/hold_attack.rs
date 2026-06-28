@@ -82,4 +82,23 @@ impl SowApp {
             }
         }
     }
+
+    pub(crate) fn pump_hold_build(&mut self, ctx: &egui::Context) {
+        if self.input.hold_build_active {
+            if self.ui.app.hud_state.selected_building_kind.is_some() {
+                let dt = ctx.input(|i| i.predicted_dt);
+                self.input.hold_build_accum += dt;
+
+                while self.input.hold_build_accum >= 0.25 {
+                    self.input.hold_build_accum -= 0.25;
+                    let mx = self.input.last_mouse_x;
+                    let my = self.input.last_mouse_y;
+                    self.handle_map_click(mx, my);
+                }
+            } else {
+                self.input.hold_build_active = false;
+                self.input.hold_build_accum = 0.0;
+            }
+        }
+    }
 }

@@ -5,6 +5,7 @@ pub struct LobbyCard<'a> {
     lobby: &'a LobbyInfo,
     texture: Option<&'a egui::TextureHandle>,
     side: f32,
+    width: Option<f32>,
 }
 
 impl<'a> LobbyCard<'a> {
@@ -13,12 +14,18 @@ impl<'a> LobbyCard<'a> {
             lobby,
             texture,
             side: 160.0,
+            width: None,
         }
     }
 
     /// Square edge length (1:1 — standard for map thumbnails).
     pub fn side(mut self, side: f32) -> Self {
         self.side = side;
+        self
+    }
+
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = Some(width);
         self
     }
 }
@@ -29,7 +36,7 @@ pub struct LobbyCardResponse {
 
 impl<'a> Widget for LobbyCard<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let w = ui.available_width();
+        let w = self.width.unwrap_or_else(|| ui.available_width());
         let h = self.side;
         let desired_size = egui::vec2(w, h);
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());

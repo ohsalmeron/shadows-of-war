@@ -130,6 +130,21 @@ impl AssetLoader {
         let image = image::load_from_memory(bytes).map_err(|e| format!("decode avatar: {e}"))?;
         let image_rgba = image.to_rgba8();
         let size = [image_rgba.width() as _, image_rgba.height() as _];
+
+        // Also stage a cell-sized RGBA copy for the GPU image atlas (world nameplates render
+        // avatars through the text-emoji pipeline). `GPU_AVATAR_CELL` must match sow-render's
+        // `AVATAR_CELL`. This is the one place all avatars (native file-load + web fetch) pass
+        // through, so the GPU side is fed on every platform.
+        const GPU_AVATAR_CELL: u32 = 128;
+        let cell = image::imageops::resize(
+            &image_rgba,
+            GPU_AVATAR_CELL,
+            GPU_AVATAR_CELL,
+            image::imageops::FilterType::Triangle,
+        );
+        self.gpu_avatar_cells.retain(|(k, _)| *k != key);
+        self.gpu_avatar_cells.push((key, cell.into_raw()));
+
         let pixels = image_rgba.as_flat_samples();
         let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
 

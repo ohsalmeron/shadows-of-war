@@ -31,7 +31,7 @@ fn find_primary_lobby<'a>(
 fn draw_lobby_list(
     ui: &mut Ui,
     state: &mut MainMenuState,
-    side: f32,
+    _side: f32,
     action: &mut Option<UiAction>,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
@@ -76,7 +76,20 @@ fn draw_lobby_list(
 
     let mut draw_lobby = |ui: &mut Ui, lobby: &sow_core::protocol::LobbyInfo| {
         let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-        let response = ui.add(LobbyCard::new(lobby, thumbnail).side(side));
+        let parent_w = ui.available_width();
+        let card_w = if parent_w > 480.0 {
+            (parent_w * 0.65).min(560.0)
+        } else {
+            parent_w
+        };
+        let screen_h = ui.ctx().input(|i| i.content_rect()).height();
+        let card_h = (card_w / 1.77).clamp(90.0, (screen_h * 0.45).min(200.0));
+
+        let response = ui.add(
+            LobbyCard::new(lobby, thumbnail)
+                .side(card_h)
+                .width(card_w)
+        );
         if response.clicked() {
             *action = Some(UiAction::JoinLobby(lobby.id));
         }

@@ -35,9 +35,6 @@ pub struct GraphicsState {
     pub text_renderer: Option<crate::render::gpu::TextRenderer>,
     pub gui_painter: Option<blade_egui::GuiPainter>,
     pub prev_sync_point: Option<blade_graphics::SyncPoint>,
-    /// Decoded leader-portrait cells `(atlas_slot, rgba)` awaiting upload into the GPU avatar
-    /// atlas. Queued at ingest (the text renderer may not exist yet); drained each frame.
-    pub pending_avatar_cells: Vec<(usize, Vec<u8>)>,
     pub needs_first_upload: bool,
     pub configured_physical: winit::dpi::PhysicalSize<u32>,
     /// Deferred teardown after instant exit (must not run mid-frame during UI actions).
@@ -102,6 +99,9 @@ pub struct InputState {
     /// Hold-to-attack: (target_owner, press_start_time, screen_x, screen_y, has_fired_initial)
     pub hold_attack_target: Option<(u16, web_time::Instant, f64, f64, bool)>,
     pub hold_attack_accum: f32,
+    /// Hold-to-build
+    pub hold_build_active: bool,
+    pub hold_build_accum: f32,
     pub ime_allowed_state: bool,
     pub ime_cursor_rect_px: Option<egui::Rect>,
     pub has_snapped_camera_to_spawn: bool,

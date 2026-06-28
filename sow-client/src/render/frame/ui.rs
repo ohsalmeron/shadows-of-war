@@ -79,9 +79,18 @@ impl SowApp {
         let egui_ctx = self.ui.egui_ctx.clone();
         if let Some(ref mut tr) = self.gfx.text_renderer {
             tr.begin_frame();
-            // Upload any leader portraits that arrived since last frame into the avatar atlas.
-            for (slot, cell) in self.gfx.pending_avatar_cells.drain(..) {
-                tr.upload_avatar(slot, &cell);
+            // Ensure the GPU avatar atlas has every decoded portrait. Self-healing: uploads only
+            // slots the renderer is missing, so it re-fills after a renderer teardown/recreation
+            // (tutorial → match) without re-decoding. Cheap in steady state (all slots present).
+            for (key, cell) in &self.ui.app.asset_loader.gpu_avatar_cells {
+                let leader = match key {
+                    sow_ui::ui::asset_loader::AvatarFetchKey::Leader(l) => Some(*l),
+                    sow_ui::ui::asset_loader::AvatarFetchKey::Fallback => None,
+                };
+                let slot = crate::hud::avatar::avatar_slot(leader);
+                if tr.avatar_uv(slot).is_none() {
+                    tr.upload_avatar(slot, cell);
+                }
             }
         }
         let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {

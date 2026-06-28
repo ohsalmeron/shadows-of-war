@@ -153,12 +153,7 @@ impl SowApp {
                         Ok(()) => log::debug!("Loaded avatar {:?}", key),
                         Err(e) => log::warn!("Failed to ingest avatar {:?}: {e}", key),
                     }
-                    // Also stage the portrait for the GPU avatar atlas (world nameplates draw
-                    // avatars through the text-emoji pipeline, not egui).
-                    if let Some(cell) = crate::render::gpu::decode_avatar_cell(&bytes) {
-                        let slot = crate::hud::avatar::avatar_slot(leader);
-                        self.gfx.pending_avatar_cells.push((slot, cell));
-                    }
+                    // GPU atlas upload is fed inside `ingest_avatar_webp_bytes` (covers native too).
                 }
                 MapDownloadEvent::AvatarFailed { leader, reason } => {
                     let key = match leader {

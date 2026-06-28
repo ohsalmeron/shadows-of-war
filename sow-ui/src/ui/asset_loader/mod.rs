@@ -76,6 +76,11 @@ pub struct AssetLoader {
     pub avatars_in_flight: HashSet<AvatarFetchKey>,
     avatars_fetch_all_queued: bool,
     avatar_retry_state: HashMap<AvatarFetchKey, PortraitRetryState>,
+    /// Decoded, cell-sized RGBA avatar portraits for the GPU image atlas. Fed by
+    /// `ingest_avatar_webp_bytes` (the single ingestion point for native + web) and kept
+    /// **persistently** — sow-client re-uploads any the text renderer is missing each frame, so
+    /// portraits survive GPU-renderer teardown/recreation (e.g. tutorial → match).
+    pub gpu_avatar_cells: Vec<(AvatarFetchKey, Vec<u8>)>,
 }
 
 impl Default for AssetLoader {
@@ -179,6 +184,7 @@ impl AssetLoader {
             avatars_in_flight: HashSet::new(),
             avatars_fetch_all_queued: false,
             avatar_retry_state: HashMap::new(),
+            gpu_avatar_cells: Vec::new(),
         }
     }
 

@@ -161,18 +161,6 @@ pub fn avatar_slot_uv(slot: usize) -> [f32; 4] {
     [u0, v0, u0 + AVATAR_CELL as f32 / aw, v0 + AVATAR_CELL as f32 / ah]
 }
 
-/// Decode a network avatar (webp/png) and normalize to one `AVATAR_CELL`-sized RGBA cell.
-pub fn decode_avatar_cell(bytes: &[u8]) -> Option<Vec<u8>> {
-    let img = image::load_from_memory(bytes).ok()?;
-    let resized = image::imageops::resize(
-        &img.to_rgba8(),
-        AVATAR_CELL,
-        AVATAR_CELL,
-        image::imageops::FilterType::Triangle,
-    );
-    Some(resized.into_raw())
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, blade_macros::Vertex)]
 pub struct TextInstanceGpu {
@@ -443,9 +431,19 @@ impl TextRenderer {
         }
     }
 
+    /// Transition all atlas textures to a defined layout before first use. Must be called once
+    /// (alongside `upload_atlas`) before any draw — the avatar atlas in particular is sampled by
+    /// KIND_SPRITE and, like the font/terrain textures, needs init or it reads as undefined.
+    pub fn init_textures(&self, encoder: &mut gpu::CommandEncoder) {
+        encoder.init_texture(self.font_atlas_tex.texture);
+        encoder.init_texture(self.emoji_atlas_tex.texture);
+        encoder.init_texture(self.avatar_atlas_tex.texture);
+    }
+
     pub fn upload_atlas(&self, encoder: &mut gpu::CommandEncoder, context: &gpu::Context) {
         self.font_atlas_tex.upload(encoder, context);
         self.emoji_atlas_tex.upload(encoder, context);
+        self.avatar_atlas_tex.upload(encoder, context);
     }
 
     pub fn begin_frame(&mut self) {

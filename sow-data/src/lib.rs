@@ -9,5 +9,6 @@ pub use colors::{NamedColor, PREMIUM_COLORS};
 pub use emoji::{lookup, AtlasRect, ATLAS_HEIGHT, ATLAS_WIDTH};
 pub use leaders::{leader_for_civilization, Civilization, Leader};
 pub use tribes::{
-    animal_for_id, animal_for_name, FALLBACK_TRIBES, HISTORICAL_CIVILIZATIONS, TRIBE_ANIMALS,
+    animal_for_id, animal_for_name, empire_emoji_for_id, empire_emoji_for_name, EMPIRE_EMOJIS,
+    FALLBACK_TRIBES, HISTORICAL_CIVILIZATIONS, TRIBE_ANIMALS,
 };

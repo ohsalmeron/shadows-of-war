@@ -87,7 +87,7 @@ impl SowApp {
                     render_ctx.command_encoder.init_texture(mr.terrain_texture);
                     render_ctx.command_encoder.init_texture(mr.owner_texture);
                     if let Some(ref tr) = self.gfx.text_renderer {
-                        render_ctx.command_encoder.init_texture(tr.font_atlas_tex.texture);
+                        tr.init_textures(&mut render_ctx.command_encoder);
                         tr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
                     }
                     self.gfx.needs_first_upload = false;
@@ -477,7 +477,7 @@ impl SowApp {
                     if self.gfx.text_renderer.is_none() {
                         let surface_format = s.info().format;
                         let tr = crate::render::gpu::TextRenderer::new(&render_ctx.context, surface_format);
-                        render_ctx.command_encoder.init_texture(tr.font_atlas_tex.texture);
+                        tr.init_textures(&mut render_ctx.command_encoder);
                         tr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
                         self.gfx.text_renderer = Some(tr);
                     }

@@ -1,6 +1,6 @@
 use super::MainMenuState;
 use crate::UiAction;
-use egui::{Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, Stroke, Ui};
+use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
 
 /// Snapshot of who may moderate the roster — lets `draw_ready_room` render the
 /// host's Kick/Ban controls without holding a borrow on `MainMenuState`.
@@ -229,13 +229,64 @@ fn draw_lobby_footer(
     lang: sow_i18n::Language,
     compact: bool,
 ) {
-    ui.add_space(8.0);
-    if compact {
-        ui.vertical_centered(|ui| {
-            draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
-        });
+    let strings = &sow_i18n::get(lang).main_menu;
+    let now = ui.input(|i| i.time);
+    let is_copied = if let Some(t) = state.invite_copied_at {
+        now - t < 2.0
     } else {
-        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+        false
+    };
+
+    if compact {
+        // Row 1: Cancel (left, red) + Copy/Invite (right, green/secondary)
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let half_w = (ui.available_width() - 8.0) / 2.0;
+
+            // Cancel — red, left
+            let cancel_btn = crate::widgets::ThemeButton::new(&strings.leave_lobby)
+                .style(crate::widgets::ThemeButtonStyle::Danger)
+                .min_size(egui::vec2(half_w, action_min_h))
+                .text_size(13.0);
+            if ui.add(cancel_btn).clicked() {
+                *action = Some(UiAction::LeaveLobby);
+            }
+
+            // Copy/Invite — secondary/green, right
+            if let Some(lobby) = lobby_info {
+                let label = if is_copied {
+                    &strings.invite_link_copied
+                } else {
+                    &strings.copy_invite_link
+                };
+                let copy_btn = crate::widgets::ThemeButton::new(label)
+                    .style(crate::widgets::ThemeButtonStyle::Secondary)
+                    .min_size(egui::vec2(half_w, action_min_h))
+                    .text_size(13.0);
+                if ui.add(copy_btn).clicked() {
+                    *action = Some(UiAction::CopyInviteLink(lobby.id));
+                }
+            } else {
+                // No lobby yet — spacer to keep cancel on the left
+                ui.allocate_space(egui::vec2(half_w, 0.0));
+            }
+        });
+
+        // Row 2: Start Game (full width, only for host)
+        if state.is_lobby_host {
+            if let Some(lobby) = lobby_info {
+                ui.add_space(8.0);
+                let start_btn = crate::widgets::ThemeButton::new(&strings.start_game)
+                    .style(crate::widgets::ThemeButtonStyle::Primary)
+                    .min_size(egui::vec2(ui.available_width(), action_min_h))
+                    .text_size(15.0);
+                if ui.add(start_btn).clicked() {
+                    *action = Some(UiAction::StartPrivateLobby(lobby.id));
+                }
+            }
+        }
+    } else {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             draw_lobby_bottom_actions(ui, state, lobby_info, action_min_h, action, lang);
         });

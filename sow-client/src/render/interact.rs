@@ -22,6 +22,9 @@ impl SowApp {
         // ── Hold-to-Attack pump: sends 10% of troops per second while held ──
         self.pump_hold_attack(ctx);
 
+        // ── Hold-to-Build pump ──
+        self.pump_hold_build(ctx);
+
         // Sync active context menu with request state (opens animation)
         if let Some(target) = self.input.map_context_menu {
             self.input.map_context_menu_active = Some(target);

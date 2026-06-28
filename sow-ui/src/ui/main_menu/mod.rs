@@ -9,7 +9,7 @@ pub mod queue_overlay;
 pub mod single_player_setup;
 
 use crate::UiAction;
-use egui::{Align, CentralPanel, Color32, Frame, Layout};
+use egui::{CentralPanel, Color32, Frame};
 use sow_core::protocol::LobbyInfo;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -428,12 +428,18 @@ pub fn draw(
     if state.show_join_browser && !state.is_waiting {
         join_browser::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
+        let panel_frame = if state.is_waiting {
+            Frame::new()
+                .fill(Color32::TRANSPARENT)
+                .inner_margin(outer_pad)
+        } else {
+            Frame::new()
+                .fill(Color32::from_rgba_unmultiplied(10, 10, 14, 210))
+                .inner_margin(outer_pad)
+        };
+
         CentralPanel::default()
-            .frame(
-                Frame::new()
-                    .fill(Color32::TRANSPARENT)
-                    .inner_margin(outer_pad),
-            )
+            .frame(panel_frame)
             .show_inside(root_ui, |ui| {
                 if state.is_waiting {
                     // Always fullscreen — the lobby waiting room fills the viewport at
@@ -454,44 +460,101 @@ pub fn draw(
                         lang,
                     );
                 } else {
-                    let panel_w = sow_ui_kit::theme::menu_rail_panel_width(
-                        ui.available_width(),
-                        compact,
-                        ui.ctx(),
-                    );
-                    let inner_w = if compact {
-                        panel_w
-                    } else {
-                        (panel_w - 40.0).max(0.0)
-                    };
-                    let content_h = ui.available_height();
-                    let effective_h = if compact {
-                        content_h
-                    } else {
-                        (content_h - 40.0).max(0.0)
-                    };
-                    let (section_gap, action_min_h, profile_height, lobby_height) =
-                        layout::menu_layout_chrome(ui.ctx(), effective_h, inner_w, compact);
+                    let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
+                    let section_gap = 12.0 * scale;
+                    let action_min_h = 48.0 * scale;
+                    let profile_height = 56.0 * scale;
 
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(panel_w, content_h),
-                        Layout::top_down(Align::Min),
-                        |ui| {
-                            layout::draw_menu_right_panel(
-                                ui,
-                                state,
-                                section_gap,
-                                action_min_h,
-                                compact,
-                                profile_height,
-                                lobby_height,
-                                content_h,
-                                &mut action,
-                                asset_loader,
-                                lang,
-                            );
-                        },
+                    profile::draw_user_profile_header(
+                        ui,
+                        state,
+                        compact,
+                        profile_height,
+                        asset_loader,
+                        lang,
+                        &mut action,
                     );
+
+                    ui.add_space(section_gap);
+
+                    // Reusable scrollable viewport area for the rest of the contents
+                    egui::ScrollArea::vertical()
+                        .id_salt("main_menu_content_scroll")
+                        .show(ui, |ui| {
+                            // Responsive side-by-side vs vertical stack
+                            let use_side_by_side = ui.available_width() > 640.0;
+                            if use_side_by_side {
+                                let total_w = ui.available_width();
+                                // Reserve 220px for the action buttons column, rest for lobbies
+                                let right_w = 220.0 * scale;
+                                let left_w = (total_w - right_w - section_gap).max(100.0);
+
+                                ui.horizontal(|ui| {
+                                    // Left Column: Matchmaking lobbies
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(left_w, ui.available_height()),
+                                        egui::Layout::top_down(egui::Align::Min),
+                                        |ui| {
+                                            browser::draw_left_column(
+                                                ui,
+                                                state,
+                                                section_gap,
+                                                action_min_h,
+                                                compact,
+                                                0.0, // natural height
+                                                &mut action,
+                                                asset_loader,
+                                                lang,
+                                            );
+                                        },
+                                    );
+
+                                    ui.add_space(section_gap);
+
+                                    // Right Column: Action buttons
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(right_w, ui.available_height()),
+                                        egui::Layout::top_down(egui::Align::Min),
+                                        |ui| {
+                                            actions::draw_right_column(
+                                                ui,
+                                                state,
+                                                section_gap,
+                                                action_min_h,
+                                                compact,
+                                                &mut action,
+                                                lang,
+                                            );
+                                        },
+                                    );
+                                });
+                            } else {
+                                // Portrait/Narrow: Stack vertically
+                                browser::draw_left_column(
+                                    ui,
+                                    state,
+                                    section_gap,
+                                    action_min_h,
+                                    compact,
+                                    0.0, // natural height
+                                    &mut action,
+                                    asset_loader,
+                                    lang,
+                                );
+
+                                ui.add_space(section_gap);
+
+                                actions::draw_right_column(
+                                    ui,
+                                    state,
+                                    section_gap,
+                                    action_min_h,
+                                    compact,
+                                    &mut action,
+                                    lang,
+                                );
+                            }
+                        });
                 }
             });
     }

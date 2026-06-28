@@ -273,6 +273,15 @@ pub fn tribe_animal(id: u16, name: &str) -> &'static str {
     }
 }
 
+/// Empire/nation emoji — same selection scheme as [`tribe_animal`] but a distinct category.
+pub fn empire_emoji(id: u16, name: &str) -> &'static str {
+    if name.is_empty() {
+        sow_data::empire_emoji_for_id(id)
+    } else {
+        sow_data::empire_emoji_for_name(name)
+    }
+}
+
 pub fn display_name(id: u16, name: &str, player_type: PlayerType) -> String {
     if name.is_empty() {
         match player_type {
