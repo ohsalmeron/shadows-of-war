@@ -208,8 +208,7 @@ impl SowApp {
         }
 
         if self.ui.app.phase == ClientPhase::MainMenu
-            || (self.ui.app.phase == ClientPhase::Splash
-                && self.ui.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::Boot)
+            || self.ui.app.phase == ClientPhase::Splash
         {
             // Same orientation test as the backdrop's set_leader_portrait_focus
             // (`width < height`); compact_viewport would compute a different key

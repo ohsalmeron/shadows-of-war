@@ -56,7 +56,12 @@ impl<'a> Widget for LobbyCard<'a> {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
-        let stroke_color = if self.lobby.is_counting_down {
+        let time = ui.input(|i| i.time);
+        let pulse = (((time * 3.5).sin() + 1.0) * 0.5) as f32; // smooth 0.0 to 1.0 pulse
+
+        let is_matchmaking = self.lobby.kind == sow_core::protocol::LobbyKind::Matchmaking;
+
+        let mut stroke_color = if self.lobby.is_counting_down {
             if is_hovered {
                 sow_ui_kit::theme::palette::neon_cyan_hover()
             } else {
@@ -69,6 +74,17 @@ impl<'a> Widget for LobbyCard<'a> {
                 sow_ui_kit::theme::palette::field_border()
             }
         };
+
+        if is_matchmaking && !self.lobby.is_counting_down {
+            let start_c = sow_ui_kit::theme::palette::field_border();
+            let end_c = sow_ui_kit::theme::palette::neon_cyan();
+            stroke_color = Color32::from_rgb(
+                (start_c.r() as f32 + (end_c.r() as f32 - start_c.r() as f32) * pulse) as u8,
+                (start_c.g() as f32 + (end_c.g() as f32 - start_c.g() as f32) * pulse) as u8,
+                (start_c.b() as f32 + (end_c.b() as f32 - start_c.b() as f32) * pulse) as u8,
+            );
+            ui.ctx().request_repaint(); // keep animating
+        }
 
         let stroke_width = if is_hovered { 2.0_f32 } else { 1.0_f32 };
 
@@ -109,11 +125,23 @@ impl<'a> Widget for LobbyCard<'a> {
 
         let timer_text = if self.lobby.is_counting_down {
             format!("Starts in {:.0}s", self.lobby.timer_secs.max(0.0))
+        } else if is_matchmaking {
+            "SEARCHING".to_string()
         } else {
             "WAITING".to_string()
         };
         let timer_color = if self.lobby.is_counting_down {
             Color32::from_rgb(255, 210, 120)
+        } else if is_matchmaking {
+            let start_val = 140.0;
+            let end_r = sow_ui_kit::theme::palette::neon_cyan().r() as f32;
+            let end_g = sow_ui_kit::theme::palette::neon_cyan().g() as f32;
+            let end_b = sow_ui_kit::theme::palette::neon_cyan().b() as f32;
+            Color32::from_rgb(
+                (start_val + (end_r - start_val) * pulse) as u8,
+                (start_val + (end_g - start_val) * pulse) as u8,
+                (start_val + (end_b - start_val) * pulse) as u8,
+            )
         } else {
             sow_ui_kit::theme::palette::text_muted()
         };

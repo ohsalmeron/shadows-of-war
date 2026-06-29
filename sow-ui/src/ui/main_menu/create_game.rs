@@ -90,6 +90,10 @@ pub fn draw(
     let mut is_open = state.show_create_game;
     let mut should_close = false;
 
+    if root_ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+        should_close = true;
+    }
+
     sow_ui_kit::theme::draw_standard_modal(
         root_ui.ctx(),
         &mut is_open,

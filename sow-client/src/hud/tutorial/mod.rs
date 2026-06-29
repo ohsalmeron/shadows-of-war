@@ -25,8 +25,13 @@ mod steps;
 use crate::app::SowApp;
 use objectives::{draw_objectives_panel, ObjRow, ObjState};
 use pointer::draw_tutorial_pointer;
-use sow_ui::widgets::{DialogButton, SpeakerDialog, SpeakerVisual, ThemeButtonStyle};
+use sow_ui::widgets::{BottomDialog, DialogButton, SpeakerVisual, ThemeButtonStyle};
 use steps::{objective_progress, ADVISOR, CHAPTER_1};
+
+/// How long a non-destructive dialog holds the bottom panel before auto-advancing (the takeover is
+/// "for a limited time"; a tap on the panel or a click on the map skips it sooner). Destructive or
+/// branching dialogs (the last-step Continue/Stay choice) pass `None` and wait for the player.
+const DIALOG_AUTODISMISS_SECS: f32 = 10.0;
 
 /// Kept for the `UiState.tutorial_step` field + `start_offline_match`; the campaign
 /// interpreter below drives flow via `tutorial_step_idx`.
@@ -159,6 +164,7 @@ impl SowApp {
                 };
                 rows.push(ObjRow {
                     label: s.title,
+                    hint: s.hint,
                     current,
                     target,
                     state: ObjState::Done,
@@ -167,6 +173,7 @@ impl SowApp {
             } else {
                 rows.push(ObjRow {
                     label: s.title,
+                    hint: s.hint,
                     current,
                     target,
                     state: if current >= target {
@@ -209,8 +216,11 @@ impl SowApp {
             self.ui.tutorial_pending_intro = self.tutorial_detect_first_contact();
         }
 
-        // A pending intro takes over the modal; otherwise the objective modal shows. Both reuse
-        // the same speaker dialog. ANY click anywhere closes whichever is up.
+        // A pending intro takes over the panel; otherwise the objective modal shows. Both reuse
+        // the same dialog — docked into the bottom panel on desktop, floating on mobile (see
+        // `present_dialog`). ANY click anywhere closes whichever is up. Clearing `bottom_dialog`
+        // each frame lets the panel animate the takeover back out once nothing is showing.
+        self.ui.app.hud_state.bottom_dialog = None;
         if let Some(name) = self.ui.tutorial_pending_intro.clone() {
             // The NPC presents itself, with its real portrait: tribe → spirit-animal emoji on a
             // colored disc, empire → colored disc, all from the live snapshot.
@@ -228,19 +238,16 @@ impl SowApp {
                     sow_core::player::PlayerType::Nation => SpeakerVisual::Empire { color: p.color },
                     sow_core::player::PlayerType::Human => SpeakerVisual::Avatar(ADVISOR),
                 });
-            let dialog = SpeakerDialog {
-                visual,
-                name: Some(&line.speaker),
-                title: &line.title,
-                body: &line.body,
-                buttons: vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
-            };
-            let clicked = sow_ui::widgets::draw_speaker_dialog(
+            let clicked = self.present_dialog(
                 ctx,
                 "tutorial_intro",
-                &dialog,
-                &self.ui.app.asset_loader,
+                visual,
+                Some(line.speaker),
+                line.title,
+                line.body,
+                vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
                 true,
+                Some(DIALOG_AUTODISMISS_SECS),
             );
             if clicked.is_some() || ctx.input(|i| i.pointer.any_click()) {
                 self.ui.tutorial_pending_intro = None;
@@ -259,19 +266,22 @@ impl SowApp {
                 vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)]
             };
 
-            let dialog = SpeakerDialog {
-                visual: Some(SpeakerVisual::Avatar(ADVISOR)),
-                name: Some("Boudica"),
-                title: step.title,
-                body: step.body,
-                buttons,
+            // The branching last step waits for the player; informational steps auto-advance.
+            let auto_dismiss = if is_last_step {
+                None
+            } else {
+                Some(DIALOG_AUTODISMISS_SECS)
             };
-            let clicked = sow_ui::widgets::draw_speaker_dialog(
+            let clicked = self.present_dialog(
                 ctx,
                 "tutorial_dialog",
-                &dialog,
-                &self.ui.app.asset_loader,
+                Some(SpeakerVisual::Avatar(ADVISOR)),
+                Some("Boudica".to_string()),
+                step.title.to_string(),
+                step.body.to_string(),
+                buttons,
                 !is_last_step, // whole panel closes it only if not last step
+                auto_dismiss,
             );
             let clicked_anywhere = !is_last_step && ctx.input(|i| i.pointer.any_click());
             if let Some(btn_idx) = clicked {
@@ -298,6 +308,43 @@ impl SowApp {
         // the last dialog play resumes; queued intros each pause in turn until all are cleared.
         self.sim.paused =
             self.ui.tutorial_pending_intro.is_some() || !self.ui.tutorial_modal_dismissed;
+    }
+
+    /// Queue a dialog for the "In and Out" panel pinned above the bottom HUD panel, and return the
+    /// click it reported. The panel owns presentation (frame clone, in/out animation, tap-to-skip,
+    /// timed auto-dismiss); here we just hand it the payload and read the result back.
+    ///
+    /// One frame async: the payload is drawn later this frame and the click arrives next frame via
+    /// `bottom_dialog_click` — imperceptible for a dismiss. The click is **id-tagged**, so a click
+    /// left over from a different dialog still fading out is discarded rather than misattributed.
+    #[allow(clippy::too_many_arguments)]
+    fn present_dialog(
+        &mut self,
+        _ctx: &egui::Context,
+        id: &str,
+        visual: Option<SpeakerVisual>,
+        name: Option<String>,
+        title: String,
+        body: String,
+        buttons: Vec<DialogButton>,
+        click_anywhere: bool,
+        auto_dismiss: Option<f32>,
+    ) -> Option<usize> {
+        let clicked = match self.ui.app.hud_state.bottom_dialog_click.take() {
+            Some((cid, idx)) if cid == id => Some(idx),
+            _ => None,
+        };
+        self.ui.app.hud_state.bottom_dialog = Some(BottomDialog {
+            id: id.to_string(),
+            visual,
+            name,
+            title,
+            body,
+            buttons,
+            click_anywhere,
+            auto_dismiss_secs: auto_dismiss,
+        });
+        clicked
     }
 
     /// Returns a tribe whose first-contact intro should fire now — i.e. our territory has just

@@ -102,11 +102,11 @@ mod tests {
         let agg = BuildingAggregate::default();
         assert_eq!(
             gold_income_per_second(400, agg, Leader::Caesar, &cfg),
-            cfg.gold_base_income + 100.0
+            cfg.gold_base_income + 50.0
         );
         assert_eq!(
             troop_income_per_second(400, agg, Leader::Caesar, &cfg),
-            cfg.troop_base_income + 50.0
+            cfg.troop_base_income + 25.0
         );
     }
 

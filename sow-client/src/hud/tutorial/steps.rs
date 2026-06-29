@@ -42,6 +42,9 @@ pub(super) struct Step {
     pub title: &'static str,
     /// Narration shown in the dialog.
     pub body: &'static str,
+    /// One terse line under the objective row that says what to *do* and what the bar counts.
+    /// Keep it to a single line at the panel's width (~30 chars).
+    pub hint: &'static str,
     pub advance: Trigger,
 }
 
@@ -52,41 +55,49 @@ pub(super) const CHAPTER_1: &[Step] = &[
     Step {
         title: "Rise of the Iceni",
         body: "I am Boudica. Rome thinks us weak — tap the wild land beyond our border and seize it.",
+        hint: "Tap wild land to seize it — tiles taken",
         advance: Trigger::TilesGained(256),
     },
     Step {
         title: "Grow the Warband",
         body: "Keep pushing outward — every tile feeds troops and gold into the revolt.",
+        hint: "Every tile mints troops & gold — tiles held",
         advance: Trigger::TilesGained(1024),
     },
     Step {
         title: "First Blood",
         body: "The Romans built outposts and farms on our land. Drag your warriors into them and blood your spears.",
+        hint: "Charge a Roman outpost — foes crushed",
         advance: Trigger::TribesEaten(1),
     },
     Step {
         title: "Unite the East",
         body: "Veterans, outposts, and kneeling nobles. Unite the east under one banner: devour all four.",
+        hint: "Devour four neighbours — foes crushed",
         advance: Trigger::TribesEaten(4),
     },
     Step {
         title: "The First Fire",
         body: "Camulodunum stands to our south. Burn it.",
+        hint: "Raze Camulodunum, to the south",
         advance: Trigger::DefeatedPlayer("Camulodunum"),
     },
     Step {
         title: "The Second Fire",
         body: "Londinium, the heart of their trade. Burn it.",
+        hint: "Burn Londinium, their trade heart",
         advance: Trigger::DefeatedPlayer("Londinium"),
     },
     Step {
         title: "The Third Fire",
         body: "Verulamium along Watling Street. Leave nothing but ash.",
+        hint: "Leave Verulamium in ash",
         advance: Trigger::DefeatedPlayer("Verulamium"),
     },
     Step {
         title: "Ambush the Ninth",
         body: "Legio IX Hispana marches from the north. Cut them down.",
+        hint: "Cut down the marching Ninth",
         advance: Trigger::DefeatedPlayer("Legio IX Hispana"),
     },
     // Terminal step: reaching it pops the Final Battle modal (Continue / Stay and fight) in `mod.rs`.
@@ -95,6 +106,7 @@ pub(super) const CHAPTER_1: &[Step] = &[
     Step {
         title: "The Final Battle",
         body: "Congratulations, tutorial complete! Suetonius Paulinus returns from Wales with the XIV and XX Legions. This is where the history books say we fall. Will you stay and fight?",
+        hint: "Stand and break Paulinus",
         advance: Trigger::DefeatedPlayer("Legio XIV Gemina"),
     },
 ];

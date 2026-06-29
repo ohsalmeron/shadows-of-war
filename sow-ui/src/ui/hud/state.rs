@@ -96,6 +96,19 @@ pub struct HudState {
     pub chat_disabled: bool,
     pub show_exit_confirm: bool,
     pub is_tutorial: bool,
+
+    /// A message that should *take over* the bottom panel (reusing its frame) instead of
+    /// floating its own sheet. Set by the campaign/tutorial each frame it wants the dialog up;
+    /// cleared to dismiss. The panel animates it in/out and reports the click via
+    /// [`Self::bottom_dialog_click`]. See [`crate::ui::hud::draw`]'s bottom-panel takeover.
+    pub bottom_dialog: Option<crate::widgets::BottomDialog>,
+    /// Shadow copy the panel keeps so it can finish the out-animation after `bottom_dialog`
+    /// clears (the source payload is gone by then). Panel-managed; callers don't touch it.
+    pub(crate) bottom_dialog_display: Option<crate::widgets::BottomDialog>,
+    /// `(dialog id, button index)` the panel recorded last frame (tap/timeout/button). Tagged with
+    /// the id so a caller `take()`ing it can discard a click that belonged to a *different* dialog
+    /// (e.g. one still fading out) instead of misattributing it.
+    pub bottom_dialog_click: Option<(String, usize)>,
 }
 
 impl HudState {

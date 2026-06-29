@@ -343,6 +343,23 @@ pub fn join_player(
                     let new_lobby = games.last_mut().unwrap();
                     new_lobby.id = req; // Override the ID to match the rematch ID
                     req
+                } else if games.iter().any(|g| g.id == req && g.kind == LobbyKind::Matchmaking) {
+                    log::info!("[JOIN] Requested matchmaking lobby {} not joinable, falling back", req);
+                    if let Some(fallback_id) = resolve_join_target(None, games) {
+                        fallback_id
+                    } else {
+                        spawn_waiting_lobby(
+                            games,
+                            next_id,
+                            "FFA",
+                            LobbyKind::Matchmaking,
+                            false,
+                            None,
+                            None,
+                            String::new(),
+                        );
+                        games.last().unwrap().id
+                    }
                 } else {
                     log::warn!(
                         "[JOIN] {} target lobby {} not found or not joinable",

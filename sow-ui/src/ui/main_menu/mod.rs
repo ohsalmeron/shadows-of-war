@@ -214,7 +214,6 @@ pub fn draw_terms_privacy_footer(
     let link_color = sow_ui_kit::theme::palette::neon_cyan();
     let size = 11.0;
     let narrow = ui.available_width() < 768.0;
-    ui.set_max_height(120.0);
 
     let draw_terms_link = |ui: &mut egui::Ui, action: &mut Option<UiAction>| {
         let terms_id = ui.make_persistent_id("terms_of_service_link");
@@ -271,7 +270,8 @@ pub fn draw_terms_privacy_footer(
     if narrow {
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            ui.with_layout(
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 15.0),
                 egui::Layout::left_to_right(egui::Align::Center)
                     .with_main_align(egui::Align::Center)
                     .with_main_wrap(true),
@@ -291,7 +291,8 @@ pub fn draw_terms_privacy_footer(
                     draw_privacy_link(ui, action);
                 },
             );
-            ui.with_layout(
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 15.0),
                 egui::Layout::left_to_right(egui::Align::Center)
                     .with_main_align(egui::Align::Center)
                     .with_main_wrap(true),
@@ -330,7 +331,8 @@ pub fn draw_terms_privacy_footer(
         return;
     }
 
-    ui.with_layout(
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), 15.0),
         egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Center),
         |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
@@ -394,6 +396,82 @@ pub fn draw_terms_privacy_footer(
     );
 }
 
+fn draw_desktop_hero_spotlight(
+    ui: &mut egui::Ui,
+    state: &MainMenuState,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+) {
+    let leader = state.selected_leader;
+    let fill = sow_ui_kit::theme::palette::field_bg();
+    let border = sow_ui_kit::theme::palette::field_border();
+    
+    ui.vertical(|ui| {
+        egui::Frame::NONE
+            .fill(fill)
+            .stroke(egui::Stroke::new(1.0, border))
+            .corner_radius(egui::CornerRadius::same(12))
+            .inner_margin(12)
+            .show(ui, |ui| {
+                ui.set_max_width(280.0);
+                ui.vertical_centered(|ui| {
+                    // Leader name / Civilization
+                    ui.label(
+                        egui::RichText::new(leader.name().to_uppercase())
+                            .font(sow_ui_kit::theme::font_regular(14.0))
+                            .color(egui::Color32::WHITE),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("CIVILIZATION: {}", leader.civilization().name().to_uppercase()))
+                            .font(sow_ui_kit::theme::font_regular(11.0))
+                            .color(sow_ui_kit::theme::palette::text_muted()),
+                    );
+                    
+                    ui.add_space(8.0);
+                    
+                    // Render the leader's avatar image inside a nice framed box
+                    let avatar_size = egui::vec2(140.0, 140.0);
+                    let (rect, _) = ui.allocate_exact_size(avatar_size, egui::Sense::hover());
+                    
+                    let rgb = leader.filler_rgb();
+                    let fill_color = egui::Color32::from_rgb(
+                        (rgb[0] * 255.0).round() as u8,
+                        (rgb[1] * 255.0).round() as u8,
+                        (rgb[2] * 255.0).round() as u8,
+                    );
+                    ui.painter().rect_filled(rect, 8.0, fill_color);
+                    
+                    if let Some(tex) = asset_loader.avatars.get(&leader) {
+                        let image = egui::Image::new(tex)
+                            .fit_to_exact_size(avatar_size)
+                            .corner_radius(egui::CornerRadius::same(8));
+                        ui.put(rect, image);
+                    }
+                    
+                    ui.add_space(8.0);
+                    
+                    // Perk emoji + description
+                    ui.label(
+                        egui::RichText::new(format!("{} Unique Perk", leader.menu_emoji()))
+                            .font(sow_ui_kit::theme::font_regular(11.0))
+                            .color(sow_ui_kit::theme::palette::neon_cyan()),
+                    );
+                    
+                    ui.add_space(4.0);
+                    
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(leader.perk_description())
+                                .font(sow_ui_kit::theme::font_regular(11.0))
+                                .color(sow_ui_kit::theme::palette::text_muted())
+                        )
+                        .halign(egui::Align::Center)
+                    );
+                });
+            });
+    });
+}
+
+
 fn draw_desktop_buttons_grid(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -410,6 +488,8 @@ fn draw_desktop_buttons_grid(
     let cell_gap = (gap * 0.5).min(8.0);
     let col_w = (grid_w - cell_gap) * 0.5;
 
+    let button_h = row_h.max(text_size * 2.6);
+
     ui.vertical(|ui| {
         // Row 1: Join (left) + Create (right)
         ui.horizontal(|ui| {
@@ -418,7 +498,7 @@ fn draw_desktop_buttons_grid(
             let join_btn = crate::widgets::ThemeButton::new(&strings.join_game_btn)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, row_h))
+                .min_size(egui::vec2(col_w, button_h))
                 .text_size(text_size);
             if ui.add(join_btn).clicked() {
                 *action = Some(UiAction::OpenJoinBrowser);
@@ -427,7 +507,7 @@ fn draw_desktop_buttons_grid(
             let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, row_h))
+                .min_size(egui::vec2(col_w, button_h))
                 .text_size(text_size);
             if ui.add(create_btn).clicked() {
                 *action = Some(UiAction::OpenCreateGame);
@@ -443,7 +523,7 @@ fn draw_desktop_buttons_grid(
             let solo_btn = crate::widgets::ThemeButton::new(&strings.single_player)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, row_h))
+                .min_size(egui::vec2(col_w, button_h))
                 .text_size(text_size);
             if ui.add(solo_btn).clicked() {
                 state.show_single_player_setup = true;
@@ -452,7 +532,7 @@ fn draw_desktop_buttons_grid(
             let settings_btn = crate::widgets::ThemeButton::new(&strings.settings)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, row_h))
+                .min_size(egui::vec2(col_w, button_h))
                 .text_size(text_size);
             if ui.add(settings_btn).clicked() {
                 *action = Some(UiAction::ToggleSettings);
@@ -494,7 +574,7 @@ pub fn draw(
         .frame(
             egui::Frame::NONE
                 .fill(sow_ui_kit::theme::palette::surface())
-                .inner_margin(egui::Margin::symmetric(16, 8)),
+                .inner_margin(egui::Margin::symmetric(16, 4)),
         )
         .show_inside(root_ui, |ui| {
             draw_terms_privacy_footer(ui, lang, &mut action);
@@ -560,7 +640,8 @@ pub fn draw(
                     let use_side_by_side = ui.available_width() > 640.0;
                     if use_side_by_side {
                         let total_w = ui.available_width();
-                        let left_w = (total_w * 0.65).min(560.0);
+                        let left_w = (total_w * 0.55).min(560.0);
+                        let right_w = (total_w - left_w - section_gap).max(280.0);
 
                         ui.horizontal(|ui| {
                             // Left Column: Matchmaking lobbies + 2x2 grid below
@@ -597,7 +678,20 @@ pub fn draw(
                                 },
                             );
 
-                            // The right side is left empty
+                            ui.add_space(section_gap);
+
+                            // Right Column: Hero Spotlight
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(right_w, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Center).with_cross_align(egui::Align::Center),
+                                |ui| {
+                                    draw_desktop_hero_spotlight(
+                                        ui,
+                                        state,
+                                        asset_loader,
+                                    );
+                                },
+                            );
                         });
                     } else {
                         // Portrait/Narrow: Stack vertically and allow scrolling

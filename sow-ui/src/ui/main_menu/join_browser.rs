@@ -53,6 +53,10 @@ pub fn draw(
     action: &mut Option<UiAction>,
     lang: sow_i18n::Language,
 ) {
+    if root_ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+        *action = Some(UiAction::CloseOverlay);
+    }
+
     let strings = &sow_i18n::get(lang).main_menu;
     let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
 
@@ -255,7 +259,8 @@ fn draw_lobby_row(
     strings: &sow_i18n::MainMenuStrings,
 ) {
     let thumbnail = asset_loader.thumbnail(&lobby.map_name);
-    let response = ui.add(LobbyCard::new(lobby, thumbnail).side(side));
+    let card_w = side * (16.0 / 9.0);
+    let response = ui.add(LobbyCard::new(lobby, thumbnail).width(card_w).side(side));
 
     // Draw 🔒 badge overlay if password-protected
     if lobby.has_password {

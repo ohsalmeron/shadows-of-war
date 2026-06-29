@@ -7,12 +7,14 @@ use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudSta
 use crate::ui::asset_loader::AssetLoader;
 
 mod bottom;
+mod dialog_panel;
 mod emoji;
 mod inbox;
 mod map_controls;
 mod top_icons;
 
 use bottom::draw_bottom_panel;
+use dialog_panel::draw_pinned_dialog;
 use emoji::draw_emoji_panel;
 use inbox::draw_alliance_inbox;
 use map_controls::draw_map_controls;
@@ -75,14 +77,17 @@ pub fn draw(
     };
 
     let (bottom_anchor, bottom_offset) = if portrait_dock {
+        // Mobile dock: flush to the bottom edge (above the OS safe area) by design.
         (
             egui::Align2::LEFT_BOTTOM,
             egui::vec2(0.0, -state.safe_area_bottom),
         )
     } else {
+        // Desktop/landscape: lift the floating panel off the viewport bottom a touch.
+        const BOTTOM_LIFT: f32 = 12.0;
         (
             egui::Align2::CENTER_BOTTOM,
-            egui::vec2(0.0, -state.safe_area_bottom),
+            egui::vec2(0.0, -state.safe_area_bottom - BOTTOM_LIFT),
         )
     };
     let panel_radius = if portrait_dock {
@@ -108,6 +113,9 @@ pub fn draw(
         bottom_offset,
         panel_radius,
     );
+    // Pinned "In and Out" dialog — sits just above the bottom panel (which has now published its
+    // rect), cloning its frame and rendering through the atlas text pipeline.
+    draw_pinned_dialog(ui, state, asset_loader);
     draw_top_icons(ui, state, lang, &mut action, asset_loader);
     draw_alliance_inbox(ui, state, cancel_intents, lang, anim, asset_loader);
     draw_map_controls(ui, state, lang, compact, log_tabs_enabled, &mut action);
