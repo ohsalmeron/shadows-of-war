@@ -71,9 +71,8 @@ rodio = { version = "0.22.2", default-features = false, features = ["playback", 
 wasm-opt = "0.116"
 tempfile = "3"
 
-blade-egui = { path = "blade/blade-egui" }
-blade-graphics = { path = "blade/blade-graphics" }
-blade-macros = { path = "blade/blade-macros" }
+# blade-egui, blade-graphics, blade-macros are specified directly in
+# each crate's Cargo.toml (git + subdir) — not workspace deps.
 
 [workspace.dependencies.bytemuck]
 version = "1"

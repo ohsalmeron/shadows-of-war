@@ -38,7 +38,6 @@ sow-net = { workspace = true }
 log = { workspace = true }
 winit = { workspace = true }
 egui = { workspace = true }
-blade-egui = { workspace = true }
 bincode.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -48,8 +47,9 @@ crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 url = { workspace = true }
-blade-graphics = { workspace = true }
-blade-macros = { workspace = true }
+blade-graphics = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-graphics" }
+blade-macros = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-macros" }
+blade-egui = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-egui" }
 bytemuck = { workspace = true }
 raw-window-handle = { workspace = true }
 
