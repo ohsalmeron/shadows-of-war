@@ -165,10 +165,10 @@ impl SowEngine {
             return false;
         }
         let tick = self.current_tick_u32();
-        !self
+        self
             .alliance_request_cooldown_until
             .get(&(proposer, target))
-            .is_some_and(|until| *until > tick)
+            .is_none_or(|until| *until <= tick)
     }
 
     pub fn mark_alliance_request_cooldown(&mut self, proposer: PlayerId, target: PlayerId) {

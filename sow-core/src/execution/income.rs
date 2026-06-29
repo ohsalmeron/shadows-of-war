@@ -121,7 +121,7 @@ impl SowEngine {
             if player.player_type == crate::player::PlayerType::Bot
                 && needs_city
                 && player.tile_count >= 150
-                && (self.state.tick + player.id as u64) % 30 == 0
+                && (self.state.tick + player.id as u64).is_multiple_of(30)
             {
                 tribes_needing_city.push((
                     player.id,
