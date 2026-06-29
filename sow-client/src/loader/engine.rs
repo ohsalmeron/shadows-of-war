@@ -248,13 +248,21 @@ impl SowApp {
                         self.ui.app.splash_state.gpu_load_step = 1;
                         self.ui.app.splash_state.frames_drawn = 0;
                     } else if step == 1 {
+                        let leader = self.ui.app.main_menu_state.selected_leader;
+                        let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
+                        self.ui.app.asset_loader.ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                        self.ui.app.asset_loader.ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
+                        self.ui.app.asset_loader.set_leader_portrait_focus(leader, mobile);
+
                         let p = self.ui.app.splash_state.progress;
                         if p < 0.99 {
                             let inc = ((0.99 - p) * 0.03).max(0.001).min(0.04);
                             splash_show_loading_progress(&mut self.ui.app.splash_state, (p + inc).min(0.99));
                         }
-                        if self.net.client.is_some() {
-                            log::info!("Exit game splash: connected, transitioning to main menu");
+
+                        let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
+                        if self.net.client.is_some() && hero_ready {
+                            log::info!("Exit game splash: connected, hero image ready, transitioning to main menu");
                             self.ui.app.splash_state.progress = 1.0;
                             self.ui.app.splash_state.gpu_load_step = 2;
                             self.ui.app.splash_state.frames_drawn = 0;

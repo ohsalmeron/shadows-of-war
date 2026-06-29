@@ -272,51 +272,61 @@ pub fn draw_terms_privacy_footer(
             egui::Layout::top_down(egui::Align::Center).with_cross_align(egui::Align::Center),
             |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(
-                        egui::RichText::new(strings.by_playing_you_agree.trim_end())
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_terms_link(ui, action);
-                    ui.label(
-                        egui::RichText::new(strings.and_the.trim())
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_privacy_link(ui, action);
-                });
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(
-                        egui::RichText::new(&version)
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    ui.label(
-                        egui::RichText::new("·")
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    ui.label(
-                        egui::RichText::new(&credits.based_on_short)
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    ui.label(
-                        egui::RichText::new("·")
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_discord_link(ui);
-                    ui.label(
-                        egui::RichText::new("·")
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_github_link(ui);
-                });
+                ui.with_layout(
+                    egui::Layout::left_to_right(egui::Align::Center)
+                        .with_main_align(egui::Align::Center)
+                        .with_main_wrap(true),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(
+                            egui::RichText::new(strings.by_playing_you_agree.trim_end())
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        draw_terms_link(ui, action);
+                        ui.label(
+                            egui::RichText::new(strings.and_the.trim())
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        draw_privacy_link(ui, action);
+                    },
+                );
+                ui.with_layout(
+                    egui::Layout::left_to_right(egui::Align::Center)
+                        .with_main_align(egui::Align::Center)
+                        .with_main_wrap(true),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(
+                            egui::RichText::new(&version)
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        ui.label(
+                            egui::RichText::new("·")
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        ui.label(
+                            egui::RichText::new(&credits.based_on_short)
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        ui.label(
+                            egui::RichText::new("·")
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        draw_discord_link(ui);
+                        ui.label(
+                            egui::RichText::new("·")
+                                .font(sow_ui_kit::theme::font_regular(size))
+                                .color(text_color),
+                        );
+                        draw_github_link(ui);
+                    },
+                );
             },
         );
         return;

@@ -62,16 +62,11 @@ fn draw_lobby_list(
         return;
     }
 
-    // Main menu shows ONLY Matchmaking queues — Custom lobbies live in the Game Browser.
-    let ffa_lobbies: Vec<_> = state
+    // Main menu shows ONLY the primary Matchmaking queue — Custom lobbies live in the Game Browser.
+    let matchmaking_lobbies: Vec<_> = state
         .lobbies
         .iter()
-        .filter(|l| l.game_mode == "FFA" && l.kind == sow_core::protocol::LobbyKind::Matchmaking)
-        .collect();
-    let team_lobbies: Vec<_> = state
-        .lobbies
-        .iter()
-        .filter(|l| l.game_mode == "Teams" && l.kind == sow_core::protocol::LobbyKind::Matchmaking)
+        .filter(|l| l.kind == sow_core::protocol::LobbyKind::Matchmaking)
         .collect();
 
     let mut draw_lobby = |ui: &mut Ui, lobby: &sow_core::protocol::LobbyInfo| {
@@ -115,17 +110,9 @@ fn draw_lobby_list(
         ui.add_space(8.0);
     };
 
-    let ffa_lobby = find_primary_lobby(&ffa_lobbies);
-    let team_lobby = find_primary_lobby(&team_lobbies);
+    let primary_lobby = find_primary_lobby(&matchmaking_lobbies);
 
-    if let Some(lobby) = ffa_lobby {
-        draw_lobby(ui, lobby);
-    }
-
-    if let Some(lobby) = team_lobby {
-        if ffa_lobby.is_some() {
-            ui.add_space(8.0);
-        }
+    if let Some(lobby) = primary_lobby {
         draw_lobby(ui, lobby);
     }
 }
