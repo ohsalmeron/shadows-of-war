@@ -4,7 +4,7 @@ use sow_core::protocol::LobbyInfo;
 pub struct LobbyCard<'a> {
     lobby: &'a LobbyInfo,
     texture: Option<&'a egui::TextureHandle>,
-    side: f32,
+    side: Option<f32>,
     width: Option<f32>,
 }
 
@@ -13,14 +13,14 @@ impl<'a> LobbyCard<'a> {
         Self {
             lobby,
             texture,
-            side: 160.0,
+            side: None,
             width: None,
         }
     }
 
-    /// Square edge length (1:1 — standard for map thumbnails).
+    /// Set height constraint for the card.
     pub fn side(mut self, side: f32) -> Self {
-        self.side = side;
+        self.side = Some(side);
         self
     }
 
@@ -36,8 +36,18 @@ pub struct LobbyCardResponse {
 
 impl<'a> Widget for LobbyCard<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let w = self.width.unwrap_or_else(|| ui.available_width());
-        let h = self.side;
+        let aspect_ratio = 16.0 / 9.0;
+        let max_w = self.width.unwrap_or_else(|| ui.available_width());
+        let mut w = max_w;
+        let mut h = w / aspect_ratio;
+
+        if let Some(limit_h) = self.side {
+            if h > limit_h {
+                h = limit_h;
+                w = h * aspect_ratio;
+            }
+        }
+
         let desired_size = egui::vec2(w, h);
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 

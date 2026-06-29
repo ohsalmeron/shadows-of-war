@@ -72,17 +72,13 @@ fn draw_lobby_list(
     let mut draw_lobby = |ui: &mut Ui, lobby: &sow_core::protocol::LobbyInfo| {
         let thumbnail = asset_loader.thumbnail(&lobby.map_name);
         let parent_w = ui.available_width();
-        let card_w = if parent_w > 480.0 {
+        let card_w = if parent_w > 640.0 {
             (parent_w * 0.65).min(560.0)
         } else {
             parent_w
         };
-        let screen_h = ui.ctx().input(|i| i.content_rect()).height();
-        let card_h = (card_w / 1.77).clamp(90.0, (screen_h * 0.45).min(200.0));
-
         let response = ui.add(
             LobbyCard::new(lobby, thumbnail)
-                .side(card_h)
                 .width(card_w)
         );
         if response.clicked() {
