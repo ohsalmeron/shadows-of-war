@@ -213,7 +213,8 @@ pub fn draw_terms_privacy_footer(
     let text_color = sow_ui_kit::theme::palette::text_muted();
     let link_color = sow_ui_kit::theme::palette::neon_cyan();
     let size = 11.0;
-    let narrow = ui.available_width() < 480.0;
+    let narrow = ui.available_width() < 768.0;
+    ui.set_max_height(120.0);
 
     let draw_terms_link = |ui: &mut egui::Ui, action: &mut Option<UiAction>| {
         let terms_id = ui.make_persistent_id("terms_of_service_link");
@@ -268,67 +269,64 @@ pub fn draw_terms_privacy_footer(
     };
 
     if narrow {
-        ui.with_layout(
-            egui::Layout::top_down(egui::Align::Center).with_cross_align(egui::Align::Center),
-            |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                ui.with_layout(
-                    egui::Layout::left_to_right(egui::Align::Center)
-                        .with_main_align(egui::Align::Center)
-                        .with_main_wrap(true),
-                    |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(
-                            egui::RichText::new(strings.by_playing_you_agree.trim_end())
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        draw_terms_link(ui, action);
-                        ui.label(
-                            egui::RichText::new(strings.and_the.trim())
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        draw_privacy_link(ui, action);
-                    },
-                );
-                ui.with_layout(
-                    egui::Layout::left_to_right(egui::Align::Center)
-                        .with_main_align(egui::Align::Center)
-                        .with_main_wrap(true),
-                    |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(
-                            egui::RichText::new(&version)
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        ui.label(
-                            egui::RichText::new("·")
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        ui.label(
-                            egui::RichText::new(&credits.based_on_short)
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        ui.label(
-                            egui::RichText::new("·")
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        draw_discord_link(ui);
-                        ui.label(
-                            egui::RichText::new("·")
-                                .font(sow_ui_kit::theme::font_regular(size))
-                                .color(text_color),
-                        );
-                        draw_github_link(ui);
-                    },
-                );
-            },
-        );
+        ui.vertical_centered(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.with_layout(
+                egui::Layout::left_to_right(egui::Align::Center)
+                    .with_main_align(egui::Align::Center)
+                    .with_main_wrap(true),
+                |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(
+                        egui::RichText::new(strings.by_playing_you_agree.trim_end())
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_terms_link(ui, action);
+                    ui.label(
+                        egui::RichText::new(strings.and_the.trim())
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_privacy_link(ui, action);
+                },
+            );
+            ui.with_layout(
+                egui::Layout::left_to_right(egui::Align::Center)
+                    .with_main_align(egui::Align::Center)
+                    .with_main_wrap(true),
+                |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(
+                        egui::RichText::new(&version)
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    ui.label(
+                        egui::RichText::new(&credits.based_on_short)
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_discord_link(ui);
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(sow_ui_kit::theme::font_regular(size))
+                            .color(text_color),
+                    );
+                    draw_github_link(ui);
+                },
+            );
+        });
         return;
     }
 
@@ -396,6 +394,73 @@ pub fn draw_terms_privacy_footer(
     );
 }
 
+fn draw_desktop_buttons_grid(
+    ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    grid_w: f32,
+    row_h: f32,
+    gap: f32,
+    action: &mut Option<UiAction>,
+    lang: sow_i18n::Language,
+) {
+    let strings = &sow_i18n::get(lang).main_menu;
+    let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
+    let text_size = 18.0 * scale;
+    let fill = sow_ui_kit::theme::palette::button_inactive();
+    let cell_gap = (gap * 0.5).min(8.0);
+    let col_w = (grid_w - cell_gap) * 0.5;
+
+    ui.vertical(|ui| {
+        // Row 1: Join (left) + Create (right)
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = cell_gap;
+            
+            let join_btn = crate::widgets::ThemeButton::new(&strings.join_game_btn)
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .custom_fill(fill)
+                .min_size(egui::vec2(col_w, row_h))
+                .text_size(text_size);
+            if ui.add(join_btn).clicked() {
+                *action = Some(UiAction::OpenJoinBrowser);
+            }
+
+            let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .custom_fill(fill)
+                .min_size(egui::vec2(col_w, row_h))
+                .text_size(text_size);
+            if ui.add(create_btn).clicked() {
+                *action = Some(UiAction::OpenCreateGame);
+            }
+        });
+
+        ui.add_space(cell_gap);
+
+        // Row 2: Solo (left) + Settings (right)
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = cell_gap;
+
+            let solo_btn = crate::widgets::ThemeButton::new(&strings.single_player)
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .custom_fill(fill)
+                .min_size(egui::vec2(col_w, row_h))
+                .text_size(text_size);
+            if ui.add(solo_btn).clicked() {
+                state.show_single_player_setup = true;
+            }
+
+            let settings_btn = crate::widgets::ThemeButton::new(&strings.settings)
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .custom_fill(fill)
+                .min_size(egui::vec2(col_w, row_h))
+                .text_size(text_size);
+            if ui.add(settings_btn).clicked() {
+                *action = Some(UiAction::ToggleSettings);
+            }
+        });
+    });
+}
+
 pub fn draw(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -445,7 +510,12 @@ pub fn draw(
         } else {
             Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(10, 10, 14, 210))
-                .inner_margin(outer_pad)
+                .inner_margin(egui::Margin {
+                    left: outer_pad as i8,
+                    right: outer_pad as i8,
+                    top: outer_pad as i8,
+                    bottom: 4,
+                })
         };
 
         CentralPanel::default()
@@ -487,59 +557,53 @@ pub fn draw(
 
                     ui.add_space(section_gap);
 
-                    // Reusable scrollable viewport area for the rest of the contents
-                    egui::ScrollArea::vertical()
-                        .id_salt("main_menu_content_scroll")
-                        .show(ui, |ui| {
-                            // Responsive side-by-side vs vertical stack
-                            let use_side_by_side = ui.available_width() > 640.0;
-                            if use_side_by_side {
-                                let total_w = ui.available_width();
-                                // Reserve 220px for the action buttons column, rest for lobbies
-                                let right_w = 220.0 * scale;
-                                let left_w = (total_w - right_w - section_gap).max(100.0);
+                    let use_side_by_side = ui.available_width() > 640.0;
+                    if use_side_by_side {
+                        let total_w = ui.available_width();
+                        let left_w = (total_w * 0.65).min(560.0);
 
-                                ui.horizontal(|ui| {
-                                    // Left Column: Matchmaking lobbies
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(left_w, ui.available_height()),
-                                        egui::Layout::top_down(egui::Align::Min),
-                                        |ui| {
-                                            browser::draw_left_column(
-                                                ui,
-                                                state,
-                                                section_gap,
-                                                action_min_h,
-                                                compact,
-                                                0.0, // natural height
-                                                &mut action,
-                                                asset_loader,
-                                                lang,
-                                            );
-                                        },
+                        ui.horizontal(|ui| {
+                            // Left Column: Matchmaking lobbies + 2x2 grid below
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(left_w, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    browser::draw_left_column(
+                                        ui,
+                                        state,
+                                        section_gap,
+                                        action_min_h,
+                                        compact,
+                                        0.0, // natural height
+                                        &mut action,
+                                        asset_loader,
+                                        lang,
                                     );
 
-                                    ui.add_space(section_gap);
+                                    ui.add_space(section_gap * 0.5);
 
-                                    // Right Column: Action buttons
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(right_w, ui.available_height()),
-                                        egui::Layout::top_down(egui::Align::Min),
-                                        |ui| {
-                                            actions::draw_right_column(
-                                                ui,
-                                                state,
-                                                section_gap,
-                                                action_min_h,
-                                                compact,
-                                                &mut action,
-                                                lang,
-                                            );
-                                        },
+                                    let remaining_h = ui.available_height();
+                                    let row_h = ((remaining_h - section_gap * 0.5) * 0.5).clamp(36.0, 54.0);
+
+                                    draw_desktop_buttons_grid(
+                                        ui,
+                                        state,
+                                        left_w,
+                                        row_h,
+                                        section_gap,
+                                        &mut action,
+                                        lang,
                                     );
-                                });
-                            } else {
-                                // Portrait/Narrow: Stack vertically
+                                },
+                            );
+
+                            // The right side is left empty
+                        });
+                    } else {
+                        // Portrait/Narrow: Stack vertically and allow scrolling
+                        egui::ScrollArea::vertical()
+                            .id_salt("main_menu_content_scroll")
+                            .show(ui, |ui| {
                                 browser::draw_left_column(
                                     ui,
                                     state,
@@ -563,8 +627,8 @@ pub fn draw(
                                     &mut action,
                                     lang,
                                 );
-                            }
-                        });
+                            });
+                    }
                 }
             });
     }
