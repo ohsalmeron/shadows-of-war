@@ -112,7 +112,7 @@ fn scan_source_for_emojis(
                         if !trimmed.is_empty()
                             && !trimmed
                                 .chars()
-                                .all(|ch| ch == '─' || ch == '═' || ch == '━' || ch == '═')
+                                .all(|ch| ch == '─' || ch == '═' || ch == '━')
                             && !out.contains(&current_emoji)
                         {
                             out.push(current_emoji.clone());
@@ -125,7 +125,7 @@ fn scan_source_for_emojis(
                     if !trimmed.is_empty()
                         && !trimmed
                             .chars()
-                            .all(|ch| ch == '─' || ch == '═' || ch == '━' || ch == '═')
+                            .all(|ch| ch == '─' || ch == '═' || ch == '━')
                         && !out.contains(&current_emoji)
                     {
                         out.push(current_emoji);

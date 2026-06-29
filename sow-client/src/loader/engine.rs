@@ -256,7 +256,7 @@ impl SowApp {
 
                         let p = self.ui.app.splash_state.progress;
                         if p < 0.99 {
-                            let inc = ((0.99 - p) * 0.03).max(0.001).min(0.04);
+                            let inc = ((0.99 - p) * 0.03).clamp(0.001, 0.04);
                             splash_show_loading_progress(&mut self.ui.app.splash_state, (p + inc).min(0.99));
                         }
 

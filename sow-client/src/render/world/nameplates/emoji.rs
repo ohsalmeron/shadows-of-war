@@ -1,4 +1,5 @@
 /// Status badge drawn at an absolute screen position (beside avatar). Spring entrance + glow.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_side_status_badge(
     painter: &egui::Painter,
     pos: egui::Pos2,

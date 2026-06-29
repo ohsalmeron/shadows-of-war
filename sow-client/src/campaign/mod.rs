@@ -47,9 +47,7 @@ impl Role {
     /// knob in case a future flavor unit must stay pinned; allies stay small by being passive +
     /// starting at 500, not by a hard cap.
     fn troop_cap(self) -> Option<f64> {
-        match self {
-            _ => None,
-        }
+        None
     }
     /// `(team, expanding-nation?)`. Only the bosses + big boss actively expand.
     fn team_and_ai(self) -> (Option<Team>, bool) {

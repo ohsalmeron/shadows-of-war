@@ -7,18 +7,18 @@ use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudSta
 use crate::ui::asset_loader::AssetLoader;
 
 mod bottom;
-mod dialog_panel;
 mod emoji;
 mod inbox;
 mod map_controls;
 mod top_icons;
+mod attack_ratio;
 
 use bottom::draw_bottom_panel;
-use dialog_panel::draw_pinned_dialog;
 use emoji::draw_emoji_panel;
 use inbox::draw_alliance_inbox;
 use map_controls::draw_map_controls;
 use top_icons::draw_top_icons;
+use attack_ratio::draw_attack_ratio_rail;
 
 pub fn draw(
     ui: &mut egui::Ui,
@@ -113,12 +113,10 @@ pub fn draw(
         bottom_offset,
         panel_radius,
     );
-    // Pinned "In and Out" dialog — sits just above the bottom panel (which has now published its
-    // rect), cloning its frame and rendering through the atlas text pipeline.
-    draw_pinned_dialog(ui, state, asset_loader);
     draw_top_icons(ui, state, lang, &mut action, asset_loader);
     draw_alliance_inbox(ui, state, cancel_intents, lang, anim, asset_loader);
     draw_map_controls(ui, state, lang, compact, log_tabs_enabled, &mut action);
+    draw_attack_ratio_rail(ui, state, compact, &mut action);
     draw_emoji_panel(ui, state, cancel_intents, lang, compact, anim, anim_hover);
     transfer::draw_transfer_panel(ui, state, cancel_intents, lang);
     sync::draw_sync_overlay(ui.ctx(), state, lang);

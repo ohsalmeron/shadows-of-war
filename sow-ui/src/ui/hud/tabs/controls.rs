@@ -1,5 +1,5 @@
 use crate::UiAction;
-use egui::{vec2, Color32, CornerRadius, Stroke};
+use egui::{vec2, Color32};
 use sow_i18n::Language;
 
 use super::super::overlays::mobile;
@@ -7,24 +7,6 @@ use super::super::panels::troop_spawn;
 use super::super::state::{building_emoji, BottomHudTab, HudState};
 use super::battle_log;
 use super::event_log;
-
-const ATTACK_RATIO_COL_W: f32 = 64.0;
-const ATTACK_RATIO_KNOB_D: f32 = 28.0;
-const ATTACK_RATIO_TRACK_W: f32 = 10.0;
-const ATTACK_RATIO_MIN: f32 = 0.01;
-const ATTACK_RATIO_MAX: f32 = 1.0;
-
-#[inline]
-fn attack_ratio_from_track_y(track: egui::Rect, y: f32) -> f32 {
-    let t = 1.0 - ((y - track.top()) / track.height()).clamp(0.0, 1.0);
-    ATTACK_RATIO_MIN + t * (ATTACK_RATIO_MAX - ATTACK_RATIO_MIN)
-}
-
-#[inline]
-fn attack_ratio_knob_y(track: egui::Rect, ratio: f32) -> f32 {
-    let t = ((ratio - ATTACK_RATIO_MIN) / (ATTACK_RATIO_MAX - ATTACK_RATIO_MIN)).clamp(0.0, 1.0);
-    track.bottom() - t * track.height()
-}
 
 pub(in crate::ui::hud) fn draw_buildings_strip(
     ui: &mut egui::Ui,
@@ -399,11 +381,15 @@ pub(in crate::ui::hud) fn draw_browser_tab_strip(
 pub(in crate::ui::hud) fn hud_sidebar_row_height(
     compact: bool,
     spawn_active: bool,
+    dialog_active: bool,
     main: HudSidebarMain,
     main_w: f32,
     chrome_scale: f32,
 ) -> f32 {
     let s = if compact { chrome_scale } else { 1.0 };
+    if dialog_active {
+        return if compact { 140.0 * s } else { 160.0 };
+    }
     if spawn_active {
         return if compact { 72.0 * s } else { 56.0 };
     }
@@ -442,281 +428,130 @@ pub(in crate::ui::hud) enum HudSidebarMain {
     EventLog,
 }
 
-fn paint_attack_ratio_label(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    text: &str,
-    font_size: f32,
-    color: Color32,
-) {
-    let font_id = egui::FontId::proportional(font_size);
-    let galley = painter.layout_no_wrap(text.to_owned(), font_id, color);
-    let pos = rect.center() - galley.size() * 0.5;
-    sow_ui_kit::theme::paint_premium_glow_galley(painter, pos, galley, color, Color32::BLACK);
-}
-
-pub(in crate::ui::hud) fn draw_attack_ratio_column(
-    ui: &mut egui::Ui,
-    state: &HudState,
-    col_h: f32,
-) -> Option<f32> {
-    let mut changed_ratio = None;
-    let dur = sow_ui_kit::theme::anim_duration_from_ctx(ui.ctx());
-    let pct_h = 14.0;
-    let troop_h = 13.0;
-    let label_gap = 3.0;
-    let track_h =
-        (col_h - pct_h - troop_h - label_gap * 2.0 - ATTACK_RATIO_KNOB_D).clamp(24.0, 56.0);
-    let widget_h = track_h + ATTACK_RATIO_KNOB_D;
-
-    let (col_rect, _) =
-        ui.allocate_exact_size(vec2(ATTACK_RATIO_COL_W, col_h), egui::Sense::hover());
-    let col_left = col_rect.left();
-    let col_top = col_rect.top();
-
-    let pct_rect = egui::Rect::from_min_size(
-        egui::pos2(col_left, col_top),
-        vec2(ATTACK_RATIO_COL_W, pct_h),
-    );
-    let slider_outer = egui::Rect::from_min_size(
-        egui::pos2(col_left, col_top + pct_h + label_gap),
-        vec2(ATTACK_RATIO_COL_W, widget_h),
-    );
-    let troop_rect = egui::Rect::from_min_size(
-        egui::pos2(col_left, slider_outer.bottom() + label_gap),
-        vec2(ATTACK_RATIO_COL_W, troop_h),
-    );
-
-    let slider_id = ui.id().with("attack_ratio_slider");
-    let track =
-        egui::Rect::from_center_size(slider_outer.center(), vec2(ATTACK_RATIO_TRACK_W, track_h));
-
-    let response = ui.interact(slider_outer, slider_id, egui::Sense::click_and_drag());
-
-    let mut ratio = state.attack_ratio;
-    if response.dragged() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            let new_ratio = attack_ratio_from_track_y(track, pos.y);
-            if (new_ratio - ratio).abs() > f32::EPSILON {
-                ratio = new_ratio;
-                changed_ratio = Some(ratio);
-            }
-        }
-    } else if response.clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            ratio = attack_ratio_from_track_y(track, pos.y);
-            changed_ratio = Some(ratio);
-        }
-    }
-
-    let dragging = response.dragged() || response.is_pointer_button_down_on();
-    let display_ratio = if dragging {
-        ratio
-    } else {
-        ui.ctx().animate_value_with_time(
-            slider_id.with("attack_ratio_anim"),
-            state.attack_ratio,
-            dur,
-        )
-    };
-    let display_troops = if dragging {
-        (state.troops * ratio as f64).max(0.0) as f32
-    } else {
-        ui.ctx().animate_value_with_time(
-            slider_id.with("attack_troops_anim"),
-            (state.troops * state.attack_ratio as f64).max(0.0) as f32,
-            dur,
-        )
-    };
-
-    let painter = ui.painter();
-    if ui.is_rect_visible(pct_rect) {
-        paint_attack_ratio_label(
-            painter,
-            pct_rect,
-            &format!("{:.0}%", display_ratio * 100.0),
-            11.0,
-            sow_ui_kit::theme::palette::neon_cyan_hover(),
-        );
-    }
-    if ui.is_rect_visible(troop_rect) {
-        paint_attack_ratio_label(
-            painter,
-            troop_rect,
-            &crate::utils::format_number(display_troops as f64),
-            10.0,
-            Color32::from_rgb(220, 230, 220),
-        );
-    }
-
-    let is_hovered = response.hovered();
-    let is_active = response.is_pointer_button_down_on();
-    let hover_t = ui.ctx().animate_bool(slider_id.with("hover"), is_hovered);
-    let active_t = ui.ctx().animate_bool(slider_id.with("active"), is_active);
-
-    let rail_fill = sow_ui_kit::theme::palette::neon_cyan().linear_multiply(0.25);
-    let rail_stroke = Stroke::new(
-        1.0 + hover_t * 0.5 + active_t * 0.5,
-        sow_ui_kit::theme::palette::neon_cyan().lerp_to_gamma(
-            sow_ui_kit::theme::palette::neon_cyan_hover(),
-            hover_t + active_t * 0.5,
-        ),
-    );
-    painter.rect(
-        track,
-        CornerRadius::same((ATTACK_RATIO_TRACK_W * 0.5) as u8),
-        rail_fill,
-        rail_stroke,
-        egui::StrokeKind::Inside,
-    );
-
-    let knob_cy = attack_ratio_knob_y(track, ratio);
-    let fill_top = knob_cy.min(track.bottom());
-    if fill_top < track.bottom() {
-        let fill_rect =
-            egui::Rect::from_min_max(egui::pos2(track.left(), fill_top), track.right_bottom());
-        painter.rect(
-            fill_rect,
-            CornerRadius::same((ATTACK_RATIO_TRACK_W * 0.5) as u8),
-            sow_ui_kit::theme::palette::neon_cyan_hover().linear_multiply(0.55),
-            Stroke::NONE,
-            egui::StrokeKind::Inside,
-        );
-    }
-
-    let knob_r = ATTACK_RATIO_KNOB_D * 0.5;
-    let knob_rect = egui::Rect::from_center_size(
-        egui::pos2(track.center().x, knob_cy),
-        vec2(ATTACK_RATIO_KNOB_D, ATTACK_RATIO_KNOB_D),
-    );
-    let knob_fill = sow_ui_kit::theme::palette::field_bg().linear_multiply(0.92 + hover_t * 0.08);
-    let knob_stroke = Stroke::new(
-        1.5 + active_t,
-        sow_ui_kit::theme::palette::neon_cyan_hover(),
-    );
-    painter.circle(knob_rect.center(), knob_r, knob_fill, knob_stroke);
-    if hover_t > 0.01 || active_t > 0.01 {
-        painter.circle(
-            knob_rect.center(),
-            knob_r + 2.0,
-            Color32::TRANSPARENT,
-            Stroke::new(
-                2.0_f32,
-                sow_ui_kit::theme::palette::neon_cyan()
-                    .linear_multiply(hover_t * 0.35 + active_t * 0.25),
-            ),
-        );
-    }
-
-    let emoji_size = ATTACK_RATIO_KNOB_D * 0.55;
-    let emoji_rect = egui::Rect::from_center_size(knob_rect.center(), vec2(emoji_size, emoji_size));
-    if !crate::widgets::try_paint_emoji(painter, "⚔", emoji_rect, Color32::WHITE) {
-        painter.text(
-            knob_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "⚔",
-            egui::FontId::proportional(emoji_size),
-            Color32::WHITE,
-        );
-    }
-
-    changed_ratio
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(in crate::ui::hud) fn draw_hud_sidebar_row(
     ui: &mut egui::Ui,
     state: &mut HudState,
     content_w: f32,
     compact: bool,
-    action: &mut Option<UiAction>,
+    _action: &mut Option<UiAction>,
     lang: Language,
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     main: HudSidebarMain,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     let spawn_active = state.spawn_timer_secs.is_some();
-    let show_ratio = !spawn_active;
-    let ratio_gap = if show_ratio {
-        sow_ui_kit::theme::margin::COZY as f32
-    } else {
-        0.0
-    };
-    let main_w = content_w
-        - if show_ratio {
-            ATTACK_RATIO_COL_W + ratio_gap
-        } else {
-            0.0
-        };
+    let dialog_active = state.bottom_dialog.is_some();
     let row_gap = sow_ui_kit::theme::margin::TIGHT as f32;
     let chrome_scale = if compact {
         sow_ui_kit::theme::viewport_scale(ui.ctx())
     } else {
         1.0
     };
-    let row_h = hud_sidebar_row_height(compact, spawn_active, main, main_w, chrome_scale);
+    let row_h = hud_sidebar_row_height(compact, spawn_active, dialog_active, main, content_w, chrome_scale);
 
     ui.allocate_ui_with_layout(
         vec2(content_w, row_h),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
-            ui.spacing_mut().item_spacing.x = ratio_gap;
-
             ui.allocate_ui_with_layout(
-                vec2(main_w, row_h),
+                vec2(content_w, row_h),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.spacing_mut().item_spacing.y = row_gap;
-                    if !spawn_active {
-                        match main {
-                            HudSidebarMain::Controls => {
-                                ui.push_id("controls_tab", |ui| {
-                                    draw_controls_tab(
-                                        ui,
-                                        state,
-                                        main_w,
-                                        compact,
-                                        cancel_intents,
-                                        lang,
-                                    );
-                                });
+                    if let Some(dlg) = state.bottom_dialog.clone() {
+                        let clicked = crate::widgets::paint_dialog_contents(
+                            ui,
+                            dlg.visual.as_ref(),
+                            dlg.name.as_deref(),
+                            &dlg.title,
+                            &dlg.body,
+                            &dlg.buttons,
+                            asset_loader,
+                            compact,
+                        );
+                        let blocker = ui.interact(
+                            ui.max_rect(),
+                            egui::Id::new("hud_bottom_dialog_block"),
+                            egui::Sense::click(),
+                        );
+                        let mut click = clicked;
+                        if dlg.click_anywhere {
+                            if click.is_none() && blocker.clicked() {
+                                click = Some(0);
                             }
-                            HudSidebarMain::BattleLog => {
-                                ui.push_id("battle_log_tab", |ui| {
-                                    battle_log::draw_battle_log_tab(
-                                        ui,
-                                        state,
-                                        main_w,
-                                        compact,
-                                        cancel_intents,
-                                        lang,
-                                    );
-                                });
-                            }
-                            HudSidebarMain::EventLog => {
-                                ui.push_id("event_log_tab", |ui| {
-                                    event_log::draw_event_log_tab(ui, state, main_w, compact, lang);
-                                });
+                            if blocker.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                             }
                         }
+                        if let Some(secs) = dlg.auto_dismiss_secs {
+                            let started_id = egui::Id::new("hud_pinned_dialog_started_at");
+                            let started_for = egui::Id::new("hud_pinned_dialog_started_for");
+                            let now = ui.ctx().input(|i| i.time);
+                            let same = ui.ctx().data(|d| d.get_temp::<String>(started_for)).as_deref() == Some(dlg.id.as_str());
+                            let started = if same {
+                                ui.ctx().data(|d| d.get_temp::<f64>(started_id)).unwrap_or(now)
+                            } else {
+                                ui.ctx().data_mut(|d| {
+                                    d.insert_temp(started_for, dlg.id.clone());
+                                    d.insert_temp(started_id, now);
+                                });
+                                now
+                            };
+                            if (now - started) as f32 >= secs {
+                                click = click.or(Some(0));
+                            } else {
+                                ui.ctx().request_repaint();
+                            }
+                        }
+                        if let Some(idx) = click {
+                            state.bottom_dialog_click = Some((dlg.id.clone(), idx));
+                        }
+                    } else {
+                        if !spawn_active {
+                            match main {
+                                HudSidebarMain::Controls => {
+                                    ui.push_id("controls_tab", |ui| {
+                                        draw_controls_tab(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            cancel_intents,
+                                            lang,
+                                        );
+                                    });
+                                }
+                                HudSidebarMain::BattleLog => {
+                                    ui.push_id("battle_log_tab", |ui| {
+                                        battle_log::draw_battle_log_tab(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            cancel_intents,
+                                            lang,
+                                        );
+                                    });
+                                }
+                                HudSidebarMain::EventLog => {
+                                    ui.push_id("event_log_tab", |ui| {
+                                        event_log::draw_event_log_tab(ui, state, content_w, compact, lang);
+                                    });
+                                }
+                            }
+                        }
+                        ui.push_id("persistent_header", |ui| {
+                            troop_spawn::draw_persistent_header(ui, state, compact, lang);
+                        });
                     }
-                    ui.push_id("persistent_header", |ui| {
-                        troop_spawn::draw_persistent_header(ui, state, compact, lang);
-                    });
                 },
             );
-
-            if show_ratio {
-                ui.separator();
-                ui.push_id("attack_ratio_col", |ui| {
-                    if let Some(ratio) = draw_attack_ratio_column(ui, state, row_h) {
-                        *action = Some(UiAction::SetAttackRatio(ratio));
-                    }
-                });
-            }
         },
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui::hud) fn draw_controls_with_attack_ratio(
     ui: &mut egui::Ui,
     state: &mut HudState,
@@ -725,6 +560,7 @@ pub(in crate::ui::hud) fn draw_controls_with_attack_ratio(
     cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
     lang: Language,
     action: &mut Option<UiAction>,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
 ) {
     draw_hud_sidebar_row(
         ui,
@@ -735,6 +571,7 @@ pub(in crate::ui::hud) fn draw_controls_with_attack_ratio(
         lang,
         cancel_intents,
         HudSidebarMain::Controls,
+        asset_loader,
     );
 }
 

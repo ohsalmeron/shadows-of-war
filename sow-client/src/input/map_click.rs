@@ -59,11 +59,9 @@ impl SowApp {
                                 let nr = r + dr;
                                 if nc >= 0 && nc < map_w && nr >= 0 && nr < map_h {
                                     let n_idx = (nr * map_w + nc) as usize;
-                                    if owners[n_idx] == owner {
-                                        if (terrain[n_idx] & 0x80) != 0 {
-                                            shares_border = true;
-                                            break 'outer;
-                                        }
+                                    if owners[n_idx] == owner && (terrain[n_idx] & 0x80) != 0 {
+                                        shares_border = true;
+                                        break 'outer;
                                     }
                                 }
                             }

@@ -190,6 +190,9 @@ pub(in crate::ui::hud) fn draw_persistent_header(
     compact: bool,
     lang: Language,
 ) {
+    if state.bottom_dialog.is_some() {
+        return;
+    }
     if let Some(secs) = state.spawn_timer_secs {
         draw_spawn_panel(ui, secs, compact, lang);
         return;

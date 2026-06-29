@@ -72,7 +72,6 @@ impl ClientApp {
                 show_exit_confirm: false,
                 is_tutorial: false,
                 bottom_dialog: None,
-                bottom_dialog_display: None,
                 bottom_dialog_click: None,
             },
 

@@ -317,7 +317,7 @@ pub(crate) fn render(
                     egui::pos2(star_cx, star_cy),
                     egui::vec2(star_sz, star_sz),
                 );
-                let star_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
+                let star_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
                     tr.push_emoji(
                         "⭐",
                         [star_rect.center().x * sf, star_rect.center().y * sf],
@@ -348,7 +348,7 @@ pub(crate) fn render(
                     egui::pos2(disc_cx, disc_cy),
                     egui::vec2(disc_sz, disc_sz),
                 );
-                let disc_gpu = gfx.text_renderer.as_mut().map_or(false, |tr| {
+                let disc_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
                     tr.push_emoji(
                         "🔌",
                         [disc_rect.center().x * sf, disc_rect.center().y * sf],

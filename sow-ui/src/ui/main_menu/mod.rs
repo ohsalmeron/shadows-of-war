@@ -555,7 +555,7 @@ pub fn draw(
 
     // Draw the full-bleed backdrop first so that all panels (including the footer)
     // are drawn on top of it.
-    if !state.show_leader_picker && !(state.show_join_browser && !state.is_waiting) {
+    if (state.is_waiting || !state.show_join_browser) && !state.show_leader_picker {
         let backdrop_rect = root_ui.ctx().content_rect();
         let use_portrait = backdrop_rect.width() < backdrop_rect.height();
         crate::widgets::draw_leader_hero_backdrop(

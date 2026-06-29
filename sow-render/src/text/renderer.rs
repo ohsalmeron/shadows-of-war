@@ -247,7 +247,7 @@ impl TextRenderer {
                 }
                 continue;
             }
-            let has_selector = chars.peek().map_or(false, |&(_, next_ch)| next_ch == '\u{fe0f}');
+            let has_selector = chars.peek().is_some_and(|&(_, next_ch)| next_ch == '\u{fe0f}');
             let char_len = ch.len_utf8();
             let total_len = if has_selector {
                 char_len + '\u{fe0f}'.len_utf8()
@@ -320,7 +320,7 @@ impl TextRenderer {
                 prev_char = Some(ch);
                 continue;
             }
-            let has_selector = chars.peek().map_or(false, |&(_, next_ch)| next_ch == '\u{fe0f}');
+            let has_selector = chars.peek().is_some_and(|&(_, next_ch)| next_ch == '\u{fe0f}');
             let char_len = ch.len_utf8();
             let stripped = &text[byte_idx..byte_idx + char_len];
             if emoji_uv_opt(stripped).is_some() {
@@ -340,6 +340,7 @@ impl TextRenderer {
     /// Push a screen-space emoji with alpha-dilated outline + drop shadow.
     /// `screen_pos` is the center in physical pixels, `half_size` the half-extent.
     /// Returns `false` if the emoji isn't in the atlas.
+    #[allow(clippy::too_many_arguments)]
     pub fn push_emoji(
         &mut self,
         emoji: &str,
