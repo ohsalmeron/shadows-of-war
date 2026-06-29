@@ -47,9 +47,9 @@ crossbeam-channel = { workspace = true }
 web-time = { workspace = true }
 image = { workspace = true }
 url = { workspace = true }
-blade-graphics = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-graphics" }
-blade-macros = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-macros" }
-blade-egui = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-egui" }
+blade-graphics = { git = "https://github.com/ohsalmeron/blade" }
+blade-macros = { git = "https://github.com/ohsalmeron/blade" }
+blade-egui = { git = "https://github.com/ohsalmeron/blade" }
 bytemuck = { workspace = true }
 raw-window-handle = { workspace = true }
 

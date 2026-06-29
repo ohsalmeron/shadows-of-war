@@ -48,9 +48,8 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
             .show(ui.ctx(), |ui| {
                 ui.set_max_width(300.0);
                 ui.vertical(|ui| {
-                    let frame_res = sow_ui_kit::theme::standard_panel_frame(false)
-                        .fill(egui::Color32::from_black_alpha(150))
-                        .stroke(egui::Stroke::new(1.5_f32, sow_ui_kit::theme::palette::neon_cyan().linear_multiply(inbox_progress)))
+                    let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+                    let frame_res = egui::Frame::NONE
                         .inner_margin(egui::Margin::symmetric(10, 8))
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
@@ -320,6 +319,13 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                         });
                     let response_rect = frame_res.response.rect;
                     ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("alliance_inbox_rect"), response_rect));
+                    sow_ui_kit::theme::paint_hud_panel_gradient(
+                        ui,
+                        prepaint_idx,
+                        frame_res.response.rect,
+                        sow_ui_kit::theme::palette::neon_cyan().linear_multiply(inbox_progress),
+                        sow_ui_kit::theme::radius::lg(),
+                    );
                 });
             });
 

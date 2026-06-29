@@ -30,7 +30,9 @@ pub(in crate::ui::hud) fn draw_map_controls(
             ui.set_width(rail_w);
             ui.set_max_width(rail_w);
 
-            sow_ui_kit::theme::panel_frame(sow_ui_kit::theme::PanelKind::MapControlsRail, compact)
+            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+            let frame_res = egui::Frame::NONE
+                .inner_margin(egui::Margin::symmetric(4, sow_ui_kit::theme::margin::TIGHT))
                 .show(ui, |ui| {
                     ui.set_width(btn_w);
                     ui.set_max_width(btn_w);
@@ -112,5 +114,12 @@ pub(in crate::ui::hud) fn draw_map_controls(
                         }
                     });
                 });
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                prepaint_idx,
+                frame_res.response.rect,
+                sow_ui_kit::theme::palette::field_border(),
+                sow_ui_kit::theme::radius::sm(),
+            );
         });
 }

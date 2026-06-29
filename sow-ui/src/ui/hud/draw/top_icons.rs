@@ -51,11 +51,17 @@ pub(in crate::ui::hud) fn draw_top_icons(
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            sow_ui_kit::theme::hud_panel_frame().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let btn_resp = ui
-                        .add(crate::widgets::HudEmojiButton::new("📩"))
-                        .on_hover_text(&sow_i18n::get(lang).hud.inbox_title);
+            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+            let frame_res = egui::Frame::NONE
+                .inner_margin(egui::Margin::symmetric(
+                    sow_ui_kit::theme::margin::COZY,
+                    sow_ui_kit::theme::margin::TIGHT,
+                ))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let btn_resp = ui
+                            .add(crate::widgets::HudEmojiButton::new("📩"))
+                            .on_hover_text(&sow_i18n::get(lang).hud.inbox_title);
                     if btn_resp.clicked() {
                         state.show_alliance_inbox = !state.show_alliance_inbox;
                     }
@@ -113,5 +119,12 @@ pub(in crate::ui::hud) fn draw_top_icons(
                     });
                 });
             });
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                prepaint_idx,
+                frame_res.response.rect,
+                sow_ui_kit::theme::palette::field_border(),
+                sow_ui_kit::theme::radius::md(),
+            );
         });
 }

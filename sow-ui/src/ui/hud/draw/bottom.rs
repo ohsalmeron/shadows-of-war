@@ -54,13 +54,9 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                 }
             };
 
-            egui::Frame::NONE
-                .fill(sow_ui_kit::theme::palette::surface())
-                .stroke(egui::Stroke::new(
-                    sow_ui_kit::theme::stroke::HAIRLINE,
-                    border_color,
-                ))
-                .corner_radius(panel_radius)
+            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+
+            let frame_res = egui::Frame::NONE
                 .inner_margin(content_margin)
                 .show(ui, |ui| {
                     ui.allocate_ui_with_layout(
@@ -142,6 +138,14 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                         },
                     );
                 });
+
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                prepaint_idx,
+                frame_res.response.rect,
+                border_color,
+                panel_radius,
+            );
         });
     ui.ctx().data_mut(|d| {
         d.insert_temp(

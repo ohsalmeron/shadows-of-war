@@ -124,6 +124,10 @@ impl SowApp {
         }
         let mut step_changed = false;
         if idx != self.ui.tutorial_step_idx {
+            let completed_title = steps[self.ui.tutorial_step_idx].title;
+            let msg = format!("🏆 Objective Completed: {}", completed_title);
+            self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(234, 179, 8));
+
             self.ui.tutorial_step_idx = idx;
             self.ui.tutorial_modal_dismissed = false; // open the new step's modal
             step_changed = true;

@@ -380,3 +380,53 @@ pub fn hud_icon_size() -> f32 {
 pub fn hud_icon_spacing() -> f32 {
     margin::TIGHT as f32
 }
+
+pub fn paint_hud_panel_gradient(
+    ui: &mut egui::Ui,
+    idx: egui::layers::ShapeIdx,
+    rect: egui::Rect,
+    border_color: egui::Color32,
+    radius: egui::CornerRadius,
+) {
+    if !rect.is_positive() {
+        return;
+    }
+    let top_color = Color32::from_rgba_unmultiplied(32, 32, 36, 240);
+    let bottom_color = Color32::from_rgba_unmultiplied(16, 16, 18, 240);
+
+    let mut mesh = egui::Mesh::default();
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_top(),
+        uv: egui::Pos2::ZERO,
+        color: top_color,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_top(),
+        uv: egui::Pos2::ZERO,
+        color: top_color,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: bottom_color,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: bottom_color,
+    });
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+
+    ui.painter().set(idx, egui::Shape::mesh(mesh));
+
+    // Paint the outline on top
+    ui.painter().rect(
+        rect,
+        radius,
+        Color32::TRANSPARENT,
+        egui::Stroke::new(1.0_f32, border_color),
+        egui::StrokeKind::Inside,
+    );
+}
+

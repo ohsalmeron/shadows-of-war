@@ -6,8 +6,8 @@ description = "Shadows of War — pure GPU rendering pipelines and shaders"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-blade-graphics = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-graphics" }
-blade-macros = { git = "https://github.com/ohsalmeron/blade", subdir = "blade-macros" }
+blade-graphics = { git = "https://github.com/ohsalmeron/blade" }
+blade-macros = { git = "https://github.com/ohsalmeron/blade" }
 bytemuck = { workspace = true }
 raw-window-handle = { workspace = true }
 sow-data = { workspace = true }

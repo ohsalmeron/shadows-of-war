@@ -113,23 +113,26 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
         ))
         .rect_filled(screen_rect, 0.0, backdrop_color);
 
-    let target_y = screen_rect.center().y;
-    // Slide up with overshoot bounce from below screen
-    let current_y = target_y + (screen_rect.height() / 2.0 + 200.0) * (1.0 - anim_scale);
-
     let compact = screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
     let modal_w = if compact { 320.0 } else { 380.0 };
 
+    let bottom_rect = ui.ctx().data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")));
+    let clearance = bottom_rect
+        .map(|r| (screen_rect.max.y - r.min.y).max(0.0) + 12.0)
+        .unwrap_or(if compact { 132.0 } else { 24.0 });
+
+    let offset_y = -clearance - 200.0 * (1.0 - anim_scale);
+
     egui::Area::new(egui::Id::new("transfer_panel_modal"))
-        .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, current_y - target_y))
+        .anchor(egui::Align2::CENTER_BOTTOM, vec2(0.0, offset_y))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
             ui.set_width(modal_w);
 
-            let frame = sow_ui_kit::theme::standard_panel_frame(false)
-                .fill(sow_ui_kit::theme::palette::surface().linear_multiply(alpha));
-
-            let frame_res = frame.show(ui, |ui| {
+            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+            let frame_res = egui::Frame::NONE
+                .inner_margin(egui::Margin::same(24))
+                .show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 10.0);
 
@@ -464,6 +467,13 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
             let response_rect = frame_res.response.rect;
             ui.ctx()
                 .data_mut(|d| d.insert_temp(egui::Id::new("transfer_panel_rect"), response_rect));
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                prepaint_idx,
+                response_rect,
+                accent_color.linear_multiply(alpha),
+                sow_ui_kit::theme::radius::lg(),
+            );
         });
 
     // Click outside the ask panel closes it

@@ -139,22 +139,28 @@ impl SowApp {
             sow_ui_kit::theme::palette::danger().linear_multiply(alpha)
         };
 
-        egui::Window::new("Endgame")
+        let mut win = egui::Window::new("Endgame")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
             .order(egui::Order::Foreground)
             .anchor(Align2::CENTER_CENTER, [0.0, y_offset])
-            .frame(
-                sow_ui_kit::theme::standard_panel_frame(is_mobile)
-                    .fill(sow_ui_kit::theme::panel_bg().linear_multiply(alpha))
-                    .stroke(egui::Stroke::new(2.0_f32 * anim.scale, border_color))
-                    .inner_margin(win_margin),
-            )
-            .show(ctx, |ui| {
-                let actual_width = win_width.min(screen_width - 32.0);
-                ui.set_min_width(actual_width);
-                ui.set_max_width(actual_width);
+            .frame(egui::Frame::NONE);
+
+        if is_mobile {
+            let screen_height = ctx.content_rect().height();
+            win = win.fixed_size(egui::vec2(screen_width, screen_height));
+        }
+
+        win.show(ctx, |ui| {
+            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+            let actual_width = if is_mobile { screen_width } else { win_width.min(screen_width - 32.0) };
+
+            let frame_res = egui::Frame::NONE
+                .inner_margin(win_margin)
+                .show(ui, |ui| {
+                    ui.set_min_width(actual_width - win_margin * 2.0);
+                    ui.set_max_width(actual_width - win_margin * 2.0);
 
                 ui.vertical_centered(|ui| {
                     let title_color = if is_victory {
@@ -267,6 +273,15 @@ impl SowApp {
                     }
                 });
             });
+
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                prepaint_idx,
+                frame_res.response.rect,
+                border_color,
+                if is_mobile { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::lg() },
+            );
+        });
     }
 }
 
