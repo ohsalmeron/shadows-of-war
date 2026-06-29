@@ -51,61 +51,91 @@ impl SowApp {
             if let Some(snap) = &self.sim.current_snapshot {
                 let my_pid = self.sim.my_player_id.unwrap_or(0);
                 if my_pid > 0 && (!snap.attacks.is_empty() || !snap.fleets.is_empty()) {
-                    egui::Window::new("Attacks")
-                        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -140.0))
+                    let screen_rect = ctx.content_rect();
+                    let compact = sow_ui_kit::theme::compact_viewport(ctx);
+                    let bottom_rect = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")));
+                    let clearance = bottom_rect
+                        .map(|r| (screen_rect.max.y - r.min.y).max(0.0) + 12.0)
+                        .unwrap_or(if compact { 132.0 } else { 24.0 });
+
+                    let width = if compact {
+                        320.0
+                    } else {
+                        bottom_rect.map(|r| r.width()).unwrap_or(520.0)
+                    };
+
+                    let win = egui::Window::new("Attacks")
                         .title_bar(false)
                         .resizable(false)
                         .collapsible(false)
-                        .frame(egui::Frame::window(&ctx.global_style()).fill(egui::Color32::from_black_alpha(200)))
-                        .show(ctx, |ui| {
-                            ui.set_max_height(150.0);
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                for attack in &snap.attacks {
-                                    if attack.owner_id == my_pid {
-                                        ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(format!("⚔ OUT {:.0}", attack.troops)).color(egui::Color32::from_rgb(0, 200, 255)));
-                                            if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
-                                                ui.label(&target.name);
-                                            } else {
-                                                ui.label("Wilderness");
-                                            }
-                                            if attack.retreating {
-                                                ui.label("(Retreating...)");
-                                            } else {
-                                                if ui.button("[X]").clicked() {
-                                                    local_cancel_intents.push(sow_core::protocol::GameplayIntent::CancelAttack { attack_id: attack.id });
+                        .order(egui::Order::Foreground)
+                        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -clearance))
+                        .frame(egui::Frame::NONE);
+
+                    win.show(ctx, |ui| {
+                        let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+
+                        let frame_res = egui::Frame::NONE
+                            .inner_margin(egui::Margin::symmetric(14, 10))
+                            .show(ui, |ui| {
+                                ui.set_width(width);
+                                ui.set_max_height(150.0);
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for attack in &snap.attacks {
+                                        if attack.owner_id == my_pid {
+                                            ui.horizontal(|ui| {
+                                                ui.label(egui::RichText::new(format!("⚔ OUT {:.0}", attack.troops)).color(egui::Color32::from_rgb(0, 200, 255)));
+                                                if let Some(target) = snap.players.iter().find(|p| p.id == attack.target_owner) {
+                                                    ui.label(&target.name);
+                                                } else {
+                                                    ui.label("Wilderness");
                                                 }
-                                            }
-                                        });
-                                    }
-                                }
-                                for fleet in &snap.fleets {
-                                    if fleet.owner_id == my_pid {
-                                        ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(format!("★ NAVY {:.0}", fleet.troops)).color(egui::Color32::from_rgb(0, 200, 255)));
-                                            ui.label("Naval Invasion");
-                                            if fleet.retreating {
-                                                ui.label("(Retreating...)");
-                                            } else {
-                                                if ui.button("[X]").clicked() {
-                                                    local_cancel_intents.push(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id: fleet.id });
+                                                if attack.retreating {
+                                                    ui.label("(Retreating...)");
+                                                } else {
+                                                    if ui.button("[X]").clicked() {
+                                                        local_cancel_intents.push(sow_core::protocol::GameplayIntent::CancelAttack { attack_id: attack.id });
+                                                    }
                                                 }
-                                            }
-                                        });
+                                            });
+                                        }
                                     }
-                                }
-                                for attack in &snap.attacks {
-                                    if attack.target_owner == my_pid {
-                                        ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(format!("⚔ IN {:.0}", attack.troops)).color(egui::Color32::RED));
-                                            if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
-                                                ui.label(&attacker.name);
-                                            }
-                                        });
+                                    for fleet in &snap.fleets {
+                                        if fleet.owner_id == my_pid {
+                                            ui.horizontal(|ui| {
+                                                ui.label(egui::RichText::new(format!("★ NAVY {:.0}", fleet.troops)).color(egui::Color32::from_rgb(0, 200, 255)));
+                                                ui.label("Naval Invasion");
+                                                if fleet.retreating {
+                                                    ui.label("(Retreating...)");
+                                                } else {
+                                                    if ui.button("[X]").clicked() {
+                                                        local_cancel_intents.push(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id: fleet.id });
+                                                    }
+                                                }
+                                            });
+                                        }
                                     }
-                                }
+                                    for attack in &snap.attacks {
+                                        if attack.target_owner == my_pid {
+                                            ui.horizontal(|ui| {
+                                                ui.label(egui::RichText::new(format!("⚔ IN {:.0}", attack.troops)).color(egui::Color32::RED));
+                                                if let Some(attacker) = snap.players.iter().find(|p| p.id == attack.owner_id) {
+                                                    ui.label(&attacker.name);
+                                                }
+                                            });
+                                        }
+                                    }
+                                });
                             });
-                        });
+
+                        sow_ui_kit::theme::paint_hud_panel_gradient(
+                            ui,
+                            prepaint_idx,
+                            frame_res.response.rect,
+                            sow_ui_kit::theme::palette::field_border(),
+                            if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::lg() },
+                        );
+                    });
                 }
             }
         }

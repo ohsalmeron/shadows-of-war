@@ -282,6 +282,7 @@ impl SowApp {
                 tutorial_last_kills: 0,
                 tutorial_met_tribes: std::collections::HashSet::new(),
                 tutorial_pending_intro: None,
+                tutorial_pending_completion: None,
                 show_leaderboard: false,
                 leaderboard_timer: 0.0,
                 leaderboard_rankings: Vec::new(),

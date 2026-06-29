@@ -109,6 +109,7 @@ impl SowApp {
         self.ui.tutorial_last_kills = 0;
         self.ui.tutorial_met_tribes.clear();
         self.ui.tutorial_pending_intro = None;
+        self.ui.tutorial_pending_completion = None;
         if tutorial {
             log::info!("tutorial: chapter 1 started (map={})", config.map_name);
         }

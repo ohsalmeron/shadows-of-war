@@ -33,6 +33,9 @@ use steps::{objective_progress, ADVISOR, CHAPTER_1};
 /// branching dialogs (the last-step Continue/Stay choice) pass `None` and wait for the player.
 const DIALOG_AUTODISMISS_SECS: f32 = 10.0;
 
+/// "Quest Complete" flash is a brief celebration — shorter hold than a read-me brief.
+const QUEST_COMPLETE_SECS: f32 = 3.0;
+
 /// Kept for the `UiState.tutorial_step` field + `start_offline_match`; the campaign
 /// interpreter below drives flow via `tutorial_step_idx`.
 #[derive(Debug, Clone, PartialEq)]
@@ -124,9 +127,9 @@ impl SowApp {
         }
         let mut step_changed = false;
         if idx != self.ui.tutorial_step_idx {
-            let completed_title = steps[self.ui.tutorial_step_idx].title;
-            let msg = format!("🏆 Objective Completed: {}", completed_title);
-            self.ui.app.hud_state.push_notification(msg, egui::Color32::from_rgb(234, 179, 8));
+            // Flash a "Quest Complete" notification through the same bottom-panel modal the briefs
+            // use; it shows first, then the next quest's brief.
+            self.ui.tutorial_pending_completion = Some(steps[self.ui.tutorial_step_idx].title);
 
             self.ui.tutorial_step_idx = idx;
             self.ui.tutorial_modal_dismissed = false; // open the new step's modal
@@ -225,7 +228,23 @@ impl SowApp {
         // `present_dialog`). ANY click anywhere closes whichever is up. Clearing `bottom_dialog`
         // each frame lets the panel animate the takeover back out once nothing is showing.
         self.ui.app.hud_state.bottom_dialog = None;
-        if let Some(name) = self.ui.tutorial_pending_intro.clone() {
+        if let Some(title) = self.ui.tutorial_pending_completion {
+            // A quest just completed: a portrait-less "Quest Complete" flash, auto-dismissing.
+            let clicked = self.present_dialog(
+                ctx,
+                "tutorial_completion",
+                None,
+                None,
+                "🏆 Quest Complete".to_string(),
+                format!("{title} — onward, Iceni!"),
+                Vec::new(),
+                true,
+                Some(QUEST_COMPLETE_SECS),
+            );
+            if clicked.is_some() || ctx.input(|i| i.pointer.any_click()) {
+                self.ui.tutorial_pending_completion = None;
+            }
+        } else if let Some(name) = self.ui.tutorial_pending_intro.clone() {
             // The NPC presents itself, with its real portrait: tribe → spirit-animal emoji on a
             // colored disc, empire → colored disc, all from the live snapshot.
             let line = crate::campaign::dialog::first_contact(&name);
@@ -310,8 +329,9 @@ impl SowApp {
         // objective modal, or a first-contact intro — nobody moves, so the player reads without the
         // neighbors pressing in. Both states are resolved above this line, so the frame they dismiss
         // the last dialog play resumes; queued intros each pause in turn until all are cleared.
-        self.sim.paused =
-            self.ui.tutorial_pending_intro.is_some() || !self.ui.tutorial_modal_dismissed;
+        self.sim.paused = self.ui.tutorial_pending_completion.is_some()
+            || self.ui.tutorial_pending_intro.is_some()
+            || !self.ui.tutorial_modal_dismissed;
     }
 
     /// Queue a dialog for the "In and Out" panel pinned above the bottom HUD panel, and return the

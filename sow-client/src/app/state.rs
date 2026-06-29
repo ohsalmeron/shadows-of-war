@@ -189,6 +189,9 @@ pub struct UiState {
     pub tutorial_last_kills: u32,
     pub tutorial_met_tribes: std::collections::HashSet<u16>,
     pub tutorial_pending_intro: Option<String>,
+    /// Title of a just-completed quest, queued to flash a "Quest Complete" notification through
+    /// the bottom-panel modal before the next quest's brief opens.
+    pub tutorial_pending_completion: Option<&'static str>,
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
     pub leaderboard_rankings: Vec<sow_ui::ui::hud::leaderboard::LeaderboardRanking>,

@@ -36,66 +36,75 @@ fn paint_v_gradient(painter: &egui::Painter, rect: egui::Rect, top: egui::Color3
     painter.add(egui::Shape::mesh(mesh));
 }
 
-/// Detachable Objectives panel anchored top-left: a 📜 scroll icon + "OBJECTIVES" header
-/// (click to collapse/expand) and one tracker row per objective. Returns true if the header
-/// was clicked this frame (caller flips the open state). All emoji via the sow atlas.
+/// Headless Quests tracker anchored top-left: a lone 📜 book button toggles it (mirrors the
+/// leaderboard's trophy), and when open a separate, title-less panel lists one tracker row per
+/// quest. Returns true if the book button was clicked this frame (caller flips the open state).
+/// All emoji via the sow atlas.
 pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: bool) -> bool {
     use sow_ui::widgets::try_paint_emoji;
     let gold = egui::Color32::from_rgb(255, 200, 90);
     let green = egui::Color32::from_rgb(74, 222, 128);
-    let muted = egui::Color32::from_gray(150);
     let white = egui::Color32::WHITE;
     let compact = ctx.content_rect().width() < 768.0;
     let panel_w = if compact { 160.0_f32 } else { 190.0_f32 };
+    let radius = if compact {
+        egui::CornerRadius::ZERO
+    } else {
+        sow_ui_kit::theme::radius::md()
+    };
 
     let mut toggle = false;
     egui::Area::new(egui::Id::new("tutorial_objectives"))
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, if compact { 56.0 } else { 70.0 }))
         .show(ctx, |ui| {
-            sow_ui_kit::theme::hud_panel_frame().show(ui, |ui| {
-                ui.set_width(panel_w);
-                // Tight vertical rhythm: title → hint → bar stack closely; rows are set apart by
-                // the explicit space below, not by loose default spacing.
-                ui.spacing_mut().item_spacing.y = 2.0;
+            ui.spacing_mut().item_spacing.y = 6.0; // gap between the button and the rows panel
 
-                // Header: scroll icon + title + caret. The whole row toggles the panel.
-                let header = ui.horizontal(|ui| {
-                    let (icon_r, _) =
-                        ui.allocate_exact_size(egui::Vec2::splat(18.0), egui::Sense::hover());
-                    try_paint_emoji(ui.painter(), "📜", icon_r, gold);
-                    ui.add_space(6.0);
-                    ui.label(
-                        egui::RichText::new("OBJECTIVES")
-                            .size(13.0)
-                            .strong()
-                            .color(white),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (r, _) = ui.allocate_exact_size(
-                            egui::Vec2::splat(12.0),
-                            egui::Sense::hover(),
-                        );
-                        try_paint_emoji(ui.painter(), if open { "➖" } else { "➕" }, r, muted);
-                    });
+            // The 📜 toggle, in its own button-hugging frame (no title, no header).
+            let btn_prepaint = ui.painter().add(egui::Shape::Noop);
+            let btn_frame = egui::Frame::NONE
+                .inner_margin(egui::Margin::symmetric(
+                    sow_ui_kit::theme::margin::COZY,
+                    sow_ui_kit::theme::margin::TIGHT,
+                ))
+                .show(ui, |ui| {
+                    if ui
+                        .add(sow_ui_kit::widgets::HudEmojiButton::new("📜"))
+                        .on_hover_text("Quests")
+                        .clicked()
+                    {
+                        toggle = true;
+                    }
                 });
-                let resp = ui.interact(
-                    header.response.rect,
-                    egui::Id::new("tutorial_objectives_toggle"),
-                    egui::Sense::click(),
-                );
-                if resp.clicked() {
-                    toggle = true;
-                }
-                resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                btn_prepaint,
+                btn_frame.response.rect,
+                sow_ui_kit::theme::palette::field_border(),
+                radius,
+            );
 
-                if open {
-                    for row in rows {
+            if !open {
+                return;
+            }
+
+            // The quest rows, in their own headless panel below the button.
+            let panel_prepaint = ui.painter().add(egui::Shape::Noop);
+            let panel_frame = egui::Frame::NONE
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .show(ui, |ui| {
+                    ui.set_width(panel_w);
+                    // Tight vertical rhythm: label → hint → bar stack closely.
+                    ui.spacing_mut().item_spacing.y = 2.0;
+
+                    for (row_i, row) in rows.iter().enumerate() {
                         let accent = match row.state {
                             ObjState::Done => green,
                             ObjState::Active => gold,
                         };
-                        ui.add_space(6.0);
+                        if row_i > 0 {
+                            ui.add_space(6.0);
+                        }
                         // Fade + slide-right as a completed row is cleaned up.
                         ui.scope(|ui| {
                             ui.set_opacity(row.fade);
@@ -210,8 +219,14 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                             });
                         });
                     }
-                }
-            });
+                });
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                panel_prepaint,
+                panel_frame.response.rect,
+                sow_ui_kit::theme::palette::field_border(),
+                radius,
+            );
         });
 
     toggle

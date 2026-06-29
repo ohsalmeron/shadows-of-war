@@ -19,6 +19,7 @@ pub struct SettingsState {
     pub applied_hint_until: Option<web_time::Instant>,
     pub reduced_motion: bool,
     pub show_fps_ping: bool,
+    pub custom_theme: bool,
 }
 
 impl Default for SettingsState {
@@ -32,6 +33,7 @@ impl Default for SettingsState {
             applied_hint_until: None,
             reduced_motion: false,
             show_fps_ping: false,
+            custom_theme: true,
         }
     }
 }
@@ -166,6 +168,12 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                         .on_hover_text(&strings.show_fps_ping_help)
                         .changed()
                     {
+                        touch_applied(state);
+                    }
+                    ui.end_row();
+
+                    ui.label(RichText::new("Custom Theme (Super Rounded & Pitch Black)").strong());
+                    if ui.checkbox(&mut state.custom_theme, "").changed() {
                         touch_applied(state);
                     }
                     ui.end_row();

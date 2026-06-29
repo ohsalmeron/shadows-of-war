@@ -98,6 +98,19 @@ pub fn publish_reduced_motion(ctx: &Context, reduced_motion: bool) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("sow_reduced_motion"), reduced_motion));
 }
 
+// ponytail: static avoids egui frame-timing races; readable from any crate at any point in the frame
+static CUSTOM_THEME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[inline]
+pub fn set_custom_theme(enabled: bool) {
+    CUSTOM_THEME.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[inline]
+pub fn custom_theme_enabled() -> bool {
+    CUSTOM_THEME.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Publish portal-embed lobby modal preference for this frame (set by sow-client).
 #[inline]
 pub fn publish_lobby_modal_embed(ctx: &Context, lobby_modal_embed: bool) {

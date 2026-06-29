@@ -114,9 +114,12 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
         .rect_filled(screen_rect, 0.0, backdrop_color);
 
     let compact = screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
-    let modal_w = if compact { 320.0 } else { 380.0 };
-
     let bottom_rect = ui.ctx().data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")));
+    let modal_w = if compact {
+        320.0
+    } else {
+        bottom_rect.map(|r| r.width()).unwrap_or(520.0)
+    };
     let clearance = bottom_rect
         .map(|r| (screen_rect.max.y - r.min.y).max(0.0) + 12.0)
         .unwrap_or(if compact { 132.0 } else { 24.0 });
@@ -472,7 +475,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
                 prepaint_idx,
                 response_rect,
                 accent_color.linear_multiply(alpha),
-                sow_ui_kit::theme::radius::lg(),
+                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::lg() },
             );
         });
 

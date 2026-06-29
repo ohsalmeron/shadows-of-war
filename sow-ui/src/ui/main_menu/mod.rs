@@ -712,12 +712,13 @@ pub fn draw(
 
                                 ui.add_space(section_gap);
 
-                                actions::draw_right_column(
+                                let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
+                                draw_desktop_buttons_grid(
                                     ui,
                                     state,
+                                    ui.available_width(),
+                                    50.0 * scale,
                                     section_gap,
-                                    action_min_h,
-                                    compact,
                                     &mut action,
                                     lang,
                                 );

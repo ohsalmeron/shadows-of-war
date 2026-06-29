@@ -552,7 +552,7 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in crate::ui::hud) fn draw_controls_with_attack_ratio(
+pub(in crate::ui::hud) fn draw_controls_row(
     ui: &mut egui::Ui,
     state: &mut HudState,
     content_w: f32,

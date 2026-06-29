@@ -1,9 +1,9 @@
 //! The campaign **dialog database** — one home for every scripted line (tutorial + future
 //! episodes), so content grows here without touching UI code. Each line is rendered through the
-//! shared speaker modal (`sow_ui::widgets::draw_speaker_dialog`); add entries freely.
+//! bottom-panel takeover modal (a `BottomDialog` painted by `paint_dialog_contents`); add freely.
 //!
-//! Plain text only — the modal renders labels via the emoji atlas, so raw emoji in a line would
-//! show as empty boxes (see docs/campaign-tutorial.md §0). Keep lines short; the sheet is compact.
+//! Lines go through the emoji atlas pipeline, so emoji render fine; keep lines short — the panel
+//! is compact (see docs/campaign-tutorial.md §0).
 //!
 //! The speaker's *visual* (avatar / tribe emoji / empire disc) is built from the live snapshot at
 //! render time, not stored here — this file is just the words.

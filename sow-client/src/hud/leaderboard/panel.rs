@@ -410,37 +410,63 @@ impl SowApp {
             .order(egui::Order::Foreground)
             .anchor(Align2::LEFT_TOP, Vec2::new(12.0, 12.0))
             .show(ctx, |ui| {
-                sow_ui_kit::theme::hud_panel_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add(sow_ui_kit::widgets::HudEmojiButton::new("🏆"))
-                            .on_hover_text("Leaderboard")
-                            .clicked()
-                        {
-                            self.ui.show_leaderboard = !self.ui.show_leaderboard;
-                            if self.ui.show_leaderboard {
-                                self.ui.show_dev_sidebar = false;
+                let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+                let frame_res = egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(
+                        sow_ui_kit::theme::margin::COZY,
+                        sow_ui_kit::theme::margin::TIGHT,
+                    ))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(sow_ui_kit::widgets::HudEmojiButton::new("🏆"))
+                                .on_hover_text("Leaderboard")
+                                .clicked()
+                            {
+                                self.ui.show_leaderboard = !self.ui.show_leaderboard;
+                                if self.ui.show_leaderboard {
+                                    self.ui.show_dev_sidebar = false;
+                                }
                             }
-                        }
 
-                        if ui
-                            .add(sow_ui_kit::widgets::HudEmojiButton::new("🛠"))
-                            .on_hover_text("Dev Utils")
-                            .clicked()
-                        {
-                            self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
-                            if self.ui.show_dev_sidebar {
-                                self.ui.show_leaderboard = false;
+                            if ui
+                                .add(sow_ui_kit::widgets::HudEmojiButton::new("🛠"))
+                                .on_hover_text("Dev Utils")
+                                .clicked()
+                            {
+                                self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
+                                if self.ui.show_dev_sidebar {
+                                    self.ui.show_leaderboard = false;
+                                }
                             }
-                        }
+                        });
                     });
-                });
+                sow_ui_kit::theme::paint_hud_panel_gradient(
+                    ui,
+                    prepaint_idx,
+                    frame_res.response.rect,
+                    sow_ui_kit::theme::palette::field_border(),
+                    if metrics.is_mobile { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
+                );
 
                 if self.ui.show_dev_sidebar {
                     ui.add_space(8.0);
-                    sow_ui_kit::theme::hud_panel_frame().show(ui, |ui| {
-                        self.render_dev_sidebar(ctx, ui);
-                    });
+                    let prepaint_idx2 = ui.painter().add(egui::Shape::Noop);
+                    let frame_res2 = egui::Frame::NONE
+                        .inner_margin(egui::Margin::symmetric(
+                            sow_ui_kit::theme::margin::COZY,
+                            sow_ui_kit::theme::margin::TIGHT,
+                        ))
+                        .show(ui, |ui| {
+                            self.render_dev_sidebar(ctx, ui);
+                        });
+                    sow_ui_kit::theme::paint_hud_panel_gradient(
+                        ui,
+                        prepaint_idx2,
+                        frame_res2.response.rect,
+                        sow_ui_kit::theme::palette::field_border(),
+                        if metrics.is_mobile { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
+                    );
                 }
             });
     }
@@ -504,8 +530,40 @@ impl SowApp {
                         ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
                     });
             });
+            ui.collapsing(RichText::new("🎨 Custom HUD Theme").strong().color(Color32::WHITE), |ui| {
+                let mut roundness = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_roundness"), || 24.0f32)
+                });
+                let mut top_color = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_top"), || [40.0 / 255.0, 44.0 / 255.0, 52.0 / 255.0, 0.75f32])
+                });
+                let mut bot_color = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_bottom"), || [0.0f32, 0.0f32, 0.0f32, 0.75f32])
+                });
+
+                ui.add(egui::Slider::new(&mut roundness, 0.0..=48.0).text("Roundness"));
+                ui.horizontal(|ui| {
+                    ui.label("Top Color:");
+                    ui.color_edit_button_rgba_unmultiplied(&mut top_color);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Bottom Color:");
+                    ui.color_edit_button_rgba_unmultiplied(&mut bot_color);
+                });
+
+                if ui.button("Reset to Default").clicked() {
+                    roundness = 24.0;
+                    top_color = [40.0 / 255.0, 44.0 / 255.0, 52.0 / 255.0, 0.75];
+                    bot_color = [0.0, 0.0, 0.0, 0.75];
+                }
+
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_roundness"), roundness));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_top"), top_color));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_bottom"), bot_color));
+            });
 
             ui.separator();
+
             ui.collapsing(RichText::new("🔤 Font Settings (SDF)").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
                 let mut face_dilate = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_face_dilate"), || -0.6f32)

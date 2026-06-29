@@ -97,6 +97,9 @@ impl SowApp {
             let insets = ctx.input(|i| i.safe_area_insets());
             self.ui.app.hud_state.safe_area_top = insets.0.top;
             self.ui.app.hud_state.safe_area_bottom = insets.0.bottom;
+            // ponytail: static atomic, not egui temp — works regardless of frame order
+            sow_ui_kit::theme::set_custom_theme(self.ui.app.settings_state.custom_theme);
+            sow_ui_kit::theme::publish_reduced_motion(ctx, self.ui.app.settings_state.reduced_motion);
 
             if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
                 self.render_world_overlays(ctx, sf);
@@ -433,7 +436,9 @@ impl SowApp {
 
         let safe_area_top = ctx.input(|i| i.safe_area_insets().0.top);
 
-        egui::Window::new("Player Hover Info")
+        let compact = sow_ui_kit::theme::compact_viewport(ctx);
+
+        let win = egui::Window::new("Player Hover Info")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -442,22 +447,14 @@ impl SowApp {
                 egui::Align2::CENTER_TOP,
                 egui::vec2(0.0, 12.0 + safe_area_top),
             )
-            .frame(
-                egui::Frame::window(&ctx.global_style())
-                    .fill(egui::Color32::from_black_alpha(150))
-                    .stroke(egui::Stroke::new(
-                        1.0_f32,
-                        sow_ui_kit::theme::palette::field_border(),
-                    ))
-                    .corner_radius(12)
-                    .inner_margin(egui::Margin {
-                        left: 14,
-                        right: 14,
-                        top: 8,
-                        bottom: 8,
-                    }),
-            )
-            .show(ctx, |ui| {
+            .frame(egui::Frame::NONE);
+
+        win.show(ctx, |ui| {
+            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+
+            let frame_res = egui::Frame::NONE
+                .inner_margin(egui::Margin::symmetric(14, 8))
+                .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Avatar/Emoji representation or Spirit Animal if any
                     let (avatar_rect, _) =
@@ -551,6 +548,15 @@ impl SowApp {
                     }
                 });
             });
+
+            sow_ui_kit::theme::paint_hud_panel_gradient(
+                ui,
+                prepaint_idx,
+                frame_res.response.rect,
+                sow_ui_kit::theme::palette::field_border(),
+                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
+            );
+        });
     }
 
     pub(crate) fn render_placement_cancel_button(&mut self, ctx: &egui::Context) {

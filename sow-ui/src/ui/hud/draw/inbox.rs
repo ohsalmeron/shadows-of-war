@@ -319,12 +319,13 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                         });
                     let response_rect = frame_res.response.rect;
                     ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("alliance_inbox_rect"), response_rect));
+                    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
                     sow_ui_kit::theme::paint_hud_panel_gradient(
                         ui,
                         prepaint_idx,
                         frame_res.response.rect,
                         sow_ui_kit::theme::palette::neon_cyan().linear_multiply(inbox_progress),
-                        sow_ui_kit::theme::radius::lg(),
+                        if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::lg() },
                     );
                 });
             });

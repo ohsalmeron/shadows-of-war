@@ -391,36 +391,65 @@ pub fn paint_hud_panel_gradient(
     if !rect.is_positive() {
         return;
     }
-    let top_color = Color32::from_rgba_unmultiplied(32, 32, 36, 240);
-    let bottom_color = Color32::from_rgba_unmultiplied(16, 16, 18, 240);
 
+    if super::custom_theme_enabled() {
+        let roundness = ui.ctx().data(|d| {
+            d.get_temp::<f32>(egui::Id::new("dev_theme_roundness")).unwrap_or(24.0)
+        });
+        let top_color_raw = ui.ctx().data(|d| {
+            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_top"))
+                .unwrap_or([40.0 / 255.0, 44.0 / 255.0, 52.0 / 255.0, 0.75])
+        });
+        let bot_color_raw = ui.ctx().data(|d| {
+            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_bottom"))
+                .unwrap_or([0.0, 0.0, 0.0, 0.75])
+        });
+
+        let r_u8 = (roundness.round() as u32).min(255) as u8;
+        let cr_top = egui::CornerRadius { nw: r_u8, ne: r_u8, sw: 0, se: 0 };
+        let cr_bot = egui::CornerRadius { nw: 0, ne: 0, sw: r_u8, se: r_u8 };
+
+        let slate = Color32::from_rgba_unmultiplied(
+            (top_color_raw[0] * 255.0) as u8,
+            (top_color_raw[1] * 255.0) as u8,
+            (top_color_raw[2] * 255.0) as u8,
+            (top_color_raw[3] * 255.0) as u8,
+        );
+        let black = Color32::from_rgba_unmultiplied(
+            (bot_color_raw[0] * 255.0) as u8,
+            (bot_color_raw[1] * 255.0) as u8,
+            (bot_color_raw[2] * 255.0) as u8,
+            (bot_color_raw[3] * 255.0) as u8,
+        );
+
+        let mid_y = (rect.min.y + rect.max.y) * 0.5;
+        let top_r = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, mid_y));
+        let bot_r = egui::Rect::from_min_max(egui::pos2(rect.min.x, mid_y), rect.max);
+        ui.painter().set(idx, egui::Shape::Vec(vec![
+            egui::Shape::Rect(egui::epaint::RectShape::filled(bot_r, cr_bot, black)),
+            egui::Shape::Rect(egui::epaint::RectShape::filled(top_r, cr_top, slate)),
+        ]));
+        ui.painter().rect(
+            rect,
+            egui::CornerRadius::same(r_u8),
+            Color32::TRANSPARENT,
+            egui::Stroke::new(1.5_f32, border_color),
+            egui::StrokeKind::Inside,
+        );
+        return;
+    }
+
+    // Default: vertical gradient mesh (sharp or caller-supplied radius on border only)
+    let top_color    = Color32::from_rgba_unmultiplied(32, 32, 36, 240);
+    let bottom_color = Color32::from_rgba_unmultiplied(16, 16, 18, 240);
     let mut mesh = egui::Mesh::default();
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.left_top(),
-        uv: egui::Pos2::ZERO,
-        color: top_color,
-    });
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.right_top(),
-        uv: egui::Pos2::ZERO,
-        color: top_color,
-    });
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.right_bottom(),
-        uv: egui::Pos2::ZERO,
-        color: bottom_color,
-    });
-    mesh.vertices.push(egui::epaint::Vertex {
-        pos: rect.left_bottom(),
-        uv: egui::Pos2::ZERO,
-        color: bottom_color,
-    });
+    mesh.vertices.push(egui::epaint::Vertex { pos: rect.left_top(),     uv: egui::Pos2::ZERO, color: top_color });
+    mesh.vertices.push(egui::epaint::Vertex { pos: rect.right_top(),    uv: egui::Pos2::ZERO, color: top_color });
+    mesh.vertices.push(egui::epaint::Vertex { pos: rect.right_bottom(), uv: egui::Pos2::ZERO, color: bottom_color });
+    mesh.vertices.push(egui::epaint::Vertex { pos: rect.left_bottom(),  uv: egui::Pos2::ZERO, color: bottom_color });
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
-
     ui.painter().set(idx, egui::Shape::mesh(mesh));
-
-    // Paint the outline on top
     ui.painter().rect(
         rect,
         radius,
@@ -429,4 +458,3 @@ pub fn paint_hud_panel_gradient(
         egui::StrokeKind::Inside,
     );
 }
-

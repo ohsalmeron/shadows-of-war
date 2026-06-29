@@ -1,13 +1,12 @@
-//! Themed, non-blocking "speaker dialog" — portrait on the left, title + body, themed buttons.
-//!
-//! Mobile-style bottom sheet used to funnel players into mechanics (tutorial today, single-player
-//! campaign later). Non-blocking on purpose: it draws no scrim so the map stays interactive
-//! underneath (the tutorial's expand/attack steps need live clicks).
+//! Speaker-dialog content — portrait on the left, eyebrow/title/body, themed buttons — rendered
+//! through the emoji-atlas text pipeline. The HUD funnels players into mechanics (tutorial today,
+//! campaign later) by *taking over* its bottom panel with a [`BottomDialog`] and painting it via
+//! [`paint_dialog_contents`]; there is no floating window and no scrim, so the map stays live.
 
 use crate::ui::asset_loader::AssetLoader;
 use crate::ui::theme;
 use crate::widgets::{ThemeButton, ThemeButtonStyle};
-use egui::{Align, Color32, Context, Layout, Vec2};
+use egui::{Align, Color32, Layout, Vec2};
 use sow_core::player::Leader;
 
 #[derive(Clone)]
@@ -38,20 +37,9 @@ pub enum SpeakerVisual {
     Empire { color: [f32; 3] },
 }
 
-pub struct SpeakerDialog<'a> {
-    /// Portrait shown on the left; `None` draws no portrait.
-    pub visual: Option<SpeakerVisual>,
-    /// Small eyebrow name above the title (e.g. "Commander").
-    pub name: Option<&'a str>,
-    pub title: &'a str,
-    pub body: &'a str,
-    pub buttons: Vec<DialogButton>,
-}
-
-/// Owned twin of [`SpeakerDialog`], handed to the HUD so a message can *take over* the bottom
-/// panel (reusing its frame) instead of floating its own sheet — see
-/// [`crate::ui::hud`]'s bottom-panel takeover. Owned because it crosses the frame boundary: the
-/// caller stashes it in `HudState` and the panel renders it next frame.
+/// Owned dialog payload handed to the HUD so a message can *take over* the bottom panel (reusing
+/// its frame) — see [`crate::ui::hud`]'s bottom-panel takeover. Owned because it crosses the frame
+/// boundary: the caller stashes it in `HudState` and the panel renders it next frame.
 #[derive(Clone)]
 pub struct BottomDialog {
     /// Stable id for the in/out animation (one animation slot per logical dialog).
@@ -85,79 +73,9 @@ fn paint_speaker_disc(painter: &egui::Painter, rect: egui::Rect, rgb: [f32; 3]) 
     );
 }
 
-/// Bottom edge clearance so the sheet sits above the HUD bottom controls. Reuses the same
-/// `hud_bottom_panel_rect` temp key the HUD publishes each frame.
-fn bottom_clearance(ctx: &Context, compact: bool) -> f32 {
-    let screen = ctx.content_rect();
-    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")))
-        .map(|r| (screen.max.y - r.min.y).max(0.0) + 12.0)
-        .unwrap_or(if compact { 132.0 } else { 24.0 })
-}
-
-/// Draw the dialog. Returns the index of the button clicked this frame, if any.
-///
-/// `click_anywhere`: when true (use it only when the sole button is a non-destructive
-/// proceed like Next/Finish), clicking anywhere on the panel acts as button 0.
-pub fn draw_speaker_dialog(
-    ctx: &Context,
-    id: &str,
-    dialog: &SpeakerDialog,
-    asset_loader: &AssetLoader,
-    click_anywhere: bool,
-) -> Option<usize> {
-    let compact = theme::compact_viewport(ctx);
-    let screen = ctx.content_rect();
-    let clearance = bottom_clearance(ctx, compact);
-
-    // Fixed width, height shrinks to content. Uses Area + Frame (not Window) because
-    // egui Windows don't auto-shrink reliably here — every Window in this codebase sets
-    // an explicit fixed_size. Area sizes exactly to its content.
-    let width = (screen.width() - 24.0).min(if compact { 460.0 } else { 480.0 });
-
-    let mut clicked: Option<usize> = None;
-
-    egui::Area::new(egui::Id::new(id))
-        .order(egui::Order::Foreground) // above world nameplates
-        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -clearance))
-        .show(ctx, |ui| {
-            let frame_resp = theme::standard_panel_frame(compact).show(ui, |ui| {
-                ui.set_width(width);
-                if let Some(i) = paint_dialog_contents(
-                    ui,
-                    dialog.visual.as_ref(),
-                    dialog.name,
-                    dialog.title,
-                    dialog.body,
-                    &dialog.buttons,
-                    asset_loader,
-                    compact,
-                ) {
-                    clicked = Some(i);
-                }
-            });
-
-            // Whole-panel click acts as the primary button (only for non-destructive steps).
-            if click_anywhere && clicked.is_none() {
-                let r = ui.interact(
-                    frame_resp.response.rect,
-                    egui::Id::new((id, "panel_click")),
-                    egui::Sense::click(),
-                );
-                if r.clicked() {
-                    clicked = Some(0);
-                }
-                if r.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
-            }
-        });
-
-    clicked
-}
-
 /// The dialog's inner layout — portrait, eyebrow/title/body, themed buttons — with no frame,
-/// area, or scrim of its own. Shared so the speaker sheet (floating) and the bottom-panel
-/// takeover (docked) render byte-identical content. Returns the clicked button index, if any.
+/// area, or scrim of its own, rendered through the emoji-atlas text pipeline. The bottom-panel
+/// takeover paints a [`BottomDialog`] with this. Returns the clicked button index, if any.
 #[allow(clippy::too_many_arguments)]
 pub fn paint_dialog_contents(
     ui: &mut egui::Ui,

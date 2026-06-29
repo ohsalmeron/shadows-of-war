@@ -119,7 +119,7 @@ pub(in crate::ui::hud) fn draw_map_controls(
                 prepaint_idx,
                 frame_res.response.rect,
                 sow_ui_kit::theme::palette::field_border(),
-                sow_ui_kit::theme::radius::sm(),
+                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::sm() },
             );
         });
 }

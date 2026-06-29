@@ -119,12 +119,13 @@ pub(in crate::ui::hud) fn draw_top_icons(
                     });
                 });
             });
+            let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
             sow_ui_kit::theme::paint_hud_panel_gradient(
                 ui,
                 prepaint_idx,
                 frame_res.response.rect,
                 sow_ui_kit::theme::palette::field_border(),
-                sow_ui_kit::theme::radius::md(),
+                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
             );
         });
 }

@@ -85,7 +85,7 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                              if log_tabs_enabled {
                                  match state.bottom_tab {
                                      BottomHudTab::Controls => {
-                                         controls::draw_controls_with_attack_ratio(
+                                         controls::draw_controls_row(
                                              ui,
                                              state,
                                              content_w,
@@ -124,7 +124,7 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                      }
                                  }
                              } else {
-                                 controls::draw_controls_with_attack_ratio(
+                                 controls::draw_controls_row(
                                      ui,
                                      state,
                                      content_w,

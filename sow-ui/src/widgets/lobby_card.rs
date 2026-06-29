@@ -171,10 +171,37 @@ impl<'a> Widget for LobbyCard<'a> {
         );
 
         let pad = 10.0;
+
+        // "GO" button at the bottom-right of the panel. The whole card stays the click target —
+        // this just sells the affordance. Reserve its column so the left text stops before it.
+        let btn_w = 64.0_f32.min((rect.width() * 0.32).max(48.0));
+        let btn_h = 42.0_f32;
+        let btn_rect = egui::Rect::from_min_max(
+            egui::pos2(bottom_rect.max.x - pad - btn_w, bottom_rect.center().y - btn_h * 0.5),
+            egui::pos2(bottom_rect.max.x - pad, bottom_rect.center().y + btn_h * 0.5),
+        );
+        let text_right = btn_rect.min.x - pad;
+
         let line1_y = bottom_rect.min.y + 8.0;
         let line2_y = line1_y + 20.0;
 
-        // Line 1: map name (left) + players badge (right)
+        // Players badge — pulled OUT of the panel, floating just above its top-right corner.
+        let players_text = format!(
+            "{}/{} players",
+            self.lobby.num_players, self.lobby.max_players
+        );
+        paint_badge(
+            ui.painter(),
+            egui::pos2(rect.max.x - pad, bottom_rect.min.y - 26.0),
+            true,
+            &players_text,
+            egui::FontId::proportional(12.0),
+            Color32::WHITE,
+            Color32::from_black_alpha(200),
+            false,
+        );
+
+        // Line 1: map name (left).
         let map_text = self.lobby.map_name.to_uppercase();
         sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
@@ -186,22 +213,7 @@ impl<'a> Widget for LobbyCard<'a> {
             Color32::BLACK,
         );
 
-        let players_text = format!(
-            "{}/{} players",
-            self.lobby.num_players, self.lobby.max_players
-        );
-        paint_badge(
-            ui.painter(),
-            egui::pos2(bottom_rect.max.x - pad, line1_y - 1.0),
-            true,
-            &players_text,
-            egui::FontId::proportional(12.0),
-            Color32::WHITE,
-            Color32::from_black_alpha(200),
-            false,
-        );
-
-        // Line 2: bot/nation counts + difficulty
+        // Line 2: bot/nation counts + difficulty (left) + host (right, left of the button).
         let diff_str = match self.lobby.bot_difficulty {
             sow_core::game_config::BotDifficulty::Terminator => "Terminator",
             _ => "Vanilla",
@@ -218,11 +230,10 @@ impl<'a> Widget for LobbyCard<'a> {
             sow_ui_kit::theme::palette::text_muted(),
         );
 
-        // Host name (if set)
         if !self.lobby.host_name.is_empty() {
             let host_text = format!("by {}", self.lobby.host_name);
             ui.painter().text(
-                egui::pos2(bottom_rect.max.x - pad, line2_y),
+                egui::pos2(text_right, line2_y),
                 egui::Align2::RIGHT_TOP,
                 &host_text,
                 egui::FontId::proportional(11.0),
@@ -236,6 +247,15 @@ impl<'a> Widget for LobbyCard<'a> {
             Stroke::new(stroke_width, stroke_color),
             egui::StrokeKind::Inside,
         );
+
+        // The "GO" button on top, lit by the card's own hover state.
+        let hot = ui
+            .ctx()
+            .animate_bool(response.id.with("lobby_go_hot"), is_hovered);
+        if is_hovered {
+            ui.ctx().request_repaint(); // breathe while hovered
+        }
+        crate::widgets::paint_play_button(ui.painter(), btn_rect, hot, pulse, "GO");
 
         response
     }
