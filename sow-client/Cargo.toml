@@ -1,9 +1,19 @@
 [package]
 name = "sow-client"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Shadows of War — main game client (simulation host, event loop, platform integrations)"
 license = "AGPL-3.0-or-later"
+
+[package.metadata.deb]
+maintainer = "ohsalmeron <ohsalmeron@users.noreply.github.com>"
+extended-description = "Shadows of War — a multiplayer strategy game"
+depends = "$auto"
+section = "game"
+priority = "optional"
+assets = [
+    ["target/release/client", "usr/bin/shadows-of-war", "755"],
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

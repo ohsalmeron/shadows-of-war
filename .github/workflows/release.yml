@@ -1,0 +1,222 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Validate ─────────────────────────────────────────────────────────
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo check --workspace
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
+      - run: python3 sow-tools/check_file_sizes.py
+      - id: version
+        run: |
+          V=$(sed -n '/^\[workspace.package\]/,/^\[/p' Cargo.toml | sed -n 's/^version = "\(.*\)"/\1/p')
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+  # ── Build matrix ──────────────────────────────────────────────────────
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            pkg: linux-x86_64
+            deb: true
+            rpm: true
+            appimage: true
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            pkg: linux-arm64
+            deb: true
+            rpm: false
+            appimage: false
+          - name: macos-arm
+            os: macos-latest
+            pkg: macos-arm64
+          - name: macos-intel
+            os: macos-13
+            pkg: macos-x86_64
+          - name: windows
+            os: windows-latest
+            pkg: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libx11-dev libxi-dev libxrandr-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev \
+            libwayland-dev libxkbcommon-dev
+
+      - run: cargo build --release -p sow-client
+
+      - name: Package binary
+        shell: bash
+        run: |
+          V=${{ needs.validate.outputs.version }}
+          N=${{ matrix.name }}
+          mkdir -p dist
+          if [ "${{ runner.os }}" = Windows ]; then
+            cp target/release/client.exe dist/shadows-of-war.exe
+            7z a -tzip "dist/shadows-of-war-${V}-${N}.zip" dist/shadows-of-war.exe
+          else
+            cp target/release/client dist/shadows-of-war
+            tar czf "dist/shadows-of-war-${V}-${N}.tar.gz" -C dist shadows-of-war
+            rm dist/shadows-of-war
+          fi
+
+      - if: matrix.deb
+        continue-on-error: true
+        run: |
+          cargo install cargo-deb --quiet
+          cargo deb -p sow-client
+          cp target/debian/*.deb dist/
+
+      - if: matrix.rpm
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -qq rpm
+          cargo install cargo-generate-rpm --quiet
+          cargo generate-rpm -p sow-client
+          cp target/generate-rpm/*.rpm dist/
+
+      - if: matrix.appimage
+        continue-on-error: true
+        run: |
+          wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          cd /tmp && ./appimagetool --appimage-extract > /dev/null 2>&1
+
+          mkdir -p AppDir/usr/bin
+          cp "$OLDPWD/target/release/client" AppDir/usr/bin/shadows-of-war
+
+          # Minimal 48×48 icon
+          python3 -c "
+          import struct, zlib
+          w, h = 48, 48
+          raw = b''
+          for y in range(h):
+              raw += b'\x00' + b'\x1a\x1a\x2e\xff' * w
+          def ck(t, d):
+              c = t + d
+              return struct.pack('>I',len(d)) + c + struct.pack('>I',zlib.crc32(c)&0xffffffff)
+          ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+          png = b'\x89PNG\r\n\x1a\n' + ck(b'IHDR', ihdr) + ck(b'IDAT', zlib.compress(raw)) + ck(b'IEND', b'')
+          open('AppDir/shadows-of-war.png', 'wb').write(png)
+          "
+          mkdir -p AppDir/usr/share/icons/hicolor/48x48/apps
+          cp AppDir/shadows-of-war.png AppDir/usr/share/icons/hicolor/48x48/apps/shadows-of-war.png
+
+          cat > AppDir/usr/share/applications/shadows-of-war.desktop << 'EOF'
+[Desktop Entry]
+Name=Shadows of War
+Exec=shadows-of-war
+Icon=shadows-of-war
+Type=Application
+Categories=Game;
+Terminal=false
+EOF
+
+          cat > AppDir/AppRun << 'RUNEOF'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/shadows-of-war" "$@"
+RUNEOF
+          chmod +x AppDir/AppRun
+
+          export ARCH=x86_64
+          /tmp/squashfs-root/AppRun --no-appstream AppDir
+          V=${{ needs.validate.outputs.version }}
+          mv Shadows_of_War*.AppImage "dist/shadows-of-war-${V}-linux-x86_64.AppImage" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pkg }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ── Release ──────────────────────────────────────────────────────────
+  release:
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Tag commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ needs.validate.outputs.version }}"
+          git push origin "v${{ needs.validate.outputs.version }}"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ needs.validate.outputs.version }}"
+          name: "v${{ needs.validate.outputs.version }}"
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+
+      - name: Bump patch version
+        shell: python3 {0}
+        run: |
+          import re, os
+          with open('Cargo.toml') as f:
+              content = f.read()
+          m = re.search(
+              r'^\[workspace\.package\].*?^version = "(.*?)"',
+              content, re.MULTILINE | re.DOTALL
+          )
+          old = m.group(1)
+          parts = old.split('.')
+          parts[-1] = str(int(parts[-1]) + 1)
+          new = '.'.join(parts)
+          content = content.replace(f'version = "{old}"', f'version = "{new}"', 1)
+          with open('Cargo.toml', 'w') as f:
+              f.write(content)
+          with open('.version', 'w') as f:
+              f.write(new + '\n')
+          print(f'{old} → {new}')
+
+      - name: Commit bump
+        run: |
+          V=$(python3 -c "import re; print(re.search(r'^\[workspace\.package\].*?^version = \"(.*?)\"', open('Cargo.toml').read(), re.MULTILINE|re.DOTALL).group(1))")
+          git add Cargo.toml .version
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+            commit -m "chore: bump version to $V [skip ci]"
+          git push origin master

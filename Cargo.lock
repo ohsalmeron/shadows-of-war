@@ -3697,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "sow-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "blade-egui",
@@ -3758,7 +3758,7 @@ dependencies = [
 
 [[package]]
 name = "sow-database"
-version = "0.31.0-beta.2"
+version = "0.2.0"
 dependencies = [
  "axum",
  "env_logger",
@@ -3852,7 +3852,7 @@ dependencies = [
 
 [[package]]
 name = "sow-relay"
-version = "0.31.0-beta.2"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "env_logger",

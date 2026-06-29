@@ -59,13 +59,6 @@ pub(in crate::ui::hud) fn draw_pinned_dialog(
         egui::Margin::same(sow_ui_kit::theme::margin::REGULAR)
     };
 
-    // Pin just above the bottom panel (its published rect) with a little padding.
-    const PAD: f32 = 10.0;
-    let above = ctx
-        .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")))
-        .map(|r| (screen.max.y - r.min.y) + PAD)
-        .unwrap_or(if compact { 200.0 } else { 110.0 });
-
     // Spring slide-up + fade — the same idiom the transfer/emoji panels use.
     let scale = if active {
         if t >= 1.0 {
@@ -79,12 +72,19 @@ pub(in crate::ui::hud) fn draw_pinned_dialog(
     let slide = 16.0 * (1.0 - scale.clamp(0.0, 1.0));
     let alpha = t.clamp(0.0, 1.0);
 
+    // Sit *on* the bottom panel: same anchor + offset, so the dialog covers it (its taller content
+    // extends upward). Mirrors the bottom panel's anchoring in `hud::draw`.
     let anchor = if portrait_dock {
         egui::Align2::LEFT_BOTTOM
     } else {
         egui::Align2::CENTER_BOTTOM
     };
-    let offset = egui::vec2(0.0, -above + slide);
+    let lift = if portrait_dock {
+        state.safe_area_bottom
+    } else {
+        state.safe_area_bottom + 12.0
+    };
+    let offset = egui::vec2(0.0, -lift + slide);
 
     let settled = active && t >= 0.999;
 
@@ -99,7 +99,7 @@ pub(in crate::ui::hud) fn draw_pinned_dialog(
                 .fill(sow_ui_kit::theme::palette::surface())
                 .stroke(egui::Stroke::new(
                     sow_ui_kit::theme::stroke::HAIRLINE,
-                    sow_ui_kit::theme::palette::neon_cyan(),
+                    sow_ui_kit::theme::palette::field_border(),
                 ))
                 .corner_radius(sow_ui_kit::theme::radius::lg())
                 .inner_margin(content_margin);
@@ -116,18 +116,20 @@ pub(in crate::ui::hud) fn draw_pinned_dialog(
                     compact,
                 )
             });
-            // Buttons + tap-to-skip both live on this Foreground layer.
+            // Buttons + tap-to-skip both live on this Foreground layer. The full-panel interact
+            // also *blocks* clicks from falling through to the bottom panel's controls, which now
+            // sit hidden directly behind this one.
             let mut click = if settled { fr.inner } else { None };
-            if settled && dlg.click_anywhere && click.is_none() {
-                let r = ui.interact(
-                    fr.response.rect,
-                    egui::Id::new("hud_pinned_dialog_tap"),
-                    egui::Sense::click(),
-                );
-                if r.clicked() {
+            let blocker = ui.interact(
+                fr.response.rect,
+                egui::Id::new("hud_pinned_dialog_block"),
+                egui::Sense::click(),
+            );
+            if settled && dlg.click_anywhere {
+                if click.is_none() && blocker.clicked() {
                     click = Some(0);
                 }
-                if r.hovered() {
+                if blocker.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
             }

@@ -19,13 +19,13 @@ pub fn panel_frame(kind: PanelKind, compact: bool) -> egui::Frame {
                 (margin::COZY, margin::TIGHT)
             };
             egui::Frame::NONE
-                .fill(Color32::from_black_alpha(150))
+                .fill(palette::surface())
                 .corner_radius(radius::md())
                 .stroke(Stroke::new(stroke::HAIRLINE, palette::field_border()))
                 .inner_margin(Margin::symmetric(margin_x, margin_y))
         }
         PanelKind::MapControlsRail => egui::Frame::NONE
-            .fill(Color32::from_black_alpha(150))
+            .fill(palette::surface())
             .corner_radius(radius::sm())
             .stroke(Stroke::new(stroke::HAIRLINE, palette::field_border()))
             .inner_margin(Margin::symmetric(4, margin::TIGHT)),

@@ -35,7 +35,7 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                 if state.selected_building_kind.is_some() || state.selected_nuke_kind.is_some() {
                     sow_ui_kit::theme::palette::neon_cyan()
                 } else {
-                    sow_ui_kit::theme::palette::field_border().linear_multiply(0.4)
+                    sow_ui_kit::theme::palette::field_border()
                 };
 
             let content_margin = if portrait_dock || compact {
