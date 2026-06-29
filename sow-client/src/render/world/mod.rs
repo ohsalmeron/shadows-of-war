@@ -351,10 +351,10 @@ impl SowApp {
                     );
                     let bounce_scale = if elapsed < 0.5 {
                         let anim_t = elapsed / 0.5;
-                        nameplates::spring_overshoot(anim_t)
+                        sow_ui::ui::animation::spring_overshoot(anim_t)
                     } else if elapsed > duration - 0.5 {
                         let anim_t = (duration - elapsed) / 0.5;
-                        nameplates::spring_overshoot(anim_t).clamp(0.0, 1.2)
+                        sow_ui::ui::animation::spring_overshoot(anim_t).clamp(0.0, 1.2)
                     } else {
                         1.0
                     };

@@ -6,18 +6,14 @@ use super::super::state::HudState;
 pub(in crate::ui::hud) fn draw_sync_overlay(ctx: &Context, state: &HudState, lang: Language) {
     if let Some(sync) = &state.sync_state {
         let strings = &sow_i18n::get(lang).hud;
-        let screen_rect = ctx.content_rect();
-        ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Middle,
-            egui::Id::new("sync_overlay"),
-        ))
-        .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
+        sow_ui_kit::theme::paint_scrim(ctx, "sync_overlay", 1.0);
 
         egui::Window::new(&strings.overlay_waiting_players)
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
             .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
+            .frame(sow_ui_kit::theme::standard_panel_frame(false))
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     if sync.is_starting {

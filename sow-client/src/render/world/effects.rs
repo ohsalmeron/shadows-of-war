@@ -29,7 +29,7 @@ pub(crate) fn render(
 
     ui.click_markers.retain(|m| {
         let elapsed = current_time.duration_since(m.start_time).as_secs_f32();
-        if elapsed > 1.0 {
+        if elapsed > 0.25 {
             return false;
         }
         let screen_x = (input.camera_x + m.world_x * input.camera_zoom) / sf;

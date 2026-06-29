@@ -244,15 +244,18 @@ impl SowApp {
                     let step = self.ui.app.splash_state.gpu_load_step;
                     if step == 0 {
                         log::info!("Exit game splash: reconnecting to orchestrator");
-                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.2);
+                        self.ui.app.splash_state.progress = 0.0;
                         self.ui.app.splash_state.gpu_load_step = 1;
                         self.ui.app.splash_state.frames_drawn = 0;
                     } else if step == 1 {
-                        // Wait for connection to orchestrator or timeout (3 seconds @ 60fps = 180 frames)
-                        if self.net.client.is_some() || self.ui.app.splash_state.frames_drawn > 180
-                        {
-                            log::info!("Exit game splash: cleaning up game session");
-                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.5);
+                        let p = self.ui.app.splash_state.progress;
+                        if p < 0.99 {
+                            let inc = ((0.99 - p) * 0.03).max(0.001).min(0.04);
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, (p + inc).min(0.99));
+                        }
+                        if self.net.client.is_some() {
+                            log::info!("Exit game splash: connected, transitioning to main menu");
+                            self.ui.app.splash_state.progress = 1.0;
                             self.ui.app.splash_state.gpu_load_step = 2;
                             self.ui.app.splash_state.frames_drawn = 0;
                         }

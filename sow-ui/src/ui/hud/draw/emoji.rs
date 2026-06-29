@@ -29,7 +29,7 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
         if t >= 1.0 {
             1.0
         } else {
-            1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+            crate::ui::animation::spring_overshoot(t)
         }
     } else {
         emoji_progress
@@ -44,16 +44,7 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
     ];
 
     if compact {
-        ui.ctx()
-            .layer_painter(egui::LayerId::new(
-                egui::Order::Background,
-                egui::Id::new("emoji_dim_bg"),
-            ))
-            .rect_filled(
-                screen_rect,
-                0.0,
-                Color32::from_black_alpha((150.0 * emoji_progress) as u8),
-            );
+        sow_ui_kit::theme::paint_scrim(ui.ctx(), "emoji_dim_bg", emoji_progress);
     }
 
     let mut area =
@@ -80,15 +71,9 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
     let border_glow = Color32::from_rgb(251, 191, 36).linear_multiply(emoji_progress);
 
     area.show(ui.ctx(), |ui| {
-        let frame_res = egui::Frame::window(&ui.ctx().global_style())
+        let frame_res = sow_ui_kit::theme::standard_panel_frame(compact)
             .fill(sow_ui_kit::theme::palette::surface().linear_multiply(emoji_progress))
             .stroke(egui::Stroke::new(1.8_f32 * anim_scale, border_glow))
-            .shadow(egui::Shadow {
-                blur: if compact { 12 } else { 16 },
-                spread: 0,
-                color: border_glow.linear_multiply(0.25 * emoji_progress),
-                offset: [0, 0],
-            })
             .inner_margin(egui::Margin::same(
                 ((if compact { 10.0 } else { 12.0 }) * anim_scale) as i8,
             ))

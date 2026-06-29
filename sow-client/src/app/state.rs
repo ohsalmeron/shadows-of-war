@@ -258,7 +258,7 @@ pub struct ViewportAlertState {
 }
 
 /// Shared flash duration for all one-shot visual feedback (border flash + vignette).
-pub const FLASH_DURATION: f32 = 0.5;
+pub const FLASH_DURATION: f32 = 1.0;
 
 /// Ease-out quadratic: returns 1→0 over `FLASH_DURATION`, or `None` if expired.
 #[inline]

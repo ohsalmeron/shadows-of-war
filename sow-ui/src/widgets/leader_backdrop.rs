@@ -93,11 +93,12 @@ fn draw_loading_page(ui: &mut Ui, page_rect: Rect, label: &str, opacity: f32) {
     let center = page_rect.center();
     let spinner_rect =
         Rect::from_center_size(center - egui::vec2(0.0, 12.0), egui::vec2(30.0, 30.0));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(spinner_rect), |ui| {
-        ui.vertical_centered(|ui| {
+    egui::Area::new(egui::Id::new("backdrop_loading_spinner"))
+        .fixed_pos(spinner_rect.min)
+        .interactable(false)
+        .show(ui.ctx(), |ui| {
             ui.spinner();
         });
-    });
     ui.painter().with_clip_rect(page_rect).text(
         center + egui::vec2(0.0, 22.0),
         egui::Align2::CENTER_CENTER,

@@ -80,6 +80,8 @@ impl SowApp {
             egui::Id::new("endgame_panel_animation"),
             show_panel,
             anim_dur,
+            sow_ui::ui::animation::PANEL_Y_SLIDE,
+            sow_ui::ui::animation::SlideDir::Down,
         );
 
         if anim.progress <= 0.01 {
@@ -91,19 +93,9 @@ impl SowApp {
         };
 
         let alpha = anim.progress;
-        let y_offset = anim.y_offset;
+        let y_offset = anim.offset;
 
-        egui::Area::new(egui::Id::new("endgame_dimmer"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(egui::Pos2::ZERO)
-            .show(ctx, |ui| {
-                let rect = ctx.content_rect();
-                ui.painter().rect_filled(
-                    rect,
-                    0.0,
-                    Color32::from_black_alpha((180.0 * alpha) as u8),
-                );
-            });
+        sow_ui_kit::theme::paint_scrim(ctx, "endgame_dimmer", alpha);
 
         let screen_width = ctx.content_rect().width();
         let is_mobile = sow_ui_kit::theme::compact_viewport(ctx);
@@ -154,10 +146,9 @@ impl SowApp {
             .order(egui::Order::Foreground)
             .anchor(Align2::CENTER_CENTER, [0.0, y_offset])
             .frame(
-                egui::Frame::window(&ctx.global_style())
+                sow_ui_kit::theme::standard_panel_frame(is_mobile)
                     .fill(sow_ui_kit::theme::panel_bg().linear_multiply(alpha))
                     .stroke(egui::Stroke::new(2.0_f32 * anim.scale, border_color))
-                    .corner_radius(12.0)
                     .inner_margin(win_margin),
             )
             .show(ctx, |ui| {

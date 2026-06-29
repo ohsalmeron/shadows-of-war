@@ -149,7 +149,7 @@ pub fn draw_user_profile_header(
                         .layout_no_wrap(strings.sign_in.clone(), btn_font, Color32::WHITE);
 
                 // Flexible, wider button width
-                let btn_w = btn_galley.size().x + 28.0;
+                let btn_w = btn_galley.size().x + 32.0;
                 // Flexible, centered height (slightly smaller than avatar height so it fits perfectly)
                 let btn_h = (avatar_size - 6.0).clamp(24.0, 36.0);
 

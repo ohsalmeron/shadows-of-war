@@ -7,18 +7,27 @@ pub fn spring_overshoot(t: f32) -> f32 {
 /// Vertical slide distance for modal panel entry/exit.
 pub const PANEL_Y_SLIDE: f32 = 80.0;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlideDir {
+    Down,
+    Right,
+}
+
 pub struct PanelInOutAnim {
     pub progress: f32,
     pub scale: f32,
-    pub y_offset: f32,
+    pub offset: f32,
 }
 
-/// Shared in/out animation for victory, defeat, and betrayal modals.
+/// Shared in/out animation for modals and panels.
+/// `slide_dst` = how far to slide (0 = no slide). `dir` = slide direction.
 pub fn panel_in_out_anim(
     ctx: &egui::Context,
     id: egui::Id,
     visible: bool,
     duration_secs: f32,
+    slide_dst: f32,
+    _dir: SlideDir,
 ) -> PanelInOutAnim {
     let progress = ctx.animate_bool_with_time(id, visible, duration_secs);
     if progress > 0.0 && progress < 1.0 {
@@ -36,7 +45,7 @@ pub fn panel_in_out_anim(
     PanelInOutAnim {
         progress,
         scale,
-        y_offset: PANEL_Y_SLIDE * (1.0 - scale),
+        offset: slide_dst * (1.0 - scale),
     }
 }
 

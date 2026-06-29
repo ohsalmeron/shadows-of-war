@@ -518,7 +518,7 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
             let dist = distance(cell_world, f_center);
             if dist > f_radius * 1.05 { continue; }
 
-            let elapsed = (1.0 - alpha_p) * 7.0;
+            let elapsed = (1.0 - alpha_p) * 5.0;
 
             // 1. SCORCHED EARTH (CRATER / BURN)
             let burn_radius = f_radius * 0.65;

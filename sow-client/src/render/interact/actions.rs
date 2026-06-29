@@ -134,7 +134,7 @@ impl SowApp {
                     self.input.camera_zoom = 2.0;
                     self.input.target_zoom = 2.0;
                     self.net.client = None;
-                    self.begin_exit_to_main_menu(false);
+                    self.begin_exit_to_main_menu(true);
                 }
                 UiAction::SetAttackRatio(r) => {
                     self.ui.app.hud_state.attack_ratio = r;

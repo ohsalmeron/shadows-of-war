@@ -1,9 +1,3 @@
-/// Damped spring overshoot: approaches 1.0 with a single bounce.
-#[inline]
-pub(crate) fn spring_overshoot(t: f32) -> f32 {
-    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
-}
-
 /// Status badge drawn at an absolute screen position (beside avatar). Spring entrance + glow.
 pub(crate) fn draw_side_status_badge(
     painter: &egui::Painter,
@@ -26,7 +20,7 @@ pub(crate) fn draw_side_status_badge(
         return;
     }
     let anim_scale = if active {
-        if anim >= 1.0 { 1.0 } else { spring_overshoot(anim) }
+        if anim >= 1.0 { 1.0 } else { sow_ui::ui::animation::spring_overshoot(anim) }
     } else {
         anim
     };
@@ -79,7 +73,7 @@ pub(crate) fn draw_side_express_emoji(
 
     if let Some(emoji_str) = &current_emoji {
         let anim_scale = if is_active {
-            if anim_progress >= 1.0 { 1.0 } else { spring_overshoot(anim_progress) }
+            if anim_progress >= 1.0 { 1.0 } else { sow_ui::ui::animation::spring_overshoot(anim_progress) }
         } else {
             anim_progress
         };

@@ -349,7 +349,7 @@ impl SowApp {
                         let mut slot = 0usize;
                         self.ui.fallout_zones.retain(|fz| {
                             let elapsed = current_time.duration_since(fz.start_time).as_secs_f32();
-                            let duration = 7.0;
+                            let duration = 5.0;
                             if elapsed >= duration {
                                 return false;
                             }

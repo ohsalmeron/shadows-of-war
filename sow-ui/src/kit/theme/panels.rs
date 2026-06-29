@@ -183,17 +183,21 @@ pub fn draw_standard_modal<R>(
     let mut result = None;
     let compact = compact_viewport(ctx);
     let screen_rect = ctx.input(|i| i.content_rect());
-    let margin = 16.0;
+    let margin = if compact { 0.0 } else { 16.0 };
     
     // Width: take full width on mobile/compact, or cap it on larger desktop screens
     let panel_w = if compact {
-        screen_rect.width() - (margin * 2.0)
+        screen_rect.width()
     } else {
         (screen_rect.width() - (margin * 2.0)).min(600.0)
     };
     
     // Height: take full height (minus margin) to ensure maximum layout space under low height
-    let panel_h = screen_rect.height() - (margin * 2.0);
+    let panel_h = if compact {
+        screen_rect.height()
+    } else {
+        screen_rect.height() - (margin * 2.0)
+    };
 
     let progress = ctx.animate_bool_with_time(
         egui::Id::new(format!("{modal_key}_animation_progress")),
@@ -346,6 +350,21 @@ pub fn menu_right_panel_frame(compact: bool) -> egui::Frame {
             color: Color32::from_black_alpha(80),
             offset: [0, 6],
         })
+}
+
+/// Semi-transparent backdrop overlay. Alpha 0.0–1.0.
+#[inline]
+pub fn paint_scrim(ctx: &egui::Context, layer_id: &'static str, alpha: f32) {
+    let screen_rect = ctx.input(|i| i.content_rect());
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new(layer_id),
+    ))
+    .rect_filled(
+        screen_rect,
+        0.0,
+        Color32::from_black_alpha((180.0 * alpha) as u8),
+    );
 }
 
 #[inline]

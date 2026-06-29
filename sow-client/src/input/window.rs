@@ -138,10 +138,20 @@ impl SowApp {
 
                                 if owner != 0 && owner != my_id && is_allied {
                                     let lang = self.ui.app.settings_state.language;
-                                    self.ui.app.hud_state.show_error =
-                                        Some(sow_i18n::get(lang).hud.err_break_alliance_boat.clone());
+                                    let msg = sow_i18n::get(lang).hud.err_break_alliance_boat.clone();
                                     let mx = self.input.last_mouse_x;
                                     let my = self.input.last_mouse_y;
+                                    let world_x = (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
+                                    let offset_my = my as f32 - 60.0;
+                                    let world_y = (offset_my - self.input.camera_y) / self.input.camera_zoom;
+                                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                        text: msg,
+                                        world_x,
+                                        world_y,
+                                        start_time: web_time::Instant::now(),
+                                        duration: web_time::Duration::from_millis(2000),
+                                        color: egui::Color32::from_rgb(248, 113, 113),
+                                    });
                                     self.open_context_menu_at(mx, my);
                                 } else if !is_teammate && owner != my_id {
                                     let troops = Some(

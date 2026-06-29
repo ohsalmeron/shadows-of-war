@@ -137,7 +137,7 @@ impl SowApp {
                 if t >= 1.0 {
                     1.0
                 } else {
-                    1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                    sow_ui::ui::animation::spring_overshoot(t)
                 }
             } else {
                 let t = 1.0 - progress;
@@ -404,9 +404,17 @@ impl SowApp {
                                             ctx.data_mut(|d| d.insert_temp(egui::Id::new("transfer_active_tab"), 1_usize));
                                         } else {
                                             let lang = self.ui.app.settings_state.language;
-                                            self.ui.app.hud_state.show_error = Some(
-                                                sow_i18n::get(lang).hud.err_resources_allies_only.clone(),
-                                            );
+                                            let msg = sow_i18n::get(lang).hud.err_resources_allies_only.clone();
+                                            let world_x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                                            let world_y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                                            self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                                text: msg,
+                                                world_x,
+                                                world_y,
+                                                start_time: web_time::Instant::now(),
+                                                duration: web_time::Duration::from_millis(2000),
+                                                color: egui::Color32::from_rgb(248, 113, 113),
+                                            });
                                         }
                                     }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));
@@ -418,9 +426,17 @@ impl SowApp {
                                         // Disabled for teammates
                                     } else if is_allied {
                                         let lang = self.ui.app.settings_state.language;
-                                        self.ui.app.hud_state.show_error = Some(
-                                            sow_i18n::get(lang).hud.err_break_alliance_boat.clone(),
-                                        );
+                                        let msg = sow_i18n::get(lang).hud.err_break_alliance_boat.clone();
+                                        let world_x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                                        let world_y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                                        self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                            text: msg,
+                                            world_x,
+                                            world_y,
+                                            start_time: web_time::Instant::now(),
+                                            duration: web_time::Duration::from_millis(2000),
+                                            color: egui::Color32::from_rgb(248, 113, 113),
+                                        });
                                     } else {
                                         let troops = Some(self.ui.app.hud_state.troops * (self.ui.app.hud_state.attack_ratio as f64));
                                         self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet { target_tile: tile_idx, troops });
@@ -438,17 +454,31 @@ impl SowApp {
                                                 self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
                                             } else if has_proposed_alliance {
                                                 let lang = self.ui.app.settings_state.language;
-                                                self.ui.app.hud_state.show_error = Some(
-                                                    sow_i18n::get(lang)
-                                                        .hud
-                                                        .err_alliance_renewal_pending
-                                                        .clone(),
-                                                );
+                                                let msg = sow_i18n::get(lang).hud.err_alliance_renewal_pending.clone();
+                                                let world_x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                                                let world_y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                                                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                                    text: msg,
+                                                    world_x,
+                                                    world_y,
+                                                    start_time: web_time::Instant::now(),
+                                                    duration: web_time::Duration::from_millis(2000),
+                                                    color: egui::Color32::from_rgb(248, 113, 113),
+                                                });
                                             } else {
                                                 self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
                                                 let lang = self.ui.app.settings_state.language;
                                                 let msg = sow_i18n::get(lang).hud.alliance_requested.replace("{}", &target_name);
-                                                self.ui.app.hud_state.show_info = Some(msg);
+                                                let world_x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                                                let world_y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                                                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                                    text: msg,
+                                                    world_x,
+                                                    world_y,
+                                                    start_time: web_time::Instant::now(),
+                                                    duration: web_time::Duration::from_millis(2000),
+                                                    color: egui::Color32::from_rgb(74, 222, 128),
+                                                });
                                             }
                                         } else if is_allied {
                                             self.send_intent(sow_core::protocol::GameplayIntent::BreakAlliance { target_player: owner_id });
@@ -456,17 +486,31 @@ impl SowApp {
                                             self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance { target_player: owner_id });
                                         } else if has_proposed_alliance {
                                             let lang = self.ui.app.settings_state.language;
-                                            self.ui.app.hud_state.show_error = Some(
-                                                sow_i18n::get(lang)
-                                                    .hud
-                                                    .err_alliance_request_pending
-                                                    .clone(),
-                                            );
+                                            let msg = sow_i18n::get(lang).hud.err_alliance_request_pending.clone();
+                                            let world_x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                                            let world_y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                                            self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                                text: msg,
+                                                world_x,
+                                                world_y,
+                                                start_time: web_time::Instant::now(),
+                                                duration: web_time::Duration::from_millis(2000),
+                                                color: egui::Color32::from_rgb(248, 113, 113),
+                                            });
                                         } else {
                                             self.send_intent(sow_core::protocol::GameplayIntent::ProposeAlliance { target_player: owner_id });
                                             let lang = self.ui.app.settings_state.language;
                                             let msg = sow_i18n::get(lang).hud.alliance_requested.replace("{}", &target_name);
-                                            self.ui.app.hud_state.show_info = Some(msg);
+                                            let world_x = (tile_idx % self.sim.map_w) as f32 + 0.5;
+                                            let world_y = (tile_idx / self.sim.map_w) as f32 + 0.5;
+                                            self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                                text: msg,
+                                                world_x,
+                                                world_y,
+                                                start_time: web_time::Instant::now(),
+                                                duration: web_time::Duration::from_millis(2000),
+                                                color: egui::Color32::from_rgb(74, 222, 128),
+                                            });
                                         }
                                     }
                                     ctx.data_mut(|d| d.insert_temp(build_active_id, false));

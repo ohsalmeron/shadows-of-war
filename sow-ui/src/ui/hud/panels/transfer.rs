@@ -90,13 +90,12 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
         state.ask_troops = max_troops;
     }
 
-    // Disney overshoot curve (pop-in pop-out spring animation)
     let anim_scale = if is_active {
         let t = progress;
         if t >= 1.0 {
             1.0
         } else {
-            1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+            crate::ui::animation::spring_overshoot(t)
         }
     } else {
         progress

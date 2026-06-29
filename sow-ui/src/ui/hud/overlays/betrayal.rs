@@ -169,6 +169,8 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
         egui::Id::new("betrayal_panel_animation"),
         is_active,
         anim_dur,
+        crate::ui::animation::PANEL_Y_SLIDE,
+        crate::ui::animation::SlideDir::Down,
     );
 
     if anim.progress <= 0.01 {
@@ -180,19 +182,11 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
     };
 
     let alpha = anim.progress;
-    let y_offset = anim.y_offset;
+    let y_offset = anim.offset;
     let screen_rect = ctx.content_rect();
     let compact = screen_rect.width() < 768.0 || screen_rect.width() < screen_rect.height() * 1.25;
 
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("betrayal_overlay_bg"),
-    ))
-    .rect_filled(
-        screen_rect,
-        0.0,
-        Color32::from_black_alpha((180.0 * alpha) as u8),
-    );
+    sow_ui_kit::theme::paint_scrim(ctx, "betrayal_overlay_bg", alpha);
 
     let window = egui::Window::new("betrayal_warning_modal")
         .collapsible(false)
@@ -215,11 +209,10 @@ pub(in crate::ui::hud) fn draw_betrayal_overlay(
 
     window
         .frame(
-            egui::Frame::window(&ctx.global_style())
+            sow_ui_kit::theme::standard_panel_frame(compact)
                 .fill(sow_ui_kit::theme::palette::surface().linear_multiply(alpha))
                 .stroke(egui::Stroke::new(2.0f32 * anim.scale, border_color))
-                .inner_margin(if compact { 16.0 } else { 24.0 })
-                .corner_radius(12),
+                .inner_margin(if compact { 16.0 } else { 24.0 }),
         )
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {

@@ -256,7 +256,17 @@ impl SowApp {
                 }
 
                 if !valid {
-                    self.ui.app.hud_state.show_error = Some(err_msg);
+                    let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                    let offset_mouse_y = y as f32 - 60.0;
+                    let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
+                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                        text: err_msg,
+                        world_x,
+                        world_y,
+                        start_time: web_time::Instant::now(),
+                        duration: web_time::Duration::from_millis(2000),
+                        color: egui::Color32::from_rgb(248, 113, 113),
+                    });
                 } else {
                     let target_tile = target_res.unwrap();
                     let intent =

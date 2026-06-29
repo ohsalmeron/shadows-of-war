@@ -1,7 +1,7 @@
 use crate::UiAction;
 use sow_i18n::Language;
 
-use super::overlays::{betrayal, error_info, exit, sync};
+use super::overlays::{betrayal, exit, sync};
 use super::panels::transfer;
 use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudState};
 use crate::ui::asset_loader::AssetLoader;
@@ -40,10 +40,8 @@ pub fn draw(
 
     let panel_w = if portrait_dock {
         rect.width()
-    } else if compact {
-        rect.width() - 24.0
     } else {
-        520.0
+        520.0_f32.min(rect.width() - 24.0)
     };
 
     let log_tabs_enabled = sow_core::config::ENABLE_BOTTOM_HUD_LOG_TABS;
@@ -101,7 +99,7 @@ pub fn draw(
         asset_loader,
         &mut action,
         portrait_dock,
-        compact,
+        compact && portrait_dock,
         panel_w,
         log_tabs_enabled,
         dispatch_total,
@@ -117,8 +115,7 @@ pub fn draw(
     transfer::draw_transfer_panel(ui, state, cancel_intents, lang);
     sync::draw_sync_overlay(ui.ctx(), state, lang);
     betrayal::draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang, asset_loader);
-    error_info::draw_error_overlay(ui.ctx(), state, lang);
-    error_info::draw_info_overlay(ui.ctx(), state, lang);
+
 
     if let Some(act) = exit::draw_exit_confirm_overlay(ui.ctx(), state, lang) {
         action = Some(act);

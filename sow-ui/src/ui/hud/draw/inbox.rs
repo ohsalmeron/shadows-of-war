@@ -34,7 +34,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
             if t >= 1.0 {
                 1.0
             } else {
-                1.0 - (t * 7.5).cos() * (-3.5 * t).exp()
+                crate::ui::animation::spring_overshoot(t)
             }
         } else {
             inbox_progress
@@ -48,10 +48,9 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
             .show(ui.ctx(), |ui| {
                 ui.set_max_width(300.0);
                 ui.vertical(|ui| {
-                    let frame_res = egui::Frame::menu(&ui.ctx().global_style())
+                    let frame_res = sow_ui_kit::theme::standard_panel_frame(false)
                         .fill(egui::Color32::from_black_alpha(150))
                         .stroke(egui::Stroke::new(1.5_f32, sow_ui_kit::theme::palette::neon_cyan().linear_multiply(inbox_progress)))
-                        .corner_radius(12)
                         .inner_margin(egui::Margin::symmetric(10, 8))
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
@@ -132,7 +131,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
 
                                     // Animate individual card sliding horizontally with spring overshoot!
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("request_card", requester_id)), true, anim);
-                                    let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
+                                    let card_scale = crate::ui::animation::spring_overshoot(card_progress);
                                     let card_offset = 30.0 * (1.0 - card_scale.max(0.0));
 
                                     ui.horizontal(|ui| {
@@ -234,7 +233,7 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                     };
 
                                     let card_progress = ui.ctx().animate_bool_with_time(egui::Id::new(("res_request_card", requester_id)), true, anim);
-                                    let card_scale = 1.0 - (card_progress * 7.5).cos() * (-3.5 * card_progress).exp();
+                                    let card_scale = crate::ui::animation::spring_overshoot(card_progress);
                                     let card_offset = 30.0 * (1.0 - card_scale.max(0.0));
 
                                     ui.horizontal(|ui| {

@@ -131,6 +131,28 @@ impl WasmImeBridge {
 
         {
             let pending = pending.clone();
+            let compositionupdate = Closure::wrap(Box::new(move |e: web_sys::Event| {
+                if let Some(data) =
+                    js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("data"))
+                        .ok()
+                        .and_then(|v| v.as_string())
+                {
+                    pending
+                        .borrow_mut()
+                        .push(Event::Ime(ImeEvent::Preedit(data)));
+                }
+            }) as Box<dyn FnMut(_)>);
+            input
+                .add_event_listener_with_callback(
+                    "compositionupdate",
+                    compositionupdate.as_ref().unchecked_ref(),
+                )
+                .expect("compositionupdate listener");
+            compositionupdate.forget();
+        }
+
+        {
+            let pending = pending.clone();
             let compositionend = Closure::wrap(Box::new(move |e: web_sys::Event| {
                 if let Some(data) =
                     js_sys::Reflect::get(&e, &wasm_bindgen::JsValue::from_str("data"))
