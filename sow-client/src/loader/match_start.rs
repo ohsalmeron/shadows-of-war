@@ -106,10 +106,12 @@ impl SowApp {
         self.ui.tutorial_baseline_tiles = 0;
         self.ui.tutorial_baseline_set = false;
         self.ui.tutorial_objectives_open = true;
+        self.ui.tutorial_modal_dismissed = false;
         self.ui.tutorial_last_kills = 0;
         self.ui.tutorial_met_tribes.clear();
         self.ui.tutorial_pending_intro = None;
         self.ui.tutorial_pending_completion = None;
+        self.ui.tutorial_spawn_time = Some(web_time::Instant::now());
         if tutorial {
             log::info!("tutorial: chapter 1 started (map={})", config.map_name);
         }

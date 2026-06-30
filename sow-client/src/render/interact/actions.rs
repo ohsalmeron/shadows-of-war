@@ -134,7 +134,7 @@ impl SowApp {
                     self.input.camera_zoom = 2.0;
                     self.input.target_zoom = 2.0;
                     self.net.client = None;
-                    self.begin_exit_to_main_menu(true);
+                    self.begin_exit_to_main_menu(false);
                 }
                 UiAction::SetAttackRatio(r) => {
                     self.ui.app.hud_state.attack_ratio = r;
@@ -154,10 +154,8 @@ impl SowApp {
                             let world_cx = cx + 0.5;
                             let world_cy = cy + 0.5;
 
-                            self.input.camera_x =
-                                self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
-                            self.input.camera_y =
-                                self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
+                            self.input.camera_focus_target = Some((world_cx, world_cy));
+                            self.input.target_zoom = 10.0;
                         }
                     }
                 }

@@ -1,3 +1,4 @@
+mod dev_sidebar;
 mod panel;
 mod rows;
 

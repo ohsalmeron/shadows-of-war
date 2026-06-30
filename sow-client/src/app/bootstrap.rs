@@ -263,6 +263,7 @@ impl SowApp {
                 key_pan_down: false,
                 key_pan_left: false,
                 key_pan_right: false,
+                camera_focus_target: None,
             },
             ui: UiState {
                 app,
@@ -283,6 +284,7 @@ impl SowApp {
                 tutorial_met_tribes: std::collections::HashSet::new(),
                 tutorial_pending_intro: None,
                 tutorial_pending_completion: None,
+                tutorial_spawn_time: None,
                 show_leaderboard: false,
                 leaderboard_timer: 0.0,
                 leaderboard_rankings: Vec::new(),
@@ -302,7 +304,6 @@ impl SowApp {
                 cached_player_count: 0,
                 star_svg_registered: false,
                 floating_notices: Vec::new(),
-                death_nameplates: Vec::new(),
                 endgame_cache: None,
 
                 cached_hovered_building_id: None,

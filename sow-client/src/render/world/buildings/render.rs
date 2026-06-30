@@ -18,7 +18,7 @@ pub(crate) fn render(
     gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
-    if !crate::app::vfx_on(ctx.painter.ctx(), |f| f.world_buildings) {
+    if !sow_ui_kit::theme::dev_config::DevConfig::get().vfx_world_buildings {
         return;
     }
 
@@ -44,10 +44,7 @@ pub(crate) fn render(
     let sf = ctx.sf;
     let zoom_scaled = ctx.zoom_scaled;
     let player_colors = ctx.player_colors;
-    let building_scale = ctx.painter.ctx().data(|d| {
-        d.get_temp::<f32>(egui::Id::new("dev_building_scale"))
-            .unwrap_or(1.0)
-    });
+    let building_scale = sow_ui_kit::theme::dev_config::DevConfig::get().building_scale;
     let far_zoom_threshold = ClientVisualConfig::default().far_zoom_lod_threshold;
     let zoom_factor = ((zoom_scaled - super::super::BUILDINGS_HIDE_FLOOR) / 9.0).clamp(0.0, 1.0);
     let min_lod_scale = 0.5; // Scale when fully zoomed out
@@ -81,14 +78,9 @@ pub(crate) fn render(
         if let Some(ref mut tr) = gfx.text_renderer {
             gpu_rendered = true;
             // SDF outline — font dev settings control all emoji outlines globally.
-            let outline_px = painter
-                .ctx()
-                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0))
-                * sf;
-            let shadow_px = painter
-                .ctx()
-                .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5))
-                * sf;
+            let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+            let outline_px = dev.font_outline_thickness * sf;
+            let shadow_px = dev.font_shadow_y * sf;
             for b in &rendered_buildings {
                 // Render the building as a full emoji + alpha outline, sized to `base_size`
                 // (same as the egui path), positioned in screen space like all other text.

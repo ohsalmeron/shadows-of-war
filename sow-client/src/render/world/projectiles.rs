@@ -24,7 +24,7 @@ pub(crate) fn render(
     if let Some(snap) = &sim.current_snapshot {
         let map_w = sim.map_w;
 
-        if ctx.zoom_scaled >= 0.6 && crate::app::vfx_on(painter.ctx(), |f| f.attack_lines) {
+        if ctx.zoom_scaled >= 0.6 && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_attack_lines {
             for attack in &snap.attacks {
                 if attack.target_owner == 0 {
                     continue;
@@ -122,14 +122,14 @@ pub(crate) fn render(
                         let color_arr = [1.0f32, 0.235, 0.235, 1.0];
                         let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
 
-                        let ctx_ref = ctx.painter.ctx();
-                        let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
-                        let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
-                        let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
-                        let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
-                        let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
-                        let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-                        let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
+                        let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+                        let face_dilate = dev.font_face_dilate * sf;
+                        let outline_thickness = dev.font_outline_thickness * sf;
+                        let shadow_y = dev.font_shadow_y * sf;
+                        let underlay_softness = dev.font_underlay_softness * sf;
+                        let char_spacing = dev.font_char_spacing;
+                        let font_size_scale = dev.font_size_scale;
+                        let emoji_scale = dev.emoji_size_scale;
 
                         let settings = crate::render::gpu::TmpFontSettings {
                             face_dilate,
@@ -163,7 +163,7 @@ pub(crate) fn render(
             }
 
             // --- Render Attack Troop Count Badges at the frontier centroids ---
-            if crate::app::vfx_on(painter.ctx(), |f| f.attack_badges) {
+            if sow_ui_kit::theme::dev_config::DevConfig::get().vfx_attack_badges {
                 let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
                     egui::Order::Middle,
                     egui::Id::new("attack_badges"),
@@ -243,14 +243,14 @@ pub(crate) fn render(
                         let color_arr = color.to_array().map(|v| v as f32 / 255.0);
                         let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
 
-                        let ctx_ref = ctx.painter.ctx();
-                        let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
-                        let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
-                        let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
-                        let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
-                        let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
-                        let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-                        let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
+                        let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+                        let face_dilate = dev.font_face_dilate * sf;
+                        let outline_thickness = dev.font_outline_thickness * sf;
+                        let shadow_y = dev.font_shadow_y * sf;
+                        let underlay_softness = dev.font_underlay_softness * sf;
+                        let char_spacing = dev.font_char_spacing;
+                        let font_size_scale = dev.font_size_scale;
+                        let emoji_scale = dev.emoji_size_scale;
 
                         let settings = crate::render::gpu::TmpFontSettings {
                             face_dilate,
@@ -312,7 +312,7 @@ pub(crate) fn render(
         }
 
         // ── Nuke Placement Preview (visible at all zoom levels) ─────────
-        if crate::app::vfx_on(painter.ctx(), |f| f.nuke_preview) && ui.app.hud_state.selected_nuke_kind.is_some() {
+        if sow_ui_kit::theme::dev_config::DevConfig::get().vfx_nuke_preview && ui.app.hud_state.selected_nuke_kind.is_some() {
             // Resolve hovered tile from mouse (same hex math as buildings.rs)
             let mx = input.last_mouse_x as f32;
             let my = input.last_mouse_y as f32;

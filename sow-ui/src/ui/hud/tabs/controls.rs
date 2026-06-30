@@ -202,7 +202,9 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             }
         }
 
-        // Nuke launch buttons (separator + icons)
+        // Nuke launch button — same column rhythm as the buildings (icon box of height `btn_size`
+        // at the top + label plate below, the whole column `total_h` tall) so it aligns with them
+        // instead of floating short and center-justified. Red accent + its own select state.
         if sow_core::config::ENABLE_MISSILE_STRUCTURES {
             ui.add_space(4.0);
             ui.separator();
@@ -215,83 +217,88 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             for &(nuke_kind, label) in &nukes {
                 let is_selected = state.selected_nuke_kind == Some(nuke_kind);
                 let nk_col_w = if compact { 32.0 } else { 36.0 };
-
-                let tint = if is_selected {
-                    egui::Color32::from_rgb(239, 68, 68)
-                } else {
-                    egui::Color32::WHITE
-                };
-
-                let bg_color = if is_selected {
-                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30)
-                } else {
-                    egui::Color32::from_rgba_unmultiplied(10, 15, 25, 120)
-                };
-
-                let stroke = if is_selected {
-                    egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(239, 68, 68))
-                } else {
-                    egui::Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border().linear_multiply(0.5))
-                };
+                let red = egui::Color32::from_rgb(239, 68, 68);
 
                 let (rect, mut resp) = ui.allocate_exact_size(
-                    egui::vec2(nk_col_w, if compact { 38.0 } else { 44.0 }),
+                    egui::vec2(nk_col_w, total_h),
                     egui::Sense::click(),
                 );
 
                 resp = resp.on_hover_ui(|ui| {
                     let desc = "Missile payload that detonates on impact. Blast radius, flight speed, and size are upgraded by your city's Arsenal module level.";
-                    ui.label(egui::RichText::new(label).strong().size(14.0).color(egui::Color32::from_rgb(239, 68, 68)));
+                    ui.label(egui::RichText::new(label).strong().size(14.0).color(red));
                     ui.add_space(4.0);
                     ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
                 });
 
-                let final_bg = if resp.hovered() && !is_selected {
-                    sow_ui_kit::theme::palette::field_bg().linear_multiply(0.3)
-                } else {
-                    bg_color
-                };
+                let is_hovered = resp.hovered();
+                let tint = if is_selected { red } else { egui::Color32::WHITE };
 
-                ui.painter().rect(rect, 6, final_bg, stroke, egui::StrokeKind::Inside);
-
-                // Hotkey badge (top-left corner)
-                if !compact {
-                    let hotkey_color = if is_selected {
-                        egui::Color32::from_rgb(239, 68, 68)
-                    } else {
-                        egui::Color32::from_white_alpha(120)
-                    };
-                    ui.painter().text(
-                        egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
-                        egui::Align2::LEFT_TOP,
-                        "8".to_string(),
-                        egui::FontId::proportional(7.0),
-                        hotkey_color,
-                    );
-                }
-
-                let icon_size = if compact { 16.0 } else { 20.0 };
-                let icon_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, rect.top() + (if compact { 11.0 } else { 14.0 })),
-                    egui::vec2(icon_size, icon_size),
+                // Icon box — mirrors the building square: top of the column, `btn_size` tall so its
+                // bottom (and the plate below) line up with the building columns.
+                let box_rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.center().x - nk_col_w * 0.5, rect.top()),
+                    egui::vec2(nk_col_w, btn_size),
                 );
+                let box_stroke = if is_selected {
+                    egui::Stroke::new(1.5_f32, red)
+                } else if is_hovered {
+                    egui::Stroke::new(1.0_f32, red.linear_multiply(0.6))
+                } else {
+                    egui::Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border().linear_multiply(0.5))
+                };
+                let box_bg = if is_selected {
+                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30)
+                } else {
+                    egui::Color32::TRANSPARENT
+                };
+                ui.painter().rect(box_rect, sow_ui_kit::theme::radius::SM, box_bg, box_stroke, egui::StrokeKind::Inside);
+
+                let icon_size = btn_size * 0.48;
+                let icon_rect = egui::Rect::from_center_size(box_rect.center(), egui::vec2(icon_size, icon_size));
                 if !crate::widgets::try_paint_emoji(ui.painter(), "☢️", icon_rect, tint) {
                     ui.painter().text(
                         icon_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "☢️",
-                        egui::FontId::proportional(icon_size * 0.7),
+                        egui::FontId::proportional(icon_size),
                         tint,
                     );
                 }
 
-                let font_size = if compact { 7.0 } else { 8.0 };
+                // Hotkey badge (top-left), matching the building columns.
+                let os = ui.ctx().os();
+                let is_mobile_os = os == egui::os::OperatingSystem::IOS || os == egui::os::OperatingSystem::Android;
+                if !is_mobile_os && !compact {
+                    ui.painter().text(
+                        egui::pos2(box_rect.left() + 4.0, box_rect.top() + 3.0),
+                        egui::Align2::LEFT_TOP,
+                        "8".to_string(),
+                        egui::FontId::proportional(9.0),
+                        if is_selected { red } else { egui::Color32::from_white_alpha(120) },
+                    );
+                }
+
+                // Label plate below — same y/size rhythm as the building cost plate.
+                let plate_rect = egui::Rect::from_center_size(
+                    egui::pos2(rect.center().x, box_rect.bottom() + 2.0 + gold_plate_h * 0.5),
+                    egui::vec2(nk_col_w, gold_plate_h),
+                );
+                let plate_bg = egui::Color32::from_rgba_unmultiplied(10, 15, 25, 240);
+                let plate_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_white_alpha(40));
+                ui.painter().rect(
+                    plate_rect,
+                    egui::CornerRadius::same((gold_plate_h * 0.5) as u8),
+                    plate_bg,
+                    plate_stroke,
+                    egui::StrokeKind::Inside,
+                );
                 ui.painter().text(
-                    egui::pos2(rect.center().x, rect.bottom() - (if compact { 5.0 } else { 8.0 })),
+                    plate_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     label,
-                    egui::FontId::proportional(font_size),
-                    if is_selected { egui::Color32::from_rgb(239, 68, 68) } else { egui::Color32::GRAY },
+                    egui::FontId::proportional(if compact { 9.0 } else { 10.0 }),
+                    if is_selected { red } else { egui::Color32::from_rgb(230, 230, 230) },
                 );
 
                 if resp.clicked() {

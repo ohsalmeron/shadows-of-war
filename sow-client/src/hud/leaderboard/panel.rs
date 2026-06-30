@@ -420,6 +420,20 @@ impl SowApp {
                     ))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            if self.ui.tutorial_active {
+                                if ui
+                                    .add(sow_ui_kit::widgets::HudEmojiButton::new("📜"))
+                                    .on_hover_text("Quests")
+                                    .clicked()
+                                {
+                                    self.ui.tutorial_objectives_open = !self.ui.tutorial_objectives_open;
+                                    if self.ui.tutorial_objectives_open {
+                                        self.ui.show_leaderboard = false;
+                                        self.ui.show_dev_sidebar = false;
+                                    }
+                                }
+                            }
+
                             if ui
                                 .add(sow_ui_kit::widgets::HudEmojiButton::new("🏆"))
                                 .on_hover_text("Leaderboard")
@@ -428,6 +442,7 @@ impl SowApp {
                                 self.ui.show_leaderboard = !self.ui.show_leaderboard;
                                 if self.ui.show_leaderboard {
                                     self.ui.show_dev_sidebar = false;
+                                    self.ui.tutorial_objectives_open = false;
                                 }
                             }
 
@@ -439,6 +454,7 @@ impl SowApp {
                                 self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
                                 if self.ui.show_dev_sidebar {
                                     self.ui.show_leaderboard = false;
+                                    self.ui.tutorial_objectives_open = false;
                                 }
                             }
                         });
@@ -471,325 +487,5 @@ impl SowApp {
                     );
                 }
             });
-    }
-
-    fn render_dev_sidebar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        ui.vertical(|ui| {
-            ui.style_mut().spacing.slider_width = 80.0;
-            ui.style_mut().spacing.item_spacing = Vec2::new(3.0, 3.0);
-            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
-
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Dev Tools").strong().size(13.0).color(Color32::WHITE));
-            });
-            ui.add_space(1.0);
-            ui.separator();
-            ui.add_space(1.0);
-
-            let mut thick = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.5f32)
-            });
-            let mut dark = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32)
-            });
-            let mut s_thick = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_thickness"), || 1.0f32)
-            });
-            let s_dark = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_shore_darkness"), || 1.0f32)
-            });
-            let mut opacity = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_territory_opacity"), || 1.0f32)
-            });
-            let mut blend_mode = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || 0.0f32)
-            });
-            let mut bscale = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 0.5f32)
-            });
-            let mut conquest_duration = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || 2.5f32)
-            });
-
-            ui.collapsing(RichText::new("Map & Borders").strong().size(11.5).color(Color32::WHITE), |ui| {
-                ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
-                ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
-                ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
-                ui.add(egui::Slider::new(&mut conquest_duration, 0.1..=10.0).text("Conquest Dur"));
-                ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Opacity"));
-
-                egui::ComboBox::from_label("Blend Mode")
-                    .selected_text(match blend_mode as i32 {
-                        0 => "Normal Mix",
-                        1 => "Multiply",
-                        2 => "Overlay",
-                        3 => "All Albedo",
-                        _ => "Overlay",
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut blend_mode, 0.0f32, "Normal Mix");
-                        ui.selectable_value(&mut blend_mode, 1.0f32, "Multiply");
-                        ui.selectable_value(&mut blend_mode, 2.0f32, "Overlay");
-                        ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
-                    });
-
-                if ui.button("Reset").clicked() {
-                    thick = 0.5;
-                    dark = 0.35;
-                    s_thick = 1.0;
-                    conquest_duration = 2.5;
-                    opacity = 1.0;
-                    blend_mode = 0.0;
-                }
-            });
-            ui.collapsing(RichText::new("Custom HUD Theme").strong().size(11.5).color(Color32::WHITE), |ui| {
-                let mut roundness = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_roundness"), || 8.9f32)
-                });
-                let mut top_color = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_top"), || [66.0 / 255.0, 98.0 / 255.0, 106.0 / 255.0, 240.0 / 255.0])
-                });
-                let mut bot_color = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_bottom"), || [46.0 / 255.0, 77.0 / 255.0, 106.0 / 255.0, 250.0 / 255.0])
-                });
-                let mut outline_color = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_outline"), || [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0])
-                });
-                let mut glow_color = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_glow"), || [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 75.0 / 255.0])
-                });
-                let mut outline_thick = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_outline_thickness"), || 8.0f32)
-                });
-
-                ui.add(egui::Slider::new(&mut roundness, 0.0..=48.0).text("Round"));
-                ui.add(egui::Slider::new(&mut outline_thick, 0.0..=10.0).text("Outline Thk"));
-                ui.horizontal(|ui| {
-                    ui.label("Top Color:");
-                    ui.color_edit_button_rgba_unmultiplied(&mut top_color);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Bot Color:");
-                    ui.color_edit_button_rgba_unmultiplied(&mut bot_color);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Outline:");
-                    ui.color_edit_button_rgba_unmultiplied(&mut outline_color);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Glow:");
-                    ui.color_edit_button_rgba_unmultiplied(&mut glow_color);
-                });
-
-                if ui.button("Reset").clicked() {
-                    roundness = 8.9;
-                    outline_thick = 8.0;
-                    top_color = [66.0 / 255.0, 98.0 / 255.0, 106.0 / 255.0, 240.0 / 255.0];
-                    bot_color = [46.0 / 255.0, 77.0 / 255.0, 106.0 / 255.0, 250.0 / 255.0];
-                    outline_color = [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0];
-                    glow_color = [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 75.0 / 255.0];
-                }
-
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_roundness"), roundness));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_top"), top_color));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_bottom"), bot_color));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_outline"), outline_color));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_glow"), glow_color));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_outline_thickness"), outline_thick));
-            });
-
-            ui.separator();
-
-            ui.collapsing(RichText::new("Font Settings (SDF)").strong().size(11.5).color(Color32::WHITE), |ui| {
-                let mut face_dilate = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_face_dilate"), || 0.2f32)
-                });
-                let mut outline_thickness = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_outline_thickness"), || 1.0f32)
-                });
-                let mut shadow_y = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_shadow_y"), || 1.5f32)
-                });
-                let mut underlay_softness = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_underlay_softness"), || 0.0f32)
-                });
-                let mut char_spacing = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_char_spacing"), || 0.95f32)
-                });
-                let mut font_size_scale = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_size_scale"), || 1.67f32)
-                });
-                let mut name_offset_x = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_offset_x"), || 16.0f32)
-                });
-
-                ui.add(egui::Slider::new(&mut font_size_scale, 0.5..=2.5).text("Font Size"));
-                ui.add(egui::Slider::new(&mut face_dilate, -1.0..=2.0).text("Face Dilate"));
-                ui.add(egui::Slider::new(&mut outline_thickness, 0.0..=3.0).text("Outline"));
-                ui.add(egui::Slider::new(&mut shadow_y, 0.0..=5.0).text("Shadow Y"));
-                ui.add(egui::Slider::new(&mut underlay_softness, 0.0..=2.0).text("Softness"));
-                ui.add(egui::Slider::new(&mut char_spacing, 0.8..=1.8).text("Spacing"));
-                ui.add(egui::Slider::new(&mut name_offset_x, -16.0..=16.0).text("Offset X"));
-
-                if ui.button("Reset").clicked() {
-                    face_dilate = 0.2;
-                    outline_thickness = 1.0;
-                    shadow_y = 1.5;
-                    underlay_softness = 0.0;
-                    char_spacing = 0.95;
-                    font_size_scale = 1.67;
-                    name_offset_x = 16.0;
-                }
-
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_face_dilate"), face_dilate));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_outline_thickness"), outline_thickness));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_shadow_y"), shadow_y));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_underlay_softness"), underlay_softness));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_char_spacing"), char_spacing));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_size_scale"), font_size_scale));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_font_offset_x"), name_offset_x));
-            });
-
-            ui.separator();
-            ui.collapsing(RichText::new("Building Settings").strong().size(11.5).color(Color32::WHITE), |ui| {
-                let mut emoji_size = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_size_scale"), || 1.4f32)
-                });
-
-                ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Scale"));
-                ui.add(egui::Slider::new(&mut emoji_size, 0.5..=3.0).text("Emoji Size"));
-
-                if ui.button("Reset").clicked() {
-                    bscale = 0.5;
-                    emoji_size = 1.4;
-                }
-
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_building_scale"), bscale));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_emoji_size_scale"), emoji_size));
-            });
-
-            ui.separator();
-            ui.collapsing(RichText::new("Bunker Laser").strong().size(11.5).color(Color32::WHITE), |ui| {
-                let mut laser_target = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
-                });
-                let mut laser_arc = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_arc"), || true)
-                });
-                let mut laser_scatter = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_scatter"), || false)
-                });
-                ui.add(egui::Checkbox::new(&mut laser_target, "Target seeking"));
-                ui.add(egui::Checkbox::new(&mut laser_arc, "Plasma arc"));
-                ui.add(egui::Checkbox::new(&mut laser_scatter, "Volley scatter"));
-
-                if ui.button("Reset").clicked() {
-                    laser_target = true;
-                    laser_arc = true;
-                    laser_scatter = false;
-                }
-
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_target"), laser_target));
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_arc"), laser_arc));
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("dev_bunker_laser_scatter"), laser_scatter)
-                });
-            });
-
-            let mut vfx_flags = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_vfx_flags"), crate::app::DevVfxFlags::default)
-            });
-
-            ui.separator();
-            ui.collapsing(RichText::new("VFX Toggles (Benchmark)").strong().size(11.5).color(Color32::WHITE), |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("All On").clicked() {
-                        vfx_flags = crate::app::DevVfxFlags::default();
-                    }
-                    if ui.button("All Off").clicked() {
-                        vfx_flags = crate::app::DevVfxFlags {
-                            conquer: false,
-                            border_breathe: false,
-                            energy_flow: false,
-                            heartbeat: false,
-                            war_fog: false,
-                            fallout: false,
-                            ambient_grade: false,
-                            holo_grid: false,
-                            tower: false,
-                            tower_range: false,
-                            attack_lines: false,
-                            attack_badges: false,
-                            click_markers: false,
-                            nuke_preview: false,
-                            floating_notices: false,
-                            death_nameplates: false,
-                            status_emojis: false,
-                            upgrade_plate: false,
-                            placement_preview: false,
-                            mover_trails: false,
-                            railways: false,
-                            fleet_blink: false,
-                            bot_avatars: false,
-                            nameplate_names: false,
-                            nameplate_troops: false,
-                            world_buildings: false,
-                        };
-                    }
-                });
-
-                ui.small("GPU Effects");
-                ui.checkbox(&mut vfx_flags.conquer, "Conquer shockwave");
-                ui.checkbox(&mut vfx_flags.border_breathe, "Border breathe");
-                ui.checkbox(&mut vfx_flags.energy_flow, "Contested shimmer");
-                ui.checkbox(&mut vfx_flags.heartbeat, "Territory heartbeat");
-                ui.checkbox(&mut vfx_flags.war_fog, "War fog / Frontier");
-                ui.checkbox(&mut vfx_flags.fallout, "Nuclear fallout");
-                ui.checkbox(&mut vfx_flags.ambient_grade, "Ambient grading");
-                ui.checkbox(&mut vfx_flags.holo_grid, "Holographic grid");
-
-                ui.separator();
-                ui.small("Tower & Combat VFX");
-                ui.checkbox(&mut vfx_flags.tower, "Bunker laser");
-                ui.checkbox(&mut vfx_flags.tower_range, "Bunker range circle");
-                ui.checkbox(&mut vfx_flags.attack_lines, "Attack threat lines");
-                ui.checkbox(&mut vfx_flags.attack_badges, "Attack troop badges");
-
-                ui.separator();
-                ui.small("World & UI VFX");
-                ui.checkbox(&mut vfx_flags.click_markers, "Click markers");
-                ui.checkbox(&mut vfx_flags.nuke_preview, "Nuke preview");
-                ui.checkbox(&mut vfx_flags.floating_notices, "Floating notices");
-                ui.checkbox(&mut vfx_flags.death_nameplates, "Death nameplates");
-                ui.checkbox(&mut vfx_flags.status_emojis, "Status emojis");
-                ui.checkbox(&mut vfx_flags.upgrade_plate, "Upgrade plate");
-                ui.checkbox(&mut vfx_flags.placement_preview, "Placement preview");
-                ui.checkbox(&mut vfx_flags.world_buildings, "World buildings");
-                ui.checkbox(&mut vfx_flags.mover_trails, "Mover trails");
-                ui.checkbox(&mut vfx_flags.railways, "Railways");
-                ui.checkbox(&mut vfx_flags.fleet_blink, "Fleet retreat cross");
-
-                ui.separator();
-                ui.small("Nameplate Benchmark");
-                ui.checkbox(&mut vfx_flags.bot_avatars, "Bot avatars");
-                ui.checkbox(&mut vfx_flags.nameplate_names, "Nameplate names");
-                ui.checkbox(&mut vfx_flags.nameplate_troops, "Nameplate troops");
-
-                if ui.button("Reset").clicked() {
-                    vfx_flags = crate::app::DevVfxFlags::default();
-                }
-            });
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_vfx_flags"), vfx_flags));
-
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_thickness"), thick));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_darkness"), dark));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_thickness"), s_thick));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_shore_darkness"), s_dark));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_territory_opacity"), opacity));
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_blend_mode"), blend_mode));
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("dev_conquest_duration"), conquest_duration)
-            });
-        });
     }
 }

@@ -18,7 +18,7 @@ pub(super) fn paint_building_placement_preview(
     sf: f32,
     config: &sow_core::game_config::GameConfig,
 ) {
-    if !crate::app::vfx_on(painter.ctx(), |f| f.placement_preview) {
+    if !sow_ui_kit::theme::dev_config::DevConfig::get().vfx_placement_preview {
         return;
     }
     if let Some(kind) = ui.app.hud_state.selected_building_kind {

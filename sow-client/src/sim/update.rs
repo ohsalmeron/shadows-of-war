@@ -98,6 +98,36 @@ impl SowApp {
                                         color: egui::Color32::from_rgb(6, 182, 212), // cyan
                                     });
                                 }
+                            } else if tx.sender_id == my_id {
+                                let receiver_name = snap
+                                    .players
+                                    .iter()
+                                    .find(|p| p.id == tx.receiver_id)
+                                    .map(|p| p.name.as_str())
+                                    .unwrap_or("Ally");
+                                let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
+                                    (true, true) => format!(
+                                        "Sent 🪙{} & ⚔️{} to {}",
+                                        sow_ui_kit::utils::format_number(tx.gold),
+                                        sow_ui_kit::utils::format_number(tx.troops),
+                                        receiver_name
+                                    ),
+                                    (true, false) => format!(
+                                        "Sent 🪙{} Gold to {}",
+                                        sow_ui_kit::utils::format_number(tx.gold),
+                                        receiver_name
+                                    ),
+                                    (false, true) => format!(
+                                        "Sent ⚔️{} Troops to {}",
+                                        sow_ui_kit::utils::format_number(tx.troops),
+                                        receiver_name
+                                    ),
+                                    _ => continue,
+                                };
+                                self.ui
+                                    .app
+                                    .hud_state
+                                    .push_notification(msg, egui::Color32::from_rgb(220, 220, 220));
                             }
                         }
                         for rej in &snap.resource_rejections {
@@ -237,6 +267,36 @@ impl SowApp {
                                     color: egui::Color32::from_rgb(6, 182, 212), // cyan
                                 });
                             }
+                        } else if tx.sender_id == my_id {
+                            let receiver_name = snap
+                                .players
+                                .iter()
+                                .find(|p| p.id == tx.receiver_id)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or("Ally");
+                            let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
+                                (true, true) => format!(
+                                    "Sent 🪙{} & ⚔️{} to {}",
+                                    sow_ui_kit::utils::format_number(tx.gold),
+                                    sow_ui_kit::utils::format_number(tx.troops),
+                                    receiver_name
+                                ),
+                                (true, false) => format!(
+                                    "Sent 🪙{} Gold to {}",
+                                    sow_ui_kit::utils::format_number(tx.gold),
+                                    receiver_name
+                                ),
+                                (false, true) => format!(
+                                    "Sent ⚔️{} Troops to {}",
+                                    sow_ui_kit::utils::format_number(tx.troops),
+                                    receiver_name
+                                ),
+                                _ => continue,
+                            };
+                            self.ui
+                                .app
+                                .hud_state
+                                .push_notification(msg, egui::Color32::from_rgb(220, 220, 220));
                         }
                     }
                     for rej in &snap.resource_rejections {

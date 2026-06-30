@@ -15,11 +15,10 @@ impl SowApp {
         elimination_x: u32,
         elimination_y: u32,
         assists: &[(u16, u32)],
-        by_nuke: bool,
+        _by_nuke: bool,
     ) {
         let mut wx = 0.5;
         let mut wy = 0.5;
-        let mut target_name = format!("Player {}", player_id);
 
         let mut tile_found = false;
         if elimination_x > 0 || elimination_y > 0 {
@@ -29,8 +28,6 @@ impl SowApp {
         }
 
         if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-            target_name =
-                sow_core::player::display_name(target.id, &target.name, target.player_type);
             if !tile_found && (target.centroid_x > 0.001 || target.centroid_y > 0.001) {
                 wx = target.centroid_x + 0.5;
                 wy = target.centroid_y + 0.5;
@@ -108,96 +105,5 @@ impl SowApp {
                 });
             }
         }
-
-        // Spawn death nameplate animations on desktop only
-        if self.input.screen_w >= 600.0 {
-            // Spawn death nameplate animation
-            let mut target_player_type = sow_core::player::PlayerType::Bot;
-            let mut player_color = egui::Color32::WHITE;
-
-            if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-                target_player_type = target.player_type;
-                player_color = crate::hud::nameplate::ensure_readable_nameplate_color(target.color);
-            }
-
-            // Prefer smoothed label positions if available
-            let anim_wx = self
-                .ui
-                .label_positions
-                .get(&player_id)
-                .map(|p| p.0)
-                .unwrap_or(wx);
-            let anim_wy = self
-                .ui
-                .label_positions
-                .get(&player_id)
-                .map(|p| p.1)
-                .unwrap_or(wy);
-
-            let seed = (player_id as u32)
-                .wrapping_mul(2654435761)
-                .wrapping_add(now_instant.elapsed().as_millis() as u32);
-            self.ui
-                .death_nameplates
-                .push(crate::app::DeathNameplateAnimation {
-                    name: target_name.clone(),
-                    color: player_color,
-                    world_x: anim_wx,
-                    world_y: anim_wy,
-                    start_time: now_instant,
-                    duration: web_time::Duration::from_millis(600),
-                    seed,
-                    player_type: target_player_type,
-                    player_id,
-                    by_nuke,
-                    prepared_name: None,
-                });
-        }
-
-        // Push notification message (always, including mobile!)
-        let msg = if conqueror_id == my_id && my_id != 0 {
-            format!(
-                "🎉 You conquered {} and earned {} Gold!",
-                target_name,
-                sow_ui_kit::utils::format_number(gold_bounty as f64)
-            )
-        } else if assists.iter().any(|(id, _)| *id == my_id) {
-            let assist_gold = assists
-                .iter()
-                .find(|(id, _)| *id == my_id)
-                .map(|(_, g)| *g)
-                .unwrap_or(0);
-            format!(
-                "🤝 Assist on {} (+{} Gold)",
-                target_name,
-                sow_ui_kit::utils::format_number(assist_gold as f64)
-            )
-        } else {
-            let conqueror_name = snap
-                .players
-                .iter()
-                .find(|p| p.id == conqueror_id)
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| format!("Player {}", conqueror_id));
-            let emoji = if by_nuke { "☢️" } else { "🕊️" };
-            if assists.is_empty() {
-                format!(
-                    "{} {} was eliminated by {}!",
-                    emoji, target_name, conqueror_name
-                )
-            } else {
-                format!(
-                    "{} {} was eliminated by {} (+{} assists)",
-                    emoji,
-                    target_name,
-                    conqueror_name,
-                    assists.len()
-                )
-            }
-        };
-        self.ui
-            .app
-            .hud_state
-            .push_notification(msg, egui::Color32::from_rgb(255, 215, 0));
     }
 }

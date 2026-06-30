@@ -309,9 +309,6 @@ impl SowApp {
                 &ctx_struct,
             );
 
-            if crate::app::vfx_on(painter.ctx(), |f| f.death_nameplates) {
-                nameplates::render_death_nameplates(&mut self.ui, &self.input, &mut self.gfx, sf, now);
-            }
 
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
                 egui::Order::Middle,
@@ -335,7 +332,7 @@ impl SowApp {
                 let screen_x = (self.input.camera_x + notice.world_x * self.input.camera_zoom) / sf;
                 let screen_y = (self.input.camera_y + current_wy * self.input.camera_zoom) / sf;
 
-                if crate::app::vfx_on(painter.ctx(), |f| f.floating_notices)
+                if sow_ui_kit::theme::dev_config::DevConfig::get().vfx_floating_notices
                     && screen_x >= -150.0
                     && screen_x <= self.input.screen_w + 150.0
                     && screen_y >= -150.0
@@ -364,14 +361,14 @@ impl SowApp {
                         let color_arr = text_color.to_array().map(|v| v as f32 / 255.0);
                         let outline_color_arr = [0.0f32, 0.0, 0.0, alpha as f32 / 255.0];
 
-                        let ctx_ref = painter.ctx();
-                        let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
-                        let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
-                        let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
-                        let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
-                        let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
-                        let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-                        let raw_emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
+                        let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+                        let face_dilate = dev.font_face_dilate * sf;
+                        let outline_thickness = dev.font_outline_thickness * sf;
+                        let shadow_y = dev.font_shadow_y * sf;
+                        let underlay_softness = dev.font_underlay_softness * sf;
+                        let char_spacing = dev.font_char_spacing;
+                        let font_size_scale = dev.font_size_scale;
+                        let raw_emoji_scale = dev.emoji_size_scale;
                         let emoji_scale = if notice.text.contains('⚔') {
                             raw_emoji_scale * 0.65
                         } else {

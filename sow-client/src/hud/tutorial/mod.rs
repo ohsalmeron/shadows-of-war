@@ -195,10 +195,7 @@ impl SowApp {
         if want_repaint {
             ctx.request_repaint(); // drive the cleanup fade
         }
-        let toggle = draw_objectives_panel(ctx, &rows, self.ui.tutorial_objectives_open);
-        if toggle {
-            self.ui.tutorial_objectives_open = !self.ui.tutorial_objectives_open;
-        }
+        draw_objectives_panel(ctx, &rows, self.ui.tutorial_objectives_open);
 
         // Pointer ("here") always guides to the player's territory — even with the modal
         // closed — so direction is clear while they complete the objective.
@@ -232,7 +229,7 @@ impl SowApp {
             // A quest just completed: a portrait-less "Quest Complete" flash, auto-dismissing.
             let clicked = self.present_dialog(
                 ctx,
-                "tutorial_completion",
+                &format!("tutorial_completion_{}_{}", self.sim.config.seed, idx),
                 None,
                 None,
                 "🏆 Quest Complete".to_string(),
@@ -241,7 +238,8 @@ impl SowApp {
                 true,
                 Some(QUEST_COMPLETE_SECS),
             );
-            if clicked.is_some() || ctx.input(|i| i.pointer.any_click()) {
+            let elapsed = self.ui.tutorial_spawn_time.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+            if clicked.is_some() || (elapsed > 0.5 && ctx.input(|i| i.pointer.any_click())) {
                 self.ui.tutorial_pending_completion = None;
             }
         } else if let Some(name) = self.ui.tutorial_pending_intro.clone() {
@@ -263,7 +261,7 @@ impl SowApp {
                 });
             let clicked = self.present_dialog(
                 ctx,
-                "tutorial_intro",
+                &format!("tutorial_intro_{}_{}", self.sim.config.seed, name),
                 visual,
                 Some(line.speaker),
                 line.title,
@@ -272,7 +270,8 @@ impl SowApp {
                 true,
                 Some(DIALOG_AUTODISMISS_SECS),
             );
-            if clicked.is_some() || ctx.input(|i| i.pointer.any_click()) {
+            let elapsed = self.ui.tutorial_spawn_time.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+            if clicked.is_some() || (elapsed > 0.5 && ctx.input(|i| i.pointer.any_click())) {
                 self.ui.tutorial_pending_intro = None;
             }
         } else if !self.ui.tutorial_modal_dismissed {
@@ -297,7 +296,7 @@ impl SowApp {
             };
             let clicked = self.present_dialog(
                 ctx,
-                "tutorial_dialog",
+                &format!("tutorial_dialog_{}_{}", self.sim.config.seed, idx),
                 Some(SpeakerVisual::Avatar(ADVISOR)),
                 Some("Boudica".to_string()),
                 step.title.to_string(),
@@ -306,7 +305,8 @@ impl SowApp {
                 !is_last_step, // whole panel closes it only if not last step
                 auto_dismiss,
             );
-            let clicked_anywhere = !is_last_step && ctx.input(|i| i.pointer.any_click());
+            let elapsed = self.ui.tutorial_spawn_time.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+            let clicked_anywhere = !is_last_step && elapsed > 0.5 && ctx.input(|i| i.pointer.any_click());
             if let Some(btn_idx) = clicked {
                 if is_last_step {
                     if btn_idx == 0 {

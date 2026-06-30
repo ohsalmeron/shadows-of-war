@@ -142,7 +142,7 @@ pub fn draw_user_profile_header(
                         .color(Color32::WHITE),
                 );
             } else {
-                let btn_text_size = 11.0;
+                let btn_text_size = 18.0;
                 let btn_font = egui::FontId::proportional(btn_text_size);
                 let btn_galley =
                     ui.painter()

@@ -393,26 +393,12 @@ pub fn paint_hud_panel_gradient(
     }
 
     if super::custom_theme_enabled() {
-        let roundness = ui.ctx().data(|d| {
-            d.get_temp::<f32>(egui::Id::new("dev_theme_roundness")).unwrap_or(8.9)
-        });
-        let top_color_raw = ui.ctx().data(|d| {
-            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_top"))
-                .unwrap_or([66.0 / 255.0, 98.0 / 255.0, 106.0 / 255.0, 240.0 / 255.0])
-        });
-        let bot_color_raw = ui.ctx().data(|d| {
-            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_bottom"))
-                .unwrap_or([46.0 / 255.0, 77.0 / 255.0, 106.0 / 255.0, 250.0 / 255.0])
-        });
-
-        let outline_color_raw = ui.ctx().data(|d| {
-            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_outline"))
-                .unwrap_or([92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0])
-        });
-        let glow_color_raw = ui.ctx().data(|d| {
-            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_glow"))
-                .unwrap_or([92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 75.0 / 255.0])
-        });
+        let dev = super::dev_config::DevConfig::get();
+        let roundness = dev.theme_roundness;
+        let top_color_raw = dev.theme_color_top;
+        let bot_color_raw = dev.theme_color_bottom;
+        let outline_color_raw = dev.theme_color_outline;
+        let glow_color_raw = dev.theme_color_glow;
 
         let r_u8 = (roundness.round() as u32).min(255) as u8;
         let cr = egui::CornerRadius::same(r_u8);
@@ -446,6 +432,8 @@ pub fn paint_hud_panel_gradient(
 
         // 1. Multi-stroke outer glow (completely outside the panel)
         let alpha = glow_color.a() as f32;
+        let glow_spread = dev.theme_glow_spread;
+        let glow_thickness = dev.theme_glow_thickness;
         let glow_steps = 6;
         for i in 1..=glow_steps {
             let t = i as f32 / glow_steps as f32;
@@ -453,8 +441,8 @@ pub fn paint_hud_panel_gradient(
             let a = (alpha * factor) as u8;
             if a > 0 {
                 let step_color = Color32::from_rgba_unmultiplied(glow_color.r(), glow_color.g(), glow_color.b(), a);
-                let thickness = 1.0 + (i as f32 * 0.5);
-                let offset_val = i as f32 * 1.0;
+                let thickness = (1.0 + (i as f32 * 0.5)) * glow_thickness;
+                let offset_val = i as f32 * 1.0 * glow_spread;
                 let expanded_rect = rect.expand(offset_val);
                 let expanded_cr = cr + egui::CornerRadius::same(offset_val.round() as u8);
                 shapes.push(egui::Shape::rect_stroke(
@@ -492,9 +480,7 @@ pub fn paint_hud_panel_gradient(
         }
         shapes.push(egui::Shape::mesh(mesh));
 
-        let outline_thick = ui.ctx().data(|d| {
-            d.get_temp::<f32>(egui::Id::new("dev_theme_outline_thickness")).unwrap_or(8.0)
-        });
+        let outline_thick = dev.theme_outline_thickness;
 
         // 3. Crisp laser outline
         shapes.push(egui::Shape::rect_stroke(

@@ -308,41 +308,45 @@ pub fn draw_queue_overlay(
     let (show_invite, show_start) = lobby_action_flags(state, lobby_info);
 
     let panel_frame = sow_ui_kit::theme::standard_panel_frame(compact);
-    let parent_available = ui.available_size();
-    let pad = if compact { 32.0 } else { 50.0 };
-    let inner_size = parent_available - egui::vec2(pad, pad);
+    let available_rect = ui.available_rect_before_wrap();
+    let pad_x = if compact { 12.0 } else { 24.0 };
+    let pad_y = if compact { 16.0 } else { 48.0 };
+    let card_w = (available_rect.width() - pad_x * 2.0).max(320.0);
+    let card_h = (available_rect.height() - pad_y * 2.0).max(240.0);
 
-    panel_frame.show(ui, |ui| {
-        if compact {
-            ui.set_min_height(inner_size.y);
-        } else {
-            ui.set_min_size(inner_size);
-        }
-        ui.vertical(|ui| {
-            if let Some(lobby) = lobby_info {
-                draw_lobby_header(ui, state, lobby, section_gap, lang, compact);
+    let x = available_rect.min.x + (available_rect.width() - card_w) * 0.5;
+    let y = available_rect.min.y + (available_rect.height() - card_h) * 0.5;
+    let centered_rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(card_w, card_h));
 
-                let button_h =
-                    lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
-                let middle_h = ui.available_height() - button_h;
-                draw_lobby_body(
-                    ui,
-                    lobby,
-                    asset_loader,
-                    lang,
-                    compact,
-                    middle_h,
-                    HostControls::from_state(state, lobby.id),
-                    action,
-                );
-            } else {
-                let button_h =
-                    lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
-                let middle_h = ui.available_height() - button_h;
-                draw_lobby_connecting(ui, middle_h, lang);
-            }
+    ui.scope_builder(egui::UiBuilder::new().max_rect(centered_rect), |ui| {
+        panel_frame.show(ui, |ui| {
+            ui.set_min_size(ui.available_size());
+            ui.vertical(|ui| {
+                if let Some(lobby) = lobby_info {
+                    draw_lobby_header(ui, state, lobby, section_gap, lang, compact);
 
-            draw_lobby_footer(ui, state, lobby_info, action_min_h, action, lang, compact);
+                    let button_h =
+                        lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
+                    let middle_h = ui.available_height() - button_h;
+                    draw_lobby_body(
+                        ui,
+                        lobby,
+                        asset_loader,
+                        lang,
+                        compact,
+                        middle_h,
+                        HostControls::from_state(state, lobby.id),
+                        action,
+                    );
+                } else {
+                    let button_h =
+                        lobby_bottom_action_height(compact, action_min_h, show_invite, show_start);
+                    let middle_h = ui.available_height() - button_h;
+                    draw_lobby_connecting(ui, middle_h, lang);
+                }
+
+                draw_lobby_footer(ui, state, lobby_info, action_min_h, action, lang, compact);
+            });
         });
     });
 }

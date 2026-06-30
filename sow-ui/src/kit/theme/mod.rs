@@ -140,6 +140,9 @@ pub fn modal_close_button(ui: &mut Ui) -> Response {
     )
 }
 
+/// Runtime dev-config global — single source of truth for dev-tool knobs.
+pub mod dev_config;
+
 /// Cosmic Rush palette
 pub mod palette;
 

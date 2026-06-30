@@ -13,7 +13,7 @@ pub(crate) fn draw_side_status_badge(
     flash_alpha: f32,
 ) {
     let anim_id = egui::Id::new((anim_id_str, player_id));
-    if !crate::app::vfx_on(painter.ctx(), |f| f.status_emojis) {
+    if !sow_ui_kit::theme::dev_config::DevConfig::get().vfx_status_emojis {
         return;
     }
     let anim = painter.ctx().animate_bool_with_time(anim_id, active, 0.25);
@@ -43,7 +43,17 @@ pub(crate) fn draw_side_status_badge(
     }
 
     let tint = egui::Color32::WHITE.linear_multiply(anim * flash_alpha);
-    if !sow_ui_kit::widgets::try_paint_emoji(painter, emoji, rect, tint) {
+    let painted = if let Some(uv) = sow_ui_kit::atlas_uv(emoji) {
+        if let Some(texture) = sow_ui_kit::atlas_texture(painter.ctx()) {
+            painter.image(texture.id(), rect, uv, egui::Color32::from_white_alpha(tint.a()));
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    if !painted {
         painter.text(rect.center(), egui::Align2::CENTER_CENTER, emoji,
             egui::FontId::proportional(final_size * 0.7), tint);
     }
@@ -78,13 +88,23 @@ pub(crate) fn draw_side_express_emoji(
         } else {
             anim_progress
         };
-        let final_size = (size * anim_scale).round();
-        if final_size > 1.0 {
-            let rect = egui::Rect::from_center_size(pos, egui::vec2(final_size, final_size));
-            if !sow_ui_kit::widgets::try_paint_emoji(painter, emoji_str, rect, egui::Color32::WHITE) {
-                painter.text(rect.center(), egui::Align2::CENTER_CENTER, emoji_str,
-                    egui::FontId::proportional(final_size), egui::Color32::WHITE);
+            let final_size = (size * anim_scale).round();
+            if final_size > 1.0 {
+                let rect = egui::Rect::from_center_size(pos, egui::vec2(final_size, final_size));
+                let painted = if let Some(uv) = sow_ui_kit::atlas_uv(emoji_str) {
+                    if let Some(texture) = sow_ui_kit::atlas_texture(painter.ctx()) {
+                        painter.image(texture.id(), rect, uv, egui::Color32::WHITE);
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if !painted {
+                    painter.text(rect.center(), egui::Align2::CENTER_CENTER, emoji_str,
+                        egui::FontId::proportional(final_size), egui::Color32::WHITE);
+                }
             }
-        }
     }
 }

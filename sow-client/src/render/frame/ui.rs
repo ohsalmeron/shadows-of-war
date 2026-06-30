@@ -29,25 +29,55 @@ impl SowApp {
             }
         }
 
-        // Smooth Zoom Lerp
-        let diff = self.input.target_zoom - self.input.camera_zoom;
-        if diff.abs() > 0.0001 {
-            let lerp_factor = (1.0 - f32::exp(-12.0 * dt)).clamp(0.0, 1.0);
-            let new_zoom = self.input.camera_zoom + diff * lerp_factor;
+        if self.input.dragging {
+            self.input.camera_focus_target = None;
+        }
 
-            let cx = self.input.last_mouse_x as f32;
-            let cy = self.input.last_mouse_y as f32;
+        if let Some((world_cx, world_cy)) = self.input.camera_focus_target {
+            let zoom_diff = self.input.target_zoom - self.input.camera_zoom;
+            let target_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
+            let target_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
+            let pos_diff_x = target_x - self.input.camera_x;
+            let pos_diff_y = target_y - self.input.camera_y;
 
-            let old_zoom = self.input.camera_zoom;
-            self.input.camera_zoom = new_zoom;
-
-            let map_x = (cx - self.input.camera_x) / old_zoom;
-            let map_y = (cy - self.input.camera_y) / old_zoom;
-            self.input.camera_x = cx - map_x * self.input.camera_zoom;
-            self.input.camera_y = cy - map_y * self.input.camera_zoom;
+            if zoom_diff.abs() < 0.01 && pos_diff_x.abs() < 0.5 && pos_diff_y.abs() < 0.5 {
+                self.input.camera_zoom = self.input.target_zoom;
+                self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
+                self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
+                self.input.camera_focus_target = None;
+            } else {
+                let lerp_factor = (1.0 - f32::exp(-12.0 * dt)).clamp(0.0, 1.0);
+                self.input.camera_zoom += zoom_diff * lerp_factor;
+                let new_target_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
+                let new_target_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
+                self.input.camera_x += (new_target_x - self.input.camera_x) * lerp_factor;
+                self.input.camera_y += (new_target_y - self.input.camera_y) * lerp_factor;
+            }
 
             if let Some(win) = self.gfx.window.as_ref() {
                 win.request_redraw();
+            }
+        } else {
+            // Smooth Zoom Lerp (fallback to default mouse-centered zoom)
+            let diff = self.input.target_zoom - self.input.camera_zoom;
+            if diff.abs() > 0.0001 {
+                let lerp_factor = (1.0 - f32::exp(-12.0 * dt)).clamp(0.0, 1.0);
+                let new_zoom = self.input.camera_zoom + diff * lerp_factor;
+
+                let cx = self.input.last_mouse_x as f32;
+                let cy = self.input.last_mouse_y as f32;
+
+                let old_zoom = self.input.camera_zoom;
+                self.input.camera_zoom = new_zoom;
+
+                let map_x = (cx - self.input.camera_x) / old_zoom;
+                let map_y = (cy - self.input.camera_y) / old_zoom;
+                self.input.camera_x = cx - map_x * self.input.camera_zoom;
+                self.input.camera_y = cy - map_y * self.input.camera_zoom;
+
+                if let Some(win) = self.gfx.window.as_ref() {
+                    win.request_redraw();
+                }
             }
         }
 
@@ -438,18 +468,13 @@ impl SowApp {
 
         let compact = sow_ui_kit::theme::compact_viewport(ctx);
 
-        let win = egui::Window::new("Player Hover Info")
-            .title_bar(false)
-            .collapsible(false)
-            .resizable(false)
+        egui::Area::new("Player Hover Info".into())
             .order(egui::Order::Foreground)
             .anchor(
                 egui::Align2::CENTER_TOP,
                 egui::vec2(0.0, 12.0 + safe_area_top),
             )
-            .frame(egui::Frame::NONE);
-
-        win.show(ctx, |ui| {
+            .show(ctx, |ui| {
             let prepaint_idx = ui.painter().add(egui::Shape::Noop);
 
             let frame_res = egui::Frame::NONE

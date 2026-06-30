@@ -46,9 +46,10 @@ pub(crate) fn render(
     let my_id = sim.my_player_id.unwrap_or(0);
     let my_player = snap.players.iter().find(|p| p.id == my_id);
 
-    let show_bot_avatars = crate::app::vfx_on(painter.ctx(), |f| f.bot_avatars);
-    let show_names = crate::app::vfx_on(painter.ctx(), |f| f.nameplate_names);
-    let show_troops = crate::app::vfx_on(painter.ctx(), |f| f.nameplate_troops);
+    let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+    let show_bot_avatars = dev.vfx_bot_avatars;
+    let show_names = dev.vfx_nameplate_names;
+    let show_troops = dev.vfx_nameplate_troops;
 
     for vp in visible_players {
         let player = vp.player;
@@ -380,14 +381,14 @@ pub(crate) fn render(
                 let color_arr = vibrant_color.to_array().map(|v| v as f32 / 255.0);
                 let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
 
-                let ctx_ref = painter.ctx();
-                let face_dilate = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_face_dilate")).unwrap_or(-0.6f32)) * sf;
-                let outline_thickness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0f32)) * sf;
-                let shadow_y = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5f32)) * sf;
-                let underlay_softness = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_underlay_softness")).unwrap_or(0.0f32)) * sf;
-                let char_spacing = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_char_spacing")).unwrap_or(0.95f32));
-                let font_size_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_size_scale")).unwrap_or(1.67f32));
-                let emoji_scale = ctx_ref.data(|d| d.get_temp::<f32>(egui::Id::new("dev_emoji_size_scale")).unwrap_or(1.4f32));
+                let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+                let face_dilate = dev.font_face_dilate * sf;
+                let outline_thickness = dev.font_outline_thickness * sf;
+                let shadow_y = dev.font_shadow_y * sf;
+                let underlay_softness = dev.font_underlay_softness * sf;
+                let char_spacing = dev.font_char_spacing;
+                let font_size_scale = dev.font_size_scale;
+                let emoji_scale = dev.emoji_size_scale;
 
                 let settings = crate::render::gpu::TmpFontSettings {
                     face_dilate,
@@ -473,15 +474,4 @@ pub(crate) fn render(
             }
         }
     }
-}
-
-#[inline]
-pub(super) fn seed_hash(seed: u32, idx: u32) -> f32 {
-    let mut x = seed.wrapping_add(idx).wrapping_mul(0x9E3779B9);
-    x ^= x >> 16;
-    x = x.wrapping_mul(0x85EBCA6B);
-    x ^= x >> 13;
-    x = x.wrapping_mul(0xC2B2AE35);
-    x ^= x >> 16;
-    (x as f32) / (u32::MAX as f32)
 }

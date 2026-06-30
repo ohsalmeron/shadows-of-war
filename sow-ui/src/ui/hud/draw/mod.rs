@@ -91,7 +91,9 @@ pub fn draw(
         )
     };
     let panel_radius = if portrait_dock {
-        sow_ui_kit::theme::radius::dock_top()
+        // Vertical dock sits flush against the screen edges — force square corners, overriding the
+        // theme's rounded `dock_top()`. Never round on the portrait dock.
+        egui::CornerRadius::ZERO
     } else {
         sow_ui_kit::theme::radius::lg()
     };
@@ -123,9 +125,60 @@ pub fn draw(
     betrayal::draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang, asset_loader);
 
 
+    draw_hud_notifications(ui, state);
+
     if let Some(act) = exit::draw_exit_confirm_overlay(ui.ctx(), state, lang) {
         action = Some(act);
     }
 
     action
+}
+
+fn draw_hud_notifications(ui: &mut egui::Ui, state: &mut HudState) {
+    let now = web_time::Instant::now();
+    state.hud_notifications.retain(|n| now.duration_since(n.spawned_at).as_secs_f32() < 3.0);
+
+    if state.hud_notifications.is_empty() {
+        return;
+    }
+
+    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
+    let top_y = (if compact { 52.0 } else { 68.0 }) + state.safe_area_top;
+
+    egui::Area::new(egui::Id::new("hud_toast_notifications"))
+        .order(egui::Order::Tooltip)
+        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, top_y))
+        .show(ui.ctx(), |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.vertical(|ui| {
+                for notice in &state.hud_notifications {
+                    let elapsed = now.duration_since(notice.spawned_at).as_secs_f32();
+                    let opacity = if elapsed > 2.5 {
+                        (1.0 - (elapsed - 2.5) / 0.5).clamp(0.0, 1.0)
+                    } else if elapsed < 0.25 {
+                        (elapsed / 0.25).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
+
+                    let bg_color = egui::Color32::from_black_alpha((180.0 * opacity) as u8);
+                    let border_color = sow_ui_kit::theme::palette::field_border().linear_multiply(opacity);
+                    let text_color = notice.color.linear_multiply(opacity);
+
+                    egui::Frame::NONE
+                        .fill(bg_color)
+                        .stroke(egui::Stroke::new(1.0, border_color))
+                        .corner_radius(8)
+                        .inner_margin(egui::Margin::symmetric(14, 8))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(&notice.message)
+                                    .color(text_color)
+                                    .size(if compact { 13.0 } else { 14.5 })
+                                    .strong()
+                            );
+                        });
+                }
+            });
+        });
 }

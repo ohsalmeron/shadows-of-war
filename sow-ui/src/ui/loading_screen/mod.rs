@@ -5,7 +5,7 @@ const FADEIN_DURATION: f64 = 0.25;
 const FADEOUT_DURATION: f64 = 0.25;
 /// Minimum hold time BETWEEN fade-in and fade-out (loading can proceed during this).
 /// Total visible time = FADEIN + MIN_HOLD + FADEOUT = 0.25 + 1.0 + 0.25 = 1.5s
-const MIN_HOLD_DURATION: f64 = 1.0;
+const MIN_HOLD_DURATION: f64 = 0.0;
 
 fn smoothstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);

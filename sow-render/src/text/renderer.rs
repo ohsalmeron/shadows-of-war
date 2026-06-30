@@ -273,8 +273,8 @@ impl TextRenderer {
                         color,
                         outline_color,
                         face_dilate: 0.0,
-                        outline_thickness: settings.outline_thickness,
-                        underlay_offset_y: settings.underlay_offset_y,
+                        outline_thickness: 0.0,
+                        underlay_offset_y: 0.0,
                         underlay_softness: 0.0,
                         kind: KIND_EMOJI,
                     });

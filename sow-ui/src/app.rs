@@ -59,6 +59,7 @@ impl ClientApp {
                 building_costs: [0.0; 9],
                 selected_nuke_kind: None,
                 event_log: Vec::new(),
+                hud_notifications: Vec::new(),
                 bottom_tab: hud::BottomHudTab::Controls,
                 battle_log_seen_count: 0,
                 event_log_seen_count: 0,

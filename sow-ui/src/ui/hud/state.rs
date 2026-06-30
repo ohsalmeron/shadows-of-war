@@ -54,6 +54,13 @@ pub struct SelectedTileInfo {
     pub is_land: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct HudNotification {
+    pub message: String,
+    pub color: Color32,
+    pub spawned_at: Instant,
+}
+
 pub struct HudState {
     pub gold: f64,
     pub troops: f64,
@@ -84,6 +91,7 @@ pub struct HudState {
     pub building_costs: [f64; 9],
     pub selected_nuke_kind: Option<sow_core::game::NukeKind>,
     pub event_log: Vec<EventLogEntry>,
+    pub hud_notifications: Vec<HudNotification>,
     pub bottom_tab: BottomHudTab,
     pub battle_log_seen_count: usize,
     pub event_log_seen_count: usize,
@@ -110,10 +118,16 @@ pub struct HudState {
 
 impl HudState {
     pub fn push_notification(&mut self, message: String, color: Color32) {
+        let spawned_at = Instant::now();
+        self.hud_notifications.push(HudNotification {
+            message: message.clone(),
+            color,
+            spawned_at,
+        });
         self.event_log.push(EventLogEntry {
             message,
             color,
-            spawned_at: Instant::now(),
+            spawned_at,
         });
         if self.event_log.len() > EVENT_LOG_MAX_ENTRIES {
             self.event_log.remove(0);

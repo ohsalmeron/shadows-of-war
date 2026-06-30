@@ -375,10 +375,28 @@ impl Widget for HudEmojiButton {
         let is_active = response.is_pointer_button_down_on();
         let hover_t = ui.ctx().animate_bool(response.id.with("hover"), is_hovered);
         let active_t = ui.ctx().animate_bool(response.id.with("active"), is_active);
-        let alpha = (hover_t * 25.0 + active_t * 25.0) as u8;
-        if alpha > 0 {
-            ui.painter()
-                .rect_filled(rect, 6.0, Color32::from_white_alpha(alpha));
+        let glow = (hover_t + active_t).min(1.0);
+        if glow > 0.0 {
+            let glow_color = crate::theme::palette::neon_cyan_glow();
+            for i in 1..=3 {
+                let t = i as f32 / 3.0;
+                let factor = (-2.5 * t).exp();
+                let a = (glow_color.a() as f32 * factor * glow) as u8;
+                if a > 0 {
+                    let step_color = Color32::from_rgba_unmultiplied(
+                        glow_color.r(), glow_color.g(), glow_color.b(), a,
+                    );
+                    let offset = i as f32 * 2.0;
+                    let expanded_rect = rect.expand(offset);
+                    let cr = egui::CornerRadius::same((6.0 + offset).round() as u8);
+                    ui.painter().rect_stroke(
+                        expanded_rect,
+                        cr,
+                        egui::Stroke::new(1.0 + i as f32 * 1.0, step_color),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+            }
         }
 
         let emoji_size = size * 0.65;

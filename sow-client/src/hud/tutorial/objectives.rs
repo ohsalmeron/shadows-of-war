@@ -50,12 +50,39 @@ fn paint_v_gradient(painter: &egui::Painter, rect: egui::Rect, top: egui::Color3
     painter.add(egui::Shape::mesh(mesh));
 }
 
-/// Headless Quests tracker anchored top-left: a lone 📜 book button toggles it (mirrors the
-/// leaderboard's trophy), and when open a separate, title-less panel lists one tracker row per
-/// quest. Returns true if the book button was clicked this frame (caller flips the open state).
+/// Headless Quests tracker anchored top-left: listed in a title-less panel.
+/// Anchored right below the top-left toggle bar.
 /// All emoji via the sow atlas.
-pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: bool) -> bool {
+pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: bool) {
+    if !open {
+        return;
+    }
     use sow_ui::widgets::try_paint_emoji;
+    let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+    let filler_top = egui::Color32::from_rgba_unmultiplied(
+        (dev.obj_filler_top[0] * 255.0) as u8,
+        (dev.obj_filler_top[1] * 255.0) as u8,
+        (dev.obj_filler_top[2] * 255.0) as u8,
+        (dev.obj_filler_top[3] * 255.0) as u8,
+    );
+    let filler_bottom = egui::Color32::from_rgba_unmultiplied(
+        (dev.obj_filler_bottom[0] * 255.0) as u8,
+        (dev.obj_filler_bottom[1] * 255.0) as u8,
+        (dev.obj_filler_bottom[2] * 255.0) as u8,
+        (dev.obj_filler_bottom[3] * 255.0) as u8,
+    );
+    let backplate_top = egui::Color32::from_rgba_unmultiplied(
+        (dev.obj_backplate_top[0] * 255.0) as u8,
+        (dev.obj_backplate_top[1] * 255.0) as u8,
+        (dev.obj_backplate_top[2] * 255.0) as u8,
+        (dev.obj_backplate_top[3] * 255.0) as u8,
+    );
+    let backplate_bottom = egui::Color32::from_rgba_unmultiplied(
+        (dev.obj_backplate_bottom[0] * 255.0) as u8,
+        (dev.obj_backplate_bottom[1] * 255.0) as u8,
+        (dev.obj_backplate_bottom[2] * 255.0) as u8,
+        (dev.obj_backplate_bottom[3] * 255.0) as u8,
+    );
     let gold = egui::Color32::from_rgb(255, 200, 90);
     let green = egui::Color32::from_rgb(74, 222, 128);
     let white = egui::Color32::WHITE;
@@ -67,43 +94,13 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
         sow_ui_kit::theme::radius::md()
     };
 
-    let mut toggle = false;
     egui::Area::new(egui::Id::new("tutorial_objectives"))
         .order(egui::Order::Foreground)
-        .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, if compact { 56.0 } else { 70.0 }))
+        .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, 58.0))
         .show(ctx, |ui| {
             ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
-            ui.spacing_mut().item_spacing.y = 6.0; // gap between the button and the rows panel
 
-            // The 📜 toggle, in its own button-hugging frame (no title, no header).
-            let btn_prepaint = ui.painter().add(egui::Shape::Noop);
-            let btn_frame = egui::Frame::NONE
-                .inner_margin(egui::Margin::symmetric(
-                    sow_ui_kit::theme::margin::COZY,
-                    sow_ui_kit::theme::margin::TIGHT,
-                ))
-                .show(ui, |ui| {
-                    if ui
-                        .add(sow_ui_kit::widgets::HudEmojiButton::new("📜"))
-                        .on_hover_text("Quests")
-                        .clicked()
-                    {
-                        toggle = true;
-                    }
-                });
-            sow_ui_kit::theme::paint_hud_panel_gradient(
-                ui,
-                btn_prepaint,
-                btn_frame.response.rect,
-                sow_ui_kit::theme::palette::field_border(),
-                radius,
-            );
-
-            if !open {
-                return;
-            }
-
-            // The quest rows, in their own headless panel below the button.
+            // The quest rows, in their own headless panel.
             let panel_prepaint = ui.painter().add(egui::Shape::Noop);
             let panel_frame = egui::Frame::NONE
                 .inner_margin(egui::Margin::symmetric(10, 8))
@@ -181,7 +178,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 let painter = ui.painter();
 
                                 let theme_roundness = if sow_ui_kit::theme::custom_theme_enabled() {
-                                    (ui.ctx().data(|d| d.get_temp::<f32>(egui::Id::new("dev_theme_roundness")).unwrap_or(8.9)).round() as u32).min(255) as u8
+                                    (sow_ui_kit::theme::dev_config::DevConfig::get().theme_roundness.round() as u32).min(255) as u8
                                 } else {
                                     0
                                 };
@@ -192,8 +189,8 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 paint_v_gradient(
                                     painter,
                                     rect,
-                                    egui::Color32::from_rgb(13, 28, 20),
-                                    egui::Color32::from_rgb(4, 10, 7),
+                                    backplate_top,
+                                    backplate_bottom,
                                     cr_bar,
                                 );
 
@@ -205,8 +202,8 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                     paint_v_gradient(
                                         painter,
                                         fill,
-                                        egui::Color32::from_rgb(96, 240, 150),
-                                        egui::Color32::from_rgb(30, 168, 96),
+                                        filler_top,
+                                        filler_bottom,
                                         cr_bar,
                                     );
                                     let sheen_cr = egui::CornerRadius {
@@ -224,10 +221,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
 
                                 // Crisp frame.
                                 let stroke_color = if sow_ui_kit::theme::custom_theme_enabled() {
-                                    let outline_color_raw = ui.ctx().data(|d| {
-                                        d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_outline"))
-                                            .unwrap_or([92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0])
-                                    });
+                                    let outline_color_raw = sow_ui_kit::theme::dev_config::DevConfig::get().theme_color_outline;
                                     egui::Color32::from_rgba_unmultiplied(
                                         (outline_color_raw[0] * 255.0) as u8,
                                         (outline_color_raw[1] * 255.0) as u8,
@@ -273,6 +267,4 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                 radius,
             );
         });
-
-    toggle
 }

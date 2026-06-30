@@ -143,14 +143,9 @@ pub(crate) fn paint_new_build_ghost(
         let phys_x = center.x * sf;
         let phys_y = center.y * sf;
         let half = base_size * sf * 0.5;
-        let outline_px = painter
-            .ctx()
-            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_outline_thickness")).unwrap_or(1.0))
-            * sf;
-        let shadow_px = painter
-            .ctx()
-            .data(|d| d.get_temp::<f32>(egui::Id::new("dev_font_shadow_y")).unwrap_or(1.5))
-            * sf;
+        let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+        let outline_px = dev.font_outline_thickness * sf;
+        let shadow_px = dev.font_shadow_y * sf;
         if tr.push_emoji(
             emoji,
             [phys_x, phys_y],

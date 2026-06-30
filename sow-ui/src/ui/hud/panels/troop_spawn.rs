@@ -11,6 +11,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     troop_rate: f64,
     compact: bool,
     is_increasing: bool,
+    radius: egui::CornerRadius,
 ) {
     let base = max_troops.max(1.0);
     let green_pct = (troops / base).clamp(0.0, 1.0) as f32;
@@ -33,7 +34,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     // Draw background
     ui.painter().rect(
         rect,
-        0,
+        radius,
         bg_color,
         Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border()),
         egui::StrokeKind::Inside,
@@ -43,7 +44,7 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     if green_pct_f32 > 0.0 {
         let green_rect =
             egui::Rect::from_min_size(rect.min, vec2(rect.width() * green_pct_f32, rect.height()));
-        ui.painter().rect_filled(green_rect, 0, green_color);
+        ui.painter().rect_filled(green_rect, radius, green_color);
     }
 
     // Draw orange fill (backfiller)
@@ -53,7 +54,13 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             pos2(orange_start, rect.min.y),
             vec2(rect.width() * orange_pct_f32, rect.height()),
         );
-        ui.painter().rect_filled(orange_rect, 0, orange_color);
+        let right_radius = egui::CornerRadius {
+            nw: 0,
+            ne: radius.ne,
+            sw: 0,
+            se: radius.se,
+        };
+        ui.painter().rect_filled(orange_rect, right_radius, orange_color);
     }
 
     // Overlay text
@@ -203,33 +210,49 @@ pub(in crate::ui::hud) fn draw_persistent_header(
     let bar_h = if compact { 24.0 } else { 22.0 };
 
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = if compact { 8.0 } else { 6.0 };
+        let gap = 6.0;
+        ui.spacing_mut().item_spacing.x = gap;
 
-        if !compact {
+        // Troop rate frame — always visible
+        {
             let rate_color = if is_increasing {
                 sow_ui_kit::theme::palette::neon_cyan_hover()
             } else {
                 sow_ui_kit::theme::palette::danger()
             };
+            let troop_margin = if compact { sow_ui_kit::theme::margin::TIGHT } else { sow_ui_kit::theme::margin::COZY };
             egui::Frame::NONE
                 .stroke(Stroke::new(sow_ui_kit::theme::stroke::HAIRLINE, rate_color))
-                .corner_radius(sow_ui_kit::theme::radius::sm())
+                .corner_radius(sow_ui_kit::theme::radius::inline())
                 .inner_margin(egui::Margin::symmetric(
-                    sow_ui_kit::theme::margin::COZY,
+                    troop_margin,
                     sow_ui_kit::theme::margin::TIGHT,
                 ))
                 .show(ui, |ui| {
+                    let text = if compact {
+                        format!("+{}/s", crate::utils::format_number(troop_rate))
+                    } else {
+                        format!("⚔ +{}/s", crate::utils::format_number(troop_rate))
+                    };
                     crate::widgets::outlined_emoji_label(
                         ui,
-                        &format!("⚔ +{}/s", crate::utils::format_number(troop_rate)),
+                        &text,
                         egui::FontId::proportional(10.0),
                         rate_color,
                     );
                 });
         }
 
-        let bar_w = ui.available_width() - if compact { 100.0 } else { 90.0 };
-        let (rect, _) = ui.allocate_exact_size(vec2(bar_w.max(80.0), bar_h), egui::Sense::hover());
+        // Measure gold frame width for bar allocation
+        let gold_font = egui::FontId::proportional(if compact { 11.0 } else { 12.0 });
+        let gold_text = format!("🪙 {}", crate::utils::format_number(state.gold));
+        let gold_size = crate::widgets::measure_emoji_text(ui.painter(), &gold_text, &gold_font);
+        let gold_margin = if compact { sow_ui_kit::theme::margin::TIGHT } else { sow_ui_kit::theme::margin::COZY };
+        let gold_frame_w = gold_size.x + gold_margin as f32 * 2.0;
+
+        // Bar fills remaining width
+        let bar_w = (ui.available_width() - gold_frame_w - gap).max(60.0);
+        let (rect, _) = ui.allocate_exact_size(vec2(bar_w, bar_h), egui::Sense::hover());
         draw_troop_bar(
             ui,
             rect,
@@ -238,22 +261,22 @@ pub(in crate::ui::hud) fn draw_persistent_header(
             troop_rate,
             compact,
             is_increasing,
+            sow_ui_kit::theme::radius::inline(),
         );
 
+        // Gold frame
         egui::Frame::NONE
             .stroke(Stroke::new(
                 sow_ui_kit::theme::stroke::HAIRLINE,
                 sow_ui_kit::theme::palette::neon_gold_hover(),
             ))
-            .corner_radius(sow_ui_kit::theme::radius::sm())
+            .corner_radius(sow_ui_kit::theme::radius::inline())
             .inner_margin(egui::Margin::symmetric(
-                sow_ui_kit::theme::margin::COZY,
+                gold_margin,
                 sow_ui_kit::theme::margin::TIGHT,
             ))
             .show(ui, |ui| {
-                ui.add(crate::widgets::ResourceLabel::gold(state.gold).font(
-                    egui::FontId::proportional(if compact { 11.0 } else { 12.0 }),
-                ));
+                ui.add(crate::widgets::ResourceLabel::gold(state.gold).font(gold_font));
             });
     });
 }

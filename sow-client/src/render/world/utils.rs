@@ -33,18 +33,13 @@ pub(crate) struct BunkerLaserPaint {
     pub scatter_slot: u32,
 }
 
-pub(crate) fn bunker_laser_vfx_opts(ctx: &egui::Context) -> BunkerLaserVfxOpts {
-    ctx.data(|d| BunkerLaserVfxOpts {
-        target_seeking: d
-            .get_temp::<bool>(egui::Id::new("dev_bunker_laser_target"))
-            .unwrap_or(true),
-        plasma_arc: d
-            .get_temp::<bool>(egui::Id::new("dev_bunker_laser_arc"))
-            .unwrap_or(true),
-        volley_scatter: d
-            .get_temp::<bool>(egui::Id::new("dev_bunker_laser_scatter"))
-            .unwrap_or(false),
-    })
+pub(crate) fn bunker_laser_vfx_opts(_ctx: &egui::Context) -> BunkerLaserVfxOpts {
+    let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+    BunkerLaserVfxOpts {
+        target_seeking: dev.bunker_laser_target,
+        plasma_arc: dev.bunker_laser_arc,
+        volley_scatter: dev.bunker_laser_scatter,
+    }
 }
 
 #[inline]

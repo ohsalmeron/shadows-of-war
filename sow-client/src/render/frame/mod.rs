@@ -175,45 +175,14 @@ impl SowApp {
                         }
                     }
 
-                    let mut border_thickness = 0.5f32;
-                    let mut border_darkness = 0.35f32;
-                    let mut shore_thickness = 1.0f32;
-                    let mut shore_darkness = 1.0f32;
-                    let mut territory_opacity = 1.0f32;
-                    let mut blend_mode = 0.0f32;
-                    let mut conquest_duration = 2.5f32;
-                    let mut vfx_flags = crate::app::DevVfxFlags::default();
-
-                    self.ui.egui_ctx.data_mut(|d| {
-                        vfx_flags = *d.get_temp_mut_or_insert_with(
-                            egui::Id::new("dev_vfx_flags"),
-                            crate::app::DevVfxFlags::default,
-                        );
-                        border_thickness = *d
-                            .get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.5f32);
-                        border_darkness = *d
-                            .get_temp_mut_or_insert_with(egui::Id::new("dev_darkness"), || 0.35f32);
-                        shore_thickness = *d.get_temp_mut_or_insert_with(
-                            egui::Id::new("dev_shore_thickness"),
-                            || 1.0f32,
-                        );
-                        shore_darkness = *d.get_temp_mut_or_insert_with(
-                            egui::Id::new("dev_shore_darkness"),
-                            || 1.0f32,
-                        );
-                        territory_opacity = *d.get_temp_mut_or_insert_with(
-                            egui::Id::new("dev_territory_opacity"),
-                            || 1.0f32,
-                        );
-                        blend_mode = *d
-                            .get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || {
-                                0.0f32
-                            });
-                        conquest_duration = *d.get_temp_mut_or_insert_with(
-                            egui::Id::new("dev_conquest_duration"),
-                            || 2.5f32,
-                        );
-                    });
+                    let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+                    let border_thickness = dev.thickness;
+                    let border_darkness = dev.darkness;
+                    let shore_thickness = dev.shore_thickness;
+                    let shore_darkness = dev.shore_darkness;
+                    let territory_opacity = dev.territory_opacity;
+                    let blend_mode = dev.blend_mode;
+                    let conquest_duration = dev.conquest_duration;
 
                     let dirty = self
                         .sim
@@ -440,9 +409,9 @@ impl SowApp {
                         shore_thickness,
                         shore_darkness,
                         threat_slots,
-                        effect_shockwave: if vfx_flags.conquer { 1.0 } else { 0.0 },
-                        effect_breathe: if vfx_flags.border_breathe { 1.0 } else { 0.0 },
-                        effect_energy_flow: if vfx_flags.energy_flow { 1.0 } else { 0.0 },
+                        effect_shockwave: if dev.vfx_conquer { 1.0 } else { 0.0 },
+                        effect_breathe: if dev.vfx_border_breathe { 1.0 } else { 0.0 },
+                        effect_energy_flow: if dev.vfx_energy_flow { 1.0 } else { 0.0 },
                         my_player_id: self.sim.my_player_id.unwrap_or(0) as f32,
                         hover_hex,
                         hover_building_kind,
@@ -450,11 +419,11 @@ impl SowApp {
                         fallout_slots,
                         nobuild_slots,
                         blend_mode,
-                        effect_heartbeat: if vfx_flags.heartbeat { 1.0 } else { 0.0 },
-                        effect_war_fog: if vfx_flags.war_fog { 1.0 } else { 0.0 },
-                        effect_fallout: if vfx_flags.fallout { 1.0 } else { 0.0 },
-                        effect_golden_hour: if vfx_flags.ambient_grade { 1.0 } else { 0.0 },
-                        effect_holo_grid: if vfx_flags.holo_grid { 1.0 } else { 0.0 },
+                        effect_heartbeat: if dev.vfx_heartbeat { 1.0 } else { 0.0 },
+                        effect_war_fog: if dev.vfx_war_fog { 1.0 } else { 0.0 },
+                        effect_fallout: if dev.vfx_fallout { 1.0 } else { 0.0 },
+                        effect_golden_hour: if dev.vfx_ambient_grade { 1.0 } else { 0.0 },
+                        effect_holo_grid: if dev.vfx_holo_grid { 1.0 } else { 0.0 },
                         attack_flash_target,
                         attack_flash_t,
                         alert_intensity,
@@ -483,7 +452,7 @@ impl SowApp {
                     }
 
                     // ── GPU-instanced movers (boats, nukes, SAM) ─────────────
-                    if vfx_flags.mover_trails {
+                    if dev.vfx_mover_trails {
                         if self.gfx.mover_renderer.is_none() {
                             let surface_format = s.info().format;
                             self.gfx.mover_renderer = Some(crate::render::gpu::MoverRenderer::new(
