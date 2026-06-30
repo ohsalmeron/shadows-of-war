@@ -19,6 +19,7 @@ pub(in crate::ui::hud) fn draw_map_controls(
         .anchor(Align2::RIGHT_BOTTOM, map_controls_offset)
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
             let btn_w = if cfg!(target_os = "android") {
                 46.0
             } else {

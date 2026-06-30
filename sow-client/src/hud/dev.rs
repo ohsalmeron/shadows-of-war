@@ -73,6 +73,7 @@ impl SowApp {
                         .frame(egui::Frame::NONE);
 
                     win.show(ctx, |ui| {
+                        ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
                         let prepaint_idx = ui.painter().add(egui::Shape::Noop);
 
                         let frame_res = egui::Frame::NONE

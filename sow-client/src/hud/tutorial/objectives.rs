@@ -19,20 +19,34 @@ pub(super) struct ObjRow {
     pub fade: f32,
 }
 
-/// A cheap vertical gradient (one 2-triangle mesh, `top`→`bottom`). Square corners; used for the
-/// objective progress bar's backplate and fill. Mirrors the leader-picker gradient idiom.
-fn paint_v_gradient(painter: &egui::Painter, rect: egui::Rect, top: egui::Color32, bottom: egui::Color32) {
+/// A cheap vertical gradient (one 2-triangle mesh or two rounded rects, `top`→`bottom`).
+/// Used for the objective progress bar's backplate and fill.
+fn paint_v_gradient(painter: &egui::Painter, rect: egui::Rect, top: egui::Color32, bottom: egui::Color32, radius: egui::CornerRadius) {
     if !rect.is_positive() {
         return;
     }
-    let uv = egui::epaint::WHITE_UV;
     let mut mesh = egui::Mesh::default();
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.left_top(), uv, color: top });
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.right_top(), uv, color: top });
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.right_bottom(), uv, color: bottom });
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.left_bottom(), uv, color: bottom });
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
+    let shape = egui::epaint::RectShape::filled(rect, radius, top);
+    let tessellator_options = painter.ctx().tessellation_options(|to| *to);
+    let mut tessellator = egui::epaint::Tessellator::new(
+        painter.ctx().pixels_per_point(),
+        tessellator_options,
+        [0, 0],
+        vec![],
+    );
+    tessellator.tessellate_rect(&shape, &mut mesh);
+
+    let h = rect.height();
+    if h > 0.0 {
+        for vertex in &mut mesh.vertices {
+            let t = ((vertex.pos.y - rect.min.y) / h).clamp(0.0, 1.0);
+            let r = (top.r() as f32 + t * (bottom.r() as f32 - top.r() as f32)) as u8;
+            let g = (top.g() as f32 + t * (bottom.g() as f32 - top.g() as f32)) as u8;
+            let b = (top.b() as f32 + t * (bottom.b() as f32 - top.b() as f32)) as u8;
+            let a = (top.a() as f32 + t * (bottom.a() as f32 - top.a() as f32)) as u8;
+            vertex.color = egui::Color32::from_rgba_unmultiplied(r, g, b, a);
+        }
+    }
     painter.add(egui::Shape::mesh(mesh));
 }
 
@@ -58,6 +72,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(12.0, if compact { 56.0 } else { 70.0 }))
         .show(ctx, |ui| {
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
             ui.spacing_mut().item_spacing.y = 6.0; // gap between the button and the rows panel
 
             // The 📜 toggle, in its own button-hugging frame (no title, no header).
@@ -165,12 +180,21 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 );
                                 let painter = ui.painter();
 
+                                let theme_roundness = if sow_ui_kit::theme::custom_theme_enabled() {
+                                    (ui.ctx().data(|d| d.get_temp::<f32>(egui::Id::new("dev_theme_roundness")).unwrap_or(8.9)).round() as u32).min(255) as u8
+                                } else {
+                                    0
+                                };
+                                let bar_r_u8 = (theme_roundness / 3).min(8);
+                                let cr_bar = egui::CornerRadius::same(bar_r_u8);
+
                                 // Backplate: dark, green-tinted gradient, darker toward the bottom.
                                 paint_v_gradient(
                                     painter,
                                     rect,
                                     egui::Color32::from_rgb(13, 28, 20),
                                     egui::Color32::from_rgb(4, 10, 7),
+                                    cr_bar,
                                 );
 
                                 // Fill: bright green up top, deeper green below, plus a top sheen.
@@ -183,19 +207,40 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                         fill,
                                         egui::Color32::from_rgb(96, 240, 150),
                                         egui::Color32::from_rgb(30, 168, 96),
+                                        cr_bar,
                                     );
+                                    let sheen_cr = egui::CornerRadius {
+                                        nw: bar_r_u8,
+                                        ne: bar_r_u8,
+                                        sw: 0,
+                                        se: 0,
+                                    };
                                     painter.rect_filled(
                                         egui::Rect::from_min_size(fill.min, egui::vec2(fill_w, 2.0)),
-                                        0,
+                                        sheen_cr,
                                         egui::Color32::from_rgba_unmultiplied(205, 255, 222, 60),
                                     );
                                 }
 
                                 // Crisp frame.
+                                let stroke_color = if sow_ui_kit::theme::custom_theme_enabled() {
+                                    let outline_color_raw = ui.ctx().data(|d| {
+                                        d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_outline"))
+                                            .unwrap_or([92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0])
+                                    });
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        (outline_color_raw[0] * 255.0) as u8,
+                                        (outline_color_raw[1] * 255.0) as u8,
+                                        (outline_color_raw[2] * 255.0) as u8,
+                                        (outline_color_raw[3] * 255.0) as u8,
+                                    )
+                                } else {
+                                    egui::Color32::from_rgb(40, 70, 52)
+                                };
                                 painter.rect_stroke(
                                     rect,
-                                    0,
-                                    egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 70, 52)),
+                                    cr_bar,
+                                    egui::Stroke::new(1.0, stroke_color),
                                     egui::StrokeKind::Inside,
                                 );
 

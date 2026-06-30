@@ -51,6 +51,7 @@ pub(in crate::ui::hud) fn draw_top_icons(
         .anchor(Align2::RIGHT_TOP, vec2(-12.0, 12.0 + state.safe_area_top))
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
             let prepaint_idx = ui.painter().add(egui::Shape::Noop);
             let frame_res = egui::Frame::NONE
                 .inner_margin(egui::Margin::symmetric(

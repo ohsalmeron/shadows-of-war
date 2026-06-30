@@ -30,6 +30,7 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
         .movable(false)
         .show(ui.ctx(), |ui| {
             ui.set_max_width(panel_w);
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
 
             let border_color =
                 if state.selected_building_kind.is_some() || state.selected_nuke_kind.is_some() {

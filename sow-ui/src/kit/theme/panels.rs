@@ -394,20 +394,28 @@ pub fn paint_hud_panel_gradient(
 
     if super::custom_theme_enabled() {
         let roundness = ui.ctx().data(|d| {
-            d.get_temp::<f32>(egui::Id::new("dev_theme_roundness")).unwrap_or(24.0)
+            d.get_temp::<f32>(egui::Id::new("dev_theme_roundness")).unwrap_or(8.9)
         });
         let top_color_raw = ui.ctx().data(|d| {
             d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_top"))
-                .unwrap_or([40.0 / 255.0, 44.0 / 255.0, 52.0 / 255.0, 0.75])
+                .unwrap_or([66.0 / 255.0, 98.0 / 255.0, 106.0 / 255.0, 240.0 / 255.0])
         });
         let bot_color_raw = ui.ctx().data(|d| {
             d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_bottom"))
-                .unwrap_or([0.0, 0.0, 0.0, 0.75])
+                .unwrap_or([46.0 / 255.0, 77.0 / 255.0, 106.0 / 255.0, 250.0 / 255.0])
+        });
+
+        let outline_color_raw = ui.ctx().data(|d| {
+            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_outline"))
+                .unwrap_or([92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0])
+        });
+        let glow_color_raw = ui.ctx().data(|d| {
+            d.get_temp::<[f32; 4]>(egui::Id::new("dev_theme_color_glow"))
+                .unwrap_or([92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 75.0 / 255.0])
         });
 
         let r_u8 = (roundness.round() as u32).min(255) as u8;
-        let cr_top = egui::CornerRadius { nw: r_u8, ne: r_u8, sw: 0, se: 0 };
-        let cr_bot = egui::CornerRadius { nw: 0, ne: 0, sw: r_u8, se: r_u8 };
+        let cr = egui::CornerRadius::same(r_u8);
 
         let slate = Color32::from_rgba_unmultiplied(
             (top_color_raw[0] * 255.0) as u8,
@@ -421,21 +429,82 @@ pub fn paint_hud_panel_gradient(
             (bot_color_raw[2] * 255.0) as u8,
             (bot_color_raw[3] * 255.0) as u8,
         );
-
-        let mid_y = (rect.min.y + rect.max.y) * 0.5;
-        let top_r = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, mid_y));
-        let bot_r = egui::Rect::from_min_max(egui::pos2(rect.min.x, mid_y), rect.max);
-        ui.painter().set(idx, egui::Shape::Vec(vec![
-            egui::Shape::Rect(egui::epaint::RectShape::filled(bot_r, cr_bot, black)),
-            egui::Shape::Rect(egui::epaint::RectShape::filled(top_r, cr_top, slate)),
-        ]));
-        ui.painter().rect(
-            rect,
-            egui::CornerRadius::same(r_u8),
-            Color32::TRANSPARENT,
-            egui::Stroke::new(1.5_f32, border_color),
-            egui::StrokeKind::Inside,
+        let outline_color = Color32::from_rgba_unmultiplied(
+            (outline_color_raw[0] * 255.0) as u8,
+            (outline_color_raw[1] * 255.0) as u8,
+            (outline_color_raw[2] * 255.0) as u8,
+            (outline_color_raw[3] * 255.0) as u8,
         );
+        let glow_color = Color32::from_rgba_unmultiplied(
+            (glow_color_raw[0] * 255.0) as u8,
+            (glow_color_raw[1] * 255.0) as u8,
+            (glow_color_raw[2] * 255.0) as u8,
+            (glow_color_raw[3] * 255.0) as u8,
+        );
+
+        let mut shapes = vec![];
+
+        // 1. Multi-stroke outer glow (completely outside the panel)
+        let alpha = glow_color.a() as f32;
+        let glow_steps = 6;
+        for i in 1..=glow_steps {
+            let t = i as f32 / glow_steps as f32;
+            let factor = (-2.5 * t).exp(); // Exponential falloff
+            let a = (alpha * factor) as u8;
+            if a > 0 {
+                let step_color = Color32::from_rgba_unmultiplied(glow_color.r(), glow_color.g(), glow_color.b(), a);
+                let thickness = 1.0 + (i as f32 * 0.5);
+                let offset_val = i as f32 * 1.0;
+                let expanded_rect = rect.expand(offset_val);
+                let expanded_cr = cr + egui::CornerRadius::same(offset_val.round() as u8);
+                shapes.push(egui::Shape::rect_stroke(
+                    expanded_rect,
+                    expanded_cr,
+                    egui::Stroke::new(thickness, step_color),
+                    egui::StrokeKind::Outside,
+                ));
+            }
+        }
+
+        // 2. Main rounded vertical gradient mesh
+        let mut mesh = egui::Mesh::default();
+        let shape = egui::epaint::RectShape::filled(rect, cr, slate);
+        let tessellator_options = ui.ctx().tessellation_options(|to| *to);
+        let mut tessellator = egui::epaint::Tessellator::new(
+            ui.ctx().pixels_per_point(),
+            tessellator_options,
+            [0, 0],
+            vec![],
+        );
+        tessellator.tessellate_rect(&shape, &mut mesh);
+
+        // Calculate vertical gradient:
+        let h = rect.height();
+        if h > 0.0 {
+            for vertex in &mut mesh.vertices {
+                let t = ((vertex.pos.y - rect.min.y) / h).clamp(0.0, 1.0);
+                let r = (slate.r() as f32 + t * (black.r() as f32 - slate.r() as f32)) as u8;
+                let g = (slate.g() as f32 + t * (black.g() as f32 - slate.g() as f32)) as u8;
+                let b = (slate.b() as f32 + t * (black.b() as f32 - slate.b() as f32)) as u8;
+                let a = (slate.a() as f32 + t * (black.a() as f32 - slate.a() as f32)) as u8;
+                vertex.color = Color32::from_rgba_unmultiplied(r, g, b, a);
+            }
+        }
+        shapes.push(egui::Shape::mesh(mesh));
+
+        let outline_thick = ui.ctx().data(|d| {
+            d.get_temp::<f32>(egui::Id::new("dev_theme_outline_thickness")).unwrap_or(8.0)
+        });
+
+        // 3. Crisp laser outline
+        shapes.push(egui::Shape::rect_stroke(
+            rect,
+            cr,
+            egui::Stroke::new(outline_thick, outline_color),
+            egui::StrokeKind::Outside,
+        ));
+
+        ui.painter().set(idx, egui::Shape::Vec(shapes));
         return;
     }
 

@@ -1,10 +1,8 @@
-//! A bold, "gaming" Play / GO button — glossy gradient body, animated outer glow, a bright top
-//! sheen and a light bevel rim, with glow text. Comes in two forms:
+//! A compact "gaming" Play / GO button — hot-pink gradient body, single glow ring, glow text.
+//! Comes in two forms:
 //!
-//! * [`paint_play_button`] — pure paint into a rect, for custom-painted surfaces (e.g. the lobby
-//!   card, where the whole card is the click target and the button only sells the affordance);
-//! * [`PlayButton`] — a standalone interactive [`egui::Widget`] that allocates, senses the click,
-//!   and animates its own hover.
+//! * [`paint_play_button`] — pure paint into a rect, for custom-painted surfaces;
+//! * [`PlayButton`] — a standalone interactive widget that allocates, senses click, animates hover.
 
 use egui::{Color32, CornerRadius, FontId, Painter, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
 
@@ -13,11 +11,7 @@ fn lerp_col(a: Color32, b: Color32, t: f32) -> Color32 {
     Color32::from_rgb(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()))
 }
 
-/// Paint a play button into `rect`.
-///
-/// * `hot` (0..1) — hover energy: brightens the body, flares the glow, lifts the sheen. Drive it
-///   from the host surface's hover (animate it for a smooth ramp).
-/// * `pulse` (0..1) — a slow breathing factor for the idle glow (e.g. `sin` of time, remapped).
+/// Paint a play button into `rect`. `hot` (0..1) drives hover brightness and glow.
 pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, label: &str) {
     if !rect.is_positive() {
         return;
@@ -26,7 +20,7 @@ pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, la
     let r = (rect.height() * 0.28).clamp(6.0, 14.0) as u8;
     let radius = CornerRadius::same(r);
 
-    // Hot-pink → crimson, brightening on hover.
+    // Hot-pink → bright, darkens toward bottom.
     let top = lerp_col(
         Color32::from_rgb(244, 63, 132),
         Color32::from_rgb(255, 122, 170),
@@ -37,27 +31,20 @@ pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, la
         Color32::from_rgb(236, 64, 122),
         hot,
     );
-    let glow_col = Color32::from_rgb(255, 70, 140);
 
-    // Outer glow: a few concentric rounded strokes, breathing when idle, flaring on hover.
-    let glow_a = (0.12 + 0.22 * hot + 0.05 * pulse).clamp(0.0, 0.6);
-    for i in 0..3 {
-        let grow = 2.0 + i as f32 * 3.0 + 4.0 * hot;
-        let a = (glow_a * (1.0 - i as f32 * 0.3)).clamp(0.0, 1.0);
-        painter.rect_stroke(
-            rect.expand(grow),
-            CornerRadius::same(r.saturating_add(grow as u8)),
-            Stroke::new(2.0, glow_col.gamma_multiply(a)),
-            egui::StrokeKind::Inside,
-        );
-    }
-
-    // Body — darker base, then a top gloss band gives the vertical gradient with rounded corners.
-    painter.rect_filled(rect, radius, bottom);
-    let gloss = Rect::from_min_max(
-        rect.min,
-        egui::pos2(rect.max.x, rect.min.y + rect.height() * 0.55),
+    // Single glow ring, breathes at rest, flares on hover.
+    let glow_a = (0.15 + 0.25 * hot + 0.06 * pulse).clamp(0.0, 0.5);
+    let grow = 3.0 + 2.0 * hot;
+    painter.rect_stroke(
+        rect.expand(grow),
+        CornerRadius::same(r.saturating_add(grow as u8)),
+        Stroke::new(2.0, Color32::from_rgb(255, 70, 140).gamma_multiply(glow_a)),
+        egui::StrokeKind::Inside,
     );
+
+    // Body: dark base + top gradient.
+    painter.rect_filled(rect, radius, bottom);
+    let gloss = Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + rect.height() * 0.55));
     painter.rect_filled(
         gloss,
         CornerRadius {
@@ -68,27 +55,9 @@ pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, la
         },
         top,
     );
-    // Bright sheen near the top.
-    let sheen = Rect::from_min_max(
-        rect.min + egui::vec2(3.0, 3.0),
-        egui::pos2(rect.max.x - 3.0, rect.min.y + rect.height() * 0.22),
-    );
-    painter.rect_filled(
-        sheen,
-        CornerRadius::same((r as f32 * 0.6) as u8),
-        Color32::from_white_alpha((38.0 + 34.0 * hot) as u8),
-    );
 
-    // Light bevel rim.
-    painter.rect_stroke(
-        rect,
-        radius,
-        Stroke::new(1.5, Color32::from_white_alpha((80.0 + 50.0 * hot) as u8)),
-        egui::StrokeKind::Inside,
-    );
-
-    // Label — bold, centered, dark shadow + glow.
-    let font = FontId::proportional((rect.height() * 0.44).clamp(13.0, 22.0));
+    // Text.
+    let font = FontId::proportional((rect.height() * 0.45).clamp(13.0, 20.0));
     sow_ui_kit::theme::paint_premium_glow_text(
         painter,
         rect.center(),
@@ -96,11 +65,11 @@ pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, la
         label,
         font,
         Color32::WHITE,
-        Color32::from_black_alpha(170),
+        Color32::from_black_alpha(160),
     );
 }
 
-/// Standalone interactive play button. Allocates `min_size`, senses the click, animates hover.
+/// Standalone interactive play button.
 pub struct PlayButton {
     label: String,
     min_size: Vec2,
@@ -123,16 +92,13 @@ impl PlayButton {
 impl Widget for PlayButton {
     fn ui(self, ui: &mut Ui) -> Response {
         let (rect, response) = ui.allocate_exact_size(self.min_size, Sense::click());
-        let hot = ui
-            .ctx()
-            .animate_bool(response.id.with("play_hot"), response.hovered());
+        let hot = ui.ctx().animate_bool(response.id.with("play_hot"), response.hovered());
         if response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.ctx().request_repaint(); // breathe while hovered
+            ui.ctx().request_repaint();
         }
         let pulse = (((ui.input(|i| i.time) * 3.0).sin() + 1.0) * 0.5) as f32;
-        // Press dip + hover lift.
-        let scale = 1.0 + 0.04 * hot - if response.is_pointer_button_down_on() { 0.05 } else { 0.0 };
+        let scale = 1.0 + 0.03 * hot - if response.is_pointer_button_down_on() { 0.04 } else { 0.0 };
         let draw_rect = Rect::from_center_size(rect.center(), rect.size() * scale);
         if ui.is_rect_visible(rect) {
             paint_play_button(ui.painter(), draw_rect, hot, pulse, &self.label);

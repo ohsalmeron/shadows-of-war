@@ -387,6 +387,7 @@ impl SowApp {
             "CLOSE",
             self.ui.app.settings_state.reduced_motion,
             |ui| {
+                ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
                 self.render_leaderboard_body(
                     ui,
                     &metrics,
@@ -410,6 +411,7 @@ impl SowApp {
             .order(egui::Order::Foreground)
             .anchor(Align2::LEFT_TOP, Vec2::new(12.0, 12.0))
             .show(ctx, |ui| {
+                ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
                 let prepaint_idx = ui.painter().add(egui::Shape::Noop);
                 let frame_res = egui::Frame::NONE
                     .inner_margin(egui::Margin::symmetric(
@@ -473,15 +475,16 @@ impl SowApp {
 
     fn render_dev_sidebar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            ui.style_mut().spacing.slider_width = 100.0;
-            ui.style_mut().spacing.item_spacing = Vec2::new(4.0, 4.0);
+            ui.style_mut().spacing.slider_width = 80.0;
+            ui.style_mut().spacing.item_spacing = Vec2::new(3.0, 3.0);
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
 
             ui.horizontal(|ui| {
-                ui.label(RichText::new("🛠 Dev Tools").strong().color(Color32::WHITE)); // emoji-ok: dev-tools header (font fallback)
+                ui.label(RichText::new("Dev Tools").strong().size(13.0).color(Color32::WHITE));
             });
-            ui.add_space(2.0);
+            ui.add_space(1.0);
             ui.separator();
-            ui.add_space(2.0);
+            ui.add_space(1.0);
 
             let mut thick = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_thickness"), || 0.5f32)
@@ -502,20 +505,20 @@ impl SowApp {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_blend_mode"), || 0.0f32)
             });
             let mut bscale = ctx.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 0.75f32)
+                *d.get_temp_mut_or_insert_with(egui::Id::new("dev_building_scale"), || 0.5f32)
             });
             let mut conquest_duration = ctx.data_mut(|d| {
                 *d.get_temp_mut_or_insert_with(egui::Id::new("dev_conquest_duration"), || 2.5f32)
             });
 
-            ui.collapsing(RichText::new("🗺️ Map & Borders").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
+            ui.collapsing(RichText::new("Map & Borders").strong().size(11.5).color(Color32::WHITE), |ui| {
                 ui.add(egui::Slider::new(&mut thick, 0.0..=1.0).text("Border Thk"));
                 ui.add(egui::Slider::new(&mut dark, 0.0..=1.0).text("Border Drk"));
                 ui.add(egui::Slider::new(&mut s_thick, 0.0..=1.0).text("Shore Thk"));
-                ui.add(egui::Slider::new(&mut conquest_duration, 0.1..=10.0).text("Conquest Duration"));
-                ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Territory Opacity"));
+                ui.add(egui::Slider::new(&mut conquest_duration, 0.1..=10.0).text("Conquest Dur"));
+                ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Opacity"));
 
-                egui::ComboBox::from_label("Map Blend Mode")
+                egui::ComboBox::from_label("Blend Mode")
                     .selected_text(match blend_mode as i32 {
                         0 => "Normal Mix",
                         1 => "Multiply",
@@ -529,44 +532,77 @@ impl SowApp {
                         ui.selectable_value(&mut blend_mode, 2.0f32, "Overlay");
                         ui.selectable_value(&mut blend_mode, 3.0f32, "All Albedo");
                     });
+
+                if ui.button("Reset").clicked() {
+                    thick = 0.5;
+                    dark = 0.35;
+                    s_thick = 1.0;
+                    conquest_duration = 2.5;
+                    opacity = 1.0;
+                    blend_mode = 0.0;
+                }
             });
-            ui.collapsing(RichText::new("🎨 Custom HUD Theme").strong().color(Color32::WHITE), |ui| {
+            ui.collapsing(RichText::new("Custom HUD Theme").strong().size(11.5).color(Color32::WHITE), |ui| {
                 let mut roundness = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_roundness"), || 24.0f32)
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_roundness"), || 8.9f32)
                 });
                 let mut top_color = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_top"), || [40.0 / 255.0, 44.0 / 255.0, 52.0 / 255.0, 0.75f32])
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_top"), || [66.0 / 255.0, 98.0 / 255.0, 106.0 / 255.0, 240.0 / 255.0])
                 });
                 let mut bot_color = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_bottom"), || [0.0f32, 0.0f32, 0.0f32, 0.75f32])
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_bottom"), || [46.0 / 255.0, 77.0 / 255.0, 106.0 / 255.0, 250.0 / 255.0])
+                });
+                let mut outline_color = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_outline"), || [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0])
+                });
+                let mut glow_color = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_color_glow"), || [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 75.0 / 255.0])
+                });
+                let mut outline_thick = ctx.data_mut(|d| {
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_theme_outline_thickness"), || 8.0f32)
                 });
 
-                ui.add(egui::Slider::new(&mut roundness, 0.0..=48.0).text("Roundness"));
+                ui.add(egui::Slider::new(&mut roundness, 0.0..=48.0).text("Round"));
+                ui.add(egui::Slider::new(&mut outline_thick, 0.0..=10.0).text("Outline Thk"));
                 ui.horizontal(|ui| {
                     ui.label("Top Color:");
                     ui.color_edit_button_rgba_unmultiplied(&mut top_color);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Bottom Color:");
+                    ui.label("Bot Color:");
                     ui.color_edit_button_rgba_unmultiplied(&mut bot_color);
                 });
+                ui.horizontal(|ui| {
+                    ui.label("Outline:");
+                    ui.color_edit_button_rgba_unmultiplied(&mut outline_color);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Glow:");
+                    ui.color_edit_button_rgba_unmultiplied(&mut glow_color);
+                });
 
-                if ui.button("Reset to Default").clicked() {
-                    roundness = 24.0;
-                    top_color = [40.0 / 255.0, 44.0 / 255.0, 52.0 / 255.0, 0.75];
-                    bot_color = [0.0, 0.0, 0.0, 0.75];
+                if ui.button("Reset").clicked() {
+                    roundness = 8.9;
+                    outline_thick = 8.0;
+                    top_color = [66.0 / 255.0, 98.0 / 255.0, 106.0 / 255.0, 240.0 / 255.0];
+                    bot_color = [46.0 / 255.0, 77.0 / 255.0, 106.0 / 255.0, 250.0 / 255.0];
+                    outline_color = [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 220.0 / 255.0];
+                    glow_color = [92.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0, 75.0 / 255.0];
                 }
 
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_roundness"), roundness));
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_top"), top_color));
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_bottom"), bot_color));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_outline"), outline_color));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_color_glow"), glow_color));
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_theme_outline_thickness"), outline_thick));
             });
 
             ui.separator();
 
-            ui.collapsing(RichText::new("🔤 Font Settings (SDF)").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
+            ui.collapsing(RichText::new("Font Settings (SDF)").strong().size(11.5).color(Color32::WHITE), |ui| {
                 let mut face_dilate = ctx.data_mut(|d| {
-                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_face_dilate"), || -0.6f32)
+                    *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_face_dilate"), || 0.2f32)
                 });
                 let mut outline_thickness = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_font_outline_thickness"), || 1.0f32)
@@ -589,14 +625,14 @@ impl SowApp {
 
                 ui.add(egui::Slider::new(&mut font_size_scale, 0.5..=2.5).text("Font Size"));
                 ui.add(egui::Slider::new(&mut face_dilate, -1.0..=2.0).text("Face Dilate"));
-                ui.add(egui::Slider::new(&mut outline_thickness, 0.0..=3.0).text("Outline Thickness"));
+                ui.add(egui::Slider::new(&mut outline_thickness, 0.0..=3.0).text("Outline"));
                 ui.add(egui::Slider::new(&mut shadow_y, 0.0..=5.0).text("Shadow Y"));
-                ui.add(egui::Slider::new(&mut underlay_softness, 0.0..=2.0).text("Shadow Softness"));
-                ui.add(egui::Slider::new(&mut char_spacing, 0.8..=1.8).text("Char Spacing"));
-                ui.add(egui::Slider::new(&mut name_offset_x, -16.0..=16.0).text("Name Offset X (avatar gap)"));
+                ui.add(egui::Slider::new(&mut underlay_softness, 0.0..=2.0).text("Softness"));
+                ui.add(egui::Slider::new(&mut char_spacing, 0.8..=1.8).text("Spacing"));
+                ui.add(egui::Slider::new(&mut name_offset_x, -16.0..=16.0).text("Offset X"));
 
-                if ui.button("Reset to Default").clicked() {
-                    face_dilate = -0.6;
+                if ui.button("Reset").clicked() {
+                    face_dilate = 0.2;
                     outline_thickness = 1.0;
                     shadow_y = 1.5;
                     underlay_softness = 0.0;
@@ -615,16 +651,16 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.collapsing(RichText::new("🏛️ Building Emoji").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
+            ui.collapsing(RichText::new("Building Settings").strong().size(11.5).color(Color32::WHITE), |ui| {
                 let mut emoji_size = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_emoji_size_scale"), || 1.4f32)
                 });
 
-                ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Building Scale"));
+                ui.add(egui::Slider::new(&mut bscale, 0.3..=3.0).text("Scale"));
                 ui.add(egui::Slider::new(&mut emoji_size, 0.5..=3.0).text("Emoji Size"));
 
-                if ui.button("Reset to Default").clicked() {
-                    bscale = 0.75;
+                if ui.button("Reset").clicked() {
+                    bscale = 0.5;
                     emoji_size = 1.4;
                 }
 
@@ -633,7 +669,7 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.collapsing(RichText::new("🔫 Bunker Laser VFX").strong().color(Color32::WHITE), |ui| { // emoji-ok: dev-tools header (font fallback)
+            ui.collapsing(RichText::new("Bunker Laser").strong().size(11.5).color(Color32::WHITE), |ui| {
                 let mut laser_target = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_target"), || true)
                 });
@@ -643,9 +679,16 @@ impl SowApp {
                 let mut laser_scatter = ctx.data_mut(|d| {
                     *d.get_temp_mut_or_insert_with(egui::Id::new("dev_bunker_laser_scatter"), || false)
                 });
-                ui.checkbox(&mut laser_target, "Target seeking");
-                ui.checkbox(&mut laser_arc, "Plasma arc");
-                ui.checkbox(&mut laser_scatter, "Volley scatter");
+                ui.add(egui::Checkbox::new(&mut laser_target, "Target seeking"));
+                ui.add(egui::Checkbox::new(&mut laser_arc, "Plasma arc"));
+                ui.add(egui::Checkbox::new(&mut laser_scatter, "Volley scatter"));
+
+                if ui.button("Reset").clicked() {
+                    laser_target = true;
+                    laser_arc = true;
+                    laser_scatter = false;
+                }
+
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_target"), laser_target));
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_bunker_laser_arc"), laser_arc));
                 ctx.data_mut(|d| {
@@ -658,7 +701,7 @@ impl SowApp {
             });
 
             ui.separator();
-            ui.collapsing(RichText::new("VFX Toggles (Benchmark)").strong().color(Color32::WHITE), |ui| {
+            ui.collapsing(RichText::new("VFX Toggles (Benchmark)").strong().size(11.5).color(Color32::WHITE), |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("All On").clicked() {
                         vfx_flags = crate::app::DevVfxFlags::default();
@@ -731,6 +774,10 @@ impl SowApp {
                 ui.checkbox(&mut vfx_flags.bot_avatars, "Bot avatars");
                 ui.checkbox(&mut vfx_flags.nameplate_names, "Nameplate names");
                 ui.checkbox(&mut vfx_flags.nameplate_troops, "Nameplate troops");
+
+                if ui.button("Reset").clicked() {
+                    vfx_flags = crate::app::DevVfxFlags::default();
+                }
             });
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("dev_vfx_flags"), vfx_flags));
 
