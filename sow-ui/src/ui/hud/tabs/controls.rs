@@ -297,7 +297,7 @@ pub(in crate::ui::hud) fn hud_sidebar_row_height(
 ) -> f32 {
     let s = if compact { chrome_scale } else { 1.0 };
     if dialog_active {
-        return if compact { 240.0 * s } else { 160.0 };
+        return if compact { 160.0 * s } else { 140.0 };
     }
     if spawn_active {
         return if compact { 72.0 * s } else { 56.0 };
