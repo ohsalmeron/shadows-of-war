@@ -9,6 +9,7 @@ mod paths;
 mod pipeline;
 mod process;
 mod serve;
+mod ui_gen;
 mod version;
 mod wasm;
 
@@ -83,6 +84,12 @@ enum Command {
         #[arg(short, long, default_value_t = 8777)]
         port: u16,
     },
+    /// Launch the UI scene editor backend — save/export `assets/ui/*.json`, codegen on export.
+    #[command(name = "ui", visible_aliases = ["u"])]
+    Ui {
+        #[arg(short, long, default_value_t = 8778)]
+        port: u16,
+    },
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -121,6 +128,7 @@ fn main() -> Result<()> {
         Command::Native => cmd_native(&paths),
         Command::Emoji => cmd_emoji(&paths),
         Command::Map { port } => serve::serve_campaign_editor(&paths, port),
+        Command::Ui { port } => serve::serve_ui_editor(&paths, port),
     }
 }
 

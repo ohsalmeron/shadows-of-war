@@ -17,6 +17,8 @@ clap = { workspace = true }
 image = { workspace = true }
 minifier = { workspace = true }
 reqwest = { version = "0.11", features = ["blocking"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 sha2 = "0.10"
 walkdir = "2"
 wasm-bindgen-cli-support = { workspace = true }

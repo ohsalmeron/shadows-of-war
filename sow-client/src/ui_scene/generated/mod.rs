@@ -6,15 +6,21 @@
 //! of truth — exactly the discipline `campaign/boudica.rs` follows for the roster.
 //!
 //! `sample.rs` is the one exception: a committed hand-written exemplar that proves the call site
-//! and the codegen *shape* the exporter must match (M0). The generator will produce modules in
-//! this same form.
+//! and the codegen *shape* the exporter must match. THIS FILE is also regenerated — its
+//! `mod`/`match`/`names()` are derived from `assets/ui/*.json` on every export, so adding a scene
+//! never requires a hand edit here.
 
+mod demo;
 mod sample;
 
 /// Dispatch to a generated scene by name. Returns `false` if no scene with that name is
 /// registered (so the caller can surface a hint instead of rendering nothing).
 pub fn render(name: &str, ctx: &egui::Context) -> bool {
     match name {
+        "demo" => {
+            demo::render(ctx);
+            true
+        }
         "sample" => {
             sample::render(ctx);
             true
@@ -23,8 +29,8 @@ pub fn render(name: &str, ctx: &egui::Context) -> bool {
     }
 }
 
-/// Names of all registered scenes — used for the "unknown scene" hint and tests. The exporter
-/// keeps this list in sync when it (re)generates a scene module.
+/// Names of all registered scenes — used for the "unknown scene" hint and tests. Kept in sync by
+/// the exporter; do not hand-edit.
 pub fn names() -> &'static [&'static str] {
-    &["sample"]
+    &["demo", "sample"]
 }

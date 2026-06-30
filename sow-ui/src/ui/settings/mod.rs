@@ -1,5 +1,5 @@
 use crate::UiAction;
-use egui::{Color32, RichText, Slider, Stroke};
+use egui::{Color32, RichText, Slider, Stroke, TextStyle};
 pub use sow_i18n::Language;
 use sow_ui_kit::theme::palette;
 
@@ -70,6 +70,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     ui.label(RichText::new(&strings.graphics_quality).strong());
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
+                            ui.style_mut().spacing.button_padding = egui::vec2(8.0, 4.0);
                             let qualities = [
                                 (GraphicsQuality::Low, &strings.quality_low),
                                 (GraphicsQuality::Medium, &strings.quality_medium),
@@ -129,6 +130,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                         .selected_text(&lang_label)
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
+                            ui.style_mut().override_text_style = Some(TextStyle::Small);
                             if ui
                                 .selectable_value(
                                     &mut state.language,

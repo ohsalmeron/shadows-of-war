@@ -131,12 +131,12 @@ pub fn lobby_modal_embed(ctx: &Context) -> bool {
 /// Transparent modal close control (settings, credits).
 pub fn modal_close_button(ui: &mut Ui) -> Response {
     ui.add(
-        crate::widgets::ThemeButton::new("✖")
+        crate::widgets::ThemeButton::new("❌")
             .style(crate::widgets::ThemeButtonStyle::Tertiary)
             .custom_fill(Color32::TRANSPARENT)
             .stroke(Stroke::NONE)
-            .text_size(20.0)
-            .custom_text_color(palette::text_muted()),
+            .text_size(22.0)
+            .custom_text_color(palette::danger()),
     )
 }
 

@@ -208,16 +208,22 @@ pub fn draw_standard_modal<R>(
         return None;
     }
 
-    // Semi-transparent scrim backdrop overlay (increased transparency)
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new(format!("{modal_key}_scrim")),
-    ))
-    .rect_filled(
-        screen_rect,
-        0.0,
-        Color32::from_black_alpha((150.0 * progress) as u8),
-    );
+    // Scrim backdrop + click-outside-to-close
+    egui::Area::new(egui::Id::new(format!("{modal_key}_scrim")))
+        .order(egui::Order::Middle)
+        .fixed_pos(screen_rect.min)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let scrim_color = Color32::from_black_alpha((150.0 * progress) as u8);
+            let (rect, response) = ui.allocate_exact_size(
+                screen_rect.size(),
+                egui::Sense::click(),
+            );
+            ui.painter().rect_filled(rect, 0.0, scrim_color);
+            if response.clicked() {
+                *is_open = false;
+            }
+        });
 
     let y_offset = if *is_open {
         let t = progress;
@@ -258,32 +264,31 @@ pub fn draw_standard_modal<R>(
             ui.separator();
             ui.add_space(8.0);
 
-            // Compute remaining height for scroll area
-            // Footer: Centered exit close button is 40pt high. With padding/margins, it takes ~60pt.
-            let footer_h = 40.0 + 12.0; 
+            // Compute available height for scroll area
+            let footer_h = if !close_label.is_empty() { 40.0 + 12.0 } else { 0.0 }; 
             let available_scroll_h = (ui.available_height() - footer_h - 10.0).max(50.0);
 
             // Reusable scrollable viewport area
             egui::ScrollArea::vertical()
                 .max_height(available_scroll_h)
-                .auto_shrink([false, false])
+                .auto_shrink([false, true])
                 .show(ui, |ui| {
                     result = Some(content_ui(ui));
                 });
 
             // Footer: Centered exit close button
-            ui.add_space(12.0);
-            ui.vertical_centered(|ui| {
-                let close_btn = crate::widgets::ThemeButton::new(close_label)
-                    .style(crate::widgets::ThemeButtonStyle::Primary)
-                    .min_size(egui::vec2(
-                        if compact { ui.available_width() } else { 160.0 },
-                        40.0,
-                    ));
-                if ui.add(close_btn).clicked() {
-                    *is_open = false;
-                }
-            });
+            let has_footer = !close_label.is_empty();
+            if has_footer {
+                ui.add_space(12.0);
+                ui.vertical_centered(|ui| {
+                    let close_btn = crate::widgets::ThemeButton::new(close_label)
+                        .style(crate::widgets::ThemeButtonStyle::Primary)
+                        .min_size(egui::vec2(if compact { ui.available_width() } else { 160.0 }, 40.0));
+                    if ui.add(close_btn).clicked() {
+                        *is_open = false;
+                    }
+                });
+            }
         });
 
     result

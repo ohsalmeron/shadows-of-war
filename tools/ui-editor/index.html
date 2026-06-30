@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SOW — UI Scene Editor</title>
+<style>
+  :root { --bg:#14171c; --panel:#1d222b; --line:#2c333f; --text:#e6e9ee; --muted:#8b94a3; --accent:#e06b1f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
+  #app { display:flex; height:100%; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0c0e12; background-image:radial-gradient(rgba(255,255,255,.04) 1px, transparent 1px); background-size:24px 24px; }
+  #side { width:320px; background:var(--panel); border-left:1px solid var(--line); display:flex; flex-direction:column; overflow-y:auto; }
+  header { padding:12px 14px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:14px; letter-spacing:.4px; }
+  header .sub { color:var(--muted); font-size:11px; margin-top:3px; }
+  .group { padding:12px 14px; border-bottom:1px solid var(--line); }
+  .group h2 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); }
+  label { display:block; font-size:11px; color:var(--muted); margin:8px 0 3px; }
+  input, select { width:100%; background:#11151b; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+  input[type=checkbox] { width:auto; }
+  input[type=color] { padding:2px; height:30px; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  button { background:#2a3340; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; cursor:pointer; }
+  button:hover { background:#33404f; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#1a1206; font-weight:600; }
+  button.danger { background:#3a2326; border-color:#5a2f33; color:#f1b0b4; }
+  button.tiny { padding:3px 7px; font-size:11px; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  .list { }
+  .item { padding:7px 14px; border-bottom:1px solid #232a34; cursor:pointer; display:flex; align-items:center; gap:8px; }
+  .item:hover { background:#222a35; }
+  .item.sel { background:#2b3645; }
+  .item .kind { color:var(--accent); font-size:10px; text-transform:uppercase; flex:0 0 auto; width:42px; }
+  .item .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .ctl { display:flex; gap:3px; flex:0 0 auto; }
+  .hint { color:var(--muted); font-size:11px; margin-top:6px; }
+  #toast { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); background:#222a35; border:1px solid var(--line); border-radius:8px; padding:8px 14px; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #notice { position:absolute; top:10px; left:10px; right:10px; text-align:center; color:var(--muted); font-size:11px; }
+
+  /* ---- approximate scene preview (CSS, not 1:1 — see PRD §11) ---- */
+  #scenearea { position:absolute; }
+  .ui-frame { box-sizing:border-box; display:flex; flex-direction:column; align-items:center; }
+  .ui-vcenter { display:flex; flex-direction:column; align-items:center; width:100%; }
+  .ui-text { text-align:center; white-space:pre; }
+  .ui-btn { border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:4px 14px; text-align:center; background:rgba(40,40,45,.39); cursor:default; }
+  .ui-node.selected { outline:1px dashed var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="notice"></div>
+    <div id="scenearea"></div>
+    <div id="toast"></div>
+  </div>
+  <div id="side">
+    <header>
+      <h1>UI Scene Editor</h1>
+      <div class="sub">approximate preview · Export for the real 1:1 result</div>
+    </header>
+
+    <div class="group">
+      <h2>Scene</h2>
+      <label>Name</label>
+      <input id="sceneName" value="untitled">
+      <div class="btns" style="margin-top:8px">
+        <button id="newBtn">New</button>
+        <button id="loadBtn">Load</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Hierarchy</h2>
+      <div class="list" id="list"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="tiny" id="addText">+ Text</button>
+        <button class="tiny" id="addButton">+ Button</button>
+        <button class="tiny" id="addSpacer">+ Spacer</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Inspector</h2>
+      <div id="inspector"><div class="hint">Select a node in the hierarchy.</div></div>
+    </div>
+
+    <div class="group">
+      <h2>Save / Export</h2>
+      <div class="btns">
+        <button class="primary" id="saveBtn">Save</button>
+        <button id="exportBtn">Export</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;text-transform:none;letter-spacing:0">
+        <input type="checkbox" id="launchChk"> Run client after export (compiles — the only compile step)
+      </label>
+      <div class="hint">Save writes <code>assets/ui/&lt;name&gt;.json</code>. Export generates real Rust and (optionally) launches the client — the 1:1 truth.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Mirrors sow-ui/src/kit/theme/palette.rs — keep in sync; only used for the approximate preview.
+const PALETTE = {
+  surface:           "rgba(12,12,14,0.94)",
+  neon_cyan:         "#06b6d4",
+  neon_cyan_hover:   "#22d3ee",
+  neon_cyan_glow:    "rgba(6,182,212,0.31)",
+  neon_gold:         "#eab308",
+  neon_gold_hover:   "#facc15",
+  button_inactive:   "rgba(40,40,45,0.39)",
+  button_hovered:    "rgba(40,40,44,0.67)",
+  field_bg:          "rgba(8,8,10,0.59)",
+  field_border:      "rgba(75,85,99,0.31)",
+  danger:            "#ef4444",
+  danger_border:     "#dc2626",
+  pink:              "#ec4899",
+  text_normal:       "#f3f4f6",
+  text_muted:        "#9ca3af",
+};
+// Mirrors sow-ui/src/kit/theme/panels.rs hud_panel_frame()/leaderboard_panel_frame().
+const PRESETS = {
+  hud_panel_frame: { fill:"rgba(12,12,14,0.94)", border:"rgba(75,85,99,0.31)", radius:8, padX:8, padY:4 },
+  leaderboard_panel_frame: { fill:"rgba(6,8,12,0.90)", border:"rgba(255,255,255,0.08)", radius:10, padX:12, padY:10 },
+};
+
+function blankScene(name) {
+  return {
+    name: name || "untitled",
+    root: { kind:"panel", preset:"hud_panel_frame", size:{ w:300, h:168 }, children:[] },
+  };
+}
+let scene = blankScene("untitled");
+let sel = "panel"; // "panel" | index into root.children
+
+function resolveColorCss(token) {
+  if (PALETTE[token]) return PALETTE[token];
+  if (typeof token === "string" && token.startsWith("#")) return token;
+  return "#f3f4f6";
+}
+
+// ---- preview (approximate — see PRD §11: not pixel-faithful, the compiled client is the truth) ----
+function renderPreview() {
+  const area = document.getElementById("scenearea");
+  const p = scene.root;
+  const preset = PRESETS[p.preset] || PRESETS.hud_panel_frame;
+  const stage = document.getElementById("stage");
+  const left = Math.max(0, (stage.clientWidth - p.size.w) / 2);
+  const top = Math.max(0, (stage.clientHeight - p.size.h) / 2);
+  area.style.left = left + "px";
+  area.style.top = top + "px";
+
+  let html = `<div class="ui-node ${sel==='panel'?'selected':''}" data-sel="panel" style="width:${p.size.w}px;min-height:${p.size.h}px">
+    <div class="ui-frame" style="background:${preset.fill};border:1px solid ${preset.border};border-radius:${preset.radius}px;padding:${preset.padY}px ${preset.padX}px;width:100%;min-height:${p.size.h}px">
+      <div class="ui-vcenter">
+        <div style="height:8px"></div>`;
+  p.children.forEach((node, i) => {
+    const isSel = sel === i;
+    if (node.kind === "text") {
+      html += `<div class="ui-node ${isSel?'selected':''}" data-sel="${i}"><div class="ui-text" style="font-size:${node.size}px;font-weight:${node.strong?700:400};color:${resolveColorCss(node.color)}">${escapeHtml(node.text)}</div></div>`;
+    } else if (node.kind === "button") {
+      html += `<div class="ui-node ${isSel?'selected':''}" data-sel="${i}"><div class="ui-btn" style="font-size:${node.size}px;color:${resolveColorCss(node.color)}">${escapeHtml(node.text)}</div></div>`;
+    } else if (node.kind === "spacer") {
+      html += `<div class="ui-node ${isSel?'selected':''}" data-sel="${i}" style="width:100%;height:${node.h}px"></div>`;
+    }
+  });
+  html += `<div style="height:10px"></div></div></div></div>`;
+  area.innerHTML = html;
+  area.querySelectorAll(".ui-node").forEach(el => {
+    el.onclick = (e) => { e.stopPropagation(); const v = el.dataset.sel; sel = v === "panel" ? "panel" : +v; renderAll(); };
+  });
+}
+function escapeHtml(s){ return (s??"").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+// ---- hierarchy ----
+function renderList() {
+  const list = document.getElementById("list");
+  let html = `<div class="item ${sel==='panel'?'sel':''}" data-sel="panel"><span class="kind">panel</span><span class="nm">${escapeHtml(scene.root.preset)}</span></div>`;
+  scene.root.children.forEach((node, i) => {
+    const label = node.kind === "spacer" ? `${node.h}px` : node.text;
+    html += `<div class="item ${sel===i?'sel':''}" data-sel="${i}">
+      <span class="kind">${node.kind}</span><span class="nm">${escapeHtml(label)}</span>
+      <span class="ctl">
+        <button class="tiny" data-up="${i}" title="Move up">↑</button>
+        <button class="tiny" data-down="${i}" title="Move down">↓</button>
+        <button class="tiny" data-del="${i}" title="Delete">×</button>
+      </span></div>`;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".item").forEach(el => {
+    el.onclick = (e) => { if (e.target.closest("button")) return; const v = el.dataset.sel; sel = v === "panel" ? "panel" : +v; renderAll(); };
+  });
+  list.querySelectorAll("[data-up]").forEach(el => el.onclick = (e) => { e.stopPropagation(); moveChild(+el.dataset.up, -1); });
+  list.querySelectorAll("[data-down]").forEach(el => el.onclick = (e) => { e.stopPropagation(); moveChild(+el.dataset.down, 1); });
+  list.querySelectorAll("[data-del]").forEach(el => el.onclick = (e) => { e.stopPropagation(); deleteChild(+el.dataset.del); });
+}
+function moveChild(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= scene.root.children.length) return;
+  const c = scene.root.children;
+  [c[i], c[j]] = [c[j], c[i]];
+  sel = j;
+  renderAll();
+}
+function deleteChild(i) {
+  scene.root.children.splice(i, 1);
+  sel = "panel";
+  renderAll();
+}
+
+// ---- inspector ----
+function colorField(id, value) {
+  const opts = Object.keys(PALETTE).map(k => `<option value="${k}" ${k===value?"selected":""}>${k}</option>`).join("");
+  const isCustom = !PALETTE[value];
+  return `<label>Color</label>
+    <select id="${id}">${opts}<option value="__custom" ${isCustom?"selected":""}>custom hex…</option></select>
+    <input id="${id}_hex" type="color" value="${isCustom?value:'#f3f4f6'}" style="margin-top:6px;display:${isCustom?'block':'none'}">`;
+}
+function wireColorField(id, onChange) {
+  const sel = document.getElementById(id), hex = document.getElementById(id+"_hex");
+  sel.onchange = () => {
+    if (sel.value === "__custom") { hex.style.display = "block"; onChange(hex.value); }
+    else { hex.style.display = "none"; onChange(sel.value); }
+  };
+  hex.oninput = () => { if (sel.value === "__custom") onChange(hex.value); };
+}
+
+function renderInspector() {
+  const host = document.getElementById("inspector");
+  if (sel === "panel") {
+    const p = scene.root;
+    host.innerHTML = `<label>Preset</label>
+      <select id="i_preset">
+        <option value="hud_panel_frame" ${p.preset==="hud_panel_frame"?"selected":""}>hud_panel_frame</option>
+        <option value="leaderboard_panel_frame" ${p.preset==="leaderboard_panel_frame"?"selected":""}>leaderboard_panel_frame</option>
+      </select>
+      <label>Size (w, h)</label>
+      <div class="row"><input id="i_w" type="number" value="${p.size.w}"><input id="i_h" type="number" value="${p.size.h}"></div>`;
+    document.getElementById("i_preset").onchange = e => { p.preset = e.target.value; renderAll(); };
+    document.getElementById("i_w").oninput = e => { p.size.w = +e.target.value || 0; renderPreview(); };
+    document.getElementById("i_h").oninput = e => { p.size.h = +e.target.value || 0; renderPreview(); };
+    return;
+  }
+  const node = scene.root.children[sel];
+  if (!node) { host.innerHTML = `<div class="hint">Select a node in the hierarchy.</div>`; return; }
+  if (node.kind === "text") {
+    host.innerHTML = `<label>Text</label><input id="i_text" value="${escapeHtml(node.text)}">
+      <label>Size</label><input id="i_size" type="number" value="${node.size}">
+      ${colorField("i_color", node.color)}
+      <label style="display:flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;margin-top:8px"><input id="i_strong" type="checkbox" ${node.strong?"checked":""}> Strong (bold)</label>`;
+    document.getElementById("i_text").oninput = e => { node.text = e.target.value; renderAll(); };
+    document.getElementById("i_size").oninput = e => { node.size = +e.target.value || 0; renderPreview(); };
+    document.getElementById("i_strong").onchange = e => { node.strong = e.target.checked; renderPreview(); };
+    wireColorField("i_color", v => { node.color = v; renderPreview(); });
+  } else if (node.kind === "button") {
+    host.innerHTML = `<label>Text</label><input id="i_text" value="${escapeHtml(node.text)}">
+      <label>Size</label><input id="i_size" type="number" value="${node.size}">
+      ${colorField("i_color", node.color)}
+      <div class="hint">Static layout only — buttons don't act yet (vNext).</div>`;
+    document.getElementById("i_text").oninput = e => { node.text = e.target.value; renderAll(); };
+    document.getElementById("i_size").oninput = e => { node.size = +e.target.value || 0; renderPreview(); };
+    wireColorField("i_color", v => { node.color = v; renderPreview(); });
+  } else if (node.kind === "spacer") {
+    host.innerHTML = `<label>Height</label><input id="i_h" type="number" value="${node.h}">`;
+    document.getElementById("i_h").oninput = e => { node.h = +e.target.value || 0; renderPreview(); };
+  }
+}
+
+function renderAll() { renderList(); renderInspector(); renderPreview(); }
+
+// ---- add nodes ----
+document.getElementById("addText").onclick = () => {
+  scene.root.children.push({ kind:"text", text:"New Text", size:16.0, color:"text_normal", strong:false });
+  sel = scene.root.children.length - 1; renderAll();
+};
+document.getElementById("addButton").onclick = () => {
+  scene.root.children.push({ kind:"button", text:"Button", size:14.0, color:"text_normal" });
+  sel = scene.root.children.length - 1; renderAll();
+};
+document.getElementById("addSpacer").onclick = () => {
+  scene.root.children.push({ kind:"spacer", h:8.0 });
+  sel = scene.root.children.length - 1; renderAll();
+};
+
+// ---- scene name / new / load ----
+document.getElementById("sceneName").oninput = e => { scene.name = e.target.value; };
+document.getElementById("newBtn").onclick = () => {
+  const name = document.getElementById("sceneName").value.trim() || "untitled";
+  scene = blankScene(name); sel = "panel"; renderAll(); toast("New scene");
+};
+document.getElementById("loadBtn").onclick = async () => {
+  const name = document.getElementById("sceneName").value.trim();
+  if (!name) { toast("Enter a scene name first"); return; }
+  try {
+    const res = await fetch(`/assets/ui/${name}.json`, { cache:"no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const j = await res.json();
+    scene = normalize(j); sel = "panel"; renderAll(); toast("Loaded " + name);
+  } catch (e) { toast("Load failed: " + e.message); }
+};
+function normalize(j) {
+  const root = j.root || { kind:"panel", preset:"hud_panel_frame", size:{w:300,h:168}, children:[] };
+  return { name: j.name || "untitled", root };
+}
+
+// ---- save / export ----
+function serialize() {
+  return JSON.stringify(scene, null, 2) + "\n";
+}
+async function saveScene() {
+  const name = (scene.name || "").trim();
+  if (!/^[a-zA-Z0-9_]+$/.test(name)) { toast("Scene name must be alphanumeric/underscore"); return false; }
+  try {
+    const res = await fetch(`/__save?file=${name}.json`, { method:"POST", body: serialize() });
+    if (!res.ok) throw new Error(await res.text());
+    toast("Saved → assets/ui/" + name + ".json");
+    return true;
+  } catch (e) { toast("Save failed (run via `./sow ui`): " + e.message); return false; }
+}
+document.getElementById("saveBtn").onclick = saveScene;
+document.getElementById("exportBtn").onclick = async () => {
+  if (!(await saveScene())) return;
+  const name = scene.name.trim();
+  const launch = document.getElementById("launchChk").checked;
+  try {
+    toast(launch ? "Exporting + launching (compiling)…" : "Exporting…");
+    const res = await fetch(`/__export?scene=${name}${launch?"&launch=1":""}`, { method:"POST" });
+    if (!res.ok) throw new Error(await res.text());
+    toast(launch ? "Exported — client launching (compile in progress)" : "Exported → sow-client/src/ui_scene/generated/" + name + ".rs");
+  } catch (e) { toast("Export failed: " + e.message); }
+};
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._t); t._t = setTimeout(() => t.style.opacity = 0, 2600);
+}
+
+window.addEventListener("resize", renderPreview);
+
+(function boot() {
+  const params = new URLSearchParams(location.search);
+  const initial = params.get("scene");
+  if (initial) {
+    document.getElementById("sceneName").value = initial;
+    scene.name = initial;
+    document.getElementById("loadBtn").click();
+  }
+  renderAll();
+  document.getElementById("notice").textContent = "Drag-to-place is not implemented yet — use the inspector's size/position fields. This canvas is an approximation; Export & Run shows the 1:1 result.";
+})();
+</script>
+</body>
+</html>
