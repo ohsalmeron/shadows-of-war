@@ -182,6 +182,7 @@ mod platform_output;
 pub mod player_progress;
 pub mod render;
 pub mod store_portals;
+pub mod ui_scene;
 mod viewport;
 mod web_canvas;
 

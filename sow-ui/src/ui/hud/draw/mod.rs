@@ -39,6 +39,7 @@ pub fn draw(
     let portrait_dock = sow_ui_kit::theme::portrait_layout(ui.ctx());
     let anim = sow_ui_kit::theme::anim_duration_from_ctx(ui.ctx());
     let anim_hover = sow_ui_kit::theme::anim_duration_hover_from_ctx(ui.ctx());
+    let dialog_active = state.bottom_dialog.is_some();
 
     let panel_w = if portrait_dock {
         rect.width()
@@ -117,8 +118,10 @@ pub fn draw(
     );
     draw_top_icons(ui, state, lang, &mut action, asset_loader);
     draw_alliance_inbox(ui, state, cancel_intents, lang, anim, asset_loader);
-    draw_map_controls(ui, state, lang, compact, log_tabs_enabled, &mut action);
-    draw_attack_ratio_rail(ui, state, compact, &mut action);
+    if !(portrait_dock && dialog_active) {
+        draw_map_controls(ui, state, lang, compact, log_tabs_enabled, &mut action);
+        draw_attack_ratio_rail(ui, state, compact, &mut action);
+    }
     draw_emoji_panel(ui, state, cancel_intents, lang, compact, anim, anim_hover);
     transfer::draw_transfer_panel(ui, state, cancel_intents, lang);
     sync::draw_sync_overlay(ui.ctx(), state, lang);

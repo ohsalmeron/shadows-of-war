@@ -72,7 +72,7 @@ wasm-opt = "0.116"
 tempfile = "3"
 
 # blade-egui, blade-graphics, blade-macros are specified directly in
-# each crate's Cargo.toml (git + subdir) — not workspace deps.
+ # each crate's Cargo.toml (git + subdir) — not workspace deps.
 
 [workspace.dependencies.bytemuck]
 version = "1"

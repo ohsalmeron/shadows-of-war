@@ -5,6 +5,11 @@ use sow_i18n::Language;
 use super::super::overlays::mobile;
 use super::super::panels::troop_spawn;
 use super::super::state::{building_emoji, BottomHudTab, HudState};
+
+enum StripItem {
+    Building(sow_core::game::BuildingKind),
+    Nuke(sow_core::game::NukeKind),
+}
 use super::battle_log;
 use super::event_log;
 
@@ -17,40 +22,47 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
     ui.set_width(width);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = if compact { 4.0 } else { 12.0 };
+        let spacing = ui.spacing().item_spacing.x;
 
-        let active_kinds = [
-            sow_core::game::BuildingKind::City,
-            sow_core::game::BuildingKind::Factory,
-            sow_core::game::BuildingKind::Port,
-            sow_core::game::BuildingKind::Bunker,
+        let mut items: Vec<StripItem> = vec![
+            StripItem::Building(sow_core::game::BuildingKind::City),
+            StripItem::Building(sow_core::game::BuildingKind::Factory),
+            StripItem::Building(sow_core::game::BuildingKind::Port),
+            StripItem::Building(sow_core::game::BuildingKind::Bunker),
         ];
-        let num_items = active_kinds.len() as f32;
-
-        let mut available_width = width;
         if sow_core::config::ENABLE_MISSILE_STRUCTURES {
-            let nuke_w = if compact { 32.0 } else { 36.0 };
-            let extra_w = 4.0 + 8.0 + 4.0 + nuke_w + (if compact { 4.0 } else { 12.0 });
-            available_width = (available_width - extra_w).max(50.0);
+            items.push(StripItem::Nuke(sow_core::game::NukeKind::AtomBomb));
         }
+        let num_items = items.len() as f32;
 
-        let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 })) / num_items;
-
+        let col_w = (width - (num_items - 1.0) * spacing) / num_items;
         let btn_size = col_w.min(if compact { 40.0 } else { 48.0 });
         let gold_plate_h = if compact { 14.0 } else { 18.0 };
         let total_h = btn_size + 4.0 + gold_plate_h;
 
-        for (display_idx, &kind) in active_kinds.iter().enumerate() {
-            let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
-            let cost = state.building_costs[cost_idx];
-            let is_selected = state.selected_building_kind == Some(kind);
-            let can_afford = state.gold >= cost;
-
-            let tint = if is_selected {
-                sow_ui_kit::theme::palette::neon_cyan()
-            } else if !can_afford {
-                egui::Color32::from_rgb(180, 50, 50)
-            } else {
-                egui::Color32::WHITE
+        for (display_idx, item) in items.iter().enumerate() {
+            let (is_nuke, is_selected, can_afford, tint, emoji, cost_label, accent, hotkey) = match item {
+                StripItem::Building(kind) => {
+                    let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == *kind).unwrap_or(0);
+                    let cost = state.building_costs[cost_idx];
+                    let sel = state.selected_building_kind == Some(*kind);
+                    let afford = state.gold >= cost;
+                    let t = if sel {
+                        sow_ui_kit::theme::palette::neon_cyan()
+                    } else if !afford {
+                        egui::Color32::from_rgb(180, 50, 50)
+                    } else {
+                        egui::Color32::WHITE
+                    };
+                    let cost_txt = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
+                    let cl = if cost_txt == "N/A" { cost_txt } else { format!("🪙 {cost_txt}") };
+                    (false, sel, afford, t, building_emoji(*kind).to_owned(), cl, sow_ui_kit::theme::palette::neon_cyan(), format!("{}", display_idx + 1))
+                }
+                StripItem::Nuke(kind) => {
+                    let sel = state.selected_nuke_kind == Some(*kind);
+                    let red = egui::Color32::from_rgb(239, 68, 68);
+                    (true, sel, true, if sel { red } else { egui::Color32::WHITE }, "☢️".to_owned(), "Nuke".to_owned(), red, "8".to_owned())
+                }
             };
 
             let (rect, mut resp) = ui.allocate_exact_size(
@@ -59,32 +71,34 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             );
 
             resp = resp.on_hover_ui(|ui| {
-                let name = match kind {
-                    sow_core::game::BuildingKind::City => "City Center",
-                    sow_core::game::BuildingKind::Bunker => "Defense Tower",
-                    sow_core::game::BuildingKind::Factory => "Industrial Factory",
-                    sow_core::game::BuildingKind::Port => "Maritime Port",
-                };
-                let desc = match kind {
-                    sow_core::game::BuildingKind::City => "Core of your empire. Increases troop generation, gold generation, and max troops. Can be upgraded with 6 powerful modules (Port, Foundry, Armory, Intel, Arsenal, Shield)!",
-                    sow_core::game::BuildingKind::Bunker => "Frontline Anchor: Fortifies borders, slowing enemy land grabs. Naturally strong on mountains (3x) and highlands (2x), upgradable with gold!",
-                    sow_core::game::BuildingKind::Factory => "Economic Engine: A specialized pure gold generator. Upgradable up to Level 5 to progressively multiply gold income. Must be spaced from other structures.",
-                    sow_core::game::BuildingKind::Port => "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
-                };
-
-                ui.label(egui::RichText::new(name).strong().size(14.0).color(sow_ui_kit::theme::palette::neon_cyan()));
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
-                ui.add_space(6.0);
-
-                let cost_text = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
-                let cost_color = if can_afford { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
-                crate::widgets::emoji_label(
-                    ui,
-                    &format!("Cost: 🪙 {cost_text} Gold"),
-                    egui::FontId::proportional(13.0),
-                    cost_color,
-                );
+                if is_nuke {
+                    crate::widgets::outlined_emoji_label(ui, "Nuke", egui::FontId::proportional(14.0), accent);
+                    ui.add_space(4.0);
+                    crate::widgets::emoji_label(ui, "Missile payload that detonates on impact. Blast radius, flight speed, and size are upgraded by your city's Arsenal module level.", egui::FontId::proportional(12.0), egui::Color32::LIGHT_GRAY);
+                } else {
+                    let kind = match item { StripItem::Building(k) => *k, _ => unreachable!() };
+                    let name = match kind {
+                        sow_core::game::BuildingKind::City => "City Center",
+                        sow_core::game::BuildingKind::Bunker => "Defense Tower",
+                        sow_core::game::BuildingKind::Factory => "Industrial Factory",
+                        sow_core::game::BuildingKind::Port => "Maritime Port",
+                    };
+                    let desc = match kind {
+                        sow_core::game::BuildingKind::City => "Core of your empire. Increases troop generation, gold generation, and max troops. Can be upgraded with 6 powerful modules (Port, Foundry, Armory, Intel, Arsenal, Shield)!",
+                        sow_core::game::BuildingKind::Bunker => "Frontline Anchor: Fortifies borders, slowing enemy land grabs. Naturally strong on mountains (3x) and highlands (2x), upgradable with gold!",
+                        sow_core::game::BuildingKind::Factory => "Economic Engine: A specialized pure gold generator. Upgradable up to Level 5 to progressively multiply gold income. Must be spaced from other structures.",
+                        sow_core::game::BuildingKind::Port => "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
+                    };
+                    let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                    let cost = state.building_costs[cost_idx];
+                    crate::widgets::outlined_emoji_label(ui, name, egui::FontId::proportional(14.0), sow_ui_kit::theme::palette::neon_cyan());
+                    ui.add_space(4.0);
+                    crate::widgets::emoji_label(ui, desc, egui::FontId::proportional(12.0), egui::Color32::LIGHT_GRAY);
+                    ui.add_space(6.0);
+                    let cost_text = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
+                    let cost_color = if can_afford { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
+                    crate::widgets::emoji_label(ui, &format!("Cost: 🪙 {cost_text} Gold"), egui::FontId::proportional(13.0), cost_color);
+                }
             });
 
             let square_rect = egui::Rect::from_min_size(
@@ -102,7 +116,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                 is_selected,
                 can_afford,
                 is_hovered,
-                sow_ui_kit::theme::palette::neon_cyan(),
+                accent,
             );
 
             ui.painter().rect(
@@ -113,14 +127,13 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                 egui::StrokeKind::Inside,
             );
 
-            let icon_size = btn_size * 0.48;
-            let icon_rect = egui::Rect::from_center_size(square_rect.center(), egui::vec2(icon_size, icon_size));
-            if !crate::widgets::try_paint_emoji(ui.painter(), building_emoji(kind), icon_rect, tint) {
+            let icon_rect = square_rect;
+            if !crate::widgets::try_paint_emoji(ui.painter(), &emoji, icon_rect, tint) {
                 ui.painter().text(
                     icon_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    building_emoji(kind),
-                    egui::FontId::proportional(icon_size),
+                    &emoji,
+                    egui::FontId::proportional(btn_size),
                     tint,
                 );
             }
@@ -145,7 +158,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                 ui.painter().text(
                     badge_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    format!("{}", display_idx + 1),
+                    &hotkey,
                     egui::FontId::proportional(9.0),
                     egui::Color32::WHITE,
                 );
@@ -161,24 +174,12 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                 egui::StrokeKind::Inside,
             );
 
-            let cost_text = if cost.is_infinite() {
-                "N/A".to_string()
-            } else {
-                crate::utils::format_number(cost)
-            };
-
             let text_color = if !can_afford {
                 egui::Color32::from_rgb(239, 68, 68)
             } else if is_selected {
-                sow_ui_kit::theme::palette::neon_cyan()
+                accent
             } else {
                 egui::Color32::from_rgb(230, 230, 230)
-            };
-
-            let cost_label = if cost_text == "N/A" {
-                cost_text
-            } else {
-                format!("🪙 {cost_text}")
             };
 
             let font_size = if compact { 9.0 } else { 10.0 };
@@ -193,120 +194,21 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
             );
 
             if resp.clicked() {
-                if is_selected {
-                    state.selected_building_kind = None;
-                } else {
-                    state.selected_building_kind = Some(kind);
-                    state.selected_nuke_kind = None;
-                }
-            }
-        }
-
-        // Nuke launch button — same column rhythm as the buildings (icon box of height `btn_size`
-        // at the top + label plate below, the whole column `total_h` tall) so it aligns with them
-        // instead of floating short and center-justified. Red accent + its own select state.
-        if sow_core::config::ENABLE_MISSILE_STRUCTURES {
-            ui.add_space(4.0);
-            ui.separator();
-            ui.add_space(4.0);
-
-            let nukes: [(sow_core::game::NukeKind, &str); 1] = [
-                (sow_core::game::NukeKind::AtomBomb, "Nuke"),
-            ];
-
-            for &(nuke_kind, label) in &nukes {
-                let is_selected = state.selected_nuke_kind == Some(nuke_kind);
-                let nk_col_w = if compact { 32.0 } else { 36.0 };
-                let red = egui::Color32::from_rgb(239, 68, 68);
-
-                let (rect, mut resp) = ui.allocate_exact_size(
-                    egui::vec2(nk_col_w, total_h),
-                    egui::Sense::click(),
-                );
-
-                resp = resp.on_hover_ui(|ui| {
-                    let desc = "Missile payload that detonates on impact. Blast radius, flight speed, and size are upgraded by your city's Arsenal module level.";
-                    ui.label(egui::RichText::new(label).strong().size(14.0).color(red));
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
-                });
-
-                let is_hovered = resp.hovered();
-                let tint = if is_selected { red } else { egui::Color32::WHITE };
-
-                // Icon box — mirrors the building square: top of the column, `btn_size` tall so its
-                // bottom (and the plate below) line up with the building columns.
-                let box_rect = egui::Rect::from_min_size(
-                    egui::pos2(rect.center().x - nk_col_w * 0.5, rect.top()),
-                    egui::vec2(nk_col_w, btn_size),
-                );
-                let box_stroke = if is_selected {
-                    egui::Stroke::new(1.5_f32, red)
-                } else if is_hovered {
-                    egui::Stroke::new(1.0_f32, red.linear_multiply(0.6))
-                } else {
-                    egui::Stroke::new(1.0_f32, sow_ui_kit::theme::palette::field_border().linear_multiply(0.5))
-                };
-                let box_bg = if is_selected {
-                    egui::Color32::from_rgba_unmultiplied(239, 68, 68, 30)
-                } else {
-                    egui::Color32::TRANSPARENT
-                };
-                ui.painter().rect(box_rect, sow_ui_kit::theme::radius::SM, box_bg, box_stroke, egui::StrokeKind::Inside);
-
-                let icon_size = btn_size * 0.48;
-                let icon_rect = egui::Rect::from_center_size(box_rect.center(), egui::vec2(icon_size, icon_size));
-                if !crate::widgets::try_paint_emoji(ui.painter(), "☢️", icon_rect, tint) {
-                    ui.painter().text(
-                        icon_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "☢️",
-                        egui::FontId::proportional(icon_size),
-                        tint,
-                    );
-                }
-
-                // Hotkey badge (top-left), matching the building columns.
-                let os = ui.ctx().os();
-                let is_mobile_os = os == egui::os::OperatingSystem::IOS || os == egui::os::OperatingSystem::Android;
-                if !is_mobile_os && !compact {
-                    ui.painter().text(
-                        egui::pos2(box_rect.left() + 4.0, box_rect.top() + 3.0),
-                        egui::Align2::LEFT_TOP,
-                        "8".to_string(),
-                        egui::FontId::proportional(9.0),
-                        if is_selected { red } else { egui::Color32::from_white_alpha(120) },
-                    );
-                }
-
-                // Label plate below — same y/size rhythm as the building cost plate.
-                let plate_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, box_rect.bottom() + 2.0 + gold_plate_h * 0.5),
-                    egui::vec2(nk_col_w, gold_plate_h),
-                );
-                let plate_bg = egui::Color32::from_rgba_unmultiplied(10, 15, 25, 240);
-                let plate_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_white_alpha(40));
-                ui.painter().rect(
-                    plate_rect,
-                    egui::CornerRadius::same((gold_plate_h * 0.5) as u8),
-                    plate_bg,
-                    plate_stroke,
-                    egui::StrokeKind::Inside,
-                );
-                ui.painter().text(
-                    plate_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(if compact { 9.0 } else { 10.0 }),
-                    if is_selected { red } else { egui::Color32::from_rgb(230, 230, 230) },
-                );
-
-                if resp.clicked() {
+                if is_nuke {
+                    let kind = match item { StripItem::Nuke(k) => *k, _ => unreachable!() };
                     if is_selected {
                         state.selected_nuke_kind = None;
                     } else {
-                        state.selected_nuke_kind = Some(nuke_kind);
+                        state.selected_nuke_kind = Some(kind);
                         state.selected_building_kind = None;
+                    }
+                } else {
+                    let kind = match item { StripItem::Building(k) => *k, _ => unreachable!() };
+                    if is_selected {
+                        state.selected_building_kind = None;
+                    } else {
+                        state.selected_building_kind = Some(kind);
+                        state.selected_nuke_kind = None;
                     }
                 }
             }
@@ -395,7 +297,7 @@ pub(in crate::ui::hud) fn hud_sidebar_row_height(
 ) -> f32 {
     let s = if compact { chrome_scale } else { 1.0 };
     if dialog_active {
-        return if compact { 140.0 * s } else { 160.0 };
+        return if compact { 240.0 * s } else { 160.0 };
     }
     if spawn_active {
         return if compact { 72.0 * s } else { 56.0 };
@@ -404,15 +306,10 @@ pub(in crate::ui::hud) fn hud_sidebar_row_height(
     let row_gap = sow_ui_kit::theme::margin::TIGHT as f32;
     let body_h = match main {
         HudSidebarMain::Controls => {
-            let num_items = 4.0;
-            let mut available_width = main_w;
-            if sow_core::config::ENABLE_MISSILE_STRUCTURES {
-                let nuke_w = if compact { 32.0 * s } else { 36.0 };
-                let extra_w = 4.0 + 8.0 + 4.0 + nuke_w + (if compact { 4.0 } else { 12.0 });
-                available_width = (available_width - extra_w).max(50.0);
-            }
-            let col_w = (available_width - (num_items - 1.0) * (if compact { 4.0 } else { 12.0 }))
-                / num_items;
+            let extra = if sow_core::config::ENABLE_MISSILE_STRUCTURES { 1.0 } else { 0.0 };
+            let num_items = 4.0 + extra;
+            let spacing = if compact { 4.0 } else { 12.0 };
+            let col_w = (main_w - (num_items - 1.0) * spacing) / num_items;
             let btn_size = col_w.min(if compact { 40.0 * s } else { 48.0 });
             let gold_plate_h = if compact { 14.0 * s } else { 18.0 };
             btn_size + 4.0 + gold_plate_h

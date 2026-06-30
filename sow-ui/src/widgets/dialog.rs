@@ -87,65 +87,74 @@ pub fn paint_dialog_contents(
     asset_loader: &AssetLoader,
     compact: bool,
 ) -> Option<usize> {
-    let portrait = if compact { 44.0 } else { 52.0 };
     let mut clicked: Option<usize> = None;
 
-    ui.horizontal_top(|ui| {
-        match visual {
-            Some(SpeakerVisual::Avatar(leader)) => {
-                if let Some(tex) = asset_loader
-                    .avatars
-                    .get(leader)
-                    .or(asset_loader.avatar_fallback.as_ref())
-                {
-                    ui.add(
-                        egui::Image::new(tex)
-                            .fit_to_exact_size(Vec2::splat(portrait))
-                            .corner_radius(egui::CornerRadius::same(8)),
-                    );
-                    ui.add_space(10.0);
-                }
-            }
-            Some(SpeakerVisual::Tribe { color, emoji }) => {
-                let (rect, _) =
-                    ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
-                paint_speaker_disc(ui.painter(), rect, *color);
-                let er = egui::Rect::from_center_size(rect.center(), Vec2::splat(portrait * 0.62));
-                crate::widgets::try_paint_emoji(ui.painter(), emoji, er, Color32::WHITE);
-                ui.add_space(10.0);
-            }
-            Some(SpeakerVisual::Empire { color }) => {
-                let (rect, _) =
-                    ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
-                paint_speaker_disc(ui.painter(), rect, *color);
-                ui.add_space(10.0);
-            }
-            None => {}
-        }
-
+    if compact {
+        // Mobile vertical stack: portrait above text above buttons.
         ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            let wrap_w = ui.available_width().max(1.0);
+            ui.spacing_mut().item_spacing.y = 6.0;
 
-            // Eyebrow, title, body all go through the emoji atlas text pipeline (the same one the
-            // HUD uses) rather than egui labels — text runs render as glyphs, any emoji as atlas
-            // images. The body is greedily word-wrapped to the column (the pipeline is single-line).
+            if let Some(visual) = visual {
+                let portrait = 56.0;
+                ui.horizontal_centered(|ui| {
+                    match visual {
+                        SpeakerVisual::Avatar(leader) => {
+                            if let Some(tex) = asset_loader
+                                .avatars
+                                .get(leader)
+                                .or(asset_loader.avatar_fallback.as_ref())
+                            {
+                                ui.add(
+                                    egui::Image::new(tex)
+                                        .fit_to_exact_size(Vec2::splat(portrait))
+                                        .corner_radius(egui::CornerRadius::same(8)),
+                                );
+                            }
+                        }
+                        SpeakerVisual::Tribe { color, emoji } => {
+                            let (rect, _) =
+                                ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
+                            paint_speaker_disc(ui.painter(), rect, *color);
+                            let er = egui::Rect::from_center_size(
+                                rect.center(),
+                                Vec2::splat(portrait * 0.62),
+                            );
+                            crate::widgets::try_paint_emoji(ui.painter(), emoji, er, Color32::WHITE);
+                        }
+                        SpeakerVisual::Empire { color } => {
+                            let (rect, _) =
+                                ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
+                            paint_speaker_disc(ui.painter(), rect, *color);
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+            }
+
             if let Some(name) = name {
+                ui.horizontal_centered(|ui| {
+                    crate::widgets::outlined_emoji_label(
+                        ui,
+                        &name.to_uppercase(),
+                        egui::FontId::proportional(12.0),
+                        theme::palette::neon_cyan(),
+                    );
+                });
+            }
+
+            ui.horizontal_centered(|ui| {
                 crate::widgets::outlined_emoji_label(
                     ui,
-                    &name.to_uppercase(),
-                    egui::FontId::proportional(11.0),
-                    theme::palette::neon_cyan(),
+                    title,
+                    egui::FontId::proportional(18.0),
+                    Color32::WHITE,
                 );
-            }
-            crate::widgets::outlined_emoji_label(
-                ui,
-                title,
-                egui::FontId::proportional(if compact { 16.0 } else { 18.0 }),
-                Color32::WHITE,
-            );
-            ui.add_space(2.0);
-            let body_font = egui::FontId::proportional(if compact { 13.0 } else { 14.0 });
+            });
+
+            ui.add_space(4.0);
+
+            let wrap_w = ui.available_width().max(1.0);
+            let body_font = egui::FontId::proportional(14.0);
             for line in wrap_emoji_lines(ui.painter(), body, &body_font, wrap_w) {
                 crate::widgets::emoji_label(
                     ui,
@@ -155,23 +164,112 @@ pub fn paint_dialog_contents(
                 );
             }
 
-            ui.add_space(8.0);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                for (i, btn) in buttons.iter().enumerate() {
-                    let resp = ui.add(
-                        ThemeButton::new(&btn.label)
-                            .style(btn.style)
-                            .text_size(if compact { 13.0 } else { 14.0 })
-                            .min_size(egui::vec2(88.0, if compact { 32.0 } else { 34.0 })),
-                    );
-                    if resp.clicked() {
-                        clicked = Some(i);
+            ui.add_space(12.0);
+
+            if !buttons.is_empty() {
+                ui.horizontal(|ui| {
+                    let spacing = ui.spacing().item_spacing.x;
+                    let total_gap = spacing * (buttons.len().saturating_sub(1) as f32);
+                    let btn_w =
+                        ((ui.available_width() - total_gap) / buttons.len() as f32).max(88.0);
+                    for (i, btn) in buttons.iter().enumerate() {
+                        let resp = ui.add_sized(
+                            egui::vec2(btn_w, 40.0),
+                            ThemeButton::new(&btn.label)
+                                .style(btn.style)
+                                .text_size(14.0),
+                        );
+                        if resp.clicked() {
+                            clicked = Some(i);
+                        }
+                    }
+                });
+            }
+        });
+    } else {
+        let portrait = 52.0;
+
+        ui.horizontal_top(|ui| {
+            match visual {
+                Some(SpeakerVisual::Avatar(leader)) => {
+                    if let Some(tex) = asset_loader
+                        .avatars
+                        .get(leader)
+                        .or(asset_loader.avatar_fallback.as_ref())
+                    {
+                        ui.add(
+                            egui::Image::new(tex)
+                                .fit_to_exact_size(Vec2::splat(portrait))
+                                .corner_radius(egui::CornerRadius::same(8)),
+                        );
+                        ui.add_space(10.0);
                     }
                 }
+                Some(SpeakerVisual::Tribe { color, emoji }) => {
+                    let (rect, _) =
+                        ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
+                    paint_speaker_disc(ui.painter(), rect, *color);
+                    let er =
+                        egui::Rect::from_center_size(rect.center(), Vec2::splat(portrait * 0.62));
+                    crate::widgets::try_paint_emoji(ui.painter(), emoji, er, Color32::WHITE);
+                    ui.add_space(10.0);
+                }
+                Some(SpeakerVisual::Empire { color }) => {
+                    let (rect, _) =
+                        ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
+                    paint_speaker_disc(ui.painter(), rect, *color);
+                    ui.add_space(10.0);
+                }
+                None => {}
+            }
+
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let wrap_w = ui.available_width().max(1.0);
+
+                if let Some(name) = name {
+                    crate::widgets::outlined_emoji_label(
+                        ui,
+                        &name.to_uppercase(),
+                        egui::FontId::proportional(11.0),
+                        theme::palette::neon_cyan(),
+                    );
+                }
+                crate::widgets::outlined_emoji_label(
+                    ui,
+                    title,
+                    egui::FontId::proportional(18.0),
+                    Color32::WHITE,
+                );
+                ui.add_space(2.0);
+                let body_font = egui::FontId::proportional(14.0);
+                for line in wrap_emoji_lines(ui.painter(), body, &body_font, wrap_w) {
+                    crate::widgets::emoji_label(
+                        ui,
+                        &line,
+                        body_font.clone(),
+                        theme::palette::text_muted(),
+                    );
+                }
+
+                ui.add_space(8.0);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    for (i, btn) in buttons.iter().enumerate() {
+                        let resp = ui.add(
+                            ThemeButton::new(&btn.label)
+                                .style(btn.style)
+                                .text_size(14.0)
+                                .min_size(egui::vec2(88.0, 34.0)),
+                        );
+                        if resp.clicked() {
+                            clicked = Some(i);
+                        }
+                    }
+                });
             });
         });
-    });
+    }
 
     clicked
 }

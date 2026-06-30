@@ -310,7 +310,11 @@ pub fn draw_queue_overlay(
     let panel_frame = sow_ui_kit::theme::standard_panel_frame(compact);
     let available_rect = ui.available_rect_before_wrap();
     let pad_x = if compact { 12.0 } else { 24.0 };
-    let pad_y = if compact { 16.0 } else { 48.0 };
+    let pad_y = if compact {
+        16.0 + state.safe_area_bottom
+    } else {
+        48.0
+    };
     let card_w = (available_rect.width() - pad_x * 2.0).max(320.0);
     let card_h = (available_rect.height() - pad_y * 2.0).max(240.0);
 

@@ -589,9 +589,9 @@ impl SowApp {
                                     );
 
                                     resp = resp.on_hover_ui(|ui| {
-                                        ui.label(egui::RichText::new(label).strong().size(14.0).color(theme_color));
+                                        sow_ui::widgets::outlined_emoji_label(ui, label, egui::FontId::proportional(14.0), theme_color);
                                         ui.add_space(4.0);
-                                        ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::LIGHT_GRAY));
+                                        sow_ui::widgets::emoji_label(ui, desc, egui::FontId::proportional(12.0), egui::Color32::LIGHT_GRAY);
                                         ui.add_space(6.0);
                                         let cost_color = if !is_disabled { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
                                         sow_ui::widgets::emoji_label(

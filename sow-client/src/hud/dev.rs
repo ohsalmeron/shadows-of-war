@@ -82,6 +82,9 @@ impl SowApp {
         if self.ui.app.phase != ClientPhase::Playing {
             return;
         }
+        if self.ui.app.hud_state.bottom_dialog.is_some() {
+            return;
+        }
         let my_pid = self.sim.my_player_id.unwrap_or(0);
 
         // ── Collect owned rows first ───────────────────────────────────────────────────────────
@@ -187,11 +190,12 @@ impl SowApp {
 
         // 2-column grid of single-line cells; more than MAX_ROWS rows of pairs scrolls.
         let gap = 8.0_f32;
-        let col_w = (width - gap) / 2.0;
+        let cols = if compact { 1 } else { 2 };
+        let col_w = (width - gap * (cols - 1) as f32) / cols as f32;
         let cell_h = if compact { 28.0 } else { 30.0 };
         let row_gap = 6.0_f32;
         const MAX_ROWS: usize = 3;
-        let n_rows = rows.len().div_ceil(2);
+        let n_rows = rows.len().div_ceil(cols);
         let visible = n_rows.min(MAX_ROWS);
         let view_h = visible as f32 * cell_h + visible.saturating_sub(1) as f32 * row_gap;
 
@@ -213,7 +217,7 @@ impl SowApp {
                             .max_height(view_h)
                             .auto_shrink([false, true])
                             .show(ui, |ui| {
-                                for pair in rows.chunks(2) {
+                                for pair in rows.chunks(cols) {
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 0.0;
                                         for (i, row) in pair.iter().enumerate() {

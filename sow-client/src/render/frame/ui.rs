@@ -127,9 +127,18 @@ impl SowApp {
             let insets = ctx.input(|i| i.safe_area_insets());
             self.ui.app.hud_state.safe_area_top = insets.0.top;
             self.ui.app.hud_state.safe_area_bottom = insets.0.bottom;
+            self.ui.app.main_menu_state.safe_area_bottom = insets.0.bottom;
             // ponytail: static atomic, not egui temp — works regardless of frame order
             sow_ui_kit::theme::set_custom_theme(self.ui.app.settings_state.custom_theme);
             sow_ui_kit::theme::publish_reduced_motion(ctx, self.ui.app.settings_state.reduced_motion);
+
+            // UI Scene Editor preview (dev-gated via $SOW_UI_SCENE): when active, render the
+            // generated scene over a backdrop in place of normal UI. Inert in every shipped
+            // build / web session, so it can never paint over real play or menus.
+            if crate::ui_scene::preview_active() {
+                crate::ui_scene::render_preview(ctx);
+                return;
+            }
 
             if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
                 self.render_world_overlays(ctx, sf);
@@ -144,10 +153,10 @@ impl SowApp {
                 self.render_endgame_ui(ctx);
                 self.render_leaderboard(ctx);
                 self.render_player_hover_panel(ctx);
-                self.render_placement_cancel_button(ctx);
             }
 
             self.render_attacks_panel(ctx, &mut local_cancel_intents);
+            self.render_placement_cancel_button(ctx);
             sow_ui_kit::theme::publish_lobby_modal_embed(
                 ctx,
                 crate::store_portals::is_lobby_modal_embed(),
@@ -593,11 +602,10 @@ impl SowApp {
         let bottom_panel_rect =
             ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")));
 
-        let safe_area_bottom = self.ui.app.hud_state.safe_area_bottom;
         let y_pos = if let Some(rect) = bottom_panel_rect {
             rect.top() - 12.0
         } else {
-            ctx.input(|i| i.content_rect()).bottom() - 140.0 - safe_area_bottom
+            ctx.input(|i| i.content_rect()).bottom() - 140.0
         };
 
         egui::Area::new(egui::Id::new("placement_cancel_area"))
@@ -608,50 +616,14 @@ impl SowApp {
             ))
             .pivot(egui::Align2::CENTER_BOTTOM)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgba_unmultiplied(20, 10, 15, 220))
-                    .stroke(egui::Stroke::new(
-                        1.5_f32,
-                        egui::Color32::from_rgb(239, 68, 68),
-                    ))
-                    .corner_radius(16)
-                    .inner_margin(egui::Margin::symmetric(16, 8));
-
-                frame.show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 8.0;
-
-                        let text = if let Some(kind) = self.ui.app.hud_state.selected_building_kind
-                        {
-                            let emoji = match kind {
-                                sow_core::game::BuildingKind::City => "🏛️",
-                                sow_core::game::BuildingKind::Bunker => "🛡️",
-                                sow_core::game::BuildingKind::Factory => "🏭",
-                                _ => "⚓",
-                            };
-                            format!("Placing {emoji}... ")
-                        } else {
-                            "Placing Nuke... ".to_string()
-                        };
-
-                        ui.label(
-                            egui::RichText::new(text)
-                                .size(13.0)
-                                .color(egui::Color32::from_rgb(220, 220, 220)),
-                        );
-
-                        let cancel_btn = sow_ui_kit::widgets::ThemeButton::new("❌ Cancel")
-                            .style(sow_ui_kit::widgets::ThemeButtonStyle::Danger)
-                            .min_size(egui::vec2(80.0, 28.0))
-                            .text_size(12.0)
-                            .corner_radius(10);
-
-                        if ui.add(cancel_btn).clicked() {
-                            self.ui.app.hud_state.selected_building_kind = None;
-                            self.ui.app.hud_state.selected_nuke_kind = None;
-                        }
-                    });
-                });
+                let cancel_btn = sow_ui_kit::widgets::ThemeButton::new("CANCEL")
+                    .style(sow_ui_kit::widgets::ThemeButtonStyle::Danger)
+                    .text_size(14.0)
+                    .min_size(egui::vec2(100.0, 32.0));
+                if ui.add(cancel_btn).clicked() {
+                    self.ui.app.hud_state.selected_building_kind = None;
+                    self.ui.app.hud_state.selected_nuke_kind = None;
+                }
             });
     }
 }

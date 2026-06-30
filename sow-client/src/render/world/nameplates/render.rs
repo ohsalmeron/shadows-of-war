@@ -66,7 +66,7 @@ pub(crate) fn render(
         // `tutorial_active`, which is false in every normal solo/MP match (tutorial isolation
         // contract + single-derive gate), so the standard gameplay nameplate path below is never
         // touched. To retire this, delete the whole block — never weaken the gate.
-        if ui.tutorial_active && is_me {
+        if ui.tutorial_active && is_me && ui.tutorial_step_idx == 0 {
             if let Some(tr) = gfx.text_renderer.as_mut() {
                 crate::hud::avatar::draw_player_avatar_gpu(
                     tr,

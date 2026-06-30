@@ -88,6 +88,7 @@ pub struct MainMenuState {
     /// Active lobby notice (host left / kicked / banned) and the frame time it appeared.
     pub notice: Option<LobbyNotice>,
     pub notice_at: Option<f64>,
+    pub safe_area_bottom: f32,
 }
 
 impl Default for MainMenuState {
@@ -159,6 +160,7 @@ impl Default for MainMenuState {
             my_player_id: None,
             notice: None,
             notice_at: None,
+            safe_area_bottom: 0.0,
         }
     }
 }
@@ -480,65 +482,111 @@ fn draw_desktop_buttons_grid(
     gap: f32,
     action: &mut Option<UiAction>,
     lang: sow_i18n::Language,
+    compact: bool,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
     let text_size = 18.0 * scale;
     let fill = sow_ui_kit::theme::palette::button_inactive();
     let cell_gap = (gap * 0.5).min(8.0);
-    let col_w = (grid_w - cell_gap) * 0.5;
 
-    let button_h = row_h.max(text_size * 2.6);
-
-    ui.vertical(|ui| {
-        // Row 1: Join (left) + Create (right)
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = cell_gap;
-            
+    if compact {
+        let btn_w = grid_w;
+        let button_h = row_h.max(text_size * 2.6);
+        ui.vertical(|ui| {
             let join_btn = crate::widgets::ThemeButton::new(&strings.join_game_btn)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, button_h))
+                .min_size(egui::vec2(btn_w, button_h))
                 .text_size(text_size);
             if ui.add(join_btn).clicked() {
                 *action = Some(UiAction::OpenJoinBrowser);
             }
+            ui.add_space(cell_gap);
 
             let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, button_h))
+                .min_size(egui::vec2(btn_w, button_h))
                 .text_size(text_size);
             if ui.add(create_btn).clicked() {
                 *action = Some(UiAction::OpenCreateGame);
             }
-        });
-
-        ui.add_space(cell_gap);
-
-        // Row 2: Solo (left) + Settings (right)
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = cell_gap;
+            ui.add_space(cell_gap);
 
             let solo_btn = crate::widgets::ThemeButton::new(&strings.single_player)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, button_h))
+                .min_size(egui::vec2(btn_w, button_h))
                 .text_size(text_size);
             if ui.add(solo_btn).clicked() {
                 state.show_single_player_setup = true;
             }
+            ui.add_space(cell_gap);
 
             let settings_btn = crate::widgets::ThemeButton::new(&strings.settings)
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
                 .custom_fill(fill)
-                .min_size(egui::vec2(col_w, button_h))
+                .min_size(egui::vec2(btn_w, button_h))
                 .text_size(text_size);
             if ui.add(settings_btn).clicked() {
                 *action = Some(UiAction::ToggleSettings);
             }
         });
-    });
+    } else {
+        let col_w = (grid_w - cell_gap) * 0.5;
+        let button_h = row_h.max(text_size * 2.6);
+
+        ui.vertical(|ui| {
+            // Row 1: Join (left) + Create (right)
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = cell_gap;
+                
+                let join_btn = crate::widgets::ThemeButton::new(&strings.join_game_btn)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .custom_fill(fill)
+                    .min_size(egui::vec2(col_w, button_h))
+                    .text_size(text_size);
+                if ui.add(join_btn).clicked() {
+                    *action = Some(UiAction::OpenJoinBrowser);
+                }
+
+                let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .custom_fill(fill)
+                    .min_size(egui::vec2(col_w, button_h))
+                    .text_size(text_size);
+                if ui.add(create_btn).clicked() {
+                    *action = Some(UiAction::OpenCreateGame);
+                }
+            });
+
+            ui.add_space(cell_gap);
+
+            // Row 2: Solo (left) + Settings (right)
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = cell_gap;
+
+                let solo_btn = crate::widgets::ThemeButton::new(&strings.single_player)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .custom_fill(fill)
+                    .min_size(egui::vec2(col_w, button_h))
+                    .text_size(text_size);
+                if ui.add(solo_btn).clicked() {
+                    state.show_single_player_setup = true;
+                }
+
+                let settings_btn = crate::widgets::ThemeButton::new(&strings.settings)
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .custom_fill(fill)
+                    .min_size(egui::vec2(col_w, button_h))
+                    .text_size(text_size);
+                if ui.add(settings_btn).clicked() {
+                    *action = Some(UiAction::ToggleSettings);
+                }
+            });
+        });
+    }
 }
 
 pub fn draw(
@@ -674,6 +722,7 @@ pub fn draw(
                                         section_gap,
                                         &mut action,
                                         lang,
+                                        false,
                                     );
                                 },
                             );
@@ -721,6 +770,7 @@ pub fn draw(
                                     section_gap,
                                     &mut action,
                                     lang,
+                                    true,
                                 );
                             });
                     }

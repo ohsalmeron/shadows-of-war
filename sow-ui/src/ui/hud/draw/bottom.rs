@@ -61,14 +61,14 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                 .inner_margin(content_margin)
                 .show(ui, |ui| {
                     ui.allocate_ui_with_layout(
-                        vec2(panel_w, 0.0),
+                        vec2(ui.available_width(), 0.0),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
-                            ui.set_width(panel_w);
+                            ui.set_width(ui.available_width());
                             ui.spacing_mut().item_spacing.y =
                                 sow_ui_kit::theme::margin::COZY as f32;
 
-                            if log_tabs_enabled {
+                            if log_tabs_enabled && !(compact && state.bottom_dialog.is_some()) {
                                 ui.push_id("tab_strip", |ui| {
                                     controls::draw_browser_tab_strip(
                                         ui,
