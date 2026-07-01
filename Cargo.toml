@@ -68,11 +68,8 @@ tower-http = { version = "0.6.10", features = ["fs", "compression-br", "cors"] }
 futures-channel = "0.3"
 open = "5.3"
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "wav"] }
-wasm-opt = "0.116"
+wasm-opt = { version = "0.116.1", default-features = false }
 tempfile = "3"
-
-# blade-egui, blade-graphics, blade-macros are specified directly in
- # each crate's Cargo.toml (git + subdir) — not workspace deps.
 
 [workspace.dependencies.bytemuck]
 version = "1"
