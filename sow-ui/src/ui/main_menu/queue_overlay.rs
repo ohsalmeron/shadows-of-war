@@ -6,6 +6,9 @@ const COLUMN_GAP: f32 = 20.0;
 const ACTION_GAP: f32 = 8.0;
 /// Gap between the scrollable/clipped content region and the pinned action row.
 const ACTIONS_TOP_GAP: f32 = 12.0;
+/// Breathing room below the pinned buttons on compact/mobile so they never touch
+/// (or clip against) the card's bottom edge / OS gesture bar.
+const ACTIONS_BOTTOM_PAD: f32 = 12.0;
 
 /// Snapshot of who may moderate the roster — lets `draw_players_panel` render the
 /// host's Kick/Ban controls without holding a borrow on `MainMenuState`.
@@ -251,10 +254,16 @@ fn draw_body_compact(
     action_min_h: f32,
     action: &mut Option<UiAction>,
 ) {
-    let content_h = (body.height() - action_min_h - ACTIONS_TOP_GAP).max(120.0);
+    // Total vertical space owned by the pinned action row, including the padding
+    // that keeps it clear of the card's bottom edge.
+    let actions_zone_h = action_min_h + ACTIONS_BOTTOM_PAD;
+    let content_h = (body.height() - actions_zone_h - ACTIONS_TOP_GAP).max(120.0);
     let content_rect = egui::Rect::from_min_size(body.min, egui::vec2(body.width(), content_h));
-    let actions_rect =
-        egui::Rect::from_min_max(egui::pos2(body.min.x, body.max.y - action_min_h), body.max);
+    // Buttons sit above the bottom pad; the row is exactly `action_min_h` tall.
+    let actions_rect = egui::Rect::from_min_max(
+        egui::pos2(body.min.x, body.max.y - actions_zone_h),
+        egui::pos2(body.max.x, body.max.y - ACTIONS_BOTTOM_PAD),
+    );
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(content_rect), |ui| {
         ui.set_clip_rect(ui.clip_rect().intersect(content_rect));
@@ -273,6 +282,8 @@ fn draw_body_compact(
             });
     });
 
+    // The action row must never clip, so it is NOT clipped to its own rect — it
+    // gets a guaranteed slot the content region already stayed clear of.
     ui.scope_builder(egui::UiBuilder::new().max_rect(actions_rect), |ui| {
         draw_lobby_actions(ui, state, lobby, action_min_h, action, lang);
     });
