@@ -148,7 +148,9 @@ impl SowApp {
 
                 let lod_presence = importance * (self.input.camera_zoom / sf);
 
-                let target_size = (player.tile_count as f32).sqrt().clamp(0.2, 24.0);
+                // ~ territory side length in world units. The old 24.0 cap saturated at just
+                // 576 tiles, erasing size differences between every real territory.
+                let target_size = (player.tile_count as f32).sqrt().clamp(0.2, 150.0);
 
                 let size_entry = self.ui.label_sizes.entry(player.id).or_insert(target_size);
 

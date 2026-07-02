@@ -1,6 +1,25 @@
 use super::super::*;
 use super::emoji::*;
 
+/// World-anchored nameplate font size in screen px. `nameplate_size * zoom_scaled` is the
+/// territory's on-screen side length, so the plate shrinks as you zoom out and grows with
+/// territory — it always occupies the same fraction of the land it labels. Humans keep a
+/// small readability floor; bots/nations have none, so far-away ones fall through to the
+/// <7px dot LOD. Caps only catch extremes (huge empire fully zoomed in), not normal play.
+pub(crate) fn nameplate_font_px(
+    nameplate_size: f32,
+    zoom_scaled: f32,
+    is_human: bool,
+    cfg: &ClientVisualConfig,
+) -> f32 {
+    let world_px = nameplate_size * cfg.nameplate_world_scale * zoom_scaled;
+    if is_human {
+        world_px.clamp(8.0, cfg.nameplate_max_font)
+    } else {
+        world_px.min(cfg.nameplate_max_font * 0.6)
+    }
+}
+
 #[allow(unused_variables)]
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
@@ -16,7 +35,6 @@ pub(crate) fn render(
     ));
     let painter = &painter;
     let sf = ctx.sf;
-    let zoom_scaled = ctx.zoom_scaled;
     let player_colors = ctx.player_colors;
     let dot_r = ctx.dot_r;
     let current_tick = ctx.current_tick;
@@ -35,7 +53,6 @@ pub(crate) fn render(
     let mut full_labels_drawn = 0;
 
     let visual_config = ClientVisualConfig::default();
-    let far_zoom_threshold = visual_config.far_zoom_lod_threshold;
     let ui_text_scale = visual_config.ui_text_scale;
     let zoom_scaled_local = input.camera_zoom / sf;
 
@@ -82,36 +99,27 @@ pub(crate) fn render(
             continue;
         }
 
-        let map_area = (sim.map_w * sim.map_h).max(1) as f32;
-        let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
-        // Only human players can bypass far-zoom dot culling via screen footprint size
-        let is_massive_on_screen =
-            is_human && (normalized_tiles * zoom_scaled_local * zoom_scaled_local >= 1500.0);
-
-        if zoom_scaled < far_zoom_threshold && !is_massive_on_screen {
-            if is_human {
-                // Hide other human nameplates on second LOD (far zoom) completely
-                if !is_me {
-                    continue;
-                }
-            } else {
-                // Simplified dot representation for bots/nations — GPU disc + ring.
-                if let Some(tr) = gfx.text_renderer.as_mut() {
-                    let c = [center.x * sf, center.y * sf];
-                    let r = dot_r * 0.8 * sf;
-                    tr.push_disc(c, r, pc.to_array().map(|v| v as f32 / 255.0));
-                    tr.push_ring(c, r, [0.0, 0.0, 0.0, 180.0 / 255.0], 1.0 * sf);
-                }
-                continue;
+        // Far-zoom declutter, gated on ZOOM (not per-plate pixel size): a NON-human plate
+        // collapses to a cheap disc only when the camera is truly far out
+        // (zoom_scaled < nameplate_hide_zoom, e.g. 1.5). At any closer zoom EVERY plate is
+        // drawn full and floored at a readable size — nothing hides while you play/scroll.
+        if zoom_scaled_local < visual_config.nameplate_hide_zoom && !is_me && !is_human {
+            if let Some(tr) = gfx.text_renderer.as_mut() {
+                let c = [center.x * sf, center.y * sf];
+                let r = dot_r * sf;
+                tr.push_disc(c, r, pc.to_array().map(|v| v as f32 / 255.0));
+                tr.push_ring(c, r, [0.0, 0.0, 0.0, 180.0 / 255.0], 1.0 * sf);
             }
+            continue;
         }
 
+        // `full_labels_drawn` caps full bot labels for perf only; over-budget bots dot out (else).
         let show_full = if is_human {
             true
         } else if player.player_type == sow_core::player::PlayerType::Bot {
-            (normalized_tiles * zoom_scaled_local) >= 8.0 && full_labels_drawn < 80
+            full_labels_drawn < 80
         } else {
-            (normalized_tiles * zoom_scaled_local) >= 2.0
+            true
         };
 
         if show_full {
@@ -119,22 +127,25 @@ pub(crate) fn render(
                 full_labels_drawn += 1;
             }
 
-            // ponytail: map territory size (0.2..24.0) to a tight, clean font size range of 9px..15px
-            let scaled_size = (9.0 + (vp.nameplate_size / 24.0) * 6.0) * ui_text_scale;
-            if scaled_size < 7.0 && !is_me && !is_human {
-                if let Some(tr) = gfx.text_renderer.as_mut() {
-                    let c = [center.x * sf, center.y * sf];
-                    let r = dot_r * sf;
-                    tr.push_disc(c, r, pc.to_array().map(|v| v as f32 / 255.0));
-                    tr.push_ring(c, r, [0.0, 0.0, 0.0, 180.0 / 255.0], 1.0 * sf);
-                }
-                continue;
-            }
+            let scaled_size =
+                nameplate_font_px(vp.nameplate_size, zoom_scaled_local, is_human, &visual_config)
+                    * ui_text_scale;
 
-            // QUANTIZATION: Round the font sizes to nearest whole numbers to prevent glyph atlas invalidations!
-            let font_size = scaled_size.round().max(7.0);
+            // Continuous size drives ALL geometry and the GPU SDF text (which scales smoothly
+            // at any fractional size), so the plate grows/shrinks as smoothly as the camera.
+            let render_size = scaled_size.max(7.0);
+            // `font_size` is quantized ONLY for egui's CPU glyph atlas (name/troops measurement
+            // + the non-GPU fallback), keeping distinct FontIds bounded. Measured metrics are
+            // scaled back to render_size via `text_scale`, so quantization never shows on screen.
+            let font_size = if render_size > 20.0 {
+                (render_size / 2.0).round() * 2.0
+            } else {
+                render_size.round()
+            }
+            .max(7.0);
+            let text_scale = render_size / font_size;
             let is_bot = player.player_type == sow_core::player::PlayerType::Bot;
-            let mut avatar_size = (font_size * 2.2).round().max(4.0);
+            let mut avatar_size = (render_size * 2.2).max(4.0);
             if is_bot && !show_bot_avatars {
                 avatar_size = 0.0;
             }
@@ -179,6 +190,7 @@ pub(crate) fn render(
                 sow_core::player::display_name(player.id, &player.name, player.player_type)
             };
 
+            let troops_render_size = render_size * 1.30;
             let troops_font_size = (font_size * 1.30).round().max(2.0);
             let troops_font_id = egui::FontId::proportional(troops_font_size);
 
@@ -187,21 +199,21 @@ pub(crate) fn render(
             let troops_galley =
                 painter.layout_no_wrap(troops_str.clone(), troops_font_id.clone(), vibrant_color);
 
-            let name_w = if show_names { name_size.x } else { 0.0 };
-            let name_h = if show_names { name_size.y } else { 0.0 };
+            let name_w = if show_names { name_size.x * text_scale } else { 0.0 };
+            let name_h = if show_names { name_size.y * text_scale } else { 0.0 };
             let troops_w = if show_troops {
-                crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id)
+                crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id) * text_scale
             } else {
                 0.0
             };
             let troops_h = if show_troops {
-                troops_galley.rect.height()
+                troops_galley.rect.height() * text_scale
             } else {
                 0.0
             };
             let right_w = name_w.max(troops_w);
             let item_spacing_y = if show_names && show_troops {
-                (font_size * 0.111).round()
+                render_size * 0.111
             } else {
                 0.0
             };
@@ -209,7 +221,7 @@ pub(crate) fn render(
 
             // Vertical layout: avatar centered on top, text below.
             let spacing_y = if avatar_size > 0.0 && right_h > 0.0 {
-                (font_size * 0.333).round()
+                render_size * 0.333
             } else {
                 0.0
             };
@@ -220,7 +232,7 @@ pub(crate) fn render(
             let avatar_cy = content_top + avatar_size / 2.0;
 
             // Badge sizing / positioning beside avatar.
-            let badge_size = (font_size * 1.8).round();
+            let badge_size = render_size * 1.8;
             let left_x = center.x - avatar_size / 2.0 - badge_size / 2.0 - 3.0;
             let right_x = center.x + avatar_size / 2.0 + badge_size / 2.0 + 3.0;
 
@@ -407,7 +419,7 @@ pub(crate) fn render(
                     tr.push_string(
                         &display_name,
                         [center.x * sf, (text_top + name_h * 0.85) * sf],
-                        font_size * font_size_scale * sf,
+                        render_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
                         settings,
@@ -423,7 +435,7 @@ pub(crate) fn render(
                     } else {
                         text_top
                     };
-                    let icon_size = troops_font_size * 1.15;
+                    let icon_size = troops_render_size * 1.15;
                     let icon_half = icon_size * 0.5;
                     let troops_left_x = center.x - troops_w / 2.0;
                     tr.push_emoji(
@@ -444,7 +456,7 @@ pub(crate) fn render(
                             (troops_left_x + icon_size + 3.0) * sf,
                             (troops_row_y + troops_h * 0.85) * sf,
                         ],
-                        troops_font_size * font_size_scale * sf,
+                        troops_render_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
                         settings,
@@ -493,5 +505,48 @@ pub(crate) fn render(
                 tr.push_ring(c, r, [0.0, 0.0, 0.0, 180.0 / 255.0], 1.0 * sf);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Guards the two bugs previous fixes shipped: sizes pinned at a clamp across the whole
+    // playable zoom range (constant on the viewport), and territory differences erased.
+    // Playable zoom_scaled range: camera min 0.75 to max 100; plates are drawn at every zoom.
+    #[test]
+    fn nameplate_size_tracks_zoom_and_territory() {
+        let cfg = ClientVisualConfig::default();
+        let mid_territory = 2000.0_f32.sqrt(); // ~45 world units side
+
+        // Zooming out must shrink the plate through the responsive band (above the readability
+        // floor, below the cap), not sit pinned on a clamp.
+        let far = nameplate_font_px(mid_territory, 8.0, true, &cfg);
+        let mid = nameplate_font_px(mid_territory, 10.0, true, &cfg);
+        let near = nameplate_font_px(mid_territory, 12.0, true, &cfg);
+        assert!(far < mid && mid < near, "not zoom-responsive: {far} {mid} {near}");
+
+        // Bigger territory must render bigger at the same zoom (both inside the band).
+        let small = nameplate_font_px(400.0_f32.sqrt(), 10.0, true, &cfg);
+        let large = nameplate_font_px(2500.0_f32.sqrt(), 10.0, true, &cfg);
+        assert!(small < large, "not territory-responsive: {small} {large}");
+
+        // Caps and floors only catch extremes.
+        assert!(nameplate_font_px(150.0, 100.0, true, &cfg) <= cfg.nameplate_max_font);
+        assert!(nameplate_font_px(0.2, 0.75, true, &cfg) >= 8.0);
+
+        // Hiding is gated on camera zoom, not per-plate pixel size: a non-human plate is only
+        // dotted below nameplate_hide_zoom. Just ABOVE that threshold it must still render (the
+        // render path floors it to a readable size), so nothing pops while zoomed in to play.
+        assert!(
+            cfg.nameplate_hide_zoom <= 1.5,
+            "hide threshold crept too close/in: {}",
+            cfg.nameplate_hide_zoom
+        );
+        let just_inside = cfg.nameplate_hide_zoom + 0.5;
+        let tiny_bot_font =
+            nameplate_font_px(10.0, just_inside, false, &cfg).max(7.0); // render_size floor
+        assert!(tiny_bot_font >= 7.0, "should stay readable, not hide: {tiny_bot_font}");
     }
 }
