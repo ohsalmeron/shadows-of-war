@@ -63,70 +63,74 @@ pub(in crate::ui::hud) fn draw_top_icons(
                         let btn_resp = ui
                             .add(crate::widgets::HudEmojiButton::new("📩"))
                             .on_hover_text(&sow_i18n::get(lang).hud.inbox_title);
-                    if btn_resp.clicked() {
-                        state.show_alliance_inbox = !state.show_alliance_inbox;
-                    }
+                        if btn_resp.clicked() {
+                            state.show_alliance_inbox = !state.show_alliance_inbox;
+                        }
 
-                    if total_notifications > 0 {
-                        let mut scale = 1.0_f32;
-                        if let Some(t) = state.last_request_time {
-                            let elapsed = t.elapsed().as_secs_f32();
-                            if elapsed < 0.6_f32 {
-                                let progress = elapsed / 0.6_f32;
-                                scale = 1.0_f32
-                                    + 0.8_f32
-                                        * (progress * std::f32::consts::PI).sin()
-                                        * (1.0_f32 - progress);
-                                ui.ctx().request_repaint();
+                        if total_notifications > 0 {
+                            let mut scale = 1.0_f32;
+                            if let Some(t) = state.last_request_time {
+                                let elapsed = t.elapsed().as_secs_f32();
+                                if elapsed < 0.6_f32 {
+                                    let progress = elapsed / 0.6_f32;
+                                    scale = 1.0_f32
+                                        + 0.8_f32
+                                            * (progress * std::f32::consts::PI).sin()
+                                            * (1.0_f32 - progress);
+                                    ui.ctx().request_repaint();
+                                }
+                            }
+
+                            let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
+                            sow_ui_kit::theme::paint_count_badge(
+                                ui.painter(),
+                                badge_center,
+                                total_notifications,
+                                8.0_f32 * scale,
+                                10.0_f32 * scale,
+                                None,
+                            );
+                        }
+
+                        if ui
+                            .add(crate::widgets::HudEmojiButton::new("⚙"))
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_settings)
+                            .clicked()
+                        {
+                            *action = Some(UiAction::ToggleSettings);
+                        }
+                        if ui
+                            .add(
+                                crate::widgets::HudEmojiButton::new("❌")
+                                    .color(Color32::from_rgb(255, 100, 100)),
+                            )
+                            .on_hover_text(&sow_i18n::get(lang).hud.hover_exit)
+                            .clicked()
+                        {
+                            if state.is_tutorial {
+                                *action = Some(UiAction::LeaveLobby);
+                            } else {
+                                state.show_exit_confirm = true;
                             }
                         }
 
-                        let badge_center = btn_resp.rect.right_top() + egui::vec2(-2.0, 2.0);
-                        sow_ui_kit::theme::paint_count_badge(
-                            ui.painter(),
-                            badge_center,
-                            total_notifications,
-                            8.0_f32 * scale,
-                            10.0_f32 * scale,
-                            None,
-                        );
-                    }
-
-                    if ui
-                        .add(crate::widgets::HudEmojiButton::new("⚙"))
-                        .on_hover_text(&sow_i18n::get(lang).hud.hover_settings)
-                        .clicked()
-                    {
-                        *action = Some(UiAction::ToggleSettings);
-                    }
-                    if ui
-                        .add(
-                            crate::widgets::HudEmojiButton::new("❌")
-                                .color(Color32::from_rgb(255, 100, 100)),
-                        )
-                        .on_hover_text(&sow_i18n::get(lang).hud.hover_exit)
-                        .clicked()
-                    {
-                        if state.is_tutorial {
-                            *action = Some(UiAction::LeaveLobby);
-                        } else {
-                            state.show_exit_confirm = true;
-                        }
-                    }
-
-                    let top_icons_rect = ui.min_rect();
-                    ui.ctx().data_mut(|d| {
-                        d.insert_temp(egui::Id::new("hud_top_icons_rect"), top_icons_rect);
+                        let top_icons_rect = ui.min_rect();
+                        ui.ctx().data_mut(|d| {
+                            d.insert_temp(egui::Id::new("hud_top_icons_rect"), top_icons_rect);
+                        });
                     });
                 });
-            });
             let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
             sow_ui_kit::theme::paint_hud_panel_gradient(
                 ui,
                 prepaint_idx,
                 frame_res.response.rect,
                 sow_ui_kit::theme::palette::field_border(),
-                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
+                if compact {
+                    egui::CornerRadius::ZERO
+                } else {
+                    sow_ui_kit::theme::radius::md()
+                },
             );
         });
 }

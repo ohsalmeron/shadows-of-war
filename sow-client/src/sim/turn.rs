@@ -45,15 +45,19 @@ impl SowApp {
         // Viewport Alerts: Victory / Defeat
         if let Some(winner) = snap.winner {
             if winner == my_id {
-                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Victory);
+                self.ui
+                    .trigger_viewport_alert(crate::app::ViewportAlertKind::Victory);
             } else {
-                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Defeat);
+                self.ui
+                    .trigger_viewport_alert(crate::app::ViewportAlertKind::Defeat);
             }
         } else if let Some(w_team) = snap.winning_team {
             if Some(w_team) == my_team {
-                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Victory);
+                self.ui
+                    .trigger_viewport_alert(crate::app::ViewportAlertKind::Victory);
             } else {
-                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Defeat);
+                self.ui
+                    .trigger_viewport_alert(crate::app::ViewportAlertKind::Defeat);
             }
         }
 

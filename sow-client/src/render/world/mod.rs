@@ -309,7 +309,6 @@ impl SowApp {
                 &ctx_struct,
             );
 
-
             let middle_painter = painter.ctx().layer_painter(egui::LayerId::new(
                 egui::Order::Middle,
                 egui::Id::new("floating_notices"),
@@ -385,7 +384,10 @@ impl SowApp {
                         tr.push_string(
                             &notice.text,
                             [screen_x * sf, screen_y * sf],
-                            visual_config.gold_reward_notice_font_size * bounce_scale * font_size_scale * sf,
+                            visual_config.gold_reward_notice_font_size
+                                * bounce_scale
+                                * font_size_scale
+                                * sf,
                             color_arr,
                             outline_color_arr,
                             settings,

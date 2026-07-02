@@ -58,7 +58,11 @@ pub(in crate::ui::hud) fn draw_attack_ratio_rail(
         .anchor(Align2::LEFT_BOTTOM, offset)
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
-            let btn_w = if cfg!(target_os = "android") { 46.0 } else { 30.0 };
+            let btn_w = if cfg!(target_os = "android") {
+                46.0
+            } else {
+                30.0
+            };
             let rail_pad_x = 4.0;
             let rail_w = btn_w + rail_pad_x * 2.0;
             ui.set_width(rail_w);
@@ -79,7 +83,11 @@ pub(in crate::ui::hud) fn draw_attack_ratio_rail(
                 prepaint_idx,
                 frame_res.response.rect,
                 sow_ui_kit::theme::palette::field_border(),
-                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::sm() },
+                if compact {
+                    egui::CornerRadius::ZERO
+                } else {
+                    sow_ui_kit::theme::radius::sm()
+                },
             );
         });
 }
@@ -197,7 +205,10 @@ fn paint_slider(ui: &mut egui::Ui, state: &HudState, w: f32) -> Option<f32> {
     let knob_r = KNOB_D * 0.5;
     let knob_rect = Rect::from_center_size(pos2(track.center().x, knob_cy), vec2(KNOB_D, KNOB_D));
     let knob_fill = sow_ui_kit::theme::palette::field_bg().linear_multiply(0.92 + hover_t * 0.08);
-    let knob_stroke = Stroke::new(1.5 + active_t, sow_ui_kit::theme::palette::neon_cyan_hover());
+    let knob_stroke = Stroke::new(
+        1.5 + active_t,
+        sow_ui_kit::theme::palette::neon_cyan_hover(),
+    );
     painter.circle(knob_rect.center(), knob_r, knob_fill, knob_stroke);
     if hover_t > 0.01 || active_t > 0.01 {
         painter.circle(

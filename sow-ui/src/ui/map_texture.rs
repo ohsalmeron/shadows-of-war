@@ -1,6 +1,5 @@
 //! Map thumbnail decode/draw for main-menu lobby previews.
 
-
 use image::RgbaImage;
 
 /// Force every pixel fully opaque — thumbnails are drawn as solid albedo, no alpha keying.
@@ -67,10 +66,8 @@ pub fn draw_map_thumbnail_uv(
     } else {
         egui::Color32::WHITE
     };
-    painter.add(
-        egui::epaint::RectShape::filled(rect, corner_radius, tint)
-            .with_texture(texture, uv),
-    );
+    painter
+        .add(egui::epaint::RectShape::filled(rect, corner_radius, tint).with_texture(texture, uv));
 }
 
 #[cfg(test)]

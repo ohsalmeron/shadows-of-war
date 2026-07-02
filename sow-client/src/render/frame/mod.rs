@@ -1,6 +1,6 @@
 use crate::app::SowApp;
-use blade_graphics as gpu;
 use crate::render::gpu::MapGlobals;
+use blade_graphics as gpu;
 use sow_ui_kit::ClientPhase;
 
 mod ui;
@@ -333,11 +333,14 @@ impl SowApp {
 
                     // ── Attack Border Flash ──
                     let (attack_flash_target, attack_flash_t) = {
-                        let mut player_intensities: std::collections::HashMap<u16, f32> = std::collections::HashMap::new();
+                        let mut player_intensities: std::collections::HashMap<u16, f32> =
+                            std::collections::HashMap::new();
                         self.ui.border_flashes.retain(|flash| {
-                            let elapsed = current_time.duration_since(flash.start_time).as_secs_f32();
+                            let elapsed =
+                                current_time.duration_since(flash.start_time).as_secs_f32();
                             if let Some(t) = crate::app::easeout_flash(elapsed) {
-                                let entry = player_intensities.entry(flash.player_id).or_insert(0.0);
+                                let entry =
+                                    player_intensities.entry(flash.player_id).or_insert(0.0);
                                 *entry += t * flash.max_intensity;
                                 true
                             } else {
@@ -347,7 +350,9 @@ impl SowApp {
 
                         player_intensities
                             .into_iter()
-                            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                            .max_by(|a, b| {
+                                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+                            })
                             .map(|(id, t)| (id as f32, t.min(1.5)))
                             .unwrap_or((0.0, 0.0))
                     };
@@ -355,20 +360,27 @@ impl SowApp {
                     // ── Viewport Alert Vignette ──
                     let currently_under_attack = if let Some(snap) = &self.sim.current_snapshot {
                         let my_id = self.sim.my_player_id.unwrap_or(0);
-                        my_id != 0 && snap.attacks.iter().any(|a| a.target_owner == my_id && a.troops > 0.0)
+                        my_id != 0
+                            && snap
+                                .attacks
+                                .iter()
+                                .any(|a| a.target_owner == my_id && a.troops > 0.0)
                     } else {
                         false
                     };
 
                     if currently_under_attack {
-                        self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
+                        self.ui
+                            .trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
                     } else if let Some(ref current) = self.ui.viewport_alert {
                         if current.kind == crate::app::ViewportAlertKind::UnderAttack {
                             self.ui.viewport_alert = None;
                         }
                     }
 
-                    let (alert_color, alert_intensity) = if let Some(ref alert) = self.ui.viewport_alert {
+                    let (alert_color, alert_intensity) = if let Some(ref alert) =
+                        self.ui.viewport_alert
+                    {
                         let kind = alert.kind;
                         let elapsed = current_time.duration_since(alert.start_time).as_secs_f32();
                         let persistent = kind == crate::app::ViewportAlertKind::UnderAttack
@@ -445,7 +457,10 @@ impl SowApp {
 
                     if self.gfx.text_renderer.is_none() {
                         let surface_format = s.info().format;
-                        let tr = crate::render::gpu::TextRenderer::new(&render_ctx.context, surface_format);
+                        let tr = crate::render::gpu::TextRenderer::new(
+                            &render_ctx.context,
+                            surface_format,
+                        );
                         tr.init_textures(&mut render_ctx.command_encoder);
                         tr.upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
                         self.gfx.text_renderer = Some(tr);
@@ -460,8 +475,10 @@ impl SowApp {
                                 surface_format,
                             ));
                             if let Some(ref mr_mover) = self.gfx.mover_renderer {
-                                mr_mover
-                                    .upload_atlas(&mut render_ctx.command_encoder, &render_ctx.context);
+                                mr_mover.upload_atlas(
+                                    &mut render_ctx.command_encoder,
+                                    &render_ctx.context,
+                                );
                             }
                         }
                         if let (Some(ref mut mover_r), Some(ref snap)) =

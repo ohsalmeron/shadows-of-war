@@ -203,28 +203,6 @@ impl SowApp {
                         self.input.screen_h * 0.5,
                     );
                 }
-                UiAction::CopyInviteLink(lobby_id) => {
-                    let link =
-                        crate::store_portals::invite_link(lobby_id, &crate::get_build_version())
-                            .unwrap_or_else(|| {
-                                let fallback =
-                                    format!("https://play.shadowsofwar.io/?lobbyId={}", lobby_id);
-                                #[cfg(target_arch = "wasm32")]
-                                let fallback = web_sys::window()
-                                    .and_then(|w| w.location().href().ok())
-                                    .and_then(|href| {
-                                        let mut url = url::Url::parse(&href).ok()?;
-                                        url.set_query(Some(&format!("lobbyId={}", lobby_id)));
-                                        Some(url.to_string())
-                                    })
-                                    .unwrap_or(fallback);
-                                fallback
-                            });
-                    self.ui.egui_ctx.copy_text(link);
-                    self.ui.app.main_menu_state.invite_copied_at =
-                        Some(self.ui.egui_ctx.input(|i| i.time));
-                    log::info!("Copied invite link to clipboard.");
-                }
                 UiAction::StartPrivateLobby(lobby_id) => {
                     if let (Some(c), Some(player_id)) =
                         (self.net.client.as_ref(), self.sim.my_player_id)

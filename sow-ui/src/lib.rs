@@ -6,9 +6,8 @@ extern crate self as sow_ui_kit;
 
 pub mod kit;
 pub use kit::{
-    theme, assets, ui_font, ClientPhase,
-    atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets, texture_options,
-    EMOJI_ATLAS_BYTES,
+    assets, atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets, texture_options,
+    theme, ui_font, ClientPhase, EMOJI_ATLAS_BYTES,
 };
 
 pub use app::ClientApp;
@@ -34,7 +33,6 @@ pub enum UiAction {
     ToggleTerms,
     #[cfg(any(feature = "dev", debug_assertions))]
     ToggleDevSidebar,
-    CopyInviteLink(u64),
     StartPrivateLobby(u64),
     ResolveLinkConflict {
         keep_account_id: String,

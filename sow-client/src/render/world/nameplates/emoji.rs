@@ -21,7 +21,11 @@ pub(crate) fn draw_side_status_badge(
         return;
     }
     let anim_scale = if active {
-        if anim >= 1.0 { 1.0 } else { sow_ui::ui::animation::spring_overshoot(anim) }
+        if anim >= 1.0 {
+            1.0
+        } else {
+            sow_ui::ui::animation::spring_overshoot(anim)
+        }
     } else {
         anim
     };
@@ -35,17 +39,38 @@ pub(crate) fn draw_side_status_badge(
         if let Some(glow_color) = color_glow {
             let glow_r = final_size * 0.8;
             let glow_a = anim * flash_alpha * 0.35;
-            painter.circle_filled(rect.center(), glow_r * 1.4,
-                egui::Color32::from_rgba_unmultiplied(glow_color.r(), glow_color.g(), glow_color.b(), (glow_a * 120.0) as u8));
-            painter.circle_filled(rect.center(), glow_r,
-                egui::Color32::from_rgba_unmultiplied(glow_color.r(), glow_color.g(), glow_color.b(), (glow_a * 255.0) as u8));
+            painter.circle_filled(
+                rect.center(),
+                glow_r * 1.4,
+                egui::Color32::from_rgba_unmultiplied(
+                    glow_color.r(),
+                    glow_color.g(),
+                    glow_color.b(),
+                    (glow_a * 120.0) as u8,
+                ),
+            );
+            painter.circle_filled(
+                rect.center(),
+                glow_r,
+                egui::Color32::from_rgba_unmultiplied(
+                    glow_color.r(),
+                    glow_color.g(),
+                    glow_color.b(),
+                    (glow_a * 255.0) as u8,
+                ),
+            );
         }
     }
 
     let tint = egui::Color32::WHITE.linear_multiply(anim * flash_alpha);
     let painted = if let Some(uv) = sow_ui_kit::atlas_uv(emoji) {
         if let Some(texture) = sow_ui_kit::atlas_texture(painter.ctx()) {
-            painter.image(texture.id(), rect, uv, egui::Color32::from_white_alpha(tint.a()));
+            painter.image(
+                texture.id(),
+                rect,
+                uv,
+                egui::Color32::from_white_alpha(tint.a()),
+            );
             true
         } else {
             false
@@ -54,8 +79,13 @@ pub(crate) fn draw_side_status_badge(
         false
     };
     if !painted {
-        painter.text(rect.center(), egui::Align2::CENTER_CENTER, emoji,
-            egui::FontId::proportional(final_size * 0.7), tint);
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            emoji,
+            egui::FontId::proportional(final_size * 0.7),
+            tint,
+        );
     }
 }
 
@@ -71,7 +101,9 @@ pub(crate) fn draw_side_express_emoji(
     let mut current_emoji = active_emoji.cloned();
     let is_active = current_emoji.is_some() && current_emoji.as_deref() != Some("🗡️");
     let active_anim_id = egui::Id::new(("emoji_anim_progress", player_id));
-    let anim_progress = painter.ctx().animate_bool_with_time(active_anim_id, is_active, 0.25);
+    let anim_progress = painter
+        .ctx()
+        .animate_bool_with_time(active_anim_id, is_active, 0.25);
     if anim_progress <= 0.01 {
         return;
     }
@@ -79,32 +111,43 @@ pub(crate) fn draw_side_express_emoji(
     if current_emoji.is_none() || current_emoji.as_deref() == Some("🗡️") {
         current_emoji = painter.ctx().data(|d| d.get_temp::<String>(last_emoji_id));
     } else {
-        painter.ctx().data_mut(|d| d.insert_temp(last_emoji_id, current_emoji.clone().unwrap()));
+        painter
+            .ctx()
+            .data_mut(|d| d.insert_temp(last_emoji_id, current_emoji.clone().unwrap()));
     }
 
     if let Some(emoji_str) = &current_emoji {
         let anim_scale = if is_active {
-            if anim_progress >= 1.0 { 1.0 } else { sow_ui::ui::animation::spring_overshoot(anim_progress) }
+            if anim_progress >= 1.0 {
+                1.0
+            } else {
+                sow_ui::ui::animation::spring_overshoot(anim_progress)
+            }
         } else {
             anim_progress
         };
-            let final_size = (size * anim_scale).round();
-            if final_size > 1.0 {
-                let rect = egui::Rect::from_center_size(pos, egui::vec2(final_size, final_size));
-                let painted = if let Some(uv) = sow_ui_kit::atlas_uv(emoji_str) {
-                    if let Some(texture) = sow_ui_kit::atlas_texture(painter.ctx()) {
-                        painter.image(texture.id(), rect, uv, egui::Color32::WHITE);
-                        true
-                    } else {
-                        false
-                    }
+        let final_size = (size * anim_scale).round();
+        if final_size > 1.0 {
+            let rect = egui::Rect::from_center_size(pos, egui::vec2(final_size, final_size));
+            let painted = if let Some(uv) = sow_ui_kit::atlas_uv(emoji_str) {
+                if let Some(texture) = sow_ui_kit::atlas_texture(painter.ctx()) {
+                    painter.image(texture.id(), rect, uv, egui::Color32::WHITE);
+                    true
                 } else {
                     false
-                };
-                if !painted {
-                    painter.text(rect.center(), egui::Align2::CENTER_CENTER, emoji_str,
-                        egui::FontId::proportional(final_size), egui::Color32::WHITE);
                 }
+            } else {
+                false
+            };
+            if !painted {
+                painter.text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    emoji_str,
+                    egui::FontId::proportional(final_size),
+                    egui::Color32::WHITE,
+                );
             }
+        }
     }
 }

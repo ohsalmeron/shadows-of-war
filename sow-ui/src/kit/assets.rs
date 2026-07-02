@@ -21,9 +21,7 @@ pub fn atlas_texture(ctx: &Context) -> Option<TextureHandle> {
     if let Some(tex) = ctx.data(|d| d.get_temp::<TextureHandle>(id)) {
         return Some(tex);
     }
-    let rgba = image::load_from_memory(EMOJI_ATLAS_BYTES)
-        .ok()?
-        .to_rgba8();
+    let rgba = image::load_from_memory(EMOJI_ATLAS_BYTES).ok()?.to_rgba8();
     let size = [rgba.width() as _, rgba.height() as _];
     let pixels = rgba.as_flat_samples();
     let color = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());

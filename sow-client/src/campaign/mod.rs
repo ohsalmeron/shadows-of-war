@@ -96,7 +96,14 @@ impl Faction {
     /// Build a faction; civ is implied by role so it stays consistent between the hardcoded
     /// roster and the JSON loader.
     fn new(name: impl Into<String>, x: u32, y: u32, role: Role) -> Faction {
-        Faction { name: name.into(), x, y, role, civ: role.civ(), iq: None }
+        Faction {
+            name: name.into(),
+            x,
+            y,
+            role,
+            civ: role.civ(),
+            iq: None,
+        }
     }
 }
 
@@ -145,11 +152,24 @@ pub fn log_plan(episode: &str, player_spawn: (u32, u32), factions: &[Faction]) {
         player_spawn.1,
         factions.len()
     );
-    log::info!("campaign:   TEAM RED (us): [player] Boudica + kin {}", join(&[Role::Kin]));
-    log::info!("campaign:   TEAM BLUE (Rome): big-boss {} | bosses {} | vassals {}",
-        join(&[Role::BigBoss]), join(&[Role::Boss]), join(&[Role::Vassal]));
-    log::info!("campaign:   INDEPENDENT (gray, 500): {}", join(&[Role::Independent]));
-    log::info!("campaign:   NEUTRAL (own colors): {}", join(&[Role::Neutral]));
+    log::info!(
+        "campaign:   TEAM RED (us): [player] Boudica + kin {}",
+        join(&[Role::Kin])
+    );
+    log::info!(
+        "campaign:   TEAM BLUE (Rome): big-boss {} | bosses {} | vassals {}",
+        join(&[Role::BigBoss]),
+        join(&[Role::Boss]),
+        join(&[Role::Vassal])
+    );
+    log::info!(
+        "campaign:   INDEPENDENT (gray, 500): {}",
+        join(&[Role::Independent])
+    );
+    log::info!(
+        "campaign:   NEUTRAL (own colors): {}",
+        join(&[Role::Neutral])
+    );
 }
 
 /// Turn an episode's faction list into engine-ready scripted spawns (team + color + tier).

@@ -19,8 +19,6 @@ impl AssetLoader {
         self.queue_leader_portrait_fetch(leader, mobile, true);
     }
 
-
-
     pub(crate) fn queue_leader_portrait_fetch(
         &mut self,
         leader: Leader,

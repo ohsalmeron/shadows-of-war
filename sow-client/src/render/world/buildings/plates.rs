@@ -41,9 +41,11 @@ pub(crate) fn paint_building_upgrade_plate(
         let line_font_size = (font_size * line.scale).round();
         let font_id = egui::FontId::proportional(line_font_size);
         let key = (line.text.clone(), line_font_size as u32);
-        let prepared = ui.cached_prepared_names.entry(key).or_insert_with(|| {
-            sow_ui::widgets::prepare_name(painter, &line.text, &font_id)
-        }).clone();
+        let prepared = ui
+            .cached_prepared_names
+            .entry(key)
+            .or_insert_with(|| sow_ui::widgets::prepare_name(painter, &line.text, &font_id))
+            .clone();
         text_w = text_w.max(prepared.size.x);
         if i > 0 {
             text_h += line_gap;

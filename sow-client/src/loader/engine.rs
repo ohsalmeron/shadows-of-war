@@ -44,6 +44,8 @@ impl SowApp {
         self.net.pending_lobby_rejoin = false;
         self.ui.hud_combat_sync_tick = 0;
         self.ui.last_projectiles.clear();
+        self.ui.app.hud_state.bottom_dialog = None;
+        self.ui.tutorial_active = false;
 
         self.dispatch_sim_command(SimCommand::Shutdown);
         self.ui.label_positions.clear();
@@ -250,14 +252,26 @@ impl SowApp {
                     } else if step == 1 {
                         let leader = self.ui.app.main_menu_state.selected_leader;
                         let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
-                        self.ui.app.asset_loader.ensure_ui_assets_loaded(&self.ui.egui_ctx);
-                        self.ui.app.asset_loader.ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
-                        self.ui.app.asset_loader.set_leader_portrait_focus(leader, mobile);
+                        self.ui
+                            .app
+                            .asset_loader
+                            .ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                        self.ui
+                            .app
+                            .asset_loader
+                            .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
+                        self.ui
+                            .app
+                            .asset_loader
+                            .set_leader_portrait_focus(leader, mobile);
 
                         let p = self.ui.app.splash_state.progress;
                         if p < 0.99 {
                             let inc = ((0.99 - p) * 0.03).clamp(0.001, 0.04);
-                            splash_show_loading_progress(&mut self.ui.app.splash_state, (p + inc).min(0.99));
+                            splash_show_loading_progress(
+                                &mut self.ui.app.splash_state,
+                                (p + inc).min(0.99),
+                            );
                         }
 
                         let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
@@ -342,35 +356,37 @@ impl SowApp {
                             if let Some(sp) = self.gfx.prev_sync_point.take() {
                                 let _ = render_ctx.context.wait_for(&sp, !0);
                             }
-                             if let Some(mut mr) = self.gfx.map_renderer.take() {
-                                 mr.destroy(render_ctx);
-                             }
-                             if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                                 mover.destroy(render_ctx);
-                             }
-                             if let Some(mut text) = self.gfx.text_renderer.take() {
-                                 text.destroy(render_ctx);
-                             }
-                             if let Some(ref s) = self.gfx.surface {
-                                 let format = s.info().format;
-                                 self.gfx.map_renderer =
-                                     Some(crate::render::gpu::map_renderer::MapRenderer::new(
-                                         &render_ctx.context,
-                                         self.sim.map_w,
-                                         self.sim.map_h,
-                                         format,
-                                         &map_bytes,
-                                     ));
-                                 self.gfx.mover_renderer = Some(crate::render::gpu::MoverRenderer::new(
-                                     &render_ctx.context,
-                                     format,
-                                 ));
-                                 self.gfx.text_renderer = Some(crate::render::gpu::TextRenderer::new(
-                                     &render_ctx.context,
-                                     format,
-                                 ));
-                                 self.gfx.needs_first_upload = true;
-                             }
+                            if let Some(mut mr) = self.gfx.map_renderer.take() {
+                                mr.destroy(render_ctx);
+                            }
+                            if let Some(mut mover) = self.gfx.mover_renderer.take() {
+                                mover.destroy(render_ctx);
+                            }
+                            if let Some(mut text) = self.gfx.text_renderer.take() {
+                                text.destroy(render_ctx);
+                            }
+                            if let Some(ref s) = self.gfx.surface {
+                                let format = s.info().format;
+                                self.gfx.map_renderer =
+                                    Some(crate::render::gpu::map_renderer::MapRenderer::new(
+                                        &render_ctx.context,
+                                        self.sim.map_w,
+                                        self.sim.map_h,
+                                        format,
+                                        &map_bytes,
+                                    ));
+                                self.gfx.mover_renderer =
+                                    Some(crate::render::gpu::MoverRenderer::new(
+                                        &render_ctx.context,
+                                        format,
+                                    ));
+                                self.gfx.text_renderer =
+                                    Some(crate::render::gpu::TextRenderer::new(
+                                        &render_ctx.context,
+                                        format,
+                                    ));
+                                self.gfx.needs_first_upload = true;
+                            }
                         }
 
                         // Move to step 2: Texture uploading happens automatically next frame

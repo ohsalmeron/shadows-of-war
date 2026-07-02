@@ -51,8 +51,14 @@ impl SowApp {
                         let idx = (r * map_w + c) as usize;
                         if owners[idx] == my_id {
                             let neighbors = [
-                                (1, 0), (-1, 0), (0, -1), (0, 1),
-                                (1, -1), (-1, -1), (1, 1), (-1, 1)
+                                (1, 0),
+                                (-1, 0),
+                                (0, -1),
+                                (0, 1),
+                                (1, -1),
+                                (-1, -1),
+                                (1, 1),
+                                (-1, 1),
                             ];
                             for &(dc, dr) in &neighbors {
                                 let nc = c + dc;

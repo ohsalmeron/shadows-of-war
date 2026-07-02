@@ -120,15 +120,13 @@ impl ClientApp {
                 }
                 None
             }
-            ClientPhase::Playing => {
-                hud::draw(
-                    ui,
-                    &mut self.hud_state,
-                    cancel_intents,
-                    self.settings_state.language,
-                    &mut self.asset_loader,
-                )
-            }
+            ClientPhase::Playing => hud::draw(
+                ui,
+                &mut self.hud_state,
+                cancel_intents,
+                self.settings_state.language,
+                &mut self.asset_loader,
+            ),
         };
 
         if let Some(ref toggle) = &action {

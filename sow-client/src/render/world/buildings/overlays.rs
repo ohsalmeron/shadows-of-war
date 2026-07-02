@@ -23,7 +23,12 @@ pub(super) fn paint_building_overlays(
 ) {
     let is_my_building = sim.my_player_id == Some(b.owner_id);
 
-    if is_my_building && b.under_construction && b.ticks_until_complete > 0 && zoom_scaled >= 1.5 && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_upgrade_plate {
+    if is_my_building
+        && b.under_construction
+        && b.ticks_until_complete > 0
+        && zoom_scaled >= 1.5
+        && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_upgrade_plate
+    {
         let active_l = b.active_level;
         let target_l = b.target_level;
 
@@ -92,7 +97,10 @@ pub(super) fn paint_building_overlays(
     }
 
     // Level badge (no white plate background, no frame, larger text in black)
-    if b.active_level != 1 && b.active_level != 0 && zoom_scaled >= super::super::BUILDINGS_HIDE_FLOOR {
+    if b.active_level != 1
+        && b.active_level != 0
+        && zoom_scaled >= super::super::BUILDINGS_HIDE_FLOOR
+    {
         let text_val = get_level_str(b.active_level);
         let font_size = (zoom_scaled * 0.65 * final_scale).clamp(8.0, 18.0).round();
         let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
@@ -136,9 +144,13 @@ pub(super) fn paint_building_overlays(
         if !gpu_text_rendered {
             let font_id = egui::FontId::proportional(font_size);
             let key = (text_val.to_string(), font_size as u32);
-            let galley = ui.cached_galleys.entry(key).or_insert_with(|| {
-                painter.layout_no_wrap(text_val.to_owned(), font_id, egui::Color32::WHITE)
-            }).clone();
+            let galley = ui
+                .cached_galleys
+                .entry(key)
+                .or_insert_with(|| {
+                    painter.layout_no_wrap(text_val.to_owned(), font_id, egui::Color32::WHITE)
+                })
+                .clone();
             let pos = bg_center - galley.rect.size() / 2.0;
 
             crate::hud::nameplate::paint_glow_nameplate_galley(
@@ -151,7 +163,13 @@ pub(super) fn paint_building_overlays(
     }
 
     // Render premium golden glassmorphic floating egui badge above upgrading building
-    if is_my_building && b.under_construction && b.ticks_until_complete > 0 && b.active_level > 0 && b.count == 1 && zoom_scaled >= 1.5 {
+    if is_my_building
+        && b.under_construction
+        && b.ticks_until_complete > 0
+        && b.active_level > 0
+        && b.count == 1
+        && zoom_scaled >= 1.5
+    {
         let active_l = b.active_level;
         let target_l = b.target_level;
         let queued_count = (target_l as i32 - active_l as i32).max(0) as u32;
@@ -238,13 +256,17 @@ pub(super) fn paint_building_overlays(
                 let font_size = (9.0_f32 * input.camera_zoom / sf).clamp(9.0, 12.0).round();
                 let font_id = egui::FontId::proportional(font_size);
                 let key = (tooltip_text.clone(), font_size as u32);
-                let galley = ui.cached_galleys.entry(key).or_insert_with(|| {
-                    painter.layout_no_wrap(
-                        tooltip_text.clone(),
-                        font_id.clone(),
-                        egui::Color32::WHITE,
-                    )
-                }).clone();
+                let galley = ui
+                    .cached_galleys
+                    .entry(key)
+                    .or_insert_with(|| {
+                        painter.layout_no_wrap(
+                            tooltip_text.clone(),
+                            font_id.clone(),
+                            egui::Color32::WHITE,
+                        )
+                    })
+                    .clone();
 
                 let padding_x = 8.0_f32;
                 let padding_y = 5.0_f32;

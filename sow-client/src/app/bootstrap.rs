@@ -1,11 +1,11 @@
 use super::state::*;
+use crate::render::gpu::{MapRenderer, RenderContext};
 use crate::{spawn_sow_client_connect, EngineInitEvent, MapDownloadEvent};
 use blade_egui::GuiPainter;
 use blade_graphics as gpu;
 use egui::{Context, RawInput, Rect};
 use sow_core::protocol::SimSnapshot;
 use sow_net::client::SowClient;
-use crate::render::gpu::{MapRenderer, RenderContext};
 use sow_ui::ClientApp;
 use std::collections::HashMap;
 use web_time::{Duration, Instant};

@@ -138,12 +138,15 @@ impl SowApp {
 
                                 if owner != 0 && owner != my_id && is_allied {
                                     let lang = self.ui.app.settings_state.language;
-                                    let msg = sow_i18n::get(lang).hud.err_break_alliance_boat.clone();
+                                    let msg =
+                                        sow_i18n::get(lang).hud.err_break_alliance_boat.clone();
                                     let mx = self.input.last_mouse_x;
                                     let my = self.input.last_mouse_y;
-                                    let world_x = (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
+                                    let world_x =
+                                        (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
                                     let offset_my = my as f32 - 60.0;
-                                    let world_y = (offset_my - self.input.camera_y) / self.input.camera_zoom;
+                                    let world_y =
+                                        (offset_my - self.input.camera_y) / self.input.camera_zoom;
                                     self.ui.floating_notices.push(crate::app::FloatingNotice {
                                         text: msg,
                                         world_x,
@@ -158,10 +161,12 @@ impl SowApp {
                                         self.ui.app.hud_state.troops
                                             * (self.ui.app.hud_state.attack_ratio as f64),
                                     );
-                                    self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet {
-                                        target_tile: idx as u32,
-                                        troops,
-                                    });
+                                    self.send_intent(
+                                        sow_core::protocol::GameplayIntent::LaunchFleet {
+                                            target_tile: idx as u32,
+                                            troops,
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -403,7 +408,8 @@ impl SowApp {
                                         .unwrap_or((position.x, position.y));
                                     let is_building =
                                         self.ui.app.hud_state.selected_building_kind.is_some();
-                                    let is_nuke = self.ui.app.hud_state.selected_nuke_kind.is_some();
+                                    let is_nuke =
+                                        self.ui.app.hud_state.selected_nuke_kind.is_some();
                                     if is_touch && !is_spawning && !is_building && !is_nuke {
                                         // Tap on mobile → open context menu
                                         self.open_context_menu_at(sx, sy);

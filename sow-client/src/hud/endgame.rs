@@ -154,13 +154,15 @@ impl SowApp {
 
         win.show(ctx, |ui| {
             let prepaint_idx = ui.painter().add(egui::Shape::Noop);
-            let actual_width = if is_mobile { screen_width } else { win_width.min(screen_width - 32.0) };
+            let actual_width = if is_mobile {
+                screen_width
+            } else {
+                win_width.min(screen_width - 32.0)
+            };
 
-            let frame_res = egui::Frame::NONE
-                .inner_margin(win_margin)
-                .show(ui, |ui| {
-                    ui.set_min_width(actual_width - win_margin * 2.0);
-                    ui.set_max_width(actual_width - win_margin * 2.0);
+            let frame_res = egui::Frame::NONE.inner_margin(win_margin).show(ui, |ui| {
+                ui.set_min_width(actual_width - win_margin * 2.0);
+                ui.set_max_width(actual_width - win_margin * 2.0);
 
                 ui.vertical_centered(|ui| {
                     let title_color = if is_victory {
@@ -279,7 +281,11 @@ impl SowApp {
                 prepaint_idx,
                 frame_res.response.rect,
                 border_color,
-                if is_mobile { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::lg() },
+                if is_mobile {
+                    egui::CornerRadius::ZERO
+                } else {
+                    sow_ui_kit::theme::radius::lg()
+                },
             );
         });
     }

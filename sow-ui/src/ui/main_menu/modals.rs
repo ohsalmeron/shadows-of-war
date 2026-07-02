@@ -107,7 +107,12 @@ pub(crate) fn draw_link_conflict_modal(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, (if compact { 360.0_f32 } else { 320.0_f32 }).min(screen_rect.height() - 32.0).max(200.0)))
+        .fixed_size(egui::vec2(
+            modal_w,
+            (if compact { 360.0_f32 } else { 320.0_f32 })
+                .min(screen_rect.height() - 32.0)
+                .max(200.0),
+        ))
         .frame(
             Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())
@@ -260,7 +265,10 @@ pub(crate) fn draw_lobby_notice(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, 220.0_f32.min(screen_rect.height() - 32.0).max(150.0)))
+        .fixed_size(egui::vec2(
+            modal_w,
+            220.0_f32.min(screen_rect.height() - 32.0).max(150.0),
+        ))
         .frame(
             egui::Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())
@@ -338,7 +346,10 @@ pub(crate) fn draw_connection_error_modal(
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
-        .fixed_size(egui::vec2(modal_w, 280.0_f32.min(screen_rect.height() - 32.0).max(200.0)))
+        .fixed_size(egui::vec2(
+            modal_w,
+            280.0_f32.min(screen_rect.height() - 32.0).max(200.0),
+        ))
         .frame(
             egui::Frame::new()
                 .fill(sow_ui_kit::theme::palette::surface())

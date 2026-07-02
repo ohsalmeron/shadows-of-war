@@ -81,7 +81,6 @@ pub struct MainMenuState {
     pub single_player_config: Box<sow_core::game_config::GameConfig>,
     pub error_message: Option<String>,
     pub leader_backdrop: crate::widgets::LeaderBackdropTransition,
-    pub invite_copied_at: Option<f64>,
     pub active_conflict: Option<UiLinkConflictInfo>,
     /// Local player's id in the joined lobby — lets the host roster skip its own entry.
     pub my_player_id: Option<u16>,
@@ -156,7 +155,6 @@ impl Default for MainMenuState {
             active_conflict: None,
             leader_backdrop: crate::widgets::LeaderBackdropTransition::new(leader),
             error_message: None,
-            invite_copied_at: None,
             my_player_id: None,
             notice: None,
             notice_at: None,
@@ -406,7 +404,7 @@ fn draw_desktop_hero_spotlight(
     let leader = state.selected_leader;
     let fill = sow_ui_kit::theme::palette::field_bg();
     let border = sow_ui_kit::theme::palette::field_border();
-    
+
     ui.vertical(|ui| {
         egui::Frame::NONE
             .fill(fill)
@@ -423,17 +421,20 @@ fn draw_desktop_hero_spotlight(
                             .color(egui::Color32::WHITE),
                     );
                     ui.label(
-                        egui::RichText::new(format!("CIVILIZATION: {}", leader.civilization().name().to_uppercase()))
-                            .font(sow_ui_kit::theme::font_regular(11.0))
-                            .color(sow_ui_kit::theme::palette::text_muted()),
+                        egui::RichText::new(format!(
+                            "CIVILIZATION: {}",
+                            leader.civilization().name().to_uppercase()
+                        ))
+                        .font(sow_ui_kit::theme::font_regular(11.0))
+                        .color(sow_ui_kit::theme::palette::text_muted()),
                     );
-                    
+
                     ui.add_space(8.0);
-                    
+
                     // Render the leader's avatar image inside a nice framed box
                     let avatar_size = egui::vec2(140.0, 140.0);
                     let (rect, _) = ui.allocate_exact_size(avatar_size, egui::Sense::hover());
-                    
+
                     let rgb = leader.filler_rgb();
                     let fill_color = egui::Color32::from_rgb(
                         (rgb[0] * 255.0).round() as u8,
@@ -441,38 +442,37 @@ fn draw_desktop_hero_spotlight(
                         (rgb[2] * 255.0).round() as u8,
                     );
                     ui.painter().rect_filled(rect, 8.0, fill_color);
-                    
+
                     if let Some(tex) = asset_loader.avatars.get(&leader) {
                         let image = egui::Image::new(tex)
                             .fit_to_exact_size(avatar_size)
                             .corner_radius(egui::CornerRadius::same(8));
                         ui.put(rect, image);
                     }
-                    
+
                     ui.add_space(8.0);
-                    
+
                     // Perk emoji + description
                     ui.label(
                         egui::RichText::new(format!("{} Unique Perk", leader.menu_emoji()))
                             .font(sow_ui_kit::theme::font_regular(11.0))
                             .color(sow_ui_kit::theme::palette::neon_cyan()),
                     );
-                    
+
                     ui.add_space(4.0);
-                    
+
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(leader.perk_description())
                                 .font(sow_ui_kit::theme::font_regular(11.0))
-                                .color(sow_ui_kit::theme::palette::text_muted())
+                                .color(sow_ui_kit::theme::palette::text_muted()),
                         )
-                        .halign(egui::Align::Center)
+                        .halign(egui::Align::Center),
                     );
                 });
             });
     });
 }
-
 
 fn draw_desktop_buttons_grid(
     ui: &mut egui::Ui,
@@ -541,7 +541,7 @@ fn draw_desktop_buttons_grid(
             // Row 1: Join (left) + Create (right)
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = cell_gap;
-                
+
                 let join_btn = crate::widgets::ThemeButton::new(&strings.join_game_btn)
                     .style(crate::widgets::ThemeButtonStyle::Tertiary)
                     .custom_fill(fill)
@@ -632,9 +632,9 @@ pub fn draw(
         join_browser::draw(root_ui, state, asset_loader, &mut action, lang);
     } else {
         let panel_frame = if state.is_waiting {
-            Frame::new()
-                .fill(Color32::TRANSPARENT)
-                .inner_margin(outer_pad)
+            // No margin: the waiting-room card manages its own margins on desktop
+            // and must fill the whole space (minus footer) on compact viewports.
+            Frame::new().fill(Color32::TRANSPARENT)
         } else {
             Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(10, 10, 14, 210))
@@ -652,7 +652,7 @@ pub fn draw(
                 if state.is_waiting {
                     // Always fullscreen — the lobby waiting room fills the viewport at
                     // every resolution (no cramped centered modal).
-                    let (section_gap, action_min_h, _, _) = layout::menu_layout_chrome(
+                    let (_, action_min_h, _, _) = layout::menu_layout_chrome(
                         ui.ctx(),
                         ui.available_height(),
                         ui.available_width(),
@@ -661,7 +661,6 @@ pub fn draw(
                     queue_overlay::draw_queue_overlay(
                         ui,
                         state,
-                        section_gap,
                         action_min_h,
                         &mut action,
                         asset_loader,
@@ -712,7 +711,8 @@ pub fn draw(
                                     ui.add_space(section_gap * 0.5);
 
                                     let remaining_h = ui.available_height();
-                                    let row_h = ((remaining_h - section_gap * 0.5) * 0.5).clamp(36.0, 54.0);
+                                    let row_h =
+                                        ((remaining_h - section_gap * 0.5) * 0.5).clamp(36.0, 54.0);
 
                                     draw_desktop_buttons_grid(
                                         ui,
@@ -732,13 +732,10 @@ pub fn draw(
                             // Right Column: Hero Spotlight
                             ui.allocate_ui_with_layout(
                                 egui::vec2(right_w, ui.available_height()),
-                                egui::Layout::top_down(egui::Align::Center).with_cross_align(egui::Align::Center),
+                                egui::Layout::top_down(egui::Align::Center)
+                                    .with_cross_align(egui::Align::Center),
                                 |ui| {
-                                    draw_desktop_hero_spotlight(
-                                        ui,
-                                        state,
-                                        asset_loader,
-                                    );
+                                    draw_desktop_hero_spotlight(ui, state, asset_loader);
                                 },
                             );
                         });

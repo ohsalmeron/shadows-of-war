@@ -384,7 +384,10 @@ impl Widget for HudEmojiButton {
                 let a = (glow_color.a() as f32 * factor * glow) as u8;
                 if a > 0 {
                     let step_color = Color32::from_rgba_unmultiplied(
-                        glow_color.r(), glow_color.g(), glow_color.b(), a,
+                        glow_color.r(),
+                        glow_color.g(),
+                        glow_color.b(),
+                        a,
                     );
                     let offset = i as f32 * 2.0;
                     let expanded_rect = rect.expand(offset);

@@ -25,7 +25,10 @@ pub(super) fn paint_bunker_effects(
         return;
     }
 
-    if b.kind == sow_core::game::BuildingKind::Bunker && b.active_level > 0 && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_tower {
+    if b.kind == sow_core::game::BuildingKind::Bunker
+        && b.active_level > 0
+        && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_tower
+    {
         let radius_world = config.bunker_range as f32;
         let elapsed = time.start_time.elapsed().as_secs_f32();
         let laser_opts = bunker_laser_vfx_opts(painter.ctx());

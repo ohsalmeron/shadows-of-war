@@ -1,6 +1,6 @@
+use crate::render::gpu::{MoverInstanceGpu, MoverSpriteId, TrailSegmentGpu};
 use sow_core::game::{ProjectileKind, UnitType};
 use sow_core::protocol::{FleetSnapshot, PlayerSnapshot, ProjectileSnapshot, SimSnapshot};
-use crate::render::gpu::{MoverInstanceGpu, MoverSpriteId, TrailSegmentGpu};
 use std::collections::{HashMap, HashSet};
 use web_time::Instant;
 
@@ -387,7 +387,11 @@ impl MoverScene {
         in_viewport(sx, sy, min_sx, min_sy, max_sx, max_sy)
     }
 
-    pub fn pack_gpu(&self, params: &MoverPackParams<'_>, renderer: &mut crate::render::gpu::MoverRenderer) {
+    pub fn pack_gpu(
+        &self,
+        params: &MoverPackParams<'_>,
+        renderer: &mut crate::render::gpu::MoverRenderer,
+    ) {
         renderer.begin_frame();
         let alpha = params.alpha;
         let margin = screen_margin(params.camera_zoom);
@@ -399,7 +403,7 @@ impl MoverScene {
 
         for (id, &idx) in &self.id_to_idx {
             let slot = &self.slots[idx as usize];
-            
+
             let (wx, wy, progress) = if slot.is_fleet {
                 let wx = slot.prev_x + (slot.curr_x - slot.prev_x) * alpha;
                 let wy = slot.prev_y + (slot.curr_y - slot.prev_y) * alpha;
@@ -462,8 +466,10 @@ impl MoverScene {
                 let min_sy = params.camera_y + min_y * params.camera_zoom;
                 let max_sy = params.camera_y + max_y * params.camera_zoom;
 
-                let arc_visible = max_sx >= -margin && min_sx <= params.screen_w + margin
-                    && max_sy >= -margin && min_sy <= params.screen_h + margin;
+                let arc_visible = max_sx >= -margin
+                    && min_sx <= params.screen_w + margin
+                    && max_sy >= -margin
+                    && min_sy <= params.screen_h + margin;
 
                 if arc_visible {
                     if let Some(path) = self.arc_paths.get(id) {

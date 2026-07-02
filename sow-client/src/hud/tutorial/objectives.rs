@@ -21,7 +21,13 @@ pub(super) struct ObjRow {
 
 /// A cheap vertical gradient (one 2-triangle mesh or two rounded rects, `top`→`bottom`).
 /// Used for the objective progress bar's backplate and fill.
-fn paint_v_gradient(painter: &egui::Painter, rect: egui::Rect, top: egui::Color32, bottom: egui::Color32, radius: egui::CornerRadius) {
+fn paint_v_gradient(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    top: egui::Color32,
+    bottom: egui::Color32,
+    radius: egui::CornerRadius,
+) {
     if !rect.is_positive() {
         return;
     }
@@ -178,7 +184,10 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 let painter = ui.painter();
 
                                 let theme_roundness = if sow_ui_kit::theme::custom_theme_enabled() {
-                                    (sow_ui_kit::theme::dev_config::DevConfig::get().theme_roundness.round() as u32).min(255) as u8
+                                    (sow_ui_kit::theme::dev_config::DevConfig::get()
+                                        .theme_roundness
+                                        .round() as u32)
+                                        .min(255) as u8
                                 } else {
                                     0
                                 };
@@ -197,8 +206,10 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 // Fill: bright green up top, deeper green below, plus a top sheen.
                                 let fill_w = (rect.width() * frac).round();
                                 if fill_w > 1.0 {
-                                    let fill =
-                                        egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, bar_h));
+                                    let fill = egui::Rect::from_min_size(
+                                        rect.min,
+                                        egui::vec2(fill_w, bar_h),
+                                    );
                                     paint_v_gradient(
                                         painter,
                                         fill,
@@ -213,7 +224,10 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                         se: 0,
                                     };
                                     painter.rect_filled(
-                                        egui::Rect::from_min_size(fill.min, egui::vec2(fill_w, 2.0)),
+                                        egui::Rect::from_min_size(
+                                            fill.min,
+                                            egui::vec2(fill_w, 2.0),
+                                        ),
                                         sheen_cr,
                                         egui::Color32::from_rgba_unmultiplied(205, 255, 222, 60),
                                     );
@@ -221,7 +235,9 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
 
                                 // Crisp frame.
                                 let stroke_color = if sow_ui_kit::theme::custom_theme_enabled() {
-                                    let outline_color_raw = sow_ui_kit::theme::dev_config::DevConfig::get().theme_color_outline;
+                                    let outline_color_raw =
+                                        sow_ui_kit::theme::dev_config::DevConfig::get()
+                                            .theme_color_outline;
                                     egui::Color32::from_rgba_unmultiplied(
                                         (outline_color_raw[0] * 255.0) as u8,
                                         (outline_color_raw[1] * 255.0) as u8,

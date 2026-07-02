@@ -83,59 +83,59 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
 
                             let content_w = ui.available_width();
 
-                             if log_tabs_enabled {
-                                 match state.bottom_tab {
-                                     BottomHudTab::Controls => {
-                                         controls::draw_controls_row(
-                                             ui,
-                                             state,
-                                             content_w,
-                                             compact,
-                                             cancel_intents,
-                                             lang,
-                                             action,
-                                             asset_loader,
-                                         );
-                                     }
-                                     BottomHudTab::BattleLog => {
-                                         controls::draw_hud_sidebar_row(
-                                             ui,
-                                             state,
-                                             content_w,
-                                             compact,
-                                             action,
-                                             lang,
-                                             cancel_intents,
-                                             controls::HudSidebarMain::BattleLog,
-                                             asset_loader,
-                                         );
-                                     }
-                                     BottomHudTab::EventLog => {
-                                         controls::draw_hud_sidebar_row(
-                                             ui,
-                                             state,
-                                             content_w,
-                                             compact,
-                                             action,
-                                             lang,
-                                             cancel_intents,
-                                             controls::HudSidebarMain::EventLog,
-                                             asset_loader,
-                                         );
-                                     }
-                                 }
-                             } else {
-                                 controls::draw_controls_row(
-                                     ui,
-                                     state,
-                                     content_w,
-                                     compact,
-                                     cancel_intents,
-                                     lang,
-                                     action,
-                                     asset_loader,
-                                 );
-                             }
+                            if log_tabs_enabled {
+                                match state.bottom_tab {
+                                    BottomHudTab::Controls => {
+                                        controls::draw_controls_row(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            cancel_intents,
+                                            lang,
+                                            action,
+                                            asset_loader,
+                                        );
+                                    }
+                                    BottomHudTab::BattleLog => {
+                                        controls::draw_hud_sidebar_row(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            action,
+                                            lang,
+                                            cancel_intents,
+                                            controls::HudSidebarMain::BattleLog,
+                                            asset_loader,
+                                        );
+                                    }
+                                    BottomHudTab::EventLog => {
+                                        controls::draw_hud_sidebar_row(
+                                            ui,
+                                            state,
+                                            content_w,
+                                            compact,
+                                            action,
+                                            lang,
+                                            cancel_intents,
+                                            controls::HudSidebarMain::EventLog,
+                                            asset_loader,
+                                        );
+                                    }
+                                }
+                            } else {
+                                controls::draw_controls_row(
+                                    ui,
+                                    state,
+                                    content_w,
+                                    compact,
+                                    cancel_intents,
+                                    lang,
+                                    action,
+                                    asset_loader,
+                                );
+                            }
                         },
                     );
                 });

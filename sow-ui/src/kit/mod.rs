@@ -2,8 +2,8 @@ pub mod theme;
 pub mod utils;
 pub mod widgets;
 
-pub mod ui_font;
 pub mod assets;
+pub mod ui_font;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientPhase {

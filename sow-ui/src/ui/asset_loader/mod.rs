@@ -210,8 +210,6 @@ impl AssetLoader {
             unique_maps.insert(l.map_name.clone());
         }
 
-
-
         // Thumbnails: queue missing ones; sow-client drains via poll_thumbnail_fetches.
         for map_name in &unique_maps {
             self.request_thumbnail(map_name);

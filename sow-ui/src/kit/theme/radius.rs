@@ -32,7 +32,9 @@ pub fn tab_top() -> CornerRadius {
 }
 /// Small inline element inside a panel (progress bar, resource badge).
 #[inline]
-pub fn inline() -> CornerRadius { sm() }
+pub fn inline() -> CornerRadius {
+    sm()
+}
 
 /// Bottom HUD docked to screen edge on portrait viewports — rounded top only.
 #[inline]

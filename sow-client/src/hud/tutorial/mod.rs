@@ -73,7 +73,15 @@ impl SowApp {
             .current_snapshot
             .as_ref()
             .and_then(|s| s.players.iter().find(|p| p.id == my_id))
-            .map(|p| (p.tile_count, p.has_spawned, p.centroid_x, p.centroid_y, p.kills));
+            .map(|p| {
+                (
+                    p.tile_count,
+                    p.has_spawned,
+                    p.centroid_x,
+                    p.centroid_y,
+                    p.kills,
+                )
+            });
         let my_tiles = me.map(|m| m.0).unwrap_or(0);
         let my_kills = me.map(|m| m.4).unwrap_or(0);
         let spawned = matches!(me, Some((_, true, ..)));
@@ -238,7 +246,11 @@ impl SowApp {
                 true,
                 Some(QUEST_COMPLETE_SECS),
             );
-            let elapsed = self.ui.tutorial_spawn_time.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+            let elapsed = self
+                .ui
+                .tutorial_spawn_time
+                .map(|t| t.elapsed().as_secs_f32())
+                .unwrap_or(0.0);
             if clicked.is_some() || (elapsed > 0.5 && ctx.input(|i| i.pointer.any_click())) {
                 self.ui.tutorial_pending_completion = None;
             }
@@ -256,7 +268,9 @@ impl SowApp {
                         color: p.color,
                         emoji: sow_core::player::tribe_animal(p.id, &p.name).to_string(),
                     },
-                    sow_core::player::PlayerType::Nation => SpeakerVisual::Empire { color: p.color },
+                    sow_core::player::PlayerType::Nation => {
+                        SpeakerVisual::Empire { color: p.color }
+                    }
                     sow_core::player::PlayerType::Human => SpeakerVisual::Avatar(ADVISOR),
                 });
             let clicked = self.present_dialog(
@@ -270,7 +284,11 @@ impl SowApp {
                 true,
                 Some(DIALOG_AUTODISMISS_SECS),
             );
-            let elapsed = self.ui.tutorial_spawn_time.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+            let elapsed = self
+                .ui
+                .tutorial_spawn_time
+                .map(|t| t.elapsed().as_secs_f32())
+                .unwrap_or(0.0);
             if clicked.is_some() || (elapsed > 0.5 && ctx.input(|i| i.pointer.any_click())) {
                 self.ui.tutorial_pending_intro = None;
             }
@@ -305,8 +323,13 @@ impl SowApp {
                 !is_last_step, // whole panel closes it only if not last step
                 auto_dismiss,
             );
-            let elapsed = self.ui.tutorial_spawn_time.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
-            let clicked_anywhere = !is_last_step && elapsed > 0.5 && ctx.input(|i| i.pointer.any_click());
+            let elapsed = self
+                .ui
+                .tutorial_spawn_time
+                .map(|t| t.elapsed().as_secs_f32())
+                .unwrap_or(0.0);
+            let clicked_anywhere =
+                !is_last_step && elapsed > 0.5 && ctx.input(|i| i.pointer.any_click());
             if let Some(btn_idx) = clicked {
                 if is_last_step {
                     if btn_idx == 0 {

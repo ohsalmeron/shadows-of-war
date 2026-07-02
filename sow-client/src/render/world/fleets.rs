@@ -55,7 +55,10 @@ pub(crate) fn render(
                 );
             }
 
-            if fleet.retreating && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2) && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_fleet_blink {
+            if fleet.retreating
+                && (time.start_time.elapsed().as_millis() / 500).is_multiple_of(2)
+                && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_fleet_blink
+            {
                 let center = rect.center();
                 painter.line_segment(
                     [

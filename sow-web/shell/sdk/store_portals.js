@@ -276,6 +276,13 @@
     try {
       var payload = JSON.parse(jsonStr);
       game.updateRoom(payload);
+      // Link invites are CrazyGames' own UI: keep their invite button in sync with
+      // room joinability. In-game we only surface the room code.
+      if (payload.isJoinable && game.showInviteButton && payload.inviteParams) {
+        game.showInviteButton(payload.inviteParams);
+      } else if (!payload.isJoinable && game.hideInviteButton) {
+        game.hideInviteButton();
+      }
     } catch (e) {
       console.warn("SOW_portalUpdateRoom parse failed:", e);
     }
@@ -289,22 +296,8 @@
     if (game && game.leftRoom) {
       game.leftRoom();
     }
-  };
-
-  window.SOW_portalInviteLink = function (jsonStr) {
-    if (!crazyGamesSdkReady()) {
-      return null;
-    }
-    var game = crazyGameApi();
-    if (!game || !game.inviteLink) {
-      return null;
-    }
-    try {
-      var payload = JSON.parse(jsonStr);
-      return game.inviteLink(payload) || null;
-    } catch (e) {
-      console.warn("SOW_portalInviteLink failed:", e);
-      return null;
+    if (game && game.hideInviteButton) {
+      game.hideInviteButton();
     }
   };
 

@@ -84,8 +84,9 @@ pub(crate) fn render(
 
         let map_area = (sim.map_w * sim.map_h).max(1) as f32;
         let normalized_tiles = player.tile_count as f32 * (40_000.0 / map_area);
+        // Only human players can bypass far-zoom dot culling via screen footprint size
         let is_massive_on_screen =
-            normalized_tiles * zoom_scaled_local * zoom_scaled_local >= 1500.0;
+            is_human && (normalized_tiles * zoom_scaled_local * zoom_scaled_local >= 1500.0);
 
         if zoom_scaled < far_zoom_threshold && !is_massive_on_screen {
             if is_human {
@@ -118,31 +119,8 @@ pub(crate) fn render(
                 full_labels_drawn += 1;
             }
 
-            let base_config_size = if is_me {
-                visual_config.nameplate_my_size
-            } else if is_human {
-                visual_config.nameplate_premium_size
-            } else if player.player_type == sow_core::player::PlayerType::Bot {
-                visual_config.nameplate_tribe_size
-            } else {
-                visual_config.nameplate_nation_size
-            };
-            // Only local player and humans scale with territory; bots/nations stay constant screen size.
-            const NAMEPLATE_RENDER_SCALE: f32 = 0.4;
-            let base_premium_size = if (is_me || is_human) && vp.nameplate_size > 0.1 {
-                vp.nameplate_size * NAMEPLATE_RENDER_SCALE
-            } else {
-                base_config_size
-            };
-            let raw_scaled =
-                (base_premium_size * ui_text_scale).min(visual_config.nameplate_max_screen_font);
-            let scaled_size = if is_me {
-                raw_scaled.max(visual_config.nameplate_my_size)
-            } else if is_human {
-                raw_scaled.max(visual_config.nameplate_premium_size)
-            } else {
-                raw_scaled
-            };
+            // ponytail: map territory size (0.2..24.0) to a tight, clean font size range of 9px..15px
+            let scaled_size = (9.0 + (vp.nameplate_size / 24.0) * 6.0) * ui_text_scale;
             if scaled_size < 7.0 && !is_me && !is_human {
                 if let Some(tr) = gfx.text_renderer.as_mut() {
                     let c = [center.x * sf, center.y * sf];
@@ -186,7 +164,8 @@ pub(crate) fn render(
                 betrayal_flash = true;
             }
 
-            let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(player.color);
+            let vibrant_color =
+                crate::hud::nameplate::ensure_readable_nameplate_color(player.color);
 
             let troops_str = sow_ui_kit::utils::format_number(player.troops);
             let font_id = egui::FontId::proportional(font_size);
@@ -205,11 +184,8 @@ pub(crate) fn render(
 
             let prepared_name = sow_ui_kit::widgets::prepare_name(painter, &display_name, &font_id);
             let name_size = prepared_name.size;
-            let troops_galley = painter.layout_no_wrap(
-                troops_str.clone(),
-                troops_font_id.clone(),
-                vibrant_color,
-            );
+            let troops_galley =
+                painter.layout_no_wrap(troops_str.clone(), troops_font_id.clone(), vibrant_color);
 
             let name_w = if show_names { name_size.x } else { 0.0 };
             let name_h = if show_names { name_size.y } else { 0.0 };
@@ -218,13 +194,25 @@ pub(crate) fn render(
             } else {
                 0.0
             };
-            let troops_h = if show_troops { troops_galley.rect.height() } else { 0.0 };
+            let troops_h = if show_troops {
+                troops_galley.rect.height()
+            } else {
+                0.0
+            };
             let right_w = name_w.max(troops_w);
-            let item_spacing_y = if show_names && show_troops { (font_size * 0.111).round() } else { 0.0 };
+            let item_spacing_y = if show_names && show_troops {
+                (font_size * 0.111).round()
+            } else {
+                0.0
+            };
             let right_h = name_h + item_spacing_y + troops_h;
 
             // Vertical layout: avatar centered on top, text below.
-            let spacing_y = if avatar_size > 0.0 && right_h > 0.0 { (font_size * 0.333).round() } else { 0.0 };
+            let spacing_y = if avatar_size > 0.0 && right_h > 0.0 {
+                (font_size * 0.333).round()
+            } else {
+                0.0
+            };
             let total_w = right_w.max(avatar_size);
             let total_h = avatar_size + spacing_y + right_h;
 
@@ -250,7 +238,11 @@ pub(crate) fn render(
                 1.0,
             );
 
-            let flash_alpha = if is_heart_flashing { heart_flash_alpha } else { 1.0 };
+            let flash_alpha = if is_heart_flashing {
+                heart_flash_alpha
+            } else {
+                1.0
+            };
             let mut right_slot_y = avatar_cy;
             if is_allied {
                 draw_side_status_badge(
@@ -329,7 +321,14 @@ pub(crate) fn render(
                         0.0,
                     )
                 });
-                if !star_gpu && !sow_ui_kit::widgets::try_paint_emoji(painter, "⭐", star_rect, egui::Color32::WHITE) {
+                if !star_gpu
+                    && !sow_ui_kit::widgets::try_paint_emoji(
+                        painter,
+                        "⭐",
+                        star_rect,
+                        egui::Color32::WHITE,
+                    )
+                {
                     painter.text(
                         star_rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -360,7 +359,14 @@ pub(crate) fn render(
                         0.0,
                     )
                 });
-                if !disc_gpu && !sow_ui_kit::widgets::try_paint_emoji(painter, "🔌", disc_rect, egui::Color32::WHITE) {
+                if !disc_gpu
+                    && !sow_ui_kit::widgets::try_paint_emoji(
+                        painter,
+                        "🔌",
+                        disc_rect,
+                        egui::Color32::WHITE,
+                    )
+                {
                     let disc_font_id = egui::FontId::proportional(disc_sz);
                     painter.text(
                         disc_rect.center(),
@@ -412,13 +418,20 @@ pub(crate) fn render(
                 }
 
                 if show_troops {
-                    let troops_row_y = if show_names { text_top + name_h + item_spacing_y } else { text_top };
+                    let troops_row_y = if show_names {
+                        text_top + name_h + item_spacing_y
+                    } else {
+                        text_top
+                    };
                     let icon_size = troops_font_size * 1.15;
                     let icon_half = icon_size * 0.5;
                     let troops_left_x = center.x - troops_w / 2.0;
                     tr.push_emoji(
                         "⚔",
-                        [(troops_left_x + icon_half) * sf, (troops_row_y + icon_half) * sf],
+                        [
+                            (troops_left_x + icon_half) * sf,
+                            (troops_row_y + icon_half) * sf,
+                        ],
                         icon_half * sf,
                         color_arr,
                         outline_color_arr,
@@ -427,7 +440,10 @@ pub(crate) fn render(
                     );
                     tr.push_string(
                         &troops_str,
-                        [(troops_left_x + icon_size + 3.0) * sf, (troops_row_y + troops_h * 0.85) * sf],
+                        [
+                            (troops_left_x + icon_size + 3.0) * sf,
+                            (troops_row_y + troops_h * 0.85) * sf,
+                        ],
                         troops_font_size * font_size_scale * sf,
                         color_arr,
                         outline_color_arr,
@@ -453,7 +469,11 @@ pub(crate) fn render(
                 }
 
                 if show_troops {
-                    let troops_row_y = if show_names { text_top + name_h + item_spacing_y } else { text_top };
+                    let troops_row_y = if show_names {
+                        text_top + name_h + item_spacing_y
+                    } else {
+                        text_top
+                    };
                     crate::hud::nameplate::paint_glow_troops_row(
                         painter,
                         egui::pos2(center.x - troops_w / 2.0, troops_row_y),

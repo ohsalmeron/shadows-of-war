@@ -184,14 +184,14 @@ pub fn draw_standard_modal<R>(
     let compact = compact_viewport(ctx);
     let screen_rect = ctx.input(|i| i.content_rect());
     let margin = if compact { 0.0 } else { 16.0 };
-    
+
     // Width: take full width on mobile/compact, or cap it on larger desktop screens
     let panel_w = if compact {
         screen_rect.width()
     } else {
         (screen_rect.width() - (margin * 2.0)).min(600.0)
     };
-    
+
     // Height: take full height (minus margin) to ensure maximum layout space under low height
     let panel_h = if compact {
         screen_rect.height()
@@ -215,10 +215,7 @@ pub fn draw_standard_modal<R>(
         .interactable(true)
         .show(ctx, |ui| {
             let scrim_color = Color32::from_black_alpha((150.0 * progress) as u8);
-            let (rect, response) = ui.allocate_exact_size(
-                screen_rect.size(),
-                egui::Sense::click(),
-            );
+            let (rect, response) = ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
             ui.painter().rect_filled(rect, 0.0, scrim_color);
             if response.clicked() {
                 *is_open = false;
@@ -265,7 +262,11 @@ pub fn draw_standard_modal<R>(
             ui.add_space(8.0);
 
             // Compute available height for scroll area
-            let footer_h = if !close_label.is_empty() { 40.0 + 12.0 } else { 0.0 }; 
+            let footer_h = if !close_label.is_empty() {
+                40.0 + 12.0
+            } else {
+                0.0
+            };
             let available_scroll_h = (ui.available_height() - footer_h - 10.0).max(50.0);
 
             // Reusable scrollable viewport area
@@ -283,7 +284,10 @@ pub fn draw_standard_modal<R>(
                 ui.vertical_centered(|ui| {
                     let close_btn = crate::widgets::ThemeButton::new(close_label)
                         .style(crate::widgets::ThemeButtonStyle::Primary)
-                        .min_size(egui::vec2(if compact { ui.available_width() } else { 160.0 }, 40.0));
+                        .min_size(egui::vec2(
+                            if compact { ui.available_width() } else { 160.0 },
+                            40.0,
+                        ));
                     if ui.add(close_btn).clicked() {
                         *is_open = false;
                     }
@@ -445,7 +449,12 @@ pub fn paint_hud_panel_gradient(
             let factor = (-2.5 * t).exp(); // Exponential falloff
             let a = (alpha * factor) as u8;
             if a > 0 {
-                let step_color = Color32::from_rgba_unmultiplied(glow_color.r(), glow_color.g(), glow_color.b(), a);
+                let step_color = Color32::from_rgba_unmultiplied(
+                    glow_color.r(),
+                    glow_color.g(),
+                    glow_color.b(),
+                    a,
+                );
                 let thickness = (1.0 + (i as f32 * 0.5)) * glow_thickness;
                 let offset_val = i as f32 * 1.0 * glow_spread;
                 let expanded_rect = rect.expand(offset_val);
@@ -500,13 +509,29 @@ pub fn paint_hud_panel_gradient(
     }
 
     // Default: vertical gradient mesh (sharp or caller-supplied radius on border only)
-    let top_color    = Color32::from_rgba_unmultiplied(32, 32, 36, 240);
+    let top_color = Color32::from_rgba_unmultiplied(32, 32, 36, 240);
     let bottom_color = Color32::from_rgba_unmultiplied(16, 16, 18, 240);
     let mut mesh = egui::Mesh::default();
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.left_top(),     uv: egui::Pos2::ZERO, color: top_color });
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.right_top(),    uv: egui::Pos2::ZERO, color: top_color });
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.right_bottom(), uv: egui::Pos2::ZERO, color: bottom_color });
-    mesh.vertices.push(egui::epaint::Vertex { pos: rect.left_bottom(),  uv: egui::Pos2::ZERO, color: bottom_color });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_top(),
+        uv: egui::Pos2::ZERO,
+        color: top_color,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_top(),
+        uv: egui::Pos2::ZERO,
+        color: top_color,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.right_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: bottom_color,
+    });
+    mesh.vertices.push(egui::epaint::Vertex {
+        pos: rect.left_bottom(),
+        uv: egui::Pos2::ZERO,
+        color: bottom_color,
+    });
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
     ui.painter().set(idx, egui::Shape::mesh(mesh));

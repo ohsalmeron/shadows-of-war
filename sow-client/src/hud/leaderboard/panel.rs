@@ -1,8 +1,8 @@
 use super::rows::*;
+use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking, INITIAL_VISIBLE_LIMIT};
 use crate::app::SowApp;
 use egui::{Align2, Color32, RichText, Stroke, Vec2};
 use sow_core::protocol::Team;
-use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking, INITIAL_VISIBLE_LIMIT};
 use std::collections::HashSet;
 
 impl SowApp {
@@ -426,7 +426,8 @@ impl SowApp {
                                     .on_hover_text("Quests")
                                     .clicked()
                                 {
-                                    self.ui.tutorial_objectives_open = !self.ui.tutorial_objectives_open;
+                                    self.ui.tutorial_objectives_open =
+                                        !self.ui.tutorial_objectives_open;
                                     if self.ui.tutorial_objectives_open {
                                         self.ui.show_leaderboard = false;
                                         self.ui.show_dev_sidebar = false;
@@ -464,7 +465,11 @@ impl SowApp {
                     prepaint_idx,
                     frame_res.response.rect,
                     sow_ui_kit::theme::palette::field_border(),
-                    if metrics.is_mobile { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
+                    if metrics.is_mobile {
+                        egui::CornerRadius::ZERO
+                    } else {
+                        sow_ui_kit::theme::radius::md()
+                    },
                 );
 
                 if self.ui.show_dev_sidebar {
@@ -483,7 +488,11 @@ impl SowApp {
                         prepaint_idx2,
                         frame_res2.response.rect,
                         sow_ui_kit::theme::palette::field_border(),
-                        if metrics.is_mobile { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
+                        if metrics.is_mobile {
+                            egui::CornerRadius::ZERO
+                        } else {
+                            sow_ui_kit::theme::radius::md()
+                        },
                     );
                 }
             });

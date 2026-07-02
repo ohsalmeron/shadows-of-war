@@ -104,7 +104,6 @@ impl<'a> Widget for LobbyCard<'a> {
                 .rect_filled(rect, 12.0, sow_ui_kit::theme::palette::button_inactive());
         }
 
-
         let top_rect = rect.shrink(8.0);
         let mode_text = if self.lobby.game_mode == "FFA" {
             "FFA"
@@ -177,8 +176,14 @@ impl<'a> Widget for LobbyCard<'a> {
         let btn_w = 64.0_f32.min((rect.width() * 0.32).max(48.0));
         let btn_h = 42.0_f32;
         let btn_rect = egui::Rect::from_min_max(
-            egui::pos2(bottom_rect.max.x - pad - btn_w, bottom_rect.center().y - btn_h * 0.5),
-            egui::pos2(bottom_rect.max.x - pad, bottom_rect.center().y + btn_h * 0.5),
+            egui::pos2(
+                bottom_rect.max.x - pad - btn_w,
+                bottom_rect.center().y - btn_h * 0.5,
+            ),
+            egui::pos2(
+                bottom_rect.max.x - pad,
+                bottom_rect.center().y + btn_h * 0.5,
+            ),
         );
         let text_right = btn_rect.min.x - pad;
 

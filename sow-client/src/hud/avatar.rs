@@ -159,20 +159,42 @@ pub fn draw_player_avatar_gpu(
 
     // Decorative frame rings (over the fill), matching the egui avatar.
     let border = (radius * 0.12).max(1.0);
-    tr.push_ring(center, radius + border * 0.3, [0.0, 0.0, 0.0, 160.0 / 255.0], border);
+    tr.push_ring(
+        center,
+        radius + border * 0.3,
+        [0.0, 0.0, 0.0, 160.0 / 255.0],
+        border,
+    );
     tr.push_ring(center, radius, frame, border * 0.8);
-    tr.push_ring(center, radius - border * 0.15, [1.0, 1.0, 1.0, 80.0 / 255.0], border * 0.35);
+    tr.push_ring(
+        center,
+        radius - border * 0.15,
+        [1.0, 1.0, 1.0, 80.0 / 255.0],
+        border * 0.35,
+    );
 
     // Category emoji sits on top: tribe animal for bots, empire symbol for nations.
     let glyph = match player_type {
-        sow_core::player::PlayerType::Bot => Some(sow_core::player::tribe_animal(player_id, player_name)),
-        sow_core::player::PlayerType::Nation => Some(sow_core::player::empire_emoji(player_id, player_name)),
+        sow_core::player::PlayerType::Bot => {
+            Some(sow_core::player::tribe_animal(player_id, player_name))
+        }
+        sow_core::player::PlayerType::Nation => {
+            Some(sow_core::player::empire_emoji(player_id, player_name))
+        }
         sow_core::player::PlayerType::Human => None,
     };
     if let Some(glyph) = glyph {
         // ~75% of the circle (push_emoji quad = half * 2.5 diameter). No custom outline —
         // the SDF outline per dev font settings applies globally if enabled.
         let half = radius * 0.65;
-        tr.push_emoji(glyph, center, half, [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], 0.0, 0.0);
+        tr.push_emoji(
+            glyph,
+            center,
+            half,
+            [1.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            0.0,
+            0.0,
+        );
     }
 }

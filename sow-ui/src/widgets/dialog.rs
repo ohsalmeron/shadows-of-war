@@ -116,10 +116,8 @@ pub fn paint_dialog_contents(
                     let (rect, _) =
                         ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
                     paint_speaker_disc(ui.painter(), rect, *color);
-                    let er = egui::Rect::from_center_size(
-                        rect.center(),
-                        Vec2::splat(portrait * 0.62),
-                    );
+                    let er =
+                        egui::Rect::from_center_size(rect.center(), Vec2::splat(portrait * 0.62));
                     crate::widgets::try_paint_emoji(ui.painter(), emoji, er, Color32::WHITE);
                 }
                 SpeakerVisual::Empire { color } => {

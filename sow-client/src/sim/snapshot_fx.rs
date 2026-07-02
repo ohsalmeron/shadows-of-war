@@ -9,7 +9,9 @@ impl SowApp {
                 // 1. Detect incoming attacks (UnderAttack)
                 for attack in &snap.attacks {
                     if attack.target_owner == my_id && attack.troops > 0.0 {
-                        let is_new_or_increased = if let Some(old_atk) = existing.attacks.iter().find(|a| a.id == attack.id) {
+                        let is_new_or_increased = if let Some(old_atk) =
+                            existing.attacks.iter().find(|a| a.id == attack.id)
+                        {
                             attack.troops > old_atk.troops
                         } else {
                             true
@@ -25,7 +27,9 @@ impl SowApp {
                     if let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id) {
                         for req in &my_info_new.alliance_requests {
                             if !my_info_old.alliance_requests.contains(req) {
-                                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::AllianceRequest);
+                                self.ui.trigger_viewport_alert(
+                                    crate::app::ViewportAlertKind::AllianceRequest,
+                                );
                             }
                         }
                     }
@@ -36,9 +40,15 @@ impl SowApp {
                     if let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id) {
                         for ally_id in &my_info_old.alliances {
                             if !my_info_new.alliances.contains(ally_id) {
-                                if let Some(other_player) = snap.players.iter().find(|p| p.id == *ally_id) {
-                                    if other_player.traitor || other_player.active_emoji.as_deref() == Some("🗡️") {
-                                        self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::Betrayal);
+                                if let Some(other_player) =
+                                    snap.players.iter().find(|p| p.id == *ally_id)
+                                {
+                                    if other_player.traitor
+                                        || other_player.active_emoji.as_deref() == Some("🗡️")
+                                    {
+                                        self.ui.trigger_viewport_alert(
+                                            crate::app::ViewportAlertKind::Betrayal,
+                                        );
                                     }
                                 }
                             }
@@ -48,7 +58,8 @@ impl SowApp {
             }
             // Count unique attackers targeting us in the new snapshot
             let unique_attackers = if my_id != 0 {
-                snap.attacks.iter()
+                snap.attacks
+                    .iter()
                     .filter(|a| a.target_owner == my_id && a.troops > 0.0)
                     .map(|a| a.owner_id)
                     .collect::<std::collections::HashSet<_>>()
@@ -59,18 +70,24 @@ impl SowApp {
 
             if unique_attackers > 0 {
                 let now = web_time::Instant::now();
-                let should_flash = self.ui.last_player_attack_flash_time.get(&my_id).copied()
+                let should_flash = self
+                    .ui
+                    .last_player_attack_flash_time
+                    .get(&my_id)
+                    .copied()
                     .map(|last| now.duration_since(last).as_secs_f32() >= 1.0)
                     .unwrap_or(true);
 
                 if should_flash || being_attacked_triggered {
                     // Compose intensity: 1.0 base + 0.2 per attacker, clamped between 1.0 and 1.5
                     let intensity = (1.0 + (unique_attackers as f32 - 1.0) * 0.2).clamp(1.0, 1.5);
-                    self.ui.border_flashes.push(crate::app::BorderFlashInstance {
-                        player_id: my_id,
-                        start_time: now,
-                        max_intensity: intensity,
-                    });
+                    self.ui
+                        .border_flashes
+                        .push(crate::app::BorderFlashInstance {
+                            player_id: my_id,
+                            start_time: now,
+                            max_intensity: intensity,
+                        });
                     self.ui.last_player_attack_flash_time.insert(my_id, now);
                 }
             } else {
@@ -78,7 +95,8 @@ impl SowApp {
             }
 
             if being_attacked_triggered {
-                self.ui.trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
+                self.ui
+                    .trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
             }
 
             // Detect building level upgrades and completions
@@ -186,4 +204,3 @@ impl SowApp {
         }
     }
 }
-

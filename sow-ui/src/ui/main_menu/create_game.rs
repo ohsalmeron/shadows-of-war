@@ -9,13 +9,20 @@ fn pill_toggle(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
     } else {
         (palette::button_inactive(), palette::text_muted())
     };
-    
+
     // Ensure compact padding for these specific toggles
     ui.style_mut().spacing.button_padding = egui::vec2(8.0, 4.0);
 
     let btn = egui::Button::new(RichText::new(label).size(12.0).color(text).strong())
         .fill(bg)
-        .stroke(Stroke::new(1.0, if active { palette::neon_cyan() } else { palette::field_border() }))
+        .stroke(Stroke::new(
+            1.0,
+            if active {
+                palette::neon_cyan()
+            } else {
+                palette::field_border()
+            },
+        ))
         .corner_radius(CornerRadius::same(6))
         .min_size(Vec2::new(0.0, 28.0));
     ui.add(btn).clicked()
@@ -43,7 +50,7 @@ where
         let qty_w = 48.0;
         let spacing = 6.0;
         let slider_w = (total_w - qty_w - spacing).max(30.0);
-        
+
         ui.spacing_mut().slider_width = slider_w;
         ui.add(
             egui::Slider::new(value, range)
@@ -69,7 +76,11 @@ fn panel_card(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
         });
     let rect = frame.response.rect;
     sow_ui_kit::theme::paint_hud_panel_gradient(
-        ui, prepaint, rect, palette::field_border(), CornerRadius::same(8),
+        ui,
+        prepaint,
+        rect,
+        palette::field_border(),
+        CornerRadius::same(8),
     );
 }
 
@@ -114,16 +125,16 @@ pub fn draw(
                 // Mobile layout: neat vertical stack
                 draw_map_preview(ui, config, asset_loader, strings);
                 ui.add_space(item_gap);
-                
+
                 draw_map_selection_card(ui, config, asset_loader, strings);
                 ui.add_space(item_gap);
-                
+
                 draw_lobby_difficulty_settings_card(ui, config, is_private, strings);
                 ui.add_space(item_gap);
-                
+
                 draw_sliders_card(ui, config, strings);
                 ui.add_space(item_gap);
-                
+
                 draw_security_card(ui, password, strings);
                 ui.add_space(12.0);
 
@@ -152,16 +163,16 @@ pub fn draw(
                     columns[0].vertical(|ui| {
                         draw_map_preview(ui, config, asset_loader, strings);
                         ui.add_space(item_gap);
-                        
+
                         draw_map_selection_card(ui, config, asset_loader, strings);
                         ui.add_space(item_gap);
-                        
+
                         draw_lobby_difficulty_settings_card(ui, config, is_private, strings);
                     });
                     columns[1].vertical(|ui| {
                         draw_sliders_card(ui, config, strings);
                         ui.add_space(item_gap);
-                        
+
                         draw_security_card(ui, password, strings);
                         ui.add_space(16.0);
 
@@ -208,15 +219,23 @@ fn draw_map_preview(
     let w = ui.available_width();
     let h = (w / aspect).clamp(40.0, if compact { 90.0 } else { 160.0 });
 
-    let rect = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover()).0;
+    let rect = ui
+        .allocate_exact_size(Vec2::new(w, h), egui::Sense::hover())
+        .0;
 
     if let Some(tex) = thumbnail {
         let uv = crate::ui::map_texture::cover_uv(rect.size(), tex.size_vec2());
         crate::ui::map_texture::draw_map_thumbnail_uv(
-            ui.painter(), tex.id(), rect, uv, 1.0, CornerRadius::same(6),
+            ui.painter(),
+            tex.id(),
+            rect,
+            uv,
+            1.0,
+            CornerRadius::same(6),
         );
     } else {
-        ui.painter().rect_filled(rect, 6.0, Color32::from_black_alpha(120));
+        ui.painter()
+            .rect_filled(rect, 6.0, Color32::from_black_alpha(120));
         let status = if asset_loader.thumbnail_error(&config.map_name).is_some() {
             strings.no_preview.to_string()
         } else if asset_loader.thumbnail_in_flight(&config.map_name) {
@@ -225,22 +244,35 @@ fn draw_map_preview(
             strings.no_preview.to_string()
         };
         sow_ui_kit::theme::paint_premium_glow_text(
-            ui.painter(), rect.center(), egui::Align2::CENTER_CENTER,
-            &status, egui::FontId::proportional(12.0), palette::text_muted(), Color32::BLACK,
+            ui.painter(),
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &status,
+            egui::FontId::proportional(12.0),
+            palette::text_muted(),
+            Color32::BLACK,
         );
     }
     ui.painter().rect_stroke(
-        rect, 6.0,
+        rect,
+        6.0,
         Stroke::new(1.0, palette::neon_cyan_glow()),
         egui::StrokeKind::Inside,
     );
 
-    let label = asset_loader.map_catalog.as_ref()
+    let label = asset_loader
+        .map_catalog
+        .as_ref()
         .and_then(|c| sow_core::maps::catalog_lookup(c, &config.map_name))
         .map(|e| e.display_name.as_str())
         .unwrap_or(config.map_name.as_str());
     ui.add_space(4.0);
-    ui.label(RichText::new(label.to_uppercase()).size(13.0).strong().color(Color32::WHITE));
+    ui.label(
+        RichText::new(label.to_uppercase())
+            .size(13.0)
+            .strong()
+            .color(Color32::WHITE),
+    );
 }
 
 fn draw_map_selection_card(
@@ -251,7 +283,8 @@ fn draw_map_selection_card(
 ) {
     panel_card(ui, |ui| {
         let selected_label = asset_loader
-            .map_catalog.as_ref()
+            .map_catalog
+            .as_ref()
             .and_then(|c| sow_core::maps::catalog_lookup(c, &config.map_name))
             .map(|e| e.display_name.as_str())
             .unwrap_or(config.map_name.as_str());
@@ -287,24 +320,44 @@ fn draw_lobby_difficulty_settings_card(
         if side_by_side {
             ui.columns(2, |cols| {
                 cols[0].vertical(|ui| {
-                    ui.label(RichText::new(&strings.game_mode_label).size(10.0).color(palette::text_muted()));
+                    ui.label(
+                        RichText::new(&strings.game_mode_label)
+                            .size(10.0)
+                            .color(palette::text_muted()),
+                    );
                     ui.add_space(3.0);
                     let mode_idx = if config.game_mode == "Teams" { 1 } else { 0 };
                     if let Some(new_idx) = draw_pill_row(ui, &["FFA", "TEAMS"], mode_idx) {
-                        config.game_mode = if new_idx == 1 { "Teams".to_string() } else { "FFA".to_string() };
+                        config.game_mode = if new_idx == 1 {
+                            "Teams".to_string()
+                        } else {
+                            "FFA".to_string()
+                        };
                     }
 
                     ui.add_space(6.0);
 
-                    ui.label(RichText::new("VISIBILITY").size(10.0).color(palette::text_muted()));
+                    ui.label(
+                        RichText::new("VISIBILITY")
+                            .size(10.0)
+                            .color(palette::text_muted()),
+                    );
                     ui.add_space(3.0);
                     let vis_idx = if *is_private { 1 } else { 0 };
-                    if let Some(new_idx) = draw_pill_row(ui, &[&strings.visibility_public, &strings.visibility_private], vis_idx) {
+                    if let Some(new_idx) = draw_pill_row(
+                        ui,
+                        &[&strings.visibility_public, &strings.visibility_private],
+                        vis_idx,
+                    ) {
                         *is_private = new_idx == 1;
                     }
                 });
                 cols[1].vertical(|ui| {
-                    ui.label(RichText::new(&strings.bot_difficulty).size(10.0).color(palette::text_muted()));
+                    ui.label(
+                        RichText::new(&strings.bot_difficulty)
+                            .size(10.0)
+                            .color(palette::text_muted()),
+                    );
                     ui.add_space(3.0);
                     let diff_idx = match config.bot_difficulty {
                         sow_core::game_config::BotDifficulty::Terminator => 1,
@@ -320,7 +373,11 @@ fn draw_lobby_difficulty_settings_card(
 
                     ui.add_space(6.0);
 
-                    ui.label(RichText::new(&strings.random_spawning).size(10.0).color(palette::text_muted()));
+                    ui.label(
+                        RichText::new(&strings.random_spawning)
+                            .size(10.0)
+                            .color(palette::text_muted()),
+                    );
                     ui.add_space(3.0);
                     let spawn_idx = if config.random_spawn { 0 } else { 1 };
                     if let Some(new_idx) = draw_pill_row(ui, &["ON", "OFF"], spawn_idx) {
@@ -329,25 +386,45 @@ fn draw_lobby_difficulty_settings_card(
                 });
             });
         } else {
-            ui.label(RichText::new(&strings.game_mode_label).size(10.0).color(palette::text_muted()));
+            ui.label(
+                RichText::new(&strings.game_mode_label)
+                    .size(10.0)
+                    .color(palette::text_muted()),
+            );
             ui.add_space(3.0);
             let mode_idx = if config.game_mode == "Teams" { 1 } else { 0 };
             if let Some(new_idx) = draw_pill_row(ui, &["FFA", "TEAMS"], mode_idx) {
-                config.game_mode = if new_idx == 1 { "Teams".to_string() } else { "FFA".to_string() };
+                config.game_mode = if new_idx == 1 {
+                    "Teams".to_string()
+                } else {
+                    "FFA".to_string()
+                };
             }
 
             ui.add_space(6.0);
 
-            ui.label(RichText::new("VISIBILITY").size(10.0).color(palette::text_muted()));
+            ui.label(
+                RichText::new("VISIBILITY")
+                    .size(10.0)
+                    .color(palette::text_muted()),
+            );
             ui.add_space(3.0);
             let vis_idx = if *is_private { 1 } else { 0 };
-            if let Some(new_idx) = draw_pill_row(ui, &[&strings.visibility_public, &strings.visibility_private], vis_idx) {
+            if let Some(new_idx) = draw_pill_row(
+                ui,
+                &[&strings.visibility_public, &strings.visibility_private],
+                vis_idx,
+            ) {
                 *is_private = new_idx == 1;
             }
 
             ui.add_space(8.0);
 
-            ui.label(RichText::new(&strings.bot_difficulty).size(10.0).color(palette::text_muted()));
+            ui.label(
+                RichText::new(&strings.bot_difficulty)
+                    .size(10.0)
+                    .color(palette::text_muted()),
+            );
             ui.add_space(3.0);
             let diff_idx = match config.bot_difficulty {
                 sow_core::game_config::BotDifficulty::Terminator => 1,
@@ -363,7 +440,11 @@ fn draw_lobby_difficulty_settings_card(
 
             ui.add_space(6.0);
 
-            ui.label(RichText::new(&strings.random_spawning).size(10.0).color(palette::text_muted()));
+            ui.label(
+                RichText::new(&strings.random_spawning)
+                    .size(10.0)
+                    .color(palette::text_muted()),
+            );
             ui.add_space(3.0);
             let spawn_idx = if config.random_spawn { 0 } else { 1 };
             if let Some(new_idx) = draw_pill_row(ui, &["ON", "OFF"], spawn_idx) {
@@ -379,19 +460,31 @@ fn draw_sliders_card(
     strings: &sow_i18n::MainMenuStrings,
 ) {
     panel_card(ui, |ui| {
-        ui.label(RichText::new(&strings.max_players_label).size(10.0).color(palette::text_muted()));
+        ui.label(
+            RichText::new(&strings.max_players_label)
+                .size(10.0)
+                .color(palette::text_muted()),
+        );
         ui.add_space(2.0);
         draw_custom_slider(ui, &mut config.max_players, 2..=16);
 
         ui.add_space(6.0);
 
-        ui.label(RichText::new(&strings.tribes_count).size(10.0).color(palette::text_muted()));
+        ui.label(
+            RichText::new(&strings.tribes_count)
+                .size(10.0)
+                .color(palette::text_muted()),
+        );
         ui.add_space(2.0);
         draw_custom_slider(ui, &mut config.bot_count, 0..=1000);
 
         ui.add_space(6.0);
 
-        ui.label(RichText::new(&strings.nations_count).size(10.0).color(palette::text_muted()));
+        ui.label(
+            RichText::new(&strings.nations_count)
+                .size(10.0)
+                .color(palette::text_muted()),
+        );
         ui.add_space(2.0);
         draw_custom_slider(ui, &mut config.nation_count, 0..=400);
     });
@@ -403,7 +496,11 @@ fn draw_security_card(
     strings: &sow_i18n::MainMenuStrings,
 ) {
     panel_card(ui, |ui| {
-        ui.label(RichText::new(&strings.password_label).size(10.0).color(palette::text_muted()));
+        ui.label(
+            RichText::new(&strings.password_label)
+                .size(10.0)
+                .color(palette::text_muted()),
+        );
         ui.add_space(3.0);
         let field_frame = Frame::NONE
             .fill(palette::field_bg())

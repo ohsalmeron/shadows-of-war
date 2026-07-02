@@ -207,9 +207,7 @@ impl SowApp {
             }
         }
 
-        if self.ui.app.phase == ClientPhase::MainMenu
-            || self.ui.app.phase == ClientPhase::Splash
-        {
+        if self.ui.app.phase == ClientPhase::MainMenu || self.ui.app.phase == ClientPhase::Splash {
             // Same orientation test as the backdrop's set_leader_portrait_focus
             // (`width < height`); compact_viewport would compute a different key
             // on wide-but-short windows and the decode would never match.

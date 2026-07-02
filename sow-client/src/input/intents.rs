@@ -45,11 +45,13 @@ impl SowApp {
             }
             sow_core::protocol::GameplayIntent::Attack(attack) => {
                 // Flash enemy borders red
-                self.ui.border_flashes.push(crate::app::BorderFlashInstance {
-                    player_id: attack.target_owner,
-                    start_time: web_time::Instant::now(),
-                    max_intensity: 1.0,
-                });
+                self.ui
+                    .border_flashes
+                    .push(crate::app::BorderFlashInstance {
+                        player_id: attack.target_owner,
+                        start_time: web_time::Instant::now(),
+                        max_intensity: 1.0,
+                    });
 
                 let world_x =
                     (self.input.last_mouse_x as f32 - self.input.camera_x) / self.input.camera_zoom;

@@ -60,13 +60,17 @@ impl SowApp {
                         if let Some(mut old_mover) = self.gfx.mover_renderer.take() {
                             old_mover.destroy(&render_ctx);
                         }
-                        self.gfx.mover_renderer =
-                            Some(crate::render::gpu::MoverRenderer::new(&render_ctx.context, format));
+                        self.gfx.mover_renderer = Some(crate::render::gpu::MoverRenderer::new(
+                            &render_ctx.context,
+                            format,
+                        ));
                         if let Some(mut old_text) = self.gfx.text_renderer.take() {
                             old_text.destroy(&render_ctx);
                         }
-                        self.gfx.text_renderer =
-                            Some(crate::render::gpu::TextRenderer::new(&render_ctx.context, format));
+                        self.gfx.text_renderer = Some(crate::render::gpu::TextRenderer::new(
+                            &render_ctx.context,
+                            format,
+                        ));
                         if let Some(mut old_gp) = self.gfx.gui_painter.take() {
                             old_gp.destroy(&render_ctx.context);
                         }

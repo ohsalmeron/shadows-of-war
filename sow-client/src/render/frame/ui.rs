@@ -130,7 +130,15 @@ impl SowApp {
             self.ui.app.main_menu_state.safe_area_bottom = insets.0.bottom;
             // ponytail: static atomic, not egui temp — works regardless of frame order
             sow_ui_kit::theme::set_custom_theme(self.ui.app.settings_state.custom_theme);
-            sow_ui_kit::theme::publish_reduced_motion(ctx, self.ui.app.settings_state.reduced_motion);
+            sow_ui_kit::theme::publish_reduced_motion(
+                ctx,
+                self.ui.app.settings_state.reduced_motion,
+            );
+            sow_audio::set_master_volume(if self.ui.app.settings_state.mute_all {
+                0.0
+            } else {
+                self.ui.app.settings_state.music_volume
+            });
 
             // UI Scene Editor preview (dev-gated via $SOW_UI_SCENE): when active, render the
             // generated scene over a backdrop in place of normal UI. Inert in every shipped
@@ -142,6 +150,7 @@ impl SowApp {
 
             if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
                 self.render_world_overlays(ctx, sf);
+                self.ui.app.hud_state.bottom_dialog = None;
                 self.render_tutorial_ui(ctx);
             }
 
@@ -484,113 +493,117 @@ impl SowApp {
                 egui::vec2(0.0, 12.0 + safe_area_top),
             )
             .show(ctx, |ui| {
-            let prepaint_idx = ui.painter().add(egui::Shape::Noop);
+                let prepaint_idx = ui.painter().add(egui::Shape::Noop);
 
-            let frame_res = egui::Frame::NONE
-                .inner_margin(egui::Margin::symmetric(14, 8))
-                .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Avatar/Emoji representation or Spirit Animal if any
-                    let (avatar_rect, _) =
-                        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
-                    crate::hud::avatar::draw_player_avatar(
-                        ui.painter(),
-                        avatar_rect.center(),
-                        10.0, // radius
-                        info.owner_id,
-                        &info.name,
-                        info.player_type,
-                        info.player_color_raw,
-                        &info.leader,
-                        &self.ui.app.asset_loader,
-                    );
+                let frame_res = egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(14, 8))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            // Avatar/Emoji representation or Spirit Animal if any
+                            let (avatar_rect, _) = ui
+                                .allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                            crate::hud::avatar::draw_player_avatar(
+                                ui.painter(),
+                                avatar_rect.center(),
+                                10.0, // radius
+                                info.owner_id,
+                                &info.name,
+                                info.player_type,
+                                info.player_color_raw,
+                                &info.leader,
+                                &self.ui.app.asset_loader,
+                            );
 
-                    ui.label(
-                        egui::RichText::new(&info.name)
-                            .size(14.0)
-                            .strong()
-                            .color(info.player_color_vibrant),
-                    );
+                            ui.label(
+                                egui::RichText::new(&info.name)
+                                    .size(14.0)
+                                    .strong()
+                                    .color(info.player_color_vibrant),
+                            );
 
-                    ui.add(egui::Separator::default().vertical());
+                            ui.add(egui::Separator::default().vertical());
 
-                    // Stats
-                    sow_ui_kit::widgets::emoji_label(
-                        ui,
-                        &info.troops_label,
-                        egui::FontId::proportional(12.0),
-                        egui::Color32::from_rgb(34, 211, 238),
-                    );
-                    ui.add_space(6.0);
-                    sow_ui_kit::widgets::emoji_label(
-                        ui,
-                        &info.gold_label,
-                        egui::FontId::proportional(12.0),
-                        egui::Color32::from_rgb(250, 204, 21),
-                    );
-                    ui.add_space(6.0);
-                    sow_ui_kit::widgets::emoji_label(
-                        ui,
-                        &info.tiles_label,
-                        egui::FontId::proportional(12.0),
-                        egui::Color32::from_gray(210),
-                    );
-
-                    // Structures (if any)
-                    if info.city_label.is_some()
-                        || info.bunker_label.is_some()
-                        || info.factory_label.is_some()
-                        || info.port_label.is_some()
-                    {
-                        ui.add(egui::Separator::default().vertical());
-
-                        if let Some(ref l) = info.city_label {
+                            // Stats
                             sow_ui_kit::widgets::emoji_label(
                                 ui,
-                                l,
+                                &info.troops_label,
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::from_rgb(34, 211, 238),
+                            );
+                            ui.add_space(6.0);
+                            sow_ui_kit::widgets::emoji_label(
+                                ui,
+                                &info.gold_label,
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::from_rgb(250, 204, 21),
+                            );
+                            ui.add_space(6.0);
+                            sow_ui_kit::widgets::emoji_label(
+                                ui,
+                                &info.tiles_label,
                                 egui::FontId::proportional(12.0),
                                 egui::Color32::from_gray(210),
                             );
-                            ui.add_space(4.0);
-                        }
-                        if let Some(ref l) = info.bunker_label {
-                            sow_ui_kit::widgets::emoji_label(
-                                ui,
-                                l,
-                                egui::FontId::proportional(12.0),
-                                egui::Color32::from_gray(210),
-                            );
-                            ui.add_space(4.0);
-                        }
-                        if let Some(ref l) = info.factory_label {
-                            sow_ui_kit::widgets::emoji_label(
-                                ui,
-                                l,
-                                egui::FontId::proportional(12.0),
-                                egui::Color32::from_gray(210),
-                            );
-                            ui.add_space(4.0);
-                        }
-                        if let Some(ref l) = info.port_label {
-                            sow_ui_kit::widgets::emoji_label(
-                                ui,
-                                l,
-                                egui::FontId::proportional(12.0),
-                                egui::Color32::from_gray(210),
-                            );
-                        }
-                    }
-                });
+
+                            // Structures (if any)
+                            if info.city_label.is_some()
+                                || info.bunker_label.is_some()
+                                || info.factory_label.is_some()
+                                || info.port_label.is_some()
+                            {
+                                ui.add(egui::Separator::default().vertical());
+
+                                if let Some(ref l) = info.city_label {
+                                    sow_ui_kit::widgets::emoji_label(
+                                        ui,
+                                        l,
+                                        egui::FontId::proportional(12.0),
+                                        egui::Color32::from_gray(210),
+                                    );
+                                    ui.add_space(4.0);
+                                }
+                                if let Some(ref l) = info.bunker_label {
+                                    sow_ui_kit::widgets::emoji_label(
+                                        ui,
+                                        l,
+                                        egui::FontId::proportional(12.0),
+                                        egui::Color32::from_gray(210),
+                                    );
+                                    ui.add_space(4.0);
+                                }
+                                if let Some(ref l) = info.factory_label {
+                                    sow_ui_kit::widgets::emoji_label(
+                                        ui,
+                                        l,
+                                        egui::FontId::proportional(12.0),
+                                        egui::Color32::from_gray(210),
+                                    );
+                                    ui.add_space(4.0);
+                                }
+                                if let Some(ref l) = info.port_label {
+                                    sow_ui_kit::widgets::emoji_label(
+                                        ui,
+                                        l,
+                                        egui::FontId::proportional(12.0),
+                                        egui::Color32::from_gray(210),
+                                    );
+                                }
+                            }
+                        });
+                    });
+
+                sow_ui_kit::theme::paint_hud_panel_gradient(
+                    ui,
+                    prepaint_idx,
+                    frame_res.response.rect,
+                    sow_ui_kit::theme::palette::field_border(),
+                    if compact {
+                        egui::CornerRadius::ZERO
+                    } else {
+                        sow_ui_kit::theme::radius::md()
+                    },
+                );
             });
-
-            sow_ui_kit::theme::paint_hud_panel_gradient(
-                ui,
-                prepaint_idx,
-                frame_res.response.rect,
-                sow_ui_kit::theme::palette::field_border(),
-                if compact { egui::CornerRadius::ZERO } else { sow_ui_kit::theme::radius::md() },
-            );
-        });
     }
 
     pub(crate) fn render_placement_cancel_button(&mut self, ctx: &egui::Context) {

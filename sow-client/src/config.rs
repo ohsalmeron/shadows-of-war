@@ -11,12 +11,6 @@ pub struct ClientVisualConfig {
     // 1.0 = Original size, 0.5 = Half size, 2.0 = Double size.
     pub ui_text_scale: f32,
 
-    // Base nameplate sizes
-    pub nameplate_my_size: f32,
-    pub nameplate_nation_size: f32,
-    pub nameplate_tribe_size: f32,
-    pub nameplate_premium_size: f32,
-    pub nameplate_max_screen_font: f32,
     pub nameplate_size_grow_rate: f32,
 
     // Floating gold bounty text ("🪙 +N" on conquer).
@@ -32,11 +26,6 @@ impl Default for ClientVisualConfig {
 
             // Nameplates
             ui_text_scale: 1.0,
-            nameplate_my_size: 14.0,
-            nameplate_nation_size: 12.0,
-            nameplate_tribe_size: 12.0,
-            nameplate_premium_size: 12.0,
-            nameplate_max_screen_font: 32.0,
             nameplate_size_grow_rate: 12.0,
             gold_reward_notice_font_size: 14.0,
         }

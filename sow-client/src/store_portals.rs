@@ -46,25 +46,6 @@ fn call_window_hook_str(name: &str, arg: &str) {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn call_window_hook_str_ret_string(name: &str, arg: &str) -> Option<String> {
-    let Some(val) = get_window_value(name) else {
-        return None;
-    };
-    if val.is_function() {
-        let Ok(func) = val.dyn_into::<js_sys::Function>() else {
-            return None;
-        };
-        if let Ok(res) = func.call1(
-            &wasm_bindgen::JsValue::NULL,
-            &wasm_bindgen::JsValue::from_str(arg),
-        ) {
-            return res.as_string();
-        }
-    }
-    None
-}
-
-#[cfg(target_arch = "wasm32")]
 fn take_window_u64(name: &str) -> Option<u64> {
     let val = get_window_value(name)?;
     if val.is_null() || val.is_undefined() {
@@ -106,11 +87,6 @@ fn call_window_hook_u32(name: &str, arg: u32) {
             &wasm_bindgen::JsValue::from_f64(arg as f64),
         );
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn call_window_hook_str_ret_string(_name: &str, _arg: &str) -> Option<String> {
-    None
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -344,11 +320,6 @@ pub fn update_room(lobby_id: u64, joinable: bool, build_version: &str) {
         r#"{{"roomId":"{lobby_id}","isJoinable":{joinable},"inviteParams":{{"lobbyId":"{lobby_id}","buildVersion":"{build_version}"}}}}"#
     );
     call_window_hook_str("SOW_portalUpdateRoom", &json);
-}
-
-pub fn invite_link(lobby_id: u64, build_version: &str) -> Option<String> {
-    let json = format!(r#"{{"lobbyId":"{lobby_id}","buildVersion":"{build_version}"}}"#);
-    call_window_hook_str_ret_string("SOW_portalInviteLink", &json)
 }
 
 pub fn left_room() {

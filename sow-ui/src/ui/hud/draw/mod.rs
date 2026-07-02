@@ -6,19 +6,19 @@ use super::panels::transfer;
 use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudState};
 use crate::ui::asset_loader::AssetLoader;
 
+mod attack_ratio;
 mod bottom;
 mod emoji;
 mod inbox;
 mod map_controls;
 mod top_icons;
-mod attack_ratio;
 
+use attack_ratio::draw_attack_ratio_rail;
 use bottom::draw_bottom_panel;
 use emoji::draw_emoji_panel;
 use inbox::draw_alliance_inbox;
 use map_controls::draw_map_controls;
 use top_icons::draw_top_icons;
-use attack_ratio::draw_attack_ratio_rail;
 
 pub fn draw(
     ui: &mut egui::Ui,
@@ -127,7 +127,6 @@ pub fn draw(
     sync::draw_sync_overlay(ui.ctx(), state, lang);
     betrayal::draw_betrayal_overlay(ui.ctx(), state, cancel_intents, lang, asset_loader);
 
-
     draw_hud_notifications(ui, state);
 
     if let Some(act) = exit::draw_exit_confirm_overlay(ui.ctx(), state, lang) {
@@ -139,7 +138,9 @@ pub fn draw(
 
 fn draw_hud_notifications(ui: &mut egui::Ui, state: &mut HudState) {
     let now = web_time::Instant::now();
-    state.hud_notifications.retain(|n| now.duration_since(n.spawned_at).as_secs_f32() < 3.0);
+    state
+        .hud_notifications
+        .retain(|n| now.duration_since(n.spawned_at).as_secs_f32() < 3.0);
 
     if state.hud_notifications.is_empty() {
         return;
@@ -165,7 +166,8 @@ fn draw_hud_notifications(ui: &mut egui::Ui, state: &mut HudState) {
                     };
 
                     let bg_color = egui::Color32::from_black_alpha((180.0 * opacity) as u8);
-                    let border_color = sow_ui_kit::theme::palette::field_border().linear_multiply(opacity);
+                    let border_color =
+                        sow_ui_kit::theme::palette::field_border().linear_multiply(opacity);
                     let text_color = notice.color.linear_multiply(opacity);
 
                     egui::Frame::NONE
@@ -178,7 +180,7 @@ fn draw_hud_notifications(ui: &mut egui::Ui, state: &mut HudState) {
                                 egui::RichText::new(&notice.message)
                                     .color(text_color)
                                     .size(if compact { 13.0 } else { 14.5 })
-                                    .strong()
+                                    .strong(),
                             );
                         });
                 }

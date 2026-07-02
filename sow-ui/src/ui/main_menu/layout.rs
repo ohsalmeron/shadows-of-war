@@ -60,5 +60,3 @@ pub(crate) fn menu_layout_chrome(
     }
     (section_gap, action_min_h, profile_height, lobby_h)
 }
-
-

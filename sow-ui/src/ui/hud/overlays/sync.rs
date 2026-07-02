@@ -67,8 +67,16 @@ pub(in crate::ui::hud) fn draw_sync_overlay(ctx: &Context, state: &HudState, lan
                             for p in &sync.players {
                                 ui.horizontal(|ui| {
                                     if p.is_ready {
-                                        let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), egui::Sense::empty());
-                                        crate::widgets::try_paint_emoji(ui.painter(), "✔", rect, Color32::GREEN);
+                                        let (rect, _) = ui.allocate_exact_size(
+                                            vec2(20.0, 20.0),
+                                            egui::Sense::empty(),
+                                        );
+                                        crate::widgets::try_paint_emoji(
+                                            ui.painter(),
+                                            "✔",
+                                            rect,
+                                            Color32::GREEN,
+                                        );
                                     } else {
                                         ui.add(
                                             egui::Spinner::new()

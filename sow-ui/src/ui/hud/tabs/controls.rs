@@ -306,7 +306,11 @@ pub(in crate::ui::hud) fn hud_sidebar_row_height(
     let row_gap = sow_ui_kit::theme::margin::TIGHT as f32;
     let body_h = match main {
         HudSidebarMain::Controls => {
-            let extra = if sow_core::config::ENABLE_MISSILE_STRUCTURES { 1.0 } else { 0.0 };
+            let extra = if sow_core::config::ENABLE_MISSILE_STRUCTURES {
+                1.0
+            } else {
+                0.0
+            };
             let num_items = 4.0 + extra;
             let spacing = if compact { 4.0 } else { 12.0 };
             let col_w = (main_w - (num_items - 1.0) * spacing) / num_items;
@@ -352,7 +356,14 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
     } else {
         1.0
     };
-    let row_h = hud_sidebar_row_height(compact, spawn_active, dialog_active, main, content_w, chrome_scale);
+    let row_h = hud_sidebar_row_height(
+        compact,
+        spawn_active,
+        dialog_active,
+        main,
+        content_w,
+        chrome_scale,
+    );
 
     ui.allocate_ui_with_layout(
         vec2(content_w, row_h),
@@ -392,9 +403,15 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
                             let started_id = egui::Id::new("hud_pinned_dialog_started_at");
                             let started_for = egui::Id::new("hud_pinned_dialog_started_for");
                             let now = ui.ctx().input(|i| i.time);
-                            let same = ui.ctx().data(|d| d.get_temp::<String>(started_for)).as_deref() == Some(dlg.id.as_str());
+                            let same = ui
+                                .ctx()
+                                .data(|d| d.get_temp::<String>(started_for))
+                                .as_deref()
+                                == Some(dlg.id.as_str());
                             let started = if same {
-                                ui.ctx().data(|d| d.get_temp::<f64>(started_id)).unwrap_or(now)
+                                ui.ctx()
+                                    .data(|d| d.get_temp::<f64>(started_id))
+                                    .unwrap_or(now)
                             } else {
                                 ui.ctx().data_mut(|d| {
                                     d.insert_temp(started_for, dlg.id.clone());
@@ -440,7 +457,9 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
                                 }
                                 HudSidebarMain::EventLog => {
                                     ui.push_id("event_log_tab", |ui| {
-                                        event_log::draw_event_log_tab(ui, state, content_w, compact, lang);
+                                        event_log::draw_event_log_tab(
+                                            ui, state, content_w, compact, lang,
+                                        );
                                     });
                                 }
                             }

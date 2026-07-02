@@ -4,7 +4,9 @@
 //! * [`paint_play_button`] — pure paint into a rect, for custom-painted surfaces;
 //! * [`PlayButton`] — a standalone interactive widget that allocates, senses click, animates hover.
 
-use egui::{Color32, CornerRadius, FontId, Painter, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{
+    Color32, CornerRadius, FontId, Painter, Rect, Response, Sense, Stroke, Ui, Vec2, Widget,
+};
 
 fn lerp_col(a: Color32, b: Color32, t: f32) -> Color32 {
     let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t) as u8;
@@ -44,7 +46,10 @@ pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, la
 
     // Body: dark base + top gradient.
     painter.rect_filled(rect, radius, bottom);
-    let gloss = Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + rect.height() * 0.55));
+    let gloss = Rect::from_min_max(
+        rect.min,
+        egui::pos2(rect.max.x, rect.min.y + rect.height() * 0.55),
+    );
     painter.rect_filled(
         gloss,
         CornerRadius {
@@ -92,13 +97,20 @@ impl PlayButton {
 impl Widget for PlayButton {
     fn ui(self, ui: &mut Ui) -> Response {
         let (rect, response) = ui.allocate_exact_size(self.min_size, Sense::click());
-        let hot = ui.ctx().animate_bool(response.id.with("play_hot"), response.hovered());
+        let hot = ui
+            .ctx()
+            .animate_bool(response.id.with("play_hot"), response.hovered());
         if response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             ui.ctx().request_repaint();
         }
         let pulse = (((ui.input(|i| i.time) * 3.0).sin() + 1.0) * 0.5) as f32;
-        let scale = 1.0 + 0.03 * hot - if response.is_pointer_button_down_on() { 0.04 } else { 0.0 };
+        let scale = 1.0 + 0.03 * hot
+            - if response.is_pointer_button_down_on() {
+                0.04
+            } else {
+                0.0
+            };
         let draw_rect = Rect::from_center_size(rect.center(), rect.size() * scale);
         if ui.is_rect_visible(rect) {
             paint_play_button(ui.painter(), draw_rect, hot, pulse, &self.label);

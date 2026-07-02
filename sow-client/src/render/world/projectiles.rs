@@ -24,7 +24,9 @@ pub(crate) fn render(
     if let Some(snap) = &sim.current_snapshot {
         let map_w = sim.map_w;
 
-        if ctx.zoom_scaled >= 0.6 && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_attack_lines {
+        if ctx.zoom_scaled >= 0.6
+            && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_attack_lines
+        {
             for attack in &snap.attacks {
                 if attack.target_owner == 0 {
                     continue;
@@ -215,18 +217,23 @@ pub(crate) fn render(
                         .copied()
                         .is_some_and(|last| now.duration_since(last).as_secs_f32() < 0.09);
 
-                    let entry = ui
-                        .attack_troop_labels
-                        .entry(attack.id)
-                        .or_insert_with(|| {
-                            let s = sow_ui_kit::utils::format_number(troops_val);
-                            let g = middle_painter.layout_no_wrap(s.clone(), font_id.clone(), egui::Color32::WHITE);
-                            ui.attack_troop_labels_last_update.insert(attack.id, now);
-                            (troops_val, s, g)
-                        });
+                    let entry = ui.attack_troop_labels.entry(attack.id).or_insert_with(|| {
+                        let s = sow_ui_kit::utils::format_number(troops_val);
+                        let g = middle_painter.layout_no_wrap(
+                            s.clone(),
+                            font_id.clone(),
+                            egui::Color32::WHITE,
+                        );
+                        ui.attack_troop_labels_last_update.insert(attack.id, now);
+                        (troops_val, s, g)
+                    });
                     if !rate_limited && (entry.0 - troops_val).abs() > 0.0001 {
                         let s = sow_ui_kit::utils::format_number(troops_val);
-                        let g = middle_painter.layout_no_wrap(s.clone(), font_id.clone(), egui::Color32::WHITE);
+                        let g = middle_painter.layout_no_wrap(
+                            s.clone(),
+                            font_id.clone(),
+                            egui::Color32::WHITE,
+                        );
                         *entry = (troops_val, s, g);
                         ui.attack_troop_labels_last_update.insert(attack.id, now);
                     }
@@ -269,7 +276,10 @@ pub(crate) fn render(
                         // Sword emoji
                         tr.push_emoji(
                             "⚔",
-                            [(row_left_x + icon_half) * sf, (troops_row_y + icon_half) * sf],
+                            [
+                                (row_left_x + icon_half) * sf,
+                                (troops_row_y + icon_half) * sf,
+                            ],
                             icon_half * sf,
                             color_arr,
                             outline_color_arr,
@@ -312,7 +322,9 @@ pub(crate) fn render(
         }
 
         // ── Nuke Placement Preview (visible at all zoom levels) ─────────
-        if sow_ui_kit::theme::dev_config::DevConfig::get().vfx_nuke_preview && ui.app.hud_state.selected_nuke_kind.is_some() {
+        if sow_ui_kit::theme::dev_config::DevConfig::get().vfx_nuke_preview
+            && ui.app.hud_state.selected_nuke_kind.is_some()
+        {
             // Resolve hovered tile from mouse (same hex math as buildings.rs)
             let mx = input.last_mouse_x as f32;
             let my = input.last_mouse_y as f32;

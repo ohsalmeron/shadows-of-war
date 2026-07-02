@@ -17,7 +17,11 @@ pub struct Line {
 
 impl Line {
     fn new(speaker: &str, title: &str, body: &str) -> Line {
-        Line { speaker: speaker.into(), title: title.into(), body: body.into() }
+        Line {
+            speaker: speaker.into(),
+            title: title.into(),
+            body: body.into(),
+        }
     }
 }
 

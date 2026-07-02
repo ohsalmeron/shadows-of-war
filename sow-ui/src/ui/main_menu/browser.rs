@@ -77,10 +77,7 @@ fn draw_lobby_list(
         } else {
             parent_w
         };
-        let response = ui.add(
-            LobbyCard::new(lobby, thumbnail)
-                .width(card_w)
-        );
+        let response = ui.add(LobbyCard::new(lobby, thumbnail).width(card_w));
         if response.clicked() {
             *action = Some(UiAction::JoinLobby(lobby.id));
         }

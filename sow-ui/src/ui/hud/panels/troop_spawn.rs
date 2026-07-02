@@ -60,7 +60,8 @@ pub(in crate::ui::hud) fn draw_troop_bar(
             sw: 0,
             se: radius.se,
         };
-        ui.painter().rect_filled(orange_rect, right_radius, orange_color);
+        ui.painter()
+            .rect_filled(orange_rect, right_radius, orange_color);
     }
 
     // Overlay text
@@ -220,7 +221,11 @@ pub(in crate::ui::hud) fn draw_persistent_header(
             } else {
                 sow_ui_kit::theme::palette::danger()
             };
-            let troop_margin = if compact { sow_ui_kit::theme::margin::TIGHT } else { sow_ui_kit::theme::margin::COZY };
+            let troop_margin = if compact {
+                sow_ui_kit::theme::margin::TIGHT
+            } else {
+                sow_ui_kit::theme::margin::COZY
+            };
             egui::Frame::NONE
                 .stroke(Stroke::new(sow_ui_kit::theme::stroke::HAIRLINE, rate_color))
                 .corner_radius(sow_ui_kit::theme::radius::inline())
@@ -247,7 +252,11 @@ pub(in crate::ui::hud) fn draw_persistent_header(
         let gold_font = egui::FontId::proportional(if compact { 11.0 } else { 12.0 });
         let gold_text = format!("🪙 {}", crate::utils::format_number(state.gold));
         let gold_size = crate::widgets::measure_emoji_text(ui.painter(), &gold_text, &gold_font);
-        let gold_margin = if compact { sow_ui_kit::theme::margin::TIGHT } else { sow_ui_kit::theme::margin::COZY };
+        let gold_margin = if compact {
+            sow_ui_kit::theme::margin::TIGHT
+        } else {
+            sow_ui_kit::theme::margin::COZY
+        };
         let gold_frame_w = gold_size.x + gold_margin as f32 * 2.0;
 
         // Bar fills remaining width

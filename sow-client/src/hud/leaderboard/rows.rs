@@ -1,10 +1,10 @@
+use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking};
 use crate::app::SowApp;
 use crate::hud::avatar::paint_circular_avatar;
 use crate::hud::nameplate::nameplate_matte_player_rgb;
 use egui::{Align, Align2, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
 use sow_core::player::PlayerType;
 use sow_core::protocol::{PlayerSnapshot, Team};
-use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking};
 
 pub(super) const REFRESH_INTERVAL_SECS: f32 = 2.0;
 pub(super) const SCROLL_LOAD_STEP: usize = 10;

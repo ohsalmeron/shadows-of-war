@@ -131,7 +131,6 @@ pub struct FloatingNotice {
     pub color: egui::Color32,
 }
 
-
 #[derive(Clone, Debug)]
 pub struct ClickMarker {
     pub world_x: f32,
@@ -166,7 +165,8 @@ pub struct UiState {
     pub show_leaderboard: bool,
     pub leaderboard_timer: f32,
     pub leaderboard_rankings: Vec<sow_ui::ui::hud::leaderboard::LeaderboardRanking>,
-    pub leaderboard_display: std::collections::HashMap<u16, sow_ui::ui::hud::leaderboard::LeaderboardRowDisplay>,
+    pub leaderboard_display:
+        std::collections::HashMap<u16, sow_ui::ui::hud::leaderboard::LeaderboardRowDisplay>,
     pub leaderboard_visible_limit: usize,
     pub leaderboard_paged_through_limit: usize,
     pub leaderboard_search: String,
@@ -188,10 +188,12 @@ pub struct UiState {
     pub cached_hovered_building_id: Option<u64>,
     pub cached_hovered_building_level: u8,
     pub cached_hovered_building_tooltip: String,
-    pub attack_troop_labels: std::collections::HashMap<u64, (f64, String, std::sync::Arc<egui::Galley>)>,
+    pub attack_troop_labels:
+        std::collections::HashMap<u64, (f64, String, std::sync::Arc<egui::Galley>)>,
     pub attack_troop_labels_last_update: std::collections::HashMap<u64, web_time::Instant>,
     pub cached_galleys: std::collections::HashMap<(String, u32), std::sync::Arc<egui::Galley>>,
-    pub cached_prepared_names: std::collections::HashMap<(String, u32), sow_ui_kit::widgets::PreparedName>,
+    pub cached_prepared_names:
+        std::collections::HashMap<(String, u32), sow_ui_kit::widgets::PreparedName>,
     pub edge_mask_cache: Vec<u8>,
     pub rail_state: crate::render::world::railways::RailState,
     /// Client-side nuke silo cooldown tracking: building id → tick when ready.
@@ -373,5 +375,3 @@ pub struct SowApp {
     #[cfg(target_arch = "wasm32")]
     pub boot_ready_since: Option<web_time::Instant>,
 }
-
-
