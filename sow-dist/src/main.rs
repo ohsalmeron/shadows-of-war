@@ -90,6 +90,21 @@ enum Command {
         #[arg(short, long, default_value_t = 8778)]
         port: u16,
     },
+    /// Spawn bot clients for load testing against a server.
+    #[command(name = "bot", visible_aliases = ["b"])]
+    Bot {
+        /// Number of bots to spawn (default: 5).
+        count: Option<usize>,
+        /// Server WebSocket URL.
+        #[arg(short, long, default_value = "wss://shadowsofwar.io/ws/")]
+        url: String,
+        /// Passive bots (no random intents).
+        #[arg(short, long)]
+        passive: bool,
+        /// Join a specific lobby ID.
+        #[arg(long)]
+        lobby_id: Option<u64>,
+    },
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -129,6 +144,12 @@ fn main() -> Result<()> {
         Command::Emoji => cmd_emoji(&paths),
         Command::Map { port } => serve::serve_campaign_editor(&paths, port),
         Command::Ui { port } => serve::serve_ui_editor(&paths, port),
+        Command::Bot {
+            count,
+            url,
+            passive,
+            lobby_id,
+        } => cmd_bot(&paths, count, url, passive, lobby_id),
     }
 }
 
@@ -219,4 +240,41 @@ fn cmd_emoji(paths: &Paths) -> Result<()> {
         Some(&paths.root),
         &[("VERBOSE", "1")],
     )
+}
+
+fn cmd_bot(
+    paths: &Paths,
+    count: Option<usize>,
+    url: String,
+    passive: bool,
+    lobby_id: Option<u64>,
+) -> Result<()> {
+    process::wait_for_cargo_unlock(&paths.cargo_target);
+    let n = count.unwrap_or(5);
+    let n_str = n.to_string();
+    let lid_str = lobby_id.map(|v| v.to_string());
+
+    let mut args: Vec<&str> = vec![
+        "run",
+        "-p",
+        "sow-tools",
+        "--bin",
+        "bot-manager",
+        "--",
+        "--url",
+        &url,
+        "--count",
+        &n_str,
+    ];
+    if passive {
+        args.push("--active");
+        args.push("false");
+    }
+    if let Some(ref s) = lid_str {
+        args.push("--lobby-id");
+        args.push(s);
+    }
+
+    println!("==> Spawning {} bot(s) → {}", n, url);
+    process::run("cargo", &args, Some(&paths.root))
 }

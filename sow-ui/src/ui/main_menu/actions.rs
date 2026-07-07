@@ -26,7 +26,8 @@ pub fn draw_right_column(
         .min_size(egui::vec2(w, action_min_h))
         .text_size(primary_text);
     if ui.add(solo_btn).clicked() {
-        state.show_single_player_setup = true;
+        state.show_custom_game = true;
+        state.custom_game_is_sp = true;
     }
 
     ui.add_space(section_gap);
@@ -37,7 +38,8 @@ pub fn draw_right_column(
         .min_size(egui::vec2(w, action_min_h))
         .text_size(secondary_text);
     if ui.add(create_btn).clicked() {
-        *action = Some(UiAction::OpenCreateGame);
+        state.show_custom_game = true;
+        state.custom_game_is_sp = false;
     }
 
     ui.add_space(section_gap);

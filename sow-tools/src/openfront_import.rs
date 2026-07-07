@@ -136,13 +136,60 @@ fn push_spawn(entry: &Value, spawns: &mut Vec<MapSpawn>) {
     spawns.push(MapSpawn { name, flag, x, y });
 }
 
+pub fn clamp_map_dimensions_proportional(width: u32, height: u32, max_pixels: u32) -> (u32, u32) {
+    if (width as u64) * (height as u64) <= max_pixels as u64 {
+        return (sow_core::maps::align_map_dim(width), sow_core::maps::align_map_dim(height));
+    }
+    let aspect = width as f64 / height as f64;
+    let h = (max_pixels as f64 / aspect).sqrt();
+    let w = h * aspect;
+
+    let mut target_w = sow_core::maps::align_map_dim(w.round() as u32);
+    let mut target_h = sow_core::maps::align_map_dim(h.round() as u32);
+
+    while (target_w as u64) * (target_h as u64) > max_pixels as u64 {
+        if target_w > target_h {
+            target_w = (target_w - 4).max(4);
+        } else {
+            target_h = (target_h - 4).max(4);
+        }
+    }
+    (target_w, target_h)
+}
+
 fn import_from_bin_or_manifest(
     dir: &Path,
     key: &str,
 ) -> Result<MapFile, Box<dyn std::error::Error>> {
     let raw = read_map_payload(dir)?;
     if raw.len() >= 4 && &raw[0..4] == map_file::MAP_MAGIC {
-        return Ok(map_file::parse(&raw)?);
+        let mut map = map_file::parse(&raw)?;
+        let width = map.width;
+        let height = map.height;
+        if (width as u64) * (height as u64) > sow_core::maps::MAX_MAP_PIXELS as u64 {
+            let (target_w, target_h) = clamp_map_dimensions_proportional(width, height, sow_core::maps::MAX_MAP_PIXELS);
+            let mut rescaled = Vec::with_capacity((target_w * target_h) as usize);
+            for ty in 0..target_h {
+                for tx in 0..target_w {
+                    let sx = (tx as f64 * (width as f64 / target_w as f64)).floor() as u32;
+                    let sy = (ty as f64 * (height as f64 / target_h as f64)).floor() as u32;
+                    let sx = sx.min(width - 1);
+                    let sy = sy.min(height - 1);
+                    rescaled.push(map.terrain[(sy * width + sx) as usize]);
+                }
+            }
+            for s in &mut map.spawns {
+                let rx = (s.x as f64 * (target_w as f64 / width as f64)).round() as u32;
+                let ry = (s.y as f64 * (target_h as f64 / height as f64)).round() as u32;
+                s.x = rx.min(target_w - 1);
+                s.y = ry.min(target_h - 1);
+            }
+            map.width = target_w;
+            map.height = target_h;
+            map.num_land_tiles = rescaled.iter().filter(|&&b| (b & 0x80) != 0).count() as u32;
+            map.terrain = rescaled;
+        }
+        return Ok(map);
     }
 
     let manifest_path = dir.join("manifest.json");
@@ -152,17 +199,28 @@ fn import_from_bin_or_manifest(
 
     let manifest: Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
     let map_info = manifest.get("map").ok_or("manifest missing map section")?;
-    let width = map_info.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-    let height = map_info.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-    let num_land = map_info
-        .get("num_land_tiles")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+    let mut width = map_info.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let mut height = map_info.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let display_name = manifest
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or(key)
         .to_string();
+
+    let expected = (width as usize) * (height as usize);
+    if expected == 0 || raw.len() != expected {
+        if width > 0 && raw.len().is_multiple_of(width as usize) {
+            height = (raw.len() / width as usize) as u32;
+        } else if height > 0 && raw.len().is_multiple_of(height as usize) {
+            width = (raw.len() / height as usize) as u32;
+        } else {
+            return Err(format!(
+                "terrain size mismatch for {key}: manifest {width}x{height}, got {} bytes",
+                raw.len()
+            )
+            .into());
+        }
+    }
 
     let mut spawns = Vec::new();
     if let Some(nations) = manifest.get("nations").and_then(|v| v.as_array()) {
@@ -171,13 +229,39 @@ fn import_from_bin_or_manifest(
         }
     }
 
+    let mut terrain = raw;
+    if (width as u64) * (height as u64) > sow_core::maps::MAX_MAP_PIXELS as u64 {
+        let (target_w, target_h) = clamp_map_dimensions_proportional(width, height, sow_core::maps::MAX_MAP_PIXELS);
+        let mut rescaled = Vec::with_capacity((target_w * target_h) as usize);
+        for ty in 0..target_h {
+            for tx in 0..target_w {
+                let sx = (tx as f64 * (width as f64 / target_w as f64)).floor() as u32;
+                let sy = (ty as f64 * (height as f64 / target_h as f64)).floor() as u32;
+                let sx = sx.min(width - 1);
+                let sy = sy.min(height - 1);
+                rescaled.push(terrain[(sy * width + sx) as usize]);
+            }
+        }
+        for s in &mut spawns {
+            let rx = (s.x as f64 * (target_w as f64 / width as f64)).round() as u32;
+            let ry = (s.y as f64 * (target_h as f64 / height as f64)).round() as u32;
+            s.x = rx.min(target_w - 1);
+            s.y = ry.min(target_h - 1);
+        }
+        width = target_w;
+        height = target_h;
+        terrain = rescaled;
+    }
+
+    let num_land = terrain.iter().filter(|&&b| (b & 0x80) != 0).count() as u32;
+
     Ok(MapFile {
         display_name,
         width,
         height,
         num_land_tiles: num_land,
         spawns,
-        terrain: raw,
+        terrain,
     })
 }
 

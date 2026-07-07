@@ -4,6 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use rand::Rng;
 use sow_core::engine::SowEngine;
 use sow_core::protocol::{AttackIntent, ClientMessage, GameplayIntent, ServerMessage};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -28,11 +29,16 @@ pub struct Args {
     pub active: bool,
 }
 
-#[derive(Clone)]
-struct SharedState {
+#[derive(Clone, Default)]
+struct LobbySharedState {
     engine: Arc<RwLock<Option<SowEngine>>>,
     map_bytes: Arc<RwLock<Option<Vec<u8>>>>,
     map_downloaded: Arc<RwLock<bool>>,
+}
+
+#[derive(Clone)]
+struct Coordinator {
+    lobbies: Arc<RwLock<HashMap<u64, LobbySharedState>>>,
 }
 
 #[tokio::main]
@@ -51,10 +57,8 @@ async fn main() {
     let active_bots = Arc::new(AtomicUsize::new(0));
     let mut handles = vec![];
 
-    let shared = SharedState {
-        engine: Arc::new(RwLock::new(None)),
-        map_bytes: Arc::new(RwLock::new(None)),
-        map_downloaded: Arc::new(RwLock::new(false)),
+    let coordinator = Coordinator {
+        lobbies: Arc::new(RwLock::new(HashMap::new())),
     };
 
     for i in 0..args.count {
@@ -63,13 +67,13 @@ async fn main() {
         let lobby_id = args.lobby_id;
         let active = args.active;
         let active_bots_ref = Arc::clone(&active_bots);
-        let shared = shared.clone();
+        let coordinator = coordinator.clone();
 
         let delay_ms = rand::thread_rng().gen_range(10..2000);
 
         let handle = tokio::spawn(async move {
             sleep(Duration::from_millis(delay_ms)).await;
-            match run_bot(i, url, version, lobby_id, active, shared).await {
+            match run_bot(i, url, version, lobby_id, active, coordinator).await {
                 Ok(_) => {
                     println!("[Bot {}] Clean exit", i);
                 }
@@ -106,7 +110,7 @@ async fn run_bot(
     version: String,
     target_lobby_id: Option<u64>,
     active: bool,
-    shared: SharedState,
+    coordinator: Coordinator,
 ) -> Result<(), String> {
     let name = {
         let mut rng = rand::thread_rng();
@@ -118,6 +122,12 @@ async fn run_bot(
         .map_err(|e| format!("Connect failed: {}", e))?;
     let (mut write, mut read) = ws.split();
 
+    let (leader, civilization) = {
+        let mut rng = rand::thread_rng();
+        let l = sow_core::player::Leader::ALL[rng.gen_range(0..sow_core::player::Leader::ALL.len())];
+        (l, l.civilization())
+    };
+
     let join = ClientMessage::Join {
         name: name.clone(),
         is_observer: false,
@@ -125,8 +135,8 @@ async fn run_bot(
         host_private: false,
         build_version: version,
         clan_tag: "".to_string(),
-        civilization: sow_core::player::Civilization::Rome,
-        leader: sow_core::player::Leader::Caesar,
+        civilization,
+        leader,
         database_account_id: None,
         host_config: None,
         password: None,
@@ -148,8 +158,8 @@ async fn run_bot(
                 player_id = ack.player_id;
                 map_name = ack.map_name;
                 println!(
-                    "[Bot {}] '{}' joined lobby {} as player {}",
-                    bot_index, name, lobby_id, player_id
+                    "[Bot {}] '{}' ({:?}/{:?}) joined lobby {} as player {}",
+                    bot_index, name, leader, civilization, lobby_id, player_id
                 );
                 break;
             }
@@ -157,6 +167,11 @@ async fn run_bot(
             _ => continue,
         }
     }
+
+    let shared = {
+        let mut lobbies = coordinator.lobbies.write().await;
+        lobbies.entry(lobby_id).or_default().clone()
+    };
 
     let mut map_is_mine_to_download = false;
     {
@@ -169,12 +184,18 @@ async fn run_bot(
 
     if map_is_mine_to_download {
         println!("[Bot {}] Downloading map {}...", bot_index, map_name);
-        let base_url = if url.contains("shadowsofwar.io") {
-            "https://shadowsofwar.io"
+        // Derive maps base from WS URL, same as the real client.
+        let rest = url
+            .strip_prefix("wss://")
+            .or_else(|| url.strip_prefix("ws://"))
+            .unwrap_or(&url);
+        let host = rest.split('/').next().and_then(|s| s.split(':').next()).unwrap_or("shadowsofwar.io");
+        let maps_base = if host == "127.0.0.1" || host == "localhost" {
+            format!("http://{host}:25566/maps")
         } else {
-            "http://127.0.0.1:8080"
+            format!("https://{host}/maps")
         };
-        let map_url = format!("{}/assets/maps/{}/map.bin.br", base_url, map_name);
+        let map_url = format!("{}/{}/map.bin.br", maps_base, map_name);
 
         let client = reqwest::Client::new();
         if let Ok(resp) = client.get(&map_url).send().await {
@@ -248,25 +269,45 @@ async fn run_bot(
                 let mut eng = shared.engine.write().await;
                 if eng.is_none() {
                     println!("[Bot {}] Initializing shared engine...", bot_index);
-                    let map_data = shared.map_bytes.read().await.clone().unwrap();
+                    let map_bytes = shared.map_bytes.read().await.clone().unwrap();
+                    let parsed_map =
+                        sow_core::maps::load_map_from_payload(&map_bytes).ok();
+
+                    let (w, h) = if let Some(ref m) = parsed_map {
+                        (m.width, m.height)
+                    } else {
+                        (start.config.map_width, start.config.map_height)
+                    };
+
                     let mut state = sow_core::game::GameState::new(
                         start.seed,
-                        start.config.map_width,
-                        start.config.map_height,
+                        w,
+                        h,
                         start.config.clone(),
                     );
 
-                    if map_data.len() == state.map.terrain.len() {
-                        let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
-                        unsafe {
-                            std::ptr::copy_nonoverlapping(
-                                map_data.as_ptr(),
-                                dest_ptr,
-                                map_data.len(),
+                    if let Some(ref map_file) = parsed_map {
+                        state.total_land_tiles = map_file.num_land_tiles;
+                        state.map_spawns = map_file.spawns.clone();
+                        if map_file.terrain.len() == state.map.terrain.len() {
+                            let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    map_file.terrain.as_ptr(),
+                                    dest_ptr,
+                                    map_file.terrain.len(),
+                                );
+                            }
+                        } else {
+                            eprintln!(
+                                "[Bot {}] Warning: terrain length mismatch ({} vs {})",
+                                bot_index,
+                                map_file.terrain.len(),
+                                state.map.terrain.len()
                             );
                         }
                     } else {
-                        eprintln!("[Bot {}] Warning: map length mismatch", bot_index);
+                        eprintln!("[Bot {}] Warning: map parse failed, using blank terrain", bot_index);
                     }
 
                     for p in &start.players {

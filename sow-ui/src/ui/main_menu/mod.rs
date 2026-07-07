@@ -1,12 +1,11 @@
 pub mod actions;
 pub mod browser;
-pub mod create_game;
+pub mod custom_game;
 pub mod join_browser;
 mod layout;
 mod modals;
 pub mod profile;
 pub mod queue_overlay;
-pub mod single_player_setup;
 
 use crate::UiAction;
 use egui::{CentralPanel, Color32, Frame};
@@ -54,11 +53,12 @@ pub struct MainMenuState {
     pub host_private_pending: bool,
     pub in_private_match: bool,
     pub is_lobby_host: bool,
-    // Create Game screen
-    pub show_create_game: bool,
-    pub create_game_config: Box<sow_core::game_config::GameConfig>,
-    pub create_game_is_private: bool,
-    pub create_game_password: String,
+    pub custom_game_is_private: bool,
+    // Custom Game screen (unified single-player + create)
+    pub show_custom_game: bool,
+    pub custom_game_is_sp: bool,
+    pub custom_game_config: Box<sow_core::game_config::GameConfig>,
+    pub custom_game_password: String,
     // Join Browser screen
     pub show_join_browser: bool,
     pub join_mode_filter: GameModeFilter,
@@ -77,8 +77,6 @@ pub struct MainMenuState {
     pub clan_tag: String,
     pub selected_leader: sow_core::player::Leader,
     pub selected_civilization: sow_core::player::Civilization,
-    pub show_single_player_setup: bool,
-    pub single_player_config: Box<sow_core::game_config::GameConfig>,
     pub error_message: Option<String>,
     pub leader_backdrop: crate::widgets::LeaderBackdropTransition,
     pub active_conflict: Option<UiLinkConflictInfo>,
@@ -127,13 +125,14 @@ impl Default for MainMenuState {
             host_private_pending: false,
             in_private_match: false,
             is_lobby_host: false,
-            show_create_game: false,
-            create_game_config: Box::new(sow_core::game_config::GameConfig {
+            show_custom_game: false,
+            custom_game_is_sp: true,
+            custom_game_config: Box::new(sow_core::game_config::GameConfig {
                 seed: ms as u64,
                 ..Default::default()
             }),
-            create_game_is_private: false,
-            create_game_password: String::new(),
+            custom_game_password: String::new(),
+            custom_game_is_private: false,
             show_join_browser: false,
             join_mode_filter: GameModeFilter::All,
             join_lobby_code: String::new(),
@@ -147,11 +146,6 @@ impl Default for MainMenuState {
             cached_map_key: None,
             map_download_progress: 0,
             show_leader_picker: false,
-            show_single_player_setup: false,
-            single_player_config: Box::new(sow_core::game_config::GameConfig {
-                seed: ms as u64,
-                ..Default::default()
-            }),
             active_conflict: None,
             leader_backdrop: crate::widgets::LeaderBackdropTransition::new(leader),
             error_message: None,
@@ -164,20 +158,8 @@ impl Default for MainMenuState {
 }
 
 impl MainMenuState {
-    /// Clamp skirmish map selection to a valid catalog entry (dimensions included).
-    pub fn apply_map_catalog(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
-        let cfg = &mut self.single_player_config;
-        cfg.map_name = sow_core::maps::resolve_map_name(catalog, &cfg.map_name);
-        sow_core::maps::apply_catalog_dimensions(
-            catalog,
-            &mut cfg.map_name,
-            &mut cfg.map_width,
-            &mut cfg.map_height,
-        );
-    }
-
-    pub fn apply_map_catalog_create(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
-        let cfg = &mut self.create_game_config;
+    pub fn apply_map_catalog_custom(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
+        let cfg = &mut self.custom_game_config;
         cfg.map_name = sow_core::maps::resolve_map_name(catalog, &cfg.map_name);
         sow_core::maps::apply_catalog_dimensions(
             catalog,
@@ -510,7 +492,8 @@ fn draw_desktop_buttons_grid(
                 .min_size(egui::vec2(btn_w, button_h))
                 .text_size(text_size);
             if ui.add(create_btn).clicked() {
-                *action = Some(UiAction::OpenCreateGame);
+                state.show_custom_game = true;
+                state.custom_game_is_sp = false;
             }
             ui.add_space(cell_gap);
 
@@ -520,7 +503,8 @@ fn draw_desktop_buttons_grid(
                 .min_size(egui::vec2(btn_w, button_h))
                 .text_size(text_size);
             if ui.add(solo_btn).clicked() {
-                state.show_single_player_setup = true;
+                state.show_custom_game = true;
+                state.custom_game_is_sp = true;
             }
             ui.add_space(cell_gap);
 
@@ -557,7 +541,8 @@ fn draw_desktop_buttons_grid(
                     .min_size(egui::vec2(col_w, button_h))
                     .text_size(text_size);
                 if ui.add(create_btn).clicked() {
-                    *action = Some(UiAction::OpenCreateGame);
+                    state.show_custom_game = true;
+                    state.custom_game_is_sp = false;
                 }
             });
 
@@ -573,7 +558,8 @@ fn draw_desktop_buttons_grid(
                     .min_size(egui::vec2(col_w, button_h))
                     .text_size(text_size);
                 if ui.add(solo_btn).clicked() {
-                    state.show_single_player_setup = true;
+                    state.show_custom_game = true;
+                    state.custom_game_is_sp = true;
                 }
 
                 let settings_btn = crate::widgets::ThemeButton::new(&strings.settings)
@@ -603,7 +589,8 @@ pub fn draw(
 
     // Draw the full-bleed backdrop first so that all panels (including the footer)
     // are drawn on top of it.
-    if (state.is_waiting || !state.show_join_browser) && !state.show_leader_picker {
+    if (state.is_waiting || (!state.show_join_browser && !state.show_custom_game))
+        && !state.show_leader_picker {
         let backdrop_rect = root_ui.ctx().content_rect();
         let use_portrait = backdrop_rect.width() < backdrop_rect.height();
         crate::widgets::draw_leader_hero_backdrop(
@@ -630,6 +617,8 @@ pub fn draw(
 
     if state.show_join_browser && !state.is_waiting {
         join_browser::draw(root_ui, state, asset_loader, &mut action, lang);
+    } else if state.show_custom_game && !state.is_waiting {
+        custom_game::draw(root_ui, state, asset_loader, &mut action, lang, reduced_motion);
     } else {
         let panel_frame = if state.is_waiting {
             // No margin: the waiting-room card manages its own margins on desktop
@@ -773,27 +762,6 @@ pub fn draw(
                     }
                 }
             });
-    }
-
-    if state.show_create_game {
-        create_game::draw(
-            root_ui,
-            state,
-            asset_loader,
-            &mut action,
-            lang,
-            reduced_motion,
-        );
-    }
-    if state.show_single_player_setup {
-        single_player_setup::draw(
-            root_ui,
-            state,
-            asset_loader,
-            &mut action,
-            lang,
-            reduced_motion,
-        );
     }
 
     if let Some(conflict) = state.active_conflict.clone() {

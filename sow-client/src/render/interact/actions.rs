@@ -55,13 +55,14 @@ impl SowApp {
                     self.ui.app.main_menu_state.is_lobby_host = true;
                 }
                 UiAction::OpenCreateGame => {
-                    self.ui.app.main_menu_state.show_create_game = true;
+                    self.ui.app.main_menu_state.show_custom_game = true;
+                    self.ui.app.main_menu_state.custom_game_is_sp = false;
                 }
                 UiAction::OpenJoinBrowser => {
                     self.ui.app.main_menu_state.show_join_browser = true;
                 }
                 UiAction::CloseOverlay => {
-                    self.ui.app.main_menu_state.show_create_game = false;
+                    self.ui.app.main_menu_state.show_custom_game = false;
                     self.ui.app.main_menu_state.show_join_browser = false;
                 }
                 UiAction::CreateGame {
@@ -77,7 +78,7 @@ impl SowApp {
                     }
                     self.ui.app.main_menu_state.is_waiting = true;
                     self.ui.app.main_menu_state.is_lobby_host = true;
-                    self.ui.app.main_menu_state.show_create_game = false;
+                    self.ui.app.main_menu_state.show_custom_game = false;
                 }
                 UiAction::JoinWithCode => {
                     let code = self

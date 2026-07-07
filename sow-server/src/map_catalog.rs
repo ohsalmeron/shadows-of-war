@@ -23,15 +23,16 @@ pub fn scan_maps_root(root: &Path) -> MapCatalog {
         if key.starts_with('.') {
             continue;
         }
-        let map_path = map_dir.join("map.bin");
-        if !map_path.exists() {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&map_path) else {
+        // Try map.bin first (raw), fall back to map.bin.br (brotli-compressed, what deploy syncs).
+        let bytes = if let Ok(data) = std::fs::read(&map_dir.join("map.bin")) {
+            data
+        } else if let Ok(br) = std::fs::read(&map_dir.join("map.bin.br")) {
+            map_file::decompress_map_payload(&br).unwrap_or(br)
+        } else {
             continue;
         };
         let Ok(header) = map_file::parse_header(&bytes) else {
-            log::warn!("Skipping {}: invalid map.bin header", key);
+            log::warn!("Skipping {key}: invalid map.bin header");
             continue;
         };
         items.push((slug(&key), header));

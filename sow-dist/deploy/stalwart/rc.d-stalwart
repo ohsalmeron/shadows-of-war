@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# PROVIDE: stalwart
+# REQUIRE: LOGIN CLEANFILES
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="stalwart"
+rcvar="stalwart_enable"
+pidfile="/var/run/stalwart.pid"
+logfile="/var/log/stalwart.log"
+
+load_rc_config $name
+
+: ${stalwart_enable:="NO"}
+: ${stalwart_config:="/usr/local/etc/stalwart/config.json"}
+
+command="/usr/sbin/daemon"
+command_args="-p ${pidfile} -o ${logfile} -f /usr/local/bin/stalwart --config ${stalwart_config}"
+
+run_rc_command "$1"

@@ -185,19 +185,19 @@ impl MapEditorSession {
         let catalog = sow_core::map_file::parse_catalog(&bytes).map_err(|e| e.to_string())?;
         let entries = catalog.entries;
         client_app.asset_loader.map_catalog = Some(entries.clone());
-        client_app.main_menu_state.apply_map_catalog(&entries);
+        client_app.main_menu_state.apply_map_catalog_custom(&entries);
 
         if let Some(key) = select_map_key {
             let normalized = sow_core::maps::map_key(key);
             if normalized.is_empty() {
                 return Err("Map name produces an empty folder key".into());
             }
-            client_app.main_menu_state.single_player_config.map_name = normalized.clone();
+            client_app.main_menu_state.custom_game_config.map_name = normalized.clone();
             sow_core::maps::apply_catalog_dimensions(
                 &entries,
-                &mut client_app.main_menu_state.single_player_config.map_name,
-                &mut client_app.main_menu_state.single_player_config.map_width,
-                &mut client_app.main_menu_state.single_player_config.map_height,
+                &mut client_app.main_menu_state.custom_game_config.map_name,
+                &mut client_app.main_menu_state.custom_game_config.map_width,
+                &mut client_app.main_menu_state.custom_game_config.map_height,
             );
             if let Some(bytes) = sow_core::maps::read_thumbnail_webp_from_repo(&normalized) {
                 let _ = client_app
