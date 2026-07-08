@@ -44,9 +44,9 @@ web-time = { workspace = true }
 
 sow-render = { workspace = true, optional = true }
 sow-ui = { workspace = true, optional = true }
-blade-graphics = { git = "https://github.com/ohsalmeron/blade", optional = true }
-blade-egui = { git = "https://github.com/ohsalmeron/blade", optional = true }
-blade-macros = { git = "https://github.com/ohsalmeron/blade", optional = true }
+blade-graphics = { git = "https://github.com/ohsalmeron/blade", rev = "0223b8faaee1f03f7566a7ea13d239b60391359d", optional = true }
+blade-egui = { git = "https://github.com/ohsalmeron/blade", rev = "0223b8faaee1f03f7566a7ea13d239b60391359d", optional = true }
+blade-macros = { git = "https://github.com/ohsalmeron/blade", rev = "0223b8faaee1f03f7566a7ea13d239b60391359d", optional = true }
 bytemuck = { workspace = true, optional = true }
 egui = { workspace = true, optional = true }
 winit = { workspace = true, optional = true }
