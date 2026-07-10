@@ -14,6 +14,9 @@ Environment=RUST_LOG=info
 EnvironmentFile=-/etc/default/shadowsofwar
 Environment=SOW_DB_PORT=__SOW_PROD_DB_PORT__
 Environment=SOW_VALKEY_URL=redis://127.0.0.1:6379
+# Persistent redb lives under data/ — a plain dir today; if ZFS replication is
+# enabled later, the pool mounts over this same path (no unit change needed).
+Environment=SOW_REDB_PATH=__HOME_PROD__/data/sow_metadata.redb
 
 [Install]
 WantedBy=multi-user.target

@@ -90,6 +90,7 @@ fn import_from_png(dir: &Path, display_name: &str) -> Result<MapFile, Box<dyn st
         height: result.height,
         num_land_tiles: result.num_land_tiles,
         spawns,
+        geo_bounds: None,
         terrain: result.map_data,
     })
 }
@@ -261,6 +262,7 @@ fn import_from_bin_or_manifest(
         height,
         num_land_tiles: num_land,
         spawns,
+        geo_bounds: None,
         terrain,
     })
 }

@@ -11,6 +11,7 @@ ExecStart=__HOME_PROD__/sow-server
 Restart=always
 RestartSec=3
 KillMode=process
+LimitNOFILE=65535
 Environment=RUST_LOG=info
 EnvironmentFile=-/etc/default/shadowsofwar
 Environment=SOW_REDIS_URL=redis://127.0.0.1:6379

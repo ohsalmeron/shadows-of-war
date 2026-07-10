@@ -26,7 +26,6 @@ impl Language {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MainMenuStrings {
-    pub single_player: String,
     pub host_private_game: String,
     pub ranked_match: String,
     pub settings: String,
@@ -39,7 +38,6 @@ pub struct MainMenuStrings {
     pub connection_error_hint: String,
     pub dismiss: String,
     pub connection_retry: String,
-    pub single_player_skirmish: String,
     pub config_simulation: String,
     pub map_selection: String,
     pub bot_difficulty: String,
@@ -57,7 +55,6 @@ pub struct MainMenuStrings {
     pub by_playing_you_agree: String,
     pub and_the: String,
     pub loading_maps: String,
-    pub map_offline_tag: String,
     pub downloading_map: String,
     pub establishing_tactical_comm: String,
     pub leave_lobby: String,
@@ -75,19 +72,24 @@ pub struct MainMenuStrings {
     pub credits_link: String,
     pub start_game: String,
     pub lobby_code_label: String,
-    // Create Game screen
+    // Custom Game screen (unified offline skirmish + online lobby creation)
     pub create_lobby_btn: String,
-    pub create_game_title: String,
-    pub create_game_subtitle: String,
+    pub custom_game_title: String,
+    pub custom_offline_toggle: String,
+    pub custom_online_toggle: String,
+    pub custom_offline_hint: String,
+    pub custom_online_hint: String,
+    pub visibility_label: String,
     pub visibility_public: String,
     pub visibility_private: String,
     pub password_label: String,
     pub password_hint: String,
     pub max_players_label: String,
     pub game_mode_label: String,
-    // Join Browser screen
+    pub seed_label: String,
+    // Home screen: inline game browser + create
     pub create_game_btn: String,
-    pub join_game_btn: String,
+    pub quick_match_label: String,
     pub game_browser_title: String,
     pub filter_all: String,
     pub lobby_code_hint: String,

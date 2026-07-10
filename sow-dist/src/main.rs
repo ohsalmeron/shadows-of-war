@@ -175,6 +175,7 @@ fn cmd_crazygames(paths: &Paths, increment_version: bool) -> Result<()> {
 fn cmd_prod(paths: &Paths, increment_version: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     let cfg = config::require_deploy_config()?;
+    build_astro_site(paths)?;
     pipeline::run_release(paths, &cfg, pipeline::ReleaseTarget::Prod, &version)?;
     println!(
         "Prod deployed v{version} → {} + {}",
@@ -200,6 +201,7 @@ fn cmd_ptr(paths: &Paths, increment_version: bool) -> Result<()> {
 fn cmd_local(paths: &Paths, increment_version: bool, port: u16, build_only: bool) -> Result<()> {
     let version = resolve_version(paths, increment_version)?;
     println!("==> local wasm v{version}");
+    build_astro_site(paths)?;
     wasm::compile(paths, true)?; // local QA: dev tools available via Settings → Dev Tools
     let cfg = config::local_config();
     package::build_or_skip(
@@ -277,4 +279,28 @@ fn cmd_bot(
 
     println!("==> Spawning {} bot(s) → {}", n, url);
     process::run("cargo", &args, Some(&paths.root))
+}
+
+fn build_astro_site(paths: &Paths) -> Result<()> {
+    let sow_web_dir = paths.root.join("sow-web");
+    if !sow_web_dir.join("package.json").is_file() {
+        return Ok(());
+    }
+
+    println!("==> Compiling Astro marketing site...");
+
+    let node_modules = sow_web_dir.join("node_modules");
+    if !node_modules.is_dir() {
+        println!("==> sow-web/node_modules not found. Running npm install...");
+        if let Err(e) = process::run("npm", &["install"], Some(&sow_web_dir)) {
+            println!("⚠️ Warning: failed to run npm install: {e}. Build might fail if Astro is not installed.");
+        }
+    }
+
+    if let Err(e) = process::run("npm", &["run", "build"], Some(&sow_web_dir)) {
+        anyhow::bail!("Failed to compile Astro site: {e}");
+    }
+
+    println!("✅ Astro marketing site compiled successfully!");
+    Ok(())
 }

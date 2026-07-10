@@ -122,6 +122,57 @@ async fn run_bot(
         .map_err(|e| format!("Connect failed: {}", e))?;
     let (mut write, mut read) = ws.split();
 
+    let mut resolved_lobby_id = target_lobby_id;
+    if resolved_lobby_id.is_none() {
+        println!(
+            "[Bot {}] Querying lobby list to find the active homepage lobby...",
+            bot_index
+        );
+        loop {
+            let msg = recv_msg(&mut read, 10).await?;
+            if let ServerMessage::LobbiesBroadcast(broadcast) = msg {
+                let matchmaking_lobbies: Vec<_> = broadcast
+                    .lobbies
+                    .iter()
+                    .filter(|l| matches!(l.kind, sow_core::protocol::LobbyKind::Matchmaking))
+                    .collect();
+
+                let mut counting: Vec<_> = matchmaking_lobbies
+                    .iter()
+                    .filter(|l| l.is_counting_down)
+                    .copied()
+                    .collect();
+                if !counting.is_empty() {
+                    counting.sort_by_key(|l| l.id);
+                    resolved_lobby_id = Some(counting[0].id);
+                } else {
+                    let mut waiting: Vec<_> = matchmaking_lobbies
+                        .iter()
+                        .filter(|l| !l.is_counting_down)
+                        .copied()
+                        .collect();
+                    if !waiting.is_empty() {
+                        waiting.sort_by_key(|l| l.id);
+                        resolved_lobby_id = Some(waiting[0].id);
+                    }
+                }
+
+                if let Some(id) = resolved_lobby_id {
+                    println!(
+                        "[Bot {}] Targeted active matchmaking lobby ID: {}",
+                        bot_index, id
+                    );
+                } else {
+                    println!(
+                        "[Bot {}] No active matchmaking lobby found! Falling back to server default.",
+                        bot_index
+                    );
+                }
+                break;
+            }
+        }
+    }
+
     let (leader, civilization) = {
         let mut rng = rand::thread_rng();
         let l = sow_core::player::Leader::ALL[rng.gen_range(0..sow_core::player::Leader::ALL.len())];
@@ -131,7 +182,7 @@ async fn run_bot(
     let join = ClientMessage::Join {
         name: name.clone(),
         is_observer: false,
-        target_lobby_id,
+        target_lobby_id: resolved_lobby_id,
         host_private: false,
         build_version: version,
         clan_tag: "".to_string(),
@@ -289,6 +340,7 @@ async fn run_bot(
                     if let Some(ref map_file) = parsed_map {
                         state.total_land_tiles = map_file.num_land_tiles;
                         state.map_spawns = map_file.spawns.clone();
+                        state.geo_bounds = map_file.geo_bounds;
                         if map_file.terrain.len() == state.map.terrain.len() {
                             let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
                             unsafe {

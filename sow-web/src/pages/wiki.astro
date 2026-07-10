@@ -1,0 +1,764 @@
+---
+import Layout from '../layouts/Layout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// 1. Build-time parser to read geo_entities (Realms)
+const geoEntitiesDir = path.join(process.cwd(), '..', 'sow-data', 'src', 'geo_entities');
+const rsFiles = fs.readdirSync(geoEntitiesDir).filter(f => f.endsWith('.rs') && f !== 'mod.rs');
+const realmsRaw = [];
+const geoRegex = /e!\(\s*(\w+)\s*:\s*"([^"]+)"\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)(?:\s*,\s*"([^"]+)")?\s*\)/g;
+
+for (const file of rsFiles) {
+  const content = fs.readFileSync(path.join(geoEntitiesDir, file), 'utf-8');
+  let match;
+  geoRegex.lastIndex = 0;
+  while ((match = geoRegex.exec(content)) !== null) {
+    realmsRaw.push({
+      name: match[2],
+      kind: match[3],
+      era: match[4],
+      continent: match[1],
+      lat: parseFloat(match[5]),
+      lon: parseFloat(match[6]),
+      flag: match[7] || ''
+    });
+  }
+}
+
+// 2. Build-time parser to read leaders
+const leadersDir = path.join(process.cwd(), '..', 'docs', 'leaders');
+const files = fs.readdirSync(leadersDir);
+const leadersRaw = [];
+const customStories: Record<number, string> = {
+  1: "Founder of the Mughal Empire. A descendant of Timur and Genghis Khan, he wrote the Baburnama (autobiography) and was a lover of poetry, gardens, and military innovation.",
+  2: "Often regarded as the greatest, most celebrated, and most powerful pharaoh of the New Kingdom of Egypt. He led military campaigns to secure Egypt's borders and built massive monuments like Abu Simbel.",
+  3: "Carthaginian general who marched war elephants over the Alps to challenge the Roman Republic. Widely considered one of the greatest military tacticians in history.",
+  4: "Founder of the Achaemenid Empire. He is celebrated for his respect for the customs and religions of the lands he conquered, as documented on the famous Cyrus Cylinder.",
+  10: "The fourth king of the Joseon Dynasty of Korea. He created Hangul (the Korean alphabet) to promote literacy among the common people and advanced science, agriculture, and literature.",
+  17: "Ruler of the Maya city-state of Palenque. He is famous for building Palenque's finest monuments and for his sarcophagus lid, which depicts him entering the underworld.",
+  25: "Hunkpapa Lakota leader who led his people during years of resistance against United States government policies, famously uniting tribes for the Battle of the Little Bighorn."
+};
+
+for (const file of files) {
+  if (!file.endsWith('.md') || file === 'README.md' || file === 'roster-source.md') continue;
+  const regionId = file.replace('.md', '');
+  const regionName = regionId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const content = fs.readFileSync(path.join(leadersDir, file), 'utf-8');
+  const sections = content.split('\n### ');
+
+  for (let i = 1; i < sections.length; i++) {
+    const section = sections[i];
+    const lines = section.split('\n');
+    if (lines.length === 0) continue;
+    const headerLine = lines[0].trim();
+    const parts = headerLine.split('|').map(p => p.trim());
+    if (parts.length < 2) continue;
+
+    const idNamePart = parts[0];
+    const dotIdx = idNamePart.indexOf('.');
+    if (dotIdx === -1) continue;
+    const id = parseInt(idNamePart.substring(0, dotIdx).trim(), 10);
+    const name = idNamePart.substring(dotIdx + 1).trim();
+
+    let faction = '';
+    let culture = '';
+    let era = '';
+    if (parts.length === 2) era = parts[1];
+    else if (parts.length === 3) { faction = parts[1]; era = parts[2]; }
+    else if (parts.length >= 4) { faction = parts[1]; culture = parts[2]; era = parts[3]; }
+
+    let heroPrompt = '';
+    let empirePrompt = '';
+    for (let j = 1; j < lines.length; j++) {
+      const line = lines[j].trim();
+      if (line.startsWith('- **Hero:**')) heroPrompt = line.replace('- **Hero:**', '').trim();
+      else if (line.startsWith('- **Empire:**')) empirePrompt = line.replace('- **Empire:**', '').trim();
+    }
+
+    let story = customStories[id] || '';
+    if (!story) {
+      const heroLower = heroPrompt.toLowerCase();
+      let trait = "commanding presence and leadership";
+      if (heroLower.includes("wise") || heroLower.includes("weathered") || heroLower.includes("wisdom")) {
+        trait = "decades of wisdom, patience, and tactical intellect";
+      } else if (heroLower.includes("fierce") || heroLower.includes("warrior") || heroLower.includes("defiant")) {
+        trait = "unbending defiance and unmatched combat prowess";
+      } else if (heroLower.includes("arrogant") || heroLower.includes("divine") || heroLower.includes("regal")) {
+        trait = "divine authority, royal lineage, and political sovereignty";
+      }
+      let action = "leads their civilization with strategy and determination";
+      if (heroLower.includes("sword") || heroLower.includes("axe") || heroLower.includes("spear") || heroLower.includes("halberd") || heroLower.includes("club")) {
+        action = "stands on the front lines, leading their warriors into battle with steel and strength";
+      } else if (heroLower.includes("scroll") || heroLower.includes("book") || heroLower.includes("poetry") || heroLower.includes("pipe") || heroLower.includes("scepter")) {
+        action = "guides their empire through civil reform, philosophical teachings, and technological foresight";
+      }
+      story = `During the era of ${era}, ${name} rose to power within the ${faction || culture || 'empire'}. Marked by their ${trait}, this legendary figure ${action}. In the scrolls of Shadows of War, their historical legacy is remembered across the macro-region of ${regionName}.`;
+    }
+
+    leadersRaw.push({ id, name, faction: faction || culture || 'Independent Faction', culture, era, regionId, regionName, heroPrompt, empirePrompt, story });
+  }
+}
+
+// 3. Helper Mappers for unified values
+function mapRegion(regionId: string): string {
+  const rid = regionId.toLowerCase();
+  if (rid.includes('europe')) return 'Europe';
+  if (rid.includes('asia') || rid.includes('middle-east')) return 'Asia';
+  if (rid.includes('africa')) return 'Africa';
+  if (rid.includes('america')) return 'Americas';
+  if (rid.includes('oceania')) return 'Oceania';
+  return 'Other';
+}
+
+function mapEra(eraStr: string): string {
+  const era = eraStr.toLowerCase();
+  if (era.includes('bce') || era.includes('ancient') || era.includes('5th c') || era.includes('6th c') || era.includes('7th c')) return 'Ancient';
+  if (era.includes('classical') || era.includes('1st c') || era.includes('2nd c') || era.includes('3rd c') || era.includes('4th c')) return 'Classical';
+  if (era.includes('medieval') || era.includes('8th c') || era.includes('9th c') || era.includes('10th c') || era.includes('11th c') || era.includes('12th c') || era.includes('13th c') || era.includes('14th c') || era.includes('15th c')) return 'Medieval';
+  if (era.includes('early modern') || era.includes('16th c') || era.includes('17th c') || era.includes('18th c')) return 'Early Modern';
+  return 'Modern';
+}
+
+const kindDisplayNames: Record<string, string> = {
+  Tribe: 'Tribe', CityState: 'City-State', Kingdom: 'Kingdom', Empire: 'Empire', Country: 'Modern Nation'
+};
+
+const eraDisplayNames: Record<string, string> = {
+  Ancient: 'Ancient Era', Classical: 'Classical Era', Medieval: 'Medieval Era', EarlyModern: 'Early Modern Era', Modern: 'Modern Era'
+};
+
+// Merge all entries
+const wikiEntries = [
+  ...leadersRaw.map(l => ({
+    id: `L-${l.id}`,
+    rawId: l.id,
+    category: 'Leader',
+    name: l.name,
+    sub: l.faction,
+    era: mapEra(l.era),
+    eraDisplay: l.era,
+    region: mapRegion(l.regionId),
+    story: l.story,
+    faction: l.faction,
+    culture: l.culture,
+    heroPrompt: l.heroPrompt,
+    empirePrompt: l.empirePrompt
+  })),
+  ...realmsRaw.map(r => {
+    const eraMapped = r.era === 'EarlyModern' ? 'Early Modern' : r.era;
+    return {
+      id: `R-${r.name}`,
+      rawId: 0,
+      category: 'Realm',
+      name: r.name,
+      sub: kindDisplayNames[r.kind] || r.kind,
+      era: eraMapped,
+      eraDisplay: eraDisplayNames[r.era] || r.era,
+      region: r.continent,
+      story: `${r.name} is a historical ${eraDisplayNames[r.era] || r.era} ${kindDisplayNames[r.kind] || r.kind} located in ${r.continent}. Historical coordinates place its heartland center at latitude ${r.lat.toFixed(2)}°, longitude ${r.lon.toFixed(2)}°.`,
+      kind: r.kind,
+      lat: r.lat,
+      lon: r.lon,
+      flag: r.flag
+    };
+  })
+];
+
+// Sort alphabetically
+wikiEntries.sort((a, b) => a.name.localeCompare(b.name));
+
+// Counts for Sidebar check items
+const categoryCounts = {
+  Leader: wikiEntries.filter(e => e.category === 'Leader').length,
+  Realm: wikiEntries.filter(e => e.category === 'Realm').length
+};
+
+const regionCounts: Record<string, number> = {};
+const eraCounts: Record<string, number> = {};
+wikiEntries.forEach(e => {
+  regionCounts[e.region] = (regionCounts[e.region] || 0) + 1;
+  eraCounts[e.era] = (eraCounts[e.era] || 0) + 1;
+});
+---
+
+<Layout title="Shadows of War — Historical Wiki Database" activeNav="wiki">
+  <div class="encyclopedia-header">
+    <p>Explore historical database files and mapped satellite telemetry coordinates for all realms and legendary commanders.</p>
+  </div>
+
+  <div class="encyclopedia-layout">
+    <!-- Mobile Filter Trigger -->
+    <div class="mobile-filter-bar">
+      <button type="button" class="mobile-filter-toggle-btn" id="mobile-filter-toggle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+        </svg>
+        Filters
+      </button>
+      <span class="mobile-results-count" id="mobile-results-count">Loading...</span>
+    </div>
+
+    <!-- Left sidebar filters -->
+    <aside class="filters-sidebar" id="filters-sidebar">
+      <div class="sidebar-header">
+        <h3>Filters</h3>
+        <button type="button" class="clear-all-btn" id="clear-filters-btn" style="display: none;">Clear All</button>
+        <button type="button" class="sidebar-close-btn" id="sidebar-close-btn" aria-label="Close filters">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Category Filter -->
+      <div class="sidebar-section" style="margin-bottom: 1.5rem;">
+        <h4>Category</h4>
+        <div class="checkbox-group">
+          {Object.entries(categoryCounts).map(([cat, count]) => (
+            <label class="checkbox-label">
+              <input type="checkbox" name="category" value={cat} class="category-checkbox" />
+              <span class="custom-checkbox"></span>
+              <span class="checkbox-text">{cat}s</span>
+              <span class="checkbox-count">{count}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <!-- Regions Filter -->
+      <div class="sidebar-section" style="margin-bottom: 1.5rem;">
+        <h4>Continent / Region</h4>
+        <div class="checkbox-group">
+          {['Europe', 'Asia', 'Africa', 'Americas', 'Oceania'].map(reg => (
+            <label class="checkbox-label">
+              <input type="checkbox" name="region" value={reg} class="region-checkbox" />
+              <span class="custom-checkbox"></span>
+              <span class="checkbox-text">{reg}</span>
+              <span class="checkbox-count">{regionCounts[reg] || 0}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <!-- Eras Filter -->
+      <div class="sidebar-section">
+        <h4>Historical Era</h4>
+        <div class="checkbox-group">
+          {['Ancient', 'Classical', 'Medieval', 'Early Modern', 'Modern'].map(era => (
+            <label class="checkbox-label">
+              <input type="checkbox" name="era" value={era} class="era-checkbox" />
+              <span class="custom-checkbox"></span>
+              <span class="checkbox-text">{era} Era</span>
+              <span class="checkbox-count">{eraCounts[era] || 0}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Content Area -->
+    <div class="leaders-content">
+      <div class="search-sort-bar">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search by name, faction, era, region..." />
+        </div>
+        <div class="results-meta-desktop">
+          <span id="results-count-desktop">Loading...</span>
+        </div>
+      </div>
+
+      <!-- Active filter pills -->
+      <div class="active-pills-bar" id="active-pills-bar" style="display: none;">
+        <span class="pills-label">Active Filters:</span>
+        <div class="pills-list" id="pills-list"></div>
+      </div>
+
+      <!-- Scrollable grid wrapper -->
+      <div class="leaders-scroll-container" id="scroll-container">
+        <div class="leaders-grid" id="wiki-grid"></div>
+        <div class="load-more-container" id="load-more-box" style="display: none;">
+          <button type="button" class="play-btn" id="load-more-btn">Load More Results</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Drawer -->
+  <div class="detail-drawer-overlay" id="detail-overlay"></div>
+  <aside class="detail-drawer" id="detail-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <span class="drawer-faction" id="drawer-faction"></span>
+      <h2 class="drawer-name" id="drawer-name"></h2>
+      <button type="button" class="drawer-close" id="drawer-close-btn" aria-label="Close details">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="drawer-content">
+      <div class="drawer-portrait-frame" id="drawer-visual-frame"></div>
+      <div class="drawer-meta-grid" id="drawer-meta-grid"></div>
+      
+      <div class="drawer-section" id="dossier-prompts-section" style="display: none;">
+        <h3>Dossier Directives</h3>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 6px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div>
+            <strong style="font-family: var(--font-display); font-size: 0.65rem; color: var(--accent-color); text-transform: uppercase; display: block; margin-bottom: 0.25rem;">Hero Vector</strong>
+            <span id="drawer-hero-prompt" style="font-size: 0.85rem; font-style: italic;"></span>
+          </div>
+          <div>
+            <strong style="font-family: var(--font-display); font-size: 0.65rem; color: var(--accent-color); text-transform: uppercase; display: block; margin-bottom: 0.25rem;">Empire Vector</strong>
+            <span id="drawer-empire-prompt" style="font-size: 0.85rem; font-style: italic;"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <h3>Historical Dossier</h3>
+        <p class="drawer-story-text" id="drawer-story"></p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Raw database JSON payload -->
+  <script id="wiki-data" type="application/json" raw-data={JSON.stringify(wikiEntries)}></script>
+
+  <script>
+    interface WikiEntry {
+      id: string;
+      rawId: number;
+      category: string;
+      name: string;
+      sub: string;
+      era: string;
+      eraDisplay: string;
+      region: string;
+      story: string;
+      faction?: string;
+      culture?: string;
+      heroPrompt?: string;
+      empirePrompt?: string;
+      kind?: string;
+      lat?: number;
+      lon?: number;
+      flag?: string;
+    }
+
+    const wikiDataEl = document.getElementById('wiki-data');
+    const wikiEntries: WikiEntry[] = JSON.parse(wikiDataEl?.getAttribute('raw-data') || '[]');
+
+    const ITEMS_PER_PAGE = 32;
+    let filteredEntries: WikiEntry[] = [...wikiEntries];
+    let renderedCount = 0;
+
+    const selectedCategories = new Set<string>();
+    const selectedRegions = new Set<string>();
+    const selectedEras = new Set<string>();
+    let searchQuery = '';
+
+    // Elements
+    const grid = document.getElementById('wiki-grid');
+    const searchInput = document.getElementById('search-input') as HTMLInputElement;
+    const resultsDesktop = document.getElementById('results-count-desktop');
+    const resultsMobile = document.getElementById('mobile-results-count');
+    const loadMoreBox = document.getElementById('load-more-box');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    const activePillsBar = document.getElementById('active-pills-bar');
+    const pillsList = document.getElementById('pills-list');
+    const clearFiltersBtn = document.getElementById('clear-filters-btn');
+
+    // Sidebar Mobile elements
+    const filterToggle = document.getElementById('mobile-filter-toggle');
+    const sidebar = document.getElementById('filters-sidebar');
+    const sidebarClose = document.getElementById('sidebar-close-btn');
+
+    // Drawer elements
+    const drawer = document.getElementById('detail-drawer');
+    const drawerOverlay = document.getElementById('detail-overlay');
+    const drawerClose = document.getElementById('drawer-close-btn');
+    const drawerFaction = document.getElementById('drawer-faction');
+    const drawerName = document.getElementById('drawer-name');
+    const drawerStory = document.getElementById('drawer-story');
+    const drawerVisualFrame = document.getElementById('drawer-visual-frame');
+    const drawerMetaGrid = document.getElementById('drawer-meta-grid');
+    const dossierPromptsSection = document.getElementById('dossier-prompts-section');
+    const drawerHeroPrompt = document.getElementById('drawer-hero-prompt');
+    const drawerEmpirePrompt = document.getElementById('drawer-empire-prompt');
+
+    function filterAndRender(resetScroll = false) {
+      filteredEntries = wikiEntries.filter(entry => {
+        // Search query
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          const matchName = entry.name.toLowerCase().includes(q);
+          const matchSub = entry.sub.toLowerCase().includes(q);
+          const matchEra = entry.eraDisplay.toLowerCase().includes(q);
+          const matchRegion = entry.region.toLowerCase().includes(q);
+          const matchCat = entry.category.toLowerCase().includes(q);
+          const matchId = entry.id.toLowerCase().includes(q);
+          if (!matchName && !matchSub && !matchEra && !matchRegion && !matchCat && !matchId) return false;
+        }
+
+        // Category filter
+        if (selectedCategories.size > 0 && !selectedCategories.has(entry.category)) return false;
+
+        // Region filter
+        if (selectedRegions.size > 0 && !selectedRegions.has(entry.region)) return false;
+
+        // Era filter
+        if (selectedEras.size > 0 && !selectedEras.has(entry.era)) return false;
+
+        return true;
+      });
+
+      renderedCount = 0;
+      if (grid) grid.innerHTML = '';
+      renderNextBatch();
+      updateFilterPills();
+
+      const countText = `${filteredEntries.length} Records Found`;
+      if (resultsDesktop) resultsDesktop.textContent = countText;
+      if (resultsMobile) resultsMobile.textContent = countText;
+
+      if (resetScroll) {
+        const scrollContainer = document.getElementById('scroll-container');
+        if (scrollContainer) scrollContainer.scrollTop = 0;
+      }
+    }
+
+    function renderNextBatch() {
+      if (!grid) return;
+      const start = renderedCount;
+      const end = Math.min(filteredEntries.length, start + ITEMS_PER_PAGE);
+
+      if (start >= filteredEntries.length) {
+        if (loadMoreBox) loadMoreBox.style.display = 'none';
+        if (filteredEntries.length === 0) {
+          grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 3rem;">No records match your filters.</div>';
+        }
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (let i = start; i < end; i++) {
+        const entry = filteredEntries[i];
+        const card = document.createElement('div');
+        card.className = 'leader-card';
+        card.setAttribute('data-id', entry.id);
+
+        const categoryTagColor = entry.category === 'Leader' ? 'color: var(--accent-color);' : 'color: #bab5a6;';
+        
+        // Portrait SVG
+        let portraitSvg = '';
+        if (entry.category === 'Leader') {
+          portraitSvg = `
+            <svg class="leader-portrait-svg" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="240" fill="rgba(6, 12, 24, 0.6)" rx="4" />
+              <path d="M 0 40 L 200 40 M 0 80 L 200 80 M 0 120 L 200 120 M 0 160 L 200 160 M 0 200 L 200 200" stroke="rgba(196, 162, 101, 0.04)" stroke-width="1" />
+              <path d="M 40 0 L 40 240 M 80 0 L 80 240 M 120 0 L 120 240 M 160 0 L 160 240" stroke="rgba(196, 162, 101, 0.04)" stroke-width="1" />
+              <path d="M 12 12 H 24 M 12 12 V 24 M 188 12 H 176 M 188 12 V 24 M 12 228 H 24 M 12 228 V 216 M 188 228 H 176 M 188 228 V 216" stroke="var(--accent-color)" stroke-width="1.5" opacity="0.6" />
+              <path d="M 100 65 C 112 65 122 75 122 88 C 122 99 115 106 109 109 L 115 120 C 117 124 114 128 110 128 H 90 C 86 128 83 124 85 120 L 91 109 C 85 106 78 99 78 88 C 78 75 88 65 100 65 Z" fill="rgba(196, 162, 101, 0.12)" stroke="var(--accent-color)" stroke-width="1.5" />
+              <path d="M 60 180 C 60 155 78 140 100 140 C 122 140 140 155 140 180 V 195 H 60 V 180 Z" fill="rgba(196, 162, 101, 0.08)" stroke="var(--accent-color)" stroke-width="1.5" />
+              <circle cx="100" cy="90" r="45" stroke="rgba(196, 162, 101, 0.15)" stroke-dasharray="4 6" stroke-width="1" />
+              <circle cx="100" cy="90" r="3" fill="var(--accent-color)" />
+              <text x="100" y="215" fill="var(--accent-color)" font-family="var(--font-display)" font-size="9" font-weight="800" letter-spacing="0.1em" text-anchor="middle" opacity="0.8">DATA ENCRYPTED</text>
+            </svg>
+          `;
+        } else {
+          portraitSvg = `
+            <svg class="leader-portrait-svg" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="240" fill="rgba(6, 12, 24, 0.6)" rx="4" />
+              <path d="M 0 40 L 200 40 M 0 80 L 200 80 M 0 120 L 200 120 M 0 160 L 200 160 M 0 200 L 200 200" stroke="rgba(196, 162, 101, 0.04)" stroke-width="1" />
+              <path d="M 40 0 L 40 240 M 80 0 L 80 240 M 120 0 L 120 240 M 160 0 L 160 240" stroke="rgba(196, 162, 101, 0.04)" stroke-width="1" />
+              <circle cx="100" cy="120" r="50" stroke="rgba(196, 162, 101, 0.1)" stroke-width="1" />
+              <circle cx="100" cy="120" r="30" stroke="rgba(196, 162, 101, 0.15)" stroke-dasharray="4 4" stroke-width="1" />
+              <line x1="100" y1="50" x2="100" y2="190" stroke="rgba(196, 162, 101, 0.08)" stroke-width="1" />
+              <line x1="50" y1="120" x2="150" y2="120" stroke="rgba(196, 162, 101, 0.08)" stroke-width="1" />
+              <circle cx="100" cy="120" r="4" fill="var(--accent-color)" />
+              <text x="100" y="215" fill="var(--accent-color)" font-family="var(--font-display)" font-size="9" font-weight="800" letter-spacing="0.05em" text-anchor="middle" opacity="0.8">COORDINATE MAPPED</text>
+            </svg>
+          `;
+        }
+
+        card.innerHTML = `
+          <span class="card-id">${entry.region}</span>
+          <span class="card-faction" style="${categoryTagColor}">${entry.category.toUpperCase()} | ${entry.sub}</span>
+          <div class="card-portrait-wrapper">
+            ${portraitSvg}
+          </div>
+          <div class="card-info">
+            <h3 class="card-name">${entry.name}</h3>
+            <span class="card-era">${entry.eraDisplay}</span>
+          </div>
+        `;
+
+        card.addEventListener('click', () => openDrawer(entry));
+        fragment.appendChild(card);
+      }
+
+      grid.appendChild(fragment);
+      renderedCount = end;
+
+      if (loadMoreBox) {
+        loadMoreBox.style.display = renderedCount < filteredEntries.length ? 'flex' : 'none';
+      }
+    }
+
+    function openDrawer(entry: WikiEntry) {
+      if (!drawer || !drawerOverlay) return;
+
+      // Unify headers
+      if (drawerFaction) {
+        drawerFaction.textContent = `${entry.category.toUpperCase()} | ${entry.sub}`;
+        drawerFaction.setAttribute('style', entry.category === 'Leader' ? 'color: var(--accent-color);' : 'color: #bab5a6;');
+      }
+      if (drawerName) drawerName.textContent = entry.name;
+      if (drawerStory) drawerStory.textContent = entry.story;
+
+      // Drawer Visual Map Frame
+      if (drawerVisualFrame) {
+        if (entry.category === 'Leader') {
+          // Encrypted Data Vector
+          drawerVisualFrame.innerHTML = `
+            <svg class="drawer-portrait-svg" viewBox="0 0 400 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="400" height="200" fill="rgba(6, 12, 24, 0.8)" rx="6" />
+              <path d="M 0 40 L 400 40 M 0 80 L 400 80 M 0 120 L 400 120 M 0 160 L 400 160" stroke="rgba(196, 162, 101, 0.04)" stroke-width="1" />
+              <path d="M 50 0 L 50 200 M 100 0 L 100 200 M 150 0 L 150 200 M 200 0 L 200 200 M 250 0 L 250 200 M 300 0 L 300 200 M 350 0 L 350 200" stroke="rgba(196, 162, 101, 0.04)" stroke-width="1" />
+              <rect x="2" y="2" width="396" height="196" rx="4" stroke="var(--border-color)" stroke-width="1" opacity="0.5" />
+              <path d="M 10 10 H 30 M 10 10 V 30 M 390 10 H 370 M 390 10 V 30 M 10 190 H 30 M 10 190 V 170 M 390 190 H 370 M 390 190 V 170" stroke="var(--accent-color)" stroke-width="1.5" />
+              <g transform="translate(30, 20)">
+                <circle cx="80" cy="80" r="70" stroke="rgba(196, 162, 101, 0.1)" stroke-width="1" />
+                <circle cx="80" cy="80" r="60" stroke="rgba(196, 162, 101, 0.15)" stroke-dasharray="5 8" stroke-width="1.5" />
+                <path d="M 80 50 C 90 50 98 58 98 68 C 98 77 92 82 87 85 L 92 94 H 68 L 73 85 C 68 82 62 77 62 68 C 62 58 70 50 80 50 Z" fill="rgba(196, 162, 101, 0.15)" stroke="var(--accent-color)" stroke-width="1.5" />
+                <path d="M 48 135 C 48 115 62 105 80 105 C 98 105 112 115 112 135 V 145 H 48 V 135 Z" fill="rgba(196, 162, 101, 0.1)" stroke="var(--accent-color)" stroke-width="1.5" />
+              </g>
+              <text x="210" y="80" fill="var(--accent-color)" font-family="var(--font-display)" font-size="11" font-weight="900" letter-spacing="0.1em">DOSSIER LOCKED</text>
+              <text x="210" y="105" fill="#f8f6f0" font-family="var(--font-body)" font-size="14" font-weight="700">ID CODE: L-${entry.rawId}</text>
+              <text x="210" y="125" fill="var(--text-secondary)" font-family="var(--font-body)" font-size="11">System encryption status: ACTIVE</text>
+            </svg>
+          `;
+        } else {
+          // Satellite Coordinates Vector Map
+          const pctX = 200 + ((entry.lon || 0) / 180) * 160;
+          const pctY = 100 - ((entry.lat || 0) / 90) * 80;
+
+          drawerVisualFrame.innerHTML = `
+            <svg class="drawer-portrait-svg" viewBox="0 0 400 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="400" height="200" fill="rgba(6, 12, 24, 0.8)" rx="6" />
+              <circle cx="200" cy="100" r="80" stroke="rgba(196, 162, 101, 0.1)" stroke-width="1" />
+              <circle cx="200" cy="100" r="50" stroke="rgba(196, 162, 101, 0.15)" stroke-dasharray="5 5" stroke-width="1" />
+              <line x1="200" y1="10" x2="200" y2="190" stroke="rgba(196, 162, 101, 0.08)" stroke-width="1" />
+              <line x1="110" y1="100" x2="290" y2="100" stroke="rgba(196, 162, 101, 0.08)" stroke-width="1" />
+              <rect x="2" y="2" width="396" height="196" rx="4" stroke="var(--border-color)" stroke-width="1" opacity="0.5" />
+              <path d="M 10 10 H 30 M 10 10 V 30 M 390 10 H 370 M 390 10 V 30 M 10 190 H 30 M 10 190 V 170 M 390 190 H 370 M 390 190 V 170" stroke="var(--accent-color)" stroke-width="1.5" />
+              <g transform="translate(${pctX}, ${pctY})">
+                <circle cx="0" cy="0" r="8" stroke="var(--accent-color)" stroke-width="1.5" class="radar-pulse" />
+                <line x1="-12" y1="0" x2="12" y2="0" stroke="var(--accent-color)" stroke-width="1" />
+                <line x1="0" y1="-12" x2="0" y2="12" stroke="var(--accent-color)" stroke-width="1" />
+              </g>
+              <text x="20" y="35" fill="var(--accent-color)" font-family="var(--font-display)" font-size="9" font-weight="900" letter-spacing="0.1em">SATELLITE TELEMETRY</text>
+              <text x="20" y="55" fill="#fff" font-family="var(--font-body)" font-size="13" font-weight="700">${entry.lat?.toFixed(4)}°N, ${entry.lon?.toFixed(4)}°E</text>
+              <text x="380" y="35" fill="var(--text-secondary)" font-family="var(--font-display)" font-size="11" text-anchor="end">${entry.flag || ''}</text>
+            </svg>
+          `;
+        }
+      }
+
+      // Meta Grid
+      if (drawerMetaGrid) {
+        if (entry.category === 'Leader') {
+          drawerMetaGrid.innerHTML = `
+            <div class="meta-item">
+              <span class="meta-label">Continent</span>
+              <span class="meta-value">${entry.region}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Faction</span>
+              <span class="meta-value">${entry.faction || 'Independent'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Culture</span>
+              <span class="meta-value">${entry.culture || 'General'}</span>
+            </div>
+          `;
+        } else {
+          drawerMetaGrid.innerHTML = `
+            <div class="meta-item">
+              <span class="meta-label">Continent</span>
+              <span class="meta-value">${entry.region}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Polity Class</span>
+              <span class="meta-value">${entry.sub}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Coordinates</span>
+              <span class="meta-value">${entry.lat?.toFixed(2)}°, ${entry.lon?.toFixed(2)}°</span>
+            </div>
+          `;
+        }
+      }
+
+      // Show/Hide Dossier Directives for Leaders
+      if (dossierPromptsSection) {
+        if (entry.category === 'Leader') {
+          dossierPromptsSection.style.display = 'block';
+          if (drawerHeroPrompt) drawerHeroPrompt.textContent = entry.heroPrompt || 'No prompt vector';
+          if (drawerEmpirePrompt) drawerEmpirePrompt.textContent = entry.empirePrompt || 'No prompt vector';
+        } else {
+          dossierPromptsSection.style.display = 'none';
+        }
+      }
+
+      drawer.classList.add('open');
+      drawerOverlay.classList.add('open');
+      drawer.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeDrawer() {
+      if (!drawer || !drawerOverlay) return;
+      drawer.classList.remove('open');
+      drawerOverlay.classList.remove('open');
+      drawer.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function updateFilterPills() {
+      if (!activePillsBar || !pillsList || !clearFiltersBtn) return;
+      const totalFilters = selectedCategories.size + selectedRegions.size + selectedEras.size;
+
+      if (totalFilters === 0) {
+        activePillsBar.style.display = 'none';
+        clearFiltersBtn.style.display = 'none';
+        return;
+      }
+
+      activePillsBar.style.display = 'flex';
+      clearFiltersBtn.style.display = 'block';
+      pillsList.innerHTML = '';
+
+      // Categories
+      selectedCategories.forEach(cat => {
+        createPill(cat, 'category', () => {
+          selectedCategories.delete(cat);
+          const cb = document.querySelector(`.category-checkbox[value="${cat}"]`) as HTMLInputElement;
+          if (cb) cb.checked = false;
+        });
+      });
+
+      // Regions
+      selectedRegions.forEach(reg => {
+        createPill(reg, 'region', () => {
+          selectedRegions.delete(reg);
+          const cb = document.querySelector(`.region-checkbox[value="${reg}"]`) as HTMLInputElement;
+          if (cb) cb.checked = false;
+        });
+      });
+
+      // Eras
+      selectedEras.forEach(era => {
+        createPill(`${era} Era`, 'era', () => {
+          selectedEras.delete(era);
+          const cb = document.querySelector(`.era-checkbox[value="${era}"]`) as HTMLInputElement;
+          if (cb) cb.checked = false;
+        });
+      });
+    }
+
+    function createPill(text: string, type: string, onRemove: () => void) {
+      if (!pillsList) return;
+      const pill = document.createElement('div');
+      pill.className = 'filter-pill';
+      pill.innerHTML = `
+        <span>${text}</span>
+        <button type="button" aria-label="Remove filter">×</button>
+      `;
+      pill.querySelector('button')?.addEventListener('click', () => {
+        onRemove();
+        filterAndRender();
+      });
+      pillsList.appendChild(pill);
+    }
+
+    // Event Listeners
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        searchQuery = searchInput.value;
+        filterAndRender(true);
+      });
+    }
+
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', renderNextBatch);
+    }
+
+    document.querySelectorAll('.category-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const target = e.target as HTMLInputElement;
+        if (target.checked) selectedCategories.add(target.value);
+        else selectedCategories.delete(target.value);
+        filterAndRender(true);
+      });
+    });
+
+    document.querySelectorAll('.region-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const target = e.target as HTMLInputElement;
+        if (target.checked) selectedRegions.add(target.value);
+        else selectedRegions.delete(target.value);
+        filterAndRender(true);
+      });
+    });
+
+    document.querySelectorAll('.era-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const target = e.target as HTMLInputElement;
+        if (target.checked) selectedEras.add(target.value);
+        else selectedEras.delete(target.value);
+        filterAndRender(true);
+      });
+    });
+
+    if (clearFiltersBtn) {
+      clearFiltersBtn.addEventListener('click', () => {
+        selectedCategories.clear();
+        selectedRegions.clear();
+        selectedEras.clear();
+        searchQuery = '';
+        if (searchInput) searchInput.value = '';
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          (cb as HTMLInputElement).checked = false;
+        });
+        filterAndRender(true);
+      });
+    }
+
+    // Sidebar Mobile triggers
+    if (filterToggle && sidebar) {
+      filterToggle.addEventListener('click', () => {
+        sidebar.classList.add('open');
+      });
+    }
+    if (sidebarClose && sidebar) {
+      sidebarClose.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+      });
+    }
+
+    // Drawer triggers
+    if (drawerOverlay) drawerOverlay.addEventListener('click', closeDrawer);
+    if (drawerClose) drawerClose.addEventListener('click', closeDrawer);
+
+    // Initial load
+    filterAndRender();
+  </script>
+</Layout>

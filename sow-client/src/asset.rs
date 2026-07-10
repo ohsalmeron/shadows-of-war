@@ -4,16 +4,6 @@ use sow_ui_kit::ClientPhase;
 
 impl SowApp {
     pub fn update_assets(&mut self) {
-        for key in crate::map_cache::list_cached_keys() {
-            if let std::collections::hash_map::Entry::Vacant(e) =
-                self.ui.app.asset_loader.maps.entry(key)
-            {
-                if let Some(bytes) = crate::map_cache::load(e.key()) {
-                    e.insert(bytes);
-                }
-            }
-        }
-
         self.poll_thumbnail_fetches();
         self.poll_leader_portrait_fetches();
         self.poll_boot_ui_fetches();

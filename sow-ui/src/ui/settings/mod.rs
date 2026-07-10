@@ -1,5 +1,5 @@
 use crate::UiAction;
-use egui::{Color32, RichText, Slider, Stroke, TextStyle};
+use egui::{Color32, RichText, Slider, Stroke};
 pub use sow_i18n::Language;
 use sow_ui_kit::theme::palette;
 
@@ -120,39 +120,7 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(&strings.language).strong());
-                    let lang_label = match state.language {
-                        Language::English => strings.lang_english.clone(),
-                        Language::Spanish => strings.lang_spanish.clone(),
-                        _ => strings.lang_english.clone(),
-                    };
-                    egui::ComboBox::from_id_salt("language_select")
-                        .selected_text(&lang_label)
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            ui.style_mut().override_text_style = Some(TextStyle::Small);
-                            if ui
-                                .selectable_value(
-                                    &mut state.language,
-                                    Language::English,
-                                    &strings.lang_english,
-                                )
-                                .clicked()
-                            {
-                                touch_applied(state);
-                            }
-                            if ui
-                                .selectable_value(
-                                    &mut state.language,
-                                    Language::Spanish,
-                                    &strings.lang_spanish,
-                                )
-                                .clicked()
-                            {
-                                touch_applied(state);
-                            }
-                        });
-                    ui.end_row();
+                    // Language picker hidden for launch — freeze on detected locale
 
                     ui.label(RichText::new(&strings.reduced_motion).color(palette::text_muted()));
                     if ui

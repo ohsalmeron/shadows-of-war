@@ -129,7 +129,7 @@ impl ClientApp {
             ),
         };
 
-        if let Some(ref toggle) = &action {
+        if let Some(ref toggle) = action {
             if matches!(
                 toggle,
                 UiAction::ToggleSettings

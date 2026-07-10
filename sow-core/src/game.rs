@@ -229,6 +229,9 @@ pub struct GameState {
     /// City-state spawn anchors from the loaded `map.bin` (not serialized over the wire).
     #[serde(skip)]
     pub map_spawns: Vec<crate::map_file::MapSpawn>,
+    /// Geographic bounds from the loaded `map.bin` (v2), None on fictional maps.
+    #[serde(skip)]
+    pub geo_bounds: Option<crate::map_file::GeoBounds>,
 }
 fn default_one() -> u64 {
     1
@@ -260,6 +263,7 @@ impl GameState {
             total_land_tiles: 0,
             sea_lanes: std::sync::Arc::new(Vec::new()),
             map_spawns: Vec::new(),
+            geo_bounds: None,
         }
     }
     pub fn register_player(&mut self, player: Player) {

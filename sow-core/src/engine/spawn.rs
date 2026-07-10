@@ -36,6 +36,42 @@ impl SowEngine {
         let fallback_nations_pool = crate::tribes::FALLBACK_TRIBES;
         let mut fallback_nations_indices: Vec<usize> = (0..fallback_nations_pool.len()).collect();
 
+        // Geo-database candidates projected into this map's bounds. Empty when
+        // the map carries no geography (fictional maps) → behavior unchanged.
+        struct GeoCand {
+            name: &'static str,
+            x: u32,
+            y: u32,
+        }
+        let mut geo_nations: Vec<GeoCand> = Vec::new();
+        let mut geo_tribes: Vec<GeoCand> = Vec::new();
+        if let Some(bounds) = self.state.geo_bounds {
+            let (map_w, map_h) = (self.state.map.width, self.state.map.height);
+            for entity in crate::geo_entities::all() {
+                if let Some((x, y)) =
+                    bounds.project(entity.lat as f64, entity.lon as f64, map_w, map_h)
+                {
+                    let cand = GeoCand {
+                        name: entity.name,
+                        x,
+                        y,
+                    };
+                    if entity.kind == crate::geo_entities::EntityKind::Tribe {
+                        geo_tribes.push(cand);
+                    } else {
+                        geo_nations.push(cand);
+                    }
+                }
+            }
+            log::info!(
+                "spawn_ai: geo candidates inside bounds: {} nations, {} tribes",
+                geo_nations.len(),
+                geo_tribes.len()
+            );
+        }
+        let mut geo_nation_indices: Vec<usize> = (0..geo_nations.len()).collect();
+        let mut geo_tribe_indices: Vec<usize> = (0..geo_tribes.len()).collect();
+
         for i in 0..total_city_states_to_spawn {
             let bot_id = 104 + i as u16;
 
@@ -55,8 +91,24 @@ impl SowEngine {
                 name = spawn.name.clone();
                 used_names.insert(name.clone());
             } else {
-                // We need extra nations! Grab from HISTORICAL_CIVILIZATIONS and ensure no duplicate of any used name
                 let mut found_name = false;
+
+                // Geo tier: historical entities inside the map bounds, placed
+                // at (or nearest free land to) their real-world locations.
+                while !found_name && !geo_nation_indices.is_empty() {
+                    let idx = (rng.rand() as usize) % geo_nation_indices.len();
+                    let cand = &geo_nations[geo_nation_indices[idx]];
+                    geo_nation_indices.swap_remove(idx);
+                    if used_names.contains(cand.name) {
+                        continue;
+                    }
+                    name = cand.name.to_string();
+                    used_names.insert(name.clone());
+                    spawn_point = self.nearest_free_land(cand.x, cand.y);
+                    found_name = true;
+                }
+
+                // We need extra nations! Grab from HISTORICAL_CIVILIZATIONS and ensure no duplicate of any used name
                 let mut attempts = 0;
                 while !found_name && attempts < 100 && !extra_nations_indices.is_empty() {
                     let idx = (rng.rand() as usize) % extra_nations_indices.len();
@@ -160,6 +212,21 @@ impl SowEngine {
             let mut name = String::new();
             let mut found_name = false;
             let mut attempts = 0;
+            let mut spawn_point: Option<(u32, u32)> = None;
+
+            // Geo tier: tribes inside the map bounds at their historical homelands.
+            while !found_name && !geo_tribe_indices.is_empty() {
+                let idx = (rng.rand() as usize) % geo_tribe_indices.len();
+                let cand = &geo_tribes[geo_tribe_indices[idx]];
+                geo_tribe_indices.swap_remove(idx);
+                if used_names.contains(cand.name) {
+                    continue;
+                }
+                name = cand.name.to_string();
+                used_names.insert(name.clone());
+                spawn_point = self.nearest_free_land(cand.x, cand.y);
+                found_name = true;
+            }
 
             while !found_name && attempts < 100 {
                 if fallback_indices.is_empty() {
@@ -183,7 +250,11 @@ impl SowEngine {
                 name = format!("Tribe {}", bot_id);
             }
 
-            if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+            if spawn_point.is_none() {
+                spawn_point = self.find_valid_spawn(&mut rng);
+            }
+
+            if let Some((sx, sy)) = spawn_point {
                 let color = crate::player::bot_territory_color(self.state.seed, bot_id);
                 let player = Player::new_bot(bot_id, name, color, &config);
                 self.state.spawn_player(player, sx, sy);

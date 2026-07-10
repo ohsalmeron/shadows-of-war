@@ -337,6 +337,12 @@ pub enum SimCommand {
         seed: u64,
         map_bytes: Vec<u8>,
         players: Vec<PlayerInfo>,
+        /// Spawn anchors + geo bounds from the parsed map file. `map_bytes`
+        /// is raw terrain (also the GPU upload), so these must ride along
+        /// explicitly or they never reach the engine.
+        map_spawns: Vec<crate::map_file::MapSpawn>,
+        geo_bounds: Option<crate::map_file::GeoBounds>,
+        num_land_tiles: u32,
     },
     /// Apply a server turn (network intents + tick).
     Turn(Turn),

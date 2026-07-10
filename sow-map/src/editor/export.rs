@@ -56,6 +56,7 @@ impl MapEditorSession {
             height: result.height,
             num_land_tiles: result.num_land_tiles,
             spawns,
+            geo_bounds: None,
             terrain: result.map_data,
         };
         let map_bytes = sow_core::map_file::encode(&map_file);

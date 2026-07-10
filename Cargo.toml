@@ -7,7 +7,6 @@ members = [
     "sow-client",
     "sow-render",
     "sow-server",
-    "sow-database",
     "sow-ui",
     "sow-tools",
     "sow-relay",
@@ -102,6 +101,14 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# sow-ui instantiates a lot of egui's boxed-closure machinery (Panel/Frame/ScrollArea
+# `show*`, ComboBox `show_ui`). With the default rust-lld linker + shared generics, that
+# drop glue gets internalized across codegen units and lld fails to resolve it on a full
+# rebuild ("undefined hidden symbol: …drop_in_place<Box<dyn FnOnce(&mut Ui)…>>"). Forcing
+# a single codegen unit keeps definition and use in the same object, sidestepping the bug.
+[profile.dev.package.sow-ui]
+codegen-units = 1
 
 [profile.release]
 opt-level = 3

@@ -9,6 +9,7 @@ mod openfront_import;
 use sow_map::osm_overpass as overpass;
 mod poi_extractor;
 mod rasterizer;
+mod stamp_geo;
 
 /// Shadows of War map tooling: OSM generation and OpenFront import.
 #[derive(Parser, Debug)]
@@ -42,6 +43,44 @@ enum Commands {
     /// Pack pixel emoji atlas + generated manifest (pixel set + moji CDN fallback).
     #[command(name = "pack-emoji-atlas")]
     PackEmojiAtlas(PackEmojiAtlasArgs),
+    /// Stamp geographic bounds (SOWM v2) into existing map.bin files.
+    #[command(name = "stamp-geo")]
+    StampGeo(StampGeoArgs),
+}
+
+#[derive(Parser, Debug)]
+struct StampGeoArgs {
+    /// Maps root directory
+    #[arg(long, default_value = "assets/maps")]
+    maps_root: PathBuf,
+
+    /// WASM-embedded static maps root (stamped copies mirrored here)
+    #[arg(long, default_value = "assets/static/maps")]
+    static_root: PathBuf,
+
+    /// Stamp a single map key instead of all folders
+    #[arg(long)]
+    map: Option<String>,
+
+    /// Explicit bbox min_lon,min_lat,max_lon,max_lat (requires --map)
+    #[arg(long, allow_hyphen_values = true)]
+    bbox: Option<String>,
+
+    /// Fit unknown maps' bboxes from their spawn anchors (assistant; curated table wins)
+    #[arg(long, default_value_t = false)]
+    calibrate: bool,
+
+    /// Project landmark cities through each stamped map and report land/water
+    #[arg(long, default_value_t = false)]
+    verify: bool,
+
+    /// Report without writing files
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
+
+    /// Actually write map.bin/map.bin.br (report-only otherwise)
+    #[arg(long, default_value_t = false)]
+    yes: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -146,6 +185,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("Wrote {}", args.maps_root.join("catalog.bin").display());
             }),
         Some(Commands::ImageMap(args)) => run_image_map(args),
+        Some(Commands::StampGeo(args)) => stamp_geo::run(stamp_geo::StampGeoArgs {
+            maps_root: args.maps_root,
+            static_root: args.static_root,
+            map: args.map,
+            bbox: args.bbox,
+            calibrate: args.calibrate,
+            verify: args.verify,
+            dry_run: args.dry_run,
+            yes: args.yes,
+        }),
         Some(Commands::PackEmojiAtlas(args)) => {
             let repo_root = std::env::current_dir()?;
             let pack_args = emoji_atlas::PackEmojiAtlasArgs {
@@ -302,6 +351,9 @@ async fn run_generate(
         map_height,
         terrain_grid,
         spawns,
+        Some(sow_core::map_file::GeoBounds::from_degrees(
+            min_lon, min_lat, max_lon, max_lat,
+        )),
         single_player_config,
         force,
     )?;
@@ -351,6 +403,7 @@ fn run_image_map(args: ImageMapArgs) -> Result<(), Box<dyn Error>> {
         map.height,
         map.terrain,
         spawns,
+        None,
         args.single_player_config,
         args.force,
     )?;

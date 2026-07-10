@@ -2,6 +2,7 @@ use log::{error, info, warn};
 use redis::{AsyncCommands, Client};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::metadata_db::PLAYERS_TABLE;
 
 const ANALYTICS_UNIQUE: &str = "sow:analytics:unique_users";
 const ANALYTICS_ACTIVE_PREFIX: &str = "sow:analytics:active:";
@@ -158,6 +159,7 @@ pub enum LinkOutcome {
 pub struct PlayerDb {
     client: Client,
     pub crazygames_api_key: Option<String>,
+    pub metadata_db: Option<std::sync::Arc<redb::Database>>,
 }
 
 fn utc_date_string() -> String {
@@ -166,17 +168,35 @@ fn utc_date_string() -> String {
 }
 
 impl PlayerDb {
-    pub fn new(redis_url: &str, crazygames_api_key: Option<String>) -> Self {
+    pub fn new(
+        redis_url: &str,
+        crazygames_api_key: Option<String>,
+        metadata_db: Option<std::sync::Arc<redb::Database>>,
+    ) -> Self {
         let client = Client::open(redis_url).expect("Failed to connect to Valkey/Redis");
         info!("Successfully initialized Valkey database connector client.");
         Self {
             client,
             crazygames_api_key,
+            metadata_db,
         }
     }
 
     async fn get_connection(&self) -> Result<redis::aio::MultiplexedConnection, redis::RedisError> {
         self.client.get_multiplexed_async_connection().await
+    }
+
+    pub fn save_player_account_to_redb(&self, account: &PlayerAccount) {
+        if let Some(ref db) = self.metadata_db {
+            if let Ok(write_txn) = db.begin_write() {
+                if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE) {
+                    if let Ok(json) = serde_json::to_string(account) {
+                        let _ = table.insert(account.id.as_str(), json.as_bytes());
+                    }
+                }
+                let _ = write_txn.commit();
+            }
+        }
     }
 
     /// Key format for looking up canonical account ID by platform identity
@@ -279,6 +299,7 @@ impl PlayerDb {
             "Created new account {} in Valkey for identity {:?}/{:?}",
             new_account.id, identity.provider, identity.external_id
         );
+        self.save_player_account_to_redb(&new_account);
         Ok(new_account)
     }
 
@@ -302,6 +323,7 @@ impl PlayerDb {
             let updated_json = serde_json::to_string(&account)?;
             con.set::<_, _, ()>(&acc_key, updated_json).await?;
 
+            self.save_player_account_to_redb(&account);
             Ok(account)
         } else {
             Err("Account not found".into())
@@ -339,6 +361,7 @@ impl PlayerDb {
             let updated_json = serde_json::to_string(&account)?;
             con.set::<_, _, ()>(&acc_key, updated_json).await?;
 
+            self.save_player_account_to_redb(&account);
             Ok(account)
         } else {
             Err("Account not found".into())
@@ -498,7 +521,9 @@ impl PlayerDb {
         external_id: String,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
-        Self::link_identity_inner(&mut con, account_id, provider, external_id).await
+        let account = Self::link_identity_inner(&mut con, account_id, provider, external_id).await?;
+        self.save_player_account_to_redb(&account);
+        Ok(account)
     }
 
     /// Client-facing link attempt; returns conflict metadata when identity maps elsewhere.
@@ -527,6 +552,7 @@ impl PlayerDb {
 
         let account =
             Self::link_identity_inner(&mut con, account_id, provider, external_id).await?;
+        self.save_player_account_to_redb(&account);
         Ok(LinkOutcome::Linked(account))
     }
 
@@ -546,20 +572,23 @@ impl PlayerDb {
             return Err("keep_account_id must be current or the existing mapped account".into());
         }
 
-        if keep_account_id == current_account_id {
+        let account = if keep_account_id == current_account_id {
             if let Some(other_id) = mapped
                 && other_id != current_account_id
             {
                 Self::unlink_identity_from_account(&mut con, &other_id, &provider, &external_id)
                     .await?;
-                Self::delete_account_if_orphan(&mut con, &other_id).await?;
+                Self::delete_account_if_orphan(&mut con, &other_id, &self.metadata_db).await?;
             }
-            Self::link_identity_inner(&mut con, current_account_id, provider, external_id).await
+            Self::link_identity_inner(&mut con, current_account_id, provider, external_id).await?
         } else {
             Self::transfer_local_identities(&mut con, current_account_id, keep_account_id).await?;
-            Self::delete_account_if_orphan(&mut con, current_account_id).await?;
-            Self::load_account(&mut con, keep_account_id).await
-        }
+            Self::delete_account_if_orphan(&mut con, current_account_id, &self.metadata_db).await?;
+            Self::load_account(&mut con, keep_account_id).await?
+        };
+
+        self.save_player_account_to_redb(&account);
+        Ok(account)
     }
 
     async fn link_identity_inner(
@@ -651,6 +680,7 @@ impl PlayerDb {
     async fn delete_account_if_orphan(
         con: &mut redis::aio::MultiplexedConnection,
         account_id: &str,
+        metadata_db: &Option<std::sync::Arc<redb::Database>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let account = match Self::load_account(con, account_id).await {
             Ok(a) => a,
@@ -662,6 +692,15 @@ impl PlayerDb {
         let acc_key = Self::account_key(account_id);
         let _: () = con.del(&acc_key).await?;
         warn!("Deleted orphan account {account_id}");
+
+        if let Some(db) = metadata_db {
+            if let Ok(write_txn) = db.begin_write() {
+                if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE) {
+                    let _ = table.remove(account_id);
+                }
+                let _ = write_txn.commit();
+            }
+        }
         Ok(())
     }
 }

@@ -425,6 +425,103 @@ mod tests {
         assert_eq!(engine.state.players.len(), 3);
     }
 
+    /// All-land 1000x800 state with the (approx) europe bbox stamped.
+    fn geo_test_state(seed: u64) -> GameState {
+        let config = GameConfig {
+            map_name: "europe_test".to_string(),
+            map_width: 1000,
+            map_height: 800,
+            ..Default::default()
+        };
+        let mut state = GameState::new(seed, 1000, 800, config);
+        for t in &mut state.map.terrain {
+            *t = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+        state.geo_bounds = Some(crate::map_file::GeoBounds::from_degrees(
+            -25.47, 29.00, 47.75, 72.56,
+        ));
+        state
+    }
+
+    fn owned_tile_near(state: &GameState, pid: u16, x: u32, y: u32, radius: i32) -> bool {
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if state.map.is_valid_coord(nx, ny)
+                    && state.map.owner_id(nx as u32, ny as u32) == pid
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn test_spawn_ai_geo_names_and_positions() {
+        let state = geo_test_state(7);
+        let bounds = state.geo_bounds.unwrap();
+        let mut engine = SowEngine::new(state, WaterComponents::default());
+        engine.spawn_ai(20, 30);
+        assert_eq!(engine.state.players.len(), 50);
+
+        for player in &engine.state.players {
+            let entity = crate::geo_entities::all()
+                .find(|e| e.name == player.name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "'{}' not in geo database (geo pools should cover 20+30 on europe bounds)",
+                        player.name
+                    )
+                });
+            let is_tribe_kind = entity.kind == crate::geo_entities::EntityKind::Tribe;
+            assert_eq!(
+                player.player_type == crate::player::PlayerType::Bot,
+                is_tribe_kind,
+                "kind mismatch for {}",
+                player.name
+            );
+            let (x, y) = bounds
+                .project(entity.lat as f64, entity.lon as f64, 1000, 800)
+                .expect("spawned geo entity must project inside bounds");
+            // place_spawn paints a radius-5 disc; allow drift from collisions.
+            assert!(
+                owned_tile_near(&engine.state, player.id, x, y, 12),
+                "{} spawned far from its homeland tile ({x}, {y})",
+                player.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_spawn_ai_geo_deterministic() {
+        let names = |seed: u64| -> Vec<String> {
+            let mut engine = SowEngine::new(geo_test_state(seed), WaterComponents::default());
+            engine.spawn_ai(15, 25);
+            engine
+                .state
+                .players
+                .iter()
+                .map(|p| p.name.clone())
+                .collect()
+        };
+        assert_eq!(names(1234), names(1234), "same seed must give same spawns");
+        assert_ne!(names(1234), names(5678), "different seed should differ");
+    }
+
+    #[test]
+    fn test_spawn_ai_geo_overflow_to_fallback() {
+        // Europe bounds hold well under 500 geo tribes; the rest must come
+        // from the fallback pools without panicking or duplicating names.
+        let mut engine = SowEngine::new(geo_test_state(9), WaterComponents::default());
+        engine.spawn_ai(0, 500);
+        assert_eq!(engine.state.players.len(), 500);
+        let mut seen = std::collections::HashSet::new();
+        for p in &engine.state.players {
+            assert!(seen.insert(p.name.clone()), "duplicate name {}", p.name);
+        }
+    }
+
     #[test]
     fn test_team_map_control_winner() {
         use crate::protocol::Team;

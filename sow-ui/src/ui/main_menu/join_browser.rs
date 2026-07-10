@@ -1,7 +1,7 @@
 use super::{GameModeFilter, MainMenuState};
 use crate::widgets::LobbyCard;
 use crate::UiAction;
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, ScrollArea, Stroke};
+use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 
 fn filter_pill(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
     let (bg, text_col) = if active {
@@ -46,150 +46,80 @@ fn section_header(ui: &mut egui::Ui, label: &str) {
     ui.add_space(4.0);
 }
 
-pub fn draw(
-    root_ui: &mut egui::Ui,
+/// Inline Public Games list — FFA + Teams sections filtered by [`MainMenuState::join_mode_filter`],
+/// or a muted empty-state hint. The caller owns any surrounding scroll area / frame so this can be
+/// dropped straight into the home screen (desktop column scroll, or the mobile page scroll).
+pub fn draw_lobby_rows(
+    ui: &mut egui::Ui,
     state: &mut MainMenuState,
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     action: &mut Option<UiAction>,
-    lang: sow_i18n::Language,
+    strings: &sow_i18n::MainMenuStrings,
 ) {
-    if root_ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
-        *action = Some(UiAction::CloseOverlay);
+    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
+    let side = crate::ui::map_texture::thumbnail_square_side_bounded(
+        ui.available_width(),
+        if compact { 200.0 } else { 260.0 },
+        compact,
+    );
+
+    let filter = state.join_mode_filter;
+    // Clone lobbies first to avoid borrowing state immutably and mutably at once inside the loop.
+    // Public Games shows ONLY Custom lobbies — the Matchmaking queue is the Quick Match card.
+    let lobbies = state.lobbies.clone();
+    let ffa_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
+        .iter()
+        .filter(|l| {
+            l.kind == sow_core::protocol::LobbyKind::Custom
+                && matches!(filter, GameModeFilter::All | GameModeFilter::Ffa)
+                && l.game_mode == "FFA"
+        })
+        .cloned()
+        .collect();
+    let team_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
+        .iter()
+        .filter(|l| {
+            l.kind == sow_core::protocol::LobbyKind::Custom
+                && matches!(filter, GameModeFilter::All | GameModeFilter::Teams)
+                && l.game_mode == "Teams"
+        })
+        .cloned()
+        .collect();
+
+    let any = !ffa_lobbies.is_empty() || !team_lobbies.is_empty();
+
+    if !any {
+        ui.add_space(12.0);
+        ui.vertical_centered(|ui| {
+            sow_ui_kit::theme::outlined_label(
+                ui,
+                &strings.no_public_games,
+                egui::FontId::proportional(15.0),
+                sow_ui_kit::theme::palette::text_muted(),
+            );
+        });
+        return;
     }
 
-    let strings = &sow_i18n::get(lang).main_menu;
-    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
+    if !ffa_lobbies.is_empty() {
+        section_header(ui, "FFA");
+        ui.spacing_mut().item_spacing.y = 8.0;
+        for lobby in &ffa_lobbies {
+            draw_lobby_row(ui, lobby, side, asset_loader, state, action, strings);
+        }
+    }
 
-    // ── Top panel: title + mode filter pills ──────────────────────────────
-    egui::Panel::top("join_browser_header")
-        .frame(sow_ui_kit::theme::screen_panel_frame())
-        .show_inside(root_ui, |ui| {
-            if compact {
-                ui.vertical(|ui| {
-                    ui.heading(&strings.game_browser_title);
-                    ui.add_space(6.0);
-                    draw_filter_pills(ui, state, strings);
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    ui.heading(&strings.game_browser_title);
-                    ui.add_space(16.0);
-                    draw_filter_pills(ui, state, strings);
-                });
-            }
-        });
-
-    // ── Bottom panel: private code entry + back ───────────────────────────
-    egui::Panel::bottom("join_browser_footer")
-        .frame(sow_ui_kit::theme::screen_panel_frame())
-        .show_inside(root_ui, |ui| {
-            if compact {
-                ui.vertical(|ui| {
-                    draw_private_join_row(ui, state, strings, action);
-                    ui.add_space(6.0);
-                    let back_btn = crate::widgets::ThemeButton::new(&strings.back)
-                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                        .min_size(egui::vec2(ui.available_width(), 36.0));
-                    if ui.add(back_btn).clicked() {
-                        *action = Some(UiAction::CloseOverlay);
-                    }
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    let back_btn = crate::widgets::ThemeButton::new(&strings.back)
-                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                        .min_size(egui::vec2(120.0, 36.0));
-                    if ui.add(back_btn).clicked() {
-                        *action = Some(UiAction::CloseOverlay);
-                    }
-                    ui.add_space(16.0);
-                    draw_private_join_row(ui, state, strings, action);
-                });
-            }
-        });
-
-    // ── Central: scrollable lobby cards ──────────────────────────────────
-    egui::CentralPanel::default()
-        .frame(
-            Frame::new()
-                .fill(Color32::from_rgb(8, 10, 14))
-                .inner_margin(egui::Margin::symmetric(16, 12)),
-        )
-        .show_inside(root_ui, |ui| {
-            let side = crate::ui::map_texture::thumbnail_square_side_bounded(
-                ui.available_width(),
-                ui.available_height(),
-                compact,
-            );
-
-            let filter = state.join_mode_filter;
-            // Clone lobbies first to avoid borrowing state immutably and mutably at the same time inside the closure.
-            // Game Browser shows ONLY Custom lobbies — Matchmaking queues live in the main menu.
-            let lobbies = state.lobbies.clone();
-            let ffa_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
-                .iter()
-                .filter(|l| {
-                    l.kind == sow_core::protocol::LobbyKind::Custom
-                        && matches!(filter, GameModeFilter::All | GameModeFilter::Ffa)
-                        && l.game_mode == "FFA"
-                })
-                .cloned()
-                .collect();
-            let team_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
-                .iter()
-                .filter(|l| {
-                    l.kind == sow_core::protocol::LobbyKind::Custom
-                        && matches!(filter, GameModeFilter::All | GameModeFilter::Teams)
-                        && l.game_mode == "Teams"
-                })
-                .cloned()
-                .collect();
-
-            let any = !ffa_lobbies.is_empty() || !team_lobbies.is_empty();
-
-            ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    if !any {
-                        let center_y = ui.available_height() * 0.35;
-                        ui.add_space(center_y);
-                        ui.vertical_centered(|ui| {
-                            sow_ui_kit::theme::outlined_label(
-                                ui,
-                                &strings.no_public_games,
-                                egui::FontId::proportional(16.0),
-                                sow_ui_kit::theme::palette::text_muted(),
-                            );
-                        });
-                        return;
-                    }
-
-                    if !ffa_lobbies.is_empty() {
-                        section_header(ui, "FFA");
-                        ui.spacing_mut().item_spacing.y = 8.0;
-                        for lobby in &ffa_lobbies {
-                            draw_lobby_row(ui, lobby, side, asset_loader, state, action, strings);
-                        }
-                    }
-
-                    if !team_lobbies.is_empty() {
-                        ui.add_space(8.0);
-                        section_header(ui, "TEAMS");
-                        ui.spacing_mut().item_spacing.y = 8.0;
-                        for lobby in &team_lobbies {
-                            draw_lobby_row(ui, lobby, side, asset_loader, state, action, strings);
-                        }
-                    }
-                });
-        });
-
-    // ── Password prompt modal ─────────────────────────────────────────────
-    if let Some(target_id) = state.join_password_for_lobby {
-        draw_password_modal(root_ui, state, target_id, action, strings, compact);
+    if !team_lobbies.is_empty() {
+        ui.add_space(8.0);
+        section_header(ui, "TEAMS");
+        ui.spacing_mut().item_spacing.y = 8.0;
+        for lobby in &team_lobbies {
+            draw_lobby_row(ui, lobby, side, asset_loader, state, action, strings);
+        }
     }
 }
 
-fn draw_filter_pills(
+pub fn draw_filter_pills(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
     strings: &sow_i18n::MainMenuStrings,
@@ -212,40 +142,55 @@ fn draw_filter_pills(
     });
 }
 
-fn draw_private_join_row(
+/// Lobby-code join, styled as the exact same framed box as the identity nickname field
+/// (outer `button_inactive` frame → inner `field_bg` input → button), minus the avatar.
+/// Fills whatever width the caller gives it, so it can flex beside the CREATE button.
+pub fn draw_private_join_row(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
     strings: &sow_i18n::MainMenuStrings,
     action: &mut Option<UiAction>,
 ) {
-    ui.horizontal(|ui| {
-        // Code input
-        let field_frame = Frame::NONE
-            .fill(sow_ui_kit::theme::palette::field_bg())
-            .stroke(Stroke::new(
-                1.0_f32,
-                sow_ui_kit::theme::palette::field_border(),
-            ))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::symmetric(8, 4));
-        field_frame.show(ui, |ui| {
-            ui.set_width(160.0);
-            ui.add(
-                egui::TextEdit::singleline(&mut state.join_lobby_code)
-                    .hint_text(&strings.lobby_code_hint)
-                    .desired_width(150.0)
-                    .frame(Frame::NONE)
-                    .font(egui::FontId::proportional(14.0))
-                    .text_color(Color32::WHITE),
-            );
+    let component = Frame::NONE
+        .fill(sow_ui_kit::theme::palette::button_inactive())
+        .stroke(Stroke::new(
+            1.0_f32,
+            sow_ui_kit::theme::palette::field_border(),
+        ))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(8, 6));
+    component.show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            let join_w = 92.0;
+            let field_w = (ui.available_width() - join_w - 6.0).max(60.0);
+            let field_frame = Frame::NONE
+                .fill(sow_ui_kit::theme::palette::field_bg())
+                .stroke(Stroke::new(
+                    1.0_f32,
+                    sow_ui_kit::theme::palette::field_border(),
+                ))
+                .corner_radius(CornerRadius::same(6))
+                .inner_margin(Margin::symmetric(8, 4));
+            field_frame.show(ui, |ui| {
+                ui.set_width(field_w - 16.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.join_lobby_code)
+                        .hint_text(&strings.lobby_code_hint)
+                        .desired_width(field_w - 32.0)
+                        .frame(Frame::NONE)
+                        .font(egui::FontId::proportional(14.0))
+                        .text_color(Color32::WHITE),
+                );
+            });
+            ui.add_space(6.0);
+            let join_btn = crate::widgets::ThemeButton::new(&strings.join_private_btn)
+                .style(crate::widgets::ThemeButtonStyle::Secondary)
+                .min_size(egui::vec2(join_w, 30.0));
+            if ui.add(join_btn).clicked() {
+                *action = Some(UiAction::JoinWithCode);
+            }
         });
-        ui.add_space(6.0);
-        let join_btn = crate::widgets::ThemeButton::new(&strings.join_private_btn)
-            .style(crate::widgets::ThemeButtonStyle::Secondary)
-            .min_size(egui::vec2(140.0, 36.0));
-        if ui.add(join_btn).clicked() {
-            *action = Some(UiAction::JoinWithCode);
-        }
     });
 }
 
@@ -329,7 +274,7 @@ fn draw_lobby_row(
     }
 }
 
-fn draw_password_modal(
+pub fn draw_password_modal(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
     target_id: u64,

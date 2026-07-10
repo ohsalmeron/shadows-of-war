@@ -77,7 +77,9 @@ fn draw_lobby_list(
         } else {
             parent_w
         };
-        let response = ui.add(LobbyCard::new(lobby, thumbnail).width(card_w));
+        // Cap height so the Quick Match card stays a compact hero, not a giant banner.
+        let card_h = if parent_w > 640.0 { 150.0 } else { 168.0 };
+        let response = ui.add(LobbyCard::new(lobby, thumbnail).width(card_w).side(card_h));
         if response.clicked() {
             *action = Some(UiAction::JoinLobby(lobby.id));
         }

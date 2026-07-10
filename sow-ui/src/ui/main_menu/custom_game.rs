@@ -88,21 +88,35 @@ pub fn draw(
         sow_core::maps::apply_catalog_dimensions(catalog, &mut cfg.map_name, &mut cfg.map_width, &mut cfg.map_height);
     }
 
+    // Only lobby maps get their thumbnails prefetched (via get_assets_to_fetch), so a
+    // catalog map picked here would otherwise never load its preview. Request the
+    // selected map's thumbnail on demand; request_thumbnail is idempotent and we skip
+    // maps already loaded, in-flight, or previously failed to avoid re-fetch churn.
+    {
+        let map_name = state.custom_game_config.map_name.clone();
+        if asset_loader.thumbnail(&map_name).is_none()
+            && !asset_loader.thumbnail_in_flight(&map_name)
+            && asset_loader.thumbnail_error(&map_name).is_none()
+        {
+            asset_loader.request_thumbnail(&map_name);
+        }
+    }
+
     // ── Top: title + SP/MP toggle ─────────────────────────────────
     egui::Panel::top("custom_game_header")
         .frame(sow_ui_kit::theme::screen_panel_frame())
         .show_inside(root_ui, |ui| {
             if compact {
                 ui.vertical(|ui| {
-                    ui.heading("CUSTOM GAME");
+                    ui.heading(&strings.custom_game_title);
                     ui.add_space(6.0);
-                    mode_toggle(ui, state);
+                    mode_toggle(ui, state, strings);
                 });
             } else {
                 ui.horizontal(|ui| {
-                    ui.heading("CUSTOM GAME");
+                    ui.heading(&strings.custom_game_title);
                     ui.add_space(16.0);
-                    mode_toggle(ui, state);
+                    mode_toggle(ui, state, strings);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let back = crate::widgets::ThemeButton::new(&strings.back)
                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
@@ -124,6 +138,11 @@ pub fn draw(
             let is_sp = state.custom_game_is_sp;
             let item_gap = if compact { 4.0 } else { 8.0 };
 
+            // Outcome hint below the toggle
+            let hint = if is_sp { &strings.custom_offline_hint } else { &strings.custom_online_hint };
+            ui.label(RichText::new(hint).size(11.0).color(palette::text_muted()).italics());
+            ui.add_space(item_gap * 2.0);
+
             if compact {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -134,7 +153,10 @@ pub fn draw(
                         ui.add_space(item_gap);
                         draw_difficulty_spawning_card(ui, state, strings);
                         ui.add_space(item_gap);
-                        if !is_sp {
+                        if is_sp {
+                            draw_seed_card(ui, state, strings);
+                            ui.add_space(item_gap);
+                        } else {
                             draw_visibility_card(ui, state, strings);
                             ui.add_space(item_gap);
                         }
@@ -154,7 +176,7 @@ pub fn draw(
                         draw_difficulty_spawning_card(ui, state, strings);
                         if is_sp {
                             ui.add_space(item_gap);
-                            draw_seed_card(ui, state);
+                            draw_seed_card(ui, state, strings);
                         } else {
                             ui.add_space(item_gap);
                             draw_visibility_card(ui, state, strings);
@@ -173,14 +195,14 @@ pub fn draw(
 
 }
 
-fn mode_toggle(ui: &mut egui::Ui, state: &mut MainMenuState) {
+fn mode_toggle(ui: &mut egui::Ui, state: &mut MainMenuState, strings: &sow_i18n::MainMenuStrings) {
     ui.horizontal(|ui| {
-        if pill_toggle(ui, "SINGLE PLAYER", state.custom_game_is_sp) {
+        if pill_toggle(ui, &strings.custom_offline_toggle, state.custom_game_is_sp) {
             state.custom_game_is_sp = true;
             state.custom_game_password.clear();
             state.custom_game_is_private = false;
         }
-        if pill_toggle(ui, "MULTIPLAYER", !state.custom_game_is_sp) {
+        if pill_toggle(ui, &strings.custom_online_toggle, !state.custom_game_is_sp) {
             state.custom_game_is_sp = false;
         }
     });
@@ -335,7 +357,7 @@ fn draw_difficulty_spawning_card(
                     }
                 });
                 cols[1].vertical(|ui| {
-                    ui.label(RichText::new("GAME MODE").size(10.0).color(palette::text_muted()));
+                    ui.label(RichText::new(&strings.game_mode_label).size(10.0).color(palette::text_muted()));
                     ui.add_space(3.0);
                     let mode_idx = if config.game_mode == "Teams" { 1 } else { 0 };
                     if let Some(n) = pill_row(ui, &["FFA", "TEAMS"], mode_idx) {
@@ -361,7 +383,7 @@ fn draw_difficulty_spawning_card(
                 config.random_spawn = n == 0;
             }
             ui.add_space(6.0);
-            ui.label(RichText::new("GAME MODE").size(10.0).color(palette::text_muted()));
+            ui.label(RichText::new(&strings.game_mode_label).size(10.0).color(palette::text_muted()));
             ui.add_space(3.0);
             let mode_idx = if config.game_mode == "Teams" { 1 } else { 0 };
             if let Some(n) = pill_row(ui, &["FFA", "TEAMS"], mode_idx) {
@@ -397,10 +419,11 @@ fn draw_sliders_card(
 fn draw_seed_card(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
+    strings: &sow_i18n::MainMenuStrings,
 ) {
     panel_card(ui, |ui| {
         let config = &mut state.custom_game_config;
-        ui.label(RichText::new("Seed").size(10.0).color(palette::text_muted()));
+        ui.label(RichText::new(&strings.seed_label).size(10.0).color(palette::text_muted()));
         ui.add_space(2.0);
         draw_custom_slider(ui, &mut config.seed, 1..=9999);
     });
@@ -412,7 +435,7 @@ fn draw_visibility_card(
     strings: &sow_i18n::MainMenuStrings,
 ) {
     panel_card(ui, |ui| {
-        ui.label(RichText::new("VISIBILITY").size(10.0).color(palette::text_muted()));
+        ui.label(RichText::new(&strings.visibility_label).size(10.0).color(palette::text_muted()));
         ui.add_space(3.0);
         let vis_idx = if state.custom_game_is_private { 1 } else { 0 };
         if let Some(n) = pill_row(ui, &[&strings.visibility_public, &strings.visibility_private], vis_idx) {

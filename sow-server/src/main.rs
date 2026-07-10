@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, Mutex};
-use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
@@ -24,7 +23,7 @@ fn relay_bin() -> String {
     std::env::var("SOW_RELAY_BIN").unwrap_or_else(|_| "./sow-relay".to_string())
 }
 const RELAY_PORT_MIN: u16 = 25570;
-const RELAY_PORT_MAX: u16 = 25600;
+const RELAY_PORT_MAX: u16 = 26500;
 
 fn find_free_port(redis_con: &mut redis::Connection) -> Option<u16> {
     let occupied: std::collections::HashSet<u16> =
@@ -46,6 +45,7 @@ enum ServerEvent {
         database_account_id: Option<String>,
         host_config: Option<Box<sow_core::game_config::GameConfig>>,
         password: Option<String>,
+        ip: String,
     },
 
     Leave {
@@ -330,9 +330,9 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id, host_config, password } => {
-                            log::info!("Player {} (clan: {}) joining with version: {}", name, clan_tag, build_version);
-                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id, host_config, password) {
+                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id, host_config, password, ip } => {
+                            log::info!("Player {} (clan: {}, ip: {}) joining with version: {}", name, clan_tag, ip, build_version);
+                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id, host_config, password, ip) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
                                     let lobby_info = games.iter().find(|g| g.id == lobby_id).map(lobby_to_info);
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private, lobby_info };
@@ -410,21 +410,38 @@ async fn main() {
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     log::info!("SOW-SERVER listening on ws://{}", addr);
 
-    // HTTP Static File Server for maps
+    // HTTP Static File Server for maps and Admin Dashboard
+    let games_for_axum = Arc::clone(&games_state);
     tokio::spawn(async move {
         let root = maps_root.clone();
-        let catalog_route = axum::Router::new().route(
-            "/maps/catalog.bin",
-            axum::routing::get(|| async {
-                axum::response::Response::builder()
-                    .header("Content-Type", "application/octet-stream")
-                    .header("Cache-Control", "public, max-age=60")
-                    .body(axum::body::Body::from(
-                        map_catalog::catalog_bytes().to_vec(),
-                    ))
-                    .unwrap()
-            }),
-        );
+        let state = AppState {
+            games: games_for_axum,
+        };
+        let catalog_route = axum::Router::new()
+            .route(
+                "/maps/catalog.bin",
+                axum::routing::get(|| async {
+                    axum::response::Response::builder()
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Cache-Control", "public, max-age=60")
+                        .body(axum::body::Body::from(
+                            map_catalog::catalog_bytes().to_vec(),
+                        ))
+                        .unwrap()
+                }),
+            )
+            .route(
+                "/admin/dashboard",
+                axum::routing::get(|| async {
+                    axum::response::Html(include_str!("admin_dashboard.html"))
+                }),
+            )
+            .route(
+                "/admin/api/status",
+                axum::routing::get(admin_status),
+            )
+            .with_state(state);
+
         let app = catalog_route
             .nest_service(
                 "/maps",
@@ -433,24 +450,48 @@ async fn main() {
             .layer(tower_http::cors::CorsLayer::permissive());
         let http_addr =
             std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
-        log::info!("SOW-SERVER HTTP serving maps on http://{}", http_addr);
+        log::info!("SOW-SERVER HTTP serving maps and admin on http://{}", http_addr);
         let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
     });
 
-    while let Ok((stream, _)) = listener.accept().await {
+    while let Ok((stream, addr)) = listener.accept().await {
         let mut global_rx = global_tx.subscribe();
         let ev_tx = event_tx.clone();
         tokio::spawn(async move {
-            let ws_stream = match accept_async(stream).await {
+            let ip_cell = Arc::new(std::sync::Mutex::new(addr.ip().to_string()));
+            let ip_cell_clone = Arc::clone(&ip_cell);
+            let ws_stream = match tokio_tungstenite::accept_hdr_async(stream, move |req: &tokio_tungstenite::tungstenite::handshake::server::Request, response: tokio_tungstenite::tungstenite::handshake::server::Response| {
+                if let Some(real_ip) = req.headers().get("X-Real-IP") {
+                    if let Ok(ip) = real_ip.to_str() {
+                        if let Ok(mut guard) = ip_cell_clone.lock() {
+                            *guard = ip.to_string();
+                        }
+                    }
+                } else if let Some(forwarded) = req.headers().get("X-Forwarded-For") {
+                    if let Ok(ip) = forwarded.to_str() {
+                        if let Some(first_ip) = ip.split(',').next() {
+                            if let Ok(mut guard) = ip_cell_clone.lock() {
+                                *guard = first_ip.trim().to_string();
+                            }
+                        }
+                    }
+                }
+                Ok(response)
+            }).await {
                 Ok(ws) => ws,
                 Err(e) => {
                     log::error!("Handshake failed: {}", e);
                     return;
                 }
             };
+            let ip_str = if let Ok(guard) = ip_cell.lock() {
+                guard.clone()
+            } else {
+                addr.ip().to_string()
+            };
             let (mut write, mut read) = ws_stream.split();
-            log::info!("Client connected");
+            log::info!("Client connected from IP: {}", ip_str);
 
             let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(100);
 
@@ -491,6 +532,7 @@ async fn main() {
                                                     database_account_id,
                                                     host_config,
                                                     password,
+                                                    ip: ip_str.clone(),
                                                 }).await;
                                             }
                                             sow_core::protocol::ClientMessage::Gameplay { .. } => {
@@ -629,4 +671,54 @@ async fn main() {
             }
         });
     }
+}
+
+#[derive(Clone)]
+struct AppState {
+    games: Arc<Mutex<Vec<lobby::ServerLobby>>>,
+}
+
+async fn admin_status(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::response::Json<serde_json::Value> {
+    let games = state.games.lock().await;
+    let mut lobbies = Vec::new();
+    for lobby in &*games {
+        let mut players = Vec::new();
+        for p in &lobby.players {
+            players.push(serde_json::json!({
+                "player_id": p.player_id,
+                "name": p.name,
+                "clan_tag": p.clan_tag,
+                "civilization": format!("{:?}", p.civilization),
+                "leader": format!("{:?}", p.leader),
+                "download_progress": p.download_progress,
+                "ip": p.ip,
+                "database_account_id": p.database_account_id,
+            }));
+        }
+        lobbies.push(serde_json::json!({
+            "id": lobby.id,
+            "kind": format!("{:?}", lobby.kind),
+            "is_private": lobby.is_private,
+            "phase": format!("{:?}", lobby.phase),
+            "countdown_secs": lobby.countdown_secs,
+            "relay_port": lobby.relay_port,
+            "players": players,
+            "map_name": lobby.config.map_name,
+            "game_mode": lobby.game_mode,
+        }));
+    }
+
+    let uptime = match std::fs::read_to_string("/proc/uptime") {
+        Ok(s) => s.split_whitespace().next().unwrap_or("0").parse::<f64>().unwrap_or(0.0),
+        Err(_) => 0.0,
+    };
+
+    axum::response::Json(serde_json::json!({
+        "lobbies": lobbies,
+        "system": {
+            "uptime_seconds": uptime,
+        }
+    }))
 }

@@ -481,7 +481,7 @@ impl SowApp {
                                 );
                             }
                         }
-                        if let (Some(ref mut mover_r), Some(ref snap)) =
+                        if let (Some(mover_r), Some(snap)) =
                             (&mut self.gfx.mover_renderer, &self.sim.current_snapshot)
                         {
                             let now = web_time::Instant::now();

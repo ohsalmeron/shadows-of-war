@@ -251,7 +251,7 @@ fn require_nonempty_file(path: &Path, label: &str) -> Result<()> {
 
 fn brotli_compress(input: &[u8]) -> Result<Vec<u8>> {
     let mut out = Vec::new();
-    let mut writer = brotli::CompressorWriter::new(&mut out, 4096, 11, 22);
+    let mut writer = brotli::CompressorWriter::new(&mut out, 4096, 9, 22);
     writer.write_all(input).context("brotli compressor write")?;
     writer.flush().context("brotli compressor flush")?;
     drop(writer);

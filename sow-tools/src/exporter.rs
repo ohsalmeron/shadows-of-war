@@ -1,7 +1,7 @@
 use crate::openfront_import::refresh_catalog;
 use crate::poi_extractor::POISpawn;
 use sow_core::map::MapTile;
-use sow_core::map_file::{self, MapFile, MapSpawn};
+use sow_core::map_file::{self, GeoBounds, MapFile, MapSpawn};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -14,6 +14,7 @@ pub fn export_map(
     height: u32,
     terrain: Vec<MapTile>,
     spawns: Vec<POISpawn>,
+    geo_bounds: Option<GeoBounds>,
     single_player_config: bool,
     force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -46,6 +47,7 @@ pub fn export_map(
         height,
         num_land_tiles: num_land,
         spawns: map_spawns,
+        geo_bounds,
         terrain: terrain_bytes,
     };
     let encoded = map_file::encode(&map_file);

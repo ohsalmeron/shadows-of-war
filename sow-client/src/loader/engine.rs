@@ -125,6 +125,7 @@ impl SowApp {
                     if let Some(map_file) = parsed_map {
                         state.total_land_tiles = map_file.num_land_tiles;
                         state.map_spawns = map_file.spawns;
+                        state.geo_bounds = map_file.geo_bounds;
                         if map_file.terrain.len() == state.map.terrain.len() {
                             let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
                             unsafe {
@@ -336,6 +337,11 @@ impl SowApp {
                             seed: start_msg.seed,
                             map_bytes: map_bytes.clone(),
                             players: start_msg.players.clone(),
+                            // map_bytes above is raw terrain; anchors/bounds
+                            // from the parsed map file must ride explicitly.
+                            map_spawns: state.map_spawns.clone(),
+                            geo_bounds: state.geo_bounds,
+                            num_land_tiles: state.total_land_tiles,
                         });
 
                         // POKA-YOKE — the single match-init chokepoint that EVERY match (offline,

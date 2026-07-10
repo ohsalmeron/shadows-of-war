@@ -17,6 +17,7 @@ pub mod engine;
 pub mod execution;
 pub mod game;
 pub mod game_config;
+pub mod geo_entities;
 pub mod intent;
 pub mod map;
 pub mod map_file;

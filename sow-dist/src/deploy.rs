@@ -69,7 +69,7 @@ pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
     let html = client.get(home_url).send().context("index")?.text()?;
-    if !html.contains("sow-game-stage") || !html.contains("game-embed.js") {
+    if !html.contains("sow-game-stage") {
         anyhow::bail!("marketing index missing iframe embed");
     }
     if !html.contains("iframe") {
@@ -77,13 +77,6 @@ pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
     }
     if html.contains("sow_client_") {
         anyhow::bail!("marketing index must not reference WASM bundle before Play click");
-    }
-    let embed = client
-        .get(format!("{home_url}game-embed.js"))
-        .send()
-        .context("game-embed.js")?;
-    if !embed.status().is_success() {
-        anyhow::bail!("game-embed.js missing on marketing host");
     }
     println!("✅ Marketing embed OK");
     Ok(())

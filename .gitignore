@@ -54,3 +54,14 @@ ponytail/
 .rustup_home/
 assets/emoji/cache/
 com.unity.textmeshpro/
+
+# Local checkout dependencies
+/blade/
+/egui/
+/winit/
+/OpenFrontIO/
+
+# Astro site build files and output
+sow-web/.astro/
+sow-web/node_modules/
+/sow-web/site/

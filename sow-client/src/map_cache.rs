@@ -94,10 +94,7 @@ pub fn list_cached_keys() -> Vec<String> {
             let Ok(Some(name)) = storage.key(i) else {
                 continue;
             };
-            let Some(slug) = name.strip_prefix(STORAGE_KEY_PREFIX) else {
-                continue;
-            };
-            if load(slug).is_some() {
+            if let Some(slug) = name.strip_prefix(STORAGE_KEY_PREFIX) {
                 keys.push(slug.to_string());
             }
         }

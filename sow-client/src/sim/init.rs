@@ -1,22 +1,30 @@
 use crate::app::SowApp;
 
 impl SowApp {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn handle_sim_init(
         &mut self,
         config: Box<sow_core::game_config::GameConfig>,
         seed: u64,
         map_bytes: Vec<u8>,
         players: Vec<sow_core::protocol::PlayerInfo>,
+        map_spawns: Vec<sow_core::map_file::MapSpawn>,
+        geo_bounds: Option<sow_core::map_file::GeoBounds>,
+        num_land_tiles: u32,
     ) {
         self.reset_progress_session();
         self.sim.config = (*config).clone();
         let map_w = config.map_width;
         let map_h = config.map_height;
         let mut state = sow_core::game::GameState::new(seed, map_w, map_h, *config);
+        state.map_spawns = map_spawns;
+        state.geo_bounds = geo_bounds;
+        state.total_land_tiles = num_land_tiles;
 
         if let Ok(map_file) = sow_core::maps::load_map_from_payload(&map_bytes) {
             state.total_land_tiles = map_file.num_land_tiles;
             state.map_spawns = map_file.spawns;
+            state.geo_bounds = map_file.geo_bounds;
             if map_file.terrain.len() == state.map.terrain.len() {
                 let dest_ptr = state.map.terrain.as_mut_ptr() as *mut u8;
                 unsafe {

@@ -99,10 +99,8 @@ pub(crate) fn render(
             continue;
         }
 
-        // Far-zoom declutter, gated on ZOOM (not per-plate pixel size): a NON-human plate
-        // collapses to a cheap disc only when the camera is truly far out
-        // (zoom_scaled < nameplate_hide_zoom, e.g. 1.5). At any closer zoom EVERY plate is
-        // drawn full and floored at a readable size — nothing hides while you play/scroll.
+        // Far-zoom declutter: below nameplate_hide_zoom every non-human plate is a disc.
+        // Above it, plates big enough to read (see show_full below) draw in full.
         if zoom_scaled_local < visual_config.nameplate_hide_zoom && !is_me && !is_human {
             if let Some(tr) = gfx.text_renderer.as_mut() {
                 let c = [center.x * sf, center.y * sf];
@@ -113,23 +111,25 @@ pub(crate) fn render(
             continue;
         }
 
-        // `full_labels_drawn` caps full bot labels for perf only; over-budget bots dot out (else).
+        let scaled_size =
+            nameplate_font_px(vp.nameplate_size, zoom_scaled_local, is_human, &visual_config)
+                * ui_text_scale;
+
+        // A non-human plate whose NATURAL size is sub-readable dots out instead of being
+        // floored up to 7px: flooring turns hundreds of tiny tribes/nations into full plates
+        // (two egui text layouts each, every frame), which wasm cannot absorb — this was the
+        // web-only slowdown. The budget caps the worst case for ALL non-humans, not just bots;
+        // plates are sorted big-first, so the budget goes to the most visible ones.
         let show_full = if is_human {
             true
-        } else if player.player_type == sow_core::player::PlayerType::Bot {
-            full_labels_drawn < 80
         } else {
-            true
+            scaled_size >= 7.0 && full_labels_drawn < 80
         };
 
         if show_full {
-            if player.player_type == sow_core::player::PlayerType::Bot {
+            if !is_human {
                 full_labels_drawn += 1;
             }
-
-            let scaled_size =
-                nameplate_font_px(vp.nameplate_size, zoom_scaled_local, is_human, &visual_config)
-                    * ui_text_scale;
 
             // Continuous size drives ALL geometry and the GPU SDF text (which scales smoothly
             // at any fractional size), so the plate grows/shrinks as smoothly as the camera.

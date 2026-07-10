@@ -1,6 +1,5 @@
-mod crazygames;
-mod db;
-mod time_util;
+use sow_data::{crazygames, db};
+use sow_data::db::{LinkOutcome, PlayerDb, PlayerProfile};
 
 use axum::{
     Json, Router,
@@ -9,7 +8,6 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use db::{LinkOutcome, PlayerDb, PlayerProfile};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -128,8 +126,25 @@ async fn main() {
         crazygames_api_key.is_some()
     );
 
+    // Open REDB persistent database
+    let redb_path = std::env::var("SOW_REDB_PATH").unwrap_or_else(|_| "sow_metadata.redb".to_string());
+    info!("Opening persistent REDB database at {}", redb_path);
+    if let Some(dir) = std::path::Path::new(&redb_path).parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).expect("Failed to create REDB data directory");
+        }
+    }
+    let redb_db = sow_data::init_database(&redb_path).expect("Failed to initialize REDB metadata database");
+    let redb_db_arc = Arc::new(redb_db);
+
+    // Seed Valkey RAM from REDB on boot
+    info!("Seeding Valkey RAM cache from REDB...");
+    if let Err(e) = sow_data::metadata_db::seed_valkey_from_redb(&redb_db_arc, &valkey_url) {
+        error!("Failed to seed Valkey on startup: {e}");
+    }
+
     // Initialize database connector
-    let player_db = PlayerDb::new(&valkey_url, crazygames_api_key);
+    let player_db = PlayerDb::new(&valkey_url, crazygames_api_key, Some(Arc::clone(&redb_db_arc)));
 
     let state = Arc::new(AppState {
         db: player_db,

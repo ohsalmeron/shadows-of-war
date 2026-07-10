@@ -27,6 +27,7 @@ pub struct PlayerConnection {
     pub database_account_id: Option<String>,
     /// Lobby-stage team (Teams mode only; `None` in FFA). Carried into the match start.
     pub team: Option<Team>,
+    pub ip: String,
 }
 
 pub struct ServerLobby {
@@ -51,6 +52,7 @@ pub struct ServerLobby {
     pub host_name: String,
     /// Identities (account id, or `name:<name>` fallback) banned from this lobby.
     pub banned: std::collections::HashSet<String>,
+    pub auto_bots_spawned: bool,
 }
 
 /// Stable identity for ban tracking: prefer the account id, fall back to name.
@@ -131,6 +133,7 @@ fn spawn_waiting_lobby(
         password,
         host_name,
         banned: std::collections::HashSet::new(),
+        auto_bots_spawned: false,
     });
 }
 
@@ -212,6 +215,79 @@ fn promote_countdown(games: &mut [ServerLobby]) {
             }
         }
     }
+
+    // Pass 3: backfill CountingDown matchmaking lobbies that have actual human players
+    for g in games.iter_mut() {
+        if matches!(g.phase, LobbyPhase::CountingDown)
+            && g.kind == LobbyKind::Matchmaking
+            && !g.auto_bots_spawned
+            && !g.players.is_empty()
+        {
+            g.auto_bots_spawned = true;
+
+            let max_players = g.config.max_players as usize;
+            let current_players = g.players.len();
+
+            let mut rng = rand::thread_rng();
+            use rand::Rng;
+            let pct = rng.gen_range(0.65..0.92);
+            let target_count = ((max_players as f32) * pct).round() as usize;
+
+            if target_count > current_players {
+                let bots_needed = target_count - current_players;
+                if bots_needed > 0 {
+                    spawn_bots_for_lobby(g.id, bots_needed);
+                }
+            }
+        }
+    }
+}
+
+fn spawn_bots_for_lobby(lobby_id: u64, bots_needed: usize) {
+    let srv_bin = std::env::current_exe().unwrap_or_default();
+    let srv_dir = srv_bin.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let bot_bin = std::env::var("SOW_BOT_MANAGER_BIN")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| srv_dir.join("bot-manager"));
+
+    let ws_url = std::env::var("SOW_BOT_WS_URL")
+        .unwrap_or_else(|_| "ws://127.0.0.1:25565/ws/".to_string());
+
+    if bot_bin.exists() {
+        log::info!(
+            "[AUTO-BOTS] Spawning {} bots for lobby {} via {:?}",
+            bots_needed,
+            lobby_id,
+            bot_bin
+        );
+        let lobby_str = lobby_id.to_string();
+        let count_str = bots_needed.to_string();
+
+        tokio::spawn(async move {
+            let mut cmd = tokio::process::Command::new(bot_bin);
+            cmd.arg("--url")
+                .arg(ws_url)
+                .arg("--count")
+                .arg(count_str)
+                .arg("--lobby-id")
+                .arg(lobby_str);
+
+            match cmd.spawn() {
+                Ok(mut child) => {
+                    let _ = child.wait().await;
+                    log::info!("[AUTO-BOTS] Bot manager subprocess finished for lobby {}", lobby_id);
+                }
+                Err(e) => {
+                    log::error!("[AUTO-BOTS] Failed to spawn bot manager child process: {}", e);
+                }
+            }
+        });
+    } else {
+        log::warn!(
+            "[AUTO-BOTS] Cannot spawn bots: bot-manager binary not found at {:?}",
+            bot_bin
+        );
+    }
 }
 
 /// Prefer counting-down lobby with lowest id, else lowest waiting id (matches DR client `primary_lobby_for_browser`).
@@ -271,6 +347,7 @@ pub fn join_player(
     database_account_id: Option<String>,
     host_config: Option<Box<GameConfig>>,
     password: Option<String>,
+    ip: String,
 ) -> Result<(u64, u16, String, bool), String> {
     let mut is_new_host = false;
     let lobby_id = if host_private {
@@ -435,7 +512,7 @@ pub fn join_player(
 
     // Check if player is already in the lobby (reconnection/duplicate join)
     if let Some(existing_idx) = lobby.players.iter().position(|p| {
-        if let (Some(ref a), Some(ref b)) = (&p.database_account_id, &database_account_id) {
+        if let (Some(a), Some(b)) = (&p.database_account_id, &database_account_id) {
             a == b
         } else {
             p.name == name
@@ -451,6 +528,7 @@ pub fn join_player(
         p.clan_tag = clan_tag;
         p.civilization = civilization;
         p.leader = leader;
+        p.ip = ip;
         let pid = p.player_id;
         return Ok((
             lobby_id,
@@ -508,6 +586,7 @@ pub fn join_player(
         leader,
         database_account_id,
         team,
+        ip,
     });
 
     if is_new_host {

@@ -128,6 +128,7 @@ fn load_legacy(key: &str, map_dir: &Path) -> Result<MapFile, Box<dyn std::error:
         height,
         num_land_tiles: num_land,
         spawns,
+        geo_bounds: None,
         terrain: raw,
     })
 }

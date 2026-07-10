@@ -1,0 +1,43 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Shadows of War — Free Open-Source MMORTS Strategy Game" activeNav="home">
+  <section id="sow-game-stage" class="sow-stage">
+    <iframe id="sow-game-frame" class="sow-stage__frame" title="Shadows of War" allow="fullscreen"></iframe>
+    <div id="hero-cover" class="hero-cover">
+      <div class="hero-cover__bg" aria-hidden="true"></div>
+      <div class="hero-cover__inner">
+        <div class="tactical-bracket">
+          <button type="button" class="play-btn play-btn--hero" id="sow-play-btn">Play Now</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    function initHome() {
+      const playBtn = document.getElementById('sow-play-btn');
+      if (playBtn) {
+        playBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if ((window as any).SOW_enterGame) {
+            (window as any).SOW_enterGame();
+          }
+        });
+      }
+
+      if (window.location.hash === '#play') {
+        if ((window as any).SOW_enterGame) {
+          (window as any).SOW_enterGame();
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initHome);
+    } else {
+      initHome();
+    }
+  </script>
+</Layout>

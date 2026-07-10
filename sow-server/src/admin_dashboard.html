@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadows of War — Server Admin Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="h-full font-sans antialiased selection:bg-rose-500 selection:text-white" x-data="adminDashboard()" x-init="initDashboard()">
+
+    <div class="min-h-full flex flex-col">
+        <!-- Navigation Header -->
+        <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <span class="text-2xl">⚔️</span>
+                    <div>
+                        <h1 class="text-lg font-bold tracking-tight text-white">Shadows of War</h1>
+                        <p class="text-xs text-slate-400">Server Orchestrator Administration</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span class="w-1.5 h-1.5 mr-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                        Live Monitoring
+                    </span>
+                    <button @click="refreshData()" class="p-1.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition duration-200">
+                        <svg class="w-5 h-5" :class="refreshing ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Grid -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+            
+            <!-- Metrics Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <!-- Card 1: Total Players -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 relative overflow-hidden">
+                    <div class="absolute right-0 bottom-0 opacity-10 text-6xl select-none translate-x-2 translate-y-2">👥</div>
+                    <p class="text-sm font-semibold text-slate-400">Connected Players</p>
+                    <p class="text-3xl font-extrabold text-white mt-2" x-text="stats.totalPlayers">0</p>
+                    <p class="text-xs text-slate-500 mt-1">Sustained active socket count</p>
+                </div>
+
+                <!-- Card 2: Active Lobbies -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 relative overflow-hidden">
+                    <div class="absolute right-0 bottom-0 opacity-10 text-6xl select-none translate-x-2 translate-y-2">🎮</div>
+                    <p class="text-sm font-semibold text-slate-400">Matchmaking Lobbies</p>
+                    <p class="text-3xl font-extrabold text-white mt-2" x-text="stats.totalLobbies">0</p>
+                    <p class="text-xs text-slate-500 mt-1">Currently building or loading</p>
+                </div>
+
+                <!-- Card 3: Active Relays -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 relative overflow-hidden">
+                    <div class="absolute right-0 bottom-0 opacity-10 text-6xl select-none translate-x-2 translate-y-2">⚡</div>
+                    <p class="text-sm font-semibold text-slate-400">Running Relays (Matches)</p>
+                    <p class="text-3xl font-extrabold text-rose-500 mt-2" x-text="stats.totalRelays">0</p>
+                    <p class="text-xs text-slate-500 mt-1">Decoupled dynamic play processes</p>
+                </div>
+
+                <!-- Card 4: Uptime -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 relative overflow-hidden">
+                    <div class="absolute right-0 bottom-0 opacity-10 text-6xl select-none translate-x-2 translate-y-2">⏱️</div>
+                    <p class="text-sm font-semibold text-slate-400">Server Uptime</p>
+                    <p class="text-3xl font-extrabold text-white mt-2" x-text="stats.uptime">0d 0h</p>
+                    <p class="text-xs text-slate-500 mt-1">SOW Orchestrator lifespan</p>
+                </div>
+            </div>
+
+            <!-- Active Players Table Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Connected Connection Registry</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Live tracking of individual player sockets, latency progress, and geolocation.</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-800">
+                        <thead class="bg-slate-900/80">
+                            <tr>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Player Name</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">IP Address</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Location / Origin</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Lobby ID</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Team / Civ / Leader</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Map Sync</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800 bg-slate-900/20" x-show="playersList.length > 0">
+                            <template x-for="p in playersList" :key="p.lobby_id + '-' + p.player_id">
+                                <tr class="hover:bg-slate-800/30 transition duration-150">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center space-x-3">
+                                            <span class="text-slate-500 font-mono text-xs">#<span x-text="p.player_id"></span></span>
+                                            <div>
+                                                <span class="font-bold text-white" x-text="p.name"></span>
+                                                <span x-show="p.clan_tag" class="ml-1.5 text-xs font-semibold bg-rose-500/10 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/10" x-text="'[' + p.clan_tag + ']'"></span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="font-mono text-sm text-slate-300" x-text="p.ip"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center space-x-2" x-data="{ geo: {country: 'Detecting...', flag: '⏳'} }" x-init="getGeoData(p.ip).then(g => geo = g)">
+                                            <span class="text-lg select-none" x-text="geo.flag"></span>
+                                            <span class="text-sm text-slate-300" x-text="geo.country"></span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700" x-text="'Lobby ' + p.lobby_id"></span>
+                                            <template x-if="p.relay_port">
+                                                <span class="px-2 py-0.5 rounded-full text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20" x-text="'Port ' + p.relay_port"></span>
+                                            </template>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex flex-col space-y-0.5">
+                                            <div class="flex items-center space-x-1.5">
+                                                <span class="text-xs bg-sky-500/10 text-sky-400 px-1.5 py-0.5 rounded border border-sky-500/20 font-medium" x-text="p.civilization"></span>
+                                                <span class="text-xs bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20 font-medium" x-text="p.leader"></span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="w-full max-w-[100px] flex items-center space-x-2">
+                                            <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                                <div class="bg-emerald-500 h-1.5 rounded-full" :style="'width: ' + p.download_progress + '%'"></div>
+                                            </div>
+                                            <span class="text-xs font-mono text-slate-400" x-text="p.download_progress + '%'"></span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                        <tbody x-show="playersList.length === 0">
+                            <tr>
+                                <td colspan="6" class="px-6 py-12 text-center text-slate-500">
+                                    <div class="flex flex-col items-center justify-center space-y-2">
+                                        <span class="text-3xl">📭</span>
+                                        <span class="font-medium text-slate-400">No players connected right now</span>
+                                        <span class="text-xs text-slate-500">All matchmaking lobbies are completely empty.</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Active Lobbies Grid -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-800 bg-slate-900/50">
+                    <h2 class="text-lg font-bold text-white">Active Lobby Orchestration</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Overview of spawned queues, Custom lobbies, game configurations and relay states.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
+                    <template x-for="l in data.lobbies" :key="l.id">
+                        <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-5 flex flex-col justify-between space-y-4 hover:border-slate-700 transition duration-200">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <span class="font-mono text-sm text-slate-400 font-bold" x-text="'ID: ' + l.id"></span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border"
+                                          :class="{
+                                              'bg-sky-500/10 text-sky-400 border-sky-500/20': l.phase === 'Waiting',
+                                              'bg-amber-500/10 text-amber-400 border-amber-500/20': l.phase === 'CountingDown',
+                                              'bg-emerald-500/10 text-emerald-400 border-emerald-500/20': l.phase === 'Loading',
+                                              'bg-rose-500/10 text-rose-400 border-rose-500/20': l.phase === 'ReadyForRelay'
+                                          }" x-text="l.phase"></span>
+                                </div>
+                                <div class="mt-3 flex items-center space-x-1">
+                                    <span class="text-xs font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700" x-text="l.kind"></span>
+                                    <span class="text-xs font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700" x-text="l.game_mode"></span>
+                                    <span class="text-xs font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700" x-text="l.map_name"></span>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-slate-800/60 pt-4 flex items-center justify-between">
+                                <span class="text-xs font-medium text-slate-400">Total Players: <span class="text-white font-bold" x-text="l.players.length"></span></span>
+                                <template x-if="l.phase === 'CountingDown'">
+                                    <span class="text-xs text-amber-400 font-mono font-semibold" x-text="'Starts in ' + l.countdown_secs.toFixed(1) + 's'"></span>
+                                </template>
+                                <template x-if="l.relay_port">
+                                    <span class="text-xs font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 font-bold" x-text="'Relay: ' + l.relay_port"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="border-t border-slate-800 bg-slate-900/20 py-6 mt-12">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0">
+                <p>&copy; 2026 Shadows of War. All rights reserved.</p>
+                <p>Engineered for high density WebSocket orchestration using Rust + Nginx L4 Stream.</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Frontend Scripting with Alpine.js -->
+    <script>
+        function adminDashboard() {
+            return {
+                data: { lobbies: [], system: {} },
+                refreshing: false,
+                playersList: [],
+                ipcache: {},
+                stats: {
+                    totalPlayers: 0,
+                    totalLobbies: 0,
+                    totalRelays: 0,
+                    uptime: '0d 0h'
+                },
+
+                async initDashboard() {
+                    await this.refreshData();
+                    // Poll data every 2 seconds
+                    setInterval(async () => {
+                        await this.refreshData();
+                    }, 2000);
+                },
+
+                async refreshData() {
+                    this.refreshing = true;
+                    try {
+                        let res = await fetch('/admin/api/status');
+                        if (res.ok) {
+                            this.data = await res.json();
+                            this.rebuildPlayersList();
+                            this.calculateStats();
+                        }
+                    } catch (e) {
+                        console.error('Failed to load server admin API', e);
+                    } finally {
+                        this.refreshing = false;
+                    }
+                },
+
+                rebuildPlayersList() {
+                    let plist = [];
+                    for (let lobby of this.data.lobbies) {
+                        for (let p of lobby.players) {
+                            plist.push({
+                                ...p,
+                                lobby_id: lobby.id,
+                                relay_port: lobby.relay_port
+                            });
+                        }
+                    }
+                    this.playersList = plist;
+                },
+
+                calculateStats() {
+                    this.stats.totalPlayers = this.playersList.length;
+                    this.stats.totalLobbies = this.data.lobbies.length;
+                    
+                    // Count unique relay ports
+                    let uniqueRelays = new Set();
+                    for (let l of this.data.lobbies) {
+                        if (l.relay_port) {
+                            uniqueRelays.add(l.relay_port);
+                        }
+                    }
+                    this.stats.totalRelays = uniqueRelays.size;
+
+                    // Format uptime
+                    let ups = this.data.system.uptime_seconds || 0;
+                    let days = Math.floor(ups / 86400);
+                    let hours = Math.floor((ups % 86400) / 3600);
+                    let mins = Math.floor((ups % 3600) / 60);
+                    this.stats.uptime = `${days}d ${hours}h ${mins}m`;
+                },
+
+                async getGeoData(ip) {
+                    if (ip === "127.0.0.1" || ip.startsWith("192.168.") || ip.startsWith("10.")) {
+                        return { country: "Localhost", flag: "🏠" };
+                    }
+                    if (ip.startsWith("93.189.88.")) {
+                        return { country: "Spain (Clouding Bots)", flag: "🇪🇸" };
+                    }
+                    if (this.ipcache[ip]) return this.ipcache[ip];
+
+                    this.ipcache[ip] = { country: "Detecting...", flag: "⏳" };
+                    try {
+                        let res = await fetch(`https://ipapi.co/${ip}/json/`);
+                        if (res.ok) {
+                            let d = await res.json();
+                            let flag = "🏳️";
+                            if (d.country_code) {
+                                flag = String.fromCodePoint(...d.country_code.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0)));
+                            }
+                            this.ipcache[ip] = {
+                                country: d.country_name || "Unknown",
+                                flag: flag
+                            };
+                        }
+                    } catch (e) {
+                        this.ipcache[ip] = { country: "Direct IP", flag: "🌐" };
+                    }
+                    return this.ipcache[ip];
+                }
+            };
+        }
+    </script>
+</body>
+</html>

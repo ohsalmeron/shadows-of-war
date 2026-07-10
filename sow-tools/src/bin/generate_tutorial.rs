@@ -150,6 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 y: (300.0 * SCALE).round() as u32,
             },
         ],
+        geo_bounds: None,
         terrain: terrain_bytes,
     };
     let encoded = map_file::encode(&map_file);

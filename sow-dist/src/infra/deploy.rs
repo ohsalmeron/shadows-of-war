@@ -150,6 +150,25 @@ fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
         &home_prod,
         &home_ptr,
     )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "sow-data-push.service",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_systemd_unit(
+        gcp,
+        paths,
+        cfg,
+        "sow-data-push.timer",
+        &user,
+        &home_prod,
+        &home_ptr,
+    )?;
+    install_data_push_script(gcp, paths)?;
 
     for (template, conf_name) in [
         ("main.conf", format!("{}.conf", cfg.site_domain())),
@@ -172,7 +191,7 @@ fn bootstrap_debian(paths: &Paths, cfg: &DeployConfig, gcp: &GcpConfig) -> Resul
     gcp.run_remote(&certbot)?;
 
     gcp.run_remote(
-        "sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr sow-database sow-database-ptr",
+        "sudo systemctl daemon-reload && sudo systemctl enable --now sow-server sow-server-ptr sow-database sow-database-ptr sow-data-push.timer",
     )?;
 
     Ok(())
@@ -207,6 +226,16 @@ fn install_nginx_conf(
          sudo chown root:root /etc/nginx/conf.d/{conf_name} && sudo chmod 644 /etc/nginx/conf.d/{conf_name}"
     ))?;
     fs::remove_file(&tmp).ok();
+    Ok(())
+}
+
+/// The redb push script the sow-data-push units run (light replication path).
+fn install_data_push_script(gcp: &GcpConfig, paths: &Paths) -> Result<()> {
+    let local = paths.deploy_dir().join("zfs").join("light-push.sh");
+    gcp::scp_to_instance(gcp, &local, "/tmp/sow-data-push")?;
+    gcp.run_remote(
+        "sudo install -o root -g root -m 0755 /tmp/sow-data-push /usr/local/bin/sow-data-push && rm -f /tmp/sow-data-push",
+    )?;
     Ok(())
 }
 
@@ -280,9 +309,12 @@ pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()>
         "sow-database.service",
         "sow-database-ptr.service",
         "valkey.service",
+        "sow-data-push.service",
+        "sow-data-push.timer",
     ] {
         install_systemd_unit(&gcp, paths, cfg, unit_name, &user, &home_prod, &home_ptr)?;
     }
+    install_data_push_script(&gcp, paths)?;
 
     for (template, conf_name) in [
         ("main.conf", format!("{}.conf", cfg.site_domain())),
@@ -293,7 +325,7 @@ pub fn deploy_configs_if_needed(paths: &Paths, cfg: &DeployConfig) -> Result<()>
     }
 
     println!("==> Reloading systemd daemon on VPS...");
-    gcp.run_remote("sudo systemctl daemon-reload")?;
+    gcp.run_remote("sudo systemctl daemon-reload && sudo systemctl enable --now sow-data-push.timer")?;
 
     println!("==> Re-running Certbot to ensure SSL on new config files...");
     let certbot = format!(

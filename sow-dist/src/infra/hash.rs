@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 const SERVER_CRATES: &[&str] = &[
     "sow-server",
     "sow-relay",
-    "sow-database",
+    "sow-data",
     "sow-core",
     "sow-net",
 ];
@@ -64,10 +64,13 @@ pub(crate) fn read_cached_hash(paths: &Paths) -> String {
         .to_string()
 }
 
-pub(crate) fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, PathBuf)> {
+pub(crate) fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf)> {
     const GNU: &str = "x86_64-unknown-linux-gnu";
     process::wait_for_cargo_unlock(&paths.cargo_target);
-    println!("==> cargo build --release -p sow-server -p sow-relay -p sow-database ({GNU})");
+    // Every shipped binary is named explicitly: `--bin` flags filter targets across ALL
+    // selected packages, so a partial list would silently skip the rest and rsync would
+    // push stale binaries. sow-database needs sow-data's `server` feature (wasm-clean lib).
+    println!("==> cargo build --release --bin sow-server --bin sow-relay --bin sow-database --bin bot-manager ({GNU})");
     process::run(
         "cargo",
         &[
@@ -78,7 +81,19 @@ pub(crate) fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, 
             "-p",
             "sow-relay",
             "-p",
+            "sow-data",
+            "-p",
+            "sow-tools",
+            "--features",
+            "sow-data/server",
+            "--bin",
+            "sow-server",
+            "--bin",
+            "sow-relay",
+            "--bin",
             "sow-database",
+            "--bin",
+            "bot-manager",
             "--target",
             GNU,
         ],
@@ -89,6 +104,7 @@ pub(crate) fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, 
         dir.join("sow-server"),
         dir.join("sow-relay"),
         dir.join("sow-database"),
+        dir.join("bot-manager"),
     ))
 }
 
@@ -98,13 +114,22 @@ pub(crate) fn rsync_server_binaries(
     server: &Path,
     relay: &Path,
     database: &Path,
+    bot_manager: &Path,
 ) -> Result<()> {
-    gcp.sync_file(server, &format!("{data_dir}/sow-server"))?;
-    gcp.sync_file(relay, &format!("{data_dir}/sow-relay"))?;
-    gcp.sync_file(database, &format!("{data_dir}/sow-database"))?;
-    gcp.run_remote(&format!(
-        "chmod +x {data_dir}/sow-server {data_dir}/sow-relay {data_dir}/sow-database"
-    ))?;
+    // scp writes into the destination inode and fails with ETXTBSY while that
+    // binary is executing — relays keep running across deploys by design. Upload
+    // to a temp name and rename: running processes keep their old inode, the
+    // path serves the new binary from the next spawn/restart.
+    for (local, name) in [
+        (server, "sow-server"),
+        (relay, "sow-relay"),
+        (database, "sow-database"),
+        (bot_manager, "bot-manager"),
+    ] {
+        let dest = format!("{data_dir}/{name}");
+        gcp.sync_file(local, &format!("{dest}.new"))?;
+        gcp.run_remote(&format!("chmod +x {dest}.new && mv -f {dest}.new {dest}"))?;
+    }
     Ok(())
 }
 
