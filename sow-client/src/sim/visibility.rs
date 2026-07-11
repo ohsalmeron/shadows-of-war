@@ -104,10 +104,20 @@ pub(crate) fn compute_visibility(
         }
     };
 
+    thread_local! {
+        static TEMP_OWNERS_CACHE: std::cell::RefCell<Vec<u16>> = std::cell::RefCell::new(Vec::new());
+        static PLAYER_TILE_COUNTS_CACHE: std::cell::RefCell<Vec<usize>> = std::cell::RefCell::new(Vec::new());
+    }
+
     // Pre-apply snapshot's dirty tiles to a temporary copy of owners to ensure
     // we calculate vision for newly claimed/spawned tiles immediately.
     let total_tiles = (map_w * map_h) as usize;
-    let mut temp_owners = vec![0u16; total_tiles];
+    let mut temp_owners = TEMP_OWNERS_CACHE.with(|cache| {
+        let mut v = cache.borrow_mut();
+        v.clear();
+        v.resize(total_tiles, 0u16);
+        std::mem::take(&mut *v)
+    });
     let limit = owners.len().min(total_tiles);
     temp_owners[..limit].copy_from_slice(&owners[..limit]);
     for dt in &snap.dirty_tiles {
@@ -118,7 +128,12 @@ pub(crate) fn compute_visibility(
     }
 
     // Pre-calculate tile count for each player to support vision radius scaling
-    let mut player_tile_counts = vec![0usize; 65536];
+    let mut player_tile_counts = PLAYER_TILE_COUNTS_CACHE.with(|cache| {
+        let mut v = cache.borrow_mut();
+        v.clear();
+        v.resize(65536, 0usize);
+        std::mem::take(&mut *v)
+    });
     for &owner in &temp_owners {
         player_tile_counts[owner as usize] += 1;
     }
@@ -128,7 +143,7 @@ pub(crate) fn compute_visibility(
         ((count / 1000) as i32).min(8)
     };
 
-    // Helper to check if a tile is on the edge of the player's territory
+    // Helper to check if a tile is on the edge of the player's territory (excluding allied borders)
     let is_border_tile = |tile_idx: u32, temp_owners: &[u16]| -> bool {
         let x = tile_idx % map_w;
         let y = tile_idx / map_w;
@@ -139,7 +154,10 @@ pub(crate) fn compute_visibility(
             let ny = y as i32 + dy;
             if nx >= 0 && nx < map_w as i32 && ny >= 0 && ny < map_h as i32 {
                 let n_idx = (ny as u32 * map_w + nx as u32) as usize;
-                if temp_owners[n_idx] != owner {
+                let n_owner = temp_owners[n_idx];
+                // If the neighboring tile belongs to a different owner who is NOT an ally,
+                // then this is a boundary tile that needs to project vision.
+                if n_owner != owner && !ally_or_self[n_owner as usize] {
                     return true;
                 }
             } else {
@@ -189,4 +207,12 @@ pub(crate) fn compute_visibility(
     for i in 0..total_blocks {
         fog_explored.blocks[i] |= fog_visible.blocks[i];
     }
+
+    // Restore cached vectors to the thread-local storage
+    TEMP_OWNERS_CACHE.with(|cache| {
+        *cache.borrow_mut() = temp_owners;
+    });
+    PLAYER_TILE_COUNTS_CACHE.with(|cache| {
+        *cache.borrow_mut() = player_tile_counts;
+    });
 }
