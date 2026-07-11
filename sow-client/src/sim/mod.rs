@@ -5,3 +5,4 @@ mod shutdown;
 mod snapshot_fx;
 mod turn;
 mod update;
+mod visibility;

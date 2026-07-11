@@ -1,0 +1,441 @@
+---
+import ShellLayout from '../layouts/ShellLayout.astro';
+---
+
+<ShellLayout title="Host Game — Shadows of War">
+  <div class="container">
+    <div class="grid-layout">
+      <!-- Left Box: Lobby Setup & Configurations -->
+      <div class="setup-panel glass-panel card">
+        <h2 class="section-title">HOST CUSTOM LOBBY</h2>
+
+        <div class="form-group">
+          <label data-i18n="main_menu.visibility_label">Game Visibility</label>
+          <div class="visibility-toggle">
+            <button type="button" id="vis-public" class="vis-btn active" data-i18n="main_menu.visibility_public">🌐 PUBLIC</button>
+            <button type="button" id="vis-private" class="vis-btn" data-i18n="main_menu.visibility_private">🔒 PRIVATE</button>
+          </div>
+        </div>
+
+        <div class="form-group" id="password-group" style="display: none;">
+          <label for="password" data-i18n="main_menu.password_label">Lobby Password</label>
+          <input type="password" id="password" class="input-premium" placeholder="Leave empty for none" />
+        </div>
+
+        <div class="form-group">
+          <div class="slider-header">
+            <label for="max_players" data-i18n="main_menu.max_players_label">Max Players</label>
+            <span id="max_players_val">8</span>
+          </div>
+          <input type="range" id="max_players" min="2" max="8" value="8" class="slider-premium" />
+        </div>
+
+        <div class="form-group">
+          <div class="slider-header">
+            <label for="bot_count">AI Bot Count</label>
+            <span id="bot_count_val">3</span>
+          </div>
+          <input type="range" id="bot_count" min="0" max="7" value="3" class="slider-premium" />
+        </div>
+
+        <div class="form-group">
+          <div class="slider-header">
+            <label for="start_troops">Starting Troops</label>
+            <span id="start_troops_val">100</span>
+          </div>
+          <input type="range" id="start_troops" min="50" max="500" step="50" value="100" class="slider-premium" />
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="main_menu.game_mode_label">Team Settings</label>
+          <div class="visibility-toggle">
+            <button type="button" id="team-ffa" class="vis-btn active" data-i18n="main_menu.free_for_all">⚔️ FFA</button>
+            <button type="button" id="team-teams" class="vis-btn" data-i18n="main_menu.team_tactics">🛡️ TEAMS</button>
+          </div>
+        </div>
+
+        <button id="btn-create-lobby" class="btn-premium btn-create" data-i18n="main_menu.create_lobby_btn">
+          🔥 CREATE LOBBY
+        </button>
+      </div>
+
+      <!-- Right Box: Map Catalog Selection -->
+      <div class="maps-panel glass-panel card">
+        <h2 class="section-title">SELECT MAP</h2>
+        
+        <div class="loading-catalog" id="loading-catalog">
+          <div class="spinner"></div>
+          <span>Loading Maps catalog...</span>
+        </div>
+
+        <div class="maps-grid" id="maps-grid" style="display: none;">
+          <!-- Loaded via JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .grid-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      border: 1px solid var(--border-muted);
+    }
+
+    .section-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-muted);
+      text-transform: uppercase;
+    }
+
+    .form-group {
+      margin-bottom: 22px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .visibility-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .vis-btn {
+      padding: 12px;
+      background: rgba(28, 28, 56, 0.4);
+      border: 1px solid var(--border-muted);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .vis-btn:hover {
+      background: rgba(28, 28, 56, 0.7);
+      border-color: var(--text-muted);
+    }
+
+    .vis-btn.active {
+      background: var(--primary-glow);
+      border-color: var(--primary);
+      color: var(--text-primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .slider-header span {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .slider-premium {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--border-muted);
+      border-radius: 3px;
+      outline: none;
+      margin-top: 6px;
+    }
+
+    .slider-premium::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .slider-premium::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .btn-create {
+      width: 100%;
+      padding: 16px;
+      font-size: 15px;
+      margin-top: 10px;
+    }
+
+    /* Maps Selection Card List */
+    .loading-catalog {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      gap: 16px;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(59, 130, 246, 0.1);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .maps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      max-height: 520px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+
+    .map-card {
+      background: rgba(15, 15, 30, 0.4);
+      border: 1px solid var(--border-muted);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .map-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--text-muted);
+    }
+
+    .map-card.selected {
+      border-color: var(--primary);
+      background: rgba(59, 130, 246, 0.05);
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    .map-thumbnail {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-bottom: 1px solid var(--border-muted);
+    }
+
+    .map-info {
+      padding: 12px;
+    }
+
+    .map-name {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .map-dimens {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+
+  <script>
+    // Configuration states
+    let isPrivate = false;
+    let isTeams = false;
+    let selectedMapKey = '';
+    
+    // Wire UI toggles
+    const visPublic = document.getElementById('vis-public');
+    const visPrivate = document.getElementById('vis-private');
+    const passwordGroup = document.getElementById('password-group');
+
+    visPublic?.addEventListener('click', () => {
+      visPublic.classList.add('active');
+      visPrivate?.classList.remove('active');
+      if (passwordGroup) passwordGroup.style.display = 'none';
+      isPrivate = false;
+    });
+
+    visPrivate?.addEventListener('click', () => {
+      visPrivate.classList.add('active');
+      visPublic?.classList.remove('active');
+      if (passwordGroup) passwordGroup.style.display = 'block';
+      isPrivate = true;
+    });
+
+    const teamFfa = document.getElementById('team-ffa');
+    const teamTeams = document.getElementById('team-teams');
+
+    teamFfa?.addEventListener('click', () => {
+      teamFfa.classList.add('active');
+      teamTeams?.classList.remove('active');
+      isTeams = false;
+    });
+
+    teamTeams?.addEventListener('click', () => {
+      teamTeams.classList.add('active');
+      teamFfa?.classList.remove('active');
+      isTeams = true;
+    });
+
+    // Wire sliders
+    function setupSlider(id: string) {
+      const slider = document.getElementById(id) as HTMLInputElement;
+      const display = document.getElementById(`${id}_val`);
+      if (slider && display) {
+        slider.addEventListener('input', () => {
+          display.innerText = slider.value;
+        });
+      }
+    }
+    setupSlider('max_players');
+    setupSlider('bot_count');
+    setupSlider('start_troops');
+
+    // Fetch and populate maps
+    async function loadCatalog() {
+      try {
+        const res = await fetch('/maps/catalog.json');
+        if (!res.ok) throw new Error('Failed to load map catalog');
+        const maps = await res.json();
+        
+        const loader = document.getElementById('loading-catalog');
+        const grid = document.getElementById('maps-grid');
+        
+        if (loader) loader.style.display = 'none';
+        if (grid) {
+          grid.style.display = 'grid';
+          maps.forEach((map: any, idx: number) => {
+            const card = document.createElement('div');
+            card.className = 'map-card';
+            card.dataset.key = map.key;
+            
+            // Fallback for missing thumbnail
+            const thumbUrl = map.thumbnail || '/maps/default_thumbnail.webp';
+            
+            card.innerHTML = `
+              <img src="${thumbUrl}" class="map-thumbnail" alt="${map.display_name}" onerror="this.src='https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp'" />
+              <div class="map-info">
+                <div class="map-name">${map.display_name}</div>
+                <div class="map-dimens">${map.width} × ${map.height} Tiles</div>
+              </div>
+            `;
+            
+            card.addEventListener('click', () => {
+              document.querySelectorAll('.map-card').forEach(c => c.classList.remove('selected'));
+              card.classList.add('selected');
+              selectedMapKey = map.key;
+            });
+            
+            grid.appendChild(card);
+            
+            // Select first by default
+            if (idx === 0) {
+              card.classList.add('selected');
+              selectedMapKey = map.key;
+            }
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        const loader = document.getElementById('loading-catalog');
+        if (loader) loader.innerHTML = `<span style="color: var(--danger)">❌ Error loading map catalog.</span>`;
+      }
+    }
+
+    loadCatalog();
+
+    // Host Action
+    document.getElementById('btn-create-lobby')?.addEventListener('click', () => {
+      // @ts-ignore
+      const max_players = parseInt(document.getElementById('max_players').value);
+      // @ts-ignore
+      const bot_count = parseInt(document.getElementById('bot_count').value);
+      // @ts-ignore
+      const start_troops = parseFloat(document.getElementById('start_troops').value);
+      // @ts-ignore
+      const password = (document.getElementById('password') as HTMLInputElement)?.value.trim() || undefined;
+
+      const nickname = localStorage.getItem('sow_nickname') || 'Player';
+      const clan_tag = localStorage.getItem('sow_clan_tag') || '';
+      const leader = localStorage.getItem('sow_leader_id') || 'Caesar';
+      
+      const LEADERS = [
+        { id: "Caesar", civId: "Rome" },
+        { id: "Cleopatra", civId: "Egypt" },
+        { id: "Ragnar", civId: "Vikings" },
+        { id: "SunTzu", civId: "China" },
+        { id: "Alexander", civId: "Macedon" },
+        { id: "GenghisKhan", civId: "Mongols" },
+        { id: "RichardTheLionheart", civId: "Angevin" },
+        { id: "Vercingetorix", civId: "Gallic" },
+        { id: "Boudica", civId: "Iceni" },
+        { id: "LadySixSky", civId: "Maya" },
+        { id: "Leonidas", civId: "Sparta" },
+        { id: "Napoleon", civId: "France" }
+      ];
+      const leaderObj = LEADERS.find(l => l.id === leader) || LEADERS[0];
+
+      const action = {
+        type: 'host_custom',
+        player: {
+          name: nickname,
+          clan_tag: clan_tag,
+          civilization: leaderObj.civId,
+          leader: leaderObj.id
+        },
+        password: password,
+        visibility: isPrivate ? 'private' : 'public',
+        config: {
+          map_name: selectedMapKey,
+          max_players: max_players,
+          bot_count: bot_count,
+          start_troops: start_troops,
+          is_teams: isTeams
+        }
+      };
+
+      localStorage.setItem('SOW_BOOT_ACTION', JSON.stringify(action));
+      window.location.href = '/#play';
+    });
+  </script>
+</ShellLayout>

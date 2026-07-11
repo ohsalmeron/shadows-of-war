@@ -206,11 +206,30 @@
                 window.SOW_PORTAL = window.SOW_PORTAL || "site";
             }
         })();
+
+        window.SOW_onMatchEnd = function(statsJson) {
+            console.log("Match ended:", statsJson);
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage('SOW_onMatchEnd', '*');
+            } else {
+                window.location.href = "../";
+            }
+        };
+        window.SOW_portalClearBootAction = function() {
+            localStorage.removeItem('SOW_BOOT_ACTION');
+        };
     </script>
     <script src="./sdk/store_portals.js"></script>
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="module">
         async function run() {
+            var action = localStorage.getItem('SOW_BOOT_ACTION');
+            if (!action) {
+                console.log("No boot action found, returning to main site.");
+                window.location.href = "../";
+                return;
+            }
+
             var isPortal = window.SOW_RUNTIME && window.SOW_RUNTIME.portal_embed === true
                 || window.SOW_isPortalEmbed === true;
 

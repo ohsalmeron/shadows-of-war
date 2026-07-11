@@ -190,9 +190,141 @@ impl SowApp {
         };
 
         if matches!(phase, sow_core::game::GamePhase::Spawning { .. }) {
+            let idx = (row * self.sim.map_w as i32 + col) as usize;
+            let terrain_byte = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.terrain[idx])
+                .unwrap_or(0);
+            let is_land = (terrain_byte & 0x80) != 0;
+
+            if !is_land {
+                let wx = col as f32 + 0.5;
+                let wy = row as f32 + 0.5;
+                self.ui.click_markers.push(crate::app::ClickMarker {
+                    world_x: wx,
+                    world_y: wy,
+                    start_time: web_time::Instant::now(),
+                });
+
+                let messages = [
+                    "Splat! That's water! 🌊",
+                    "Do you have gills? 🐠",
+                    "Boats are for later! 🚢",
+                    "Cannot build Atlantis yet! 🏛️",
+                    "Water deployment failed! 💧",
+                    "Too wet! ☔",
+                    "Glug glug... ⚓",
+                ];
+                let click_seed = (x + y) as usize;
+                let msg = messages[click_seed % messages.len()];
+
+                let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                let offset_mouse_y = y as f32 - 60.0;
+                let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
+
+                self.ui.floating_notices.push(crate::app::FloatingNotice {
+                    text: msg.to_string(),
+                    world_x,
+                    world_y,
+                    start_time: web_time::Instant::now(),
+                    duration: web_time::Duration::from_millis(1500),
+                    color: egui::Color32::from_rgb(96, 165, 250), // soft blue
+                });
+                return;
+            }
+
+            let owner = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.owners[idx])
+                .unwrap_or(0);
+
+            let mut target_col = col;
+            let mut target_row = row;
+
+            if owner != 0 {
+                let mut best_tile = None;
+                let mut best_dist = i32::MAX;
+                let search_radius = 5;
+
+                for dy in -search_radius..=search_radius {
+                    for dx in -search_radius..=search_radius {
+                        let tx = col + dx;
+                        let ty = row + dy;
+                        if tx >= 0 && tx < self.sim.map_w as i32 && ty >= 0 && ty < self.sim.map_h as i32 {
+                            let dist = sow_core::building::hex_distance(col, row, tx, ty);
+                            if dist <= search_radius {
+                                let n_idx = (ty * self.sim.map_w as i32 + tx) as usize;
+                                let n_owner = self
+                                    .gfx
+                                    .map_renderer
+                                    .as_ref()
+                                    .map(|mr| mr.owners[n_idx])
+                                    .unwrap_or(0);
+                                let n_terrain = self
+                                    .gfx
+                                    .map_renderer
+                                    .as_ref()
+                                    .map(|mr| mr.terrain[n_idx])
+                                    .unwrap_or(0);
+                                let n_is_land = (n_terrain & 0x80) != 0;
+
+                                if n_owner == 0 && n_is_land {
+                                    if dist < best_dist {
+                                        best_dist = dist;
+                                        best_tile = Some((tx, ty));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some((bx, by)) = best_tile {
+                    target_col = bx;
+                    target_row = by;
+                } else {
+                    let messages = [
+                        "Hey! Too close to another player! 🛡️",
+                        "Respect boundaries! 🤝",
+                        "Get your own space! 🏕️",
+                        "Social distancing! ↔️",
+                        "Spawning blocked! 🛑",
+                        "Private property! 🚫",
+                    ];
+                    let click_seed = (x + y) as usize;
+                    let msg = messages[click_seed % messages.len()];
+
+                    let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+                    let offset_mouse_y = y as f32 - 60.0;
+                    let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
+
+                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                        text: msg.to_string(),
+                        world_x,
+                        world_y,
+                        start_time: web_time::Instant::now(),
+                        duration: web_time::Duration::from_millis(1500),
+                        color: egui::Color32::from_rgb(248, 113, 113), // soft red
+                    });
+
+                    let wx = col as f32 + 0.5;
+                    let wy = row as f32 + 0.5;
+                    self.ui.click_markers.push(crate::app::ClickMarker {
+                        world_x: wx,
+                        world_y: wy,
+                        start_time: web_time::Instant::now(),
+                    });
+                    return;
+                }
+            }
+
             let intent = sow_core::protocol::GameplayIntent::Spawn {
-                x: col as u32,
-                y: row as u32,
+                x: target_col as u32,
+                y: target_row as u32,
             };
             self.send_intent(intent);
         } else if let Some(nuke_kind) = self.ui.app.hud_state.selected_nuke_kind {

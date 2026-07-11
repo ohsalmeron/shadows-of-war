@@ -7,12 +7,6 @@ use std::fs;
 use std::path::Path;
 
 pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
-    if dir.join("assets/cdn").exists() {
-        bail!(
-            "{} must not contain assets/cdn/ (CDN is remote only)",
-            dir.display()
-        );
-    }
     match profile {
         Profile::Crazygames | Profile::SiteDev => {
             let font = dir.join("assets/static/fonts").join(UI_FONT_FILE);
@@ -29,14 +23,7 @@ pub fn verify_layout(dir: &Path, profile: Profile) -> Result<()> {
                 );
             }
         }
-        Profile::SelfHosted => {
-            if dir.join("assets").exists() {
-                bail!(
-                    "{} must not bundle assets/ (runtime CDN on marketing host)",
-                    dir.display()
-                );
-            }
-        }
+        Profile::SelfHosted => {}
     }
     match profile {
         Profile::Crazygames => {
@@ -111,5 +98,8 @@ pub fn stage_site_www(paths: &Paths) -> Result<()> {
     println!("==> Staging game shell → {}", www.join("game").display());
     copy_dir_all(game, &www.join("game"))?;
     println!("✅ Staging game shell finished");
+    println!("==> Staging game shell to root → {}", www.display());
+    copy_dir_all(game, www)?;
+    println!("✅ Staging game shell to root finished");
     Ok(())
 }

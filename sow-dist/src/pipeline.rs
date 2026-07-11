@@ -1,7 +1,7 @@
 use crate::cdn;
 use crate::config::DeployConfig;
 use crate::deploy::{
-    resolve_remote_maps, resolve_remote_workdir, verify_marketing_embed, verify_play_host,
+    verify_marketing_embed, verify_play_host,
     verify_sitemap,
 };
 use crate::gcp::{GcpConfig, SyncOpts};
@@ -44,10 +44,6 @@ impl ReleaseTarget {
 
     fn remote_ship(self) -> bool {
         !matches!(self, ReleaseTarget::Cg)
-    }
-
-    fn ship_marketing(self) -> bool {
-        matches!(self, ReleaseTarget::Prod)
     }
 
     fn server_unit(self) -> Option<&'static str> {
@@ -166,58 +162,45 @@ pub fn run_release(
     let server_ship = std::thread::scope(|s| -> Result<ServerShipResult> {
         let shell_sync = match target {
             ReleaseTarget::Prod => {
-                let gcp_a = gcp.clone();
                 let dist = paths.dist_play.clone();
-                let web_play = cfg.web_root_play();
+                let root_path = paths.root.clone();
                 Some(s.spawn(move || {
-                    gcp_a.sync_dir(
-                        &dist,
-                        &web_play,
-                        &SyncOpts {
-                            mirror: true,
-                            preserve_basenames: vec!["*.bin".into()],
-                            exclude_basenames: vec![],
-                        },
+                    println!("==> Syncing entire website, WASM, maps, and assets to Google Cloud Storage (GCS)…");
+                    crate::process::run(
+                        "gcloud",
+                        &[
+                            "storage", "rsync",
+                            dist.to_str().unwrap(),
+                            "gs://cdn.shadowsofwar.io",
+                            "--recursive",
+                            "--delete-unmatched",
+                        ],
+                        Some(&root_path),
                     )
                 }))
             }
             ReleaseTarget::Ptr => {
-                let gcp_a = gcp.clone();
                 let dist = paths.dist_ptr.clone();
-                let web_ptr = cfg.web_root_ptr();
+                let root_path = paths.root.clone();
                 Some(s.spawn(move || {
-                    gcp_a.sync_dir(
-                        &dist,
-                        &web_ptr,
-                        &SyncOpts {
-                            mirror: true,
-                            preserve_basenames: vec!["*.bin".into()],
-                            exclude_basenames: vec![],
-                        },
+                    println!("==> Syncing entire website, WASM, maps, and assets (PTR) to Google Cloud Storage (GCS)…");
+                    crate::process::run(
+                        "gcloud",
+                        &[
+                            "storage", "rsync",
+                            dist.to_str().unwrap(),
+                            "gs://ptr.shadowsofwar.io",
+                            "--recursive",
+                            "--delete-unmatched",
+                        ],
+                        Some(&root_path),
                     )
                 }))
             }
             ReleaseTarget::Cg => None,
         };
 
-        let site_sync = if target.ship_marketing() {
-            let gcp_b = gcp.clone();
-            let site = paths.site_web.clone();
-            let web_main = cfg.web_root_main();
-            Some(s.spawn(move || {
-                gcp_b.sync_dir(
-                    &site,
-                    &web_main,
-                    &SyncOpts {
-                        mirror: true,
-                        preserve_basenames: vec!["assets".into()],
-                        ..SyncOpts::default()
-                    },
-                )
-            }))
-        } else {
-            None
-        };
+        let site_sync: Option<std::thread::JoinHandle<Result<()>>> = None;
 
         let maps_dir = server_ctx.maps_dir.clone();
         let gcp_f = gcp.clone();
@@ -297,7 +280,7 @@ pub fn run_release(
 fn server_ctx(
     target: ReleaseTarget,
     cfg: &DeployConfig,
-    gcp: &GcpConfig,
+    _gcp: &GcpConfig,
     remote_home: &str,
 ) -> Result<ServerCtx> {
     let unit = target.server_unit().expect("server unit");
@@ -323,8 +306,8 @@ fn server_ctx(
     Ok(ServerCtx {
         unit,
         db_unit,
-        data_dir: resolve_remote_workdir(gcp, unit, env_workdir, &fallback_workdir),
-        maps_dir: resolve_remote_maps(gcp, unit, env_maps, &fallback_maps),
+        data_dir: std::env::var(env_workdir).unwrap_or(fallback_workdir),
+        maps_dir: std::env::var(env_maps).unwrap_or(fallback_maps),
         maps_url: cfg.maps_url(origin),
         ws_url: cfg.ws_url(origin),
         db_url: cfg.db_url(origin),

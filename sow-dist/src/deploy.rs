@@ -1,42 +1,5 @@
 use crate::config::DeployConfig;
-use crate::gcp::GcpConfig;
 use anyhow::{Context, Result};
-
-pub fn resolve_remote_maps(gcp: &GcpConfig, unit: &str, env_var: &str, fallback: &str) -> String {
-    if let Ok(p) = std::env::var(env_var) {
-        return p;
-    }
-    if let Ok(out) = gcp.remote_output(&format!(
-        "systemctl show {unit} -p Environment --value 2>/dev/null || true"
-    )) {
-        for token in out.split_whitespace() {
-            if let Some(v) = token.strip_prefix("SOW_MAPS_ROOT=") {
-                return v.to_string();
-            }
-        }
-    }
-    fallback.to_string()
-}
-
-pub fn resolve_remote_workdir(
-    gcp: &GcpConfig,
-    unit: &str,
-    env_var: &str,
-    fallback: &str,
-) -> String {
-    if let Ok(p) = std::env::var(env_var) {
-        return p;
-    }
-    if let Ok(out) = gcp.remote_output(&format!(
-        "systemctl show {unit} -p WorkingDirectory --value 2>/dev/null || true"
-    )) {
-        let wd = out.trim();
-        if !wd.is_empty() {
-            return wd.to_string();
-        }
-    }
-    fallback.to_string()
-}
 
 pub fn verify_play_host(play_url: &str) -> Result<()> {
     println!("==> Verifying {play_url}");
@@ -52,7 +15,7 @@ pub fn verify_play_host(play_url: &str) -> Result<()> {
     if !body.contains("sow_client") {
         anyhow::bail!("invalid game-manifest.json");
     }
-    let html = client.get(play_url).send().context("index")?.text()?;
+    let html = client.get(&format!("{play_url}play/")).send().context("index")?.text()?;
     if !html.contains("web-loader") || !html.contains("hideWebLoader") {
         anyhow::bail!("index.html missing loader");
     }
@@ -64,21 +27,18 @@ pub fn verify_play_host(play_url: &str) -> Result<()> {
 }
 
 pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
-    println!("==> Verifying marketing embed at {home_url}");
+    println!("==> Verifying main website at {home_url}");
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
     let html = client.get(home_url).send().context("index")?.text()?;
-    if !html.contains("sow-game-stage") {
-        anyhow::bail!("marketing index missing iframe embed");
-    }
-    if !html.contains("iframe") {
-        anyhow::bail!("marketing index missing iframe player");
+    if !html.contains("COMMANDER SETUP") && !html.contains("COMMANDER") {
+        anyhow::bail!("website index missing commander setup dashboard");
     }
     if html.contains("sow_client_") {
-        anyhow::bail!("marketing index must not reference WASM bundle before Play click");
+        anyhow::bail!("website index must not load WASM bundle directly on homepage");
     }
-    println!("✅ Marketing embed OK");
+    println!("✅ Main website OK");
     Ok(())
 }
 

@@ -35,7 +35,7 @@ impl MapEditorSession {
             attack_flash_target: 0.0,
             attack_flash_t: 0.0,
             alert_intensity: 0.0,
-            _pad0: 0.0,
+            fog_of_war: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
             alert_color: [0.0; 4],

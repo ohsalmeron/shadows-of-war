@@ -431,6 +431,14 @@ async fn main() {
                 }),
             )
             .route(
+                "/maps/catalog.json",
+                axum::routing::get(catalog_json_handler),
+            )
+            .route(
+                "/lobbies.json",
+                axum::routing::get(lobbies_json_handler),
+            )
+            .route(
                 "/admin/dashboard",
                 axum::routing::get(|| async {
                     axum::response::Html(include_str!("admin_dashboard.html"))
@@ -722,3 +730,25 @@ async fn admin_status(
         }
     }))
 }
+
+async fn lobbies_json_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> impl axum::response::IntoResponse {
+    let games = state.games.lock().await;
+    let lobbies_info = lobby::build_lobby_broadcast(&games);
+    axum::response::Response::builder()
+        .header("Content-Type", "application/json")
+        .header("Cache-Control", "no-store")
+        .body(axum::body::Body::from(serde_json::to_string(&lobbies_info).unwrap()))
+        .unwrap()
+}
+
+async fn catalog_json_handler() -> impl axum::response::IntoResponse {
+    let catalog = map_catalog::catalog_json();
+    axum::response::Response::builder()
+        .header("Content-Type", "application/json")
+        .header("Cache-Control", "public, max-age=60")
+        .body(axum::body::Body::from(serde_json::to_string(&catalog).unwrap()))
+        .unwrap()
+}
+

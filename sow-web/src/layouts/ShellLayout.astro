@@ -1,0 +1,215 @@
+---
+import '../styles/global.css';
+
+interface Props {
+	title?: string;
+  hideNav?: boolean;
+  activeNav?: string;
+}
+
+const { title = "Shadows of War", hideNav = false, activeNav = "" } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<link rel="icon" type="image/svg+xml" href="/sow.svg" />
+		<title>{title}</title>
+		<meta name="description" content="Shadows of War Web Shell UI" />
+		<style is:global>
+			:root {
+				--bg-base: var(--bg-color);
+				--bg-surface: var(--bg-card);
+				--bg-surface-hover: rgba(196, 162, 101, 0.05);
+				--border-muted: var(--border-color);
+				--border-active: var(--accent-color);
+				--text-muted: var(--text-secondary);
+				--primary: var(--accent-color);
+				--primary-glow: var(--border-glow);
+				--accent: #10b981;
+				--accent-glow: rgba(16, 185, 129, 0.15);
+				--danger: var(--accent-red);
+				--danger-glow: var(--accent-red-glow);
+			}
+
+			/* Glassmorphism panel styling */
+			.glass-panel {
+				background: var(--bg-surface);
+				backdrop-filter: blur(12px);
+				border: 1px solid var(--border-muted);
+				border-radius: 12px;
+				padding: 24px;
+				box-shadow: var(--card-shadow);
+			}
+
+			/* Premium Button */
+			.btn-premium {
+				position: relative;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				padding: 12px 24px;
+				font-family: var(--font-display);
+				font-weight: 600;
+				font-size: 14px;
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				color: var(--text-primary);
+				background: linear-gradient(135deg, var(--accent-glow), var(--accent-color));
+				border: none;
+				border-radius: 8px;
+				cursor: pointer;
+				transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+				box-shadow: var(--glow-shadow);
+				text-decoration: none;
+			}
+			.btn-premium:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 0 25px rgba(196, 162, 101, 0.4);
+				background: linear-gradient(135deg, var(--accent-color), #fff);
+				color: #000;
+			}
+			.btn-premium:active {
+				transform: translateY(0);
+			}
+
+			.btn-secondary {
+				background: rgba(28, 28, 56, 0.5);
+				border: 1px solid var(--border-muted);
+				box-shadow: none;
+			}
+			.btn-secondary:hover {
+				background: rgba(28, 28, 56, 0.8);
+				border-color: var(--text-muted);
+				box-shadow: none;
+				color: #fff;
+			}
+
+			/* Input box styling */
+			.input-premium {
+				width: 100%;
+				padding: 12px 16px;
+				background: rgba(3, 3, 7, 0.6);
+				border: 1px solid var(--border-muted);
+				border-radius: 8px;
+				color: var(--text-primary);
+				font-family: var(--font-body);
+				font-size: 15px;
+				transition: all 0.3s ease;
+			}
+			.input-premium:focus {
+				outline: none;
+				border-color: var(--primary);
+				box-shadow: 0 0 10px var(--primary-glow);
+			}
+		</style>
+	</head>
+	<body>
+		{!hideNav && (
+			<header class="site-header">
+				<a href="/" class="brand">
+					<svg viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px; vertical-align: middle; margin-right: 8px;">
+						<path d="M50 5 L90 25 L90 75 L50 95 L10 75 L10 25 Z" fill="none" stroke="currentColor" stroke-width="8"/>
+						<path d="M50 15 L80 30 L80 70 L50 85 L20 70 L20 30 Z" fill="currentColor" opacity="0.3"/>
+						<circle cx="50" cy="50" r="12" fill="currentColor"/>
+					</svg>
+					<span>Shadows of War</span>
+				</a>
+				<nav>
+					<a href="/lobbies" class="nav-link" data-i18n="main_menu.game_browser_title">Play Online</a>
+					<a href="/host" class="nav-link" data-i18n="main_menu.create_lobby_btn">Host Game</a>
+					<a href="/settings" class="nav-link" data-i18n="main_menu.settings">Settings</a>
+					<a href="/wiki" class={activeNav === 'wiki' ? 'active' : ''}>Wiki</a>
+				</nav>
+			</header>
+		)}
+		<main class="site-main">
+			<slot />
+		</main>
+		{!hideNav && (
+			<footer class="site-footer">
+				<div class="site-footer__left">
+					&copy; Shadows of War &bull; Based on <a href="https://openfront.io" target="_blank" rel="noopener">OpenFront</a> (AGPL-3.0)
+				</div>
+				<div class="site-footer__right">
+					<a href="/terms">Terms</a>
+					<span class="footer-dot">&bull;</span>
+					<a href="/privacy">Privacy</a>
+					<span class="footer-dot">&bull;</span>
+					<a href="https://discord.gg/eauHRf7zP" target="_blank" rel="noopener">Discord</a>
+					<span class="footer-dot">&bull;</span>
+					<a href="https://github.com/ohsalmeron/shadows-of-war" target="_blank" rel="noopener">GitHub</a>
+				</div>
+			</footer>
+		)}
+		<script>
+			// Listen to navigation links and highlight active
+			const path = window.location.pathname;
+			document.querySelectorAll('.nav-link').forEach(link => {
+				if (link.getAttribute('href') === path) {
+					// @ts-ignore
+					link.style.color = '#fff';
+					// @ts-ignore
+					link.style.textShadow = '0 0 8px rgba(255,255,255,0.5)';
+				}
+			});
+
+			// Centralized Localization Loader
+			async function loadTranslations() {
+				let settings = { language: 'English' };
+				try {
+					const stored = localStorage.getItem('SOW_SETTINGS_JSON');
+					if (stored) {
+						settings = { ...settings, ...JSON.parse(stored) };
+					}
+				} catch (e) {}
+
+				const langCodeMap = {
+					'English': 'en',
+					'Spanish': 'es',
+					'French': 'fr',
+					'German': 'de'
+				};
+				// @ts-ignore
+				const langCode = langCodeMap[settings.language] || 'en';
+
+				const isStaged = window.location.pathname.startsWith('/game');
+				const pathDepth = window.location.pathname.split('/').filter(Boolean).length;
+				const depth = isStaged ? pathDepth - 1 : pathDepth;
+				const prefix = '../'.repeat(depth);
+				const localesUrl = prefix + 'locales/' + langCode + '.json';
+
+				try {
+					const res = await fetch(localesUrl);
+					if (!res.ok) throw new Error('Locales failed');
+					const strings = await res.json();
+					// @ts-ignore
+					window.SOW_LOCALES = strings;
+					
+					// Apply translations to elements with data-i18n attribute
+					document.querySelectorAll('[data-i18n]').forEach(el => {
+						const path = el.getAttribute('data-i18n');
+						if (!path) return;
+						const parts = path.split('.');
+						let val = strings;
+						for (const part of parts) {
+							val = val ? val[part] : null;
+						}
+						if (val && typeof val === 'string') {
+							// Check if uppercase is desired
+							const isUpper = el.tagName === 'BUTTON' || el.classList.contains('section-title') || el.classList.contains('nav-link') || el.classList.contains('btn-premium');
+							// @ts-ignore
+							el.innerText = isUpper ? val.toUpperCase() : val;
+						}
+					});
+				} catch (e) {
+					console.warn('Failed to load translations:', e);
+				}
+			}
+
+			loadTranslations();
+		</script>
+	</body>
+</html>

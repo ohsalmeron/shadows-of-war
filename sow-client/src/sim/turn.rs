@@ -62,6 +62,28 @@ impl SowApp {
         }
 
         self.sim.current_snapshot = Some(snap);
+
+        // Recompute Fog of War visibility
+        if let Some(ref snap_ref) = self.sim.current_snapshot {
+            let owners = self.gfx.map_renderer.as_ref().map(|mr| mr.owners.as_slice()).unwrap_or(&[]);
+            let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
+            self.sim.fog_explored.blocks.resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
+            self.sim.fog_visible.blocks.resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
+            let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+            crate::sim::visibility::compute_visibility(
+                self.sim.map_w,
+                self.sim.map_h,
+                my_id,
+                owners,
+                snap_ref,
+                terrain,
+                &mut self.sim.fog_explored,
+                &mut self.sim.fog_visible,
+                dev.fog_of_war,
+            );
+            self.sim.force_fog_upload = true;
+        }
+
         self.time.interp.stamp_applied(web_time::Instant::now());
     }
 }

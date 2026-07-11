@@ -75,10 +75,25 @@ impl SowApp {
         let mut visible_players = Vec::with_capacity(player_count);
         let dt = self.ui.raw_input.predicted_dt;
         let smooth_factor = 1.0 - (-10.0 * dt).exp();
+        let my_id = self.sim.my_player_id.unwrap_or(0);
         if let Some(snap) = &self.sim.current_snapshot {
             for player in &snap.players {
                 if player.tile_count == 0 || !player.alive {
                     continue;
+                }
+
+                let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+                if dev.fog_of_war && player.id != my_id {
+                    let col = player.centroid_x.floor() as i32;
+                    let row = player.centroid_y.floor() as i32;
+                    if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                        let t_idx = (row * self.sim.map_w as i32 + col) as u32;
+                        if !self.sim.fog_explored.contains(t_idx) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
                 }
 
                 let target_cx = player.centroid_x + 0.5;

@@ -74,6 +74,10 @@ impl SowApp {
         self.ui.endgame_cache = None;
         self.reset_progress_session();
 
+        if crate::store_portals::web_shell_mode() {
+            crate::store_portals::emit_match_end("{}");
+        }
+
         if was_playing
             && self.progress_account_id.is_some()
             && crate::store_portals::should_fetch_cloud_profile()

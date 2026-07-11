@@ -61,32 +61,96 @@ fn log_player_stats(
         .and_then(|()| con.expire(&key, 3600));
 }
 
-fn trigger_match_finalize(match_id: u64) {
+fn trigger_match_finalize(
+    match_id: u64,
+    lobby_json: String,
+    match_history: Arc<Mutex<Vec<Turn>>>,
+) {
     tokio::spawn(async move {
+        let history = match_history.lock().await.clone();
+        let replay_bytes = match bincode::serialize(&history) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!("Failed to serialize match history for {match_id}: {e}");
+                Vec::new()
+            }
+        };
+
         let db_url =
             std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
         let secret = std::env::var("SOW_DB_SECRET")
             .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
         let url = format!("{}/internal/match-finalize", db_url.trim_end_matches('/'));
-        let payload = serde_json::json!({ "match_id": match_id.to_string() });
-        match reqwest::Client::new()
-            .post(&url)
-            .header("Authorization", format!("Bearer {secret}"))
-            .json(&payload)
-            .send()
-            .await
-        {
-            Ok(res) if res.status().is_success() => {
-                info!("Match {match_id} finalized via sow-database");
+
+        // ponytail: Raw replay bytes are passed directly to avoid any heavy relay processing
+        let payload = serde_json::json!({
+            "match_id": match_id.to_string(),
+            "lobby_json": Some(lobby_json.clone()),
+            "replay_data": Some(replay_bytes.clone()),
+        });
+
+        let mut success = false;
+        let client = reqwest::Client::new();
+
+        // ponytail: Resilient uploading with exponential backoff
+        for attempt in 1..=5 {
+            info!("Attempting raw upload/finalize to IONOS for match {match_id} (Attempt {attempt}/5)...");
+            match client
+                .post(&url)
+                .header("Authorization", format!("Bearer {secret}"))
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(res) if res.status().is_success() => {
+                    info!("Match {match_id} successfully finalized and archived on IONOS!");
+                    success = true;
+                    break;
+                }
+                Ok(res) => {
+                    warn!(
+                        "Attempt {attempt}/5: IONOS returned HTTP status {} for match {match_id}",
+                        res.status()
+                    );
+                }
+                Err(e) => {
+                    warn!("Attempt {attempt}/5: Network error uploading match {match_id}: {e}");
+                }
             }
-            Ok(res) => {
-                warn!(
-                    "Match finalize for {match_id} returned HTTP {}",
-                    res.status()
-                );
+
+            if attempt < 5 {
+                let delay = Duration::from_secs(2u64.pow(attempt as u32));
+                tokio::time::sleep(delay).await;
             }
-            Err(e) => {
-                error!("Failed to finalize match {match_id}: {e}");
+        }
+
+        if !success {
+            error!("[CRITICAL] Failed to upload match {match_id} to IONOS after 5 attempts.");
+            
+            // Try local Valkey dead-letter fallback
+            let url = std::env::var("SOW_VALKEY_URL")
+                .or_else(|_| std::env::var("SOW_REDIS_URL"))
+                .unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+            
+            let mut valkey_success = false;
+            if let Ok(client) = redis::Client::open(url) {
+                if let Ok(mut con) = client.get_connection() {
+                    let key = "sow:match_history:dead_letter";
+                    let fallback_payload = bincode::serialize(&(lobby_json.clone(), replay_bytes.clone())).unwrap_or_default();
+                    if let Ok(()) = con.lpush::<_, _, ()>(key, fallback_payload) {
+                        warn!("[FALLBACK] Saved raw replay backup in local Valkey queue under key '{}' for match {match_id}", key);
+                        valkey_success = true;
+                    }
+                }
+            }
+
+            if !valkey_success {
+                // Extreme backup: save directly to host disk so DevOps can recover it easily
+                let backup_dir = "/tmp/sow_crash_replays";
+                error!("[ALERT] Valkey local fallback also failed! Dumping raw payload directly to local disk at {} for match {match_id}", backup_dir);
+                let _ = std::fs::create_dir_all(backup_dir);
+                let _ = std::fs::write(format!("{}/{}.json", backup_dir, match_id), &lobby_json);
+                let _ = std::fs::write(format!("{}/{}.replay", backup_dir, match_id), &replay_bytes);
             }
         }
     });
@@ -116,6 +180,8 @@ struct MatchTracker {
     finalized: bool,
     tracked: bool,
     redis_con: Arc<std::sync::Mutex<Option<redis::Connection>>>,
+    lobby_json: String,
+    match_history: Arc<Mutex<Vec<Turn>>>,
 }
 
 impl MatchTracker {
@@ -153,7 +219,11 @@ impl MatchTracker {
                 }
             }
             self.finalized = true;
-            trigger_match_finalize(self.lobby_id);
+            trigger_match_finalize(
+                self.lobby_id,
+                self.lobby_json.clone(),
+                self.match_history.clone(),
+            );
         }
     }
 }
@@ -263,6 +333,8 @@ async fn main() {
         finalized: false,
         tracked,
         redis_con: Arc::clone(&redis_con),
+        lobby_json: lobby_json.clone(),
+        match_history: Arc::clone(&match_history),
     }));
     let match_tracker_tick = Arc::clone(&match_tracker);
 

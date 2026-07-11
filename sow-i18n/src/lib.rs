@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Language {
     English,
     Spanish,
@@ -24,7 +24,7 @@ impl Language {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MainMenuStrings {
     pub host_private_game: String,
     pub ranked_match: String,
@@ -119,7 +119,7 @@ pub struct MainMenuStrings {
     pub notice_banned_body: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsStrings {
     pub title: String,
     pub graphics_quality: String,
@@ -147,12 +147,12 @@ pub struct SettingsStrings {
     pub show_fps_ping_help: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadingScreenStrings {
     pub loading: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndgameStrings {
     pub victory_title: String,
     pub defeat_title: String,
@@ -172,7 +172,7 @@ pub struct EndgameStrings {
     pub defeat_flavors: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HudStrings {
     pub hover_settings: String,
     pub hover_exit: String,
@@ -250,7 +250,7 @@ pub struct HudStrings {
     pub confirm_exit_no: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialStrings {
     pub commander_title: String,
     pub step_welcome_title: String,
@@ -267,7 +267,7 @@ pub struct TutorialStrings {
 }
 
 #[cfg(feature = "map-editor")]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MapEditorStrings {
     pub title: String,
     pub btn_new: String,
@@ -340,7 +340,7 @@ pub struct MapEditorStrings {
     pub tooltip_export: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditsStrings {
     pub title: String,
     pub link: String,
@@ -355,13 +355,13 @@ pub struct CreditsStrings {
     pub notice: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LegalLink {
     pub label: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LegalSection {
     pub heading: String,
     #[serde(default)]
@@ -372,7 +372,7 @@ pub struct LegalSection {
     pub links: Vec<LegalLink>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LegalDocument {
     pub title: String,
     pub updated: String,
@@ -380,7 +380,7 @@ pub struct LegalDocument {
     pub sections: Vec<LegalSection>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LanguageStrings {
     pub main_menu: MainMenuStrings,
     pub settings: SettingsStrings,

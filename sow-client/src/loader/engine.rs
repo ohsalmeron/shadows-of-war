@@ -358,19 +358,11 @@ impl SowApp {
 
                         self.sim.map_w = start_msg.config.map_width;
                         self.sim.map_h = start_msg.config.map_height;
+                        self.sim.fog_explored = sow_core::bitset::DenseBitSet::new();
+                        self.sim.fog_visible = sow_core::bitset::DenseBitSet::new();
+                        self.sim.force_fog_upload = true;
+                        self.release_client_game_gpu();
                         if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                            if let Some(sp) = self.gfx.prev_sync_point.take() {
-                                let _ = render_ctx.context.wait_for(&sp, !0);
-                            }
-                            if let Some(mut mr) = self.gfx.map_renderer.take() {
-                                mr.destroy(render_ctx);
-                            }
-                            if let Some(mut mover) = self.gfx.mover_renderer.take() {
-                                mover.destroy(render_ctx);
-                            }
-                            if let Some(mut text) = self.gfx.text_renderer.take() {
-                                text.destroy(render_ctx);
-                            }
                             if let Some(ref s) = self.gfx.surface {
                                 let format = s.info().format;
                                 self.gfx.map_renderer =

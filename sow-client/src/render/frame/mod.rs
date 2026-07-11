@@ -191,11 +191,32 @@ impl SowApp {
                         .map(|s| s.dirty_tiles.as_slice())
                         .unwrap_or(&[]);
 
+                    thread_local! {
+                        static LAST_FOG_OF_WAR_TOGGLE: std::cell::Cell<Option<bool>> = std::cell::Cell::new(None);
+                    }
+                    let mut force_fog_upload = self.sim.force_fog_upload;
+                    self.sim.force_fog_upload = false;
+                    let toggle_changed = LAST_FOG_OF_WAR_TOGGLE.with(|cell| {
+                        let prev = cell.get();
+                        if prev != Some(dev.fog_of_war) {
+                            cell.set(Some(dev.fog_of_war));
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                    if toggle_changed {
+                        force_fog_upload = true;
+                    }
+
                     mr.update(
                         &mut render_ctx.command_encoder,
                         &render_ctx.context,
                         dirty,
                         conquest_duration,
+                        &self.sim.fog_explored,
+                        &self.sim.fog_visible,
+                        force_fog_upload,
                     );
                     for dt in dirty {
                         let i = dt.index as usize;
@@ -439,7 +460,7 @@ impl SowApp {
                         attack_flash_target,
                         attack_flash_t,
                         alert_intensity,
-                        _pad0: 0.0,
+                        fog_of_war: if dev.fog_of_war { 1.0 } else { 0.0 },
                         _pad1: 0.0,
                         _pad2: 0.0,
                         alert_color,
@@ -503,6 +524,9 @@ impl SowApp {
                                 self.sim.map_w,
                                 mover_r,
                                 pack,
+                                dev.fog_of_war,
+                                self.sim.my_player_id.unwrap_or(0),
+                                &self.sim.fog_visible,
                             );
                             let mover_globals = crate::render::gpu::MoverGlobals {
                                 camera_pos: [self.input.camera_x, self.input.camera_y],

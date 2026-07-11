@@ -59,15 +59,56 @@ pub fn build(
         }
     };
 
+    // Copy Astro website build to out_dir
+    let sow_web_dir = paths.root.join("sow-web");
+    let dist_shell = sow_web_dir.join("site");
+    if dist_shell.is_dir() {
+        copy_dir_all(&dist_shell, out_dir)?;
+    }
+    // Ensure CDN assets are included in the packaged build
+    let cdn_dest = out_dir.join("assets/cdn");
+    fs::create_dir_all(&cdn_dest)?;
+    if paths.assets_cdn.is_dir() {
+        copy_dir_all(&paths.assets_cdn, &cdn_dest)?;
+    }
+
+    // Ensure map files are included in the packaged build
+    let maps_dest = out_dir.join("maps");
+    fs::create_dir_all(&maps_dest)?;
+    if paths.assets_maps.is_dir() {
+        copy_dir_all(&paths.assets_maps, &maps_dest)?;
+    }
+
     wasm::bindgen(paths, out_dir, &bindgen_name)?;
     copy_shell_extras(paths, out_dir)?;
     build_index_html(
         paths, out_dir, version, &js_file, &wasm_file, &build_ts, profile, cfg,
     )?;
+    let play_index = out_dir.join("play/index.html");
     match profile {
-        Profile::Crazygames => inject_crazygames(out_dir.join("index.html"), cfg)?,
-        Profile::SiteDev => inject_site_embed(out_dir.join("index.html"), cfg)?,
+        Profile::Crazygames => inject_crazygames(play_index, cfg)?,
+        Profile::SiteDev => inject_site_embed(play_index, cfg)?,
         Profile::SelfHosted => {}
+    }
+
+    // Export i18n translation JSON strings for the web menu UI
+    let locales_dir = out_dir.join("locales");
+    fs::create_dir_all(&locales_dir)?;
+    for lang in &[
+        sow_i18n::Language::English,
+        sow_i18n::Language::Spanish,
+        sow_i18n::Language::French,
+        sow_i18n::Language::German,
+    ] {
+        let strings = sow_i18n::get(*lang);
+        let json = serde_json::to_string_pretty(strings)?;
+        let name = match lang {
+            sow_i18n::Language::English => "en",
+            sow_i18n::Language::Spanish => "es",
+            sow_i18n::Language::French => "fr",
+            sow_i18n::Language::German => "de",
+        };
+        fs::write(locales_dir.join(format!("{name}.json")), json)?;
     }
 
     let js_path = out_dir.join(&js_file);
@@ -90,7 +131,7 @@ pub fn build(
             let js_br = format!("{js_file}.br");
             let wasm_br = format!("{wasm_file}.br");
             patch_index_br(
-                out_dir.join("index.html"),
+                out_dir.join("play/index.html"),
                 &js_file,
                 &wasm_file,
                 &js_br,
@@ -193,11 +234,20 @@ fn build_index_html(
     let assets_ui = format!("{}/assets/cdn/ui/", cfg.site_url());
     let html = template
         .replace("__VERSION__", version)
+        .replace("./__JS_FILE__", "../__JS_FILE__")
+        .replace("./__WASM_FILE__", "../__WASM_FILE__")
         .replace("__JS_FILE__", js)
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", build_ts)
-        .replace("__ASSETS_UI_BASE__", &assets_ui);
-    let index = out_dir.join("index.html");
+        .replace("__ASSETS_UI_BASE__", &assets_ui)
+        .replace("window.SOW_BUILD_TS =", "window.SOW_WEB_SHELL_MODE = true;\n        window.SOW_BUILD_TS =")
+        .replace("href=\"./sow.svg\"", "href=\"../sow.svg\"")
+        .replace("href=\"./favicon.ico\"", "href=\"../favicon.ico\"")
+        .replace("src=\"./loader.js\"", "src=\"../loader.js\"");
+    let index = out_dir.join("play/index.html");
+    if let Some(parent) = index.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&index, &html)?;
     inline_loader(paths, &index)?;
     if matches!(profile, Profile::Crazygames) {
@@ -216,6 +266,12 @@ fn inline_loader(paths: &Paths, html_path: &Path) -> Result<()> {
     } else if html.contains(r#"<script src="./loader.js"></script>"#) {
         html = html.replacen(
             r#"<script src="./loader.js"></script>"#,
+            &format!("<script>\n{js}\n</script>"),
+            1,
+        );
+    } else if html.contains(r#"<script src="../loader.js"></script>"#) {
+        html = html.replacen(
+            r#"<script src="../loader.js"></script>"#,
             &format!("<script>\n{js}\n</script>"),
             1,
         );

@@ -17,5 +17,6 @@ impl SowApp {
         self.update_assets();
         self.update_loader();
         self.update_sim(now);
+        crate::web_shell::web_shell_poll(self);
     }
 }

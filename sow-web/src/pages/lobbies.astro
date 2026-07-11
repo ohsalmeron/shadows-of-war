@@ -1,0 +1,402 @@
+---
+import ShellLayout from '../layouts/ShellLayout.astro';
+---
+
+<ShellLayout title="Lobbies Browser — Shadows of War">
+  <div class="container">
+    <div class="glass-panel card browser-card">
+      <div class="browser-header">
+        <h2 class="section-title">ACTIVE WAR ROOMS</h2>
+        <div class="actions">
+          <button id="btn-refresh" class="btn-premium btn-secondary">🔄 REFRESH</button>
+          <a href="/host" class="btn-premium">➕ HOST CUSTOM</a>
+        </div>
+      </div>
+
+      <div class="loading-lobbies" id="loading-lobbies">
+        <div class="spinner"></div>
+        <span data-i18n="main_menu.waiting_for_lobby">Scanning grid for active war channels...</span>
+      </div>
+
+      <div class="empty-lobbies" id="empty-lobbies" style="display: none;">
+        <div class="empty-icon">🗺️</div>
+        <h3 data-i18n="main_menu.no_public_games">No active war rooms found</h3>
+        <p data-i18n="main_menu.no_public_games">Start a new channel by hosting a custom lobby.</p>
+      </div>
+
+      <div class="table-container" id="table-container" style="display: none;">
+        <table class="lobbies-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th data-i18n="main_menu.host_label">Host</th>
+              <th data-i18n="main_menu.map_selection">Map</th>
+              <th data-i18n="main_menu.game_mode_label">Mode</th>
+              <th data-i18n="main_menu.players_label">Players</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="lobbies-tbody">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Password Dialog Modal -->
+  <div class="modal-overlay" id="password-modal" style="display: none;">
+    <div class="glass-panel modal-card">
+      <h3 class="modal-title" data-i18n="main_menu.password_label">🔐 Enter Lobby Password</h3>
+      <div class="form-group">
+        <input type="password" id="lobby-password-input" class="input-premium" placeholder="Password" />
+        <span class="error-msg" id="password-error" style="display: none;">❌ Incorrect password</span>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-modal-cancel" class="btn-premium btn-secondary" data-i18n="main_menu.leave_lobby">CANCEL</button>
+        <button id="btn-modal-submit" class="btn-premium" data-i18n="main_menu.join_private_btn">JOIN ROOM</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    .browser-card {
+      border: 1px solid var(--border-muted);
+    }
+
+    .browser-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-muted);
+    }
+
+    .browser-header .section-title {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .browser-header .actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Table styles */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .lobbies-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    .lobbies-table th, .lobbies-table td {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-muted);
+    }
+
+    .lobbies-table th {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .lobbies-table td {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .lobbies-table tbody tr:hover {
+      background: rgba(28, 28, 56, 0.2);
+    }
+
+    .badge-lobby {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .badge-ffa {
+      background: var(--danger-glow);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .badge-teams {
+      background: var(--primary-glow);
+      color: var(--primary);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge-status {
+      font-weight: 600;
+    }
+
+    .status-open {
+      color: var(--accent);
+    }
+
+    .status-countdown {
+      color: var(--primary);
+    }
+
+    /* Empty and Loading states */
+    .loading-lobbies, .empty-lobbies {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 250px;
+      gap: 16px;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(59, 130, 246, 0.1);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .empty-icon {
+      font-size: 40px;
+    }
+
+    .empty-lobbies h3 {
+      font-family: 'Space Grotesk', sans-serif;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    /* Modal dialog */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 400px;
+      border: 1px solid var(--border-muted);
+      animation: modalFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .modal-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .error-msg {
+      display: block;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--danger);
+    }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+
+  <script>
+    let activeTargetLobbyId: string | null = null;
+    let pollerInterval: any = null;
+
+    const lobbiesTable = document.getElementById('table-container');
+    const loadingEl = document.getElementById('loading-lobbies');
+    const emptyEl = document.getElementById('empty-lobbies');
+    const tbody = document.getElementById('lobbies-tbody');
+
+    const passModal = document.getElementById('password-modal');
+    const passInput = document.getElementById('lobby-password-input') as HTMLInputElement;
+    const passError = document.getElementById('password-error');
+
+    async function fetchLobbies() {
+      try {
+        const res = await fetch('/lobbies.json');
+        if (!res.ok) throw new Error('Failed to fetch lobbies');
+        const lobbies = await res.json();
+        
+        if (loadingEl) loadingEl.style.display = 'none';
+        
+        if (!lobbies || lobbies.length === 0) {
+          if (lobbiesTable) lobbiesTable.style.display = 'none';
+          if (emptyEl) emptyEl.style.display = 'flex';
+          return;
+        }
+
+        if (emptyEl) emptyEl.style.display = 'none';
+        if (lobbiesTable) lobbiesTable.style.display = 'block';
+
+        if (tbody) {
+          tbody.innerHTML = '';
+          lobbies.forEach((lobby: any) => {
+            const tr = document.createElement('tr');
+            
+            const isTeams = lobby.game_mode === 'Teams';
+            const modeBadge = isTeams 
+              ? `<span class="badge-lobby badge-teams">🛡️ Teams</span>`
+              : `<span class="badge-lobby badge-ffa">⚔️ FFA</span>`;
+              
+            const statusLabel = lobby.is_counting_down
+              ? `<span class="badge-status status-countdown">⏳ STARTING (${Math.round(lobby.timer_secs)}s)</span>`
+              : `<span class="badge-status status-open">🟢 OPEN</span>`;
+              
+            const keyLock = lobby.has_password ? ' 🔒' : '';
+            
+            tr.innerHTML = `
+              <td>#${lobby.id}</td>
+              <td style="font-weight: 600;">${lobby.host_name || 'Anonymous'}</td>
+              <td>${lobby.map_name}</td>
+              <td>${modeBadge}</td>
+              <td><strong>${lobby.num_players}</strong> / ${lobby.max_players}</td>
+              <td>${statusLabel}</td>
+              <td>
+                <button class="btn-premium btn-secondary btn-join-lobby" data-id="${lobby.id}" data-password="${lobby.has_password}">
+                  JOIN${keyLock}
+                </button>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+
+          // Wire join buttons
+          document.querySelectorAll('.btn-join-lobby').forEach(btn => {
+            btn.addEventListener('click', () => {
+              // @ts-ignore
+              const id = btn.dataset.id;
+              // @ts-ignore
+              const needsPassword = btn.dataset.password === 'true';
+              
+              if (needsPassword) {
+                activeTargetLobbyId = id;
+                if (passModal) passModal.style.display = 'flex';
+                if (passInput) {
+                  passInput.value = '';
+                  passInput.focus();
+                }
+                if (passError) passError.style.display = 'none';
+              } else {
+                triggerJoin(id);
+              }
+            });
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        if (loadingEl) loadingEl.innerHTML = `<span style="color: var(--danger)">❌ Error scanning lobbies grid.</span>`;
+      }
+    }
+
+    function triggerJoin(lobbyId: string, password?: string) {
+      const nickname = localStorage.getItem('sow_nickname') || 'Player';
+      const clan_tag = localStorage.getItem('sow_clan_tag') || '';
+      const leader = localStorage.getItem('sow_leader_id') || 'Caesar';
+      
+      const LEADERS = [
+        { id: "Caesar", civId: "Rome" },
+        { id: "Cleopatra", civId: "Egypt" },
+        { id: "Ragnar", civId: "Vikings" },
+        { id: "SunTzu", civId: "China" },
+        { id: "Alexander", civId: "Macedon" },
+        { id: "GenghisKhan", civId: "Mongols" },
+        { id: "RichardTheLionheart", civId: "Angevin" },
+        { id: "Vercingetorix", civId: "Gallic" },
+        { id: "Boudica", civId: "Iceni" },
+        { id: "LadySixSky", civId: "Maya" },
+        { id: "Leonidas", civId: "Sparta" },
+        { id: "Napoleon", civId: "France" }
+      ];
+      const leaderObj = LEADERS.find(l => l.id === leader) || LEADERS[0];
+
+      const action = {
+        type: 'join_lobby',
+        player: {
+          name: nickname,
+          clan_tag: clan_tag,
+          civilization: leaderObj.civId,
+          leader: leaderObj.id
+        },
+        lobby_id: parseInt(lobbyId),
+        password: password
+      };
+
+      localStorage.setItem('SOW_BOOT_ACTION', JSON.stringify(action));
+      window.location.href = '/#play';
+    }
+
+    // Modal Action
+    document.getElementById('btn-modal-cancel')?.addEventListener('click', () => {
+      if (passModal) passModal.style.display = 'none';
+      activeTargetLobbyId = null;
+    });
+
+    document.getElementById('btn-modal-submit')?.addEventListener('click', () => {
+      if (activeTargetLobbyId && passInput) {
+        const pass = passInput.value.trim();
+        if (!pass) {
+          if (passError) {
+            passError.innerText = '❌ Password cannot be empty';
+            passError.style.display = 'block';
+          }
+          return;
+        }
+        triggerJoin(activeTargetLobbyId, pass);
+      }
+    });
+
+    // Refresh Action
+    document.getElementById('btn-refresh')?.addEventListener('click', () => {
+      if (loadingEl) loadingEl.style.display = 'flex';
+      if (lobbiesTable) lobbiesTable.style.display = 'none';
+      if (emptyEl) emptyEl.style.display = 'none';
+      fetchLobbies();
+    });
+
+    // Initial load and poller
+    fetchLobbies();
+    pollerInterval = setInterval(fetchLobbies, 4000);
+
+    // Clean up poller when leaving page
+    window.addEventListener('beforeunload', () => {
+      if (pollerInterval) clearInterval(pollerInterval);
+    });
+  </script>
+</ShellLayout>

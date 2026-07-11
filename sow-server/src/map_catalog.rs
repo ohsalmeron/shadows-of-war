@@ -74,3 +74,26 @@ pub fn maps_root() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(sow_core::maps::SERVER_MAPS_ROOT))
 }
+
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct MapCatalogJsonEntry {
+    pub key: String,
+    pub display_name: String,
+    pub width: u32,
+    pub height: u32,
+    pub thumbnail: String,
+}
+
+pub fn catalog_json() -> Vec<MapCatalogJsonEntry> {
+    entries()
+        .iter()
+        .map(|entry| MapCatalogJsonEntry {
+            key: entry.key.clone(),
+            display_name: entry.display_name.clone(),
+            width: entry.width,
+            height: entry.height,
+            thumbnail: format!("/maps/{}/thumbnail.webp", entry.key),
+        })
+        .collect()
+}
+

@@ -326,3 +326,5 @@ pub fn wasm_main() {
     run_game(event_loop);
 }
 pub mod sim;
+pub mod web_shell;
+

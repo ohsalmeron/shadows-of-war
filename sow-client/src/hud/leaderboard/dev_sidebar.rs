@@ -256,6 +256,7 @@ impl SowApp {
                             cfg.vfx_energy_flow = true;
                             cfg.vfx_heartbeat = true;
                             cfg.vfx_war_fog = true;
+                            cfg.fog_of_war = true;
                             cfg.vfx_fallout = true;
                             cfg.vfx_ambient_grade = true;
                             cfg.vfx_holo_grid = true;
@@ -283,6 +284,7 @@ impl SowApp {
                             cfg.vfx_energy_flow = false;
                             cfg.vfx_heartbeat = false;
                             cfg.vfx_war_fog = false;
+                            cfg.fog_of_war = false;
                             cfg.vfx_fallout = false;
                             cfg.vfx_ambient_grade = false;
                             cfg.vfx_holo_grid = false;
@@ -312,6 +314,7 @@ impl SowApp {
                     ui.checkbox(&mut cfg.vfx_energy_flow, "Contested shimmer");
                     ui.checkbox(&mut cfg.vfx_heartbeat, "Territory heartbeat");
                     ui.checkbox(&mut cfg.vfx_war_fog, "War fog / Frontier");
+                    ui.checkbox(&mut cfg.fog_of_war, "Fog of War");
                     ui.checkbox(&mut cfg.vfx_fallout, "Nuclear fallout");
                     ui.checkbox(&mut cfg.vfx_ambient_grade, "Ambient grading");
                     ui.checkbox(&mut cfg.vfx_holo_grid, "Holographic grid");

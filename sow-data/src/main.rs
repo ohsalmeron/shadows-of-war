@@ -35,6 +35,10 @@ struct MatchStartRequest {
 #[derive(Deserialize)]
 struct MatchFinalizeRequest {
     match_id: String,
+    #[serde(default)]
+    lobby_json: Option<String>,
+    #[serde(default)]
+    replay_data: Option<Vec<u8>>,
 }
 
 #[derive(Deserialize)]
@@ -317,6 +321,39 @@ async fn handle_match_finalize(
             }),
         )
             .into_response();
+    }
+
+    // ponytail: High-performance streaming of raw replay bytes directly to ZFS disk storage
+    if let Some(ref replay_bytes) = payload.replay_data {
+        let replay_dir = std::env::var("SOW_REPLAY_DIR").unwrap_or_else(|_| "replays".to_string());
+        let file_path = std::path::Path::new(&replay_dir).join(format!("{}.replay", payload.match_id));
+        
+        if let Some(parent) = file_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        
+        match std::fs::write(&file_path, replay_bytes) {
+            Ok(()) => {
+                info!("Successfully wrote raw replay for match {} directly to ZFS disk storage: {:?}", payload.match_id, file_path);
+            }
+            Err(e) => {
+                error!("Failed to write raw replay file for match {} to disk: {}", payload.match_id, e);
+            }
+        }
+    }
+
+    // ponytail: Write lobby metadata JSON if provided alongside the replay
+    if let Some(ref lobby_json) = payload.lobby_json {
+        let replay_dir = std::env::var("SOW_REPLAY_DIR").unwrap_or_else(|_| "replays".to_string());
+        let meta_path = std::path::Path::new(&replay_dir).join(format!("{}.json", payload.match_id));
+        
+        if let Some(parent) = meta_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        
+        if let Err(e) = std::fs::write(&meta_path, lobby_json) {
+            error!("Failed to write metadata JSON file for match {} to disk: {}", payload.match_id, e);
+        }
     }
 
     match state.db.finalize_match(&payload.match_id).await {

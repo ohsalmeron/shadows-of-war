@@ -22,7 +22,7 @@ use paths::Paths;
 #[command(name = "sow", about = "Shadows of War — build dist/ and deploy")]
 struct Cli {
     #[command(subcommand)]
-    cmd: Command,
+    cmd: Option<Command>,
 }
 
 #[derive(Args)]
@@ -127,7 +127,13 @@ fn main() -> Result<()> {
     config::load_dotenv(&paths.root);
     let cli = parse_cli();
 
-    match cli.cmd {
+    let cmd = cli.cmd.unwrap_or(Command::Local {
+        opts: VersionOpts { version: false },
+        port: 8787,
+        build_only: false,
+    });
+
+    match cmd {
         Command::Crazygames { opts } => cmd_crazygames(&paths, opts.version),
         Command::Prod { opts } => cmd_prod(&paths, opts.version),
         Command::Ptr { opts } => cmd_ptr(&paths, opts.version),

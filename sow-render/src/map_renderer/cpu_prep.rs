@@ -37,7 +37,7 @@ pub struct MapGlobals {
     pub attack_flash_t: f32,
     /// Viewport alert vignette intensity: 0.0 → 1.0.
     pub alert_intensity: f32,
-    pub _pad0: f32,
+    pub fog_of_war: f32,
     pub _pad1: f32,
     pub _pad2: f32,
     /// Viewport alert vignette color: [r, g, b, a].
@@ -142,10 +142,15 @@ pub(crate) fn fill_terrain_buffer(
             let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
             let packed_dy = (((dy + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
 
-            let seed = (x as u64)
+            let seed = (x as u32)
                 .wrapping_mul(374761393)
-                .wrapping_add((y as u64).wrapping_mul(668265263));
-            let hash = (seed ^ (seed >> 13)).wrapping_mul(1274126177);
+                .wrapping_add((y as u32).wrapping_mul(668265263));
+            let mut hash = seed;
+            hash ^= hash >> 16;
+            hash = hash.wrapping_mul(0x85ebca6b);
+            hash ^= hash >> 13;
+            hash = hash.wrapping_mul(0xc2b2ae35);
+            hash ^= hash >> 16;
             let noise_byte = (hash & 0xFF) as u8;
 
             terrain_slice[dst] = terrain_byte;

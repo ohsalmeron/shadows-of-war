@@ -67,6 +67,29 @@ pub(crate) fn render(
 
         let mut rendered_buildings =
             cluster::collect_rendered_buildings(snap, sim.map_w, zoom_scaled, far_zoom_threshold);
+
+        let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
+        if dev.fog_of_war {
+            let my_id = sim.my_player_id.unwrap_or(0);
+            rendered_buildings.retain(|b| {
+                if b.owner_id == my_id {
+                    return true;
+                }
+                if let Some(t_idx) = b.tile_idx {
+                    sim.fog_visible.contains(t_idx)
+                } else {
+                    let col = (b.bx).floor() as i32;
+                    let row = (b.by).floor() as i32;
+                    if col >= 0 && row >= 0 && col < sim.map_w as i32 && row < sim.map_h as i32 {
+                        let t_idx = (row * sim.map_w as i32 + col) as u32;
+                        sim.fog_visible.contains(t_idx)
+                    } else {
+                        false
+                    }
+                }
+            });
+        }
+
         rendered_buildings.sort_by(|a, b| {
             a.by.partial_cmp(&b.by)
                 .unwrap_or(std::cmp::Ordering::Equal)

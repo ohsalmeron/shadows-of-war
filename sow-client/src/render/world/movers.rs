@@ -142,7 +142,14 @@ impl MoverScene {
         }
     }
 
-    pub fn on_snapshot(&mut self, snap: &SimSnapshot, map_w: u32) {
+    pub fn on_snapshot(
+        &mut self,
+        snap: &SimSnapshot,
+        map_w: u32,
+        fog_of_war_enabled: bool,
+        my_id: u16,
+        fog_visible: &sow_core::bitset::DenseBitSet,
+    ) {
         if snap.tick == self.last_snap_tick {
             return;
         }
@@ -153,16 +160,26 @@ impl MoverScene {
         let mut alive: HashSet<u64> = HashSet::new();
 
         for fleet in &snap.fleets {
-            alive.insert(fleet.id);
-            self.ingest_fleet(fleet, map_w, &snap.players);
+            let is_visible = !fog_of_war_enabled
+                || fleet.owner_id == my_id
+                || fog_visible.contains(fleet.current_tile);
+            if is_visible {
+                alive.insert(fleet.id);
+                self.ingest_fleet(fleet, map_w, &snap.players);
+            }
         }
         for proj in &snap.projectiles {
             if proj.path.is_empty() || matches!(proj.kind, ProjectileKind::Shell) {
                 continue;
             }
-            let key = proj.id | (1u64 << 63);
-            alive.insert(key);
-            self.ingest_projectile(proj, map_w);
+            let is_visible = !fog_of_war_enabled
+                || fog_visible.contains(proj.src_tile)
+                || fog_visible.contains(proj.dst_tile);
+            if is_visible {
+                let key = proj.id | (1u64 << 63);
+                alive.insert(key);
+                self.ingest_projectile(proj, map_w);
+            }
         }
 
         let dead: Vec<u64> = self
@@ -578,8 +595,11 @@ pub fn update_and_pack(
     map_w: u32,
     renderer: &mut crate::render::gpu::MoverRenderer,
     params: MoverPackParams<'_>,
+    fog_of_war_enabled: bool,
+    my_id: u16,
+    fog_visible: &sow_core::bitset::DenseBitSet,
 ) {
-    scene.on_snapshot(snap, map_w);
+    scene.on_snapshot(snap, map_w, fog_of_war_enabled, my_id, fog_visible);
     scene.pack_gpu(&params, renderer);
 }
 

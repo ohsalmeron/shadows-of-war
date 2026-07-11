@@ -34,15 +34,8 @@ impl SowApp {
                     if self.ui.app.main_menu_state.is_waiting {
                         return;
                     }
-                    let join_msg = self.make_join_message(Some(id), false, None, None);
-                    self.ui.app.main_menu_state.pending_join_lobby_id = Some(id);
-                    if let Ok(json) = bincode::serialize(&join_msg) {
-                        if let Some(c) = self.net.client.as_ref() {
-                            c.send(json);
-                        }
-                    }
+                    self.request_join(Some(id), false, None, None);
                     self.ui.app.main_menu_state.show_join_browser = false;
-                    self.ui.app.main_menu_state.is_waiting = true;
                 }
                 UiAction::HostPrivateLobby => {
                     let join_msg = self.make_join_message(None, true, None, None);
@@ -70,14 +63,7 @@ impl SowApp {
                     is_private,
                     password,
                 } => {
-                    let join_msg = self.make_join_message(None, is_private, Some(config), password);
-                    if let Ok(json) = bincode::serialize(&join_msg) {
-                        if let Some(c) = self.net.client.as_ref() {
-                            c.send(json);
-                        }
-                    }
-                    self.ui.app.main_menu_state.is_waiting = true;
-                    self.ui.app.main_menu_state.is_lobby_host = true;
+                    self.request_join(None, is_private, Some(config), password);
                     self.ui.app.main_menu_state.show_custom_game = false;
                 }
                 UiAction::JoinWithCode => {
@@ -266,6 +252,42 @@ impl SowApp {
                     crate::store_portals::show_auth_prompt();
                 }
             }
+        }
+    }
+
+    pub(crate) fn request_join(
+        &mut self,
+        lobby_id: Option<u64>,
+        is_private: bool,
+        config: Option<Box<sow_core::game_config::GameConfig>>,
+        password: Option<String>,
+    ) {
+        if let Some(cfg) = config {
+            self.ui.app.main_menu_state.custom_game_config = cfg;
+        }
+        self.ui.app.main_menu_state.custom_game_is_private = is_private;
+        self.ui.app.main_menu_state.custom_game_password = password.clone().unwrap_or_default();
+        self.ui.app.main_menu_state.pending_join_lobby_id = lobby_id;
+        self.ui.app.main_menu_state.is_waiting = true;
+
+        if let Some(c) = self.net.client.as_ref() {
+            let config_opt = Some(self.ui.app.main_menu_state.custom_game_config.clone());
+            let join_msg = self.make_join_message(lobby_id, is_private, config_opt, password);
+            if let Ok(json) = bincode::serialize(&join_msg) {
+                c.send(json);
+            }
+        } else {
+            log::info!("No active connection, spawning lazy connection to {}", self.net.ws_url);
+            self.ui.app.main_menu_state.is_connecting = true;
+            let url = self.net.ws_url.clone();
+            #[cfg(target_arch = "wasm32")]
+            spawn_sow_client_connect(url, &self.net.connect_tx);
+            #[cfg(not(target_arch = "wasm32"))]
+            spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
+        }
+
+        if lobby_id.is_none() {
+            self.ui.app.main_menu_state.is_lobby_host = true;
         }
     }
 }

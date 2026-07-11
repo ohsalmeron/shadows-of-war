@@ -56,7 +56,8 @@ impl SowApp {
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
 
-                if !self.ui.egui_ctx.egui_wants_keyboard_input()
+                if !self.input.input_focused
+                    && !self.ui.egui_ctx.egui_wants_keyboard_input()
                     && self.ui.app.phase == ClientPhase::Playing
                 {
                     if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
@@ -87,6 +88,7 @@ impl SowApp {
                 }
 
                 if pressed
+                    && !self.input.input_focused
                     && !self.ui.egui_ctx.egui_wants_keyboard_input()
                     && self.ui.app.phase == ClientPhase::Playing
                     && self.ui.app.hud_state.sync_state.is_none()

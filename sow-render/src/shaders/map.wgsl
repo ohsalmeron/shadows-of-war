@@ -27,7 +27,7 @@ struct Globals {
     attack_flash_target: f32,
     attack_flash_t: f32,
     alert_intensity: f32,
-    _pad0: f32,
+    fog_of_war: f32,
     _pad1: f32,
     _pad2: f32,
     alert_color: vec4<f32>,
@@ -726,6 +726,12 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
             let line_alpha = line_intensity * 0.35;
             base_color = mix(base_color, overlay_color * 1.2, line_alpha);
         }
+    }
+
+    // ── Fog of War shading ──
+    if (globals.fog_of_war > 0.0) {
+        let vision_fade = f32((owner_packed >> 26u) & 0x3Fu) / 63.0;
+        base_color = base_color * vision_fade;
     }
 
     // ── Unified Viewport Alert Vignette ──

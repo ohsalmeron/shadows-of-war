@@ -28,3 +28,5 @@ tower-http = { workspace = true }
 libc = "0.2"
 wasm-opt = { workspace = true }
 tempfile = { workspace = true }
+sow-i18n = { workspace = true }
+

@@ -76,6 +76,9 @@ pub struct SimState {
     pub tile_upgrades: Vec<u32>,
     pub config: sow_core::game_config::GameConfig,
     pub paused: bool,
+    pub fog_explored: sow_core::bitset::DenseBitSet,
+    pub fog_visible: sow_core::bitset::DenseBitSet,
+    pub force_fog_upload: bool,
 }
 
 pub struct InputState {
@@ -111,6 +114,7 @@ pub struct InputState {
     pub key_pan_left: bool,
     pub key_pan_right: bool,
     pub camera_focus_target: Option<(f32, f32)>,
+    pub input_focused: bool,
 }
 
 #[derive(Clone, Debug)]

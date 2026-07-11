@@ -28,6 +28,9 @@ pub struct MapRenderer {
     pub conquest_flash: Vec<u8>,
     /// Tiles with non-zero flash, for sparse decay (avoids scanning all tiles).
     flash_active: Vec<u32>,
+    pub vision_fade: Vec<u8>,
+    fade_active: Vec<u32>,
+    is_fading: Vec<bool>,
     pub terrain_bytes_per_row: u32,
     pub owner_bytes_per_row: u32,
     pub chunk_h: u32,
@@ -35,6 +38,7 @@ pub struct MapRenderer {
     pub last_update: Option<web_time::Instant>,
     pub has_water_neighbor: Vec<bool>,
     pub decay_accumulator: f32,
+    pub fade_decay_accumulator: f32,
 }
 
 impl MapRenderer {
@@ -214,6 +218,9 @@ impl MapRenderer {
             owners: vec![0; total],
             conquest_flash: vec![0; total],
             flash_active: Vec::new(),
+            vision_fade: vec![0; total],
+            fade_active: Vec::new(),
+            is_fading: vec![false; total],
             terrain_bytes_per_row,
             owner_bytes_per_row,
             chunk_h,
@@ -221,6 +228,7 @@ impl MapRenderer {
             last_update: None,
             has_water_neighbor,
             decay_accumulator: 0.0,
+            fade_decay_accumulator: 0.0,
         }
     }
 
@@ -320,6 +328,9 @@ impl MapRenderer {
         context: &gpu::Context,
         dirty_tiles: &[sow_core::protocol::DirtyTile],
         conquest_duration: f32,
+        explored: &sow_core::bitset::DenseBitSet,
+        visible: &sow_core::bitset::DenseBitSet,
+        force_full_upload: bool,
     ) {
         let now = web_time::Instant::now();
         let dt = match self.last_update {
@@ -329,8 +340,6 @@ impl MapRenderer {
         self.last_update = Some(now);
 
         // Scale decay based on elapsed time so it completes in exactly `conquest_duration` seconds on all frame rates.
-        // We use an accumulator to handle slow decay rates (longer lifetimes) smoothly on high frame rates,
-        // avoiding the `max(1)` clamping issue when decay_amount is less than 1.
         let decay_rate = if conquest_duration > 0.0 {
             255.0 / conquest_duration
         } else {
@@ -352,9 +361,9 @@ impl MapRenderer {
         let dst_ptr = self.owner_buffer.data();
         let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
 
-        // Helper: pack owner + flash + border/water flags into the GPU buffer
+        // Helper: pack owner + flash + border/water/fog flags into the GPU buffer
         let pack =
-            |slice: &mut [u32], owners: &[u16], flash: &[u8], tile_idx: u32, has_water: bool| {
+            |slice: &mut [u32], owners: &[u16], flash: &[u8], fade: u8, tile_idx: u32, has_water: bool| {
                 let i = tile_idx as usize;
                 let x = tile_idx % width;
                 let y = tile_idx / width;
@@ -369,38 +378,15 @@ impl MapRenderer {
                 if has_water {
                     val |= 1 << 25;
                 }
+                let fade_6bit = (fade >> 2) as u32; // scale 0..255 to 0..63
+                val |= fade_6bit << 26;
                 slice[dst] = val;
             };
 
-        // 1. Reset chunk tracking
-        self.dirty_chunks.fill(false);
-
-        // 2. Decay existing flash (sparse — only active entries)
-        let mut decay_dirty = false;
         let has_water = &self.has_water_neighbor;
-        if decay_amount > 0 {
-            self.flash_active.retain(|&tile_idx| {
-                let i = tile_idx as usize;
-                if i >= total {
-                    return false;
-                }
-                let f = self.conquest_flash[i].saturating_sub(decay_amount.min(255) as u8);
-                self.conquest_flash[i] = f;
-                pack(
-                    slice,
-                    &self.owners,
-                    &self.conquest_flash,
-                    tile_idx,
-                    has_water[i],
-                );
-                let y = tile_idx / width;
-                self.dirty_chunks[(y / chunk_h) as usize] = true;
-                decay_dirty = true;
-                f > 0
-            });
-        }
 
-        // 3. Apply new dirty tiles
+        // Pre-apply dirty tiles to self.owners and set conquest flash at the start
+        // so both the full upload path and decay updates use the correct owners.
         for dt in dirty_tiles {
             let i = dt.index as usize;
             if i >= total {
@@ -413,36 +399,184 @@ impl MapRenderer {
                     self.flash_active.push(dt.index);
                 }
                 self.owners[i] = dt.new_owner;
+            }
+        }
 
-                pack(
-                    slice,
-                    &self.owners,
-                    &self.conquest_flash,
-                    dt.index,
-                    self.has_water_neighbor[i],
-                );
-                let y = dt.index / width;
-                self.dirty_chunks[(y / chunk_h) as usize] = true;
+        // 1. Reset chunk tracking
+        self.dirty_chunks.fill(false);
 
-                // Also update and dirty all neighbors since their border status changes
-                let neighbors = get_neighbors(dt.index, width, height);
-                for &n_opt in &neighbors {
-                    if let Some(n_idx) = n_opt {
+        // 2. Update vision fade targets based on current visibility (only when visibility changes)
+        let mut any_fade_changed = false;
+        if force_full_upload || !dirty_tiles.is_empty() {
+            for tile_idx in 0..total as u32 {
+                let is_vis = visible.contains(tile_idx);
+                let current_fade = self.vision_fade[tile_idx as usize];
+                if is_vis {
+                    if current_fade < 255 {
+                        self.vision_fade[tile_idx as usize] = 255;
+                        self.is_fading[tile_idx as usize] = false;
                         pack(
                             slice,
                             &self.owners,
                             &self.conquest_flash,
-                            n_idx,
-                            self.has_water_neighbor[n_idx as usize],
+                            255,
+                            tile_idx,
+                            has_water[tile_idx as usize],
                         );
-                        let n_y = n_idx / width;
-                        self.dirty_chunks[(n_y / chunk_h) as usize] = true;
+                        let y = tile_idx / width;
+                        self.dirty_chunks[(y / chunk_h) as usize] = true;
+                        any_fade_changed = true;
+                    }
+                } else {
+                    if current_fade > 0 {
+                        if !self.is_fading[tile_idx as usize] {
+                            self.is_fading[tile_idx as usize] = true;
+                            self.fade_active.push(tile_idx);
+                        }
                     }
                 }
             }
         }
 
-        if dirty_tiles.is_empty() && !decay_dirty {
+        if force_full_upload {
+            for tile_idx in 0..total as u32 {
+                let fade = self.vision_fade[tile_idx as usize];
+                pack(
+                    slice,
+                    &self.owners,
+                    &self.conquest_flash,
+                    fade,
+                    tile_idx,
+                    has_water[tile_idx as usize],
+                );
+            }
+            context.sync_buffer(self.owner_buffer, 0, self.owner_buffer.size());
+            let src_piece: gpu::BufferPiece = self.owner_buffer.into();
+            let dst_piece: gpu::TexturePiece = self.owner_texture.into();
+            let mut transfer = encoder.transfer("owner_upload_full");
+            transfer.copy_buffer_to_texture(
+                src_piece,
+                self.owner_bytes_per_row,
+                dst_piece,
+                gpu::Extent {
+                    width: self.width,
+                    height: self.height,
+                    depth: 1,
+                },
+            );
+            return;
+        }
+
+        // 3. Decay existing flash (sparse — only active entries)
+        let mut decay_dirty = false;
+        if decay_amount > 0 {
+            self.flash_active.retain(|&tile_idx| {
+                let i = tile_idx as usize;
+                if i >= total {
+                    return false;
+                }
+                let f = self.conquest_flash[i].saturating_sub(decay_amount.min(255) as u8);
+                self.conquest_flash[i] = f;
+                let fade = self.vision_fade[i];
+                pack(
+                    slice,
+                    &self.owners,
+                    &self.conquest_flash,
+                    fade,
+                    tile_idx,
+                    has_water[i],
+                );
+                let y = tile_idx / width;
+                self.dirty_chunks[(y / chunk_h) as usize] = true;
+                decay_dirty = true;
+                f > 0
+            });
+        }
+
+        // 4. Decay vision active fades (smoothly over 1.5 seconds)
+        let fade_decay_rate = 170.0;
+        self.fade_decay_accumulator += dt * fade_decay_rate;
+        let fade_decay_amount = self.fade_decay_accumulator.floor() as u32;
+        if fade_decay_amount > 0 {
+            self.fade_decay_accumulator -= fade_decay_amount as f32;
+        }
+
+        let mut fade_dirty = false;
+        if fade_decay_amount > 0 && !self.fade_active.is_empty() {
+            let has_water = &self.has_water_neighbor;
+            let vision_fade = &mut self.vision_fade;
+            let is_fading = &mut self.is_fading;
+            let owners = &self.owners;
+            let conquest_flash = &self.conquest_flash;
+            let dirty_chunks = &mut self.dirty_chunks;
+
+            self.fade_active.retain(|&tile_idx| {
+                let i = tile_idx as usize;
+                if i >= total {
+                    return false;
+                }
+                if !is_fading[i] {
+                    return false; // Remove immediately since it became visible again
+                }
+                let f = vision_fade[i].saturating_sub(fade_decay_amount.min(255) as u8);
+                vision_fade[i] = f;
+                pack(
+                    slice,
+                    owners,
+                    conquest_flash,
+                    f,
+                    tile_idx,
+                    has_water[i],
+                );
+                let y = tile_idx / width;
+                dirty_chunks[(y / chunk_h) as usize] = true;
+                fade_dirty = true;
+                let keep = f > 0;
+                if !keep {
+                    is_fading[i] = false;
+                }
+                keep
+            });
+        }
+
+        // 5. Pack new dirty tiles and their neighbors
+        for dt in dirty_tiles {
+            let i = dt.index as usize;
+            if i >= total {
+                continue;
+            }
+            let fade = self.vision_fade[i];
+            pack(
+                slice,
+                &self.owners,
+                &self.conquest_flash,
+                fade,
+                dt.index,
+                self.has_water_neighbor[i],
+            );
+            let y = dt.index / width;
+            self.dirty_chunks[(y / chunk_h) as usize] = true;
+
+            // Also update and dirty all neighbors since their border status changes
+            let neighbors = get_neighbors(dt.index, width, height);
+            for &n_opt in &neighbors {
+                if let Some(n_idx) = n_opt {
+                    let n_fade = self.vision_fade[n_idx as usize];
+                    pack(
+                        slice,
+                        &self.owners,
+                        &self.conquest_flash,
+                        n_fade,
+                        n_idx,
+                        self.has_water_neighbor[n_idx as usize],
+                    );
+                    let n_y = n_idx / width;
+                    self.dirty_chunks[(n_y / chunk_h) as usize] = true;
+                }
+            }
+        }
+
+        if dirty_tiles.is_empty() && !decay_dirty && !fade_dirty && !any_fade_changed {
             return;
         }
 
