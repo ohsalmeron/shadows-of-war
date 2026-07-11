@@ -14,8 +14,12 @@ pub(crate) fn compute_visibility(
         return;
     }
 
-    if !fog_of_war_enabled || my_id == 0 {
-        // SPECTATOR OR FOG DISABLED: Make everything fully visible and explored
+    let my_player = snap.players.iter().find(|p| p.id == my_id);
+    let is_alive = my_player.map_or(false, |p| p.alive);
+    let game_over = matches!(snap.phase, sow_core::game::GamePhase::GameOver);
+
+    if !fog_of_war_enabled || my_id == 0 || game_over || !is_alive {
+        // SPECTATOR, GAME OVER, DEAD PLAYER or FOG DISABLED: Make everything fully visible and explored
         let total_tiles = map_w * map_h;
         let total_blocks = (total_tiles + 63) as usize / 64;
         fog_visible.blocks.resize(total_blocks, 0);
