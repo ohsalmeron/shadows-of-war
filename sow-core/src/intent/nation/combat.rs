@@ -129,7 +129,7 @@ impl SowEngine {
                 if is_mfo
                     && has_port
                     && troops >= max_troops * 0.20
-                    && (targets.is_empty() || self.state.tick.is_multiple_of(12))
+                    && (self.state.tick + bot_id as u64).is_multiple_of(24)
                 {
                     let mut best_target_p_id = None;
                     let mut min_troops = f64::MAX;

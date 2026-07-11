@@ -113,13 +113,12 @@ impl SowEngine {
                         let (border_candidates, interior_candidates) = {
                             let p = self.state.player_mut(bot_id).unwrap();
                             let mut border = Vec::new();
-                            let border_len = p.border_tiles.count_ones();
+                            let border_tiles_vec: Vec<u32> = p.border_tiles.ones().collect();
+                            let border_len = border_tiles_vec.len();
                             for _ in 0..PLACEMENT_ATTEMPTS {
                                 if border_len > 0 {
                                     let pick = p.bot_rng.next_int(0, border_len as i32) as usize;
-                                    if let Some(idx) = p.border_tiles.ones().nth(pick) {
-                                        border.push(idx);
-                                    }
+                                    border.push(border_tiles_vec[pick]);
                                 }
                             }
                             let mut interior = Vec::new();
