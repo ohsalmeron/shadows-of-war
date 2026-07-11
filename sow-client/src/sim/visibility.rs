@@ -51,22 +51,26 @@ pub(crate) fn compute_visibility(
     let building_radius = 4;
     let fleet_radius = 3;
 
-    // Helper closure to check if owner is player or ally/teammate
-    let is_ally_or_self = |other_owner: u16| -> bool {
-        if other_owner == 0 {
-            return false;
+    // Helper closure to check if owner is player or ally/teammate (optimized with lookup table)
+    let mut ally_or_self = vec![false; 65536];
+    let my_player = snap.players.iter().find(|p| p.id == my_id);
+    for p in &snap.players {
+        let pid = p.id;
+        if pid == my_id {
+            ally_or_self[pid as usize] = true;
+            continue;
         }
-        if other_owner == my_id {
-            return true;
-        }
-        let my_player = snap.players.iter().find(|p| p.id == my_id);
-        let is_allied = my_player.map_or(false, |p| p.alliances.contains(&other_owner));
+        let is_allied = my_player.map_or(false, |mp| mp.alliances.contains(&pid));
         let is_teammate = {
-            let my_team = my_player.and_then(|p| p.team);
-            let other_team = snap.players.iter().find(|p| p.id == other_owner).and_then(|p| p.team);
+            let my_team = my_player.and_then(|mp| mp.team);
+            let other_team = p.team;
             my_team.is_some() && my_team == other_team
         };
-        is_allied || is_teammate
+        ally_or_self[pid as usize] = is_allied || is_teammate;
+    }
+
+    let is_ally_or_self = |other_owner: u16| -> bool {
+        ally_or_self[other_owner as usize]
     };
 
     // Helper to add a radius of visibility (accepting fog_visible as parameter to avoid borrow checker errors)
