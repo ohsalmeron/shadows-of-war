@@ -17,13 +17,13 @@ import { chromium } from 'playwright';
     throw new Error('Verification Failed: Page title does not contain "Shadows of War"');
   }
 
-  // Check game stage centering and max-width style
-  const stageBox = await page.locator('#sow-game-stage').boundingBox();
-  console.log(`🎮 Game Stage Dimensions: Width=${stageBox.width}px, Height=${stageBox.height}px`);
-  if (stageBox.width > 980) {
-    throw new Error(`Verification Failed: Game stage width is stretched (${stageBox.width}px). Max width constraint failed.`);
+  // Check the homepage links straight to the WASM game (no embedded iframe)
+  const playHref = await page.locator('a.play-btn').getAttribute('href');
+  console.log(`🎮 Play link target: "${playHref}"`);
+  if (playHref !== '/play/') {
+    throw new Error(`Verification Failed: Play link does not point to "/play/" (got "${playHref}").`);
   }
-  console.log('✅ Game stage aspect ratio/max-width constraint verified.');
+  console.log('✅ Play link verified.');
 
   // Click on "Wiki" link
   console.log('👉 Navigating to Unified Wiki Database...');

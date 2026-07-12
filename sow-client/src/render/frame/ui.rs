@@ -5,18 +5,6 @@ use web_time::Instant;
 
 impl SowApp {
     pub(super) fn render_frame_ui_and_present(&mut self, sf: f32, frame: blade_graphics::Frame) {
-        if crate::store_portals::web_shell_mode() && self.ui.app.phase == ClientPhase::MainMenu {
-            self.ui.raw_input.events.clear();
-            let Some(mut render_ctx) = self.gfx.render_ctx.take() else {
-                return;
-            };
-            render_ctx.command_encoder.present(frame);
-            let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
-            self.gfx.prev_sync_point = Some(sync_point);
-            self.gfx.render_ctx = Some(render_ctx);
-            return;
-        }
-
         // ── UI UPDATE ───────────────────────────────────────
         let frame_now = Instant::now();
         let dt = frame_now

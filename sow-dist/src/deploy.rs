@@ -32,8 +32,8 @@ pub fn verify_marketing_embed(home_url: &str) -> Result<()> {
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
     let html = client.get(home_url).send().context("index")?.text()?;
-    if !html.contains("COMMANDER SETUP") && !html.contains("COMMANDER") {
-        anyhow::bail!("website index missing commander setup dashboard");
+    if !html.contains("href=\"/play/\"") {
+        anyhow::bail!("website index missing link to /play/");
     }
     if html.contains("sow_client_") {
         anyhow::bail!("website index must not load WASM bundle directly on homepage");

@@ -52,9 +52,6 @@ impl SowApp {
                             log::info!(
                                 "Received ServerStartMessage; entering Splash phase immediately"
                             );
-                            if crate::store_portals::web_shell_mode() {
-                                crate::store_portals::emit_match_starting();
-                            }
                             self.sync_portal_room(false);
                             let not_splash = self.ui.app.phase != sow_ui_kit::ClientPhase::Splash;
                             let wrong_job = self.ui.app.splash_state.job
@@ -158,7 +155,6 @@ impl SowApp {
                                             );
                                         }
                                     }
-                                    crate::web_shell::publish_lobby_state(self);
                                 }
                             }
                         }
@@ -293,14 +289,10 @@ impl SowApp {
                                 crate::store_portals::left_room();
                                 exit_to_menu_after_net = true;
                             }
-                            crate::web_shell::publish_lobby_state(self);
                         }
                         ServerMessage::JoinFailed(fail) => {
                             log::warn!("[JOIN] Failed: {}", fail.reason);
                             crate::store_portals::left_room();
-                            if crate::store_portals::web_shell_mode() {
-                                crate::store_portals::emit_join_failed(&fail.reason);
-                            }
                             if fail.reason == "VERSION_MISMATCH" {
                                 log::info!("[JOIN] Version mismatch — prompting user to update...");
                                 self.ui.update_available = true;
@@ -335,7 +327,6 @@ impl SowApp {
                             self.ui.app.main_menu_state.in_private_match = ack.is_private;
                             seed_joined_lobby_entry(&mut self.ui.app.main_menu_state, &ack);
                             self.sync_portal_room(true);
-                            crate::web_shell::publish_lobby_state(self);
 
                             let map_name = ack.map_name.clone();
                             self.ui.app.main_menu_state.downloading_map_name =

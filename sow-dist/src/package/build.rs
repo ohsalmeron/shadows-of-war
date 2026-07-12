@@ -240,10 +240,11 @@ fn build_index_html(
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", build_ts)
         .replace("__ASSETS_UI_BASE__", &assets_ui)
-        .replace("window.SOW_BUILD_TS =", "window.SOW_WEB_SHELL_MODE = true;\n        window.SOW_BUILD_TS =")
         .replace("href=\"./sow.svg\"", "href=\"../sow.svg\"")
         .replace("href=\"./favicon.ico\"", "href=\"../favicon.ico\"")
-        .replace("src=\"./loader.js\"", "src=\"../loader.js\"");
+        .replace("src=\"./loader.js\"", "src=\"../loader.js\"")
+        .replace("src=\"./sdk/store_portals.js\"", "src=\"../sdk/store_portals.js\"")
+        .replace("register('./sw.js', { scope: './' })", "register('../sw.js', { scope: '../' })");
     let index = out_dir.join("play/index.html");
     if let Some(parent) = index.parent() {
         fs::create_dir_all(parent)?;

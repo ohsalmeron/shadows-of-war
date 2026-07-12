@@ -30,17 +30,6 @@ impl SowApp {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn finish_boot_web_shell(&mut self) {
-        self.boot_route_waiting = false;
-        self.ui.app.splash_state.done = true;
-        self.ui.app.phase = ClientPhase::MainMenu;
-        hide_web_loader();
-        crate::store_portals::load_stop();
-        crate::store_portals::gameplay_stop();
-        self.web_loader_hidden = true;
-    }
-
-    #[cfg(target_arch = "wasm32")]
     pub(crate) fn finish_boot_route(&mut self) {
         self.boot_route_waiting = false;
         crate::store_portals::load_stop();
@@ -104,9 +93,6 @@ impl SowApp {
         self.sim.offline_last_update = web_time::Instant::now();
         self.sim.paused = false;
         self.net.client = None;
-        if crate::store_portals::web_shell_mode() {
-            crate::store_portals::emit_match_starting();
-        }
         self.begin_enter_game_loader();
         self.sim.my_player_id = Some(1);
         self.sim.my_lobby_id = Some(0);

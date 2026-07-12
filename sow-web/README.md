@@ -27,20 +27,18 @@ All packaging goes through **`./sow`**. Output stays under `dist/`.
 
 **CDN:** only `assets/cdn/` rsyncs to `https://shadowsofwar.io/assets/cdn/` (parallel with WASM on `prod` / `ptr` / `cg`). Not copied into play/ptr dist shells. **`local` skips CDN sync.**
 
-## Dual entry: iframe embed + play subdomain
+## Single entry point: marketing page links straight to `/play/`
 
 | URL | Experience |
 |-----|------------|
-| **`https://shadowsofwar.io/`** | Marketing HTML; **Play** embeds the game shell in-page (desktop) or fullscreen iframe (mobile ≤480px) |
-| **`https://play.shadowsofwar.io/`** | Full game shell, auto-load WASM — share link / “Open full screen” |
+| **`https://shadowsofwar.io/`** | Thin marketing landing page (hero + Play link + legal/wiki nav). No WASM loads here. |
+| **`https://shadowsofwar.io/play/`** | Full game shell — boots straight into the egui main menu, on native and web alike. |
 
-Marketing [`site/index.html`](site/index.html) + [`site/game-embed.js`](site/game-embed.js) lazy-load an iframe to `play.shadowsofwar.io` (prod) or `/game/index.html` (`local`). No WASM on the marketing page itself.
+The marketing homepage (`site/index.astro`) is just a link to `/play/` — no iframe, no boot-action bridge. Once there, the game's own main menu (built in egui, shared with native) is the only UI; it needs no hand-off state from the marketing page. `play.shadowsofwar.io` 301-redirects to `shadowsofwar.io/play/` (see `deploy/nginx/play.conf`).
 
 ```bash
 ./sow local   # http://127.0.0.1:8787/ — optional --build-only, --port
 ```
-
-**Desktop:** Play shows a CrazyGames-style player frame above About; marketing stays visible. **Mobile (≤480px):** Play opens a fullscreen overlay; **Back to site** clears the iframe.
 
 `prod` / `cg` / `ptr` use separate `dist/*` trees; `local` never overwrites them.
 

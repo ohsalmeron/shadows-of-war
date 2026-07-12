@@ -46,13 +46,6 @@ impl SowApp {
         // ── UI State ────────────────────────────────────────────────────────────
         let asset_config = crate::AssetConfig::resolve();
         let mut app = ClientApp::new();
-        if crate::store_portals::web_shell_mode() {
-            if let Some(settings_json) = crate::store_portals::read_settings_json() {
-                if let Ok(patch) = serde_json::from_str::<crate::web_shell::SettingsPatch>(&settings_json) {
-                    patch.apply(&mut app.settings_state);
-                }
-            }
-        }
         crate::map_cache::hydrate_asset_maps(&mut app.asset_loader.maps);
         #[cfg(target_arch = "wasm32")]
         {
@@ -146,17 +139,12 @@ impl SowApp {
             }
         }
 
-        let is_shell = crate::store_portals::web_shell_mode();
-        if !is_shell {
-            log::info!("Auto-connecting to {}...", ws_url);
-            app.main_menu_state.is_connecting = true;
-            #[cfg(target_arch = "wasm32")]
-            spawn_sow_client_connect(ws_url.clone(), &connect_tx);
-            #[cfg(not(target_arch = "wasm32"))]
-            spawn_sow_client_connect(ws_url.clone(), &connect_tx, &tokio_rt);
-        } else {
-            app.main_menu_state.is_connecting = false;
-        }
+        log::info!("Auto-connecting to {}...", ws_url);
+        app.main_menu_state.is_connecting = true;
+        #[cfg(target_arch = "wasm32")]
+        spawn_sow_client_connect(ws_url.clone(), &connect_tx);
+        #[cfg(not(target_arch = "wasm32"))]
+        spawn_sow_client_connect(ws_url.clone(), &connect_tx, &tokio_rt);
 
         // ── Camera state ────────────────────────────────────────────────────────
         let camera_zoom: f32 = 0.5;

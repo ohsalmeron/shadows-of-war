@@ -1,8 +1,8 @@
 ---
-import ShellLayout from '../layouts/ShellLayout.astro';
+import Layout from '../layouts/Layout.astro';
 ---
 
-<ShellLayout title="Shadows of War — Web Portal">
+<Layout title="Shadows of War — Web Portal">
   <div class="container">
     <header class="hero-header">
       <div class="title-glow-wrap">
@@ -10,69 +10,23 @@ import ShellLayout from '../layouts/ShellLayout.astro';
         <div class="glow-effect"></div>
       </div>
       <p class="portal-subtitle">Lead civilizations, expand territory, and defeat enemies on massive world maps.</p>
+      <a href="/play/" class="play-btn play-btn--hero">⚔️ Play Now</a>
     </header>
-
-    <div class="grid-layout" id="portal-dashboard">
-      <!-- Left Column: Player Identity & Action Deck -->
-      <div class="sidebar">
-        <section class="glass-panel card">
-          <h2 class="section-title">COMMANDER SETUP</h2>
-          <div class="form-group">
-            <label for="nickname" data-i18n="main_menu.nickname_hint">Nickname</label>
-            <input type="text" id="nickname" class="input-premium" placeholder="Enter Nickname" maxlength="16" />
-          </div>
-          <div class="form-group">
-            <label for="clan_tag">Clan Tag (Optional)</label>
-            <input type="text" id="clan_tag" class="input-premium" placeholder="e.g. SOW" maxlength="4" style="text-transform: uppercase;" />
-          </div>
-        </section>
-
-        <section class="glass-panel card actions-deck">
-          <h2 class="section-title">WAR ROOM</h2>
-          <button id="btn-quick-play" class="btn-premium btn-play">
-            <span class="btn-glow"></span>
-            <span class="btn-text" data-i18n="main_menu.quick_match_label">⚔️ QUICK PLAY</span>
-          </button>
-          
-          <div class="multi-actions">
-            <a href="/lobbies" class="btn-premium btn-secondary text-center" data-i18n="main_menu.game_browser_title">🗺️ BROWSER</a>
-            <a href="/host" class="btn-premium btn-secondary text-center" data-i18n="main_menu.create_game_btn">⚙️ HOST</a>
-          </div>
-
-          <div class="multi-actions">
-            <button id="btn-offline" class="btn-premium btn-secondary" data-i18n="main_menu.custom_offline_toggle">🤖 OFFLINE</button>
-            <button id="btn-tutorial" class="btn-premium btn-secondary">📖 TUTORIAL</button>
-          </div>
-        </section>
-      </div>
-
-      <!-- Right Column: Leader Selection -->
-      <div class="main-content">
-        <section class="glass-panel card leaders-card">
-          <h2 class="section-title">SELECT LEADER & CIVILIZATION</h2>
-          <div class="leaders-grid" id="leaders-grid">
-            <!-- Dynamically populated via JS to handle selection & local storage sync -->
-          </div>
-        </section>
-      </div>
-    </div>
-
-    <!-- Embedded Game Stage -->
-    <section id="sow-game-stage" class="sow-stage" style="display: none;">
-      <iframe id="sow-game-frame" class="sow-stage__frame" title="Shadows of War" allow="fullscreen"></iframe>
-    </section>
   </div>
 
   <style>
     .container {
-      max-width: 1200px;
-      margin: 0 auto;
+      max-width: 700px;
+      margin: auto;
       padding: 40px 20px;
+      text-align: center;
     }
 
     .hero-header {
-      text-align: center;
-      margin-bottom: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
     }
 
     .title-glow-wrap {
@@ -81,11 +35,10 @@ import ShellLayout from '../layouts/ShellLayout.astro';
     }
 
     .portal-title {
-      font-family: 'Space Grotesk', sans-serif;
+      font-family: var(--font-display);
       font-size: 48px;
       font-weight: 800;
       letter-spacing: 3px;
-      margin-bottom: 12px;
       background: linear-gradient(to bottom, #ffffff 40%, #94a3b8);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -99,7 +52,7 @@ import ShellLayout from '../layouts/ShellLayout.astro';
       transform: translateX(-50%);
       width: 80%;
       height: 60px;
-      background: radial-gradient(circle, var(--primary-glow) 0%, rgba(0,0,0,0) 70%);
+      background: radial-gradient(circle, var(--border-glow) 0%, rgba(0, 0, 0, 0) 70%);
       filter: blur(20px);
       z-index: -1;
       pointer-events: none;
@@ -107,311 +60,9 @@ import ShellLayout from '../layouts/ShellLayout.astro';
 
     .portal-subtitle {
       font-size: 16px;
-      color: var(--text-muted);
-      max-width: 600px;
-      margin: 0 auto;
+      color: var(--text-secondary);
+      max-width: 500px;
       line-height: 1.5;
     }
-
-    .grid-layout {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: 24px;
-    }
-
-    @media (max-width: 900px) {
-      .grid-layout {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .sidebar {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
-    .card {
-      border: 1px solid var(--border-muted);
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
-    }
-
-    .section-title {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      color: var(--text-primary);
-      margin-bottom: 20px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border-muted);
-      text-transform: uppercase;
-    }
-
-    .form-group {
-      margin-bottom: 18px;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .actions-deck {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .btn-play {
-      width: 100%;
-      padding: 16px;
-      font-size: 16px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    }
-
-    .multi-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .text-center {
-      text-align: center;
-    }
-
-    .leaders-card {
-      height: 100%;
-    }
-
-    .leaders-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-      gap: 16px;
-    }
-
-    /* Leader Card Styling */
-    .leader-card {
-      position: relative;
-      background: rgba(15, 15, 30, 0.4);
-      border: 1px solid var(--border-muted);
-      border-radius: 10px;
-      padding: 16px;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .leader-card:hover {
-      background: rgba(28, 28, 56, 0.4);
-      border-color: var(--text-muted);
-      transform: translateY(-2px);
-    }
-
-    .leader-card.selected {
-      border-color: var(--primary);
-      background: rgba(59, 130, 246, 0.05);
-      box-shadow: 0 0 15px var(--primary-glow);
-    }
-
-    .leader-emoji {
-      font-size: 32px;
-      margin-bottom: 12px;
-    }
-
-    .leader-name {
-      font-family: 'Space Grotesk', sans-serif;
-      font-weight: 700;
-      font-size: 14px;
-      color: var(--text-primary);
-      margin-bottom: 4px;
-    }
-
-    .civ-name {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .selection-indicator {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      border: 1px solid var(--border-muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg-base);
-    }
-
-    .leader-card.selected .selection-indicator {
-      border-color: var(--primary);
-      background: var(--primary);
-    }
-
-    .leader-card.selected .selection-indicator::after {
-      content: '✓';
-      color: white;
-      font-size: 9px;
-      font-weight: 800;
-    }
-
-    .sow-stage {
-      position: relative;
-      isolation: isolate;
-      width: 100%;
-      height: 75vh;
-      min-height: 550px;
-      max-height: 850px;
-      margin: 0 auto;
-      border: 1px solid var(--border-muted);
-      border-radius: 12px;
-      overflow: hidden;
-      background: #0a0a0f;
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
-    }
-
-    .sow-stage__frame {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
   </style>
-
-  <script>
-    // Client-side initialization
-    const LEADERS = [
-      { id: "Caesar", name: "Julius Caesar", civId: "Rome", civName: "Roman Empire", emoji: "🏛️" },
-      { id: "Cleopatra", name: "Cleopatra", civId: "Egypt", civName: "Egyptian Empire", emoji: "👑" },
-      { id: "Ragnar", name: "Ragnar Lodbrok", civId: "Vikings", civName: "Norse Kingdom", emoji: "🪓" },
-      { id: "SunTzu", name: "Sun Tzu", civId: "China", civName: "Chinese Empire", emoji: "📜" },
-      { id: "Alexander", name: "Alexander the Great", civId: "Macedon", civName: "Macedonian Empire", emoji: "🛡️" },
-      { id: "GenghisKhan", name: "Genghis Khan", civId: "Mongols", civName: "Mongol Horde", emoji: "🐺" },
-      { id: "RichardTheLionheart", name: "Richard the Lionheart", civId: "Angevin", civName: "Angevin Empire", emoji: "🦁" },
-      { id: "Vercingetorix", name: "Vercingetorix", civId: "Gallic", civName: "Gallic Tribes", emoji: "⚔️" },
-      { id: "Boudica", name: "Boudica", civId: "Iceni", civName: "Iceni Kingdom", emoji: "🔥" },
-      { id: "LadySixSky", name: "Lady Six Sky", civId: "Maya", civName: "Maya Civilization", emoji: "🌙" },
-      { id: "Leonidas", name: "Leonidas", civId: "Sparta", civName: "Sparta", emoji: "🪖" },
-      { id: "Napoleon", name: "Napoleon Bonaparte", civId: "France", civName: "Kingdom of France", emoji: "🎖️" }
-    ];
-
-    // Load values from localStorage
-    // @ts-ignore
-    document.getElementById('nickname').value = localStorage.getItem('sow_nickname') || 'Player_' + Math.floor(100 + Math.random() * 900);
-    // @ts-ignore
-    document.getElementById('clan_tag').value = localStorage.getItem('sow_clan_tag') || '';
-    let selectedLeaderId = localStorage.getItem('sow_leader_id') || 'Caesar';
-
-    const grid = document.getElementById('leaders-grid');
-    if (grid) {
-      LEADERS.forEach(leader => {
-        const card = document.createElement('div');
-        card.className = `leader-card ${leader.id === selectedLeaderId ? 'selected' : ''}`;
-        card.dataset.id = leader.id;
-        card.innerHTML = `
-          <div class="selection-indicator"></div>
-          <div class="leader-emoji">${leader.emoji}</div>
-          <div class="leader-name">${leader.name}</div>
-          <div class="civ-name">${leader.civName}</div>
-        `;
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.leader-card').forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
-          selectedLeaderId = leader.id;
-          localStorage.setItem('sow_leader_id', leader.id);
-        });
-        grid.appendChild(card);
-      });
-    }
-
-    function getSetup() {
-      // @ts-ignore
-      const name = document.getElementById('nickname').value.trim() || 'Player';
-      // @ts-ignore
-      const clan_tag = document.getElementById('clan_tag').value.trim().toUpperCase();
-      const leaderObj = LEADERS.find(l => l.id === selectedLeaderId) || LEADERS[0];
-      
-      // Save for next session
-      localStorage.setItem('sow_nickname', name);
-      localStorage.setItem('sow_clan_tag', clan_tag);
-
-      return {
-        name,
-        clan_tag,
-        civilization: leaderObj.civId,
-        leader: leaderObj.id
-      };
-    }
-
-    function enterGame() {
-      const stage = document.getElementById('sow-game-stage');
-      const dashboard = document.getElementById('portal-dashboard');
-      const header = document.querySelector('.hero-header');
-      const iframe = document.getElementById('sow-game-frame') as HTMLIFrameElement;
-
-      if (dashboard) dashboard.style.display = 'none';
-      if (header) header.style.display = 'none';
-      if (stage) stage.style.display = 'block';
-
-      if (iframe) {
-        iframe.src = '/play/';
-      }
-    }
-
-    function restoreSite() {
-      const stage = document.getElementById('sow-game-stage');
-      const dashboard = document.getElementById('portal-dashboard');
-      const header = document.querySelector('.hero-header');
-      const iframe = document.getElementById('sow-game-frame') as HTMLIFrameElement;
-
-      if (stage) stage.style.display = 'none';
-      if (dashboard) dashboard.style.display = 'grid';
-      if (header) header.style.display = 'block';
-      if (iframe) iframe.src = 'about:blank';
-
-      // Clean up play state
-      if (window.location.hash === '#play') {
-        history.replaceState(null, '', window.location.pathname);
-      }
-      localStorage.removeItem('SOW_BOOT_ACTION');
-    }
-
-    function triggerPlay(actionType: string, extra = {}) {
-      const player = getSetup();
-      const action = {
-        type: actionType,
-        player,
-        ...extra
-      };
-      localStorage.setItem('SOW_BOOT_ACTION', JSON.stringify(action));
-      enterGame();
-    }
-
-    // Listen for match end events from inside the iframe
-    window.addEventListener('message', (e) => {
-      if (e.data === 'SOW_onMatchEnd') {
-        restoreSite();
-      }
-    });
-
-    // Handle auto-boot on load
-    if (window.location.hash === '#play' || localStorage.getItem('SOW_BOOT_ACTION')) {
-      enterGame();
-    }
-
-    document.getElementById('btn-quick-play')?.addEventListener('click', () => triggerPlay('quick_play'));
-    document.getElementById('btn-offline')?.addEventListener('click', () => triggerPlay('offline'));
-    document.getElementById('btn-tutorial')?.addEventListener('click', () => triggerPlay('tutorial'));
-  </script>
-</ShellLayout>
+</Layout>

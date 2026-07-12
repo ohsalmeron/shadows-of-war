@@ -80,18 +80,6 @@ impl SowApp {
                         }
                         self.ui.app.main_menu_state.host_private_pending = false;
                         self.ui.app.main_menu_state.is_waiting = true;
-                    } else if crate::store_portals::web_shell_mode() && self.ui.app.main_menu_state.is_waiting {
-                        let mm = &self.ui.app.main_menu_state;
-                        let target_id = mm.pending_join_lobby_id;
-                        let is_private = mm.custom_game_is_private;
-                        let config = Some(mm.custom_game_config.clone());
-                        let password = if mm.custom_game_password.is_empty() { None } else { Some(mm.custom_game_password.clone()) };
-
-                        log::info!("Web shell mode lazy connection succeeded: sending join/host message");
-                        let join_msg = self.make_join_message(target_id, is_private, config, password);
-                        if let Ok(json) = bincode::serialize(&join_msg) {
-                            client.send(json);
-                        }
                     } else if let Some(id) = self.ui.app.main_menu_state.pending_join_lobby_id {
                         if self.ui.app.main_menu_state.is_waiting
                             && self.ui.app.main_menu_state.joined_lobby_id.is_none()

@@ -9,14 +9,14 @@
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://play.shadowsofwar.io/">
+    <meta property="og:url" content="https://shadowsofwar.io/play/">
     <meta property="og:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="og:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
     <meta property="og:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://play.shadowsofwar.io/">
+    <meta property="twitter:url" content="https://shadowsofwar.io/play/">
     <meta property="twitter:title" content="Shadows of War — Free Open-Source MMORTS Strategy Game">
     <meta property="twitter:description" content="Free, open-source MMORTS on world maps. Lead civilizations, forge alliances, expand territory, and grow your economy in massive online real-time battles. Play Shadows of War.">
     <meta property="twitter:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
@@ -24,7 +24,7 @@
     <meta name="application-name" content="Shadows of War">
     <meta property="og:site_name" content="Shadows of War">
     <meta name="theme-color" content="#000000">
-    <link rel="canonical" href="https://play.shadowsofwar.io/">
+    <link rel="canonical" href="https://shadowsofwar.io/play/">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
 
     <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by sow-dist crazygames only. -->
@@ -207,29 +207,11 @@
             }
         })();
 
-        window.SOW_onMatchEnd = function(statsJson) {
-            console.log("Match ended:", statsJson);
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage('SOW_onMatchEnd', '*');
-            } else {
-                window.location.href = "../";
-            }
-        };
-        window.SOW_portalClearBootAction = function() {
-            localStorage.removeItem('SOW_BOOT_ACTION');
-        };
     </script>
     <script src="./sdk/store_portals.js"></script>
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="module">
         async function run() {
-            var action = localStorage.getItem('SOW_BOOT_ACTION');
-            if (!action) {
-                console.log("No boot action found, returning to main site.");
-                window.location.href = "../";
-                return;
-            }
-
             var isPortal = window.SOW_RUNTIME && window.SOW_RUNTIME.portal_embed === true
                 || window.SOW_isPortalEmbed === true;
 
