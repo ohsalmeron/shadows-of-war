@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::process;
 use anyhow::{bail, Context, Result};
 use std::path::Path;

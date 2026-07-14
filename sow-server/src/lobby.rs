@@ -52,7 +52,7 @@ pub struct ServerLobby {
     pub host_name: String,
     /// Identities (account id, or `name:<name>` fallback) banned from this lobby.
     pub banned: std::collections::HashSet<String>,
-    pub auto_bots_spawned: bool,
+    // pub auto_bots_spawned: bool,
 }
 
 /// Stable identity for ban tracking: prefer the account id, fall back to name.
@@ -133,7 +133,7 @@ fn spawn_waiting_lobby(
         password,
         host_name,
         banned: std::collections::HashSet::new(),
-        auto_bots_spawned: false,
+        // auto_bots_spawned: false,
     });
 }
 
@@ -216,7 +216,8 @@ fn promote_countdown(games: &mut [ServerLobby]) {
         }
     }
 
-    // Pass 3: backfill CountingDown matchmaking lobbies that have actual human players
+    // Pass 3: backfill CountingDown matchmaking lobbies that have actual human players (DISABLED - Delegated to standalone sow-backfill daemon)
+    /*
     for g in games.iter_mut() {
         if matches!(g.phase, LobbyPhase::CountingDown)
             && g.kind == LobbyKind::Matchmaking
@@ -241,8 +242,10 @@ fn promote_countdown(games: &mut [ServerLobby]) {
             }
         }
     }
+    */
 }
 
+/*
 fn spawn_bots_for_lobby(lobby_id: u64, bots_needed: usize) {
     let srv_bin = std::env::current_exe().unwrap_or_default();
     let srv_dir = srv_bin.parent().unwrap_or_else(|| std::path::Path::new("."));
@@ -289,6 +292,7 @@ fn spawn_bots_for_lobby(lobby_id: u64, bots_needed: usize) {
         );
     }
 }
+*/
 
 /// Prefer counting-down lobby with lowest id, else lowest waiting id (matches DR client `primary_lobby_for_browser`).
 pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
@@ -862,7 +866,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                     let all_ready = players.iter().all(|p| p.is_ready) && !players.is_empty();
 
                     // If everyone is ready, we force the countdown to jump to 1.5s if it was higher,
-                    // serving as the "Stabilizing..." delay.
+                    // serving as the "Stabilizing..." delay to allow the server to spawn the relay.
                     if all_ready && lobby.countdown_secs > 1.5 {
                         lobby.countdown_secs = 1.5;
                     }

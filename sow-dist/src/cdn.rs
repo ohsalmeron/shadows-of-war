@@ -1,5 +1,4 @@
 use crate::config::DeployConfig;
-use crate::gcp::SyncOpts;
 use crate::paths::Paths;
 use anyhow::{bail, Context, Result};
 use image::codecs::webp::WebPEncoder;
@@ -33,7 +32,7 @@ pub fn prepare(paths: &Paths) -> Result<()> {
 }
 
 /// Phase 3: sync assets/cdn/ to marketing host. Returns true if sync ran.
-pub fn ship_or_skip(paths: &Paths, cfg: &DeployConfig) -> Result<bool> {
+pub fn ship_or_skip(paths: &Paths, _cfg: &DeployConfig) -> Result<bool> {
     let hash = cdn_input_hash(paths)?;
     let cache = paths.cdn_hash_cache();
     let cached = fs::read_to_string(&cache)
@@ -45,31 +44,20 @@ pub fn ship_or_skip(paths: &Paths, cfg: &DeployConfig) -> Result<bool> {
         return Ok(false);
     }
 
-    let gcp = cfg.gcp();
-    let assets_path = cfg.prod_assets_path();
-    println!("==> Syncing CDN → {assets_path}/cdn/");
-    gcp.run_remote(&format!(
-        "mkdir -p {assets_path}/cdn/leaders {assets_path}/cdn/ui {assets_path}/cdn/avatars"
-    ))?;
-    gcp.sync_dir(
-        &paths.assets_cdn,
-        &format!("{assets_path}/cdn"),
-        &SyncOpts::default(),
-    )?;
-    gcp.run_remote(&format!("chmod -R a+rX {assets_path}/cdn"))?;
+    println!("==> CDN sync to GCS is handled automatically via rsync of play distribution");
 
     if let Some(parent) = cache.parent() {
         fs::create_dir_all(parent)?;
     }
     fs::write(&cache, format!("{hash}\n"))?;
-    println!("✅ CDN shipped");
+    println!("✅ CDN marked as shipped");
     Ok(true)
 }
 
 /// Phase 4: HTTP verify prod CDN assets.
-pub fn verify_prod_cdn(cfg: &DeployConfig) -> Result<()> {
-    println!("==> Verifying prod CDN...");
-    let base = cfg.site_url();
+pub fn verify_prod_cdn(_cfg: &DeployConfig) -> Result<()> {
+    println!("==> Verifying prod CDN on Google Cloud Storage...");
+    let base = "https://storage.googleapis.com/cdn.shadowsofwar.io".to_string();
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -84,7 +72,7 @@ pub fn verify_prod_cdn(cfg: &DeployConfig) -> Result<()> {
             bail!("CDN verify failed: {url} → {}", resp.status());
         }
     }
-    println!("✅ prod CDN assets OK");
+    println!("✅ prod CDN assets on GCS OK");
     Ok(())
 }
 

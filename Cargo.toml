@@ -14,7 +14,7 @@ members = [
     "sow-map",
     "sow-dist",
 ]
-exclude = ["blade", "winit", "egui"]
+exclude = ["blade", "winit", "egui", "sow-backfill"]
 resolver = "2"
 
 [workspace.package]

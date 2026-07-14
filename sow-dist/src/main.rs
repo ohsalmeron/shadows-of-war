@@ -105,6 +105,9 @@ enum Command {
         #[arg(long)]
         lobby_id: Option<u64>,
     },
+    /// Compile release binaries on the local FreeBSD VM.
+    #[command(name = "freebsd", visible_aliases = ["fbsd"])]
+    Freebsd,
 }
 
 fn normalize_version_argv(args: impl Iterator<Item = String>) -> Vec<String> {
@@ -156,6 +159,10 @@ fn main() -> Result<()> {
             passive,
             lobby_id,
         } => cmd_bot(&paths, count, url, passive, lobby_id),
+        Command::Freebsd => {
+            let _ = infra::build_freebsd_server_binaries(&paths)?;
+            Ok(())
+        }
     }
 }
 

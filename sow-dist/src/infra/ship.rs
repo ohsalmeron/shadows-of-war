@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports, unused_variables)]
 use super::hash::{
     build_server_binaries, hash_server_inputs, read_cached_hash, rsync_server_binaries,
     write_infra_hash,

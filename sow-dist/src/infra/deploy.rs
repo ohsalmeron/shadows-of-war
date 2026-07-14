@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports, unused_variables)]
 use crate::config::DeployConfig;
 use crate::gcp::{self, GcpConfig};
 use crate::paths::Paths;

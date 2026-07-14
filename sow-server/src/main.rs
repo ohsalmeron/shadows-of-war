@@ -22,7 +22,7 @@ const REDIS_PORTS_KEY: &str = "sow:ports";
 fn relay_bin() -> String {
     std::env::var("SOW_RELAY_BIN").unwrap_or_else(|_| "./sow-relay".to_string())
 }
-const RELAY_PORT_MIN: u16 = 25570;
+const RELAY_PORT_MIN: u16 = 25590;
 const RELAY_PORT_MAX: u16 = 26500;
 
 fn find_free_port(redis_con: &mut redis::Connection) -> Option<u16> {
@@ -92,6 +92,8 @@ async fn main() {
     ));
     {
         let mut con = redis_con.lock().unwrap();
+        let _: () = con.del(REDIS_PORTS_KEY).unwrap_or_default();
+        log::info!("Wiped stale relay port allocations from Redis. Ready for clean start.");
         let occupied: std::collections::HashSet<u16> =
             con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
         log::info!("Redis connected. Occupied relay ports: {:?}", occupied);
@@ -118,9 +120,13 @@ async fn main() {
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
+        let mut tick_count: u64 = 0;
         loop {
             tokio::select! {
                 _ = interval.tick() => {
+                    let tick_start = tokio::time::Instant::now();
+                    tick_count += 1;
+
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     master_tick(&mut games, &mut nid);
@@ -247,13 +253,22 @@ async fn main() {
                         }
                     }
 
-                    let lobbies_info = build_lobby_broadcast(&games);
-                    log::debug!("[BROADCAST] {} lobbies in broadcast", lobbies_info.len());
+                    // Throttle the global lobbies broadcast to run once every 1,000ms (10 ticks)
+                    if tick_count % 10 == 0 {
+                        let lobbies_info = build_lobby_broadcast(&games);
+                        log::debug!("[BROADCAST] {} lobbies in broadcast", lobbies_info.len());
 
-                    let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
-                    match bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
-                        Ok(json) => { let _ = global_tx_clone.send(json); }
-                        Err(e) => { log::error!("[BROADCAST] Failed to serialize LobbiesBroadcast: {}", e); }
+                        let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                        match bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
+                            Ok(json) => { let _ = global_tx_clone.send(json); }
+                            Err(e) => { log::error!("[BROADCAST] Failed to serialize LobbiesBroadcast: {}", e); }
+                        }
+                    }
+
+                    // Precise latency performance metric logger
+                    let elapsed = tick_start.elapsed().as_millis();
+                    if elapsed > 10 {
+                        log::warn!("[PERF] Event loop lag detected! Master tick execution took {}ms", elapsed);
                     }
 
                     for lobby in ready_lobbies {
@@ -466,6 +481,7 @@ async fn main() {
     while let Ok((stream, addr)) = listener.accept().await {
         let mut global_rx = global_tx.subscribe();
         let ev_tx = event_tx.clone();
+        let games_state_conn = Arc::clone(&games_state);
         tokio::spawn(async move {
             let ip_cell = Arc::new(std::sync::Mutex::new(addr.ip().to_string()));
             let ip_cell_clone = Arc::clone(&ip_cell);
@@ -502,6 +518,16 @@ async fn main() {
             log::info!("Client connected from IP: {}", ip_str);
 
             let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(100);
+
+            // Send immediate single-cast LobbiesBroadcast snapshot on connection so the home menu loads instantly
+            {
+                let games_guard = games_state_conn.lock().await;
+                let lobbies_info = build_lobby_broadcast(&games_guard);
+                let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                if let Ok(json) = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
+                    let _ = direct_tx.try_send(json);
+                }
+            }
 
             let mut my_lobby_id: Option<u64> = None;
             let mut my_player_id: Option<u16> = None;
@@ -642,8 +668,11 @@ async fn main() {
                         }
                     }
                     Ok(broadcast_data) = global_rx.recv() => {
-                        if write.send(Message::Binary(broadcast_data)).await.is_err() {
-                            break;
+                        // Drop lobbies broadcast packets if the client is already in a lobby/match
+                        if my_lobby_id.is_none() {
+                            if write.send(Message::Binary(broadcast_data)).await.is_err() {
+                                break;
+                            }
                         }
                     }
                     Some(direct_data) = direct_rx.recv() => {

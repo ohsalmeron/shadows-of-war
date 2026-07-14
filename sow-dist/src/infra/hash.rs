@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports, unused_variables)]
 use crate::gcp::GcpConfig;
 use crate::paths::Paths;
 use crate::process;
@@ -105,6 +106,72 @@ pub(crate) fn build_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, 
         dir.join("sow-relay"),
         dir.join("sow-database"),
         dir.join("bot-manager"),
+    ))
+}
+
+pub fn build_freebsd_server_binaries(paths: &Paths) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf)> {
+    println!("==> Syncing codebase to local FreeBSD VM via rsync...");
+    
+    // Sync the local repository files to the VM
+    let local_root = paths.root.to_str().unwrap();
+    let rsync_status = std::process::Command::new("rsync")
+        .args(&[
+            "-az",
+            "-e",
+            "ssh -i /home/bizkit/.ssh/id_ed25519 -p 2222 -o StrictHostKeyChecking=no",
+            "--exclude", "target",
+            "--exclude", ".git",
+            "--exclude", "dist",
+            "--exclude", "sow-web/node_modules",
+            &format!("{}/", local_root),
+            "root@127.0.0.1:/root/build/",
+        ])
+        .status()?;
+
+    if !rsync_status.success() {
+        anyhow::bail!("Failed to sync codebase to local FreeBSD VM");
+    }
+
+    println!("==> Running release build on local FreeBSD VM (cargo build --release)...");
+    let ssh_status = std::process::Command::new("ssh")
+        .args(&[
+            "-i", "/home/bizkit/.ssh/id_ed25519",
+            "-p", "2222",
+            "-o", "StrictHostKeyChecking=no",
+            "root@127.0.0.1",
+            "cd /root/build && /root/.cargo/bin/cargo build --release -p sow-server -p sow-relay -p sow-data -p sow-tools --features sow-data/server --bin sow-server --bin sow-relay --bin sow-database --bin bot-manager",
+        ])
+        .status()?;
+
+    if !ssh_status.success() {
+        anyhow::bail!("Cargo build failed inside local FreeBSD VM");
+    }
+
+    let freebsd_target_dir = paths.cargo_target.join("x86_64-unknown-freebsd/release");
+    std::fs::create_dir_all(&freebsd_target_dir)?;
+
+    println!("==> Fetching compiled FreeBSD binaries back to host target directory: {:?}", freebsd_target_dir);
+    for name in &["sow-server", "sow-relay", "sow-database", "bot-manager"] {
+        let scp_status = std::process::Command::new("scp")
+            .args(&[
+                "-i", "/home/bizkit/.ssh/id_ed25519",
+                "-P", "2222",
+                "-o", "StrictHostKeyChecking=no",
+                &format!("root@127.0.0.1:/root/build/target/release/{}", name),
+                freebsd_target_dir.join(name).to_str().unwrap(),
+            ])
+            .status()?;
+        if !scp_status.success() {
+            anyhow::bail!("Failed to fetch compiled binary '{}' from FreeBSD VM", name);
+        }
+    }
+
+    println!("✅ Remote FreeBSD compilation complete and binaries retrieved!");
+    Ok((
+        freebsd_target_dir.join("sow-server"),
+        freebsd_target_dir.join("sow-relay"),
+        freebsd_target_dir.join("sow-database"),
+        freebsd_target_dir.join("bot-manager"),
     ))
 }
 

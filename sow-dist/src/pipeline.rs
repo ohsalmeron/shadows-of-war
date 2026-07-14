@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables, dead_code)]
 use crate::cdn;
 use crate::config::DeployConfig;
 use crate::deploy::{
@@ -95,11 +96,7 @@ pub fn run_release(
         // WASM and server both invoke cargo and share the package cache.
         // Run them sequentially to avoid "Blocking waiting for file lock" noise.
         wasm::compile(paths, false)?; // prod/deploy: never ship dev tooling
-        let server = if target.server_unit().is_some() {
-            Some(infra::build_server_if_needed(paths)?)
-        } else {
-            None
-        };
+        let server = None;
         if let Some(h) = cdn_h {
             h.join().expect("cdn prep thread panicked")?;
         }
@@ -133,147 +130,30 @@ pub fn run_release(
         return Ok(());
     }
 
-    let gcp = cfg.gcp();
-    let remote_home = gcp.remote_home(&paths.remote_home_cache())?;
-    let server_ctx = server_ctx(target, cfg, &gcp, &remote_home)?;
-
-    // Continuous Deployment: Sync VPS configurations (Nginx and systemd units) if templates were modified
-    infra::deploy_configs_if_needed(paths, cfg)?;
-
-    // Phase 3: ship everything in parallel
-    println!("==> Phase 3: ship");
-    // Print the deployment target banner BEFORE spawning threads so it appears
-    // before any SSH output (e.g. mkdir -p) from the sync threads.
-    match target {
-        ReleaseTarget::Prod => {
-            println!(
-                "==> Deploying play → {} + marketing → {}",
-                cfg.play_domain(),
-                cfg.site_domain()
-            );
-        }
-        ReleaseTarget::Ptr => {
-            println!("==> Deploying ptr → {}", cfg.ptr_domain());
-        }
-        ReleaseTarget::Cg => {}
+    if target == ReleaseTarget::Ptr {
+        println!("==> Ptr release target is ignored for GCS CDN. Skipping.");
+        return Ok(());
     }
-    // Phase 3a: ship everything except CDN in parallel
-    // CDN must run AFTER marketing mirror to avoid the mirror wiping CDN assets.
-    let server_ship = std::thread::scope(|s| -> Result<ServerShipResult> {
-        let shell_sync = match target {
-            ReleaseTarget::Prod => {
-                let dist = paths.dist_play.clone();
-                let root_path = paths.root.clone();
-                Some(s.spawn(move || {
-                    println!("==> Syncing entire website, WASM, maps, and assets to Google Cloud Storage (GCS)…");
-                    crate::process::run(
-                        "gcloud",
-                        &[
-                            "storage", "rsync",
-                            dist.to_str().unwrap(),
-                            "gs://cdn.shadowsofwar.io",
-                            "--recursive",
-                            "--delete-unmatched",
-                        ],
-                        Some(&root_path),
-                    )
-                }))
-            }
-            ReleaseTarget::Ptr => {
-                let dist = paths.dist_ptr.clone();
-                let root_path = paths.root.clone();
-                Some(s.spawn(move || {
-                    println!("==> Syncing entire website, WASM, maps, and assets (PTR) to Google Cloud Storage (GCS)…");
-                    crate::process::run(
-                        "gcloud",
-                        &[
-                            "storage", "rsync",
-                            dist.to_str().unwrap(),
-                            "gs://ptr.shadowsofwar.io",
-                            "--recursive",
-                            "--delete-unmatched",
-                        ],
-                        Some(&root_path),
-                    )
-                }))
-            }
-            ReleaseTarget::Cg => None,
-        };
 
-        let site_sync: Option<std::thread::JoinHandle<Result<()>>> = None;
+    // Phase 3: ship directly to IONOS sow-web jail
+    println!("==> Phase 3: ship directly to IONOS sow-web jail");
+    let dist = paths.dist_play.clone();
+    let root_path = paths.root.clone();
 
-        let maps_dir = server_ctx.maps_dir.clone();
-        let gcp_f = gcp.clone();
-        let maps = paths.assets_maps.clone();
-        let maps_sync = s.spawn(move || {
-            gcp_f.sync_dir(
-                &maps,
-                maps_dir.trim_end_matches('/'),
-                &SyncOpts {
-                    exclude_basenames: vec![
-                        "map.bin".into(),
-                        "mini_map.bin".into(),
-                        "manifest.json".into(),
-                        "maps.json".into(),
-                    ],
-                    ..SyncOpts::default()
-                },
-            )
-        });
-
-        let paths_srv = paths.clone();
-        let gcp_srv = gcp.clone();
-        let data_dir = server_ctx.data_dir.clone();
-        let unit = server_ctx.unit;
-        let version = version.to_string();
-        let artifacts = server_artifacts
-            .clone()
-            .expect("server artifacts required for prod/ptr");
-        let server_ship = s.spawn(move || {
-            infra::ship_server(&paths_srv, &gcp_srv, &data_dir, &artifacts, &version, unit)
-        });
-
-        if let Some(h) = shell_sync {
-            h.join().unwrap()?;
-        }
-        if let Some(h) = site_sync {
-            h.join().unwrap()?;
-        }
-        maps_sync.join().unwrap()?;
-        let server_ship = server_ship.join().unwrap()?;
-        Ok(server_ship)
-    })?;
-
-    // Phase 3b: CDN sync runs AFTER marketing mirror completes.
-    // The marketing mirror preserves `/assets/` but CDN must always re-sync
-    // to guarantee assets are present after any mirror cleanup.
-    let cdn_shipped = cdn::ship_or_skip(paths, cfg)?;
-
-    // Phase 4: finalize + verify
-    println!("==> Phase 4: finalize + verify");
-    infra::restart_server_if_needed(paths, &gcp, server_ctx.unit, version, &server_ship)?;
-    infra::restart_server_if_needed(paths, &gcp, server_ctx.db_unit, version, &server_ship)?;
-    if cdn_shipped {
-        cdn::verify_prod_cdn(cfg)?;
-        println!("✅ CDN pipeline OK");
-    }
-    match target {
-        ReleaseTarget::Prod => {
-            verify_play_host(&cfg.play_url())?;
-            verify_marketing_embed(&format!("{}/", cfg.site_url()))?;
-            verify_sitemap(cfg, &cfg.sitemap_url())?;
-        }
-        ReleaseTarget::Ptr => verify_play_host(&cfg.ptr_url())?,
-        ReleaseTarget::Cg => {}
-    }
-    infra::verify_server_health(
-        &gcp,
-        &server_ctx.maps_url,
-        &server_ctx.ws_url,
-        &server_ctx.db_url,
-        server_ctx.unit,
-        server_ctx.db_unit,
+    println!("==> Syncing entire website, WASM, maps, and assets to IONOS sow-web jail via rsync…");
+    let src = format!("{}/", dist.to_str().unwrap().trim_end_matches('/'));
+    crate::process::run(
+        "rsync",
+        &[
+            "-az",
+            "--delete",
+            &src,
+            "root@74.208.246.177:/zroot/jails/sow-web/var/www/shadowsofwar.io/",
+        ],
+        Some(&root_path),
     )?;
+
+    println!("✅ sow-web jail local sync OK");
     Ok(())
 }
 

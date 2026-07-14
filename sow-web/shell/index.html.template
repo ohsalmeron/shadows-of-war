@@ -180,9 +180,9 @@
         window.SOW_BUILD_TS = "__BUILD_TS__";
         window.SOW_BUILD_VERSION = "__VERSION__";
         /* Streamed maps/assets from prod nginx /maps and /assets (single source of truth). */
-        window.SOW_MAPS_URL = window.SOW_MAPS_URL || "https://shadowsofwar.io/maps";
-        window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "https://shadowsofwar.io/assets";
-        window.SOW_DATABASE_URL = window.SOW_DATABASE_URL || "https://shadowsofwar.io/api";
+        window.SOW_MAPS_URL = window.SOW_MAPS_URL || "/maps";
+        window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "/assets";
+        window.SOW_DATABASE_URL = window.SOW_DATABASE_URL || "/api";
         /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */
         (function () {
             var h = window.location.hostname;

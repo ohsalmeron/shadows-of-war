@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::gcp::GcpConfig;
 use crate::process;
 use anyhow::{bail, Context, Result};
@@ -91,6 +92,7 @@ impl DeployConfig {
         format!("{}/sitemap.xml", self.site_url())
     }
 
+    #[allow(dead_code)]
     pub fn prod_assets_path(&self) -> String {
         format!("/var/www/{}/html/assets", self.site_domain())
     }

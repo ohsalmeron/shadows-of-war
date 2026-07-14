@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::path::PathBuf;
 
 pub const PORTAL_JS: &str = "sow_client.js";

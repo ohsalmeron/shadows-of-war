@@ -228,10 +228,10 @@ fn build_index_html(
     wasm: &str,
     build_ts: &str,
     profile: Profile,
-    cfg: &DeployConfig,
+    _cfg: &DeployConfig,
 ) -> Result<()> {
     let template = fs::read_to_string(paths.shell.join("index.html.template"))?;
-    let assets_ui = format!("{}/assets/cdn/ui/", cfg.site_url());
+    let assets_ui = "/assets/cdn/ui/".to_string();
     let html = template
         .replace("__VERSION__", version)
         .replace("./__JS_FILE__", "../__JS_FILE__")
@@ -325,7 +325,7 @@ fn inject_crazygames(html_path: PathBuf, cfg: &DeployConfig) -> Result<()> {
 fn inject_site_embed(html_path: PathBuf, cfg: &DeployConfig) -> Result<()> {
     let site_url = cfg.site_url();
     let boot = format!(
-        r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{site_url}/maps"; window.SOW_ASSETS_URL = "{site_url}/assets";"#,
+        r#"        window.SOW_PORTAL = "site"; window.SOW_WS_URL = "{ws}"; window.SOW_MAPS_URL = "{site_url}/maps"; window.SOW_ASSETS_URL = "/assets";"#,
         ws = cfg.ws_url(&cfg.site_origin),
         site_url = site_url,
     );
